@@ -4,7 +4,8 @@ import type { ReaderSummaryJobProps } from "@social-monitor/summary/domain";
 import type { ReaderSummaryEvidenceSelectorPort } from "@social-monitor/summary/ports";
 import { assertRefreshManifest, refreshHash, type RefreshManifest } from
   "./reader-summary-new-input-refresh-manifest";
-import type { RefreshJobState } from "./reader-summary-new-input-refresh-postgres";
+import type { RefreshJobState, RefreshReconciliationState } from
+  "./reader-summary-new-input-refresh-postgres";
 
 export type RefreshGuardDependencies = Readonly<{
   now(): Date;
@@ -63,12 +64,39 @@ export class NewInputRefreshGuard implements ReaderSummaryNewInputRefreshAuthori
     } };
   }
 }
+/** Jobs of this date that still hold live budget. A reconciled job is accounted
+ * for, never completed: it stays in history, must still be the exact FAILED row
+ * that was reconciled, and can never own the operation of a new attempt. */
+export function refreshLiveJobs(jobs: readonly RefreshJobState[],
+  reconciled: readonly RefreshReconciliationState[], operation: string,
+): readonly RefreshJobState[] {
+  const settled = new Map(reconciled.map((record) => [record.jobId, record]));
+  if (settled.size !== reconciled.length) {
+    throw new Error("Refresh reconciliation set is ambiguous");
+  }
+  const live: RefreshJobState[] = [];
+  let matched = 0;
+  for (const job of jobs) {
+    const record = settled.get(job.jobId);
+    if (record === undefined) { live.push(job); continue; }
+    matched += 1;
+    if (record.operation !== job.operation || record.jobStatus !== job.status ||
+        record.jobSha256 !== job.jobSha256 || job.status !== "FAILED" ||
+        job.artifactId !== null || job.operation === operation) {
+      throw new Error("Refresh reconciled original history changed; reconcile before any attempt");
+    }
+  }
+  if (matched !== settled.size) throw new Error("Refresh reconciliation references an unknown job");
+  return live;
+}
 export function reconcileRefresh(m: RefreshManifest, jobs: readonly RefreshJobState[],
   current: { publicationId: string; artifactId: string; jobId: string },
-): "unconsumed" | "published" {
-  if (jobs.length === 0) return "unconsumed";
-  const job = jobs[0];
-  if (jobs.length !== 1 || job?.operation !== m.operation ||
+  reconciled: readonly RefreshReconciliationState[] = [],
+): "unconsumed" | "reconciled" | "published" {
+  const live = refreshLiveJobs(jobs, reconciled, m.operation);
+  if (live.length === 0) return reconciled.length === 0 ? "unconsumed" : "reconciled";
+  const job = live[0];
+  if (live.length !== 1 || job?.operation !== m.operation ||
       !["COMPLETED", "NO_SIGNAL"].includes(job.status) ||
       current.jobId !== job.jobId || current.artifactId !== job.artifactId ||
       current.publicationId !== job.artifactId) {

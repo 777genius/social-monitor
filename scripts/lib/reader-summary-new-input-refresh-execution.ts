@@ -14,9 +14,9 @@ import type { AgentRuntimeClientPort, ReaderSummaryPublicationPort } from "@soci
 import type { FeedItemReadRepositoryPort, PromotionFeedItemSnapshotRepositoryPort } from "@social-monitor/feed/ports";
 import { createReaderSummaryDailyCapturePublicationWiring } from "./reader-summary-daily-story-relation-verifier";
 import { assertRefreshManifest, refreshScope, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
-import { NewInputRefreshGuard, assertRefreshEqual, reconcileRefresh } from "./reader-summary-new-input-refresh-guard";
+import { NewInputRefreshGuard, assertRefreshEqual, reconcileRefresh, refreshLiveJobs } from "./reader-summary-new-input-refresh-guard";
 import { captureRefreshAuthority, captureRefreshDatabaseAuthority, refreshPeriod, assertRefreshHasNewInput, preflightRefreshSelection } from "./reader-summary-new-input-refresh-capture";
-import { readRefreshJobs, readRefreshPrior, readRefreshCounts } from "./reader-summary-new-input-refresh-postgres";
+import { readRefreshJobs, readRefreshPrior, readRefreshCounts, readRefreshReconciliations } from "./reader-summary-new-input-refresh-postgres";
 import { createRefreshAdmission } from "./reader-summary-new-input-refresh-admission";
 import { withRefreshPublicationLocks, type RefreshSnapshotProtection } from "./reader-summary-new-input-refresh-publication-lock";
 import { buildRefreshModelWiring, guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
@@ -37,13 +37,24 @@ export async function executeNewInputRefresh(input: {
   const prior = await readRefreshPrior(summary, m.date, m.prior.publicationId);
   assertRefreshEqual(prior, m.prior, "preserved prior");
   input.record({ status: "before", operation: m.operation, observedThrough: m.observedThrough, prior, countsBefore });
+  // Live budget for this date, after subtracting explicitly reconciled consumed
+  // attempts. Reading both together keeps a mid-run reconciliation from ever
+  // retiring THIS attempt's own job.
+  const liveRefreshJobs = async (client: Pick<PrismaSummaryConnection, "$queryRaw"> = summary) =>
+    refreshLiveJobs(await readRefreshJobs(client, m.date),
+      await readRefreshReconciliations(client, m.date), m.operation);
   const jobs = await readRefreshJobs(summary, m.date);
-  if (reconcileRefresh(m, jobs, current) === "published") {
+  const reconciled = await readRefreshReconciliations(summary, m.date);
+  const admissionState = reconcileRefresh(m, jobs, current, reconciled);
+  if (admissionState === "published") {
     const countsAfter = await readRefreshCounts(summary, m.date);
     assertRefreshEqual(countsAfter, countsBefore, "replay counts");
     return { status: "verified_noop", before: prior, after: current, countsBefore, countsAfter,
       publicationDelta: countsAfter.publications - countsBefore.publications, outboxDelta: countsAfter.outbox - countsBefore.outbox };
   }
+  input.record({ status: "admission", operation: m.operation, admissionState,
+    reconciled: reconciled.map(({ reconciliationId, jobId, operation }) =>
+      ({ reconciliationId, jobId, operation })) });
   const assertCurrent = async (client = summary as Pick<PrismaSummaryConnection, "$queryRaw">) => {
     input.assertFences(); input.assertSource();
     assertRefreshEqual(await readRefreshPrior(client, m.date), m.prior, "old slot/content/proof");
@@ -77,7 +88,7 @@ export async function executeNewInputRefresh(input: {
     assertCurrent: async () => {
       assertRefreshManifest(m, clock.now());
       await assertCurrent();
-      if ((await readRefreshJobs(summary, m.date)).length !== 0) throw new Error("Refresh date budget consumed");
+      if ((await liveRefreshJobs()).length !== 0) throw new Error("Refresh date budget consumed");
       input.assertSource(); input.assertFences(); assertRefreshManifest(m, clock.now());
     },
   });
@@ -90,7 +101,7 @@ export async function executeNewInputRefresh(input: {
   input.record({ status: "operation_consumed", operation: m.operation, jobId: request.value.readerSummaryJobId });
   const guard = new NewInputRefreshGuard(m, request.value.readerSummaryJobId, {
     now: () => clock.now(), assertFences: input.assertFences, assertCurrent: async () => {
-      const owned = await readRefreshJobs(summary, m.date);
+      const owned = await liveRefreshJobs();
       if (owned.length !== 1 || owned[0]?.jobId !== request.value.readerSummaryJobId || owned[0].operation !== m.operation ||
           !["REQUESTED", "RUNNING"].includes(owned[0].status) || owned[0].artifactId !== null) {
         throw new Error("Refresh date has conflicting consumed operations");
@@ -142,7 +153,8 @@ export async function executeNewInputRefresh(input: {
     readerSummaryJobId: request.value.readerSummaryJobId, maxEvidenceItems: 120 });
   if (!execution.ok) throw new Error("Refresh execution failed; reconcile the consumed job");
   const after = await readRefreshPrior(summary, m.date);
-  if (reconcileRefresh(m, await readRefreshJobs(summary, m.date), after) !== "published") {
+  if (reconcileRefresh(m, await readRefreshJobs(summary, m.date), after,
+    await readRefreshReconciliations(summary, m.date)) !== "published") {
     throw new Error("Refresh publication requires reconciliation");
   }
   assertRefreshEqual(await readRefreshPrior(summary, m.date, m.prior.publicationId), m.prior, "preserved prior");
@@ -179,7 +191,8 @@ export async function assertRefreshTransactionAuthority(
   tx: Pick<PrismaSummaryConnection, "$queryRaw">, m: RefreshManifest, jobId: string, clock: Clock,
 ): Promise<void> {
   assertRefreshManifest(m, clock.now());
-  const jobs = await readRefreshJobs(tx, m.date);
+  const jobs = refreshLiveJobs(await readRefreshJobs(tx, m.date),
+    await readRefreshReconciliations(tx, m.date), m.operation);
   if (jobs.length !== 1 || jobs[0]?.jobId !== jobId || jobs[0].operation !== m.operation || jobs[0].status !== "RUNNING") {
     throw new Error("Refresh transaction lost consumed job authority");
   }

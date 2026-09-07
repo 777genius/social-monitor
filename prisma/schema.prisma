@@ -969,12 +969,63 @@ model ReaderSummaryJob {
   weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt         ReaderSummaryRecoveryReceipt?
   dailyModelJob            ReaderSummaryDailyModelJob? @relation("ReaderSummaryDailyJob")
+  newInputRefreshReconciliations ReaderSummaryNewInputRefreshReconciliation[]
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_jobs_period_lookup_idx")
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
   @@index([tenantId, workspaceId, userId, scopeKey, createdAt])
   @@map("reader_summary_jobs")
+}
+
+/// Append-only accounting for a FAILED new-input-refresh job that already
+/// consumed a paid provider invocation and published nothing. It marks the
+/// original job reconciled, never completed, and never writes to it.
+model ReaderSummaryNewInputRefreshReconciliation {
+  id                      String            @id(map: "rs_nir_reconciliations_pkey") @db.Uuid
+  tenantId                String            @map("tenant_id") @db.Uuid
+  workspaceId             String            @map("workspace_id") @db.Uuid
+  periodStartedAt         DateTime          @map("period_started_at") @db.Timestamptz(6)
+  periodEndedAt           DateTime          @map("period_ended_at") @db.Timestamptz(6)
+  readerSummaryJobId      String            @map("reader_summary_job_id") @db.Uuid
+  operation               String
+  jobStatus               String            @map("job_status")
+  jobSha256               String            @map("job_sha256") @db.Char(64)
+  manifestSha256          String            @map("manifest_sha256") @db.Char(64)
+  evidenceSha256          String            @map("evidence_sha256") @db.Char(64)
+  reason                  String
+  invocation              Json
+  accounting              Json
+  reconciledAt            DateTime          @map("reconciled_at") @db.Timestamptz(6)
+  job                     ReaderSummaryJob  @relation(fields: [readerSummaryJobId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "rs_nir_reconciliations_job_fkey")
+  counters                ReaderSummaryNewInputRefreshReconciliationCounters[]
+
+  @@unique([tenantId, workspaceId, readerSummaryJobId], map: "rs_nir_reconciliations_job_key")
+  @@unique([tenantId, operation], map: "rs_nir_reconciliations_operation_key")
+  @@index([tenantId, workspaceId, periodStartedAt], map: "rs_nir_reconciliations_period_idx")
+  @@map("reader_summary_new_input_refresh_reconciliations")
+}
+
+/// Immutable supplemental provider counters for the already-consumed request
+/// of a reconciled job. Never replaces the reconciliation's own accounting.
+model ReaderSummaryNewInputRefreshReconciliationCounters {
+  id                      String            @id(map: "rs_nir_reconciliation_counters_pkey") @db.Uuid
+  reconciliationId        String            @map("reconciliation_id") @db.Uuid
+  tenantId                String            @map("tenant_id") @db.Uuid
+  workspaceId             String            @map("workspace_id") @db.Uuid
+  requestId               String            @map("request_id")
+  attemptSha256           String            @map("attempt_sha256") @db.Char(64)
+  counters                Json
+  countersSha256          String            @map("counters_sha256") @db.Char(64)
+  evidenceSha256          String            @map("evidence_sha256") @db.Char(64)
+  provenance              String
+  recordedAt              DateTime          @map("recorded_at") @db.Timestamptz(6)
+  reconciliation          ReaderSummaryNewInputRefreshReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "rs_nir_reconciliation_counters_parent_fkey")
+
+  @@unique([tenantId, reconciliationId, requestId], map: "rs_nir_reconciliation_counters_request_key")
+  @@unique([tenantId, reconciliationId, evidenceSha256], map: "rs_nir_reconciliation_counters_evidence_key")
+  @@index([tenantId, workspaceId, reconciliationId], map: "rs_nir_reconciliation_counters_parent_idx")
+  @@map("reader_summary_new_input_refresh_reconciliation_counters")
 }
 
 model ReaderSummaryPublication {

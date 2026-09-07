@@ -22,6 +22,7 @@ import { captureRefreshAuthority, preflightRefreshSelection, assertRefreshHasNew
 import { assertRefreshTransactionAuthority } from "./lib/reader-summary-new-input-refresh-execution";
 import { runRefreshNativeConcurrency } from "./lib/reader-summary-new-input-refresh-native-concurrency";
 import { readReviewedRefresh } from "./lib/reader-summary-new-input-refresh-files";
+import { assertRefreshReconciliationContract } from "./lib/reader-summary-new-input-refresh-reconciliation-postgres-contract";
 
 const required = (name: string): string => {
   const value = process.env[name];
@@ -67,7 +68,8 @@ async function main() {
       const command = await fixtureCommand(summary, candidate);
       assertRefreshEqual(buildReaderSummaryPublicationPayload(command), candidate, "normal Prisma command roundtrip");
       assert.throws(() => reconcileRefresh(m, [{ operation: m.operation, jobId: candidate.readerSummaryJobId,
-        artifactId: null, status: "RUNNING" }], before), /consumed/);
+        artifactId: null, status: "RUNNING", jobSha256: "0".repeat(64) }], before), /consumed/);
+      await assertRefreshReconciliationContract(summary, m.date);
       const current = (tx: PrismaReaderSummaryClient) => assertRefreshTransactionAuthority(tx, m, candidate.readerSummaryJobId, clock);
       for (const mutation of ["engagement", "config", "slot", "input"] as const) {
         await assert.rejects(summary.$transaction(async (tx) => {
@@ -101,7 +103,8 @@ async function main() {
         originalSelection, newSelection, before, after, countsBefore, countsAfter, publicationMs, writerConflicts, acquisitionMs, holderLossRejected,
         scenarios: ["actual-cutoff", "changed-input", "engagement-config-slot-input-drift", "independent-writer-commit-before-validation",
           "writer-blocked-after-publication-snapshot", "actual-holder-loss-stale-snapshot-rejected", "all-relation-orders-nowait",
-          "consumed-no-repeat", "normal-prisma-publisher-max2", "preserved-original", "replay-zero-delta"] }));
+          "consumed-no-repeat", "normal-prisma-publisher-max2", "preserved-original", "replay-zero-delta",
+          "reconciliation-schema-protected", "reconciliation-refuses-unfailed-job"] }));
     });
   } finally { await feedConnection.close(); await summary.close(); }
 }
