@@ -307,6 +307,10 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       failureCode: result.failure?.code,
       retryable: result.failure?.retryable,
       reconnectRequired: result.failure?.reconnectRequired,
+      causeCategory: result.failure?.causeCategory,
+      failureDetails: result.failure?.details
+        ? JSON.stringify(result.failure.details)
+        : undefined,
     };
     if (result.status === "completed") {
       this.logger.info("agent runtime task completed", fields);
