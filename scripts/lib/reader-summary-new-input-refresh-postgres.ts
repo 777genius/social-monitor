@@ -145,15 +145,40 @@ export async function readRefreshMutableAuthority(client: Client, date: string) 
 
 export type RefreshJobState = Readonly<{
   jobId: string; operation: string; status: string; artifactId: string | null;
+  jobSha256: string;
 }>;
+/** jobSha256 hashes the whole job row so a reconciled attempt's history can be
+ * proven byte-identical later; any edit to it fails the next refresh closed. */
 export const readRefreshJobs = async (client: Client, date: string): Promise<readonly RefreshJobState[]> =>
   client.$queryRaw<readonly RefreshJobState[]>`
     select id::text as "jobId", idempotency_key as operation, status::text as status,
-      reader_summary_artifact_id::text as "artifactId"
-    from reader_summary_jobs where tenant_id = ${refreshScope.tenantId}::uuid
+      reader_summary_artifact_id::text as "artifactId",
+      encode(sha256(convert_to(to_jsonb(j)::text, 'UTF8')), 'hex') as "jobSha256"
+    from reader_summary_jobs j where tenant_id = ${refreshScope.tenantId}::uuid
       and workspace_id = ${refreshScope.workspaceId}::uuid
       and starts_with(idempotency_key, ${refreshKeyPrefix(date)})
     order by id
+  `;
+
+export type RefreshReconciliationState = Readonly<{
+  reconciliationId: string; jobId: string; operation: string;
+  jobStatus: string; jobSha256: string;
+}>;
+/** Accounted-for consumed attempts for this date. A reconciliation never says
+ * the original job succeeded; it says its consumption is recorded. */
+export const readRefreshReconciliations = async (
+  client: Client, date: string,
+): Promise<readonly RefreshReconciliationState[]> =>
+  client.$queryRaw<readonly RefreshReconciliationState[]>`
+    select id::text as "reconciliationId", reader_summary_job_id::text as "jobId",
+      operation, job_status as "jobStatus", btrim(job_sha256) as "jobSha256"
+    from reader_summary_new_input_refresh_reconciliations
+    where tenant_id = ${refreshScope.tenantId}::uuid
+      and workspace_id = ${refreshScope.workspaceId}::uuid
+      and period_started_at = ${date}::date::timestamp at time zone 'UTC'
+      and period_ended_at = (${date}::date + 1)::timestamp at time zone 'UTC'
+      and starts_with(operation, ${refreshKeyPrefix(date)})
+    order by reader_summary_job_id
   `;
 
 export async function lockRefreshAuthority(client: Pick<PrismaReaderSummaryClient, "$queryRaw">): Promise<void> {

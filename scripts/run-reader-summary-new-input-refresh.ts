@@ -13,9 +13,9 @@ import { refreshScope, refreshDates, refreshOperation, refreshBytesHash,
   assertRefreshManifest, type RefreshManifest } from "./lib/reader-summary-new-input-refresh-manifest";
 import { refreshSourceSha256, readReviewedRefresh, assertRefreshFences, readRefreshFenceAuthority } from "./lib/reader-summary-new-input-refresh-files";
 import { captureRefreshAuthority, preflightRefreshSelection, assertRefreshHasNewInput, refreshPeriod } from "./lib/reader-summary-new-input-refresh-capture";
-import { readRefreshJobs, readRefreshPrior } from "./lib/reader-summary-new-input-refresh-postgres";
+import { readRefreshJobs, readRefreshPrior, readRefreshReconciliations } from "./lib/reader-summary-new-input-refresh-postgres";
 import { refreshGenerationSha256 } from "./lib/reader-summary-new-input-refresh-model";
-import { assertRefreshEqual } from "./lib/reader-summary-new-input-refresh-guard";
+import { assertRefreshEqual, refreshLiveJobs } from "./lib/reader-summary-new-input-refresh-guard";
 import { executeNewInputRefresh } from "./lib/reader-summary-new-input-refresh-execution";
 import { resolveReaderSummaryServingAuthority } from "./lib/reader-summary-serving-authority";
 
@@ -61,7 +61,8 @@ async function main(): Promise<void> {
       await assertHistoricalPromotionSystemRole(summary);
       if (command.mode === "prepare") {
         for (const date of command.dates) {
-          if ((await readRefreshJobs(summary, date)).length > 0) {
+          const reconciled = await readRefreshReconciliations(summary, date);
+          if (refreshLiveJobs(await readRefreshJobs(summary, date), reconciled, "").length > 0) {
             console.log(JSON.stringify({ date, status: "consumed_use_original_manifest_to_reconcile" }));
             continue;
           }
@@ -82,6 +83,13 @@ async function main(): Promise<void> {
           };
           const manifest: RefreshManifest = { ...value, operation: refreshOperation(value) };
           assertRefreshManifest(manifest, clock.now());
+          // Identical prior/input authority reproduces a reconciled operation.
+          // That is the already-consumed identity, not a fresh attempt.
+          if (reconciled.some((record) => record.operation === manifest.operation)) {
+            console.log(JSON.stringify({ date, status: "reconciled_identity_unchanged_requires_new_input",
+              operation: manifest.operation }));
+            continue;
+          }
           const bytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
           const sha256 = refreshBytesHash(bytes);
           const path = join(output, `${date}.${sha256}.json`);

@@ -38,12 +38,12 @@ describe("bounded new-input refresh authority", () => {
   });
   it("reconciles published operation before looking at the new active slot as a prior", () => {
     const m = refreshManifest();
-    expect(reconcileRefresh(m, [{ operation: m.operation, jobId: "job-new", artifactId: "new", status: "COMPLETED" }],
+    expect(reconcileRefresh(m, [{ operation: m.operation, jobId: "job-new", artifactId: "new", status: "COMPLETED", jobSha256: "a".repeat(64) }],
       { jobId: "job-new", artifactId: "new", publicationId: "new" })).toBe("published");
   });
   it.each(["REQUESTED", "RUNNING", "FAILED", "QUALITY_REJECTED"])("never retries consumed %s even with a new digest", (status) => {
     const m = refreshManifest();
-    expect(() => reconcileRefresh(m, [{ operation: m.operation, jobId: "new", artifactId: null, status }], m.prior)).toThrow(/consumed/);
-    expect(() => reconcileRefresh({ ...m, operation: "changed" }, [{ operation: m.operation, jobId: "new", artifactId: null, status }], m.prior)).toThrow(/consumed/);
+    expect(() => reconcileRefresh(m, [{ operation: m.operation, jobId: "new", artifactId: null, status, jobSha256: "a".repeat(64) }], m.prior)).toThrow(/consumed/);
+    expect(() => reconcileRefresh({ ...m, operation: "changed" }, [{ operation: m.operation, jobId: "new", artifactId: null, status, jobSha256: "a".repeat(64) }], m.prior)).toThrow(/consumed/);
   });
 });

@@ -16,7 +16,8 @@
     "prisma/migrations/20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls/migration.sql",
     "prisma/migrations/20260803174000_reader_summary_daily_execution_tenant_rls/migration.sql",
     "prisma/migrations/20260804130000_reader_summary_daily_v4_ambiguity_retry_schema/migration.sql",
-    "prisma/migrations/20260831120000_reader_summary_promotion_v2_rollback/migration.sql"
+    "prisma/migrations/20260831120000_reader_summary_promotion_v2_rollback/migration.sql",
+    "prisma/migrations/20260907170000_reader_summary_new_input_refresh_reconciliation/migration.sql"
   ],
   "forwardRlsCoverage": [
     {
@@ -97,6 +98,16 @@
     {
       "table": "webhook_secrets",
       "migrationPath": "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql",
+      "ownerRole": "social_monitor_public_schema_owner"
+    },
+    {
+      "table": "reader_summary_new_input_refresh_reconciliations",
+      "migrationPath": "prisma/migrations/20260907170000_reader_summary_new_input_refresh_reconciliation/migration.sql",
+      "ownerRole": "social_monitor_public_schema_owner"
+    },
+    {
+      "table": "reader_summary_new_input_refresh_reconciliation_counters",
+      "migrationPath": "prisma/migrations/20260907170000_reader_summary_new_input_refresh_reconciliation/migration.sql",
       "ownerRole": "social_monitor_public_schema_owner"
     }
   ],
@@ -257,6 +268,20 @@
       "workspaceIdRequired": false,
       "tenantPrefixedIndexRequired": true,
       "reason": "Platform outbox can emit global events, but tenant event dispatch and support triage must remain tenant-queryable."
+    },
+    {
+      "table": "reader_summary_new_input_refresh_reconciliations",
+      "tenantIdRequired": true,
+      "workspaceIdRequired": true,
+      "tenantPrefixedIndexRequired": true,
+      "reason": "Append-only accounting that marks a consumed-but-unpublished new-input refresh job reconciled; operator recovery state, never user data."
+    },
+    {
+      "table": "reader_summary_new_input_refresh_reconciliation_counters",
+      "tenantIdRequired": true,
+      "workspaceIdRequired": true,
+      "tenantPrefixedIndexRequired": true,
+      "reason": "Immutable supplemental provider counters for an already-consumed refresh invocation; append-only operator evidence, never user data."
     }
   ],
   "indirectTenantOwnedTables": [

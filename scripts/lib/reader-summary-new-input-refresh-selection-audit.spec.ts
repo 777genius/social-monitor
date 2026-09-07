@@ -100,7 +100,7 @@ describe("private refresh selection receipt", () => {
       expect(select).toHaveBeenCalledTimes(1);
       expect(record).toHaveBeenCalledTimes(1);
       expect(() => reconcileRefresh(m, [{ jobId: "audit-job", operation: m.operation,
-        status: "FAILED", artifactId: null }], m.prior)).toThrow(/consumed/u);
+        status: "FAILED", artifactId: null, jobSha256: "a".repeat(64) }], m.prior)).toThrow(/consumed/u);
     } else expect(record).toHaveBeenCalledTimes(phase === "success" ? 1 : 0);
   });
 
