@@ -9,6 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import { withTrustedCodexWorkerUsage } from "./codex-worker-cli-usage.mjs";
 
 import {
   admitSubscriptionRuntimeWrapperRequest,
@@ -348,7 +349,7 @@ async function removeAuthMaterialization(path) {
 process.exitCode = await runSubscriptionAgentTaskCli(
   withExactModel(runtimeArgv, admission.profile.model),
   undefined,
-  createStrictCodexWorker,
+  (input) => withTrustedCodexWorkerUsage(createStrictCodexWorker(input)),
 );
 
 function nonEmptyRunId(value) {
