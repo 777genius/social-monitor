@@ -121,6 +121,9 @@ jobs:
       - name: Prove subscription runtime auth-pool failover
         run: npm run check:subscription-runtime-auth-pool-e2e
 
+      - name: Prove the vendored subscription runtime bills exact turn usage
+        run: npm run check:subscription-runtime-usage-contract
+
       - name: Prove Reader Promotion V2 canary control plane
         run: |
           node --test scripts/lib/reader-promotion-v2-production-canary-control.test.mjs

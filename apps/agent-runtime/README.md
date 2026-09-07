@@ -2,8 +2,15 @@
 
 Internal gRPC boundary between Social Monitor summary adapters and
 `@vioxen/subscription-runtime`. The dependency is vendored as
-`vendor/vioxen-subscription-runtime-0.1.0-main.30.tgz` so Docker and `npm ci`
-install the CLI binary deterministically.
+`vendor/vioxen-subscription-runtime-0.1.0-main.41.tgz` so Docker and `npm ci`
+install the CLI binary deterministically. `main.41` is packed from upstream
+commit `42ea1696` (PR #165), which bills a Codex turn its own growth instead of
+the thread's cumulative `tokenUsage.total`. Provenance and
+packaging are proved by `npm run vendor:subscription-runtime`; the usage
+contract itself is proved by `npm run check:subscription-runtime-usage-contract`.
+
+`vendor/vioxen-subscription-runtime-0.1.0-main.30.tgz` stays vendored because the
+Reader Promotion V2 canary lane pins that release deliberately.
 
 ## Protocol
 

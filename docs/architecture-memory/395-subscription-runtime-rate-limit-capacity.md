@@ -24,7 +24,8 @@ events. It must not log prompts, auth material, cookies or provider payloads.
 
 ## Evidence
 
-- subscription-runtime release: `0.1.0-main.30`;
+- subscription-runtime release: `0.1.0-main.30`, superseded as the installed pin
+  by `0.1.0-main.41`; see `396-subscription-runtime-exact-turn-usage.md`;
 - artifact SHA-256: `fc404779152c41718c55e0a7ba35fcc5ba888391f467207bfd21cc6740b22f0a`;
 - Social Monitor integration: PR `#267`;
 - deploy resume correction: PR `#268`.
