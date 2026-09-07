@@ -23,29 +23,41 @@ const commandText = collectText([
   input.agent_type,
 ]);
 
+// Prohibited flows are named in prose, where the verb and the noun are separate
+// words. Ordinary repository identifiers are instead hyphen/slash/dot-joined
+// compounds such as apps/agent-runtime, AGENTS.md and
+// vendor/vioxen-subscription-runtime-*.tgz. The boundaries below therefore
+// refuse to split on `.`, `/` and `-`, so prose still matches while a file path
+// stops reading as a flow. The dedicated app-path rule at the end keeps real
+// flow invocations under that app directory blocked, which bare-word rules
+// alone would miss.
 const blockedPatterns = [
   {
     pattern: /(^|\s)(~\/dev\/projects\/ai\/claude-runtime|\/dev\/projects\/ai\/claude-runtime)(\s|$)/i,
     reason: 'Do not open or test claude-runtime without fresh explicit approval.',
   },
   {
-    pattern: /\bterminal[-_\s]*runtime\b/i,
+    pattern: /(?<![\w./-])terminal[-_\s]*runtime(?![\w./-])/i,
     reason: 'Terminal runtime checks are prohibited on real user projects.',
   },
   {
-    pattern: /\btask[-_\s]*assignment\b/i,
+    pattern: /(?<![\w./-])task[-_\s]*assignment(?![\w./-])/i,
     reason: 'Task assignment flows are prohibited on real user projects.',
   },
   {
-    pattern: /\bsmoke[-_\s]*flow\b/i,
+    pattern: /(?<![\w./-])smoke[-_\s]*flow(?![\w./-])/i,
     reason: 'Agent smoke-flow checks are prohibited on real user projects.',
   },
   {
-    pattern: /\b(agent|agents)\b.*\b(launch|provision|assign|runtime|smoke)\b/i,
+    pattern: /(?<![\w./-])(agent|agents)(?![\w./-]).*(?<![\w./-])(launch|provision|assign|runtime|smoke)(?![\w./-])/i,
     reason: 'Agent launch/provisioning/runtime/smoke checks are prohibited on real user projects.',
   },
   {
-    pattern: /\b(launch|provision|assign|runtime|smoke)\b.*\b(agent|agents)\b/i,
+    pattern: /(?<![\w./-])(launch|provision|assign|runtime|smoke)(?![\w./-]).*(?<![\w./-])(agent|agents)(?![\w./-])/i,
+    reason: 'Agent launch/provisioning/runtime/smoke checks are prohibited on real user projects.',
+  },
+  {
+    pattern: /apps\/agent-runtime\/[^\s"']*(?:launch|provision|assign|smoke)/i,
     reason: 'Agent launch/provisioning/runtime/smoke checks are prohibited on real user projects.',
   },
 ];

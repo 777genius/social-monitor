@@ -10,35 +10,33 @@ import test from "node:test";
 import { createRequire } from "node:module";
 import { withTrustedCodexWorkerUsage } from "./codex-worker-cli-usage.mjs";
 
+// The artifact this repository actually installs. It is committed under vendor/,
+// so a missing file is a repository failure rather than a reason to skip: these
+// tests are the executable proof that the installed runtime bills exact turn
+// usage instead of the cumulative thread counter.
 const artifactPath = join(
   process.cwd(),
-  process.env.USAGE_CONTRACT_ARTIFACT ?? "vendor/vioxen-subscription-runtime-0.1.0-main.40.tgz",
+  process.env.USAGE_CONTRACT_ARTIFACT ?? "vendor/vioxen-subscription-runtime-0.1.0-main.41.tgz",
 );
 
-// Check artifact availability synchronously at module load so every test can
-// declare skip=true before any setup code runs.
-let artifactAvailable = false;
 try {
   await access(artifactPath, constants.R_OK);
-  artifactAvailable = true;
 } catch {
-  // Artifact absent – tests will be marked as skipped below.
+  throw new Error(
+    `${artifactPath} is missing; run npm run vendor:subscription-runtime to restore the vendored artifact`,
+  );
 }
 
 // ts-node and tsconfig-paths are always available as devDependencies.
-// Register them unconditionally so TypeScript imports work when tests run.
 const require = createRequire(import.meta.url);
-if (artifactAvailable) {
-  require("ts-node").register({ transpileOnly: true, compilerOptions: { rootDir: process.cwd() } });
-  require("tsconfig-paths/register");
-}
-const parseSubscriptionRuntimeCliResult = artifactAvailable
-  ? require("../src/subscription-runtime-cli-support.ts").parseSubscriptionRuntimeCliResult
-  : undefined;
-
-const skipReason = artifactAvailable
-  ? false
-  : "vendor/vioxen-subscription-runtime-0.1.0-main.40.tgz not present; run scripts/verify-vioxen-subscription-runtime-main40.mjs to obtain it";
+require("ts-node").register({ transpileOnly: true, compilerOptions: { rootDir: process.cwd() } });
+require("tsconfig-paths/register");
+const { parseSubscriptionRuntimeCliResult } = require(
+  "../src/subscription-runtime-cli-support.ts",
+);
+const { approvedSubscriptionRuntimePackageVersion } = require(
+  "../src/subscription-runtime-installation.ts",
+);
 
 const runtimeDependencies = [
   "@anthropic-ai/claude-agent-sdk",
@@ -49,7 +47,7 @@ const runtimeDependencies = [
   "zod",
 ];
 
-test("vendored runtime binds the final exact Codex usage to one clean turn", { skip: skipReason }, async () => {
+test("vendored runtime binds the final exact Codex usage to one clean turn", async () => {
   await withVendoredRuntime(async (packageRoot) => {
     const { CodexAppServerExecutionEngine } = await importFromPackage(
       packageRoot,
@@ -84,7 +82,82 @@ test("vendored runtime binds the final exact Codex usage to one clean turn", { s
   });
 });
 
-test("vendored runtime fails closed for malformed or absent exact turn usage", { skip: skipReason }, async (t) => {
+// The exact regression closed upstream: `tokenUsage.total` is the thread's
+// cumulative counter and spans neighbouring turns, retries and attach replay,
+// while `tokenUsage.last` is the usage of this one update. Billing the former
+// charged a fresh thread almost the whole cumulative counter.
+test("vendored runtime bills the exact last snapshot, not the cumulative total", async () => {
+  await withVendoredRuntime(async (packageRoot) => {
+    const { CodexAppServerExecutionEngine } = await importFromPackage(
+      packageRoot,
+      "dist/provider-codex/codex-app-server-execution-engine.js",
+    );
+    const engine = new CodexAppServerExecutionEngine({
+      codexBinaryPath: "codex",
+      cleanThreadPrewarm: false,
+      processFactory: fakeAppServerProcessFactory([
+        {
+          method: "thread/tokenUsage/updated",
+          params: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            tokenUsage: {
+              last: usage(3, 2),
+              total: usage(1_000, 500),
+              modelContextWindow: 200_000,
+            },
+          },
+        },
+        itemCompleted("thread-1", "turn-1", "output"),
+      ]),
+    });
+
+    try {
+      const result = await engine.run(engineInput());
+      assert.deepEqual(
+        result.usage,
+        { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+        "turn usage must come from tokenUsage.last, never from tokenUsage.total",
+      );
+    } finally {
+      await engine.dispose();
+    }
+  });
+});
+
+// "Field absent" and "field present but untrusted" must stay distinct outcomes:
+// once a snapshot is malformed the turn is poisoned, and no later well-formed
+// snapshot may revive it, because reviving it is how a bad number gets billed.
+test("vendored runtime keeps a poisoned turn poisoned after a later clean snapshot", async () => {
+  await withVendoredRuntime(async (packageRoot) => {
+    const { CodexAppServerExecutionEngine } = await importFromPackage(
+      packageRoot,
+      "dist/provider-codex/codex-app-server-execution-engine.js",
+    );
+    const engine = new CodexAppServerExecutionEngine({
+      codexBinaryPath: "codex",
+      cleanThreadPrewarm: false,
+      processFactory: fakeAppServerProcessFactory([
+        tokenUsage("thread-1", "turn-1", usage(4, 2, 99)),
+        tokenUsage("thread-1", "turn-1", usage(12, 5)),
+        itemCompleted("thread-1", "turn-1", "output"),
+      ]),
+    });
+
+    try {
+      const result = await engine.run(engineInput());
+      assert.equal(
+        result.usage,
+        undefined,
+        "a well-formed snapshot must not revive a turn poisoned by a malformed one",
+      );
+    } finally {
+      await engine.dispose();
+    }
+  });
+});
+
+test("vendored runtime fails closed for malformed or absent exact turn usage", async (t) => {
   await withVendoredRuntime(async (packageRoot) => {
     const { CodexAppServerExecutionEngine } = await importFromPackage(
       packageRoot,
@@ -124,7 +197,7 @@ test("vendored runtime fails closed for malformed or absent exact turn usage", {
   });
 });
 
-test("vendored runtime carries engine usage through driver and worker telemetry", { skip: skipReason }, async () => {
+test("vendored runtime carries engine usage through driver and worker telemetry", async () => {
   await withVendoredRuntime(async (packageRoot) => {
     const [{ CodexJsonAgentDriver }, { FileBackendCodexManagedRunCoordinator }] =
       await Promise.all([
@@ -220,12 +293,14 @@ test("vendored runtime carries engine usage through driver and worker telemetry"
   });
 });
 
-test("vendored artifact manifest and declarations identify runtime usage telemetry", { skip: skipReason }, async () => {
+test("vendored artifact manifest and declarations identify runtime usage telemetry", async () => {
   await withVendoredRuntime(async (packageRoot) => {
     const manifest = JSON.parse(
       await readFile(join(packageRoot, "package.json"), "utf8"),
     );
-    assert.match(manifest.version, /^0\.1\.0-main\.(30|40)$/u);
+    // The vendored artifact and the version the installation inspector admits
+    // must not drift apart, or the app would refuse the runtime it ships with.
+    assert.equal(manifest.version, approvedSubscriptionRuntimePackageVersion);
     assert.equal(manifest.license, "UNLICENSED");
     assert.deepEqual(manifest.dependencies, {
       "@anthropic-ai/claude-agent-sdk": "0.3.237",
@@ -273,7 +348,7 @@ test("vendored artifact manifest and declarations identify runtime usage telemet
 
 async function withVendoredRuntime(run) {
   const tempRoot = await mkdtemp(
-    join(tmpdir(), "subscription-runtime-main30-test-"),
+    join(tmpdir(), "subscription-runtime-active-usage-test-"),
   );
   try {
     const extracted = spawnSync(

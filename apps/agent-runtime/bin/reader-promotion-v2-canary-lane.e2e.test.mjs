@@ -31,7 +31,14 @@ const bridgePath = join(
   "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs",
 );
 
-test("main.30 control starts app-server and fallback exec processes", {
+// Control lane, i.e. the non-canary comparison path, starts the app-server.
+// Up to 0.1.0-main.30 an app-server turn that failed after `turn/start` was
+// silently re-run through `codex exec`. From 0.1.0-main.40 onwards the runtime
+// refuses that replay: once the provider acknowledged the turn it may already
+// have executed and billed it, so replaying the same prompt through another
+// engine risks doing the work twice. The pool still rotates to the next account,
+// and the run fails closed once attempts are exhausted.
+test("control lane starts app-server and refuses to replay a started turn through exec", {
   timeout: 30_000,
 }, async () => {
   const fixture = await createFixture({
@@ -45,23 +52,24 @@ test("main.30 control starts app-server and fallback exec processes", {
       { authMode: "pool", canary: false },
     );
     const attempts = await readAttempts(fixture.attemptLogPath);
-
-    assert.equal(execution.exitCode, 0, JSON.stringify({
+    const evidence = JSON.stringify({
       result: execution.result,
       attempts,
       stderr: execution.stderr,
-    }));
-    assert.equal(execution.result.status, "completed");
+    });
+
+    assert.notEqual(execution.exitCode, 0, evidence);
+    assert.equal(execution.result.status, "failed", evidence);
     assert.deepEqual(nativeStartups(attempts), [
       { invocationId: "control-run", account: "account-a", command: "app-server" },
-      { invocationId: "control-run", account: "account-a", command: "exec" },
-    ]);
+      { invocationId: "control-run", account: "account-b", command: "app-server" },
+    ], evidence);
     assert.equal(attempts.some(
       (item) => item.event === "rpc" && item.method === "turn/start",
-    ), true);
+    ), true, evidence);
     assert.equal(attempts.some(
       (item) => item.event === "prompt" && item.promptKind === "story",
-    ), true);
+    ), false, "a turn the app-server already started must not be replayed through codex exec");
   } finally {
     await fixture.cleanup();
   }

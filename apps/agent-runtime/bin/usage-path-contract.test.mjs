@@ -3,7 +3,7 @@
 //
 // Both P0 break points are covered:
 //   P0 Case 1 – engine reads usage from thread/tokenUsage/updated and returns it at root.
-//               (main.40 engine fix; simulated here by a fake worker returning root usage)
+//               (main.41 engine fix; simulated here by a fake worker returning root usage)
 //   P0 Case 2 – safe worker returns trusted root usage; without the adapter the application
 //               parser cannot see it because it reads only telemetry.usage, not root usage.
 //
@@ -86,7 +86,7 @@ function simulateCliJson(workerResult) {
 // ---------------------------------------------------------------------------
 // P0 Case 1 – engine → trusted worker → CLI telemetry → application parser
 //
-// The main.40 fix changes the App Server execution engine to read usage from
+// The main.41 fix changes the App Server execution engine to read usage from
 // thread/tokenUsage/updated events instead of turn/completed.  After the
 // engine produces the usage, the FileBackendCodexManagedRunCoordinator places
 // it at root (result.usage).  The adapter (trustedCodexWorkerResultToCli) must
