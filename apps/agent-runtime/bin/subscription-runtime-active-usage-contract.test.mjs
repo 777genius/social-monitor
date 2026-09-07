@@ -84,9 +84,10 @@ test("vendored runtime binds the final exact Codex usage to one clean turn", asy
 
 // The exact regression closed upstream: `tokenUsage.total` is the thread's
 // cumulative counter and spans neighbouring turns, retries and attach replay,
-// while `tokenUsage.last` is the usage of this one update. Billing the former
-// charged a fresh thread almost the whole cumulative counter.
-test("vendored runtime bills the exact last snapshot, not the cumulative total", async () => {
+// while `tokenUsage.last` is the usage of this one update. A turn is billed the
+// growth of `total` across the turn, anchored at `total - last` on its first
+// update; billing `total` itself charged a fresh turn the whole counter.
+test("vendored runtime bills this turn's growth, not the thread's cumulative counter", async () => {
   await withVendoredRuntime(async (packageRoot) => {
     const { CodexAppServerExecutionEngine } = await importFromPackage(
       packageRoot,
@@ -117,7 +118,42 @@ test("vendored runtime bills the exact last snapshot, not the cumulative total",
       assert.deepEqual(
         result.usage,
         { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
-        "turn usage must come from tokenUsage.last, never from tokenUsage.total",
+        "a turn is billed its own growth, never the thread's cumulative tokenUsage.total",
+      );
+    } finally {
+      await engine.dispose();
+    }
+  });
+});
+
+// A turn that calls a tool produces one notification per model response. The
+// turn is then billed the growth of the cumulative counter across the turn,
+// anchored at `total - last` on the first update - which for a well-behaved
+// provider equals the sum of that turn's exact snapshots. The thread arrives
+// here already carrying 100/50 of neighbouring-turn usage, and none of it may
+// be billed to this turn.
+test("vendored runtime bills the whole turn across several exact snapshots", async () => {
+  await withVendoredRuntime(async (packageRoot) => {
+    const { CodexAppServerExecutionEngine } = await importFromPackage(
+      packageRoot,
+      "dist/provider-codex/codex-app-server-execution-engine.js",
+    );
+    const engine = new CodexAppServerExecutionEngine({
+      codexBinaryPath: "codex",
+      cleanThreadPrewarm: false,
+      processFactory: fakeAppServerProcessFactory([
+        cumulativeTokenUsage("thread-1", "turn-1", usage(4, 1), usage(104, 51)),
+        cumulativeTokenUsage("thread-1", "turn-1", usage(6, 2), usage(110, 53)),
+        itemCompleted("thread-1", "turn-1", "output"),
+      ]),
+    });
+
+    try {
+      const result = await engine.run(engineInput());
+      assert.deepEqual(
+        result.usage,
+        { inputTokens: 10, outputTokens: 3, totalTokens: 13 },
+        "a multi-response turn bills every exact snapshot of that turn and no neighbouring usage",
       );
     } finally {
       await engine.dispose();
@@ -488,16 +524,20 @@ const usage = (inputTokens, outputTokens, totalTokens = inputTokens + outputToke
   totalTokens,
 });
 
-const tokenUsage = (threadId, turnId, last) => ({
+const tokenUsage = (threadId, turnId, last) =>
+  cumulativeTokenUsage(
+    threadId,
+    turnId,
+    last,
+    usage(last.inputTokens + 100, last.outputTokens + 50),
+  );
+
+const cumulativeTokenUsage = (threadId, turnId, last, total) => ({
   method: "thread/tokenUsage/updated",
   params: {
     threadId,
     turnId,
-    tokenUsage: {
-      last,
-      total: usage(last.inputTokens + 100, last.outputTokens + 50),
-      modelContextWindow: 200_000,
-    },
+    tokenUsage: { last, total, modelContextWindow: 200_000 },
   },
 });
 

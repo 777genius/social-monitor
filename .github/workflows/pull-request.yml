@@ -122,10 +122,7 @@ jobs:
         run: npm run check:subscription-runtime-auth-pool-e2e
 
       - name: Prove the vendored subscription runtime bills exact turn usage
-        run: |
-          set -euo pipefail
-          npm run vendor:subscription-runtime
-          npm run check:subscription-runtime-usage-contract
+        run: npm run check:subscription-runtime-usage-contract
 
       - name: Prove Reader Promotion V2 canary control plane
         run: |

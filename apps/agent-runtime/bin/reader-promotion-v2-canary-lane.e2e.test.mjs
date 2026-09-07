@@ -75,6 +75,44 @@ test("control lane starts app-server and refuses to replay a started turn throug
   }
 });
 
+// The refusal above only describes the failure path, so the completing control
+// lane needs its own coverage: one account, one app-server process, no exec
+// fallback at all, and the story answered over the app-server protocol.
+test("control lane completes the story over app-server without any exec process", {
+  timeout: 30_000,
+}, async () => {
+  const fixture = await createFixture({
+    freshness: "fresh",
+    invocationId: "control-ok",
+    appServerTurn: "completed",
+  });
+  try {
+    const execution = await runBridge(
+      fixture,
+      standardRequest("control-ok"),
+      { authMode: "pool", canary: false },
+    );
+    const attempts = await readAttempts(fixture.attemptLogPath);
+    const evidence = JSON.stringify({
+      result: execution.result,
+      attempts,
+      stderr: execution.stderr,
+    });
+
+    assert.equal(execution.exitCode, 0, evidence);
+    assert.equal(execution.result.status, "completed", evidence);
+    assert.deepEqual(nativeStartups(attempts), [
+      { invocationId: "control-ok", account: "account-a", command: "app-server" },
+    ], evidence);
+    assert.deepEqual(promptKinds(attempts), ["story"], evidence);
+    assert.equal(attempts.some(
+      (item) => item.event === "startup" && item.command === "exec",
+    ), false, "a completing app-server turn must not start an exec process");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("canary bypasses journals and runs one packaged story command", {
   timeout: 30_000,
 }, async () => {
@@ -168,7 +206,7 @@ for (const authMode of ["pool", "single"]) {
   });
 }
 
-async function createFixture({ freshness, invocationId }) {
+async function createFixture({ freshness, invocationId, appServerTurn = "failed" }) {
   const root = await mkdtemp(join(tmpdir(), "reader-promotion-v2-lane-"));
   const sandbox = join(root, "sandbox");
   const stateRoot = join(root, "state");
@@ -208,7 +246,7 @@ async function createFixture({ freshness, invocationId }) {
   const codexPath = join(root, "fake-codex.mjs");
   await writeFile(
     codexPath,
-    fakeCodexSource(attemptLogPath, invocationId),
+    fakeCodexSource(attemptLogPath, invocationId, appServerTurn),
     "utf8",
   );
   await chmod(codexPath, 0o755);
@@ -415,7 +453,7 @@ const promptKinds = (attempts) => attempts
   .filter((item) => item.event === "prompt")
   .map((item) => item.promptKind);
 
-function fakeCodexSource(attemptLogPath, invocationId) {
+function fakeCodexSource(attemptLogPath, invocationId, appServerTurn) {
   return `#!/usr/bin/env node
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
@@ -437,7 +475,17 @@ if (command === "app-server") {
     if (request.method === "initialize") send({ id: request.id, result: {} });
     else if (request.method === "account/rateLimits/read") send({ id: request.id, result: { rateLimits: { primary: { usedPercent: 10, windowDurationMins: 300, resetsAt: 4102444800 }, rateLimitReachedType: null } } });
     else if (request.method === "thread/start") { await record({ event: "rpc", method: "thread/start" }); send({ id: request.id, result: { thread: { id: "thread-control" } } }); }
-    else if (request.method === "turn/start") { await record({ event: "rpc", method: "turn/start" }); send({ id: request.id, result: { turn: { id: "turn-control" } } }); send({ method: "turn/completed", params: { turn: { id: "turn-control", status: { type: "failed" }, error: { message: "ordinary failure" } } } }); }
+    else if (request.method === "turn/start") {
+      await record({ event: "rpc", method: "turn/start" });
+      send({ id: request.id, result: { turn: { id: "turn-control" } } });
+      if (${JSON.stringify(appServerTurn)} === "completed") {
+        await record({ event: "prompt", command, promptKind: "story" });
+        send({ method: "item/completed", params: { threadId: "thread-control", turnId: "turn-control", item: { type: "agentMessage", text: JSON.stringify({ ok: true }) } } });
+        send({ method: "turn/completed", params: { threadId: "thread-control", turn: { id: "turn-control", status: { type: "completed" } } } });
+      } else {
+        send({ method: "turn/completed", params: { turn: { id: "turn-control", status: { type: "failed" }, error: { message: "ordinary failure" } } } });
+      }
+    }
   }
 } else if (command === "exec") {
   const prompt = await readStdin();
