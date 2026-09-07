@@ -17,7 +17,22 @@ export function withTrustedCodexWorkerUsage(worker) {
     start: (...args) => worker.start(...args),
     dispose: (...args) => worker.dispose(...args),
     seedCodexAuthJsonFile: (...args) => worker.seedCodexAuthJsonFile(...args),
-    run: async (...args) => trustedCodexWorkerResultToCli(await worker.run(...args)),
+    run: async (...args) => {
+      const result = await worker.run(...args);
+      // Usage-tracking integrity is enforced separately by
+      // trustedCodexWorkerResultToCli (fail closed on malformed/conflicting
+      // usage). A billing-only enrichment failure must not take down the
+      // underlying task result -- drop the untrusted usage and let the
+      // already-completed work through instead of losing it.
+      try {
+        return trustedCodexWorkerResultToCli(result);
+      } catch (error) {
+        console.error(
+          `codex-worker-cli-usage: dropping untrusted usage (${error.message})`,
+        );
+        return result;
+      }
+    },
   };
 }
 

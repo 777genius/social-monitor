@@ -363,3 +363,47 @@ test("absent usage flows as undefined through the full path without throwing", (
   const parsed = parseCliTelemetryUsage(cliJson);
   assert.equal(parsed, undefined, "no usage yields undefined without error");
 });
+
+// ---------------------------------------------------------------------------
+// withTrustedCodexWorkerUsage must not let a usage-integrity failure take
+// down the underlying task result: a billing-only concern should degrade to
+// "no usage recorded", not "no summary generated".
+// ---------------------------------------------------------------------------
+
+test("withTrustedCodexWorkerUsage drops malformed usage instead of failing the whole task", async () => {
+  const fakeWorker = {
+    async start() {},
+    async dispose() {},
+    async seedCodexAuthJsonFile() {},
+    async run() {
+      return {
+        outputText: "real generated content",
+        usage: { inputTokens: 1, outputTokens: 2 }, // missing totalTokens: malformed
+        warnings: [],
+      };
+    },
+  };
+
+  const wrapped = withTrustedCodexWorkerUsage(fakeWorker);
+  const result = await wrapped.run({ prompt: "anything" });
+
+  assert.equal(result.outputText, "real generated content", "task output must survive a usage-tracking failure");
+  assert.equal(result.telemetry?.usage, undefined, "malformed usage must not be forwarded as trusted telemetry");
+});
+
+test("withTrustedCodexWorkerUsage still promotes valid usage normally", async () => {
+  const validUsage = { inputTokens: 5, outputTokens: 3, totalTokens: 8 };
+  const fakeWorker = {
+    async start() {},
+    async dispose() {},
+    async seedCodexAuthJsonFile() {},
+    async run() {
+      return { outputText: "ok", usage: validUsage, warnings: [] };
+    },
+  };
+
+  const wrapped = withTrustedCodexWorkerUsage(fakeWorker);
+  const result = await wrapped.run({ prompt: "anything" });
+
+  assert.deepEqual(result.telemetry?.usage, validUsage);
+});
