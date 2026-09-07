@@ -58,7 +58,7 @@ elif ((EUID == 0)); then
   TARGET_GROUP=1000
   TARGET_MODE=0440
   POOL_REGISTRY_PREFIX=/var/data/social-monitor/worker-jobs/
-  BROKER_STATUS_TIMEOUT_SECONDS=30
+  BROKER_STATUS_TIMEOUT_SECONDS=120
   unset SOCIAL_MONITOR_AUTH_REFRESH_TEST_MODE SOCIAL_MONITOR_AUTH_ROOT \
     SOCIAL_MONITOR_AUTH_TARGET_DIR SOCIAL_MONITOR_AUTH_REGISTRY_ROOT \
     SOCIAL_MONITOR_AUTH_PROJECT_ROOT \
@@ -75,8 +75,8 @@ else
 fi
 
 [[ $BROKER_STATUS_TIMEOUT_SECONDS =~ ^[1-9][0-9]*$ ]] \
-  && ((BROKER_STATUS_TIMEOUT_SECONDS <= 30)) || {
-  echo 'auth-refresh-error: broker status timeout must be between 1 and 30 seconds' >&2
+  && ((BROKER_STATUS_TIMEOUT_SECONDS <= 120)) || {
+  echo 'auth-refresh-error: broker status timeout must be between 1 and 120 seconds' >&2
   exit 1
 }
 
