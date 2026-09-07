@@ -22,6 +22,7 @@ import { loadCodexAuthPoolFromEnv } from "./codex-auth-pool-manifest.mjs";
 import {
   codexAuthPoolExecutionPolicy,
   codexAuthPoolTaskHash,
+  describeCodexAuthPoolRunFailure,
   orderCodexAuthAccountsForTask,
 } from "./codex-auth-pool-routing.mjs";
 
@@ -304,7 +305,13 @@ function createPooledCodexWorker({ input, model, authPool }) {
         }
         throw new SubscriptionWorkerError(
           "subscription_worker_run_failed",
-          result.safeMessage,
+          describeCodexAuthPoolRunFailure({
+            safeMessage: result.safeMessage,
+            reason: result.reason,
+            failureDetails: result.failureDetails,
+            attemptCount: result.attempts?.length,
+            accountCount: authPool.accounts.length,
+          }),
           {
             details: {
               reason: result.reason,
