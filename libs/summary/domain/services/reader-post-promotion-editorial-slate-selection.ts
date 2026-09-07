@@ -3,17 +3,13 @@ import {
   type SelectedReaderPostPromotion,
 } from "../policies/reader-post-promotion-selection";
 import {
-  evaluateReaderPostPromotion,
-  readerPostPromotionTimestampMicros,
-  readerPostProviderFamily,
   READER_POST_PROMOTION_POLICY_VERSION,
   type ReaderPostPromotionInput,
   type ReaderPostPromotionResult,
 } from "../policies/reader-post-promotion-policy";
 import { readerPostPromotionEvidenceConfidence } from
   "../policies/reader-post-promotion-confidence-policy";
-import { isTrustedReaderPostPromotionSupport } from
-  "../policies/reader-post-promotion-support-authority";
+import { isEligibleIndependentSupport } from "./reader-post-promotion-independent-support";
 import type { ReaderSummaryEditorialSlate } from
   "../value-objects/reader-summary-editorial-slate";
 
@@ -118,56 +114,6 @@ export const readerPostPromotionSelectionFromEditorialSlate = (
     decisions: inputs.map(decision),
   };
 };
-
-/**
- * Slate rematerialization is a second trust boundary: the slate only fixes
- * lead order, it does not attest support. Re-run the complete V1 admission
- * policy for each support candidate with an explicit same-story relation, and
- * require the same exact selection window and source-catalog authority.
- */
-const isEligibleIndependentSupport = (
-  support: ReaderPostPromotionInput,
-  lead: ReaderPostPromotionInput,
-): boolean => {
-  if (!isTrustedReaderPostPromotionSupport(support) ||
-      readerPostProviderFamily(support.provider) === undefined ||
-      readerPostProviderFamily(lead.provider) === undefined ||
-      readerPostProviderFamily(support.provider) ===
-        readerPostProviderFamily(lead.provider) ||
-      !sameSelectionWindow(support, lead)) {
-    return false;
-  }
-  const evaluation = evaluateReaderPostPromotion({
-    ...support,
-    relation: {
-      kind: "same_story",
-      targetCanonicalIdentity: lead.canonicalIdentity,
-      confidence: 1,
-      approved: true,
-    },
-  });
-  return evaluation.decision === "support_only" &&
-    evaluation.authoritativeSameStory;
-};
-
-const sameSelectionWindow = (
-  support: ReaderPostPromotionInput,
-  lead: ReaderPostPromotionInput,
-): boolean => promotionMicros(support, "start") ===
-    promotionMicros(lead, "start") &&
-  promotionMicros(support, "end") === promotionMicros(lead, "end") &&
-  promotionMicros(support, "cutoff") === promotionMicros(lead, "cutoff");
-
-const promotionMicros = (
-  input: ReaderPostPromotionInput,
-  field: "start" | "end" | "cutoff",
-): bigint | undefined => readerPostPromotionTimestampMicros(
-  field === "start"
-    ? input.exactPeriodStart ?? input.periodStart
-    : field === "end"
-      ? input.exactPeriodEnd ?? input.periodEnd
-      : input.exactIngestionCutoff ?? input.ingestionCutoff,
-);
 
 const uniquePromotionStrings = (
   values: readonly string[],
