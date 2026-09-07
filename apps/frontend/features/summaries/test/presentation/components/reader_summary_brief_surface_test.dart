@@ -470,5 +470,93 @@ void main() {
     expect(openedUrls, ['https://news.ycombinator.com/item?id=2']);
   });
 
+  testWidgets(
+    'shows a long sentence-style top read title in full, never behind a Source text toggle',
+    (tester) async {
+      const mapper = SummaryMapper();
+      const longTitle =
+          'A Reddit post quotes OpenAI as saying its research organization '
+          'used 3.1 agent-workdays for every human workday as of mid-August '
+          'and had reached an automated research intern milestone.';
+      final summary = mapper.readerSummaryToDomain(
+        readerSummaryApiDto(
+          content: ReaderSummaryContentApiDto(
+            headline: 'Research acceleration',
+            oneLineTakeaway: 'OpenAI research organization scales with agents.',
+            bullets: const [],
+            interestSections: const [
+              ReaderInterestSectionApiDto(
+                title: 'Developer tooling',
+                insight: 'Agent-driven research acceleration is the main signal.',
+                items: [],
+                citationIds: ['bc-1'],
+              ),
+            ],
+            sourceMix: const [
+              SourceMixEntryApiDto(
+                providerKey: 'reddit',
+                itemCount: 1,
+                citationCount: 1,
+              ),
+            ],
+            topReads: [
+              TopReadApiDto(
+                storyClusterId: 'story:research-acceleration',
+                cardKind: 'curated_top_read',
+                title: longTitle,
+                providerKey: 'reddit',
+                reason: 'Reddit discussion backs the claim.',
+                citationIds: const ['bc-1'],
+                canonicalUrl: 'https://reddit.com/r/programming/comments/b',
+              ),
+            ],
+            trendDelta: const ReaderTrendDeltaApiDto(
+              newSignals: [],
+              growingSignals: [],
+              repeatedSignals: [],
+              fadingSignals: [],
+            ),
+            openQuestions: const [],
+            risks: const [],
+            nextActions: const [],
+          ),
+          citations: [
+            summaryCitationApiDto(
+              id: 'bc-1',
+              sourceLabel: 'Reddit thread [1]',
+              providerKey: 'reddit',
+              rawSnippet: 'Reddit source context.',
+              canonicalUrl: 'https://reddit.com/r/programming/comments/b',
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: ReaderSummaryBriefSurface(
+                summary: summary,
+                citationsById: {
+                  for (final citation in summary.citations)
+                    citation.id: citation,
+                },
+                isRefreshing: false,
+                onOpenUrl: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(longTitle), findsWidgets);
+      expect(find.widgetWithText(AppButton, 'Source text'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   _registerInlineCitationSourceTest();
 }

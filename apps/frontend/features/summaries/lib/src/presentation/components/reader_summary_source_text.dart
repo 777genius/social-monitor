@@ -27,12 +27,19 @@ class ReaderSummarySourceText extends StatefulWidget {
     this.style,
     this.maxLines = 2,
     this.overflow = TextOverflow.ellipsis,
+    this.disclosureEnabled = true,
   });
 
   final String text;
   final TextStyle? style;
   final int maxLines;
   final TextOverflow overflow;
+
+  /// When false, always renders truncated text directly instead of
+  /// collapsing long text behind a "Source text" toggle button. Headlines
+  /// must always be visible; the toggle is only appropriate for
+  /// supplementary source quotes.
+  final bool disclosureEnabled;
 
   @override
   State<ReaderSummarySourceText> createState() => _SourceTextState();
@@ -49,7 +56,8 @@ class _SourceTextState extends State<ReaderSummarySourceText> {
 
   @override
   Widget build(BuildContext context) {
-    if (!readerSummaryNeedsSourceDisclosure(widget.text)) {
+    if (!widget.disclosureEnabled ||
+        !readerSummaryNeedsSourceDisclosure(widget.text)) {
       return Tooltip(
         message: widget.text,
         // Hover still reveals the complete short heading; touch long-press

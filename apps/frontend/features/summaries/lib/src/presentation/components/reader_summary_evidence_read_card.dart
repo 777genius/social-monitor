@@ -66,6 +66,7 @@ class _ReadCard extends StatelessWidget {
           key: ObjectKey(read),
           maxLines: compact ? 1 : (featured ? 3 : 2),
           overflow: TextOverflow.ellipsis,
+          disclosureEnabled: false,
           style:
               (featured
                       ? Theme.of(context).textTheme.titleMedium
