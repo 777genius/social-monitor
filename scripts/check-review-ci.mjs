@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync } from "node:fs";
+import yaml from "js-yaml";
 
 const workflowPath = ".github/workflows/pull-request.yml";
 const workflow = readFileSync(workflowPath, "utf8");
@@ -342,6 +343,12 @@ const findJob = (source, jobId) => source.match(
 
 // Keep this small execution contract exact: extra YAML keys can skip or mask tests.
 const backendUnitShardingViolations = (source) => {
+  // Parse the whole document first; regex matches cannot detect invalid YAML.
+  try {
+    yaml.load(source, { json: false });
+  } catch (error) {
+    return [`pull-request.yml: invalid YAML: ${error.message}`];
+  }
   const expected = [
     "  backend_unit_shards:",
     "    name: Backend unit shard ${{ matrix.shard }}/4",
