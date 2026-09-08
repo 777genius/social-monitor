@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstatSync, readlinkSync, readFileSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
 import { proposedBounds, proposedSendLimit, type CanonicalInvocation, type RetainedDescriptor } from "./x-canonical-graph-policy";
 
 const days = Array.from({ length: 7 }, (_, i) => new Date(Date.UTC(2026, 7, 30 + i)).toISOString().slice(0, 10));
@@ -40,7 +40,7 @@ describe("detached canonical coordinates and proposed maxima", () => {
     expect(proposedBounds(days, graph, [{ day: "2026-01-01", streamId: "retained", pageLimit: 5, descriptorHash: hash }], "proposal", hash).ok).toBe(false);
     expect(proposedBounds(days, graph, [], "", hash)).toMatchObject({ ok: false, error: { code: "UNAPPROVED_AMENDMENT" } });
   });
-  it("preserves every tracked main baseline byte and mode, without unreleased ancestry", () => {
+  it("verifies the sealed historical main baseline representation", () => {
     // Exact git ls-tree -rz fa6bb2036d792bcc868d3cd795ffe1c0fb3f169f.
     // Sealed source evidence works in depth-one checkouts and source archives.
     expect(lstatSync("test/fixtures/x-canonical/baseline.ls-tree.json").isSymbolicLink()).toBe(false);
@@ -55,17 +55,11 @@ describe("detached canonical coordinates and proposed maxima", () => {
     expect(baseline.length).toBe(795142);
     expect(createHash("sha256").update(baseline).digest("hex")).toBe(
       "20ff7f0ad57c6591f53c9e3567b672cec79940a654c952878310527bcb45e145");
-    const entries = baseline.toString("utf8").split("\0").filter(Boolean);
-    expect(entries).toHaveLength(6318);
-    for (const entry of entries) {
-      const [header, path] = entry.split("\t");
-      const [mode, kind, expected] = header!.split(" ");
-      expect(kind).toBe("blob");
-      const stat = lstatSync(path!);
-      const bytes = stat.isSymbolicLink() ? Buffer.from(readlinkSync(path!)) : readFileSync(path!);
-      const actual = createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
-      expect({ path, hash: actual }).toEqual({ path, hash: expected });
-      expect(stat.isSymbolicLink() ? "120000" : (stat.mode & 0o111) ? "100755" : "100644").toBe(mode);
-    }
+    // Historical delivery ownership is checked separately by
+    // scripts/check-e2-canonical-delivery.mjs against exact Git ancestry/trees.
+    // Ordinary regression must not compare future workspace files to this base.
+    expect(new Set(tuples.map(({ path }) => path)).size).toBe(6318);
+    expect(tuples.every(({ mode, kind, blob }) => kind === "blob" &&
+      ["100644", "100755", "120000"].includes(mode) && /^[a-f0-9]{40}$/.test(blob))).toBe(true);
   });
 });
