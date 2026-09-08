@@ -1,3 +1,4 @@
+import { inventorySqlFake } from "./prisma-retained-metric-inventory-read.spec-support";
 import type { Row } from "./prisma-retained-metric-inventory";
 import { scope } from "../../../../scripts/lib/retained-metric-refresh.spec-support";
 
@@ -12,7 +13,7 @@ export function inventoryFixture(size = 1) {
   const bindings: Row[] = ["z", "a"].map((suffix) => ({ id: `binding-${suffix}`, ...owned, interestId: `interest-${suffix}`,
     sourceCatalogEntryId: `catalog-${suffix}`, status: "ENABLED", deletedAt: null, config: { mode: "fixture" } }));
   const interests: Row[] = ["z", "a"].map((suffix) => ({ id: `interest-${suffix}`, ...owned, status: "ENABLED", deletedAt: null }));
-  const catalogs: Row[] = ["z", "a"].map((suffix) => ({ id: `catalog-${suffix}`, providerKey: "reddit", title: "Fixture" }));
+  const catalogs: Row[] = ["z", "a"].map((suffix) => ({ id: `catalog-${suffix}`, providerKey: "reddit", displayName: "Fixture" }));
   const feeds: Row[] = [];
   const observations: Row[] = [];
   const calls: { table: string; args: Row; returned: number }[] = [];
@@ -24,6 +25,8 @@ export function inventoryFixture(size = 1) {
     return result;
   } });
   const client = {
+    $queryRaw: inventorySqlFake({ sources, feeds, bindings, interests, catalogs, observations },
+      (args, returned) => calls.push({ table: "$queryRaw", args, returned })),
     sourceItem: table("sourceItem", sources), feedItem: table("feedItem", feeds), sourceBinding: table("sourceBinding", bindings),
     interest: table("interest", interests), sourceCatalogEntry: table("sourceCatalogEntry", catalogs),
     sourceItemEngagementObservation: {
@@ -45,7 +48,7 @@ export function inventoryFixture(size = 1) {
     },
   };
   const addFeed = (source: Row, id: string, extra: Row = {}) => {
-    const feed = { id, ...owned, sourceItemId: source.id, sourceBindingId: "binding-a", interestId: "interest-a", providerKey: source.providerKey,
+    const feed: Row = { id, ...owned, sourceItemId: source.id, sourceBindingId: "binding-a", interestId: "interest-a", providerKey: source.providerKey,
       canonicalUrl: source.canonicalUrl, publishedAt: source.publishedAt, status: "VISIBLE", title: "Feed fixture", bodyPreview: "Body",
       providerMetadata: { kind: "reddit_post", score: 5, provenance: "fixture" }, updatedAt: date, createdAt: date, ...extra };
     feeds.push(feed); return feed;

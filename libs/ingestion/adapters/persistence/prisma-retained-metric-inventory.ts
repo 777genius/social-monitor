@@ -1,3 +1,4 @@
+import { readMetricInventorySource, type MetricInventorySqlClient } from "./prisma-retained-metric-inventory-read";
 import { sourceMetadataWithoutEngagementMetrics } from "../../domain";
 import { normalizeJsonObject } from "@social-monitor/shared-kernel";
 import type { RefreshDigest, RefreshScope, RetainedMetricInventory, RetainedMetricTarget } from "../../features/refresh-retained-metrics/refresh-retained-metrics.contracts";
@@ -6,7 +7,7 @@ import { loadMetricInventoryChunk, metricInventoryChunkSize, type MetricInventor
 
 export type Row = Record<string, unknown>;
 type Table = { findMany(args: Row): Promise<Row[]> };
-export type PrismaMetricInventoryClient = {
+export type PrismaMetricInventoryClient = MetricInventorySqlClient & {
   sourceItem: Table; sourceBinding: Table; feedItem: Table; interest: Table; sourceCatalogEntry: Table;
   sourceItemEngagementObservation: { groupBy(args: Row): Promise<Row[]> };
 };
@@ -36,11 +37,8 @@ export class PrismaRetainedMetricInventory implements RetainedMetricInventory {
   }
   async read(scope: RefreshScope, sourceItemId: string): Promise<RetainedMetricTarget | null> {
     this.requireScope(scope);
-    const rows = await this.prisma.sourceItem.findMany({ where: { tenantId: scope.tenantId, workspaceId: scope.workspaceId, id: sourceItemId },
-      take: 1, include: { engagementSnapshot: true } });
-    if (!rows[0]) return null;
-    const enrichment = await loadMetricInventoryChunk(this.prisma, scope, rows);
-    return this.target(rows[0], enrichment.get(String(rows[0].id))!);
+    const result = await readMetricInventorySource(this.prisma, scope, sourceItemId);
+    return result ? this.target(result.source, result.enrichment) : null;
   }
   private requireScope(scope: RefreshScope) {
     // The use case supplies the real clock; persistence still enforces the fixed tenant/date boundary.

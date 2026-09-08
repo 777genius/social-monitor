@@ -10,6 +10,7 @@ function setup() {
     body: "Content", contentHash: "retained-hash", observedAt: new Date(t.publishedAt), metadata: { kind: "reddit_post", score: 0 }, engagementSnapshot: null };
   const binding = { id: t.sourceBindingId, interestId: "interest", sourceCatalogEntryId: "catalog", status: "ENABLED", deletedAt: null, config: { mode: "search" } };
   const client = {
+    $queryRaw: async <T = unknown>(): Promise<T> => { throw new Error("List-only fixture: unexpected raw read"); },
     sourceItem: { findMany: jest.fn<Promise<(typeof source)[]>, [Record<string, unknown>]>(async () => [source]) },
     sourceBinding: { findMany: jest.fn(async () => [binding]) },
     interest: { findMany: jest.fn(async () => [{ id: "interest", status: "ENABLED", deletedAt: null }]) },
