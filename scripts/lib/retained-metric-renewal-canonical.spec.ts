@@ -1,4 +1,6 @@
-import { execFileSync } from "node:child_process";
+import childProcess from "node:child_process";
+import fs from "node:fs";
+import vm from "node:vm";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import { RefreshRetainedMetricsUseCase } from "@social-monitor/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.use-case";
@@ -12,14 +14,35 @@ import { resolveMetricOperation } from "@social-monitor/ingestion/features/refre
 import { assertMetricManifest } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-evidence-validation";
 import { metricRefreshEvidencePath } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-admission";
 import type { MetricRefreshOutcome } from "@social-monitor/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.contracts";
+const legacySourcePath = resolve(__dirname, "../test-fixtures/retained-metric-legacy/refresh-retained-metrics.ad58aae7.ts.txt");
+// Independently pinned original Git blob bytes; never regenerate from the current executor.
+const legacySourceSha256 = "4ed041799c2c43aeef326364dd86cad33fb6293b9b7b2a6781bb5086134740bf";
 function oldExecutor(): typeof RefreshRetainedMetricsUseCase {
   const path = "libs/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.use-case.ts";
-  const source = execFileSync("git", ["show", `ad58aae7ca3e7fda6c705ee2d91b25388a78b374:${path}`], { encoding: "utf8" });
+  const bytes = readFileSync(legacySourcePath);
+  if (bytes.length !== 10251 || createHash("sha256").update(bytes).digest("hex") !== legacySourceSha256) {
+    throw new Error("Legacy executor fixture integrity mismatch");
+  }
+  const source = bytes.toString("utf8");
   const exports: Record<string, unknown> = {};
   runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023 } }).outputText,
     { exports, require: (name: string) => jest.requireActual(name.startsWith(".") ? resolve(dirname(path), name) : name) });
   return exports.RefreshRetainedMetricsUseCase as typeof RefreshRetainedMetricsUseCase;
 }
+beforeEach(() => {
+  jest.spyOn(childProcess, "execFileSync").mockImplementation(() => { throw new Error("Git history unavailable"); });
+});
+afterEach(() => { jest.restoreAllMocks(); });
+it("refuses mutated legacy source bytes before execution", () => {
+  const mutated = Buffer.from(readFileSync(legacySourcePath));
+  mutated[0] = mutated[0]! ^ 1;
+  const read = fs.readFileSync;
+  jest.spyOn(fs, "readFileSync").mockImplementation((...args: Parameters<typeof read>) =>
+    args[0] === legacySourcePath ? mutated : read(...args));
+  const execute = jest.spyOn(vm, "runInNewContext");
+  expect(() => oldExecutor()).toThrow("Legacy executor fixture integrity mismatch");
+  expect(execute).not.toHaveBeenCalled();
+});
 const corpus = resolve("test-fixtures/retained-metric-legacy/canonical");
 const expected = JSON.parse(readFileSync(join(corpus, "hashes.json"), "utf8")) as Record<string, { bytesSha: string; payloadSha: string | null }>;
 it.each(["sequence-zero", "amended"])("loads fixed canonical %s original/chain/effects/final bytes without rewriting or refetch", async (kind) => {
@@ -51,6 +74,7 @@ it.each(["sequence-zero", "amended"])("loads fixed canonical %s original/chain/e
       expect(await run.execute(head.effective)).toEqual({ ok: true, value: final!.results });
       expect(await run.execute({ ...head.original, version: "retained-metrics-renewal.v1" } as never)).toMatchObject({ ok: false });
     }
+    expect(childProcess.execFileSync).not.toHaveBeenCalled();
     expect(bytes()).toEqual(before); expect(f.fetcher.fetch).not.toHaveBeenCalled();
     expect(f.db.rows("sourceItemEngagementObservation")).toHaveLength(0);
     expect(() => assertMetricManifest({ ...head.original, version: "retained-metrics-renewal.v1" }, f.clock.now())).toThrow();
