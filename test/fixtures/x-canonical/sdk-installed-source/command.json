@@ -1,0 +1,22 @@
+[
+  "docker",
+  "run",
+  "--rm",
+  "--name",
+  "sm-x-sdk-readonly-source-20260908",
+  "--network",
+  "none",
+  "--read-only",
+  "--user",
+  "1000:1000",
+  "--cap-drop",
+  "ALL",
+  "--security-opt",
+  "no-new-privileges",
+  "-e",
+  "PYTHONDONTWRITEBYTECODE=1",
+  "sha256:89c898a924749edd129c37fcc9f4f617523a66278acbb99b01f79df38d2a3eaa",
+  "python",
+  "-c",
+  "import pathlib,json,hashlib,importlib.metadata\nroots=list(pathlib.Path('/usr/local/lib').glob('python*/site-packages/Scweet'))\nfiles=[]\nfor root in roots:\n for p in sorted(root.rglob('*.py')):\n  b=p.read_bytes();files.append({'path':str(p.relative_to(root.parent)),'sha256':hashlib.sha256(b).hexdigest(),'text':b.decode()})\nprint(json.dumps({'versions':{k:importlib.metadata.version(k) for k in ['Scweet','curl_cffi','xclienttransaction']},'files':files}))\n"
+]
