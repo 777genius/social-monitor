@@ -1,4 +1,7 @@
-import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
+import {
+  readerSummaryIndependentProviderFamily,
+  readerSummaryProviderIdentity,
+} from "../value-objects/reader-summary-provider-identity";
 import type { SummaryEvidenceItem } from
   "../value-objects/summary-evidence-item";
 import {
@@ -46,7 +49,17 @@ export const buildReaderPostPromotionTitle = (params: {
   readonly lead: SummaryEvidenceItem;
   readonly admitted?: readonly SummaryEvidenceItem[];
   readonly promotionReasons?: readonly string[];
-}): string => readerPostAvailableSourceText(params.lead) ?? "";
+}): string => {
+  const source = readerPostAvailableSourceText(params.lead);
+  if (source === undefined) return "";
+  // Titled sources already carry their headline separately from body evidence.
+  // X titles are body previews, so retain the available post and its qualifiers.
+  // Missing headlines also use available source text, never a generated claim.
+  return readerSummaryIndependentProviderFamily(params.lead) !== "x" &&
+    params.lead.title.trim().length > 0
+    ? params.lead.title.trim()
+    : source;
+};
 
 export const hasReaderFacingPromotionSource = (
   item: SummaryEvidenceItem,
@@ -59,7 +72,7 @@ export const hasReaderFacingPromotionTitle = hasReaderFacingPromotionSource;
 export const isFaithfulReaderSourcePresentation = (
   read: { readonly title: string; readonly canonicalUrl?: string; readonly providerKey: string },
   evidence: readonly SummaryEvidenceItem[],
-): boolean => evidence.some((item) =>
+): boolean => read.title.trim().length > 0 && evidence.some((item) =>
   item.canonicalUrl === read.canonicalUrl && readerSummaryProviderIdentity(item).providerKey === read.providerKey &&
-  readerPostAvailableSourceText(item) === read.title,
+  buildReaderPostPromotionTitle({ lead: item }) === read.title,
 );

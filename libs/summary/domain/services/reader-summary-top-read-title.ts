@@ -1,7 +1,7 @@
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import { isUnpolishedReaderTitle } from
   "../policies/reader-summary-reader-facing-text-policy";
-import { readerPostAvailableSourceText } from "./reader-post-promotion-title";
+import { buildReaderPostPromotionTitle } from "./reader-post-promotion-title";
 
 export const buildTopReadTitle = (params: {
   readonly storyTitle: string;
@@ -12,13 +12,13 @@ export const buildTopReadTitle = (params: {
   // The shared/legacy builder must preserve the same lead context as promotion.
   // A generated title or a support item's text cannot replace that context.
   if (params.primaryEvidence !== undefined) {
-    return readerPostAvailableSourceText(params.primaryEvidence) ?? "";
+    return buildReaderPostPromotionTitle({ lead: params.primaryEvidence });
   }
   return "";
 };
 
 export const evidenceReaderTitle = (evidence: SummaryEvidenceItem): string =>
-  readerPostAvailableSourceText(evidence) ?? "";
+  buildReaderPostPromotionTitle({ lead: evidence });
 
 export const isUnverifiedBreakingSourceTitle = (value: string): boolean =>
   /^(?:X post by @[^:]+:\s*)?(?:breaking|just\s+in)\s*:/iu.test(value.trim());

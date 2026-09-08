@@ -97,7 +97,7 @@ describe("reader summary top read builder", () => {
     );
 
     expect(topRead.title).toBe(
-      "Claude Code tracker raises telemetry questions\n\nDevelopers are debating what Claude Code usage tracking means.",
+      "Claude Code tracker raises telemetry questions",
     );
     expect(topRead.reason).toBe(
       "The post explains why Claude Code tracking concerns matter for developer teams.",
@@ -611,7 +611,7 @@ describe("reader summary top read builder", () => {
     expect(topRead.reason).toBe(
       "The report states: RSS explains an AI agent security update\n\nThe update records how connected MCP servers access files, networks and local tools. Teams can use the audit data before granting production permissions.",
     );
-    expect(topRead.title).toBe("RSS explains an AI agent security update\n\nThe update records how connected MCP servers access files, networks and local tools. Teams can use the audit data before granting production permissions.");
+    expect(topRead.title).toBe("RSS explains an AI agent security update");
     expect(topRead.reason).toContain(topRead.title);
     expect(topRead.reason).not.toContain("source-reported");
   });
