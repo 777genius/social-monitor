@@ -1,4 +1,4 @@
-import { buildReaderSummaryCoveragePlan } from "@social-monitor/summary/domain";
+import { buildReaderSummaryCoveragePlan, type SummaryEvidenceSelection } from "@social-monitor/summary/domain";
 import { redditPromotionFacts } from "@social-monitor/summary/adapters/model/reader-summary-model-promotion.spec-support";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import { refreshPublicationGuard } from "./reader-summary-new-input-refresh-execution";
@@ -94,16 +94,16 @@ export function primaryRoute(model: ReaderSummaryModelPort) {
     maxOutputTokens: 16_000, maxEstimatedCostUsd: 1 }, { remainingTokens: 40_000, remainingCostUsd: 1 });
 }
 
-export function publicationProbe(runtime: { assertUsable(): void }) {
+export function publicationProbe(runtime: { assertUsable(): void }, selection?: SummaryEvidenceSelection) {
   const assertProtected = jest.fn(async () => undefined), assertCurrent = jest.fn(async () => undefined);
   const guard = refreshPublicationGuard({ manifest: refreshManifest(), jobId: "synthetic-job",
     assertLocal: () => runtime.assertUsable(), assertProtected, assertCurrent });
   const command = { finalJob: { toSnapshot: () => ({ id: "synthetic-job" }) },
-    artifact: { toSnapshot: () => ({ sourceWindow: { ingestionCutoff: new Date(refreshManifest().observedThrough) } }) },
+    artifact: { toSnapshot: () => selection ?? ({ sourceWindow: { ingestionCutoff: new Date(refreshManifest().observedThrough) } }) },
   } as unknown as ReaderSummaryPublicationCommand;
   const publish = jest.fn();
   return { assertProtected, assertCurrent, publish, attempt: async () => {
     await guard({} as PrismaReaderSummaryClient, command);
-    publish();
+    publish(command);
   } };
 }
