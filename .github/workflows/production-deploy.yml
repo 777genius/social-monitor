@@ -644,7 +644,8 @@ jobs:
           if [[ $base == 0000000000000000000000000000000000000000 ]]; then
             base=$(git rev-list --max-parents=0 "$GITHUB_SHA" | tail -n 1)
           fi
-          npm test -- --changedSince="$base"
+          npm test -- --changedSince="$base" --shard=1/2
+          npm test -- --changedSince="$base" --shard=2/2
       - name: Set up Python for X collector verification
         if: needs.plan.outputs.x_collector == 'true'
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
