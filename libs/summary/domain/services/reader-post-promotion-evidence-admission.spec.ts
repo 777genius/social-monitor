@@ -61,32 +61,47 @@ describe("admitReaderPostPromotionEvidence supplemental appendix", () => {
     ]);
   });
 
-  it("publishes a reader-facing title instead of provider boilerplate", () => {
-    const fixture = fixtureSelection();
-    const evidence = fixture.selectedEvidence.map((item) =>
-      item.feedItemId === "hn:top"
-        ? { ...item, title: "X post by @builder: Agent release reaches developers" }
-        : item,
-    );
-    const projection = buildReaderPostPromotionProjection({
-      evidence,
-      clusters: fixture.clusters,
-      sourceWindow: fixture.sourceWindow,
-      citations: evidence.map((item) => ({
-        citationId: `citation:${item.feedItemId}`,
-        feedItemId: item.feedItemId,
-        sourceItemId: item.sourceItemId,
-        providerKey: item.providerKey,
-        field: "canonicalUrl" as const,
-        canonicalUrl: item.canonicalUrl,
-      })),
-    });
+  it.each([undefined, "The release remains limited to a developer preview."])(
+    "normalizes provider boilerplate without changing HN identity (body: %s)",
+    (bodyPreview) => {
+      const fixture = fixtureSelection();
+      const evidence = fixture.selectedEvidence.map((item) =>
+        item.feedItemId === "hn:top"
+          ? {
+              ...item,
+              title: "X post by @builder: Agent release reaches developers",
+              bodyPreview,
+            }
+          : item,
+      );
+      const projection = buildReaderPostPromotionProjection({
+        evidence,
+        clusters: fixture.clusters,
+        sourceWindow: fixture.sourceWindow,
+        citations: evidence.map((item) => ({
+          citationId: `citation:${item.feedItemId}`,
+          feedItemId: item.feedItemId,
+          sourceItemId: item.sourceItemId,
+          providerKey: item.providerKey,
+          field: "canonicalUrl" as const,
+          canonicalUrl: item.canonicalUrl,
+        })),
+      });
 
-    expect(projection.topReads[0]?.title)
-      .toBe("Agent release reaches developers");
-  });
+      expect(projection.topReads[0]?.title)
+        .toBe("Agent release reaches developers");
+      expect(projection.topReads[0]).toMatchObject({
+        providerKey: "hacker-news",
+        canonicalUrl: "https://news.ycombinator.com/item?id=50",
+        promotionCandidateId: "hn:top",
+        citationIds: ["citation:hn:top"],
+      });
+      expect(projection.admittedEvidence).toContainEqual(evidence[0]);
+      expect(projection.admittedEvidence[0]?.bodyPreview).toBe(bodyPreview);
+    },
+  );
 
-  it("derives a reader-facing promotion title from the source body", () => {
+  it("keeps the separate source title and retains body evidence", () => {
     const fixture = fixtureSelection();
     const evidence = fixture.selectedEvidence.map((item) =>
       item.feedItemId === "hn:top"
@@ -112,8 +127,25 @@ describe("admitReaderPostPromotionEvidence supplemental appendix", () => {
       })),
     });
 
-    expect(projection.topReads[0]?.title).toBe(
-      "Nice Work OpenAI\n\nOpenAI introduced a lower-cost business plan for teams with a two-seat minimum.",
+    expect(projection.topReads[0]?.title).toBe("Nice Work OpenAI");
+    expect(projection.admittedEvidence).toContainEqual(evidence[0]);
+    expect(projection.admittedEvidence[0]).toMatchObject({
+      feedItemId: "hn:top",
+      sourceItemId: "hn:top",
+      providerKey: "hacker-news",
+      canonicalUrl: "https://news.ycombinator.com/item?id=50",
+      title: "Nice Work OpenAI",
+      bodyPreview:
+        "OpenAI introduced a lower-cost business plan for teams with a two-seat minimum.",
+    });
+    expect(projection.admittedCitations).toContainEqual(
+      expect.objectContaining({
+        citationId: "citation:hn:top",
+        feedItemId: "hn:top",
+        sourceItemId: "hn:top",
+        providerKey: "hacker-news",
+        canonicalUrl: "https://news.ycombinator.com/item?id=50",
+      }),
     );
   });
 

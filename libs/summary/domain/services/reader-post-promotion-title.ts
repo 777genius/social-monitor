@@ -9,9 +9,12 @@ import {
   isTechnicalReaderTitle,
 } from "../policies/reader-summary-reader-facing-text-policy";
 
+const sourceTitleWithoutProviderBoilerplate = (title: string): string =>
+  title.trim().replace(/^X post by @[^:]+:\s*/iu, "");
+
 /** Presentation availability, not content admission or concise-title styling. */
 export const isUsableReaderSourceText = (value: string): boolean => {
-  const text = value.trim().replace(/^X post by @[^:]+:\s*/iu, "");
+  const text = sourceTitleWithoutProviderBoilerplate(value);
   return text.replace(/https?:\/\/\S+/giu, "").trim().length > 0 &&
     !isLowInformationReaderTitle(text) && !isTechnicalReaderTitle(text) &&
     text.toLowerCase() !== "cited story" &&
@@ -30,7 +33,7 @@ export const readerPostAvailableSourceText = (
   const body = lead.sourceText?.trim()
     ? lead.sourceText
     : lead.bodyPreview?.trim() ? lead.bodyPreview : undefined;
-  const title = lead.title.trim().replace(/^X post by @[^:]+:\s*/iu, "");
+  const title = sourceTitleWithoutProviderBoilerplate(lead.title);
   if (body === undefined || body.length === 0) {
     return isUsableReaderSourceText(title) ? title : undefined;
   }
@@ -52,12 +55,13 @@ export const buildReaderPostPromotionTitle = (params: {
 }): string => {
   const source = readerPostAvailableSourceText(params.lead);
   if (source === undefined) return "";
+  const title = sourceTitleWithoutProviderBoilerplate(params.lead.title);
   // Titled sources already carry their headline separately from body evidence.
   // X titles are body previews, so retain the available post and its qualifiers.
   // Missing headlines also use available source text, never a generated claim.
   return readerSummaryIndependentProviderFamily(params.lead) !== "x" &&
-    params.lead.title.trim().length > 0
-    ? params.lead.title.trim()
+    title.length > 0
+    ? title
     : source;
 };
 
