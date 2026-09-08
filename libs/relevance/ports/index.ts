@@ -7,3 +7,4 @@ export * from './relevance-memory-projection-repository.port';
 export * from './relevance-memory-projector.port';
 export * from './source-content-quality-reviewer.port';
 export * from './user-relevance-profile-repository.port';
+export * from './configured-interest-reader.port';

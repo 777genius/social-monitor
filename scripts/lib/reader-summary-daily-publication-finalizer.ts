@@ -1,3 +1,4 @@
+import type { ConfiguredInterestReaderPort } from "@social-monitor/relevance/ports";
 import { createHash, randomUUID } from "node:crypto";
 import {
   mkdirSync,
@@ -208,6 +209,7 @@ export const createReaderSummaryDailyPublicationWiring = (input: {
 export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
   readonly replay: ReaderSummaryDailyReplayInput | null;
   readonly feedItems?: FeedItemReadRepositoryPort;
+  readonly configuredInterests?: ConfiguredInterestReaderPort;
   readonly summaryClient: ConstructorParameters<
     typeof PrismaReaderSummaryGitHubProjectionReader
   >[0];
@@ -261,10 +263,17 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
   if (input.feedItems === undefined) {
     throw new Error("Daily publication requires a feed repository outside output_text recovery");
   }
+  if (input.replay === null && input.configuredInterests === undefined) {
+    throw new Error("Fresh daily publication requires configured interest authority");
+  }
+  // Immutable recovery cannot silently use today's configuration. Frozen
+  // output_text above reuses captured evidence without constructing a ranker.
   const rankFeedItems = new RankFeedItemsUseCase(
     input.feedItems,
     new InMemoryUserRelevanceProfileRepository(),
     input.clock,
+    undefined, undefined, undefined, undefined, undefined,
+    input.replay === null ? input.configuredInterests : undefined,
   );
   const evidenceSelector = new RelevanceReaderSummaryEvidenceSelector(
     rankFeedItems,

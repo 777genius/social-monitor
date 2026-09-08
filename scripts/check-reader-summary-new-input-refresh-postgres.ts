@@ -1,3 +1,6 @@
+import { PrismaMonitoringConnection } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-connection";
+import { PrismaInterestRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-interest.repository";
+import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
 /** Parent-only native gate: a migrated disposable fixture, never a server,
  * provider, model, or production connection. Uses the actual Prisma publisher. */
 import assert from "node:assert/strict";
@@ -51,18 +54,21 @@ async function main() {
   const summary = await PrismaSummaryConnection.create(config);
   const feedConnection = await PrismaFeedConnection.create(config);
   const feed = new PrismaFeedItemReadRepository(feedConnection);
+  let monitoring: PrismaMonitoringConnection | undefined;
   try {
+    monitoring = await PrismaMonitoringConnection.create(config);
+    const configuredInterests = new MonitoringConfiguredInterestReader(new PrismaInterestRepository(monitoring));
     await runWithTenantDatabaseAccess(refreshScope, async () => {
       assert.deepEqual(getPostgresRuntimePoolDiagnostics(), {
-        poolInstances: 1, prismaClientInstances: 1, activeConnectionLeases: 2, closing: false,
+        poolInstances: 1, prismaClientInstances: 1, activeConnectionLeases: 3, closing: false,
       });
       const before = await readRefreshPrior(summary, m.date);
       assertRefreshEqual(before, m.prior, "fixture prior");
       await assertRefreshHasNewInput(summary, m.date, before.observedThrough, m.observedThrough);
       assertRefreshEqual(await captureRefreshAuthority({ client: summary, feed, date: m.date,
         observedThrough: new Date(m.observedThrough), clock }), m.authority, "fixture full current input");
-      const originalSelection = await preflightRefreshSelection({ feed, date: m.date, clock, observedThrough: new Date(before.observedThrough) });
-      const newSelection = await preflightRefreshSelection({ feed, date: m.date, clock, observedThrough: new Date(m.observedThrough) });
+      const originalSelection = await preflightRefreshSelection({ configuredInterests, feed, date: m.date, clock, observedThrough: new Date(before.observedThrough) });
+      const newSelection = await preflightRefreshSelection({ configuredInterests, feed, date: m.date, clock, observedThrough: new Date(m.observedThrough) });
       if (before.status === "NO_SIGNAL") assert.equal(originalSelection, 0, "original cutoff has no eligible metric authority");
       assert(newSelection > 0, "new cutoff selects current full canonical inputs");
       const command = await fixtureCommand(summary, candidate);
@@ -106,7 +112,7 @@ async function main() {
           "consumed-no-repeat", "normal-prisma-publisher-max2", "preserved-original", "replay-zero-delta",
           "reconciliation-schema-protected", "reconciliation-refuses-unfailed-job"] }));
     });
-  } finally { await feedConnection.close(); await summary.close(); }
+  } finally { await Promise.all([monitoring?.close(), feedConnection.close(), summary.close()]); }
 }
 async function fixtureCommand(summary: PrismaSummaryConnection, p: ReaderSummaryPublicationPayload): Promise<ReaderSummaryPublicationCommand> {
   const job = await new PrismaReaderSummaryJobRepository(summary).findById({ tenantId: tenantId(p.tenantId),

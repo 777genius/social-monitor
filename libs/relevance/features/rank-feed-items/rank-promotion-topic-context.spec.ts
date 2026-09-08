@@ -11,11 +11,11 @@ import {
 describe("promotion snapshot verified topic context through reader V2", () => {
   it("restores relevant nonlegacy literal query matching without changing native metrics", async () => {
     const [bound] = await rankItems([feedItem()]);
-    const [unbound] = await rankItems([feedItem({ providerMetadata: nativeMetadata })]);
+    const [unbound] = await rankItems([feedItem({ providerMetadata: nativeMetadata })], { query: "bread recipes" });
     expect(bound!.providerMetadata).toEqual({ ...nativeMetadata, ...projectedContext });
     expect(bound!.contentQuality).toMatchObject({ interestRelevanceScore: 0.9,
       qualityScore: 0.95, engagementIntegrityScore: 0.92, decision: "promote", eligibleForTopRead: true });
-    expect(unbound!.contentQuality).toMatchObject({ interestRelevanceScore: 0.49, decision: "downrank" });
+    expect(unbound!.contentQuality).toMatchObject({ interestRelevanceScore: 0.38, decision: "downrank" });
     expect(evaluateReaderPromotionV2(v2Candidate(bound!))).toMatchObject({ admitted: true, topQualified: true, providerSignal: 338 });
     expect(evaluateReaderPromotionV2(v2Candidate(unbound!))).toMatchObject({ admitted: false,
       reasons: expect.arrayContaining(["relevance_floor_not_met", "quality_floor_not_met"]) });
@@ -47,19 +47,23 @@ describe("promotion snapshot verified topic context through reader V2", () => {
     ["interest", { interestId: "other-interest" }],
     ["binding", { sourceBindingId: "other-binding" }],
   ] as const)("rejects stored context transplanted onto a different hydrated %s", async (_name, change) => {
-    const [item] = await rankItems([feedItem(change)]);
-    expect(item!.providerMetadata).toEqual(nativeMetadata);
-    expect(evaluateReaderPromotionV2(v2Candidate(item!)).admitted).toBe(false);
+    if (_name === "binding") {
+      const [item] = await rankItems([feedItem(change)], { query: "bread recipes" });
+      expect(item!.providerMetadata).toEqual({ ...nativeMetadata, query: "bread recipes" });
+      expect(evaluateReaderPromotionV2(v2Candidate(item!)).admitted).toBe(false);
+    } else {
+      await expect(rankItems([feedItem(change)])).rejects.toMatchObject({ code: "operation.conflict" });
+    }
   });
 
   const malformed: readonly (JsonValue | undefined)[] = [undefined, null, [], "forged", 123, {}, { query: matchingTitle }];
   for (const field of ["interestQuerySnapshot", "sourceBindingSnapshot", "workspaceScopeSnapshot"] as const) {
-    it.each(malformed)(`strips all context when ${field} is malformed: %j`, async (value) => {
+    it.each(malformed)(`ignores malformed stored ${field} with independently unrelated intent: %j`, async (value) => {
       const metadata: Record<string, JsonValue> = { ...nativeMetadata, ...context };
       if (value === undefined) delete metadata[field];
       else metadata[field] = value;
-      const [item] = await rankItems([feedItem({ providerMetadata: metadata })]);
-      expect(item!.providerMetadata).toEqual(nativeMetadata);
+      const [item] = await rankItems([feedItem({ providerMetadata: metadata })], { query: "bread recipes" });
+      expect(item!.providerMetadata).toEqual({ ...nativeMetadata, query: "bread recipes" });
       expect(evaluateReaderPromotionV2(v2Candidate(item!)).admitted).toBe(false);
     });
   }
@@ -76,18 +80,17 @@ describe("promotion snapshot verified topic context through reader V2", () => {
       sourceBindingSnapshot: { ...context.sourceBindingSnapshot, sourceQuery },
     })),
   ])("rejects malformed or mismatched nested query contracts %j", async (patch) => {
-    const [item] = await rankItems([feedItem({ providerMetadata: metadataWith(patch) })]);
-    expect(item!.providerMetadata).toEqual(nativeMetadata);
+    const [item] = await rankItems([feedItem({ providerMetadata: metadataWith(patch) })], { query: "bread recipes" });
+    expect(item!.providerMetadata).toEqual({ ...nativeMetadata, query: "bread recipes" });
     expect(evaluateReaderPromotionV2(v2Candidate(item!)).admitted).toBe(false);
   });
 
-  it.each(["search", "listing", "account_feed", "thread", "url"])("preserves the existing %s source query mode", async (mode) => {
+  it.each(["search", "listing", "account_feed", "thread", "url"])("uses configured intent independently of %s acquisition mode", async (mode) => {
     const [item] = await rankItems([feedItem({ providerMetadata: metadataWith({
       sourceBindingSnapshot: { ...context.sourceBindingSnapshot, sourceQuery: { mode, query: "Mistral financing" } },
     }) })]);
     expect(item!.providerMetadata).toEqual({ ...nativeMetadata,
-      interestQuerySnapshot: projectedContext.interestQuerySnapshot,
-      sourceBindingSnapshot: { sourceQuery: { mode, query: "Mistral financing" } },
+      query: "Mistral financing",
     });
     expect(evaluateReaderPromotionV2(v2Candidate(item!)).admitted).toBe(true);
   });
@@ -124,7 +127,10 @@ describe("promotion snapshot verified topic context through reader V2", () => {
     const metadata = metadataWith(patch);
     expect(classifyFeedPromotionEligibility({ providerKey: scope.providerKey, providerMetadata: metadata }).eligible).toBe(false);
     // The canonical gate still rejects before context can be projected.
-    expect(promotionSafeProviderMetadata(scope.providerKey, metadata, scope)).toBe(metadata);
+    const projected = promotionSafeProviderMetadata(scope.providerKey, metadata, scope);
+    expect(classifyFeedPromotionEligibility({ providerKey: scope.providerKey, providerMetadata: projected }).eligible).toBe(false);
+    expect(projected).toMatchObject({ ...nativeMetadata, ...patch });
+    expect(projected).not.toHaveProperty("interestQuerySnapshot");
   });
 
   it.each(["producer", "source_catalog"])("preserves existing %s authority attestation", async (attestedBy) => {

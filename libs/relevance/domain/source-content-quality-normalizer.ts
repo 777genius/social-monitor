@@ -140,7 +140,11 @@ const topicTermsFromMetadata = (
   const searchQuery = readString(metadata?.searchQuery);
   const query = readString(metadata?.query);
   const interestQuery = readString(interestQuerySnapshot?.query);
-  const sourceQueryText = readString(sourceQuery?.query);
+  // Acquisition descriptors are not topic intent. Gate once, before both
+  // keyword/short-topic extraction and literal search-term extraction.
+  const sourceQueryText = sourceQuery?.mode === "search"
+    ? readString(sourceQuery.query)
+    : undefined;
   const values = [
     searchQuery,
     query,
@@ -152,9 +156,7 @@ const topicTermsFromMetadata = (
   const literalSearchValues = [
     searchQuery,
     query,
-    sourceQueryModeAllowsLiteralTerms(sourceQuery)
-      ? sourceQueryText
-      : undefined,
+    sourceQueryText,
   ].filter((value): value is string => value !== undefined);
   const terms = [
     ...values.flatMap((value) => [
@@ -193,14 +195,6 @@ const readObject = (value: JsonValue | undefined): JsonObject | undefined =>
   !Array.isArray(value)
     ? (value as JsonObject)
     : undefined;
-
-const sourceQueryModeAllowsLiteralTerms = (
-  sourceQuery: JsonObject | undefined,
-): boolean => {
-  const mode = readString(sourceQuery?.mode)?.toLocaleLowerCase("en-US");
-
-  return mode === undefined || mode !== "url";
-};
 
 const literalTopicTermsFromSearchQuery = (value: string): readonly string[] => {
   if (urlPresencePattern.test(value) || value.length > 160) {

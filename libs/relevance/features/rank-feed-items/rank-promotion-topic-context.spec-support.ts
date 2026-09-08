@@ -18,10 +18,7 @@ export const context = {
   workspaceScopeSnapshot: { tenantId: scope.tenantId, workspaceId: scope.workspaceId },
 };
 export const nativeMetadata = { kind: "hacker_news_story", contentKind: "story", points: 338 };
-export const projectedContext = {
-  interestQuerySnapshot: { query: "Mistral financing" },
-  sourceBindingSnapshot: { sourceQuery: { mode: "search", query: "Mistral financing" } },
-};
+export const projectedContext = { query: "Mistral financing" };
 export const feedItem = (overrides: Partial<ReturnType<FeedItem["toSnapshot"]>> = {}): FeedItem =>
   FeedItem.rehydrate({
     ...scope, id: "synthetic-feed", sourceItemId: "synthetic-source",
@@ -32,7 +29,7 @@ export const feedItem = (overrides: Partial<ReturnType<FeedItem["toSnapshot"]>> 
 
 export const rankItems = async (
   items: readonly FeedItem[],
-  options: { readonly authority?: "stable" | "unresolved_regression" | "missing" } = {},
+  options: { readonly query?: string; readonly authority?: "stable" | "unresolved_regression" | "missing" } = {},
 ) => {
   const qualityPolicy = new SourceContentQualityPolicy();
   const qualityInput = jest.spyOn(qualityPolicy, "evaluate");
@@ -55,6 +52,8 @@ export const rankItems = async (
           sourceItemId: item.toSnapshot().sourceItemId, body: item.toSnapshot().bodyPreview })),
       }),
     },
+    configuredInterests: { readCurrent: async () => ({ kind: "available",
+      interest: { ...scope, query: options.query ?? "Mistral financing" } }) },
     clock: new FixedClock(now), qualityPolicy, safetyPolicy: new SourceContentSafetyPolicy(),
   });
   if (!result.ok) throw result.error;

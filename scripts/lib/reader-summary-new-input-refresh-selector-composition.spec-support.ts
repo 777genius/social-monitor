@@ -46,6 +46,7 @@ export async function selectorWiring(input: {
     await input.onAttestation?.(value);
   }) };
   const canonical = createReaderSummaryDailyCapturePublicationWiring({
+    configuredInterests: { readCurrent: async (scope) => ({ kind: "available" as const, interest: { ...scope, query: "AI developer tools" } }) },
     replay: null, feedItems: selectorFeed(input.sameStory), summaryClient: {} as never,
     clock: new FixedClock(refreshNow), attestationSink: sink,
     summaryModelMode: "agent-runtime", env: {}, agentRuntimeClient: runtime,

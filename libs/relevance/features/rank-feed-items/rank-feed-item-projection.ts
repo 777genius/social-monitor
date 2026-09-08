@@ -10,6 +10,7 @@ import type {
   RankedRelevanceCandidate,
   RankingCandidate,
 } from "../../domain";
+import type { ConfiguredInterest } from "../../ports";
 import {
   presentSourceContentQuality,
   presentSourceContentSafety,
@@ -19,6 +20,7 @@ import {
   type PromotionTopicScope,
   trustedPromotionTopicContext,
 } from "./trusted-promotion-topic-context";
+
 
 type FeedItemSnapshot = ReturnType<FeedItem["toSnapshot"]>;
 
@@ -94,16 +96,21 @@ export const promotionSafeProviderMetadata = (
   providerKey: string,
   providerMetadata: FeedItemSnapshot["providerMetadata"],
   scope?: PromotionTopicScope,
+  interest?: ConfiguredInterest,
 ): JsonObject | undefined => {
   const eligibility = classifyFeedPromotionEligibility({
     providerKey,
     providerMetadata,
   });
-  if (!eligibility.eligible) return providerMetadata;
+  if (scope === undefined && !eligibility.eligible) return providerMetadata;
+  const native = eligibility.eligible ? canonicalProviderMetadata(eligibility)
+    : supplementalProviderMetadata(providerMetadata);
   return {
-    ...canonicalProviderMetadata(eligibility),
+    ...native,
+    ...(scope !== undefined && ["github-repo-radar", "github-trending-page"].includes(providerKey) && providerMetadata?.topics !== undefined
+      ? { topics: providerMetadata.topics } : {}),
     ...trustedPromotionTopicContext(
-      providerMetadata, scope?.providerKey === providerKey ? scope : undefined,
+      scope?.providerKey === providerKey ? scope : undefined, interest,
     ),
   };
 };
@@ -144,4 +151,13 @@ const canonicalProviderMetadata = (
         }, ...authority };
     }
   }
+};
+
+// Supplemental provider fields retain their existing metric/rendering semantics;
+// application/acquisition topic slots cannot contribute topical evidence.
+const supplementalProviderMetadata = (metadata: JsonObject | undefined): JsonObject => {
+  const result = { ...metadata };
+  for (const key of ["query", "searchQuery", "topic", "topics", "interestQuerySnapshot",
+    "sourceBindingSnapshot", "workspaceScopeSnapshot"]) delete result[key];
+  return result;
 };
