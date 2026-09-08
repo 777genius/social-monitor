@@ -247,13 +247,10 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
       inventory: feedInventoryFromAuthority(input.replay.authority.items),
     });
   }
-  if (
-    input.replay !== null &&
-    isReaderSummaryDailySourceAuthorityV2(input.replay.authority)
-  ) {
-    throw new Error("Daily immutable authority v2 recovery requires output_text");
+  if (input.replay !== null) {
+    throw new Error("Daily immutable replay recovery requires output_text");
   }
-  if (input.replay === null && input.storyRelationVerifier === undefined) {
+  if (input.storyRelationVerifier === undefined) {
     throw new Error(
       "Fresh daily publication must explicitly configure its story relation verifier",
     );
@@ -263,7 +260,7 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
   if (input.feedItems === undefined) {
     throw new Error("Daily publication requires a feed repository outside output_text recovery");
   }
-  if (input.replay === null && input.configuredInterests === undefined) {
+  if (input.configuredInterests === undefined) {
     throw new Error("Fresh daily publication requires configured interest authority");
   }
   // Immutable recovery cannot silently use today's configuration. Frozen
@@ -273,26 +270,16 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
     new InMemoryUserRelevanceProfileRepository(),
     input.clock,
     undefined, undefined, undefined, undefined, undefined,
-    input.replay === null ? input.configuredInterests : undefined,
+    input.configuredInterests,
   );
   const evidenceSelector = new RelevanceReaderSummaryEvidenceSelector(
     rankFeedItems,
     input.feedItems,
     input.clock,
     new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
-    input.replay === null
-      ? input.storyRelationVerifier ?? undefined
-      : undefined,
+    input.storyRelationVerifier ?? undefined,
   );
-  if (input.replay === null) {
-    return Object.freeze({ evidenceSelector, githubProjectionReader });
-  }
-  return createReaderSummaryDailyPublicationWiring({
-    replay: input.replay,
-    evidenceSelector,
-    githubProjectionReader,
-    attestationSink: input.attestationSink,
-  });
+  return Object.freeze({ evidenceSelector, githubProjectionReader });
 };
 
 type ReaderSummaryDailyPublicationExecutionWiring = Readonly<{
