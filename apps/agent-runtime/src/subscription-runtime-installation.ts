@@ -14,7 +14,26 @@ import {
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.41";
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "31be41148fdeca3b2d50a960f8d5a84c2809121dfc981db8f70ea9c261036fc9";
+  "3e0082642f2705c678d3f21d2f083fd2c851aaf62759a12d24eb59be30a1a38e";
+
+// Repository wrapper approval, separate from the vendored package provenance.
+// Pin the local import closure too: launcher bytes alone do not bind helpers.
+// These literal pins track the source at 40c9032bb8e93ae1bd5be3b522f042b661fa5ae8;
+// changes to any member require a coordinated, reviewed admission update.
+const approvedSubscriptionRuntimeDependencies = Object.freeze({
+  "subscription-runtime-failure-details.mjs":
+    "5c7e12660c4500a533cda147be44723019c8b223353f1e2d25c3483ff5a1484a",
+  "codex-worker-cli-usage.mjs":
+    "9a0c7d5f4f38d99eb9c91063c6773edda226884f98f9e611837015ddb2d325f9",
+  "codex-auth-pool-manifest.mjs":
+    "6e856a532a55e893d009e68c08cb7f0e2731bd21ab8f6029bbfc88d5cbbbeb25",
+  "codex-auth-pool-routing.mjs":
+    "5b76a13787a92852282488d5beec8ebb3bfd27f9dfbc059daa8bb521b5524c49",
+  "subscription-runtime-purpose-model-policy.mjs":
+    "0c60d62aa38ed04db9643f708a780e9dc72b337d8e0709f92d89d366f5a8f355",
+  "reader-promotion-v2-canary-contract.cjs":
+    "13432d41d7999d15f22880017e73cbd943c209db62161b2a6a2bec6b0766775c",
+});
 
 export type SubscriptionRuntimeInstallationIdentity = {
   /** Exact real path that was admitted and must be passed to spawn. */
@@ -39,6 +58,15 @@ export class FileSubscriptionRuntimeInstallationInspector implements Subscriptio
       .digest("hex");
     if (launcherSha256 !== approvedSubscriptionRuntimeLauncherSha256) {
       throw new Error("Agent runtime launcher bytes are not approved");
+    }
+
+    for (const [name, approvedSha256] of Object.entries(
+      approvedSubscriptionRuntimeDependencies,
+    )) {
+      const dependencyBytes = await readFile(join(dirname(executablePath), name));
+      if (createHash("sha256").update(dependencyBytes).digest("hex") !== approvedSha256) {
+        throw new Error(`Agent runtime launcher dependency bytes are not approved: ${name}`);
+      }
     }
 
     const manifest = await readInstalledManifest(executablePath);
