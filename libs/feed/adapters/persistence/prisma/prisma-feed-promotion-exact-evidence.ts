@@ -51,6 +51,7 @@ export const exactPromotionPageEvidence = async (
               WHEN engagement.source_item_id IS NULL OR
                    latest_observation.observed_at IS NULL THEN NULL
               ELSE COALESCE(engagement.score < latest_observation.score, false)
+                OR COALESCE(engagement.comments < latest_observation.comments, false)
                 OR COALESCE(engagement.likes < latest_observation.likes, false)
                 OR COALESCE(engagement.reposts < latest_observation.reposts, false)
                 OR COALESCE(engagement.points < latest_observation.points, false)
@@ -76,6 +77,10 @@ export const exactPromotionPageEvidence = async (
             CASE
               WHEN latest_observation.observed_at IS NULL THEN NULL
               ELSE latest_observation.has_regression
+                OR COALESCE(
+                  latest_observation.comments < previous_observation.comments,
+                  false
+                )
                 OR COALESCE(
                   latest_observation.score < previous_observation.score,
                   false
@@ -133,6 +138,7 @@ export const exactPromotionPageEvidence = async (
                 observation.metrics_hash,
                 observation.has_regression,
                 observation.score,
+                observation.comments,
                 observation.likes,
                 observation.reposts,
                 observation.points,
@@ -153,6 +159,7 @@ export const exactPromotionPageEvidence = async (
                 observation.metrics_hash,
                 observation.has_regression,
                 observation.score,
+                observation.comments,
                 observation.likes,
                 observation.reposts,
                 observation.points,
