@@ -21,6 +21,7 @@ import { readRefreshJobs, readRefreshPrior, readRefreshCounts, readRefreshReconc
 import { createRefreshAdmission } from "./reader-summary-new-input-refresh-admission";
 import { withRefreshPublicationLocks, type RefreshSnapshotProtection } from "./reader-summary-new-input-refresh-publication-lock";
 import { buildRefreshModelWiring, guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
+import { createRefreshAssessmentReviewer, withRefreshAssessmentCompletion } from "./reader-summary-new-input-refresh-assessment";
 import { withRefreshSelectionAudit } from "./reader-summary-new-input-refresh-selection-audit";
 
 export async function executeNewInputRefresh(input: {
@@ -67,11 +68,11 @@ export async function executeNewInputRefresh(input: {
   await assertCurrent();
   await assertRefreshHasNewInput(summary, m.date, m.prior.observedThrough, m.observedThrough);
   await input.assertRuntime();
-  const selectedCount = await preflightRefreshSelection({ configuredInterests: input.configuredInterests, feed, date: m.date,
+  const { assessmentCandidateCount } = await preflightRefreshSelection({ configuredInterests: input.configuredInterests, feed, date: m.date,
     observedThrough: new Date(m.observedThrough), clock });
-  input.record({ status: "preflight", operation: m.operation, selectedCount,
-    plannedSummaryGenerations: selectedCount === 0 ? 0 : 1 });
-  if (selectedCount === 0) {
+  input.record({ status: "preflight", operation: m.operation, assessmentCandidateCount,
+    plannedSummaryGenerations: assessmentCandidateCount === 0 ? 0 : 1 });
+  if (assessmentCandidateCount === 0) {
     await assertCurrent();
     const countsAfter = await readRefreshCounts(summary, m.date);
     assertRefreshEqual(countsAfter, countsBefore, "empty input counts");
@@ -111,14 +112,16 @@ export async function executeNewInputRefresh(input: {
       await assertCurrent();
     },
   });
-  const runtime = guardedRefreshRuntime({ delegate: input.runtime, manifest: m,
+  const runtime = guardedRefreshRuntime({ delegate: input.runtime, manifest: m, now: () => clock.now().getTime(),
     assertLocal: () => { input.assertSource(); guard.assertLocal(); },
     assertCurrent: async () => { await input.assertRuntime(); await guard.assertCurrent(); }, record: input.record });
   const sink = { record: (attestation: unknown) => {
     try { runtime.assertUsable(); input.record({ status: "verified_attestation", attestation }); }
     catch (error) { guard.invalidate(); throw error; }
   } };
+  const assessment = createRefreshAssessmentReviewer({ env: input.env, runtime, clock });
   const canonical = createReaderSummaryDailyCapturePublicationWiring({
+    qualityReviewer: assessment,
     replay: null, configuredInterests: input.configuredInterests, feedItems: feed, summaryClient: summary, clock, attestationSink: sink,
     summaryModelMode: "agent-runtime", env: input.env, agentRuntimeClient: runtime,
     storyRelationVerifierGuard: runtime,
@@ -145,7 +148,8 @@ export async function executeNewInputRefresh(input: {
       listScheduled: (query) => policies.listScheduled(query),
       save: async () => { throw new Error("Refresh policy mutation is prohibited"); },
     },
-    withRefreshSelectionAudit({ selector: guard.selector(canonical.evidenceSelector), manifest: m,
+    withRefreshSelectionAudit({ selector: guard.selector(withRefreshAssessmentCompletion(
+      canonical.evidenceSelector, assessment, assessmentCandidateCount)), manifest: m,
       jobId: request.value.readerSummaryJobId, record: input.record, invalidate: () => guard.invalidate() }),
     model.model, publication, ids, clock,
     readerSummaryPromotionControl(new ReaderSummaryPromotionMetricsRecorder(new InMemoryMetricsRecorder())),

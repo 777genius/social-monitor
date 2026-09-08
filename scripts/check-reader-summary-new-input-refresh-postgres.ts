@@ -69,8 +69,8 @@ async function main() {
         observedThrough: new Date(m.observedThrough), clock }), m.authority, "fixture full current input");
       const originalSelection = await preflightRefreshSelection({ configuredInterests, feed, date: m.date, clock, observedThrough: new Date(before.observedThrough) });
       const newSelection = await preflightRefreshSelection({ configuredInterests, feed, date: m.date, clock, observedThrough: new Date(m.observedThrough) });
-      if (before.status === "NO_SIGNAL") assert.equal(originalSelection, 0, "original cutoff has no eligible metric authority");
-      assert(newSelection > 0, "new cutoff selects current full canonical inputs");
+      if (before.status === "NO_SIGNAL") assert.equal(originalSelection.assessmentCandidateCount, 0, "original cutoff has no eligible metric authority");
+      assert(newSelection.assessmentCandidateCount > 0, "new cutoff has current full canonical inputs requiring assessment");
       const command = await fixtureCommand(summary, candidate);
       assertRefreshEqual(buildReaderSummaryPublicationPayload(command), candidate, "normal Prisma command roundtrip");
       assert.throws(() => reconcileRefresh(m, [{ operation: m.operation, jobId: candidate.readerSummaryJobId,

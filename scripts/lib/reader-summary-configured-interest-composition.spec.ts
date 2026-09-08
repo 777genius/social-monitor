@@ -41,9 +41,14 @@ describe("new daily generation configured interest composition", () => {
   it("wires historical replacement preflight with current intent independently of copied metadata", async () => {
     const configuredInterests = reader("best");
     expect(await preflightRefreshSelection({ feed, date: "2026-09-03",
-      observedThrough: new Date("2026-09-04T00:00:00Z"), clock, configuredInterests })).toBe(1);
+      observedThrough: new Date("2026-09-04T00:00:00Z"), clock, configuredInterests })).toEqual({ assessmentCandidateCount: 1 });
     expect(configuredInterests.readCurrent).toHaveBeenCalledTimes(1);
+    const changedIntent = reader("Mistral financing");
+    // Preflight cannot certify contextual irrelevance without assessment. Both
+    // scopes have potential input; neither copied metadata nor a heuristic is admission.
     expect(await preflightRefreshSelection({ feed, date: "2026-09-03",
-      observedThrough: new Date("2026-09-04T00:00:00Z"), clock, configuredInterests: reader("Mistral financing") })).toBe(0);
+      observedThrough: new Date("2026-09-04T00:00:00Z"), clock, configuredInterests: changedIntent }))
+      .toEqual({ assessmentCandidateCount: 1 });
+    expect(changedIntent.readCurrent).toHaveBeenCalledWith({ ...scope, interestId: "synthetic-interest" });
   });
 });

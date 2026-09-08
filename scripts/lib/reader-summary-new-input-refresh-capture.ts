@@ -2,8 +2,7 @@ import type { ConfiguredInterestReaderPort } from "@social-monitor/relevance/por
 import type { FeedItemReadRepositoryPort, PromotionFeedItemSnapshotRepositoryPort } from "@social-monitor/feed/ports";
 import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
-import { RelevanceReaderSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence.selector";
-import { buildReaderSummaryPeriod, primaryReaderSummaryEvidence, admitReaderPostPromotionEvidence } from "@social-monitor/summary/domain";
+import { buildReaderSummaryPeriod } from "@social-monitor/summary/domain";
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
 import { tenantId, workspaceId, type Clock } from "@social-monitor/shared-kernel";
 import { captureReaderSummaryDayDatasetManifest } from "./reader-summary-day-dataset-manifest";
@@ -44,22 +43,26 @@ export async function captureRefreshDatabaseAuthority(input: {
   return { ...mutable, datasetSha256: dataset.dataset.aggregateSha256,
     feedCount: dataset.dataset.feedRowCount };
 }
-// This uses the current selector on the complete repository. No paid relation
-// verifier is composed for preparation. Apply uses the normal agent verifier.
+// Unpaid preparation runs the real hard gates on the complete snapshot. Pending
+// assessment is potential input, never admitted evidence or factual no-signal.
+// All paid work happens once, after the durable operation has been consumed.
 export async function preflightRefreshSelection(input: {
   configuredInterests: ConfiguredInterestReaderPort;
   feed: FeedItemReadRepositoryPort; date: string; observedThrough: Date; clock: Clock;
-}): Promise<number> {
-  const selector = new RelevanceReaderSummaryEvidenceSelector(new RankFeedItemsUseCase(
+}): Promise<{ assessmentCandidateCount: number }> {
+  const period = refreshPeriod(input.date);
+  const ranked = await new RankFeedItemsUseCase(
     input.feed, new InMemoryUserRelevanceProfileRepository(), input.clock,
     undefined, undefined, undefined, undefined, undefined, input.configuredInterests,
-  ), input.feed, input.clock);
-  const selection = await selector.select({
+  ).execute({
     tenantId: tenantId(refreshScope.tenantId), workspaceId: workspaceId(refreshScope.workspaceId),
-    scope: { type: "workspace" }, period: refreshPeriod(input.date),
-    observedThrough: input.observedThrough, maxItems: 120,
+    rankingProfile: "reader_post_promotion", limit: 200,
+    publishedAtOrAfter: period.startedAt, publishedBefore: period.endedAt,
+    observedAtOrBefore: input.observedThrough,
   });
-  return primaryReaderSummaryEvidence(admitReaderPostPromotionEvidence(selection)).selectedEvidence.length;
+  if (!ranked.ok) throw ranked.error;
+  return { assessmentCandidateCount: ranked.value.items.filter((item) =>
+    item.contentQuality.reason.startsWith("promotion_assessment_pending:")).length };
 }
 export async function assertRefreshHasNewInput(client: Pick<PrismaSummaryClient, "$queryRaw">,
   date: string, previous: string, cutoff: string): Promise<void> {

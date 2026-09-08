@@ -26,8 +26,9 @@ describe("complete canonical current selector for historical inputs", () => {
       })) };
     });
     const common = { configuredInterests: { readCurrent: async (scope: ConfiguredInterestScope) => ({ kind: "available" as const, interest: { ...scope, query: "AI developer tools" } }) }, feed, date: m.date, clock: new FixedClock(refreshNow) };
-    expect(await preflightRefreshSelection({ ...common, observedThrough: new Date(m.prior.observedThrough) })).toBe(0);
-    expect(await preflightRefreshSelection({ ...common, observedThrough: new Date(m.observedThrough) })).toBeGreaterThan(0);
+    expect(await preflightRefreshSelection({ ...common, observedThrough: new Date(m.prior.observedThrough) }))
+      .toEqual({ assessmentCandidateCount: 0 });
+    expect((await preflightRefreshSelection({ ...common, observedThrough: new Date(m.observedThrough) })).assessmentCandidateCount).toBeGreaterThan(0);
     expect(snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ observedThrough: new Date(m.observedThrough) }));
     const captured = await snapshot.mock.results.at(-1)!.value;
     expect(captured).toMatchObject({ exhausted: true, physicalRowsRead: 651 });
