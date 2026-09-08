@@ -1,4 +1,4 @@
-import type { ConfiguredInterestReaderPort } from "@social-monitor/relevance/ports";
+import type { ConfiguredInterestReaderPort, SourceContentQualityReviewerPort } from "@social-monitor/relevance/ports";
 import { createHash, randomUUID } from "node:crypto";
 import {
   mkdirSync,
@@ -210,6 +210,7 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
   readonly replay: ReaderSummaryDailyReplayInput | null;
   readonly feedItems?: FeedItemReadRepositoryPort;
   readonly configuredInterests?: ConfiguredInterestReaderPort;
+  readonly qualityReviewer?: SourceContentQualityReviewerPort;
   readonly summaryClient: ConstructorParameters<
     typeof PrismaReaderSummaryGitHubProjectionReader
   >[0];
@@ -269,7 +270,7 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
     input.feedItems,
     new InMemoryUserRelevanceProfileRepository(),
     input.clock,
-    undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, input.qualityReviewer, undefined,
     input.configuredInterests,
   );
   const evidenceSelector = new RelevanceReaderSummaryEvidenceSelector(

@@ -26,8 +26,11 @@ import type {
 } from "./rank-feed-items.result";
 import { promotionSafeProviderMetadata } from "./rank-feed-item-projection";
 
-import type { ConfiguredInterestReaderPort } from "../../ports";
+import type { ConfiguredInterestReaderPort, SourceContentQualityReviewerPort, SourceContentQualityReviewRequest } from "../../ports";
 import { resolvePromotionInterests } from "./resolve-promotion-interests";
+
+import { assessPromotionContent } from "./promotion-content-assessment";
+import { canCompeteForPromotionAssessment } from "./promotion-assessment-eligibility";
 
 const PROMOTION_SOURCE_TEXT_SAFETY_CAP = 256_000;
 
@@ -37,6 +40,7 @@ export const rankPromotionSnapshot = async (params: {
   readonly feedItems: FeedItemReadRepositoryPort;
   readonly clock: Clock;
   readonly qualityPolicy: SourceContentQualityPolicy;
+  readonly qualityReviewer?: SourceContentQualityReviewerPort;
   readonly safetyPolicy: SourceContentSafetyPolicy;
 }): Promise<Result<RankFeedItemsResult, DomainError | Error>> => {
   if (params.feedItems.readPromotionSnapshot === undefined) {
@@ -101,6 +105,7 @@ export const rankPromotionSnapshot = async (params: {
   if (!interests.ok) return interests;
   const sourceContentById = new Map(snapshot.sourceContent.map((content) =>
     [content.feedItemId, content] as const));
+  const reviewRequests: SourceContentQualityReviewRequest[] = [];
   const projected = snapshot.candidates.map((candidate) => {
     const item = candidate.item.toSnapshot();
     const sourceContent = sourceContentById.get(item.id);
@@ -127,7 +132,7 @@ export const rankPromotionSnapshot = async (params: {
       authorHandle: item.authorHandle,
       providerMetadata,
     });
-    return {
+    const projectedItem = {
       feedItemId: item.id,
       sourceItemId: item.sourceItemId,
       sourceBindingId: item.sourceBindingId,
@@ -167,7 +172,42 @@ export const rankPromotionSnapshot = async (params: {
       safety: presentSourceContentSafety(safety),
       contentQuality: presentSourceContentQuality(quality),
     } satisfies RankedFeedItemView;
+    if (candidate.canonical.metrics.kind !== "github_repository") {
+      if (canCompeteForPromotionAssessment(projectedItem,
+          (command.observedAtOrBefore ?? windowEndedAt).toISOString())) {
+        const body = (safety.sanitizedBodyPreview ?? "").slice(0, 12_000);
+        const reviewedTitle = safety.sanitizedTitle.slice(0, 2_000);
+        reviewRequests.push(Object.freeze({
+          candidateId: item.id, providerKey: item.providerKey,
+          title: reviewedTitle, bodyPreview: body,
+          deterministic: quality,
+          promotion: Object.freeze({
+            tenantId: item.tenantId, workspaceId: item.workspaceId,
+            interestId: item.interestId, sourceBindingId: item.sourceBindingId,
+            sourceItemId: item.sourceItemId,
+            trustedIntent: interests.value.get(item.interestId)!.query,
+            availability: sourceContent.body.length > PROMOTION_SOURCE_TEXT_SAFETY_CAP ||
+              body.length < (safety.sanitizedBodyPreview?.length ?? 0) ||
+              reviewedTitle.length < safety.sanitizedTitle.length
+              ? "truncated" : body.trim() ? "body_present" : "title_only",
+          }),
+        }));
+      }
+      projectedItem.contentQuality = { ...quality, qualityScore: 0,
+        eligibleForSummary: false, eligibleForTopRead: false, needsLlmReview: false,
+        reason: "promotion_assessment_not_requested:hard_gate" };
+    }
+    return projectedItem;
   });
+  const assessed = await assessPromotionContent({ requests: reviewRequests,
+    reviewer: params.qualityReviewer, policy: params.qualityPolicy, clock: params.clock });
+  for (const [index, item] of projected.entries()) {
+    const quality = assessed.get(item.feedItemId);
+    if (quality !== undefined) item.contentQuality = presentSourceContentQuality(quality);
+    item.score = Math.min(0.85,
+      feedPromotionMetricStrength(snapshot.candidates[index]!.canonical.metrics) / 10,
+    ) * item.contentQuality.qualityScore;
+  }
   const supplemental = (snapshot.supplementalItems ?? []).map((feedItem) => {
     const item = feedItem.toSnapshot();
     const sourceContent = sourceContentById.get(item.id);

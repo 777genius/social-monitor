@@ -14,7 +14,7 @@ describe("promotion snapshot verified topic context through reader V2", () => {
     const [unbound] = await rankItems([feedItem({ providerMetadata: nativeMetadata })], { query: "bread recipes" });
     expect(bound!.providerMetadata).toEqual({ ...nativeMetadata, ...projectedContext });
     expect(bound!.contentQuality).toMatchObject({ interestRelevanceScore: 0.9,
-      qualityScore: 0.95, engagementIntegrityScore: 0.92, decision: "promote", eligibleForTopRead: true });
+      qualityScore: 0.8, engagementIntegrityScore: 0.92, decision: "promote", eligibleForTopRead: true });
     expect(unbound!.contentQuality).toMatchObject({ interestRelevanceScore: 0.38, decision: "downrank" });
     expect(evaluateReaderPromotionV2(v2Candidate(bound!))).toMatchObject({ admitted: true, topQualified: true, providerSignal: 338 });
     expect(evaluateReaderPromotionV2(v2Candidate(unbound!))).toMatchObject({ admitted: false,

@@ -34,7 +34,7 @@ export const rankItems = async (
   const qualityPolicy = new SourceContentQualityPolicy();
   const qualityInput = jest.spyOn(qualityPolicy, "evaluate");
   const result = await rankPromotionSnapshot({
-    command: { tenantId: scope.tenantId, workspaceId: scope.workspaceId, limit: items.length,
+    command: { tenantId: scope.tenantId, workspaceId: scope.workspaceId, limit: items.length, observedAtOrBefore: now,
       publishedAtOrAfter: new Date("2026-09-08T00:00:00Z"),
       publishedBefore: new Date("2026-09-09T00:00:00Z") },
     feedItems: {
@@ -54,6 +54,13 @@ export const rankItems = async (
     },
     configuredInterests: { readCurrent: async () => ({ kind: "available",
       interest: { ...scope, query: options.query ?? "Mistral financing" } }) },
+    // This suite isolates configured-intent propagation. Explicit fake reviews
+    // retain its deterministic relevance judgments and supply an assessed 0.8.
+    qualityReviewer: { reviewBatch: async (requests) => requests.map((request) => ({
+      ...request.deterministic, candidateId: request.candidateId, confidence: 0.9,
+      qualityScore: 0.8, assessment: { binding: request.promotion!, resolvedSoftFlags: [],
+        evidence: [{ field: "title" as const, start: 0, end: request.title.length, quote: request.title }] },
+    })) },
     clock: new FixedClock(now), qualityPolicy, safetyPolicy: new SourceContentSafetyPolicy(),
   });
   if (!result.ok) throw result.error;

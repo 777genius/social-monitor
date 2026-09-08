@@ -1,3 +1,4 @@
+import { accepting } from "../../test/support/promotion-content-assessment";
 import { InMemoryFeedItemReadRepository } from
   "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
 import { FeedItem } from "@social-monitor/feed/domain";
@@ -291,6 +292,7 @@ const selectDailyEvidence = async (input: {
     void value;
   });
   const wiring = createReaderSummaryDailyCapturePublicationWiring({
+    qualityReviewer: accepting, // Explicit synthetic content evidence; this suite tests story relations.
     configuredInterests: { readCurrent: async (scope) => ({ kind: "available" as const, interest: { ...scope, query: "TypeScript Cursor Claude coding agents" } }) },
     replay: null,
     feedItems: feedRepository({
