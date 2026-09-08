@@ -312,6 +312,7 @@ describe("reader summary daily frozen publication input", () => {
     const queryRaw = jest.fn(() => {
       throw new Error("live Prisma read must not occur");
     });
+    const readCurrent = jest.fn(async () => { throw new Error("Current interest must not be read during recovery"); });
     const wiring = createReaderSummaryDailyPublicationExecutionWiring({
       replay: {
         ...replay,
@@ -319,6 +320,7 @@ describe("reader summary daily frozen publication input", () => {
         outputKind: "output_text",
       },
       summaryClient: { $queryRaw: queryRaw } as never,
+      configuredInterests: { readCurrent },
       clock: fixedClock,
       attestationSink: { record: jest.fn(async () => undefined) },
     });
@@ -328,6 +330,7 @@ describe("reader summary daily frozen publication input", () => {
       .rejects.toThrow(/unavailable/u);
     expect(wiring.recoveryProvenance).toBeDefined();
     expect(queryRaw).not.toHaveBeenCalled();
+    expect(readCurrent).not.toHaveBeenCalled();
   });
 
   it("rejects a tampered canonical authority before recovery wiring exists", () => {

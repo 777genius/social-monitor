@@ -16,8 +16,58 @@ import type {
   ReaderSummaryStoryRelationVerifierPort,
 } from "../../ports";
 import { FakeStoryRankingMetrics } from "./relevance-reader-summary-evidence-test-fixtures";
+import { configuredPromotionInterests } from
+  "../../test-fixtures/configured-promotion-interests.spec-support";
 
 describe("reader-summary promotion upstream scan exhaustion", () => {
+  it("rejects promotion when the configured interest reader is omitted", async () => {
+    const tenant = tenantId("tenant-promotion-missing-reader");
+    const workspace = workspaceId("workspace-promotion-missing-reader");
+    const now = new Date("2026-08-18T12:00:00.000Z");
+    const repository = new InMemoryFeedItemReadRepository();
+    publishOriginal(repository, {
+      id: "topical-original-without-reader", tenantId: tenant, workspaceId: workspace,
+      providerKey: "x-twitter", title: "AI agent runtime adds deterministic recovery",
+      publishedAt: new Date("2026-08-18T08:00:00.000Z"),
+      providerMetadata: {
+        kind: "x_post", contentKind: "original_post", likes: 500, reposts: 100,
+        query: "AI agents",
+      },
+    });
+    attestDurableMetricAuthority(repository, now);
+    const result = await new RankFeedItemsUseCase(
+      repository, new InMemoryUserRelevanceProfileRepository(), new FixedClock(now),
+    ).execute({
+      tenantId: tenant, workspaceId: workspace, interestId: "interest-ai", limit: 10,
+      rankingProfile: "reader_post_promotion",
+      observedAtOrAfter: new Date("2026-08-18T00:00:00.000Z"),
+      observedBefore: now,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "operation.conflict",
+        details: { reason: "configured_interest_reader_unavailable" },
+      },
+    });
+  });
+
+  it.each(["tenantId", "workspaceId", "interestId"] as const)(
+    "does not provide fixture authority for a different %s",
+    async (field) => {
+      const interest = {
+        tenantId: tenantId("tenant-scoped-interest"),
+        workspaceId: workspaceId("workspace-scoped-interest"),
+        interestId: "interest-ai", query: "AI agents",
+      };
+      const reader = configuredPromotionInterests([interest]);
+      expect(await reader.readCurrent({ ...interest, [field]: "different-scope" }))
+        .toEqual({ kind: "missing" });
+      expect(await reader.readCurrent(interest))
+        .toEqual({ kind: "available", interest });
+    },
+  );
+
   it("finds originals behind more than 1,000 forbidden conversation units", async () => {
     const tenant = tenantId("tenant-promotion-scan-exhaustion");
     const workspace = workspaceId("workspace-promotion-scan-exhaustion");
@@ -84,6 +134,11 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       repository,
       new InMemoryUserRelevanceProfileRepository(),
       new FixedClock(now),
+      undefined, undefined, undefined, undefined, undefined,
+      configuredPromotionInterests([{
+        tenantId: tenant, workspaceId: workspace, interestId: "interest-ai",
+        query: "AI agents",
+      }]),
     );
     const ranked = await ranker.execute({
       tenantId: tenant,
@@ -202,6 +257,11 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       repository,
       new InMemoryUserRelevanceProfileRepository(),
       new FixedClock(now),
+      undefined, undefined, undefined, undefined, undefined,
+      configuredPromotionInterests([{
+        tenantId: tenant, workspaceId: workspace, interestId: "interest-ai",
+        query: "AI agents",
+      }]),
     );
     const ranked = await ranker.execute({
       tenantId: tenant,
@@ -306,6 +366,11 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       repository,
       new InMemoryUserRelevanceProfileRepository(),
       new FixedClock(now),
+      undefined, undefined, undefined, undefined, undefined,
+      configuredPromotionInterests([{
+        tenantId: tenant, workspaceId: workspace, interestId: "interest-ai",
+        query: "AI agents",
+      }]),
     );
     const selection = await new RelevanceReaderSummaryEvidenceSelector(
       ranker,

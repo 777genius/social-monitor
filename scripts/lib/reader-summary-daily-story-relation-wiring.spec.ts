@@ -41,7 +41,8 @@ const period = buildReaderSummaryPeriod({
 describe("reader summary daily story relation production wiring", () => {
   it("fails fresh live wiring closed and keeps non-live paths verifier-free", async () => {
     expect(() => createReaderSummaryDailyCapturePublicationWiring({
-      replay: null,
+      configuredInterests: { readCurrent: async (scope) => ({ kind: "available" as const, interest: { ...scope, query: "TypeScript Cursor Claude coding agents" } }) },
+    replay: null,
       feedItems: feedRepository(),
       summaryClient: {} as never,
       clock,
@@ -55,7 +56,8 @@ describe("reader summary daily story relation production wiring", () => {
 
     const localRuntime = new FakeRuntime(true, true);
     const localWiring = createReaderSummaryDailyCapturePublicationWiring({
-      replay: null,
+      configuredInterests: { readCurrent: async (scope) => ({ kind: "available" as const, interest: { ...scope, query: "TypeScript Cursor Claude coding agents" } }) },
+    replay: null,
       feedItems: feedRepository(),
       summaryClient: {} as never,
       clock,
@@ -195,7 +197,8 @@ describe("reader summary daily story relation production wiring", () => {
       });
       expect(selected.runtime.storyCommands).toHaveLength(1);
       expect(finalizer).toHaveBeenCalledWith(expect.objectContaining({
-        replay: null,
+        configuredInterests: expect.objectContaining({ readCurrent: expect.any(Function) }),
+    replay: null,
         storyRelationVerifier: expect.any(Object),
       }));
     } finally {
@@ -288,6 +291,7 @@ const selectDailyEvidence = async (input: {
     void value;
   });
   const wiring = createReaderSummaryDailyCapturePublicationWiring({
+    configuredInterests: { readCurrent: async (scope) => ({ kind: "available" as const, interest: { ...scope, query: "TypeScript Cursor Claude coding agents" } }) },
     replay: null,
     feedItems: feedRepository({
       firstTitle: input.firstTitle,

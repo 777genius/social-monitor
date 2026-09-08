@@ -26,9 +26,13 @@ import type {
 } from "./rank-feed-items.result";
 import { promotionSafeProviderMetadata } from "./rank-feed-item-projection";
 
+import type { ConfiguredInterestReaderPort } from "../../ports";
+import { resolvePromotionInterests } from "./resolve-promotion-interests";
+
 const PROMOTION_SOURCE_TEXT_SAFETY_CAP = 256_000;
 
 export const rankPromotionSnapshot = async (params: {
+  readonly configuredInterests?: ConfiguredInterestReaderPort;
   readonly command: RankFeedItemsCommand;
   readonly feedItems: FeedItemReadRepositoryPort;
   readonly clock: Clock;
@@ -91,6 +95,10 @@ export const rankPromotionSnapshot = async (params: {
       },
     ));
   }
+  const interests = await resolvePromotionInterests(command,
+    [...snapshot.candidates.map(({ item }) => item), ...(snapshot.supplementalItems ?? [])],
+    params.configuredInterests);
+  if (!interests.ok) return interests;
   const sourceContentById = new Map(snapshot.sourceContent.map((content) =>
     [content.feedItemId, content] as const));
   const projected = snapshot.candidates.map((candidate) => {
@@ -105,16 +113,19 @@ export const rankPromotionSnapshot = async (params: {
       bodyPreview: sourceContent.body.slice(0, PROMOTION_SOURCE_TEXT_SAFETY_CAP),
       canonicalUrl: item.canonicalUrl,
     });
+    const providerMetadata = promotionSafeProviderMetadata(
+      item.providerKey,
+      item.providerMetadata,
+      item,
+      interests.value.get(item.interestId),
+    );
     const quality = params.qualityPolicy.evaluate({
       providerKey: item.providerKey,
       canonicalUrl: safety.sanitizedCanonicalUrl ?? item.canonicalUrl,
       title: safety.sanitizedTitle,
       bodyPreview: safety.sanitizedBodyPreview,
       authorHandle: item.authorHandle,
-      providerMetadata: promotionSafeProviderMetadata(
-        item.providerKey,
-        item.providerMetadata,
-      ),
+      providerMetadata,
     });
     return {
       feedItemId: item.id,
@@ -130,10 +141,7 @@ export const rankPromotionSnapshot = async (params: {
           0, PROMOTION_SOURCE_TEXT_SAFETY_CAP,
         ),
       }),
-      providerMetadata: promotionSafeProviderMetadata(
-        item.providerKey,
-        item.providerMetadata,
-      ),
+      providerMetadata,
       authorHandle: item.authorHandle,
       publishedAt: item.publishedAt.toISOString(),
       observedAt: item.observedAt.toISOString(),
@@ -172,13 +180,16 @@ export const rankPromotionSnapshot = async (params: {
       bodyPreview: sourceContent.body.slice(0, PROMOTION_SOURCE_TEXT_SAFETY_CAP),
       canonicalUrl: item.canonicalUrl,
     });
+    const providerMetadata = promotionSafeProviderMetadata(
+      item.providerKey, item.providerMetadata, item, interests.value.get(item.interestId),
+    );
     const quality = params.qualityPolicy.evaluate({
       providerKey: item.providerKey,
       canonicalUrl: safety.sanitizedCanonicalUrl ?? item.canonicalUrl,
       title: safety.sanitizedTitle,
       bodyPreview: safety.sanitizedBodyPreview,
       authorHandle: item.authorHandle,
-      providerMetadata: item.providerMetadata,
+      providerMetadata,
     });
     return {
       feedItemId: item.id,
@@ -194,7 +205,7 @@ export const rankPromotionSnapshot = async (params: {
           0, PROMOTION_SOURCE_TEXT_SAFETY_CAP,
         ),
       }),
-      providerMetadata: item.providerMetadata,
+      providerMetadata,
       authorHandle: item.authorHandle,
       publishedAt: item.publishedAt.toISOString(),
       observedAt: item.observedAt.toISOString(),

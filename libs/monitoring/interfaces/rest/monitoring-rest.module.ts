@@ -20,6 +20,7 @@ import { monitoringInterestProviders } from './monitoring-interest.providers';
 import { monitoringPersistenceProviders } from './monitoring-persistence.providers';
 import { MonitoringPrismaClientModule } from './monitoring-prisma-client.module';
 import {
+  MONITORING_INTEREST_REPOSITORY,
   MONITORING_CONFIG_PROTECTOR,
   MONITORING_SOURCE_BINDING_REPOSITORY,
   MONITORING_SOURCE_CREDENTIAL_RESOLVER,
@@ -76,6 +77,7 @@ import { SourceCredentialController } from './source-credential.controller';
     ListSourceBindingScansUseCase,
     RecordScanExecutionUseCase,
     InMemoryQueuePublisher,
+    MONITORING_INTEREST_REPOSITORY,
     MONITORING_CONFIG_PROTECTOR,
     MONITORING_SOURCE_BINDING_REPOSITORY,
     MONITORING_SOURCE_CREDENTIAL_RESOLVER,

@@ -1,3 +1,4 @@
+import type { ConfiguredInterestReaderPort } from "@social-monitor/relevance/ports";
 import type { FeedItemReadRepositoryPort, PromotionFeedItemSnapshotRepositoryPort } from "@social-monitor/feed/ports";
 import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
@@ -46,10 +47,12 @@ export async function captureRefreshDatabaseAuthority(input: {
 // This uses the current selector on the complete repository. No paid relation
 // verifier is composed for preparation. Apply uses the normal agent verifier.
 export async function preflightRefreshSelection(input: {
+  configuredInterests: ConfiguredInterestReaderPort;
   feed: FeedItemReadRepositoryPort; date: string; observedThrough: Date; clock: Clock;
 }): Promise<number> {
   const selector = new RelevanceReaderSummaryEvidenceSelector(new RankFeedItemsUseCase(
     input.feed, new InMemoryUserRelevanceProfileRepository(), input.clock,
+    undefined, undefined, undefined, undefined, undefined, input.configuredInterests,
   ), input.feed, input.clock);
   const selection = await selector.select({
     tenantId: tenantId(refreshScope.tenantId), workspaceId: workspaceId(refreshScope.workspaceId),

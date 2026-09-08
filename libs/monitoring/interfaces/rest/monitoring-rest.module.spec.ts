@@ -79,6 +79,7 @@ describe('MonitoringRestModule composition', () => {
       ListSourceBindingScansUseCase,
       RecordScanExecutionUseCase,
       InMemoryQueuePublisher,
+      MONITORING_INTEREST_REPOSITORY,
       MONITORING_CONFIG_PROTECTOR,
       MONITORING_SOURCE_BINDING_REPOSITORY,
       MONITORING_SOURCE_CREDENTIAL_RESOLVER,

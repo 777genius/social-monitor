@@ -88,6 +88,8 @@ const rank = async (
     repository,
     profiles,
     new FixedClock(new Date("2026-08-19T00:00:00.000Z")),
+      undefined, undefined, undefined, undefined, undefined,
+      { readCurrent: async (scope) => ({ kind: "available", interest: { ...scope, query: "AI developer tools" } }) },
   ).execute({
     tenantId: tenant,
     workspaceId: workspace,

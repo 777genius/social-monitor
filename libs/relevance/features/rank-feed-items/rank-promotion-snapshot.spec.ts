@@ -28,6 +28,7 @@ describe("promotion snapshot reader reasons", () => {
     const canonical = classifyFeedPromotionEligibility({ providerKey, providerMetadata });
     if (!canonical.eligible) throw new Error("Expected eligible fixture metrics");
     const result = await rankPromotionSnapshot({
+      configuredInterests: { readCurrent: async (scope) => ({ kind: "available", interest: { ...scope, query: "Agent sessions" } }) },
       command: { tenantId: tenant, workspaceId: workspace, limit: 1,
         publishedAtOrAfter: new Date("2026-09-06T00:00:00.000Z"),
         publishedBefore: new Date("2026-09-07T00:00:00.000Z") },

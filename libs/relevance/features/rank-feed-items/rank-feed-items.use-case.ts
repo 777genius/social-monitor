@@ -19,6 +19,7 @@ import {
   type SourceContentQualityVerdict,
 } from "../../domain";
 import type {
+  ConfiguredInterestReaderPort,
   RelevanceMemoryGuidanceReaderPort,
   SourceContentQualityReviewerPort,
   UserRelevanceProfileRepositoryPort,
@@ -55,6 +56,7 @@ export class RankFeedItemsUseCase {
     private readonly qualityPolicy = new SourceContentQualityPolicy(),
     private readonly qualityReviewer: SourceContentQualityReviewerPort = NOOP_SOURCE_CONTENT_QUALITY_REVIEWER,
     private readonly safetyPolicy = new SourceContentSafetyPolicy(),
+    private readonly configuredInterests?: ConfiguredInterestReaderPort,
   ) {}
 
   async execute(
@@ -63,6 +65,7 @@ export class RankFeedItemsUseCase {
     if (command.rankingProfile === "reader_post_promotion") {
       return rankPromotionSnapshot({
         command,
+        configuredInterests: this.configuredInterests,
         feedItems: this.feedItems,
         clock: this.clock,
         qualityPolicy: this.qualityPolicy,

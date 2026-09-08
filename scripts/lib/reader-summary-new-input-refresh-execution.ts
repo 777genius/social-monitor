@@ -1,3 +1,4 @@
+import type { ConfiguredInterestReaderPort } from "@social-monitor/relevance/ports";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import type { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
@@ -23,6 +24,7 @@ import { buildRefreshModelWiring, guardedRefreshRuntime } from "./reader-summary
 import { withRefreshSelectionAudit } from "./reader-summary-new-input-refresh-selection-audit";
 
 export async function executeNewInputRefresh(input: {
+  configuredInterests: ConfiguredInterestReaderPort;
   manifest: RefreshManifest; summary: PrismaSummaryConnection;
   feed: FeedItemReadRepositoryPort & PromotionFeedItemSnapshotRepositoryPort;
   clock: Clock; env: NodeJS.ProcessEnv;
@@ -65,7 +67,7 @@ export async function executeNewInputRefresh(input: {
   await assertCurrent();
   await assertRefreshHasNewInput(summary, m.date, m.prior.observedThrough, m.observedThrough);
   await input.assertRuntime();
-  const selectedCount = await preflightRefreshSelection({ feed, date: m.date,
+  const selectedCount = await preflightRefreshSelection({ configuredInterests: input.configuredInterests, feed, date: m.date,
     observedThrough: new Date(m.observedThrough), clock });
   input.record({ status: "preflight", operation: m.operation, selectedCount,
     plannedSummaryGenerations: selectedCount === 0 ? 0 : 1 });
@@ -117,7 +119,7 @@ export async function executeNewInputRefresh(input: {
     catch (error) { guard.invalidate(); throw error; }
   } };
   const canonical = createReaderSummaryDailyCapturePublicationWiring({
-    replay: null, feedItems: feed, summaryClient: summary, clock, attestationSink: sink,
+    replay: null, configuredInterests: input.configuredInterests, feedItems: feed, summaryClient: summary, clock, attestationSink: sink,
     summaryModelMode: "agent-runtime", env: input.env, agentRuntimeClient: runtime,
     storyRelationVerifierGuard: runtime,
   });

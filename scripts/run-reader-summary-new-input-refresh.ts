@@ -1,3 +1,6 @@
+import { PrismaMonitoringConnection } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-connection";
+import { PrismaInterestRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-interest.repository";
+import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
 import { credentials } from "@grpc/grpc-js";
 import { AgentRuntimeServiceClient } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
 import { mkdirSync, constants, realpathSync, openSync, writeSync, fsyncSync, closeSync, writeFileSync } from "node:fs";
@@ -53,10 +56,13 @@ async function main(): Promise<void> {
   const summary = await PrismaSummaryConnection.create(config);
   const feedConnection = await PrismaFeedConnection.create(config);
   const feed = new PrismaFeedItemReadRepository(feedConnection);
+  let monitoring: PrismaMonitoringConnection | undefined;
   const output = resolve(".cache/reader-summary-new-input-refresh");
   mkdirSync(output, { recursive: true, mode: 0o700 });
   if (realpathSync(output) !== output) throw new Error("Refresh evidence directory must not contain symlinks");
   try {
+    monitoring = await PrismaMonitoringConnection.create(config);
+    const configuredInterests = new MonitoringConfiguredInterestReader(new PrismaInterestRepository(monitoring));
     await runWithTenantDatabaseAccess(refreshScope, async () => {
       await assertHistoricalPromotionSystemRole(summary);
       if (command.mode === "prepare") {
@@ -70,7 +76,7 @@ async function main(): Promise<void> {
           const prior = await readRefreshPrior(summary, date);
           const authority = await captureRefreshAuthority({ client: summary, feed, date, observedThrough, clock });
           await assertRefreshHasNewInput(summary, date, prior.observedThrough, observedThrough.toISOString());
-          const eligible = await preflightRefreshSelection({ feed, date, observedThrough, clock });
+          const eligible = await preflightRefreshSelection({ configuredInterests, feed, date, observedThrough, clock });
           assertRefreshEqual(await captureRefreshAuthority({ client: summary, feed, date, observedThrough, clock }), authority, "preparation input");
           assertRefreshEqual(await readRefreshPrior(summary, date), prior, "preparation prior");
           const period = refreshPeriod(date);
@@ -120,7 +126,7 @@ async function main(): Promise<void> {
         finally { closeSync(fd); }
       };
       try {
-        const receipt = await executeNewInputRefresh({ manifest, summary, feed, clock, env: process.env,
+        const receipt = await executeNewInputRefresh({ configuredInterests, manifest, summary, feed, clock, env: process.env,
           runtime, assertFences, assertSource, record,
           assertRuntime: async () => {
             const serving = await resolveReaderSummaryServingAuthority({ summaryModelMode: "agent-runtime",
@@ -137,7 +143,7 @@ async function main(): Promise<void> {
         throw new Error("Refresh stopped; reconcile original operation");
       } finally { channel.close(); }
     });
-  } finally { await feedConnection.close(); await summary.close(); }
+  } finally { await Promise.all([monitoring?.close(), feedConnection.close(), summary.close()]); }
 }
 function required(name: string): string {
   const value = process.env[name]?.trim();

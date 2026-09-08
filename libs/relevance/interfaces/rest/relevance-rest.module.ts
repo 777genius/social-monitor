@@ -1,3 +1,8 @@
+import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
+import { MONITORING_INTEREST_REPOSITORY } from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
+import type { InterestRepositoryPort } from '@social-monitor/monitoring/ports';
+import { MonitoringConfiguredInterestReader } from '../../adapters/monitoring/monitoring-configured-interest.reader';
+import { CONFIGURED_INTEREST_READER, type ConfiguredInterestReaderPort } from '../../ports';
 import { Module } from '@nestjs/common';
 import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
@@ -73,9 +78,15 @@ import {
 } from './relevance-provider-tokens';
 
 @Module({
-  imports: [FeedRestModule, IdentityRestModule],
+  imports: [FeedRestModule, IdentityRestModule, MonitoringRestModule],
   controllers: [RelevanceController],
   providers: [
+    {
+      provide: CONFIGURED_INTEREST_READER,
+      useFactory: (interests: InterestRepositoryPort): ConfiguredInterestReaderPort =>
+        new MonitoringConfiguredInterestReader(interests),
+      inject: [MONITORING_INTEREST_REPOSITORY],
+    },
     relevancePersistenceModeProvider,
     relevanceMemoryProjectionModeProvider,
     relevanceContentQualityReviewerModeProvider,
@@ -205,6 +216,7 @@ import {
         profiles: UserRelevanceProfileRepositoryPort,
         memoryGuidance: RelevanceMemoryGuidanceReaderPort,
         qualityReviewer: SourceContentQualityReviewerPort,
+        configuredInterests: ConfiguredInterestReaderPort,
       ) =>
         new RankFeedItemsUseCase(
           feedItems,
@@ -214,12 +226,15 @@ import {
           memoryGuidance,
           undefined,
           qualityReviewer,
+          undefined,
+          configuredInterests,
         ),
       inject: [
         FEED_ITEM_READ_REPOSITORY,
         USER_RELEVANCE_PROFILE_REPOSITORY,
         RELEVANCE_MEMORY_GUIDANCE_READER,
         SOURCE_CONTENT_QUALITY_REVIEWER,
+        CONFIGURED_INTEREST_READER,
       ],
     },
     {

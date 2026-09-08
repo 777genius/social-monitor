@@ -1,3 +1,6 @@
+import { PrismaMonitoringConnection } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-connection";
+import { PrismaInterestRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-interest.repository";
+import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -258,7 +261,10 @@ async function main(): Promise<void> {
   const summaryConnection =
     await PrismaSummaryConnection.create(runtimePoolConfig);
 
+  let monitoringConnection: PrismaMonitoringConnection | undefined;
   try {
+    monitoringConnection = dailyReplay === null
+      ? await PrismaMonitoringConnection.create(runtimePoolConfig) : undefined;
     const datasetGuard = recoveryTimestampPolicy.active
       ? buildDatasetGuard({
           client: summaryConnection,
@@ -306,6 +312,8 @@ async function main(): Promise<void> {
     const publicationWiring =
       createReaderSummaryDailyCapturePublicationWiring({
         replay: dailyReplay,
+        configuredInterests: monitoringConnection === undefined ? undefined
+          : new MonitoringConfiguredInterestReader(new PrismaInterestRepository(monitoringConnection)),
         feedItems,
         summaryClient: summaryConnection,
         clock,
@@ -633,7 +641,7 @@ async function main(): Promise<void> {
       ].join("\n"),
     );
   } finally {
-    await Promise.all([feedConnection.close(), summaryConnection.close()]);
+    await Promise.all([feedConnection.close(), summaryConnection.close(), monitoringConnection?.close()]);
   }
 }
 
