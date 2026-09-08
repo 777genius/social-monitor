@@ -1,3 +1,4 @@
+import { insertNativeRenewalSourceRows, nativeFixturePhase, type NativeRenewalSourceWriter } from "./lib/retained-metric-native-fixture";
 import { strict as assert } from "node:assert";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
@@ -143,7 +144,7 @@ async function main() {
         assert(sameTarget(target, current, metricRefreshDigest));
         assert.equal(current?.authority.observedAt, clock.now().toISOString());
       }
-      await checkNativeRenewal(lease.client);
+      await nativeFixturePhase("renewal-total", () => checkNativeRenewal(lease.client));
       process.stdout.write(`${JSON.stringify({ evidenceKind: "disposable_postgres_fixture", lostAckResume: "passed", fetches, results: resumed.value }, null, 2)}\n`);
     });
   } finally { await lease.close(); rmSync(root, { recursive: true, force: true }); }
@@ -156,26 +157,21 @@ async function checkNativeRenewal(client: Client) {
   const clock = new FixedClock(new Date("2026-09-08T12:00:00.000Z"));
   const inventory = new PrismaRetainedMetricInventory(client, metricRefreshDigest);
   const addRows = async (start: number, count: number) => withPrismaWriteRetry(() => client.$transaction(async (tx) => {
-    const source = (tx as unknown as Record<string, Writer>).sourceItem!;
-    for (let index = start; index < start + count; index++) await source.create({ data: {
-      id: id(100000 + index), tenantId: scope.tenantId, workspaceId: scope.workspaceId, sourceBindingId: id(6401), providerKey: "reddit",
-      providerItemId: `reddit:t3_native${index}`, canonicalUrl: `https://www.reddit.com/comments/native${index}/`,
-      title: "Renewal fixture", body: "Retained zero-feed body", contentHash: "native-renewal",
-      publishedAt: new Date(`${grant.dates[index % 7]}T10:00:00Z`), observedAt: new Date("2026-09-05T11:00:00Z"),
-      createdAt: new Date("2026-09-05T11:00:00Z"), metadata: { kind: "reddit_post", score: 5 },
-    } });
+    const source = (tx as unknown as { sourceItem: NativeRenewalSourceWriter }).sourceItem;
+    await insertNativeRenewalSourceRows(source, start, count);
   }, { isolationLevel: "Serializable", timeout: 120000 }));
   try {
-    await addRows(0, 3306); // Existing 19 originals plus four prior arrivals = 23.
+    await nativeFixturePhase("renewal-seed-3306", () => addRows(0, 3306)); // Existing 19 originals plus four prior arrivals = 23.
     const original: MetricRefreshManifest = { version: "retained-metrics.v1", sourceBase: metricRefreshSourceBase, bounds: grant.bounds,
-      evidencePath: grant.predecessorPath, operationId: grant.predecessorOperationId, scope, plannedAt: clock.now().toISOString(), targets: await inventory.list(scope) };
+      evidencePath: grant.predecessorPath, operationId: grant.predecessorOperationId, scope, plannedAt: clock.now().toISOString(), targets: await nativeFixturePhase("predecessor-inventory-3329", () => inventory.list(scope)) };
     assert.equal(original.targets.length, grant.originalCount);
     const originalHash = metricRefreshDigest(original);
     const hash = (value: unknown) => { const digest = metricRefreshDigest(value); return digest === originalHash ? grant.predecessorManifestSha : digest; };
     const prior = SecureMetricRefreshReceipts.forTest(root), renewal = SecureMetricRefreshReceipts.forTest(root, undefined, "renewal");
     const omitted: RetainedMetricFetchCapability = { fetch: async (batch) => ({ ok: true, value: batch.map((t) => ({ externalId: t.externalId, returned: false, metadata: null, reason: "omitted" })) }) };
     const projection = new PrismaSourceEngagementProjectionAdapter(client, new CryptoIdGenerator(), { retention: "skip" });
-    const completed = await new RefreshRetainedMetricsUseCase(inventory, omitted, projection, prior, clock, hash).execute(original);
+    const completed = await nativeFixturePhase("predecessor-v1-execute-3329", () =>
+      new RefreshRetainedMetricsUseCase(inventory, omitted, projection, prior, clock, hash).execute(original));
     assert(completed.ok);
     await prior.install(`${grant.predecessorPath}/final.json`, { manifestSha: hash(original), results: completed.value, cells: metricRefreshCells(completed.value, grant.dates) });
     const predecessorBytes = await prior.withOperation((o) => o.entries());
@@ -194,7 +190,7 @@ async function checkNativeRenewal(client: Client) {
     await addRows(3306, 1); // New admission includes this no-snapshot, zero-feed late arrival.
     const implementation = { sourceSha: "1".repeat(64), executableSha: "2".repeat(64), holderProof: "3".repeat(64), legacyRetirementRef: "TEST-native-renewal" };
     const prepare = new RenewRetainedMetricsUseCase(inventory, omitted, projection, prior, renewal, clock, hash);
-    const admitted = await prepare.prepare(implementation); assert(admitted.ok);
+    const admitted = await nativeFixturePhase("renewal-prepare-3330", () => prepare.prepare(implementation)); assert(admitted.ok);
     assert.equal(admitted.value.targets.length, 3330); assert.equal(admitted.value.capture.lateArrivalSourceItemIds.length, 1);
     const frozen = admitted.value;
     const guarded = new PrismaSourceEngagementProjectionAdapter(client, new CryptoIdGenerator(), { retention: "skip", sampleGuard: async (tx, _command, sample) => {
@@ -215,10 +211,10 @@ async function checkNativeRenewal(client: Client) {
       if (lostAck) { lostAck = false; throw new Error("TEST renewal lost commit acknowledgement"); } return result;
     } };
     const run = new RenewRetainedMetricsUseCase(inventory, fetcher, uncertain, prior, renewal, clock, hash);
-    const first = await run.execute(hash(frozen)); assert(first.ok && Array.isArray(first.value));
+    const first = await nativeFixturePhase("renewal-first-execute-3330", () => run.execute(hash(frozen))); assert(first.ok && Array.isArray(first.value));
     assert.equal(await renewal.read(`${grant.evidencePath}/final.json`), null);
     const afterLostAck = await renewalRows(client);
-    const spent = calls, resumed = await run.execute(hash(frozen));
+    const spent = calls, resumed = await nativeFixturePhase("renewal-resume", () => run.execute(hash(frozen)));
     assert(resumed.ok && "results" in resumed.value, "resume must install terminal final, not pending outcomes");
     assert.equal(resumed.value.results.length, frozen.targets.length);
     assert(resumed.value.results.every((r) => r.status === "refreshed" && r.observedAt === clock.now().toISOString() &&
@@ -289,10 +285,12 @@ async function checkNativeRenewal(client: Client) {
       assert(!eligibility.admitted);
       assert.deepEqual(eligibility.reasons, ["engagement_regression_unresolved"]);
     }
-    for (const target of frozen.targets) assert(sameTarget(target, await inventory.read(scope, target.sourceItemId), hash));
+    await nativeFixturePhase("renewal-identity-check-3330", async () => {
+      for (const target of frozen.targets) assert(sameTarget(target, await inventory.read(scope, target.sourceItemId), hash));
+    });
     assert.deepEqual(await prior.withOperation((o) => o.entries()), predecessorBytes);
     const renewalBytes = await renewal.withOperation((o) => o.entries());
-    assert.deepEqual(await run.execute(hash(frozen)), resumed); assert.equal(calls, spent);
+    assert.deepEqual(await nativeFixturePhase("renewal-terminal-replay", () => run.execute(hash(frozen))), resumed); assert.equal(calls, spent);
     assert.deepEqual(await renewalRows(client), afterResume);
     assert.deepEqual(await renewal.withOperation((o) => o.entries()), renewalBytes);
     assert.deepEqual(await prior.withOperation((o) => o.entries()), predecessorBytes);

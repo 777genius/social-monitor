@@ -1,3 +1,5 @@
+import type { MetricRefreshOperation, MetricRefreshOperationAuthority } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-operation.contracts";
+import type { ProjectSourceEngagementCommand } from "@social-monitor/ingestion/ports/source-engagement-projection.port";
 import { FixedClock, ok } from "@social-monitor/shared-kernel";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,9 +31,10 @@ async function main() {
       metadata: t.sourceItemId === original.targets[0]!.sourceItemId ? { kind: "reddit_post", score: 42, numComments: 9 } : null })));
   } };
   const clock = new FixedClock(new Date("2026-09-08T12:00:00.000Z"));
-  const projection = { project: async (command: { observedAt: Date; samples: readonly { sourceItemId: string; metricsFingerprint: string }[] }) => {
+  const projection = { project: async (command: ProjectSourceEngagementCommand) => {
     log("projection");
-    const sample = command.samples[0]!;
+    const sample = command.samples[0];
+    if (!sample?.sourceItemId) throw new Error("fixture projection requires sourceItemId");
     const rows = current();
     const target = rows.find((t) => t.sourceItemId === sample.sourceItemId)!;
     target.authority = { metricsHash: sample.metricsFingerprint, observedAt: command.observedAt.toISOString(),
@@ -40,7 +43,10 @@ async function main() {
     if (mode === "lost-ack") process.kill(process.pid, "SIGKILL");
     return { currentSnapshotsUpdated: 1, observationsAppended: 1, metricChanges: 1, regressionsObserved: 0 };
   } };
-  const wrapped = { withOperation: <T>(work: Parameters<typeof renewal.withOperation<T>>[0]) => renewal.withOperation((o) => work({ ...o,
+  const wrapped: MetricRefreshOperationAuthority = {
+    read: <T>(path: string) => renewal.read<T>(path),
+    install: (path, value) => renewal.install(path, value),
+    withOperation: <T>(work: (operation: MetricRefreshOperation) => Promise<T>) => renewal.withOperation((o) => work({ ...o,
     install: async (path, value) => {
       log("install");
       if (mode === "result-loss" && path.includes("/result-")) process.kill(process.pid, "SIGKILL");
