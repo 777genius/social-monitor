@@ -2,36 +2,11 @@ name: Production deploy
 on:
   push:
     branches: [main]
-    paths:
-      - .dockerignore
-      - .github/workflows/production-deploy.yml
-      - apps/api-gateway/**
-      - apps/agent-runtime/**
-      - apps/delivery-service/**
-      - apps/event-relay/**
-      - apps/frontend/**
-      - apps/ingestion-worker/**
-      - apps/intelligence-worker/**
-      - apps/social-research-grpc/**
-      - apps/social-research-mcp/**
-      - apps/social-research-runtime/**
-      - apps/x-collector/**
-      - libs/**
-      - ops/deploy/**
-      - ops/evals/**
-      - ops/observability/**
-      - prisma/**
-      - scripts/**
-      - test/**
-      - vendor/**
-      - Dockerfile
-      - docker-compose.yml
-      - package.json
-      - package-lock.json
-      - pnpm-lock.yaml
-      - prisma.config.ts
-      - tsconfig.json
-      - tsconfig.build.json
+    paths: [
+      .dockerignore, .github/workflows/production-deploy.yml, apps/api-gateway/**, apps/agent-runtime/**, apps/delivery-service/**, apps/event-relay/**, apps/frontend/**, apps/ingestion-worker/**, apps/intelligence-worker/**, apps/social-research-grpc/**,
+      apps/social-research-mcp/**, apps/social-research-runtime/**, apps/x-collector/**, libs/**, ops/deploy/**, ops/evals/**, ops/observability/**, prisma/**, scripts/**, test/**,
+      vendor/**, Dockerfile, docker-compose.yml, package.json, package-lock.json, pnpm-lock.yaml, prisma.config.ts, tsconfig.json, tsconfig.build.json,
+    ]
   workflow_dispatch:
     inputs:
       maintenance_action:
@@ -289,12 +264,8 @@ jobs:
     services:
       postgres:
         image: postgres:18.4-alpine
-        env:
-          POSTGRES_USER: social_monitor_publication_ci_admin
-          POSTGRES_PASSWORD: social_monitor_local_password
-          POSTGRES_DB: social_monitor_publication_ci_admin
-        ports:
-          - 5432:5432
+        env: {POSTGRES_USER: social_monitor_publication_ci_admin, POSTGRES_PASSWORD: social_monitor_local_password, POSTGRES_DB: social_monitor_publication_ci_admin}
+        ports: [5432:5432]
         options: >-
           --health-cmd "pg_isready -U social_monitor_publication_ci_admin -d social_monitor_publication_ci_admin"
           --health-interval 5s
@@ -327,26 +298,65 @@ jobs:
           npm run check:reader-summary-daily-scan-terminal-repair-c1-postgres
           npm run check:reader-summary-daily-canonical-recovery-production
           npm run check:reader-summary-publication-signal-regression
+  verify_backend_shards:
+    name: Test affected backend shard ${{ matrix.shard }}/4
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: {shard: [1, 2, 3, 4]}
+    # Keep jobs successful with skipped steps when backend is unchanged.
+    # A skipped/cancelled/failed matrix job is never accepted by verify_backend.
+    steps:
+      - name: Check out the release commit
+        if: needs.plan.outputs.backend == 'true'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with: {fetch-depth: 0, ref: '${{ github.sha }}'}
+      - name: Set up Node.js
+        if: needs.plan.outputs.backend == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with: {node-version: 22, cache: npm}
+      - name: Prepare the same backend source and generated dependencies
+        if: needs.plan.outputs.backend == 'true'
+        env:
+          # Inert test DSN for offline Prisma config loading; no database service needed.
+          DATABASE_URL: postgresql://fixture:social_monitor_local_password@127.0.0.1:5432/fixture
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          npm ci
+          npm run prisma:generate
+          npm run build
+      - name: Test affected backend modules
+        if: needs.plan.outputs.backend == 'true'
+        env: {BACKEND_BASE: '${{ needs.plan.outputs.backend_base }}'}
+        run: |
+          set -euo pipefail
+          base=$BACKEND_BASE
+          if [[ $base == 0000000000000000000000000000000000000000 ]]; then
+            base=$(git rev-list --max-parents=0 "$GITHUB_SHA" | tail -n 1)
+          fi
+          npm test -- --changedSince="$base" --shard=${{ matrix.shard }}/4
   verify_backend:
     name: Verify backend, collector and deploy control
-    needs: plan
+    needs: [plan, verify_backend_shards]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     services:
       postgres:
         image: postgres:18.4-alpine
-        env:
-          POSTGRES_USER: social_monitor_pool_ci
-          POSTGRES_PASSWORD: social_monitor_local_password
-          POSTGRES_DB: social_monitor_pool_ci
-        ports:
-          - 5432:5432
+        env: {POSTGRES_USER: social_monitor_pool_ci, POSTGRES_PASSWORD: social_monitor_local_password, POSTGRES_DB: social_monitor_pool_ci}
+        ports: [5432:5432]
         options: >-
           --health-cmd "pg_isready -U social_monitor_pool_ci -d social_monitor_pool_ci"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     steps:
+      - name: Require every affected backend shard to succeed
+        run: test "${{ needs.verify_backend_shards.result }}" = "success"
       - name: Check out the release commit
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.x_collector == 'true' || needs.plan.outputs.recovery_transition == 'true'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -635,16 +645,6 @@ jobs:
             echo "::error title=Publication bridge transition failed::The c071/7185 B-to-F fixture failed with status $publication_bridge_status."
             exit "$publication_bridge_status"
           fi
-      - name: Test affected backend modules
-        if: needs.plan.outputs.backend == 'true'
-        env:
-          BACKEND_BASE: ${{ needs.plan.outputs.backend_base }}
-        run: |
-          base=$BACKEND_BASE
-          if [[ $base == 0000000000000000000000000000000000000000 ]]; then
-            base=$(git rev-list --max-parents=0 "$GITHUB_SHA" | tail -n 1)
-          fi
-          npm test -- --changedSince="$base"
       - name: Set up Python for X collector verification
         if: needs.plan.outputs.x_collector == 'true'
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
