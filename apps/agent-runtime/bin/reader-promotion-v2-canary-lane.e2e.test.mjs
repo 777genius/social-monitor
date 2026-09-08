@@ -293,7 +293,7 @@ async function runBridge(fixture, request, { authMode, canary }) {
   const execution = await execFileAsync(process.execPath, args, {
     cwd: fixture.sandbox,
     env: {
-      PATH: process.env.PATH,
+      PATH: process.env.PATH, HOME: process.env.HOME,
       LANG: "C.UTF-8",
       ...poolEnvironment,
       AGENT_RUNTIME_REASONING_EFFORT: "high",

@@ -64,7 +64,7 @@ test(
         {
           cwd: fixture.sandboxProject,
           env: {
-            PATH: process.env.PATH,
+            PATH: process.env.PATH, HOME: process.env.HOME,
             LANG: "C.UTF-8",
             AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: fixture.poolRoot,
             AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: "current.json",
@@ -189,6 +189,41 @@ test(
     }
   },
 );
+
+for (const firstAccount of ["account-b", "account-a"]) {
+  test(`assessment reuses pool with one attempt starting on ${firstAccount}`, { timeout: 30_000 }, async () => {
+    const fixture = await createFixture();
+    try {
+      const request = agentTaskRequest(taskIdStartingWith(["account-a", "account-b"], firstAccount));
+      request.context.purpose = "social_monitor.relevance.assess_source_content.v1";
+      request.task.outputSchemaName = "social_monitor_source_content_quality_review";
+      request.task.controls.outputSchemaName = "social_monitor_source_content_quality_review";
+      await writeFile(fixture.requestPath, JSON.stringify(request));
+      const execution = await execFileAsync(process.execPath, [runtimeBridgePath,
+        "--provider", "codex", "--input", fixture.requestPath, "--format", "result-json",
+        "--state-root", fixture.stateRoot, "--codex-binary", fixture.codexBinaryPath,
+        "--model", "gpt-5.6-sol", "--timeout-ms", "15000"], {
+        cwd: fixture.sandboxProject, maxBuffer: 1024 * 1024,
+        env: { PATH: process.env.PATH, HOME: process.env.HOME, LANG: "C.UTF-8",
+          AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: fixture.poolRoot,
+          AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: "current.json",
+          AGENT_RUNTIME_REASONING_EFFORT: "high",
+          SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64") },
+      }).then(({ stdout }) => JSON.parse(stdout), (error) => JSON.parse(error.stdout));
+      const attempts = (await readFile(fixture.attemptLogPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+      assert.equal(attempts.some(({ command }) => command === "exec"), false);
+      assert.equal(execution.status, firstAccount === "account-b" ? "completed" : "failed");
+      if (firstAccount === "account-b") {
+        assert.deepEqual(execution.structuredOutput, { ok: true, account: "account-b" });
+        assert.equal(attempts.filter(({ command }) => command === "turn").length, 1);
+      } else {
+        assert.equal(attempts.some(({ account }) => account === "account-b"), false);
+        assert.equal(attempts.filter(({ command }) => command === "turn").length, 0);
+      }
+      assert.deepEqual(await readdir(join(fixture.stateRoot, "auth-materializations")), []);
+    } finally { await fixture.cleanup(); }
+  });
+}
 
 async function createFixture() {
   const root = await mkdtemp(

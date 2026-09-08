@@ -1,5 +1,5 @@
 import { classifyFeedPromotionEligibility, FeedItem, rankReaderPromotionV2 } from "@social-monitor/feed/domain";
-import { FixedClock, tenantId, workspaceId, type JsonObject } from "@social-monitor/shared-kernel";
+import { FixedClock, tenantId, workspaceId, type Clock, type JsonObject } from "@social-monitor/shared-kernel";
 import { mapRankedItem } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence-support";
 import { readerSummaryPromotionV2Candidate } from "@social-monitor/summary/adapters/evidence/reader-summary-editorial-candidate";
 import type { SummaryEvidenceSelection } from "@social-monitor/summary/domain";
@@ -38,7 +38,8 @@ export const review = (request: SourceContentQualityReviewRequest,
 
 export const run = async (items: readonly FeedItem[], reviewer?: SourceContentQualityReviewerPort,
   options: { authority?: "stable" | "unresolved_regression" | "missing";
-    metricTime?: Date; query?: string; sourceBody?: string } = {}) => {
+    metricTime?: Date; query?: string; sourceBody?: string; clock?: Clock;
+    execution?: { deadlineAtMs: number; signal?: AbortSignal } } = {}) => {
   const ranker = new RankFeedItemsUseCase({
     list: async () => ({ items: [] }), findById: async () => null,
     readPromotionSnapshot: async () => ({ ok: true, exhausted: true, physicalRowsRead: items.length,
@@ -52,10 +53,11 @@ export const run = async (items: readonly FeedItem[], reviewer?: SourceContentQu
       }), sourceContent: items.map((item) => ({ feedItemId: item.toSnapshot().id,
         sourceItemId: item.toSnapshot().sourceItemId, body: options.sourceBody ?? item.toSnapshot().bodyPreview })),
     }),
-  }, { findByUser: async () => null } as never, new FixedClock(cutoff),
+  }, { findByUser: async () => null } as never, options.clock ?? new FixedClock(cutoff),
   undefined, undefined, undefined, reviewer, undefined,
   { readCurrent: async (requested) => ({ kind: "available", interest: { ...requested, query: options.query ?? query } }) });
   const result = await ranker.execute({ ...scope, limit: 200, rankingProfile: "reader_post_promotion",
+    promotionAssessmentExecution: options.execution,
     publishedAtOrAfter: new Date("2026-09-08T00:00:00Z"),
     publishedBefore: new Date("2026-09-09T00:00:00Z"), observedAtOrBefore: cutoff });
   if (!result.ok) throw result.error;

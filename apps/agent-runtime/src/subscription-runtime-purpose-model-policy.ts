@@ -78,6 +78,9 @@ const readerPromotionV2CanaryProfile = Object.freeze({
 const profilesByPurpose: Readonly<
   Record<string, SubscriptionRuntimePurposeProfile>
 > = Object.freeze({
+  "social_monitor.relevance.assess_source_content.v1": Object.freeze({
+    ...activeReaderSummaryStructuredProfile, retryMode: "never",
+  }),
   "social_monitor.summary.generate": genericSummaryStructuredProfile,
   "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.repair.v2": activeReaderSummaryStructuredProfile,

@@ -1,3 +1,4 @@
+import { createReaderSummaryDailyCapturePublicationWiring } from "./reader-summary-daily-story-relation-verifier";
 import {
   type IdGenerator,
   tenantId,
@@ -314,7 +315,10 @@ describe("reader summary daily frozen publication input", () => {
     });
     const readCurrent = jest.fn(async () => { throw new Error("Current interest must not be read during recovery"); });
     const reviewBatch = jest.fn(async () => { throw new Error("Content reviewer must not run during recovery"); });
-    const wiring = createReaderSummaryDailyPublicationExecutionWiring({
+    const runTask = jest.fn(async () => { throw new Error("Frozen recovery must not invoke runtime"); });
+    const wiring = createReaderSummaryDailyCapturePublicationWiring({
+      summaryModelMode: "agent-runtime", env: { OPENAI_API_KEY_FILE: "/must-not-read" },
+      agentRuntimeClient: { runTask, checkHealth: jest.fn() },
       replay: {
         ...replay,
         authoritySha256: replay.sourceAuthoritySha256,
@@ -334,6 +338,7 @@ describe("reader summary daily frozen publication input", () => {
     expect(queryRaw).not.toHaveBeenCalled();
     expect(readCurrent).not.toHaveBeenCalled();
     expect(reviewBatch).not.toHaveBeenCalled();
+    expect(runTask).not.toHaveBeenCalled();
   });
 
   it("rejects a tampered canonical authority before recovery wiring exists", () => {

@@ -13,12 +13,19 @@ export const PROMOTION_ASSESSMENT_BOUNDS = Object.freeze({
 // Every candidate starts pending; budget, transport and protocol failures cannot
 // fall through to a heuristic pass. Batches are sequential and popularity-free.
 export const assessPromotionContent = async (input: {
+  readonly execution?: { readonly deadlineAtMs: number; readonly signal?: AbortSignal };
   readonly requests: readonly SourceContentQualityReviewRequest[];
   readonly reviewer?: SourceContentQualityReviewerPort;
   readonly policy: SourceContentQualityPolicy;
   readonly clock: Clock;
 }) => {
   const bounds = PROMOTION_ASSESSMENT_BOUNDS;
+  const timing = input.reviewer?.promotionTiming;
+  const totalTimeoutMs = timing?.totalTimeoutMs ?? bounds.deadlineMs;
+  const batchTimeoutMs = timing?.batchTimeoutMs ?? bounds.batchTimeoutMs;
+  if (![totalTimeoutMs, batchTimeoutMs].every((ms) => Number.isSafeInteger(ms) && ms > 0 && ms <= 600_000)) {
+    throw new Error("Invalid promotion assessment deadline");
+  }
   const verdicts = new Map(input.requests.map((request) => [request.candidateId,
     pendingPromotionAssessment(request.deterministic, "budget_exhausted")]));
   const requests = [...input.requests].sort((a, b) =>
@@ -28,9 +35,13 @@ export const assessPromotionContent = async (input: {
       pendingPromotionAssessment(request.deterministic, "duplicate_candidate"));
     return verdicts;
   }
-  const deadline = input.clock.now().getTime() + bounds.deadlineMs;
+  const startedAt = input.clock.now().getTime();
+  const deadline = Math.min(startedAt + totalTimeoutMs, input.execution?.deadlineAtMs ?? Infinity);
+  if (!Number.isSafeInteger(deadline) || deadline <= startedAt || input.execution?.signal?.aborted) return verdicts;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), bounds.deadlineMs);
+  const abort = () => controller.abort();
+  input.execution?.signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, deadline - startedAt);
   let bytesUsed = 0;
   let count = 0;
   try {
@@ -51,28 +62,34 @@ export const assessPromotionContent = async (input: {
         requests.shift(); batch.push(request); bytes += size; bytesUsed += size; count++;
       }
       if (batch.length === 0) break;
-      const remaining = Math.min(bounds.batchTimeoutMs, deadline - input.clock.now().getTime());
-      const response = await reviewWithinDeadline(input.reviewer, batch, controller.signal, remaining);
-      const malformed = response !== undefined && (!Array.isArray(response) ||
-        response.some((review) => !review || !batch.some((r) => r.candidateId === review.candidateId)) ||
-        new Set(response.map((review) => review.candidateId)).size !== response.length);
+      const now = input.clock.now().getTime();
+      const batchDeadline = Math.min(deadline, now + batchTimeoutMs);
+      const response = await reviewWithinDeadline(input.reviewer, batch, controller.signal,
+        batchDeadline - now, batchDeadline);
+      const timelyResponse = !controller.signal.aborted && input.clock.now().getTime() < deadline ? response : undefined;
+      const malformed = timelyResponse !== undefined && (!Array.isArray(timelyResponse) ||
+        timelyResponse.some((review) => !review || !batch.some((r) => r.candidateId === review.candidateId)) ||
+        new Set(timelyResponse.map((review) => review.candidateId)).size !== timelyResponse.length);
       for (const request of batch) {
         const verdict = malformed
           ? pendingPromotionAssessment(request.deterministic, "invalid_batch")
-          : response === undefined
+          : timelyResponse === undefined
             ? pendingPromotionAssessment(request.deterministic, "unavailable_or_timeout")
             : assessedPromotionVerdict(request,
-                response.find((review) => review.candidateId === request.candidateId), input.policy);
+                timelyResponse.find((review) => review.candidateId === request.candidateId), input.policy);
         verdicts.set(request.candidateId, verdict);
       }
     }
-  } finally { clearTimeout(timer); }
+  } finally {
+    clearTimeout(timer);
+    input.execution?.signal?.removeEventListener("abort", abort);
+  }
   return verdicts;
 };
 
 const reviewWithinDeadline = async (
   reviewer: SourceContentQualityReviewerPort | undefined,
-  batch: readonly SourceContentQualityReviewRequest[], signal: AbortSignal, timeoutMs: number,
+  batch: readonly SourceContentQualityReviewRequest[], signal: AbortSignal, timeoutMs: number, deadlineAtMs: number,
 ): Promise<readonly SourceContentQualityReviewResult[] | undefined> => {
   if (reviewer === undefined || signal.aborted || timeoutMs <= 0) return undefined;
   const controller = new AbortController();
@@ -85,7 +102,7 @@ const reviewWithinDeadline = async (
   });
   try {
     return await Promise.race([
-      reviewer.reviewBatch(batch, { signal: controller.signal }).catch(() => undefined), timeout,
+      reviewer.reviewBatch(batch, { signal: controller.signal, timeoutMs, deadlineAtMs }).catch(() => undefined), timeout,
     ]);
   } catch { return undefined; }
   finally {

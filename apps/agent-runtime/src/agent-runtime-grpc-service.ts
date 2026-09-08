@@ -25,12 +25,16 @@ export type AgentRuntimeGrpcServiceOptions = {
   readonly serviceToken?: string;
 };
 
+import { assessmentExecutionWithLease } from "./source-content-assessment-execution-lease";
+
 const schemaVersion = 1;
 
 export const createAgentRuntimeGrpcService = (
   executor: AgentRuntimeExecutorPort,
   options: AgentRuntimeGrpcServiceOptions,
-): AgentRuntimeServiceServer => ({
+): AgentRuntimeServiceServer => {
+  const execute = assessmentExecutionWithLease(executor);
+  return ({
   runAgentTask(
     call: ServerUnaryCall<AgentRuntimeTaskRequest, AgentRuntimeTaskResponse>,
     callback: sendUnaryData<AgentRuntimeTaskResponse>,
@@ -54,8 +58,14 @@ export const createAgentRuntimeGrpcService = (
       return;
     }
 
-    void executor.execute(request).then(
-      (result) => callback(null, toGrpcTaskResponse(result)),
+    if (call.cancelled) {
+      callback(serviceError(status.CANCELLED, "Task cancelled before execution"), null);
+      return;
+    }
+    void execute(request).then(
+      (result) => {
+        if (!call.cancelled) callback(null, toGrpcTaskResponse(result));
+      },
       (error) =>
         callback(
           serviceError(
@@ -111,7 +121,8 @@ export const createAgentRuntimeGrpcService = (
         }),
     );
   },
-});
+  });
+};
 
 const toExecutionRequest = (
   request: AgentRuntimeTaskRequest,

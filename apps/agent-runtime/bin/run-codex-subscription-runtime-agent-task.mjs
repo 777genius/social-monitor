@@ -14,6 +14,7 @@ import { withTrustedCodexWorkerUsage } from "./codex-worker-cli-usage.mjs";
 import {
   admitSubscriptionRuntimeWrapperRequest,
   readerPromotionV2CanaryActivationCapability,
+  readerPromotionV2CanaryPurpose,
   readerPromotionV2CanaryOutputSchema,
   readerPromotionV2CanarySchemaName,
   subscriptionOnlyCodexEnvironment,
@@ -50,7 +51,7 @@ const admission = admitSubscriptionRuntimeWrapperRequest({
 }, canaryActivationRequested
   ? readerPromotionV2CanaryActivationCapability
   : undefined);
-const isReaderPromotionV2Canary = admission.profile.retryMode === "never";
+const isReaderPromotionV2Canary = admission.canonicalRequest.context.purpose === readerPromotionV2CanaryPurpose;
 await writeFile(inputPath, JSON.stringify(admission.canonicalRequest), "utf8");
 
 const { FileBackendCodexWorker, NodeProcessRunner } = await import(
@@ -289,7 +290,11 @@ function createPooledCodexWorker({ input, model, authPool }) {
           maxAccountCycles: 1,
           safeExecutionPolicy: {
             ...codexAuthPoolExecutionPolicy,
-            maxAttempts: authPool.accounts.length,
+            maxAttempts: admission.profile.retryMode === "never" ? 1 : authPool.accounts.length,
+            ...(admission.profile.retryMode === "never" ? {
+              retryOnCapacity: false, retryOnAccountUnavailable: false,
+              retryOnReconnectRequired: false, retryUnknownCleanWorkspace: false,
+            } : {}),
           },
           accounts,
         });

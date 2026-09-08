@@ -1,17 +1,14 @@
-import type { JsonObject, JsonValue } from "@social-monitor/shared-kernel";
+import type { JsonObject } from "@social-monitor/shared-kernel";
 
-import type {
-  SourceContentQualityDecision,
-  SourceContentQualityFlag,
-} from "../../domain";
 import type {
   SourceContentQualityReviewerPort,
   SourceContentQualityReviewRequest,
   SourceContentQualityReviewResult,
 } from "../../ports";
 
-import { bindPromotionAssessment, promotionReviewInstructions, promotionReviewSchemaProperties,
-  promotionWireCandidate } from "./promotion-review-wire";
+import { promotionReviewInstructions, promotionWireCandidate } from "./promotion-review-wire";
+import { buildInstructions, parseReviews, responseSchema, promotionResponseSchema,
+  asRecord, asOptionalRecord } from "./source-content-quality-review-wire";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -30,6 +27,7 @@ const defaultTimeoutMs = 45_000;
 const defaultMaxOutputTokens = 1_500;
 
 export class OpenAiSourceContentQualityReviewerAdapter implements SourceContentQualityReviewerPort {
+  readonly promotionTiming: { readonly batchTimeoutMs: number; readonly totalTimeoutMs: number };
   private readonly apiKey: string;
   private readonly endpointUrl: string;
   private readonly model: string;
@@ -55,11 +53,13 @@ export class OpenAiSourceContentQualityReviewerAdapter implements SourceContentQ
     );
     this.promotionMaxOutputTokens = positiveIntegerOrFallback(options.maxOutputTokens, 4_000);
     this.fetchFn = options.fetchFn ?? fetch;
+    this.promotionTiming = Object.freeze({ batchTimeoutMs: Math.min(this.timeoutMs, 600_000),
+      totalTimeoutMs: Math.min(Math.max(60_000, this.timeoutMs), 600_000) });
   }
 
   async reviewBatch(
     requests: readonly SourceContentQualityReviewRequest[],
-    options?: { readonly signal: AbortSignal },
+    options?: { readonly signal: AbortSignal; readonly timeoutMs?: number },
   ): Promise<readonly SourceContentQualityReviewResult[]> {
     if (requests.length === 0) {
       return [];
@@ -73,14 +73,17 @@ export class OpenAiSourceContentQualityReviewerAdapter implements SourceContentQ
     if (promotion && requests.some((request) => request.promotion === undefined)) {
       throw new Error("Cannot mix promotion and ordinary quality review requests");
     }
+    const timeoutMs = Math.min(this.timeoutMs, options?.timeoutMs ?? this.timeoutMs);
+    if (timeoutMs <= 0 || options?.signal.aborted) throw new Error("Assessment deadline exhausted");
+    const signal = options === undefined ? AbortSignal.timeout(timeoutMs)
+      : AbortSignal.any([options.signal, AbortSignal.timeout(timeoutMs)]);
     const response = await this.fetchFn(this.endpointUrl, {
       method: "POST",
       headers: {
         authorization: `Bearer ${this.apiKey}`,
         "content-type": "application/json",
       },
-      signal: options === undefined ? AbortSignal.timeout(this.timeoutMs)
-        : AbortSignal.any([options.signal, AbortSignal.timeout(this.timeoutMs)]),
+      signal,
       body: JSON.stringify({
         model: this.model,
         store: false,
@@ -116,61 +119,11 @@ export class OpenAiSourceContentQualityReviewerAdapter implements SourceContentQ
       );
     }
 
-    return parseReviews(extractOutputText(body), promotion ? requests : undefined);
+    if (promotion && signal.aborted) throw new Error("Assessment deadline exhausted");
+    return parseReviews(promotion ? completedPromotionOutput(body) : extractOutputText(body),
+      promotion ? requests : undefined);
   }
 }
-
-const buildInstructions = (): string =>
-  [
-    "You review X/Twitter posts before they reach a workspace summary.",
-    "Return only JSON matching the schema.",
-    "Use only the provided candidate text and metadata. Do not browse and do not infer facts from links.",
-    "Prefer reject or needs_context for URL-only, t.co-only or media-only posts.",
-    "Prefer reject for engagement-bait, promo, crypto-adjacent or weak interest match posts.",
-    "Prefer downrank for prediction-market, political or rumor-only posts unless the post has concrete AI product facts.",
-    "Promote only posts that are self-contained, useful and topical.",
-    "The post must be specific enough for a daily AI developer intelligence summary.",
-    "Never override deterministic hard blockers.",
-  ].join("\n");
-
-const parseReviews = (
-  outputText: string | undefined,
-  requests?: readonly SourceContentQualityReviewRequest[],
-): readonly SourceContentQualityReviewResult[] => {
-  if (outputText === undefined) {
-    throw new Error("OpenAI source content quality reviewer returned no text");
-  }
-
-  const parsed = asRecord(JSON.parse(outputText), "quality review output");
-  const reviews = Array.isArray(parsed.reviews) ? parsed.reviews : [];
-
-  return reviews.map((review) => {
-    const record = asRecord(review, "quality review item");
-
-    const candidateId = nonEmptyString(record.candidateId, "candidateId");
-    const request = requests?.find((request) => request.candidateId === candidateId);
-    if (requests !== undefined && (request === undefined ||
-        ![record.confidence, record.qualityScore, record.interestRelevanceScore,
-          record.engagementIntegrityScore].every((score) => typeof score === "number" &&
-            Number.isFinite(score) && score >= 0 && score <= 1) ||
-        !["promote", "keep", "downrank", "reject", "needs_context"].includes(String(record.decision)) ||
-        !Array.isArray(record.flags) || record.flags.some((flag) =>
-          typeof flag !== "string" || !allowedFlags.has(flag as SourceContentQualityFlag)))) {
-      throw new Error("Invalid promotion review result");
-    }
-    return {
-      candidateId,
-      ...(request === undefined ? {} : { assessment: bindPromotionAssessment(record, request) }),
-      decision: readDecision(record.decision),
-      confidence: clampNumber(record.confidence, 0, 1),
-      qualityScore: optionalScore(record.qualityScore),
-      interestRelevanceScore: optionalScore(record.interestRelevanceScore),
-      engagementIntegrityScore: optionalScore(record.engagementIntegrityScore),
-      flags: readFlags(record.flags),
-      reason: nonEmptyString(record.reason, "reason"),
-    };
-  });
-};
 
 const readJsonObject = async (response: Response): Promise<JsonObject> => {
   const value = (await response.json()) as unknown;
@@ -209,72 +162,32 @@ const extractOutputText = (response: JsonObject): string | undefined => {
   return undefined;
 };
 
-const readDecision = (
-  value: JsonValue | undefined,
-): SourceContentQualityDecision => {
-  if (
-    value === "promote" ||
-    value === "keep" ||
-    value === "downrank" ||
-    value === "reject" ||
-    value === "needs_context"
-  ) {
-    return value;
+// Ordinary ranking retains its historical wire compatibility. Admission evidence
+// requires a terminal successful response, including the selected assistant turn.
+const completedPromotionOutput = (response: JsonObject): string => {
+  if (response.status !== "completed" || response.error != null ||
+      response.incomplete_details != null || !Array.isArray(response.output)) {
+    throw new Error("Assessment response is not successfully completed");
   }
-
-  return "downrank";
-};
-
-const readFlags = (
-  value: JsonValue | undefined,
-): readonly SourceContentQualityFlag[] =>
-  Array.isArray(value)
-    ? value
-        .map((item) => (typeof item === "string" ? item : undefined))
-        .filter((item): item is SourceContentQualityFlag =>
-          allowedFlags.has(item as SourceContentQualityFlag),
-        )
-    : [];
-
-const optionalScore = (value: JsonValue | undefined): number | undefined =>
-  typeof value === "number" && Number.isFinite(value)
-    ? clampNumber(value, 0, 1)
-    : undefined;
-
-const clampNumber = (
-  value: JsonValue | undefined,
-  min: number,
-  max: number,
-): number =>
-  typeof value === "number" && Number.isFinite(value)
-    ? Math.min(max, Math.max(min, value))
-    : min;
-
-const nonEmptyString = (
-  value: JsonValue | undefined,
-  field: string,
-): string => {
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value.trim();
+  const messages = response.output.map(asOptionalRecord);
+  if (messages.some((item) => item === undefined ||
+      (item.type !== "reasoning" && item.type !== "message") ||
+      item.error != null || item.refusal != null ||
+      (item.status != null && item.status !== "completed"))) {
+    throw new Error("Invalid assessment output state");
   }
-
-  throw new Error(`OpenAI quality review output missing ${field}`);
-};
-
-const asRecord = (value: unknown, label: string): JsonObject => {
-  const record = asOptionalRecord(value);
-
-  if (record === undefined) {
-    throw new Error(`${label} must be a JSON object`);
+  const assistant = messages.filter((item) => item?.type === "message");
+  const message = assistant[0];
+  if (assistant.length !== 1 || message?.role !== "assistant" ||
+      message.status !== "completed" || !Array.isArray(message.content) ||
+      message.content.length !== 1) throw new Error("Invalid assessment assistant completion");
+  const content = asOptionalRecord(message.content[0]);
+  if (content?.type !== "output_text" || content.refusal != null || content.error != null ||
+      typeof content.text !== "string" || !content.text.trim()) {
+    throw new Error("Invalid assessment completed text");
   }
-
-  return record;
+  return content.text;
 };
-
-const asOptionalRecord = (value: unknown): JsonObject | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as JsonObject)
-    : undefined;
 
 const nonEmptyOrFallback = (
   value: string | undefined,
@@ -294,79 +207,3 @@ const positiveIntegerOrFallback = (
   value === undefined || !Number.isInteger(value) || value <= 0
     ? fallback
     : value;
-
-const allowedFlags = new Set<SourceContentQualityFlag>([
-  "crypto_promo",
-  "engagement_bait",
-  "generic_question",
-  "low_information_density",
-  "media_only_without_context",
-  "missing_topic_context",
-  "needs_link_context",
-  "official_account",
-  "personal_medical_anecdote",
-  "promo_offer",
-  "prediction_market_rumor",
-  "rumor_only",
-  "speculative_financial_challenge",
-  "trusted_author",
-  "tco_only",
-  "url_only",
-  "weak_topic_match",
-  "llm_downranked",
-  "llm_needs_context",
-  "llm_promoted",
-  "llm_rejected",
-]);
-
-const responseSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["reviews"],
-  properties: {
-    reviews: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "candidateId",
-          "decision",
-          "confidence",
-          "qualityScore",
-          "interestRelevanceScore",
-          "engagementIntegrityScore",
-          "flags",
-          "reason",
-        ],
-        properties: {
-          candidateId: { type: "string", minLength: 1 },
-          decision: {
-            type: "string",
-            enum: ["promote", "keep", "downrank", "reject", "needs_context"],
-          },
-          confidence: { type: "number", minimum: 0, maximum: 1 },
-          qualityScore: { type: "number", minimum: 0, maximum: 1 },
-          interestRelevanceScore: { type: "number", minimum: 0, maximum: 1 },
-          engagementIntegrityScore: { type: "number", minimum: 0, maximum: 1 },
-          flags: {
-            type: "array",
-            items: { type: "string" },
-          },
-          reason: { type: "string", minLength: 1 },
-        },
-      },
-    },
-  },
-} as const;
-
-const promotionResponseSchema = {
-  ...responseSchema,
-  properties: { reviews: { ...responseSchema.properties.reviews, items: {
-    ...responseSchema.properties.reviews.items,
-    required: [...responseSchema.properties.reviews.items.required,
-      ...Object.keys(promotionReviewSchemaProperties)],
-    properties: { ...responseSchema.properties.reviews.items.properties,
-      ...promotionReviewSchemaProperties },
-  } } },
-};

@@ -1,4 +1,4 @@
-import { parseSubscriptionRuntimeCliResult } from "./subscription-runtime-cli-support";
+import { cliExecutionResult, parseSubscriptionRuntimeCliResult } from "./subscription-runtime-cli-support";
 
 describe("subscription-runtime CLI result telemetry", () => {
   it("reads exact usage and duration from protocol telemetry only", () => {
@@ -45,5 +45,23 @@ describe("subscription-runtime CLI result telemetry", () => {
       structuredOutput: {},
       warnings: [],
     }))).toMatchObject({ status: "completed" });
+  });
+});
+
+// A parseable intermediate print is not proof of successful process completion.
+describe("subscription CLI terminal process receipt", () => {
+  it.each([
+    { exitCode: 1, signal: null, timedOut: false },
+    { exitCode: null, signal: "SIGTERM" as const, timedOut: false },
+    { exitCode: 0, signal: null, timedOut: true },
+  ])("rejects successful JSON from unsuccessful termination %j", (termination) => {
+    expect(cliExecutionResult({ ...termination, stderr: "", stdout: JSON.stringify({
+      status: "completed", structuredOutput: { reviews: [] }, warnings: [],
+    }) }).status).toBe("failed");
+  });
+  it("accepts successful JSON after clean exit", () => {
+    expect(cliExecutionResult({ exitCode: 0, signal: null, timedOut: false, stderr: "",
+      stdout: JSON.stringify({ status: "completed", structuredOutput: {}, warnings: [] }),
+    }).status).toBe("completed");
   });
 });

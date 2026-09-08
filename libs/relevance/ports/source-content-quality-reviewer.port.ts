@@ -16,9 +16,10 @@ export type SourceContentQualityReviewResult = SourceContentQualityReview & {
 };
 
 export interface SourceContentQualityReviewerPort {
+  readonly promotionTiming?: { readonly batchTimeoutMs: number; readonly totalTimeoutMs: number };
   reviewBatch(
     requests: readonly SourceContentQualityReviewRequest[],
-    options?: { readonly signal: AbortSignal },
+    options?: { readonly signal: AbortSignal; readonly timeoutMs?: number; readonly deadlineAtMs?: number },
   ): Promise<readonly SourceContentQualityReviewResult[]>;
 }
 

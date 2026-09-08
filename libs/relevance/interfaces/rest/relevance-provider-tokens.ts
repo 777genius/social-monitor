@@ -18,6 +18,7 @@ export type RelevancePersistenceMode = 'in-memory' | 'prisma';
 export type RelevanceMemoryProjectionMode = 'disabled' | 'memo-stack';
 export type RelevanceContentQualityReviewerMode =
   | 'disabled'
+  | 'agent-runtime'
   | 'openai-responses';
 
 export const RELEVANCE_PERSISTENCE_MODE = Symbol('RELEVANCE_PERSISTENCE_MODE');
@@ -125,19 +126,22 @@ export const resolveRelevanceMemoryProjectionMode = (env: NodeJS.ProcessEnv): Re
 
 export const resolveRelevanceContentQualityReviewerMode = (
   env: NodeJS.ProcessEnv,
+  summaryModelMode?: string,
 ): RelevanceContentQualityReviewerMode => {
   const value = env.RELEVANCE_CONTENT_QUALITY_REVIEWER ?? 'auto';
 
-  if (value === 'disabled' || value === 'openai-responses') {
+  if (value === 'disabled' || value === 'openai-responses' || value === 'agent-runtime') {
     return value;
   }
 
   if (value === 'auto') {
+    if ((summaryModelMode ?? env.READER_SUMMARY_MODEL_PROVIDER) === 'agent-runtime' ||
+        (env.AGENT_RUNTIME_GRPC_ADDRESS?.trim().length ?? 0) > 0) return 'agent-runtime';
     return hasOpenAiApiKeySource(env) ? 'openai-responses' : 'disabled';
   }
 
   throw new Error(
-    'RELEVANCE_CONTENT_QUALITY_REVIEWER must be "auto", "disabled" or "openai-responses"',
+    'RELEVANCE_CONTENT_QUALITY_REVIEWER must be "auto", "disabled", "agent-runtime" or "openai-responses"',
   );
 };
 

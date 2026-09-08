@@ -55,7 +55,8 @@ export const cliExecutionResult = (
   result: CliExecution,
 ): AgentRuntimeExecutionResult => {
   const parsedResult = tryParseCliResult(result.stdout);
-  if (parsedResult !== undefined && !result.timedOut) {
+  if (parsedResult !== undefined && !result.timedOut &&
+      (parsedResult.status !== "completed" || (result.exitCode === 0 && result.signal === null))) {
     return parsedResult;
   }
   if (result.timedOut || result.exitCode !== 0) {

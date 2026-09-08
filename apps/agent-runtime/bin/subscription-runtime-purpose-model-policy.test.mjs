@@ -356,3 +356,13 @@ const mutatedSchemas = () => {
 const everyObjectIsFrozen = (value) =>
   value === null || typeof value !== "object" ||
   (Object.isFrozen(value) && Object.values(value).every(everyObjectIsFrozen));
+
+
+test("assessment uses the standard structured pool profile with no retry", () => {
+  const result = admitSubscriptionRuntimeWrapperRequest(standardGoldenInput(
+    "social_monitor.relevance.assess_source_content.v1", "structured_output"));
+  assert.equal(result.profile.retryMode, "never");
+  assert.equal(result.profile.outputKind, "structured_output");
+  assert.equal(result.profile.model, "gpt-5.6-sol");
+  assert.equal(result.profile.reasoningEffort, "high");
+});

@@ -15,7 +15,7 @@ const request = (providerKey: string): SourceContentQualityReviewRequest => ({
     interestId: "synthetic-interest", sourceBindingId: "synthetic-binding", sourceItemId: "synthetic-source",
     trustedIntent: "compiler diagnostics", availability: "body_present" }),
 });
-const response = (reviews: unknown) => new Response(JSON.stringify({ output: [{ content: [
+const response = (reviews: unknown) => new Response(JSON.stringify({ status: "completed", output: [{ type: "message", role: "assistant", status: "completed", content: [
   { type: "output_text", text: JSON.stringify({ reviews }) },
 ] }] }), { status: 200 });
 

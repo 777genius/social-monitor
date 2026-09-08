@@ -1,8 +1,4 @@
-import { OpenAiSourceContentQualityReviewerAdapter } from
-  "@social-monitor/relevance/adapters/model/openai-source-content-quality-reviewer.adapter";
-import { resolveRelevanceContentQualityReviewerMode, resolveRelevanceContentQualityOpenAiOptions } from
-  "@social-monitor/relevance/interfaces/rest/relevance-provider-tokens";
-import { NOOP_SOURCE_CONTENT_QUALITY_REVIEWER } from "@social-monitor/relevance/ports";
+import { createSourceContentAssessmentReviewer } from "@social-monitor/relevance/interfaces/rest/source-content-assessment-provider-tokens";
 import {
   AgentRuntimeReaderSummaryStoryRelationVerifier,
   resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions,
@@ -38,12 +34,6 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
   } = input;
   return createReaderSummaryDailyPublicationExecutionWiring({
     ...publicationInput,
-    qualityReviewer: publicationInput.replay !== null ? undefined
-      : publicationInput.qualityReviewer ?? (
-        resolveRelevanceContentQualityReviewerMode(env) === "openai-responses"
-          ? new OpenAiSourceContentQualityReviewerAdapter(
-              resolveRelevanceContentQualityOpenAiOptions(env, { requireApiKey: true }))
-          : NOOP_SOURCE_CONTENT_QUALITY_REVIEWER),
     storyRelationVerifier: buildReaderSummaryDailyStoryRelationVerifier({
       replay: publicationInput.replay,
       summaryModelMode,
@@ -52,6 +42,11 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
       attestationSink: publicationInput.attestationSink,
       storyRelationVerifierGuard,
     }),
+    qualityReviewer: publicationInput.replay !== null ? undefined
+      : publicationInput.qualityReviewer ?? createSourceContentAssessmentReviewer({
+          env, summaryModelMode, client: agentRuntimeClient ?? undefined, clock: publicationInput.clock,
+        }),
+
   });
 };
 
