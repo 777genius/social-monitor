@@ -1,4 +1,5 @@
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
+import { FeedItem } from "@social-monitor/feed/domain";
 import { activeReaderSummaryPurposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { FixedClock } from "@social-monitor/shared-kernel";
 import { sourceContentAssessmentPurpose as purpose } from "./reader-summary-new-input-refresh-assessment-runtime";
@@ -13,7 +14,9 @@ afterEach(() => jest.restoreAllMocks());
 describe("historical unpaid preflight to guarded pool assessment to canonical selection", () => {
   it("finds unassessed social input, spends once and binds selected evidence to intent", async () => {
     const test = await selectorWiring();
-    expect(test.preflight).toEqual({ assessmentCandidateCount: 2 });
+    expect(test.preflight.assessmentCandidateCount).toBe(2);
+    expect(test.preflight.canonicalEvidence.map((item) => item.feedItemId).sort())
+      .toEqual(["synthetic-reddit", "synthetic-x"]);
     expect(test.commands).toEqual([]);
     const selection = await test.selectComplete();
     expect(selection.selectedEvidence.map((e) => e.feedItemId).sort()).toEqual(["synthetic-reddit", "synthetic-x"]);
@@ -184,4 +187,135 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
     expect(() => createRefreshAssessmentReviewer({ env: { RELEVANCE_CONTENT_QUALITY_REVIEWER: mode },
       clock: new FixedClock(refreshNow), runtime })).toThrow(/guarded subscription/u);
   });
+
+  it.each(["promotion_assessment_pending:needs_context", "promotion_assessment_not_requested:hard_gate",
+    "promotion_assessment:reject", "High-context source", ""])(
+    "rejects forged selected identity and body despite reason %j", async (reason) => {
+      const test = await selectorWiring();
+      const selection = await test.selectComplete();
+      const item = selection.selectedEvidence[0]!;
+      const forged = { ...selection, selectedEvidence: [{ ...item,
+        feedItemId: "never-reviewed", sourceItemId: "never-reviewed-source",
+        bodyPreview: "An unreviewed replacement claim.",
+        contentQuality: { ...item.contentQuality!, reason },
+      }] };
+      expect(() => test.assessment.assertComplete(2, forged)).toThrow(/reconciliation/u);
+      const publication = publicationProbe(test.runtime, forged);
+      await expect(publication.attempt()).rejects.toThrow(/reconciliation/u);
+      expect(publication.publish).not.toHaveBeenCalled();
+      const spent = test.commands.length;
+      await test.select();
+      expect(test.commands).toHaveLength(spent);
+    });
+
+  it.each(["promotion_assessment_pending:needs_context", "promotion_assessment:reject", "ordinary reason"])(
+    "rejects an inconsistent reason %j even with reviewed identity and text", async (reason) => {
+      const test = await selectorWiring();
+      const selection = await test.selectComplete();
+      const item = selection.selectedEvidence[0]!;
+      expect(() => test.assessment.assertComplete(2, { ...selection, selectedEvidence: [{ ...item,
+        contentQuality: { ...item.contentQuality!, reason },
+      }] })).toThrow(/reconciliation/u);
+    });
+
+  it.each(["reject", "needs_context"])("rejects a forged eligible %s decision", async (decision) => {
+    const test = await selectorWiring();
+    const selection = await test.selectComplete();
+    const item = selection.selectedEvidence[0]!;
+    expect(() => test.assessment.assertComplete(2, { ...selection, selectedEvidence: [{ ...item,
+      contentQuality: { ...item.contentQuality!, decision },
+    }] })).toThrow(/reconciliation/u);
+  });
+
+  it.each(["github-repo-radar", "github-trending-page", "rss"])(
+    "does not exempt an unknown identity just because its provider claims %s", async (providerKey) => {
+      const test = await selectorWiring();
+      const selection = await test.selectComplete();
+      const item = selection.selectedEvidence[0]!;
+      expect(() => test.assessment.assertComplete(2, { ...selection, selectedEvidence: [{ ...item,
+        feedItemId: "never-reviewed", sourceItemId: "never-reviewed-source", providerKey,
+        bodyPreview: "An unreviewed replacement claim.", promotionFacts: undefined,
+        contentQuality: { ...item.contentQuality!, reason: "ordinary reason" },
+      }] })).toThrow(/reconciliation/u);
+    });
+
+  it.each(["sanitized", "truncated"])("accepts legitimate canonical %s text binding", async (kind) => {
+    const publish = FeedItem.publish.bind(FeedItem);
+    jest.spyOn(FeedItem, "publish").mockImplementation((input) => publish({ ...input,
+      title: kind === "sanitized" ? `  ${input.title}  ` : input.title,
+      bodyPreview: kind === "sanitized" ? `${input.bodyPreview}\n token=synthetic-redaction-fixture`
+        : `${input.bodyPreview} `.repeat(160),
+    }));
+    const test = await selectorWiring();
+    const selection = await test.selectComplete();
+    expect(selection.selectedEvidence.length).toBeGreaterThan(0);
+    if (kind === "sanitized") expect(selection.selectedEvidence.every((item) =>
+      !item.bodyPreview?.includes("synthetic-redaction-fixture"))).toBe(true);
+    else expect(selection.selectedEvidence.some((item) => item.bodyPreview!.length > 12_000)).toBe(true);
+    const publication = publicationProbe(test.runtime, selection);
+    await publication.attempt();
+    expect(publication.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["github-repo-radar", "feed"], ["github-repo-radar", "source"],
+    ["github-trending-page", "feed"], ["github-trending-page", "source"],
+    ["github-repo-radar", "pending"], ["github-trending-page", "rejected"],
+    ...["github-repo-radar", "github-trending-page"].flatMap((provider) =>
+      ["unknown", "text", "provenance", "snapshot mutation"].map((kind) => [provider, kind])),
+  ])(
+    "retains genuine canonical %s exemption and rejects %s inconsistency", async (providerKey, identity) => {
+      const publish = FeedItem.publish.bind(FeedItem);
+      jest.spyOn(FeedItem, "publish").mockImplementation((input) => publish(input.id !== "synthetic-reddit"
+        ? input : { ...input, id: "synthetic-github", sourceItemId: "source-github", sourceBindingId: "binding-github",
+          providerKey, canonicalUrl: "https://github.com/synthetic/compiler-tools",
+          title: "Synthetic compiler tools for AI coding agents",
+          bodyPreview: "A TypeScript compiler toolkit with documented interfaces for AI developer tools.",
+          providerMetadata: providerKey === "github-repo-radar"
+            ? { kind: "github_repository_trend", contentKind: "repository",
+                repository: { fullName: "synthetic/compiler-tools", forksCount: 500 },
+                trend: { primaryWindow: "24h", checkedAt: "2026-09-05T21:55:00.000Z",
+                  totalStars: 20_000, stars24h: 2_000, forks24h: 200 } }
+            : { kind: "github_trending_page_repository",
+                repository: { fullName: "synthetic/compiler-tools", totalStars: 20_000, forksCount: 500 },
+                trending: { rank: 1, starsGained: 2_000, window: "daily" } },
+        }));
+      const test = await selectorWiring();
+      expect(test.preflight.assessmentCandidateCount).toBe(1);
+      const selection = await test.selectComplete();
+      const github = selection.selectedEvidence.find((item) => item.feedItemId === "synthetic-github")!;
+      expect(github).toBeDefined();
+      expect(github.contentQuality!.reason).not.toMatch(/^promotion_assessment/u);
+      const calls = test.commands.filter((command) => command.purpose === purpose);
+      expect(calls).toHaveLength(1);
+      expect(JSON.parse(calls[0]!.prompt).candidates.map((item: { candidateId: string }) => item.candidateId))
+        .toEqual(["synthetic-x"]);
+      const publication = publicationProbe(test.runtime, selection);
+      await publication.attempt();
+      expect(publication.publish).toHaveBeenCalledTimes(1);
+      const social = selection.selectedEvidence.find((item) => item.feedItemId === "synthetic-x")!;
+      expect(social).toBeDefined();
+      // Copying the full exemption classification cannot override a recorded identity.
+      if (identity === "snapshot mutation") {
+        const trusted = test.preflight.canonicalEvidence.find((item) => item.feedItemId === github.feedItemId)!;
+        Object.assign(trusted, { title: "Replacement title after reviewer creation" });
+      }
+      const changed = identity === "unknown"
+        ? { ...github, feedItemId: "unknown-feed", sourceItemId: "unknown-source",
+            sourceBindingId: "unknown-binding", interestId: "unknown-interest" }
+        : identity === "text" || identity === "snapshot mutation"
+          ? { ...github, title: "Replacement title after reviewer creation" }
+        : identity === "provenance"
+          ? { ...github, promotionFacts: { ...github.promotionFacts!, metricsState: "conflict" as const } }
+        : identity === "pending" || identity === "rejected"
+        ? { ...github, contentQuality: { ...github.contentQuality!,
+            reason: identity === "pending" ? "promotion_assessment_pending:needs_context" : "promotion_assessment:reject" } }
+        : { ...github,
+        feedItemId: identity === "feed" ? social.feedItemId : "never-reviewed", sourceItemId: social.sourceItemId,
+        sourceBindingId: social.sourceBindingId, interestId: social.interestId,
+      };
+      expect(() => test.assessment.assertComplete(1, { ...selection, selectedEvidence: [changed] }))
+        .toThrow(/reconciliation/u);
+      expect(() => test.runtime.assertUsable()).toThrow(/reconciliation/u);
+    });
 });

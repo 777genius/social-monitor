@@ -55,7 +55,8 @@ export async function selectorWiring(input: {
   const clock = new FixedClock(refreshNow);
   const preflight = await preflightRefreshSelection({ configuredInterests, feed, date: manifest.date,
     observedThrough: new Date(manifest.observedThrough), clock });
-  const assessment = createRefreshAssessmentReviewer({ env: {}, runtime, clock });
+  const assessment = createRefreshAssessmentReviewer({ env: {}, runtime, clock,
+    canonicalEvidence: preflight.canonicalEvidence });
   const canonical = createReaderSummaryDailyCapturePublicationWiring({
     configuredInterests, qualityReviewer: assessment,
     replay: null, feedItems: feed, summaryClient: {} as never,

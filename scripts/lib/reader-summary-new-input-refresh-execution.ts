@@ -68,7 +68,7 @@ export async function executeNewInputRefresh(input: {
   await assertCurrent();
   await assertRefreshHasNewInput(summary, m.date, m.prior.observedThrough, m.observedThrough);
   await input.assertRuntime();
-  const { assessmentCandidateCount } = await preflightRefreshSelection({ configuredInterests: input.configuredInterests, feed, date: m.date,
+  const { assessmentCandidateCount, canonicalEvidence } = await preflightRefreshSelection({ configuredInterests: input.configuredInterests, feed, date: m.date,
     observedThrough: new Date(m.observedThrough), clock });
   input.record({ status: "preflight", operation: m.operation, assessmentCandidateCount,
     plannedSummaryGenerations: assessmentCandidateCount === 0 ? 0 : 1 });
@@ -119,7 +119,7 @@ export async function executeNewInputRefresh(input: {
     try { runtime.assertUsable(); input.record({ status: "verified_attestation", attestation }); }
     catch (error) { guard.invalidate(); throw error; }
   } };
-  const assessment = createRefreshAssessmentReviewer({ env: input.env, runtime, clock });
+  const assessment = createRefreshAssessmentReviewer({ env: input.env, runtime, clock, canonicalEvidence });
   const canonical = createReaderSummaryDailyCapturePublicationWiring({
     qualityReviewer: assessment,
     replay: null, configuredInterests: input.configuredInterests, feedItems: feed, summaryClient: summary, clock, attestationSink: sink,

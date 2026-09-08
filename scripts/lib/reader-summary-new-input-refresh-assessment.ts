@@ -1,6 +1,8 @@
-import type { SummaryEvidenceSelection } from "@social-monitor/summary/domain";
+import type { SummaryEvidenceItem, SummaryEvidenceSelection } from "@social-monitor/summary/domain";
+import { isGitHubTrendingEvidence } from "@social-monitor/summary/domain";
 import type { ReaderSummaryEvidenceSelectorPort } from "@social-monitor/summary/ports";
 import type { Clock } from "@social-monitor/shared-kernel";
+import { readerPromotionProviderFamily } from "@social-monitor/shared-kernel";
 import { SourceContentQualityPolicy } from "@social-monitor/relevance/domain";
 import type { SourceContentQualityReviewerPort, SourceContentQualityReviewRequest } from "@social-monitor/relevance/ports";
 import { assessedPromotionVerdict } from "@social-monitor/relevance/features/rank-feed-items/promotion-assessment-verdict";
@@ -17,15 +19,21 @@ type AssessmentCompletion = {
 // override cannot bypass its invocation journal, installation or date authority.
 export function createRefreshAssessmentReviewer(input: {
   env: NodeJS.ProcessEnv; clock: Clock; runtime: GuardedRefreshRuntime;
+  canonicalEvidence?: readonly SummaryEvidenceItem[];
 }): SourceContentQualityReviewerPort & AssessmentCompletion {
   if (resolveRelevanceContentQualityReviewerMode(input.env, "agent-runtime") !== "agent-runtime") {
     throw new Error("Refresh assessment requires the guarded subscription runtime");
   }
   const reviewer = createSourceContentAssessmentReviewer({ env: input.env,
     summaryModelMode: "agent-runtime", client: input.runtime, clock: input.clock });
+  // Capture immutable bindings from unpaid canonical ranking, before selection.
+  // Selected objects cannot introduce or rewrite exemption provenance.
+  const exemptBindings = new Set((input.canonicalEvidence ?? [])
+    .filter(isCanonicalAssessmentExemption).map(exemptionBinding));
   const policy = new SourceContentQualityPolicy();
-  const seen = new Set<string>();
-  const eligible = new Map<string, SourceContentQualityReviewRequest>();
+  const seen = new Map<string, SourceContentQualityReviewRequest>();
+  const eligible = new Map<string, { request: SourceContentQualityReviewRequest;
+    verdict: ReturnType<typeof assessedPromotionVerdict> }>();
   let abstained = 0;
   let completed = 0;
   let bytes = 0;
@@ -47,15 +55,30 @@ export function createRefreshAssessmentReviewer(input: {
         throw new Error("Refresh assessment remains pending; cannot publish exhaustive no-signal");
       }
       for (const item of selection.selectedEvidence) {
-        if (!item.contentQuality?.eligibleForSummary || item.contentQuality.needsLlmReview) fail();
-        // GitHub and supplemental evidence retain their existing canonical gates.
-        if (!item.contentQuality?.reason.startsWith("promotion_assessment:")) continue;
-        const request = eligible.get(item.feedItemId);
+        const quality = item.contentQuality;
+        if (!quality?.eligibleForSummary || quality.needsLlmReview ||
+            !["promote", "keep", "downrank"].includes(quality.decision) ||
+            quality.reason.startsWith("promotion_assessment_pending:") ||
+            quality.reason.startsWith("promotion_assessment_not_requested:")) return fail();
+        // An attempted social identity cannot acquire an exemption by relabeling.
+        const recorded = seen.has(item.feedItemId) || [...seen.values()].some((request) =>
+          request.promotion?.sourceItemId === item.sourceItemId &&
+          request.promotion?.sourceBindingId === item.sourceBindingId &&
+          request.promotion?.interestId === item.interestId);
+        const canonicalExemption = !recorded && exemptBindings.has(exemptionBinding(item));
+        if (canonicalExemption) {
+          if (quality.reason.startsWith("promotion_assessment:")) fail();
+          continue;
+        }
+        const assessed = eligible.get(item.feedItemId);
+        const request = assessed?.request;
         if (!request || request.providerKey !== item.providerKey || request.title !== item.title.slice(0, 2_000) ||
             request.bodyPreview !== (item.bodyPreview ?? "").slice(0, 12_000) ||
             request.promotion?.interestId !== item.interestId ||
             request.promotion?.sourceItemId !== item.sourceItemId ||
-            request.promotion?.sourceBindingId !== item.sourceBindingId) fail();
+            request.promotion?.sourceBindingId !== item.sourceBindingId ||
+            assessed?.verdict.reason !== quality.reason ||
+            assessed?.verdict.decision !== quality.decision) fail();
       }
     },
     reviewBatch: async (requests, options) => {
@@ -69,7 +92,7 @@ export function createRefreshAssessmentReviewer(input: {
             seen.size + requests.length > PROMOTION_ASSESSMENT_BOUNDS.candidates ||
             size > PROMOTION_ASSESSMENT_BOUNDS.batchBytes ||
             bytes + size > PROMOTION_ASSESSMENT_BOUNDS.totalBytes) fail();
-        requests.forEach((request) => seen.add(request.candidateId));
+        requests.forEach((request) => seen.set(request.candidateId, request));
         bytes += size; // Consumed before awaiting. Nothing refunds an attempt.
         const reviews = await reviewer.reviewBatch(requests, options);
         if (input.clock.now().getTime() >= deadline || options?.signal.aborted ||
@@ -84,7 +107,7 @@ export function createRefreshAssessmentReviewer(input: {
             if (verdict.reason !== "promotion_assessment_pending:needs_context" &&
                 verdict.reason !== "promotion_assessment_pending:low_confidence") fail();
             abstained++;
-          } else if (verdict.eligibleForSummary) eligible.set(request.candidateId, request);
+          } else if (verdict.eligibleForSummary) eligible.set(request.candidateId, { request, verdict });
         }
         input.runtime.assertUsable();
         completed += requests.length;
@@ -103,4 +126,22 @@ export function withRefreshAssessmentCompletion(selector: ReaderSummaryEvidenceS
     assessment.assertComplete(expected, selection);
     return selection;
   } };
+}
+
+function isCanonicalAssessmentExemption(item: SummaryEvidenceItem): boolean {
+  const facts = item.promotionFacts;
+  const quality = item.contentQuality;
+  return quality?.eligibleForSummary === true && !quality.needsLlmReview &&
+    ["promote", "keep", "downrank"].includes(quality.decision) &&
+    !quality.reason.startsWith("promotion_assessment") && (
+      (readerPromotionProviderFamily(item.providerKey) === "github_radar" &&
+        facts?.contentKind === "repository" && facts.metricsState === "observed" &&
+        facts.metrics?.provider === "github_radar") ||
+      (isGitHubTrendingEvidence(item) && facts?.contentKind === "github_trending"));
+}
+
+function exemptionBinding(item: SummaryEvidenceItem): string {
+  return JSON.stringify([item.feedItemId, item.sourceItemId, item.sourceBindingId,
+    item.interestId, item.providerKey, item.canonicalUrl, item.title, item.bodyPreview,
+    item.promotionFacts, item.contentQuality]);
 }

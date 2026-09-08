@@ -1,3 +1,5 @@
+import { mapRankedItem } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence-support";
+import type { SummaryEvidenceItem } from "@social-monitor/summary/domain";
 import type { ConfiguredInterestReaderPort } from "@social-monitor/relevance/ports";
 import type { FeedItemReadRepositoryPort, PromotionFeedItemSnapshotRepositoryPort } from "@social-monitor/feed/ports";
 import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
@@ -49,7 +51,7 @@ export async function captureRefreshDatabaseAuthority(input: {
 export async function preflightRefreshSelection(input: {
   configuredInterests: ConfiguredInterestReaderPort;
   feed: FeedItemReadRepositoryPort; date: string; observedThrough: Date; clock: Clock;
-}): Promise<{ assessmentCandidateCount: number }> {
+}): Promise<{ assessmentCandidateCount: number; canonicalEvidence: readonly SummaryEvidenceItem[] }> {
   const period = refreshPeriod(input.date);
   const ranked = await new RankFeedItemsUseCase(
     input.feed, new InMemoryUserRelevanceProfileRepository(), input.clock,
@@ -61,7 +63,8 @@ export async function preflightRefreshSelection(input: {
     observedAtOrBefore: input.observedThrough,
   });
   if (!ranked.ok) throw ranked.error;
-  return { assessmentCandidateCount: ranked.value.items.filter((item) =>
+  return { canonicalEvidence: ranked.value.items.map((item) => mapRankedItem(item, input.observedThrough)),
+    assessmentCandidateCount: ranked.value.items.filter((item) =>
     item.contentQuality.reason.startsWith("promotion_assessment_pending:")).length };
 }
 export async function assertRefreshHasNewInput(client: Pick<PrismaSummaryClient, "$queryRaw">,
