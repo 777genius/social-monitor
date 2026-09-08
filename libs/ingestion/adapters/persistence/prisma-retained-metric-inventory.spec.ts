@@ -15,7 +15,7 @@ function setup() {
     interest: { findMany: jest.fn(async () => [{ id: "interest", status: "ENABLED", deletedAt: null }]) },
     sourceCatalogEntry: { findMany: jest.fn(async () => [{ id: "catalog", providerKey: "reddit" }]) },
     feedItem: { findMany: jest.fn(async (): Promise<Record<string, unknown>[]> => []) },
-    sourceItemEngagementObservation: { count: jest.fn(async () => 0) },
+    sourceItemEngagementObservation: { groupBy: jest.fn(async () => []) },
   };
   return { client, binding, source, inventory: new PrismaRetainedMetricInventory(client as PrismaMetricInventoryClient, metricRefreshDigest) };
 }
@@ -69,7 +69,7 @@ describe("scoped retained metric inventory", () => {
   });
   it("rejects an otherwise visible projection outside the retained source publication scope", async () => {
     const f = setup();
-    f.client.feedItem.findMany.mockResolvedValue([{ id: "feed", sourceBindingId: f.binding.id, interestId: "interest",
+    f.client.feedItem.findMany.mockResolvedValue([{ id: "feed", sourceItemId: f.source.id, sourceBindingId: f.binding.id, interestId: "interest",
       providerKey: "reddit", canonicalUrl: f.source.canonicalUrl, status: "VISIBLE", publishedAt: new Date("2026-08-29T00:00:00Z") }]);
     expect((await f.inventory.list(scope))[0]!.rejection).toBe("feed_lineage_mismatch");
   });
@@ -78,7 +78,7 @@ describe("scoped retained metric inventory", () => {
     if (state === "disabled") f.binding.status = "DISABLED";
     else if (state === "unbound") f.client.sourceBinding.findMany.mockResolvedValue([]);
     else f.client.feedItem.findMany.mockResolvedValue(Array.from({ length: state === "fanout" ? 1001 : 1 }, (_, i) => ({
-      id: `feed-${i}`, sourceBindingId: target().sourceBindingId, status: state === "fanout" ? "VISIBLE" : state })));
+      id: `feed-${i}`, sourceItemId: f.source.id, sourceBindingId: target().sourceBindingId, status: state === "fanout" ? "VISIBLE" : state })));
     expect((await f.inventory.list(scope, [f.source.id]))[0]!.rejection).not.toBeNull();
   });
 });
