@@ -284,6 +284,8 @@ const readFailure = (
 };
 
 const safeRuntimeFailureDetailKeys = new Set([
+  "capacityReason",
+  "safeExecutorStatus",
   "availability",
   "cooldownUntil",
   "reason",

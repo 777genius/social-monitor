@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { withTrustedCodexWorkerUsage } from "./codex-worker-cli-usage.mjs";
+import { subscriptionRuntimeFailureDetails } from "./subscription-runtime-failure-details.mjs";
 
 import {
   admitSubscriptionRuntimeWrapperRequest,
@@ -345,10 +346,7 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
             accountCount: authPool.accounts.length,
           }),
           {
-            details: {
-              reason: result.reason,
-              ...(result.failureDetails ?? {}),
-            },
+            details: subscriptionRuntimeFailureDetails(result),
           },
         );
       } finally {
