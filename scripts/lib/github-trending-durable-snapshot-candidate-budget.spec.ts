@@ -1,5 +1,3 @@
-import type { Pool } from "pg";
-
 import {
   githubTrendingCandidateFieldBounds as bounds,
   githubTrendingCandidateJsonByteLimit,
@@ -29,7 +27,7 @@ const prismaRow = (row: Candidate) => ({
 });
 const prisma = (rows: Candidate[]) => {
   const query = jest.fn().mockResolvedValue({ rows: rows.map(prismaRow) });
-  return { query, reader: new PrismaGitHubTrendingDurableSnapshotReader({ query } as unknown as Pick<Pool, "query">) };
+  return { query, reader: new PrismaGitHubTrendingDurableSnapshotReader({ query } as unknown as ConstructorParameters<typeof PrismaGitHubTrendingDurableSnapshotReader>[0]) };
 };
 
 describe("GitHub accumulated candidate allocation budget", () => {
