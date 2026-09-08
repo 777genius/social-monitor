@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -13,7 +13,12 @@ import { implementation } from "./retained-metric-renewal.spec-support";
 
 const sourcePath = "libs/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.use-case.ts";
 function reviewedBaseExecutor(): typeof RefreshRetainedMetricsUseCase {
-  const source = execFileSync("git", ["show", `ad58aae7ca3e7fda6c705ee2d91b25388a78b374:${sourcePath}`], { encoding: "utf8" });
+  // Reuse the canonical spec's frozen base and independently pinned integrity checks.
+  const bytes = readFileSync(resolve(__dirname, "../test-fixtures/retained-metric-legacy/refresh-retained-metrics.ad58aae7.ts.txt"));
+  if (bytes.length !== 10251 || createHash("sha256").update(bytes).digest("hex") !== "4ed041799c2c43aeef326364dd86cad33fb6293b9b7b2a6781bb5086134740bf") {
+    throw new Error("Legacy executor fixture integrity mismatch");
+  }
+  const source = bytes.toString("utf8");
   const exports: Record<string, unknown> = {};
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023 } }).outputText;
   runInNewContext(compiled, { exports, require: (name: string) => jest.requireActual(name.startsWith(".") ? resolve(dirname(sourcePath), name) : name) });
