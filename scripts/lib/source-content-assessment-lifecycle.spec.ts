@@ -8,8 +8,8 @@ import type { AgentRuntimeExecutionResult } from "../../apps/agent-runtime/src/a
 const failed = { code: "synthetic", safeMessage: "Synthetic failure", retryable: false,
   reconnectRequired: false, causeCategory: "synthetic", details: {} };
 
-describe("assessment terminal receipts and execution lease accounting", () => {
-  it.each(["failed", "waiting_for_input", "missing-receipt", "failed-receipt", "wrong-output", "wrong-model"])(
+describe("assessment completed receipts and caller abandonment", () => {
+  it.each(["failed", "waiting_for_input", "missing-receipt", "failed-receipt", "wrong-output", "wrong-model", "wrong-request", "wrong-purpose"])(
     "rejects %s even with valid bound review JSON", async (mutation) => {
       const client = refreshTestRuntimeClient(async (request): Promise<AgentRuntimeExecutionResult> => {
         const result = await attestRefreshExecution(request, outputFor(request));
@@ -18,7 +18,9 @@ describe("assessment terminal receipts and execution lease accounting", () => {
         if (mutation === "missing-receipt") return { ...result, executionAttestation: undefined };
         if (mutation === "failed-receipt") return { ...result, failure: failed };
         return { ...result, executionAttestation: { ...result.executionAttestation!,
-          ...(mutation === "wrong-output" ? { selectedOutputSha256: "f".repeat(64) } : { model: "wrong" }) } };
+          ...(mutation === "wrong-output" ? { selectedOutputSha256: "f".repeat(64) }
+            : mutation === "wrong-request" ? { requestId: "another-request" }
+            : mutation === "wrong-purpose" ? { purpose: "another-purpose" } : { model: "wrong" }) } };
       });
       const reviewer = new AgentRuntimeSourceContentQualityReviewerAdapter({ client, clock: new SystemClock(),
         ids: { generate: () => "synthetic-terminal" }, batchTimeoutMs: 300_000, totalTimeoutMs: 600_000 });
@@ -27,7 +29,7 @@ describe("assessment terminal receipts and execution lease accounting", () => {
       expect(result.candidates[0]!.evidenceQualityScore).toBe(0);
     });
 
-  it.each(["queued", "running"])("retains cancelled %s ownership while independent assessments complete", async (phase) => {
+  it.each(["success", "error"])("suppresses cancelled late %s while independent assessments complete", async (outcome) => {
     jest.useFakeTimers();
     jest.setSystemTime(cutoff);
     try {
@@ -36,38 +38,30 @@ describe("assessment terminal receipts and execution lease accounting", () => {
       const client = refreshTestRuntimeClient(async (request) => {
         calls++;
         if (calls === 1) {
-          if (phase === "running") await new Promise((resolve) => setTimeout(resolve, 5_000));
           await new Promise<void>((resolve) => { settle = resolve; });
+          if (outcome === "error") throw new Error("Synthetic late error");
         }
         return attestRefreshExecution(request, outputFor(request));
       });
       const reviewer = (id: string) => new AgentRuntimeSourceContentQualityReviewerAdapter({ client, clock: new SystemClock(),
-        ids: { generate: () => `lease-${id}` }, batchTimeoutMs: 300_000, totalTimeoutMs: 600_000 });
+        ids: { generate: () => `assessment-${id}` }, batchTimeoutMs: 300_000, totalTimeoutMs: 600_000 });
       const controller = new AbortController();
       const first = run([fixture("first")], reviewer("first"), { clock: new SystemClock(),
         execution: { deadlineAtMs: cutoff.getTime() + 600_000, signal: controller.signal } });
       await jest.advanceTimersByTimeAsync(10_000);
-      const duplicate = () => run([fixture("first")], reviewer("first"), { clock: new SystemClock() });
-      expect((await duplicate()).ranking.orderedCandidateIds).toEqual([]);
       expect(calls).toBe(1);
       controller.abort();
       const result = await first;
       expect(result.ranking.orderedCandidateIds).toEqual([]);
-      expect((await duplicate()).ranking.orderedCandidateIds).toEqual([]);
       expect(calls).toBe(1);
       const second = await run([fixture("second")], reviewer("second"), { clock: new SystemClock() });
       expect(second.ranking.orderedCandidateIds).toEqual(["second"]);
       expect(calls).toBe(2);
-      // An independent completion must not release the cancelled execution's ownership.
-      expect((await duplicate()).ranking.orderedCandidateIds).toEqual([]);
       expect(calls).toBe(2);
       settle();
       await jest.advanceTimersByTimeAsync(1);
       expect(result.ranking.orderedCandidateIds).toEqual([]);
       expect(result.candidates[0]!.evidenceQualityScore).toBe(0);
-      // Reuse the affected identity to prove terminal settlement, not merely independence.
-      expect((await duplicate()).ranking.orderedCandidateIds).toEqual(["first"]);
-      expect(calls).toBe(3);
     } finally { jest.useRealTimers(); }
   });
 

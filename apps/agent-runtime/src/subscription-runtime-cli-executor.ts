@@ -7,7 +7,6 @@ import {
   type StructuredLogger,
 } from "@social-monitor/platform-logging";
 import type {
-  AgentRuntimeExecutionObserver,
   AgentRuntimeExecutionRequest,
   AgentRuntimeExecutionResult,
   AgentRuntimeExecutorHealth,
@@ -68,9 +67,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
 
   async execute(
     request: AgentRuntimeExecutionRequest,
-    observeExecution?: AgentRuntimeExecutionObserver,
   ): Promise<AgentRuntimeExecutionResult> {
-    observeExecution?.("not_started");
     const startedAt = Date.now();
     this.logger.info("agent runtime task started", taskFields(request));
     let admission: AdmittedSubscriptionRuntimeRequest;
@@ -115,7 +112,6 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       );
       const initialResult = cliExecutionResult(
         await runCli({
-          observeExecution,
           command: admittedInstallation.executablePath,
           args: this.buildArgs(request, inputPath, admission.profile),
           env: this.executionEnvPatch(
@@ -129,7 +125,9 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         const result = await this.attestCompletedResult(
           request,
           admission,
-          initialResult,
+          request.purpose === "social_monitor.relevance.assess_source_content.v1" && initialResult.failure
+            ? { ...initialResult, failure: { ...initialResult.failure, retryable: false } }
+            : initialResult,
           admittedInstallation,
         );
         this.logResult(request, result, startedAt);
@@ -161,7 +159,6 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       }
       const recovered = cliExecutionResult(
         await runCli({
-          observeExecution,
           command: admittedInstallation.executablePath,
           args: this.buildArgs(request, inputPath, admission.profile, true),
           env: this.executionEnvPatch(true, admission.profile),
@@ -193,6 +190,13 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         durationMs: Date.now() - startedAt,
         error: safeErrorMessage(error),
       });
+      if (request.purpose === "social_monitor.relevance.assess_source_content.v1") {
+        return { status: "failed", warnings: [], failure: {
+          code: "agent_runtime.cli_error", safeMessage: "Assessment runtime execution failed",
+          retryable: false, reconnectRequired: false,
+          causeCategory: "subscription_runtime_cli", details: {},
+        } };
+      }
       throw error;
     } finally {
       try {

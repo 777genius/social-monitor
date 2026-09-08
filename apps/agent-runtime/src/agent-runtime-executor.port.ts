@@ -60,20 +60,9 @@ export type AgentRuntimeExecutorHealth = {
   readonly warnings: readonly AgentRuntimeExecutionWarning[];
 };
 
-// Executor-owned evidence, never caller cancellation or a lease expiry.
-// Indeterminate means capacity remains owned by the existing pool/runtime.
-export type AgentRuntimeExecutionLifecycle =
-  | "not_started"
-  | "terminal"
-  | "indeterminate";
-export type AgentRuntimeExecutionObserver = (
-  lifecycle: AgentRuntimeExecutionLifecycle,
-) => void;
-
 export interface AgentRuntimeExecutorPort {
   execute(
     request: AgentRuntimeExecutionRequest,
-    observeExecution?: AgentRuntimeExecutionObserver,
   ): Promise<AgentRuntimeExecutionResult>;
   checkHealth(): Promise<AgentRuntimeExecutorHealth>;
 }

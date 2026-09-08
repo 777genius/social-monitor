@@ -51,6 +51,7 @@ const admission = admitSubscriptionRuntimeWrapperRequest({
 }, canaryActivationRequested
   ? readerPromotionV2CanaryActivationCapability
   : undefined);
+const isSourceContentAssessment = admission.canonicalRequest.context.purpose === "social_monitor.relevance.assess_source_content.v1";
 const isReaderPromotionV2Canary = admission.canonicalRequest.context.purpose === readerPromotionV2CanaryPurpose;
 await writeFile(inputPath, JSON.stringify(admission.canonicalRequest), "utf8");
 
@@ -84,6 +85,10 @@ const createStrictCodexWorker = (input) => {
       return createReaderPromotionV2CanaryWorker({ input, model, authPool });
     }
     return createPooledCodexWorker({ input, model, authPool });
+  }
+
+  if (isSourceContentAssessment) {
+    throw new Error("Source content assessment requires the configured Codex auth pool");
   }
 
   return new FileBackendCodexWorker({
@@ -243,6 +248,9 @@ function createPooledCodexWorker({ input, model, authPool }) {
       if (executor !== undefined) {
         throw new Error("Pooled Codex worker accepts one task per CLI process");
       }
+      if (isSourceContentAssessment && (job.logicalThread !== undefined || job.recoveryPacket !== undefined)) {
+        throw new Error("Source content assessment rejects continuation");
+      }
       const taskId = job.runId?.trim();
       if (!taskId) {
         throw new Error("Pooled Codex worker requires a stable runId");
@@ -297,6 +305,10 @@ function createPooledCodexWorker({ input, model, authPool }) {
             } : {}),
           },
           accounts,
+          // Assessment never consumes native startup guidance or continuation.
+          ...(isSourceContentAssessment ? {
+            controlInbox: { consumeForContinuation: async () => undefined },
+          } : {}),
         });
         const result = await executor.run({
           ...job,

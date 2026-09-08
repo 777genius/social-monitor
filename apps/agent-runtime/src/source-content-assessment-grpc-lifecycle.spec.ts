@@ -2,11 +2,13 @@ import { Metadata } from "@grpc/grpc-js";
 import { AgentRuntimeProvider } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
 import { createAgentRuntimeGrpcService } from "./agent-runtime-grpc-service";
 import type { AgentRuntimeExecutionResult } from "./agent-runtime-executor.port";
-import { assessmentRequest } from "./source-content-assessment-lease.spec-support";
+import { assessmentRequest } from "./source-content-assessment-runtime.spec-support";
 
-it("caller cancellation keeps only its outstanding ownership until executor settlement", async () => {
+it.each(["success", "error"])("cancellation suppresses late %s while independent work completes", async (outcome) => {
+  let fail!: (error: Error) => void;
   const settle = new Map<string, (result: AgentRuntimeExecutionResult) => void>();
-  const execute = jest.fn((request) => new Promise<AgentRuntimeExecutionResult>((resolve) => {
+  const execute = jest.fn((request) => new Promise<AgentRuntimeExecutionResult>((resolve, reject) => {
+    if (request.requestId === "first") fail = reject;
     settle.set(request.requestId, resolve);
   }));
   const service = createAgentRuntimeGrpcService({ execute, checkHealth: jest.fn() }, {});
@@ -30,21 +32,13 @@ it("caller cancellation keeps only its outstanding ownership until executor sett
   first.cancelled = true;
   const otherCallback = invoke(call("other"));
   expect(execute).toHaveBeenCalledTimes(2);
-  const duplicate = invoke(call("first"));
-  await flush();
-  expect(duplicate).toHaveBeenCalledWith(null, expect.objectContaining({
-    failure: expect.objectContaining({ code: "assessment_execution_leased" }),
-  }));
   settle.get("other")!(completed);
   await flush();
   expect(otherCallback).toHaveBeenCalledTimes(1);
   expect(firstCallback).not.toHaveBeenCalled();
-  settle.get("first")!(completed);
+  if (outcome === "success") settle.get("first")!(completed);
+  else fail(new Error("Synthetic late execution error"));
   await flush();
   expect(firstCallback).not.toHaveBeenCalled();
-  const resumed = invoke(call("first"));
-  expect(execute).toHaveBeenCalledTimes(3);
-  settle.get("first")!(completed);
-  await flush();
-  expect(resumed).toHaveBeenCalledTimes(1);
+  expect(execute).toHaveBeenCalledTimes(2);
 });
