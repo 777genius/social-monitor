@@ -1,3 +1,4 @@
+import { checkConfiguredInterestReader } from "./lib/check-configured-interest-reader";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -315,6 +316,8 @@ async function buildReport(): Promise<Report> {
       feedItems,
       new InMemoryUserRelevanceProfileRepository(),
       clock,
+      undefined, undefined, undefined, undefined, undefined,
+      checkConfiguredInterestReader(localDatabaseUrl),
     );
     const metrics = new InMemoryMetricsRecorder();
     const evidenceSelector = new RelevanceReaderSummaryEvidenceSelector(

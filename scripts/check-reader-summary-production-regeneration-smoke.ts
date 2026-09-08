@@ -1,3 +1,4 @@
+import { checkConfiguredInterestReader } from "./lib/check-configured-interest-reader";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -423,6 +424,8 @@ async function regenerateSummary(
       feedItems,
       new InMemoryUserRelevanceProfileRepository(),
       clock,
+      undefined, undefined, undefined, undefined, undefined,
+      checkConfiguredInterestReader(databaseUrl),
     );
     const metrics = new InMemoryMetricsRecorder();
     const evidenceSelector = new RelevanceReaderSummaryEvidenceSelector(
