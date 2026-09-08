@@ -13,14 +13,11 @@ const inlineJsonCredentialPattern =
   /"((?:access|refresh|id)?[_-]?token|api[_-]?key|client[_-]?secret|secret|credential|authorization|password|session|cookie|signature|private[_-]?key)"\s*:\s*"[^"]+"/gi;
 const inlineBearerPattern = /\b(?:bearer|basic)\s+(?!jwt\b|client\b)[A-Za-z0-9._~+/-]{8,}=*/gi;
 const inlineGeneratedSecretPattern = /\b(?:smk|whsec)_[A-Za-z0-9_-]+\b/g;
-const inlineUrlWithPasswordPattern =
-  /\b([a-z][a-z0-9+.-]*:\/\/)([^:\s/@]+):([^@\s]+)@/gi;
 const sensitiveTextFragmentPatterns = [
   inlineJsonCredentialPattern,
   inlineCredentialPattern,
   inlineBearerPattern,
   inlineGeneratedSecretPattern,
-  inlineUrlWithPasswordPattern,
 ] as const;
 
 export const isSensitiveKey = (key: string): boolean => sensitiveKeyPattern.test(key);
@@ -32,18 +29,17 @@ export const isSensitiveString = (value: string): boolean =>
   urlWithPasswordPattern.test(value);
 
 export const redactSensitiveText = (value: string): string =>
-  value
+  redactUrlPasswords(value
     .replace(inlineJsonCredentialPattern, (_match, key: string) => `"${key}":"${REDACTED_VALUE}"`)
     .replace(inlineBearerPattern, REDACTED_VALUE)
     .replace(inlineCredentialPattern, (_match, key: string) => `${key}=${REDACTED_VALUE}`)
-    .replace(inlineGeneratedSecretPattern, REDACTED_VALUE)
-    .replace(inlineUrlWithPasswordPattern, (_match, protocol: string) => `${protocol}${REDACTED_VALUE}@`);
+    .replace(inlineGeneratedSecretPattern, REDACTED_VALUE));
 
 export const countSensitiveTextFragments = (value: string): number =>
   sensitiveTextFragmentPatterns.reduce(
     (count, pattern) => count + [...value.matchAll(pattern)].length,
     0,
-  );
+  ) + scanUrlPasswords(value, () => undefined);
 
 export const redactSensitiveResponseText = (value: string, maxLength = 500): string =>
   redactSensitiveText(value
@@ -116,3 +112,62 @@ const redactSensitiveMetadataValue = (
 
 const redactSensitiveStringValue = (value: string): string =>
   isSensitiveString(value) ? REDACTED_VALUE : redactSensitiveText(value);
+
+// Match the legacy ASCII scheme/word-boundary grammar without restarting at
+// every letter after a hyphen. All cursors advance; password lookahead is shared
+// across failed candidates, including nested URLs without a terminating @.
+const scanUrlPasswords = (
+  value: string,
+  onMatch: (credentialsStart: number, end: number) => void,
+): number => {
+  let schemeStart = -1;
+  let passwordEnd = 0;
+  let count = 0;
+  for (let cursor = 0; cursor < value.length; cursor += 1) {
+    const character = value.charAt(cursor);
+    if (/[a-z0-9+.-]/i.test(character)) {
+      if (schemeStart < 0 && /[a-z]/i.test(character)
+        && (cursor === 0 || !/[a-z0-9_]/i.test(value.charAt(cursor - 1)))) {
+        schemeStart = cursor;
+      }
+      continue;
+    }
+    const hasScheme = schemeStart >= 0;
+    schemeStart = -1;
+    if (!hasScheme || character !== ':' || value.charAt(cursor + 1) !== '/'
+      || value.charAt(cursor + 2) !== '/') {
+      continue;
+    }
+    const credentialsStart = cursor + 3;
+    let separator = credentialsStart;
+    while (separator < value.length && !/[:\s/@]/.test(value.charAt(separator))) {
+      separator += 1;
+    }
+    if (separator === credentialsStart || value.charAt(separator) !== ':') {
+      continue;
+    }
+    const passwordStart = separator + 1;
+    passwordEnd = Math.max(passwordEnd, passwordStart);
+    while (passwordEnd < value.length && !/[@\s]/.test(value.charAt(passwordEnd))) {
+      passwordEnd += 1;
+    }
+    if (passwordEnd === passwordStart || value.charAt(passwordEnd) !== '@') {
+      continue;
+    }
+    onMatch(credentialsStart, passwordEnd + 1);
+    count += 1;
+    cursor = passwordEnd;
+  }
+  return count;
+};
+
+const redactUrlPasswords = (value: string): string => {
+  const parts: string[] = [];
+  let copiedThrough = 0;
+  scanUrlPasswords(value, (credentialsStart, end) => {
+    parts.push(value.slice(copiedThrough, credentialsStart), `${REDACTED_VALUE}@`);
+    copiedThrough = end;
+  });
+  parts.push(value.slice(copiedThrough));
+  return parts.join('');
+};
