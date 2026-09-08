@@ -1,3 +1,4 @@
+import { checkConfiguredInterestReader, requireFreshCheckSelection } from "./lib/check-configured-interest-reader";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -59,6 +60,7 @@ type ProviderCount = {
 
 type Report = {
   readonly schemaVersion: 1;
+  readonly selectionAuthority: "current_monitoring_configuration";
   readonly artifactFormat: "yesterday-reader-summary-final-replay-v1";
   readonly collectionDate: string;
   readonly generatedBy: string;
@@ -132,7 +134,7 @@ type Report = {
 const { collectionDate } = collectionDateOptionOrDefault("2026-07-03");
 const update = process.argv.includes("--update");
 const allowDirtyCollection = process.argv.includes("--allow-dirty-collection");
-const outputPath = "ops/evals/yesterday-reader-summary-final-replay.v1.json";
+const outputPath = "ops/evals/yesterday-reader-summary-final-replay.fresh.v1.json";
 const maxEvidenceItems = 40;
 const maxStories = 10;
 const primarySources = ["reddit", "x-twitter"];
@@ -153,6 +155,7 @@ const technicalLeakFragments = [
 void main();
 
 async function main(): Promise<void> {
+  requireFreshCheckSelection(process.argv.slice(2));
   const report = await tryBuildReport();
 
   if (report === undefined) {
@@ -181,14 +184,14 @@ async function main(): Promise<void> {
 
   if (!existsSync(outputPath)) {
     throw new Error(
-      `${outputPath} is missing. Run npm run check:yesterday-reader-summary-final-replay -- --update`,
+      `${outputPath} is missing. Run npm run check:yesterday-reader-summary-final-replay -- --fresh-selection --update`,
     );
   }
 
   const expected = normalizeLineEndings(readFileSync(outputPath, "utf8"));
   if (expected !== serialized) {
     throw new Error(
-      `${outputPath} is stale. Run npm run check:yesterday-reader-summary-final-replay -- --update`,
+      `${outputPath} is stale. Run npm run check:yesterday-reader-summary-final-replay -- --fresh-selection --update`,
     );
   }
 
@@ -276,6 +279,8 @@ async function tryBuildReport(): Promise<Report | undefined> {
       feedItems,
       new InMemoryUserRelevanceProfileRepository(),
       clock,
+      undefined, undefined, undefined, undefined, undefined,
+      checkConfiguredInterestReader(localDatabaseUrl),
     );
     const metrics = new InMemoryMetricsRecorder();
     const evidenceSelector = new RelevanceReaderSummaryEvidenceSelector(
@@ -479,9 +484,10 @@ async function tryBuildReport(): Promise<Report | undefined> {
     };
     const reportWithoutSecretGate = {
       schemaVersion: 1,
+      selectionAuthority: "current_monitoring_configuration",
       artifactFormat: "yesterday-reader-summary-final-replay-v1",
       collectionDate,
-      generatedBy: "npm run check:yesterday-reader-summary-final-replay",
+      generatedBy: "npm run check:yesterday-reader-summary-final-replay -- --fresh-selection",
       model: {
         liveNetwork: false,
         replayTarget: "workspace-reader-summary-final-text",
@@ -550,9 +556,7 @@ function validateExistingReport(): void {
     throw new Error(`${outputPath} failed existing artifact validation`);
   }
 
-  console.log(
-    `Yesterday reader summary final replay artifact OK (${report.collectionDate}; local source unavailable)`,
-  );
+  throw new Error("Fresh selection unavailable; stored replay report is not current configuration evidence");
 }
 
 function collectUserFacingText(
