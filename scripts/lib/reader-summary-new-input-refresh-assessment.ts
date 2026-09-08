@@ -30,6 +30,9 @@ export function createRefreshAssessmentReviewer(input: {
   // Selected objects cannot introduce or rewrite exemption provenance.
   const exemptBindings = new Set((input.canonicalEvidence ?? [])
     .filter(isCanonicalAssessmentExemption).map(exemptionBinding));
+  // Bind the complete sanitized source representation independently of the
+  // capped assessment request, for social and exempt GitHub evidence alike.
+  const sourceTextBindings = new Set((input.canonicalEvidence ?? []).map(sourceTextBinding));
   const policy = new SourceContentQualityPolicy();
   const seen = new Map<string, SourceContentQualityReviewRequest>();
   const eligible = new Map<string, { request: SourceContentQualityReviewRequest;
@@ -55,6 +58,7 @@ export function createRefreshAssessmentReviewer(input: {
         throw new Error("Refresh assessment remains pending; cannot publish exhaustive no-signal");
       }
       for (const item of selection.selectedEvidence) {
+        if (!sourceTextBindings.has(sourceTextBinding(item))) fail();
         const quality = item.contentQuality;
         if (!quality?.eligibleForSummary || quality.needsLlmReview ||
             !["promote", "keep", "downrank"].includes(quality.decision) ||
@@ -144,4 +148,9 @@ function exemptionBinding(item: SummaryEvidenceItem): string {
   return JSON.stringify([item.feedItemId, item.sourceItemId, item.sourceBindingId,
     item.interestId, item.providerKey, item.canonicalUrl, item.title, item.bodyPreview,
     item.promotionFacts, item.contentQuality]);
+}
+
+function sourceTextBinding(item: SummaryEvidenceItem): string {
+  return JSON.stringify([item.feedItemId, item.sourceItemId, item.sourceBindingId,
+    item.interestId, item.providerKey, { sourceText: item.sourceText }]);
 }

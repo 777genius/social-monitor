@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-executor";
+import type { SubscriptionRuntimeInstallationIdentity } from "./subscription-runtime-installation";
 import { assessmentRequest, syntheticInstallation } from "./source-content-assessment-runtime.spec-support";
 
 jest.mock("node:child_process", () => ({ spawn: jest.fn() }));
@@ -23,9 +24,12 @@ class SyntheticChild extends EventEmitter {
   }
 }
 const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+const installation: SubscriptionRuntimeInstallationIdentity = {
+  ...syntheticInstallation, packageRootRealpath: "/synthetic",
+};
 const makeRun = () => { const executor = new SubscriptionRuntimeCliExecutor({
-  command: syntheticInstallation.executablePath, ephemeral: false,
-  installationInspector: { inspect: jest.fn(async () => syntheticInstallation) }, logger,
+  command: installation.executablePath, ephemeral: false,
+  installationInspector: { inspect: jest.fn(async () => installation) }, logger,
 }); return executor.execute.bind(executor); };
 const waitForChild = async (count: number) => {
   for (let turn = 0; turn < 30 && children.length < count; turn++) await Promise.resolve();

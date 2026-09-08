@@ -57,7 +57,7 @@ describe("refresh operation assessment runtime budgets and receipts", () => {
   });
   it.each(["failed", "missing receipt", "wrong request", "wrong canonical digest", "wrong installation", "wrong output", "forged usage"])(
     "quarantines %s and prevents further invocation", async (kind) => {
-      const test = wiring((result) => {
+      const test = wiring((result): AgentRuntimeTaskResult => {
         switch (kind) {
           case "failed": return { ...result, status: "failed" };
           case "missing receipt": return { ...result, executionAttestation: undefined };
@@ -65,7 +65,7 @@ describe("refresh operation assessment runtime budgets and receipts", () => {
           case "wrong canonical digest": return { ...result, executionAttestation: { ...result.executionAttestation!, canonicalRequestSha256: "a".repeat(64) } };
           case "wrong installation": return { ...result, executionAttestation: { ...result.executionAttestation!, launcherSha256: "b".repeat(64) } };
           case "wrong output": return { ...result, structuredOutput: { reviews: ["tampered"] } };
-          default: return { ...result, usage: { inputTokens: 3, outputTokens: 2, totalTokens: 0 } };
+          default: return { ...result, usage: { inputTokens: 3, outputTokens: 2, totalTokens: 0, estimatedCostUsd: 0 } };
         }
       });
       await expect(test.runtime.runTask(command())).rejects.toThrow(/consumed/u);
