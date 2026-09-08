@@ -30,6 +30,7 @@ function check(text: string) {
       { name: 'Set up Node.js', if: condition, uses: setup,
         with: { 'node-version': 22, cache: 'npm' } },
       { name: 'Prepare the same backend source and generated dependencies', if: condition,
+        env: { DATABASE_URL: 'postgresql://fixture:fixture@127.0.0.1:5432/fixture' },
         run: 'set -euo pipefail\ntest "$(git rev-parse HEAD)" = "$GITHUB_SHA"\nnpm ci\nnpm run prisma:generate\nnpm run build\n' },
       { name: 'Test affected backend modules', if: condition,
         env: { BACKEND_BASE: '${{ needs.plan.outputs.backend_base }}' }, run: affectedCommand },
@@ -55,7 +56,41 @@ function check(text: string) {
 
 describe('production affected-test shards', () => {
   it('keeps the exact affected selector, dependency preparation and strict deploy gate', () => check(source));
+  it.each([false, true])('loads actual Prisma config offline with preparation env supplied=%s', (supplied) => {
+    const preparation = yaml.load(source).jobs.verify_backend_shards.steps[2];
+    // A fresh process receives only the explicit fixture env, never ambient credentials.
+    // Evaluate the checked-in config with real prisma/config, stubbing only dotenv/config.
+    const probe = `
+      const ts = require('typescript');
+      const source = require('node:fs').readFileSync('prisma.config.ts', 'utf8');
+      const code = ts.transpileModule(source, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS },
+      }).outputText;
+      const exports = {};
+      try {
+        require('node:vm').runInNewContext(code, { exports, require(id) {
+          if (id === 'dotenv/config') return {};
+          if (id === 'prisma/config') return require('prisma/config');
+          throw new Error('Unexpected config import: ' + id);
+        } });
+        process.stdout.write(JSON.stringify({ url: exports.default.datasource.url }));
+      } catch (error) {
+        process.stdout.write(JSON.stringify({ name: error.name, message: error.message }));
+        process.exitCode = 1;
+      }
+    `;
+    const run = spawnSync(process.execPath, ['-e', probe], {
+      env: supplied ? preparation.env : {}, encoding: 'utf8', timeout: 10000,
+    });
+    expect(run.error).toBeUndefined();
+    expect(run.stderr).toBe('');
+    expect(run.status).toBe(supplied ? 0 : 1);
+    expect(JSON.parse(run.stdout)).toEqual(supplied
+      ? { url: preparation.env.DATABASE_URL }
+      : { name: 'PrismaConfigEnvError', message: 'Cannot resolve environment variable: DATABASE_URL.' });
+  });
   it.each([
+    ['          DATABASE_URL: postgresql://fixture:fixture@127.0.0.1:5432/fixture\n', ''],
     ['shard: [1, 2, 3, 4]', 'shard: [1, 2, 3]'],
     ['shard: [1, 2, 3, 4]', 'shard: [1, 2, 3, 3]'],
     ['shard: [1, 2, 3, 4]', 'shard: [1, 2, 3, 4]\n        exclude: [{shard: 4}]'],

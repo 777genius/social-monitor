@@ -349,6 +349,9 @@ jobs:
         with: {node-version: 22, cache: npm}
       - name: Prepare the same backend source and generated dependencies
         if: needs.plan.outputs.backend == 'true'
+        env:
+          # Inert test DSN for offline Prisma config loading; no database service needed.
+          DATABASE_URL: postgresql://fixture:fixture@127.0.0.1:5432/fixture
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
