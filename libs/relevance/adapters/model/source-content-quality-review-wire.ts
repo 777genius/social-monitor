@@ -25,7 +25,10 @@ export const parseReviews = (
   }
 
   const parsed = asRecord(JSON.parse(outputText), "quality review output");
-  const reviews = Array.isArray(parsed.reviews) ? parsed.reviews : [];
+  if (!Array.isArray(parsed.reviews)) {
+    throw new Error("Quality review protocol requires a reviews array");
+  }
+  const reviews = parsed.reviews;
 
   return reviews.map((review) => {
     const record = asRecord(review, "quality review item");
