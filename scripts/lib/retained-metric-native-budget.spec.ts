@@ -172,3 +172,30 @@ describe("mandatory native fixture process budgets", () => {
     expect(runtime.fail).not.toHaveBeenCalled();
   });
 });
+
+ it.each(["original", "renewal"])("checks overdue %s cleanup rejection before disposal", async (phase) => {
+  const runtime = fakeRuntime();
+  await expect(runWithNativeMetricBudget(async (budget) => {
+    const rejectCleanup = () => { runtime.jump(phase === "original" ? 120001 : 900001); throw new Error("cleanup rejected"); };
+    const cleanup = async () => {
+      try { await Promise.resolve(); }
+      finally { rejectCleanup(); }
+    };
+    if (phase === "original") await cleanup();
+    else await budget.runRenewal(cleanup);
+  }, runtime)).rejects.toThrow("process budget");
+  expect(runtime.timers.every((timer) => timer.cancelled)).toBe(true);
+ });
+
+it("rejects concurrent transitions and disposal while parent acknowledgement is pending", async () => {
+  const runtime = fakeRuntime();
+  let acknowledge!: () => void;
+  const budget = new RetainedMetricNativeBudget({ ...runtime, transition: () => new Promise<void>((resolve) => { acknowledge = resolve; }) });
+  const work = jest.fn(async () => {});
+  const pending = budget.runRenewal(work);
+  await expect(budget.runRenewal(work)).rejects.toThrow("exactly once");
+  budget.dispose();
+  acknowledge();
+  await expect(pending).rejects.toThrow("disposed before transition");
+  expect(work).not.toHaveBeenCalled();
+});
