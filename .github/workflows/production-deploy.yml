@@ -649,8 +649,7 @@ jobs:
       - name: Set up Python for X collector verification
         if: needs.plan.outputs.x_collector == 'true'
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
-        with:
-          python-version: '3.13'
+        with: {python-version: '3.13'}
       - name: Verify X collector
         if: needs.plan.outputs.x_collector == 'true'
         run: |
