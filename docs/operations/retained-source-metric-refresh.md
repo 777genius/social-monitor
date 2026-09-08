@@ -122,3 +122,75 @@ The parent must account for every original ID exactly once with no missing/extra
 After verifying metric authority, use the existing `scripts/run-reader-summary-new-input-refresh.ts` prepare/review/apply path separately for each date Aug 30–Sep 5. Preserve its unconsumed per-date generation budget, canonical new-input requirement, 30-minute manifest freshness, promotion freshness/eligibility, original publications, source/runtime/fence/policy checks and exact reviewed SHA. Seven `no_eligible_input` outcomes do not satisfy completion. Require seven verified new publications, previous artifacts retained, and each successful date's expected +1 job/artifact/publication/outbox. No summary algorithm, thresholds, model, date policy or provider behavior is changed here.
 
 Worker evidence is focused deterministic tests, real Linux process/flock/SIGKILL/I/O-failure tests and compiler/lint/architecture gates. SIGKILL tests are process-death evidence; they do not simulate storage hardware power loss. The native PostgreSQL gate now seeds 19 original content changes and four late arrivals and checks frozen membership, no late-row observations, amendment, effective transactional sample guard rollback, lost acknowledgement and no-refetch/no-duplicate resume. The parent executes that gate on its disposable database before release; worker unit tests are not a native PostgreSQL or production success claim.
+
+## Fixed September 8 retained metric renewal
+
+The separately admitted HN/Reddit allowance is `retained-metrics-renewal.v1`, at
+`seven-day-6101-6102/retained-metrics-renewal-20260908`, operation
+`c7fd60f4-c790-5d77-8a72-654fc87701f7`. Its sourceBase is the reviewed ancestor
+`ad58aae7ca3e7fda6c705ee2d91b25388a78b374`, **not** a deployed implementation digest.
+The existing source inventory hashes all new production files beneath libs/scripts;
+Node executable SHA and the parent's immutable daily image remain independently pinned.
+Compare checkout and image `--implementation` output before activation; an image
+missing the new modules cannot match the reviewed checkout source digest.
+
+This grant has no alternate directory, operation ID, date selection, amendment,
+expiry reclaim or repeat-round option. The original namespace is unchanged and
+remains the default for old callers. Acquire maintenance locks 7/9/8, original
+operation lock, then renewal operation lock. Preserve both directories on rollback;
+disable the new launch route rather than deleting any reservation or observation.
+The parent must retire old/manual/queued invocations before activation.
+
+Preparation validates the complete original proposal/amendment/effect chain and
+terminal final, including the fixed 3,329 original IDs and original payload SHA.
+It captures exact original-ID reads and the entire seven-day HN/Reddit window,
+including unavailable originals, missing snapshots, zero feed and late arrivals.
+Missing or invalid originals block. Two membership/identity passes must agree;
+these sequential reads are not an atomic snapshot. Targets retain the first
+full-window metric baseline. The original audit recaptures authority at the second
+exact-ID pass, so natural metric evolution is distinct from identity drift.
+The complete manifest SHA includes predecessor and audit, and never changes.
+Oversize/deep records refuse before installing the operation name.
+
+Use the new wrapper **inside** the reviewed daily image, with the same existing
+host lock mounts, release markers, retirement evidence and database role as v1:
+
+```sh
+bash scripts/run-retained-metric-renewal-maintenance.sh BACKEND_COMMIT CONTROL_COMMIT \
+  --source-sha IMPLEMENTATION_SOURCE_SHA --executable-sha NODE_EXECUTABLE_SHA \
+  --legacy-retirement-ref RETIREMENT_EVIDENCE --prepare
+# Apply/resume use the SHA emitted by preparation; no renewed permission needed.
+bash scripts/run-retained-metric-renewal-maintenance.sh BACKEND_COMMIT CONTROL_COMMIT \
+  --source-sha IMPLEMENTATION_SOURCE_SHA --executable-sha NODE_EXECUTABLE_SHA \
+  --legacy-retirement-ref RETIREMENT_EVIDENCE --apply --manifest-sha MANIFEST_SHA
+```
+
+Replace `--apply` with `--resume` to reconcile the same preserved samples. Unknown
+reservations cannot refetch. Known unavailable/failed outcomes consume allowance.
+Terminal replay validates all receipts and returns existing final evidence without
+DB acquisition, inventory, OAuth, provider or projection effects. Repeated prepare
+returns the installed manifest. `--diagnostic` is a separate read-only DB inventory:
+run it for the final window audit and report `outsideGrantSourceItemIds` separately.
+Do not splice those arrivals into frozen results. Original cohort membership comes
+from predecessor.originalSourceItemIds; pre-admission arrivals are explicitly in
+capture.lateArrivalSourceItemIds. Final provider/date cells retain each outcome's
+before/after hash, snapshot/observation times and counts.
+
+Before release, execute the extended native gate on a newly migrated, authorized
+loopback `metric_refresh_test_*` database supplied through
+`METRIC_REFRESH_TEST_DATABASE_URL` (no URL parameters). Exact parent command:
+
+```sh
+NODE_ENV=test METRIC_REFRESH_DISPOSABLE=1 npm run check:retained-metric-refresh-postgres
+```
+
+The extension seeds 3,329 synthetic predecessor targets, a new late arrival and
+missing authority, then exercises the fixed renewal, lost commit acknowledgement,
+identity preservation and real promotion authority for cadence-due/not-due counter
+falls. Its synthetic original digest substitution is test-local; it is not evidence
+of production original bytes. Production activation still independently validates
+actual pinned original/envelope/final/directory bytes. No native PASS is implied by
+compilation or deterministic tests. A regression-authority failure blocks activation
+and needs a separately owned defect fix, never policy relaxation in this lane.
+X retained observations, missing-post collection, six-hour eligibility, baseline
+comparison and seven actual publications remain explicit global delivery work.

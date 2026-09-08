@@ -15,6 +15,14 @@ import type { MetricFetchObservation, MetricRefreshManifest, RetainedMetricFetch
 import { metricRefreshDigest, SecureMetricRefreshReceipts } from "./lib/retained-metric-refresh-receipts";
 import { AmendRetainedMetricManifestUseCase } from "@social-monitor/ingestion/features/refresh-retained-metrics/amend-retained-metric-manifest.use-case";
 
+import { retainedMetricRenewalGrant as renewalGrant } from "@social-monitor/ingestion/domain/policies/retained-metric-renewal-grant";
+import { RenewRetainedMetricsUseCase } from "@social-monitor/ingestion/features/refresh-retained-metrics/renew-retained-metrics.use-case";
+import { metricRefreshCells } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-report";
+import { buildSourceEngagementMetrics } from "@social-monitor/ingestion/domain";
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { exactPromotionPageEvidence } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-promotion-exact-evidence";
+import type { PrismaFeedClient } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-client";
+
 type Row = Record<string, unknown>;
 type Writer = { create(args: { data: Row }): Promise<unknown> };
 type Client = PrismaMetricInventoryClient & PrismaSourceEngagementClient & { $disconnect(): Promise<void> };
@@ -134,8 +142,82 @@ async function main() {
         assert(sameTarget(target, current, metricRefreshDigest));
         assert.equal(current?.authority.observedAt, clock.now().toISOString());
       }
+      await checkNativeRenewal(lease.client);
       process.stdout.write(`${JSON.stringify({ evidenceKind: "disposable_postgres_fixture", lostAckResume: "passed", fetches, results: resumed.value }, null, 2)}\n`);
     });
   } finally { await lease.close(); rmSync(root, { recursive: true, force: true }); }
+}
+// Synthetic incident evidence: the production original bytes are deliberately not
+// read here. Only this fixture original payload gets the incident digest mapping.
+async function checkNativeRenewal(client: Client) {
+  const root = mkdtempSync(resolve(".cache/metric-renewal-postgres-"));
+  const grant = renewalGrant, scope = { tenantId: grant.tenantId, workspaceId: grant.workspaceId, dates: grant.dates, endAt: grant.endAt };
+  const clock = new FixedClock(new Date("2026-09-08T12:00:00.000Z"));
+  const inventory = new PrismaRetainedMetricInventory(client, metricRefreshDigest);
+  const addRows = async (start: number, count: number) => withPrismaWriteRetry(() => client.$transaction(async (tx) => {
+    const source = (tx as unknown as Record<string, Writer>).sourceItem!;
+    for (let index = start; index < start + count; index++) await source.create({ data: {
+      id: id(100000 + index), tenantId: scope.tenantId, workspaceId: scope.workspaceId, sourceBindingId: id(6401), providerKey: "reddit",
+      providerItemId: `reddit:t3_native${index}`, canonicalUrl: `https://www.reddit.com/comments/native${index}/`,
+      title: "Renewal fixture", body: "Retained zero-feed body", contentHash: "native-renewal",
+      publishedAt: new Date(`${grant.dates[index % 7]}T10:00:00Z`), observedAt: new Date("2026-09-05T11:00:00Z"),
+      createdAt: new Date("2026-09-05T11:00:00Z"), metadata: { kind: "reddit_post", score: 5 },
+    } });
+  }, { isolationLevel: "Serializable", timeout: 120000 }));
+  try {
+    await addRows(0, 3306); // Existing 19 originals plus four prior arrivals = 23.
+    const original: MetricRefreshManifest = { version: "retained-metrics.v1", sourceBase: metricRefreshSourceBase, bounds: grant.bounds,
+      evidencePath: grant.predecessorPath, operationId: grant.predecessorOperationId, scope, plannedAt: clock.now().toISOString(), targets: await inventory.list(scope) };
+    assert.equal(original.targets.length, grant.originalCount);
+    const originalHash = metricRefreshDigest(original);
+    const hash = (value: unknown) => { const digest = metricRefreshDigest(value); return digest === originalHash ? grant.predecessorManifestSha : digest; };
+    const prior = SecureMetricRefreshReceipts.forTest(root), renewal = SecureMetricRefreshReceipts.forTest(root, undefined, "renewal");
+    const omitted: RetainedMetricFetchCapability = { fetch: async (batch) => ({ ok: true, value: batch.map((t) => ({ externalId: t.externalId, returned: false, metadata: null, reason: "omitted" })) }) };
+    const projection = new PrismaSourceEngagementProjectionAdapter(client, new CryptoIdGenerator(), { retention: "skip" });
+    const completed = await new RefreshRetainedMetricsUseCase(inventory, omitted, projection, prior, clock, hash).execute(original);
+    assert(completed.ok);
+    await prior.install(`${grant.predecessorPath}/final.json`, { manifestSha: hash(original), results: completed.value, cells: metricRefreshCells(completed.value, grant.dates) });
+    const predecessorBytes = readFileSync(resolve(root, grant.predecessorPath, "operation.json"));
+    // Real canonical equal natural sample puts Reddit inside its retained cadence.
+    const notDue = original.targets.find((t) => t.sourceItemId === id(6501))!;
+    const built = buildSourceEngagementMetrics({ providerKey: "reddit", metadata: { kind: "reddit_post", score: 42, numComments: 9 } });
+    assert(built.metrics && built.metricsFingerprint);
+    await projection.project({ tenantId: tenantId(scope.tenantId), workspaceId: workspaceId(scope.workspaceId), providerKey: "reddit",
+      sourceBindingId: notDue.sourceBindingId, scanJobId: grant.operationId, observedAt: new Date("2026-09-08T11:55:00Z"), samples: [{
+        sourceItemId: notDue.sourceItemId, externalId: notDue.externalId, publishedAt: new Date(notDue.publishedAt), metrics: built.metrics,
+        metricsFingerprint: built.metricsFingerprint, providerMetadataPatch: built.providerMetadataPatch, refreshReadModels: true }] });
+    await addRows(3306, 1); // New admission includes this no-snapshot, zero-feed late arrival.
+    const implementation = { sourceSha: "1".repeat(64), executableSha: "2".repeat(64), holderProof: "3".repeat(64), legacyRetirementRef: "TEST-native-renewal" };
+    const prepare = new RenewRetainedMetricsUseCase(inventory, omitted, projection, prior, renewal, clock, hash);
+    const admitted = await prepare.prepare(implementation); assert(admitted.ok);
+    assert.equal(admitted.value.targets.length, 3330); assert.equal(admitted.value.capture.lateArrivalSourceItemIds.length, 1);
+    const frozen = admitted.value;
+    const guarded = new PrismaSourceEngagementProjectionAdapter(client, new CryptoIdGenerator(), { retention: "skip", sampleGuard: async (tx, _command, sample) => {
+      const expected = frozen.targets.find((t) => t.sourceItemId === sample.sourceItemId)!;
+      assert(sameTarget(expected, await new PrismaRetainedMetricInventory(tx as unknown as PrismaMetricInventoryClient, hash).read(scope, expected.sourceItemId), hash));
+    } });
+    let calls = 0, lostAck = true;
+    const fetcher: RetainedMetricFetchCapability = { fetch: async (batch) => { calls++; return { ok: true, value: batch.map((t): MetricFetchObservation => ({
+      externalId: t.externalId, returned: true, reason: null, metadata: t.providerKey === "reddit"
+        ? { kind: "reddit_post", score: 20, numComments: 9 } : { kind: "hacker_news_story", points: 20, comments: 9 },
+    })) }; } };
+    const uncertain = { project: async (command: Parameters<typeof projection.project>[0]) => {
+      const result = await guarded.project(command);
+      if (lostAck) { lostAck = false; throw new Error("TEST renewal lost commit acknowledgement"); } return result;
+    } };
+    const run = new RenewRetainedMetricsUseCase(inventory, fetcher, uncertain, prior, renewal, clock, hash);
+    const first = await run.execute(hash(frozen)); assert(first.ok);
+    const spent = calls, resumed = await run.execute(hash(frozen)); assert(resumed.ok);
+    assert.equal(calls, spent);
+    const count = (await inventory.read(scope, id(6500)))!.authority.observationCount;
+    assert.equal(count, 2); assert.equal((await inventory.read(scope, id(6501)))!.authority.observationCount, 2);
+    const evidence = await exactPromotionPageEvidence(client as unknown as PrismaFeedClient, [id(6600), id(6601)], clock.now());
+    for (const feedId of [id(6600), id(6601)]) assert.equal(evidence.get(feedId)?.metricAuthority?.regressionState, "unresolved_regression");
+    for (const target of frozen.targets) assert(sameTarget(target, await inventory.read(scope, target.sourceItemId), hash));
+    assert(readFileSync(resolve(root, grant.predecessorPath, "operation.json")).equals(predecessorBytes));
+    assert.deepEqual(await run.execute(hash(frozen)), resumed); assert.equal(calls, spent);
+    assert.equal((await inventory.read(scope, id(6500)))!.authority.observationCount, count);
+    process.stdout.write("Native renewal: full inventory, late arrival, lost acknowledgement, identity preservation, due/not-due regression authority passed\n");
+  } finally { rmSync(root, { recursive: true, force: true }); }
 }
 if (require.main === module) void main().catch((error: unknown) => { process.stderr.write(`${error instanceof Error ? error.message : "Metric refresh test gate failed"}\n`); process.exitCode = 1; });

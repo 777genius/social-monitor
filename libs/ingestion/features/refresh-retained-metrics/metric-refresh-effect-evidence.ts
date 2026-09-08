@@ -5,11 +5,18 @@ import { assertMetricAuthority, evidenceAssert } from "./metric-refresh-evidence
 import { buildSourceEngagementMetrics } from "../../domain";
 import { metricRefreshCells } from "./metric-refresh-report";
 
+import type { MetricExecutionManifest } from "./execute-retained-metric-batches";
+
 type BatchEvidence = { observations: readonly PreservedMetricObservation[]; failure: string | null };
 
 // Historical effect names are unchanged. Orphan effects never create allowance.
 export async function validateMetricEffectReceipts(operation: MetricRefreshOperation, head: MetricOperationHead, entries: readonly MetricEvidenceEntry[], hash: RefreshDigest) {
-  const manifest = head.effective, sha = hash(manifest), batches = refreshBatches(manifest.targets);
+  return validateExecutedMetricEffects(operation, head.effective, hash(head.effective), entries, hash, head.sequence === 0);
+}
+
+export async function validateExecutedMetricEffects(operation: MetricRefreshOperation, manifest: MetricExecutionManifest,
+  sha: string, entries: readonly MetricEvidenceEntry[], hash: RefreshDigest, legacySequenceZero = false) {
+  const batches = refreshBatches(manifest.targets);
   const names = new Set(entries.map((entry) => entry.name));
   const observedBatches = new Map<number, BatchEvidence>();
   const results: { row: MetricRefreshOutcome; batchIndex: number }[] = [];
@@ -64,14 +71,15 @@ export async function validateMetricEffectReceipts(operation: MetricRefreshOpera
         ["refreshed", "superseded", "unavailable", "failed"].includes(row.status) && typeof row.returned === "boolean" &&
         (row.reason === null || typeof row.reason === "string") &&
         (row.observedAt === null || (typeof row.observedAt === "string" && Number.isFinite(Date.parse(row.observedAt)) && new Date(row.observedAt).toISOString() === row.observedAt)) &&
-        hash(row.before) === hash(target.authority) && (row.manifestSha === sha || (head.sequence === 0 && row.manifestSha === undefined)), "invalid_result_receipt");
+        hash(row.before) === hash(target.authority) && (row.manifestSha === sha || (legacySequenceZero && row.manifestSha === undefined)), "invalid_result_receipt");
       assertMetricAuthority(row.after);
       results.push({ row, batchIndex: index });
     } else if (entry.name === "final.json") {
       evidenceAssert(value.manifestSha === sha && Array.isArray(value.results) && value.results.length === manifest.targets.length && Array.isArray(value.cells), "invalid_final_receipt");
+      const finalResultHashes = new Set(value.results.map((row) => hash(row)));
       for (const target of manifest.targets) {
         const row = await operation.read(`${manifest.evidencePath}/result-${target.sourceItemId}.json`);
-        evidenceAssert(row !== null && value.results.some((r) => hash(r) === hash(row)), "incomplete_final_receipt");
+        evidenceAssert(row !== null && finalResultHashes.has(hash(row)), "incomplete_final_receipt");
       }
       evidenceAssert(hash(value) === hash({ manifestSha: sha, results: value.results,
         cells: metricRefreshCells(value.results as MetricRefreshOutcome[], manifest.scope.dates) }), "invalid_final_cells");
