@@ -7,6 +7,7 @@ import {
   type StructuredLogger,
 } from "@social-monitor/platform-logging";
 import type {
+  AgentRuntimeExecutionObserver,
   AgentRuntimeExecutionRequest,
   AgentRuntimeExecutionResult,
   AgentRuntimeExecutorHealth,
@@ -67,7 +68,9 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
 
   async execute(
     request: AgentRuntimeExecutionRequest,
+    observeExecution?: AgentRuntimeExecutionObserver,
   ): Promise<AgentRuntimeExecutionResult> {
+    observeExecution?.("not_started");
     const startedAt = Date.now();
     this.logger.info("agent runtime task started", taskFields(request));
     let admission: AdmittedSubscriptionRuntimeRequest;
@@ -112,6 +115,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       );
       const initialResult = cliExecutionResult(
         await runCli({
+          observeExecution,
           command: admittedInstallation.executablePath,
           args: this.buildArgs(request, inputPath, admission.profile),
           env: this.executionEnvPatch(
@@ -157,6 +161,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       }
       const recovered = cliExecutionResult(
         await runCli({
+          observeExecution,
           command: admittedInstallation.executablePath,
           args: this.buildArgs(request, inputPath, admission.profile, true),
           env: this.executionEnvPatch(true, admission.profile),
@@ -190,7 +195,11 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       });
       throw error;
     } finally {
-      await rm(tempDir, { recursive: true, force: true });
+      try {
+        await rm(tempDir, { recursive: true, force: true });
+      } catch (error) {
+        this.logFailure(request, "cleanup", error);
+      }
     }
   }
 

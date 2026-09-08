@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 
 import type {
+  AgentRuntimeExecutionObserver,
   AgentRuntimeExecutionFailure,
   AgentRuntimeExecutionResult,
   AgentRuntimeExecutionUsage,
@@ -101,6 +102,7 @@ const invalidCliResult = (stdout: string): AgentRuntimeExecutionResult => ({
 });
 
 export const runCli = async (params: {
+  readonly observeExecution?: AgentRuntimeExecutionObserver;
   readonly command: string;
   readonly args: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
@@ -113,10 +115,20 @@ export const runCli = async (params: {
   readonly timedOut: boolean;
 }> =>
   new Promise((resolve, reject) => {
-    const child = spawn(params.command, params.args, {
-      env: { ...subscriptionRuntimeChildBaseEnv(process.env), ...params.env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(params.command, params.args, {
+        env: { ...subscriptionRuntimeChildBaseEnv(process.env), ...params.env },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      params.observeExecution?.("not_started");
+      reject(error);
+      return;
+    }
+    params.observeExecution?.("indeterminate");
+    let spawned = child.pid !== undefined;
+    child.on("spawn", () => { spawned = true; });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let timedOut = false;
@@ -124,14 +136,20 @@ export const runCli = async (params: {
       timedOut = true;
       child.kill("SIGTERM");
     }, params.timeoutMs);
-    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.stdout!.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr!.on("data", (chunk: Buffer) => stderr.push(chunk));
     child.on("error", (error) => {
       clearTimeout(timeout);
+      if (!spawned) params.observeExecution?.("not_started");
       reject(error);
     });
     child.on("close", (exitCode, signal) => {
       clearTimeout(timeout);
+      // A signal/timeout is not proof that underlying provider work stopped.
+      // Leave its pool-owned capacity fenced; a timer never settles ownership.
+      if (!timedOut && signal === null && exitCode !== null) {
+        params.observeExecution?.("terminal");
+      }
       resolve({
         exitCode,
         signal,
