@@ -114,20 +114,25 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     {
       sourceTitle: "Developers compare runtime isolation tradeoffs",
       headline: "Reports discuss Developers compare runtime isolation tradeoffs",
-      published: true,
     },
     {
       sourceTitle: "hacker-news story 10",
-      headline: "hacker-news story 10",
-      published: false,
+      headline: "Reports discuss hacker-news story 10",
     },
     {
       sourceTitle: "Developers compare runtime isolation tradeoffs.\n\nPreview deployments remain limited to test workspaces.",
       headline: "Discussion from monitored sources",
-      published: true,
     },
-  ])("binds single-story coverage and enforces copy rejection: $sourceTitle", async ({
-    sourceTitle, headline, published,
+    ...[
+      "Post explores runtime isolation tradeoffs",
+      "Discussion of runtime isolation tradeoffs",
+      "Thread compares runtime isolation tradeoffs",
+      "Reports explore runtime isolation tradeoffs",
+    ].map((sourceTitle) => ({
+      sourceTitle, headline: `Reports discuss ${sourceTitle}`,
+    })),
+  ])("publishes cluster-bound single-story coverage: $sourceTitle", async ({
+    sourceTitle, headline,
   }) => {
     const adapter = new DeterministicReaderSummaryModelAdapter();
     const dailyInput = readerSummaryInput(sourceTitle);
@@ -190,17 +195,8 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     );
     expect(attempt.draft.headline).toBe(headline);
     expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
-    if (published) {
-      expect(attempt.draft.headline).not.toBe(sourceTitle);
-      expectPublished(input, attempt);
-    } else {
-      expect(publicationDecision(input, attempt)).toMatchObject({
-        status: "rejected",
-        qualityPassed: false,
-        reasonCodes: ["editorial_quality"],
-        reasons: [expect.stringContaining("Headline copies a top-post title")],
-      });
-    }
+    expect(attempt.draft.headline).not.toBe(sourceTitle);
+    expectPublished(input, attempt);
   });
 });
 

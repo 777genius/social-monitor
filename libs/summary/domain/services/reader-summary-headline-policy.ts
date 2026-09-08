@@ -148,12 +148,9 @@ const buildHumanReaderHeadline = (
       isUnverifiedLegalTopRead(lead)) {
     return "Discussion from monitored sources";
   }
-  if (lead.confirmedProviderKeys.length > 1 || lead.confidence.level === "high") {
-    return lead.title;
-  }
-  return isExplicitlySourceFramedText(lead.title, lead)
-    ? lead.title
-    : `Reports discuss ${lead.title}`;
+  // Source framing or corroboration does not make a copied heading synthesis.
+  // Keep the complete short title in the report frame, just as for other leads.
+  return `Reports discuss ${lead.title}`;
 };
 
 export const isUnverifiedLegalTopRead = (lead: {
