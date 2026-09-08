@@ -46,9 +46,6 @@ export const readerSummaryPromotionPublicationOracle = (params: {
       citations: params.citations,
       clusters: params.clusters,
       editorialSlate: params.editorialSlate,
-      evidence: params.evidence,
-      approvedSameStoryRelations: params.approvedSameStoryRelations,
-      sourceWindow: params.sourceWindow,
     });
   }
   const citationByFeedItem = new Map<string, ReaderSummaryCitation>();
@@ -153,9 +150,6 @@ const editorialSlateOracle = (params: {
   readonly citations: readonly ReaderSummaryCitation[];
   readonly clusters?: readonly StoryCluster[];
   readonly editorialSlate: ReaderSummaryEditorialSlate;
-  readonly evidence: readonly SummaryEvidenceItem[];
-  readonly approvedSameStoryRelations?: readonly ApprovedSameStoryRelation[];
-  readonly sourceWindow: SummarySourceWindow;
 }): {
   readonly top: readonly PromotionOracleCard[];
   readonly additional: readonly PromotionOracleCard[];
@@ -164,44 +158,6 @@ const editorialSlateOracle = (params: {
     [citation.feedItemId, citation] as const));
   const clusterById = new Map((params.clusters ?? []).map((cluster) =>
     [cluster.id, cluster] as const));
-  const evidenceByFeedItemId = new Map(params.evidence.map((item) =>
-    [item.feedItemId, item] as const));
-  const periodStart = params.sourceWindow.periodStartedAt ?? params.sourceWindow.startedAt;
-  const periodEnd = params.sourceWindow.periodEndedAt ?? params.sourceWindow.endedAt;
-  const cutoff = params.sourceWindow.ingestionCutoff ?? periodEnd;
-  const selectedCandidateIds = new Set([
-    ...params.editorialSlate.top,
-    ...params.editorialSlate.additional,
-  ].map((entry) => entry.candidateId));
-  const approvedRelation = (left: string, right: string): boolean =>
-    (params.approvedSameStoryRelations ?? []).some((relation) =>
-      unit(relation.confidence) &&
-      ((relation.leftFeedItemId === left && relation.rightFeedItemId === right) ||
-        (relation.leftFeedItemId === right && relation.rightFeedItemId === left)));
-  /**
-   * Independent re-check for the same reasons the projection re-validates
-   * cluster-mate support instead of trusting raw cluster membership: an
-   * approved same-story relation, provider diversity, source-catalog
-   * authority and a genuine engagement-eligible candidate on both sides.
-   */
-  const isEligibleSlateSupport = (leadFeedItemId: string, supportFeedItemId: string): boolean => {
-    if (supportFeedItemId === leadFeedItemId) return true;
-    if (selectedCandidateIds.has(supportFeedItemId)) return false;
-    const lead = evidenceByFeedItemId.get(leadFeedItemId);
-    const support = evidenceByFeedItemId.get(supportFeedItemId);
-    if (lead === undefined || support === undefined ||
-        independentProviderFamily(support.providerKey) === null ||
-        independentProviderFamily(lead.providerKey) === null ||
-        independentProviderFamily(support.providerKey) ===
-          independentProviderFamily(lead.providerKey) ||
-        !isSourceCatalogAuthority(support) ||
-        !approvedRelation(leadFeedItemId, supportFeedItemId)) {
-      return false;
-    }
-    return independentlyEvaluate(
-      support, citationByFeedItemId.get(supportFeedItemId), periodStart, periodEnd, cutoff,
-    ) !== null;
-  };
   const materialize = (
     entry: ReaderSummaryEditorialSlate["top"][number],
   ): PromotionOracleCard => {
@@ -211,7 +167,7 @@ const editorialSlateOracle = (params: {
       : [
           cluster.representativeFeedItemId,
           ...cluster.duplicateFeedItemIds,
-        ].filter((feedItemId) => isEligibleSlateSupport(entry.candidateId, feedItemId));
+        ];
     return {
       candidateId: entry.candidateId,
       canonicalIdentity: entry.canonicalIdentity,
