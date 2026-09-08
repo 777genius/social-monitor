@@ -7,10 +7,10 @@ import type { MetricRefreshOutcome, RefreshDigest, RetainedMetricFetchCapability
 import { assertMetricRenewalManifest, readRenewalPredecessor, renewalOriginalAudit, resolveMetricRenewal } from "./metric-renewal-evidence";
 import { metricIdentityInventory, orderedMetricTargets } from "./metric-refresh-amendment";
 import { ExecuteRetainedMetricBatches } from "./execute-retained-metric-batches";
-import { metricRefreshCells } from "./metric-refresh-report";
+import { metricRenewalCells } from "./metric-renewal-report";
 import { evidenceAssert } from "./metric-refresh-evidence-validation";
 
-export type MetricRenewalFinal = { manifestSha: string; results: readonly MetricRefreshOutcome[]; cells: ReturnType<typeof metricRefreshCells> };
+export type MetricRenewalFinal = { manifestSha: string; results: readonly MetricRefreshOutcome[]; cells: ReturnType<typeof metricRenewalCells> };
 export class RenewRetainedMetricsUseCase {
   constructor(
     private readonly inventory: RetainedMetricInventory,
@@ -74,7 +74,7 @@ export class RenewRetainedMetricsUseCase {
       const executed = await new ExecuteRetainedMetricBatches(this.inventory, this.fetcher, this.projection, this.clock, this.digest)
         .execute(operation, manifest, expectedSha);
       evidenceAssert(executed.ok, executed.ok ? undefined : executed.error);
-      const result = { manifestSha: expectedSha, results: executed.value, cells: metricRefreshCells(executed.value, manifest.scope.dates) };
+      const result = { manifestSha: expectedSha, results: executed.value, cells: metricRenewalCells(executed.value, manifest.scope.dates) };
       for (const target of manifest.targets) {
         if (await operation.read(`${grant.evidencePath}/result-${target.sourceItemId}.json`) === null) return executed.value;
       }

@@ -11,7 +11,7 @@ import { RedditAppOnlyTokenProvider } from "@social-monitor/ingestion/adapters/s
 import { RetainedMetricFetchAdapter } from "@social-monitor/ingestion/adapters/source/retained-metric-fetch.capability";
 import { RenewRetainedMetricsUseCase, type MetricRenewalFinal } from "@social-monitor/ingestion/features/refresh-retained-metrics/renew-retained-metrics.use-case";
 import type { MetricRenewalManifest } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-renewal.contracts";
-import { metricRefreshCells } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-report";
+import { metricRenewalCells } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-renewal-report";
 import { resolveMetricRenewal } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-renewal-evidence";
 import { retainedMetricRenewalGrant as grant } from "@social-monitor/ingestion/domain/policies/retained-metric-renewal-grant";
 import { sameTarget } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-admission";
@@ -26,9 +26,9 @@ const scoped = (operation: MetricRefreshOperation) => ({ ...operation,
 function renewalReport(final: MetricRenewalFinal, manifest: MetricRenewalManifest) {
   const originals = new Set(manifest.predecessor.originalSourceItemIds);
   return { ...final, cohorts: {
-    originals: { count: originals.size, cells: metricRefreshCells(final.results.filter((r) => originals.has(r.sourceItemId)), manifest.scope.dates) },
+    originals: { count: originals.size, cells: metricRenewalCells(final.results.filter((r) => originals.has(r.sourceItemId)), manifest.scope.dates) },
     lateArrivals: { count: manifest.capture.lateArrivalSourceItemIds.length,
-      cells: metricRefreshCells(final.results.filter((r) => !originals.has(r.sourceItemId)), manifest.scope.dates) },
+      cells: metricRenewalCells(final.results.filter((r) => !originals.has(r.sourceItemId)), manifest.scope.dates) },
   } };
 }
 export async function runRetainedMetricRenewal(args: readonly string[], env: NodeJS.ProcessEnv): Promise<void> {
@@ -68,9 +68,10 @@ export async function runRetainedMetricRenewal(args: readonly string[], env: Nod
         const inventory = new PrismaRetainedMetricInventory(connection.client, hash);
         if (options.has("--diagnostic")) {
           if (!existing) throw new Error("Prepare renewal first");
+          const captureStartedAt = clock.now().toISOString();
           const currentWindow = await inventory.list(existing.scope);
           const originals = await inventory.list(existing.scope, existing.predecessor.originalSourceItemIds);
-          process.stdout.write(`${JSON.stringify({ diagnostic: true, currentWindow, originals,
+          process.stdout.write(`${JSON.stringify({ diagnostic: true, manifestSha: hash(existing), captureStartedAt, captureCompletedAt: clock.now().toISOString(), currentWindow, originals,
             outsideGrantSourceItemIds: currentWindow.filter((t) => !existing.targets.some((f) => f.sourceItemId === t.sourceItemId)).map((t) => t.sourceItemId) })}\n`); return;
         }
         const projection = new PrismaSourceEngagementProjectionAdapter(connection.client, new CryptoIdGenerator(), {

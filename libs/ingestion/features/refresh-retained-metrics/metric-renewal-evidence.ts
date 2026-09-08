@@ -4,6 +4,8 @@ import type { MetricRefreshOperation, MetricEvidenceEntry } from "./metric-refre
 import type { RefreshDigest, RetainedMetricTarget } from "./refresh-retained-metrics.contracts";
 import { assertMetricTargets, evidenceAssert, metricSha, metricUuid } from "./metric-refresh-evidence-validation";
 import { metricIdentityInventory, orderedMetricTargets, resolveMetricOperation } from "./metric-refresh-amendment";
+import { metricRenewalCells } from "./metric-renewal-report";
+import type { MetricRenewalFinal } from "./renew-retained-metrics.use-case";
 import { targetProblem, normalizedRefreshId } from "./metric-refresh-admission";
 import { validateExecutedMetricEffects } from "./metric-refresh-effect-evidence";
 
@@ -98,7 +100,18 @@ export async function resolveMetricRenewal(operation: MetricRefreshOperation, pr
   const prior = await readRenewalPredecessor(predecessorOperation, hash, now);
   evidenceAssert(hash(prior.predecessor) === hash(value.predecessor) &&
     hash(orderedMetricTargets(prior.targets)) === hash(value.capture.originalAudit.map((a) => a.priorEffectiveTarget)), "renewal_predecessor_changed");
-  await validateExecutedMetricEffects(operation, value, hash(value), entries.filter((e) => !["operation.json", "operation.lock"].includes(e.name)), hash);
+  await validateExecutedMetricEffects(operation, value, hash(value), entries.filter((e) => !["operation.json", "operation.lock", "final.json"].includes(e.name)), hash);
+  const final = await operation.read<MetricRenewalFinal>(`${grant.evidencePath}/final.json`);
+  if (final !== null) {
+    evidenceAssert(Array.isArray(final.results) && final.results.length === value.targets.length, "incomplete_final_receipt");
+    const resultHashes = new Set(final.results.map((r) => hash(r)));
+    for (const target of value.targets) {
+      const result = await operation.read(`${grant.evidencePath}/result-${target.sourceItemId}.json`);
+      evidenceAssert(result !== null && resultHashes.has(hash(result)), "incomplete_final_receipt");
+    }
+    evidenceAssert(hash(final) === hash({ manifestSha: hash(value), results: final.results,
+      cells: metricRenewalCells(final.results, value.scope.dates) }), "invalid_final_cells");
+  }
   await verifyObservedTimes(operation, entries, grant.evidencePath, value.plannedAt, now);
   return value;
 }

@@ -18,6 +18,7 @@ import { AmendRetainedMetricManifestUseCase } from "@social-monitor/ingestion/fe
 import { retainedMetricRenewalGrant as renewalGrant } from "@social-monitor/ingestion/domain/policies/retained-metric-renewal-grant";
 import { RenewRetainedMetricsUseCase } from "@social-monitor/ingestion/features/refresh-retained-metrics/renew-retained-metrics.use-case";
 import { metricRefreshCells } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-report";
+import { evaluateReaderPromotionV2 } from "@social-monitor/feed/domain/policies/reader-promotion-policy-v2";
 import { buildSourceEngagementMetrics } from "@social-monitor/ingestion/domain";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { exactPromotionPageEvidence } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-promotion-exact-evidence";
@@ -177,15 +178,19 @@ async function checkNativeRenewal(client: Client) {
     const completed = await new RefreshRetainedMetricsUseCase(inventory, omitted, projection, prior, clock, hash).execute(original);
     assert(completed.ok);
     await prior.install(`${grant.predecessorPath}/final.json`, { manifestSha: hash(original), results: completed.value, cells: metricRefreshCells(completed.value, grant.dates) });
-    const predecessorBytes = readFileSync(resolve(root, grant.predecessorPath, "operation.json"));
-    // Real canonical equal natural sample puts Reddit inside its retained cadence.
-    const notDue = original.targets.find((t) => t.sourceItemId === id(6501))!;
-    const built = buildSourceEngagementMetrics({ providerKey: "reddit", metadata: { kind: "reddit_post", score: 42, numComments: 9 } });
-    assert(built.metrics && built.metricsFingerprint);
-    await projection.project({ tenantId: tenantId(scope.tenantId), workspaceId: workspaceId(scope.workspaceId), providerKey: "reddit",
-      sourceBindingId: notDue.sourceBindingId, scanJobId: grant.operationId, observedAt: new Date("2026-09-08T11:55:00Z"), samples: [{
-        sourceItemId: notDue.sourceItemId, externalId: notDue.externalId, publishedAt: new Date(notDue.publishedAt), metrics: built.metrics,
-        metricsFingerprint: built.metricsFingerprint, providerMetadataPatch: built.providerMetadataPatch, refreshReadModels: true }] });
+    const predecessorBytes = await prior.withOperation((o) => o.entries());
+    // HN/Reddit: comment-only falls both due and inside cadence, plus equal
+    // counters inside cadence. All begin from the same stable 42/9 authority.
+    for (const index of [1, 4, 5, 6, 7]) {
+      const t = original.targets.find((target) => target.sourceItemId === id(6500 + index))!;
+      const built = buildSourceEngagementMetrics({ providerKey: t.providerKey, metadata: t.providerKey === "reddit"
+        ? { kind: "reddit_post", score: 42, numComments: 9 } : { kind: "hacker_news_story", points: 42, comments: 9 } });
+      assert(built.metrics && built.metricsFingerprint);
+      await projection.project({ tenantId: tenantId(scope.tenantId), workspaceId: workspaceId(scope.workspaceId), providerKey: t.providerKey,
+        sourceBindingId: t.sourceBindingId, scanJobId: grant.operationId, observedAt: new Date("2026-09-08T11:55:00Z"), samples: [{
+          sourceItemId: t.sourceItemId, externalId: t.externalId, publishedAt: new Date(t.publishedAt), metrics: built.metrics,
+          metricsFingerprint: built.metricsFingerprint, providerMetadataPatch: built.providerMetadataPatch, refreshReadModels: true }] });
+    }
     await addRows(3306, 1); // New admission includes this no-snapshot, zero-feed late arrival.
     const implementation = { sourceSha: "1".repeat(64), executableSha: "2".repeat(64), holderProof: "3".repeat(64), legacyRetirementRef: "TEST-native-renewal" };
     const prepare = new RenewRetainedMetricsUseCase(inventory, omitted, projection, prior, renewal, clock, hash);
@@ -196,28 +201,113 @@ async function checkNativeRenewal(client: Client) {
       const expected = frozen.targets.find((t) => t.sourceItemId === sample.sourceItemId)!;
       assert(sameTarget(expected, await new PrismaRetainedMetricInventory(tx as unknown as PrismaMetricInventoryClient, hash).read(scope, expected.sourceItemId), hash));
     } });
+    const beforeRows = await renewalRows(client);
     let calls = 0, lostAck = true;
+    const projectedSamples: unknown[] = [];
     const fetcher: RetainedMetricFetchCapability = { fetch: async (batch) => { calls++; return { ok: true, value: batch.map((t): MetricFetchObservation => ({
       externalId: t.externalId, returned: true, reason: null, metadata: t.providerKey === "reddit"
-        ? { kind: "reddit_post", score: 20, numComments: 9 } : { kind: "hacker_news_story", points: 20, comments: 9 },
+        ? { kind: "reddit_post", score: t.sourceItemId === id(6501) ? 20 : 42, numComments: [id(6503), id(6505)].includes(t.sourceItemId) ? 4 : 9 }
+        : { kind: "hacker_news_story", points: t.sourceItemId === id(6500) ? 20 : 42, comments: [id(6502), id(6504)].includes(t.sourceItemId) ? 4 : 9 },
     })) }; } };
     const uncertain = { project: async (command: Parameters<typeof projection.project>[0]) => {
+      projectedSamples.push({ observedAt: command.observedAt.toISOString(), samples: command.samples });
       const result = await guarded.project(command);
       if (lostAck) { lostAck = false; throw new Error("TEST renewal lost commit acknowledgement"); } return result;
     } };
     const run = new RenewRetainedMetricsUseCase(inventory, fetcher, uncertain, prior, renewal, clock, hash);
-    const first = await run.execute(hash(frozen)); assert(first.ok);
-    const spent = calls, resumed = await run.execute(hash(frozen)); assert(resumed.ok);
+    const first = await run.execute(hash(frozen)); assert(first.ok && Array.isArray(first.value));
+    assert.equal(await renewal.read(`${grant.evidencePath}/final.json`), null);
+    const afterLostAck = await renewalRows(client);
+    const spent = calls, resumed = await run.execute(hash(frozen));
+    assert(resumed.ok && "results" in resumed.value, "resume must install terminal final, not pending outcomes");
+    assert.equal(resumed.value.results.length, frozen.targets.length);
+    assert(resumed.value.results.every((r) => r.status === "refreshed" && r.observedAt === clock.now().toISOString() &&
+      r.after.observedAt === r.observedAt && r.after.metricsHash !== null));
+    assert.deepEqual(resumed.value.results.map((r) => r.sourceItemId).sort(), frozen.targets.map((t) => t.sourceItemId).sort());
+    assert.equal(projectedSamples.length, frozen.targets.length + 1);
+    assert.deepEqual(projectedSamples.at(-1), projectedSamples[0], "lost acknowledgement reuses exact sample hash/time");
     assert.equal(calls, spent);
-    const count = (await inventory.read(scope, id(6500)))!.authority.observationCount;
-    assert.equal(count, 2); assert.equal((await inventory.read(scope, id(6501)))!.authority.observationCount, 2);
-    const evidence = await exactPromotionPageEvidence(client as unknown as PrismaFeedClient, [id(6600), id(6601)], clock.now());
-    for (const feedId of [id(6600), id(6601)]) assert.equal(evidence.get(feedId)?.metricAuthority?.regressionState, "unresolved_regression");
+    const afterResume = await renewalRows(client);
+    assert.deepEqual(afterResume.observations, afterLostAck.observations);
+    assert.deepEqual(afterResume.rollups, afterLostAck.rollups);
+    // Pending resume may reapply the same projection, touching Prisma updated_at.
+    // Compare every business column and row; terminal replay below compares ALL bytes.
+    const withoutWriteTime = (values: readonly Row[]) => values.map((r) => {
+      const value = { ...r.value as Row }; delete value.updated_at; return value;
+    }).sort((a, b) => metricRefreshDigest(a).localeCompare(metricRefreshDigest(b)));
+    assert.deepEqual(withoutWriteTime(afterResume.snapshots), withoutWriteTime(afterLostAck.snapshots));
+    assert.deepEqual(withoutWriteTime(afterResume.baselines), withoutWriteTime(afterLostAck.baselines));
+    for (const row of beforeRows.observations) assert(afterLostAck.observations.some((r) => metricRefreshDigest(r) === metricRefreshDigest(row)), "prior observations retained");
+    assert.deepEqual(afterLostAck.publications, beforeRows.publications);
+    const rows = (values: readonly Row[]) => values.map((r) => r.value as Row);
+    const observations = rows(afterLostAck.observations), snapshots = rows(afterLostAck.snapshots);
+    assert.equal(observations.length - beforeRows.observations.length, frozen.targets.length - 5);
+    assert.equal(snapshots.length, frozen.targets.length);
+    assert.equal(afterLostAck.baselines.length, 19); // All admitted feed rows, including all comment-only falls.
+    for (const result of resumed.value.results) {
+      const snapshot = snapshots.find((r) => r.source_item_id === result.sourceItemId)!;
+      assert.equal(snapshot.metrics_hash, result.after.metricsHash);
+      assert.equal(new Date(String(snapshot.last_observed_at)).toISOString(), result.observedAt);
+      const samples = observations.filter((r) => r.source_item_id === result.sourceItemId);
+      assert.equal(samples.length, result.after.observationCount);
+      assert(samples.some((r) => new Date(String(r.observed_at)).toISOString() === result.after.observationAt));
+    }
+    for (const rollup of rows(afterLostAck.rollups)) {
+      const samples = observations.filter((r) => r.source_item_id === rollup.source_item_id && String(r.observed_at).slice(0, 10) === String(rollup.day).slice(0, 10));
+      assert.equal(rollup.sample_count, samples.length);
+      assert.equal(rollup.regression_count, samples.filter((r) => r.has_regression).length);
+    }
+    assert.equal(rows(afterLostAck.rollups).reduce((n, r) => n + Number(r.sample_count), 0), observations.length);
+    assert.deepEqual(rows(afterLostAck.baselines).map((r) => r.feed_item_id).sort(), Array.from({ length: 19 }, (_, i) => id(6600 + i)).sort());
+    for (const baseline of rows(afterLostAck.baselines)) assert.equal(new Date(String(baseline.observed_at)).toISOString(), clock.now().toISOString());
+    for (const index of [0, 1, 2, 3, 4, 5, 6, 7]) {
+      const t = frozen.targets.find((target) => target.sourceItemId === id(6500 + index))!;
+      const current = (await inventory.read(scope, t.sourceItemId))!;
+      assert.equal(current.authority.observationCount, t.authority.observationCount + ([0, 2, 3].includes(index) ? 1 : 0));
+      assert.equal(current.authority.observedAt, clock.now().toISOString());
+      if (index >= 6) {
+        assert.equal(current.authority.metricsHash, t.authority.metricsHash);
+        assert.equal(current.authority.observationAt, t.authority.observationAt);
+      }
+    }
+    const scoreFalls = await exactPromotionPageEvidence(client as unknown as PrismaFeedClient, [id(6600), id(6601)], clock.now());
+    for (const feedId of [id(6600), id(6601)]) assert.equal(scoreFalls.get(feedId)?.metricAuthority?.regressionState, "unresolved_regression");
+    const feedIds = [2, 3, 4, 5].map((i) => id(6600 + i));
+    const evidence = await exactPromotionPageEvidence(client as unknown as PrismaFeedClient, feedIds, clock.now());
+    for (const [index, feedId] of feedIds.entries()) {
+      const authority = evidence.get(feedId)?.metricAuthority;
+      assert(authority, `missing authority ${feedId}`);
+      assert.equal(authority.regressionState, "unresolved_regression", `R2 comment-only ${index < 2 ? "due" : "not-due"} ${feedId}`);
+      const eligibility = evaluateReaderPromotionV2({
+        candidateId: feedId, canonicalIdentity: feedId, provider: index % 2 ? "reddit" : "hacker_news", contentKind: index % 2 ? "original_post" : "story",
+        publishedAt: "2026-09-04T11:00:00.000Z", engagementCutoffAt: clock.now().toISOString(),
+        admission: { relevanceFloorMet: true, qualityFloorMet: true, integrityFloorMet: true, safetyFloorMet: true, freshnessFloorMet: true },
+        relevanceScore: 1, evidenceQualityScore: 1, integrityScore: 1, freshnessScore: 1,
+        engagement: { state: "observed", authoritative: true, metrics: index % 2 ? { provider: "reddit", score: 42 } : { provider: "hacker_news", points: 42 },
+          authority: { source: "durable_projection", observedAt: authority.observedAt.toISOString(), regressionState: authority.regressionState } },
+      });
+      assert(!eligibility.admitted);
+      assert.deepEqual(eligibility.reasons, ["engagement_regression_unresolved"]);
+    }
     for (const target of frozen.targets) assert(sameTarget(target, await inventory.read(scope, target.sourceItemId), hash));
-    assert(readFileSync(resolve(root, grant.predecessorPath, "operation.json")).equals(predecessorBytes));
+    assert.deepEqual(await prior.withOperation((o) => o.entries()), predecessorBytes);
+    const renewalBytes = await renewal.withOperation((o) => o.entries());
     assert.deepEqual(await run.execute(hash(frozen)), resumed); assert.equal(calls, spent);
-    assert.equal((await inventory.read(scope, id(6500)))!.authority.observationCount, count);
+    assert.deepEqual(await renewalRows(client), afterResume);
+    assert.deepEqual(await renewal.withOperation((o) => o.entries()), renewalBytes);
+    assert.deepEqual(await prior.withOperation((o) => o.entries()), predecessorBytes);
     process.stdout.write("Native renewal: full inventory, late arrival, lost acknowledgement, identity preservation, due/not-due regression authority passed\n");
   } finally { rmSync(root, { recursive: true, force: true }); }
+}
+// Complete scoped row bytes, including timestamps and every counter, not counts
+// of two selected sources. Fixed SQL identifiers only; no production connection.
+async function renewalRows(client: Client) {
+  const query = client as unknown as PrismaFeedClient;
+  const rows = async (table: string) => query.$queryRawUnsafe!<readonly Row[]>(
+    `SELECT to_jsonb(row) AS value FROM ${table} row WHERE tenant_id = $1::uuid AND workspace_id = $2::uuid ORDER BY to_jsonb(row)::text`,
+    renewalGrant.tenantId, renewalGrant.workspaceId);
+  return { snapshots: await rows("source_item_engagement_snapshots"), observations: await rows("source_item_engagement_observations"),
+    rollups: await rows("source_item_engagement_daily_rollups"), baselines: await rows("feed_signal_baseline_samples"),
+    publications: await rows("reader_summary_publications") };
 }
 if (require.main === module) void main().catch((error: unknown) => { process.stderr.write(`${error instanceof Error ? error.message : "Metric refresh test gate failed"}\n`); process.exitCode = 1; });

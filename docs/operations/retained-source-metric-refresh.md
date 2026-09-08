@@ -194,3 +194,25 @@ compilation or deterministic tests. A regression-authority failure blocks activa
 and needs a separately owned defect fix, never policy relaxation in this lane.
 X retained observations, missing-post collection, six-hour eligibility, baseline
 comparison and seven actual publications remain explicit global delivery work.
+
+Renewal repair acceptance adds real-capability transport timeout/abort/unknown
+exceptions (including OAuth): these leave only the permanent reservation, stop
+successors and cannot install terminal evidence. Explicit HTTP failures retain
+historical failure receipt spelling; historical receipts are never rewritten.
+Renewal cells include complete per-target `before`/`after` authority objects:
+`metricsHash`, snapshot `observedAt`, cadence `observationAt`, observation and
+regression counts, plus the actual fetch `observedAt`. Equal-counter freshness
+and superseding observations remain distinguishable. V1 cells stay byte-compatible.
+Diagnostic output binds the frozen manifest SHA and its own capture start/end;
+retain that output separately as the final late-arrival audit.
+
+The native gate must reject all four HN/Reddit comment-only due/not-due falls
+through actual promotion authority and unchanged eligibility. R2's authority
+reader correction is independently owned; integrate it before the parent runs
+the disposable gate. Do not weaken those assertions to activate renewal. The gate
+also compares complete snapshot/observation/rollup/baseline rows across lost
+acknowledgement and terminal replay, validates exact terminal membership, and
+pins every predecessor directory entry. Pending resume compares every business
+column; existing Prisma replay may touch `updated_at`. Terminal replay compares
+every column, including write timestamps, unchanged. The fixed synthetic canonical corpus in
+`test-fixtures/retained-metric-legacy/canonical` is compatibility evidence only.
