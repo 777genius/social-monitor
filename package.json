@@ -186,7 +186,7 @@
     "check:staging-reliability-evidence": "node scripts/check-staging-reliability-evidence.mjs && node scripts/check-postgres-restore-evidence.mjs",
     "check:reddit-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reddit-ingestion-smoke.ts",
     "check:rss-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-rss-ingestion-smoke.ts",
-    "check:secrets": "node scripts/check-secrets.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs && node --test scripts/check-secrets.test.mjs",
     "check:source-certification": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-source-provider-certification.ts",
     "check:source-ranking-eval": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-source-ranking-eval.ts",
     "check:source-query-planner-eval": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-source-query-planner-eval.ts",

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 const allowlistPath = 'ops/security/secret-scan-allowlist.json';
 const allowlist = JSON.parse(readFileSync(allowlistPath, 'utf8'));
@@ -108,7 +109,17 @@ for (const file of trackedFiles) {
     continue;
   }
 
-  const content = readFileSync(file, 'utf8');
+  const bytes = readFileSync(file);
+  const content = bytes.toString('utf8');
+
+  // The heuristic captures Python syntax, not a credential. Bind this literal
+  // to the reviewed vendor bytes here, independently of materialize_sdk's
+  // manifest/30-file closure/per-file and command SHA provenance checks.
+  if (file === 'test/fixtures/x-canonical/sdk-installed-source/Scweet/account_session.py.txt'
+    && createHash('sha256').update(bytes).digest('hex')
+      === 'bc46ce04e044b1b0db6df24dd82b6c1bbc1b7985da183dd02c8cfc5ae7824bd5') {
+    allowedValuesByPath.set(file, new Set(['(']));
+  }
 
   if (privateKeyPattern.test(content)) {
     report(file, 'private key block is not allowed');
