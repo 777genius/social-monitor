@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import type { MetricRefreshOperation, MetricRefreshOperationAuthority } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-operation.contracts";
-import { metricRefreshEvidencePath } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-admission";
-import { RetainedMetricJournal, type MetricJournalCheckpoint } from "./retained-metric-journal";
+import { RetainedMetricJournal, type MetricJournalCheckpoint, type MetricJournalNamespace, metricJournalPath } from "./retained-metric-journal";
 
 export function metricRefreshDigest(value: unknown): string {
   return createHash("sha256").update(canonicalMetricRefreshJson(value)).digest("hex");
@@ -30,21 +29,29 @@ function decodeMetricEnvelope<T>(bytes: Buffer): T {
   return envelope.value;
 }
 export class SecureMetricRefreshReceipts implements MetricRefreshOperationAuthority {
-  constructor(private readonly maintenance: () => void, private readonly testRoot?: string, private readonly checkpoint?: MetricJournalCheckpoint) {}
-  static forTest(root: string, checkpoint?: MetricJournalCheckpoint) {
+  constructor(private readonly maintenance: () => void, private readonly testRoot?: string, private readonly checkpoint?: MetricJournalCheckpoint, private readonly namespace: MetricJournalNamespace = "original") {}
+  static forTest(root: string, checkpoint?: MetricJournalCheckpoint, namespace: MetricJournalNamespace = "original") {
     if (process.env.NODE_ENV !== "test") throw new Error("Metric test receipts unavailable");
-    return new SecureMetricRefreshReceipts(() => {}, root, checkpoint);
+    return new SecureMetricRefreshReceipts(() => {}, root, checkpoint, namespace);
   }
   async withOperation<T>(work: (operation: MetricRefreshOperation) => Promise<T>): Promise<T> {
-    const journal = new RetainedMetricJournal(this.maintenance, this.testRoot, this.checkpoint);
+    const journal = new RetainedMetricJournal(this.maintenance, this.testRoot, this.checkpoint, this.namespace);
     const operation: MetricRefreshOperation = {
       assertHeld: journal.assertHeld,
       read: async <V>(path: string) => { const bytes = journal.read(path); return bytes === null ? null : decodeMetricEnvelope<V>(bytes); },
-      install: async (path, value) => journal.install(path, Buffer.from(canonicalMetricRefreshJson({ digest: metricRefreshDigest(value), value }))),
+      install: async (path, value) => {
+        const bytes = Buffer.from(canonicalMetricRefreshJson({ digest: metricRefreshDigest(value), value }));
+        // Renewal admission must fail size/depth before creating an authority name.
+        if (this.namespace === "renewal") {
+          if (bytes.length > 16 * 1024 * 1024) throw new Error("Metric evidence size limit");
+          decodeMetricEnvelope(bytes);
+        }
+        return journal.install(path, bytes);
+      },
       entries: async () => {
         const entries = journal.entries();
         // The entire namespace must parse canonically, even an unused orphan.
-        for (const entry of entries) if (entry.name !== "operation.lock") await operation.read(`${metricRefreshEvidencePath}/${entry.name}`);
+        for (const entry of entries) if (entry.name !== "operation.lock") await operation.read(`${metricJournalPath(this.namespace)}/${entry.name}`);
         return entries;
       },
     };

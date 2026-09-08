@@ -4,6 +4,15 @@ import { createHash } from "node:crypto";
 import { openSecureRecoveryEvidenceDirectory } from "./reader-summary-recovery-evidence-secure-file";
 import { metricRefreshEvidencePath } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-admission";
 
+import { retainedMetricRenewalGrant } from "@social-monitor/ingestion/domain/policies/retained-metric-renewal-grant";
+
+export type MetricJournalNamespace = "original" | "renewal";
+export function metricJournalPath(namespace: MetricJournalNamespace = "original"): string {
+  if (namespace === "original") return metricRefreshEvidencePath;
+  if (namespace === "renewal") return retainedMetricRenewalGrant.evidencePath;
+  throw new Error("Unknown metric journal namespace");
+}
+
 const maxBytes = 16 * 1024 * 1024;
 const flags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 const bytesSha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -19,9 +28,11 @@ export class RetainedMetricJournal {
   private lockStamp: BigIntStats | undefined;
   private readonly seen = new Map<string, BigIntStats>();
   private closed = false;
-  constructor(private readonly maintenance: () => void, testRoot?: string, private readonly checkpoint?: MetricJournalCheckpoint) {
+  private readonly evidencePath: string;
+  constructor(private readonly maintenance: () => void, testRoot?: string, private readonly checkpoint?: MetricJournalCheckpoint, namespace: MetricJournalNamespace = "original") {
+    this.evidencePath = metricJournalPath(namespace);
     maintenance();
-    this.directory = openSecureRecoveryEvidenceDirectory(metricRefreshEvidencePath, testRoot);
+    this.directory = openSecureRecoveryEvidenceDirectory(this.evidencePath, testRoot);
     try {
       try {
         const fd = openSync(this.path("operation.lock"), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o400);
@@ -38,7 +49,7 @@ export class RetainedMetricJournal {
   }
   private path(name: string) { return `/proc/self/fd/${this.directory.descriptor}/${name}`; }
   private name(path: string) {
-    const prefix = `${metricRefreshEvidencePath}/`;
+    const prefix = `${this.evidencePath}/`;
     requireValid(path.startsWith(prefix));
     const name = path.slice(prefix.length);
     requireValid(/^(?:operation\.json|proposal-[a-f0-9]{64}\.json|amendment-00000[1-8]\.json|batch-(?:0|[1-9]\d{0,4})\.(?:reserved|observed)\.json|result-[a-f0-9-]{36}\.json|final\.json)$/u.test(name));
@@ -126,7 +137,7 @@ export class RetainedMetricJournal {
     const names = scan();
     const entries = names.map((name) => {
       if (name === "operation.lock") return { name, bytesSha: bytesSha(Buffer.alloc(0)) };
-      const bytes = this.read(`${metricRefreshEvidencePath}/${name}`);
+      const bytes = this.read(`${this.evidencePath}/${name}`);
       requireValid(bytes !== null);
       return { name, bytesSha: bytesSha(bytes) };
     });

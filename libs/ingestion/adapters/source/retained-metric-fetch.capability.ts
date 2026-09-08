@@ -54,7 +54,12 @@ export class RetainedMetricFetchAdapter implements RetainedMetricFetchCapability
       return ok(observations);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
-      return err(/\b429\b/u.test(message) ? "provider_429_no_retry" : "provider_fetch_failed_no_retry");
+      // Only an explicit HTTP response from the existing transports conclusively
+      // failed. Timeout, abort, malformed completion and arbitrary exceptions
+      // leave the permanent reservation unknown; never serialize their payload.
+      const status = /^(?:Hacker News provider returned HTTP |Reddit API returned |Reddit app-only OAuth token request failed with HTTP )([45]\d{2})(?::|$)/u.exec(message)?.[1];
+      if (status) return err(status === "429" ? "provider_429_no_retry" : "provider_fetch_failed_no_retry");
+      throw new Error("provider_outcome_unknown_reconcile_required");
     }
   }
 }

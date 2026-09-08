@@ -1,18 +1,17 @@
-import { readMetricInventorySource, type MetricInventorySqlClient } from "./prisma-retained-metric-inventory-read";
+// Exact baseline implementation from da3569840e2da586eb426124aabfcf555414df18; parity oracle only.
 import { sourceMetadataWithoutEngagementMetrics } from "../../domain";
 import { normalizeJsonObject } from "@social-monitor/shared-kernel";
 import type { RefreshDigest, RefreshScope, RetainedMetricInventory, RetainedMetricTarget } from "../../features/refresh-retained-metrics/refresh-retained-metrics.contracts";
 import { metricRefreshTargetLimit, scopeProblem } from "../../features/refresh-retained-metrics/metric-refresh-admission";
-import { loadMetricInventoryChunk, metricInventoryChunkSize, type MetricInventoryEnrichment } from "./prisma-retained-metric-inventory-bulk";
 
-export type Row = Record<string, unknown>;
+type Row = Record<string, unknown>;
 type Table = { findMany(args: Row): Promise<Row[]> };
-export type PrismaMetricInventoryClient = MetricInventorySqlClient & {
+export type LegacyMetricInventoryClient = {
   sourceItem: Table; sourceBinding: Table; feedItem: Table; interest: Table; sourceCatalogEntry: Table;
-  sourceItemEngagementObservation: { groupBy(args: Row): Promise<Row[]> };
+  sourceItemEngagementObservation: { count(args: Row): Promise<number> };
 };
-export class PrismaRetainedMetricInventory implements RetainedMetricInventory {
-  constructor(private readonly prisma: PrismaMetricInventoryClient, private readonly digest: RefreshDigest) {}
+export class LegacyRetainedMetricInventory implements RetainedMetricInventory {
+  constructor(private readonly prisma: LegacyMetricInventoryClient, private readonly digest: RefreshDigest) {}
 
   async list(scope: RefreshScope, sourceItemIds?: readonly string[]): Promise<readonly RetainedMetricTarget[]> {
     this.requireScope(scope);
@@ -28,28 +27,32 @@ export class PrismaRetainedMetricInventory implements RetainedMetricInventory {
     });
     if (rows.length > metricRefreshTargetLimit) throw new Error("Metric refresh inventory exceeds 10000; no truncated manifest is admissible");
     const targets: RetainedMetricTarget[] = [];
-    for (let start = 0; start < rows.length; start += metricInventoryChunkSize) {
-      const chunk = rows.slice(start, start + metricInventoryChunkSize);
-      const enrichment = await loadMetricInventoryChunk(this.prisma, scope, chunk);
-      for (const row of chunk) targets.push(this.target(row, enrichment.get(String(row.id))!));
-    }
+    for (const row of rows) targets.push(await this.target(scope, row));
     return targets;
   }
   async read(scope: RefreshScope, sourceItemId: string): Promise<RetainedMetricTarget | null> {
     this.requireScope(scope);
-    const result = await readMetricInventorySource(this.prisma, scope, sourceItemId);
-    return result ? this.target(result.source, result.enrichment) : null;
+    const rows = await this.prisma.sourceItem.findMany({ where: { tenantId: scope.tenantId, workspaceId: scope.workspaceId, id: sourceItemId },
+      take: 1, include: { engagementSnapshot: true } });
+    return rows[0] ? this.target(scope, rows[0]) : null;
   }
   private requireScope(scope: RefreshScope) {
     // The use case supplies the real clock; persistence still enforces the fixed tenant/date boundary.
     const problem = scopeProblem(scope, new Date(scope.endAt));
     if (problem) throw new Error(`Metric inventory ${problem}`);
   }
-  private target(row: Row, enrichment: MetricInventoryEnrichment): RetainedMetricTarget {
-    const { feeds, bindings, interests, catalogs, observationCount, regressionCount } = enrichment;
+  private async target(scope: RefreshScope, row: Row): Promise<RetainedMetricTarget> {
+    const owned = { tenantId: scope.tenantId, workspaceId: scope.workspaceId };
+    const feeds = await this.prisma.feedItem.findMany({ where: { ...owned, sourceItemId: row.id }, orderBy: { id: "asc" }, take: 1001 });
     const bindingIds = [...new Set([row.sourceBindingId, ...feeds.map((feed) => feed.sourceBindingId)])];
+    const bindings = await this.prisma.sourceBinding.findMany({ where: { ...owned, id: { in: bindingIds } }, orderBy: { id: "asc" } });
+    const interests = await this.prisma.interest.findMany({ where: { ...owned, id: { in: bindings.map((binding) => binding.interestId) } }, orderBy: { id: "asc" } });
+    const catalogs = await this.prisma.sourceCatalogEntry.findMany({ where: { id: { in: bindings.map((binding) => binding.sourceCatalogEntryId) } }, orderBy: { id: "asc" } });
     const metadata = normalizeJsonObject(row.metadata);
     const snapshot = row.engagementSnapshot as Row | null;
+    const observationScope = { ...owned, sourceItemId: row.id };
+    const observationCount = await this.prisma.sourceItemEngagementObservation.count({ where: observationScope });
+    const regressionCount = await this.prisma.sourceItemEngagementObservation.count({ where: { ...observationScope, hasRegression: true } });
     const bindingInvalid = bindings.length !== bindingIds.length || bindings.some((binding) => binding.status !== "ENABLED" || binding.deletedAt !== null ||
       !catalogs.some((catalog) => catalog.id === binding.sourceCatalogEntryId && catalog.providerKey === row.providerKey) ||
       !interests.some((interest) => interest.id === binding.interestId && interest.status === "ENABLED" && interest.deletedAt === null));
