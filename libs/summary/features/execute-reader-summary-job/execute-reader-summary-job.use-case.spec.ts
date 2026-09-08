@@ -376,6 +376,22 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       }),
     );
 
+    const model = new CapturingReaderSummaryModel({
+      topReads: [{ title: "Untrusted model top read" }],
+      narrativeSections: [
+        {
+          id: "lead",
+          kind: "lead",
+          title: "Overview",
+          text: "Runtime regression discussion is the main signal.",
+          citationIds: ["c1"],
+          storyClusterId: "cluster-1",
+        },
+      ],
+    } as unknown as ProviderReaderSummaryAttempt["draft"]["content"], [
+      "provider_failed",
+    ]);
+
     const result = await new ExecuteReaderSummaryJobUseCase(
       jobs,
       artifacts,
@@ -385,21 +401,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
           return primaryReaderSummaryEvidence(makeReaderEvidenceSelection());
         },
       },
-      new CapturingReaderSummaryModel({
-        topReads: [{ title: "Untrusted model top read" }],
-        narrativeSections: [
-          {
-            id: "lead",
-            kind: "lead",
-            title: "Overview",
-            text: "Runtime regression discussion is the main signal.",
-            citationIds: ["c1"],
-            storyClusterId: "cluster-1",
-          },
-        ],
-      } as unknown as ProviderReaderSummaryAttempt["draft"]["content"], [
-        "provider_failed",
-      ]),
+      model,
       new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-28T08:05:00.000Z")),
@@ -445,8 +447,18 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       },
     });
     expect(artifacts.all()[0]?.toSnapshot().content?.topReads[0]?.title).toBe(
-      "Runtime regression discussion\n\nUsers are discussing a runtime regression.",
+      "Runtime regression discussion",
     );
+    expect(JSON.parse(model.generatedEvidencePayloads()[0]!).selectedEvidence).toEqual([
+      expect.objectContaining({
+        feedItemId: "feed-1",
+        sourceItemId: "reddit-post-1",
+        providerKey: "reddit",
+        canonicalUrl: "https://reddit.example.test/post-1",
+        title: "Runtime regression discussion",
+        bodyPreview: "Users are discussing a runtime regression.",
+      }),
+    ]);
     expect(artifacts.all()[0]?.toSnapshot().content?.narrativeSections).toEqual(
       [
         {

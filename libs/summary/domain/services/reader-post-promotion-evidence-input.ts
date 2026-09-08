@@ -1,6 +1,6 @@
 import type { SummaryEvidenceItem, SummarySourceWindow } from "../value-objects/summary-evidence-item";
 import type { ReaderPostPromotionInput } from "../policies/reader-post-promotion-policy";
-import { buildReaderPostPromotionTitle, hasReaderFacingPromotionSource } from "./reader-post-promotion-title";
+import { readerPostAvailableSourceText, hasReaderFacingPromotionSource } from "./reader-post-promotion-title";
 import { readerPostPromotionBoundary, readerPostPromotionFreshnessIsValid } from "./reader-post-promotion-freshness";
 
 /** Maps the same evidence facts at producer admission and writer validation. */
@@ -65,7 +65,7 @@ export const readerPostPromotionEvidenceInput = (
       (facts?.metrics === undefined ? "missing" : "observed"),
     ...(facts?.metrics === undefined ? {} : { metrics: facts.metrics }),
     whyImportant: item.whyImportant.find((reason) => reason.trim().length > 0) ??
-      buildReaderPostPromotionTitle({ lead: item }),
+      (readerPostAvailableSourceText(item) ?? ""),
     clusterId,
   };
 };

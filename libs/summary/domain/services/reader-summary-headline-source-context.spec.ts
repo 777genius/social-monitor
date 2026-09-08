@@ -47,6 +47,25 @@ describe("headline source context", () => {
     },
   );
 
+  it.each([
+    { title: "Discussion of runtime isolation", confidence: "low", providers: ["reddit"] },
+    { title: "Runtime isolation improves", confidence: "high", providers: ["reddit"] },
+    { title: "Runtime isolation improves", confidence: "low", providers: ["reddit", "rss"] },
+  ] as const)("never generates a bare source heading: $title / $confidence / $providers", ({
+    title, confidence, providers,
+  }) => {
+    expect(groundedReaderHeadline({
+      headline: "Summary: current discussion",
+      sourceTitles: [title],
+      sourceMix: [],
+      topReads: [{
+        ...lead(title),
+        confidence: { level: confidence, score: 0.9, rationale: "Synthetic support" },
+        confirmedProviderKeys: [...providers],
+      }],
+    })).toBe(`Reports discuss ${title}`);
+  });
+
   it("does not hide a copied model headline behind the neutral fallback", () => {
     const sourceTitle = "Atlas bypasses approval";
     expect(groundedReaderHeadline({

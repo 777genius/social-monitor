@@ -52,11 +52,18 @@ describe("reader summary headline through aggregate and publication", () => {
     expect(decision).toMatchObject({ status: "published", qualityPassed: true });
   });
 
-  it("keeps the neutral fallback available for a noncopy", () => {
+  it("source-frames the neutral fallback for a noncopy with a short source title", () => {
     const { content, decision } = throughPublication(
       "Developers weigh AI runtime quality",
     );
-    expect(content.headline).toBe("Discussion from monitored sources");
+    // The canonical title stays separate from the body; it is safe to reuse
+    // the complete short heading with neutral source framing.
+    expect(content.topReads.map((read) => read.title)).toEqual([
+      "AI runtime quality discussion",
+    ]);
+    expect(content.headline).toBe(
+      "Reports discuss AI runtime quality discussion",
+    );
     expect(decision).toMatchObject({ status: "published", qualityPassed: true });
   });
 });
