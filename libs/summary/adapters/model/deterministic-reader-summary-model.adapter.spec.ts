@@ -110,9 +110,32 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expectPublished(input, attempt);
   });
 
-  it("creates a cluster-bound lead for single-story coverage", async () => {
+  it.each([
+    {
+      sourceTitle: "Developers compare runtime isolation tradeoffs",
+      headline: "Reports discuss Developers compare runtime isolation tradeoffs",
+    },
+    {
+      sourceTitle: "hacker-news story 10",
+      headline: "Reports discuss hacker-news story 10",
+    },
+    {
+      sourceTitle: "Developers compare runtime isolation tradeoffs.\n\nPreview deployments remain limited to test workspaces.",
+      headline: "Discussion from monitored sources",
+    },
+    ...[
+      "Post explores runtime isolation tradeoffs",
+      "Discussion of runtime isolation tradeoffs",
+      "Thread compares runtime isolation tradeoffs",
+      "Reports explore runtime isolation tradeoffs",
+    ].map((sourceTitle) => ({
+      sourceTitle, headline: `Reports discuss ${sourceTitle}`,
+    })),
+  ])("publishes cluster-bound single-story coverage: $sourceTitle", async ({
+    sourceTitle, headline,
+  }) => {
     const adapter = new DeterministicReaderSummaryModelAdapter();
-    const dailyInput = readerSummaryInput();
+    const dailyInput = readerSummaryInput(sourceTitle);
     const plannedLead = dailyInput.coveragePlan.lead;
     expect(plannedLead).toBeDefined();
     if (plannedLead === undefined) {
@@ -156,7 +179,23 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(citedClusterIds(input, attempt, lead?.citationIds ?? [])).toEqual(
       new Set([plannedLead.clusterId]),
     );
-    expect(attempt.draft.headline).toBe("Discussion from monitored sources");
+    expect(attempt.draft.content?.topReads[0]).toMatchObject({
+      title: sourceTitle,
+      promotionCandidateId: "feed-10",
+    });
+    expect(input.evidence.selectedEvidence).toContainEqual(
+      expect.objectContaining({
+        feedItemId: "feed-10",
+        sourceItemId: "source-10",
+        providerKey: "hacker-news",
+        canonicalUrl: "https://example.test/hacker-news/10",
+        title: sourceTitle,
+        bodyPreview: "Useful source evidence for a workspace summary.",
+      }),
+    );
+    expect(attempt.draft.headline).toBe(headline);
+    expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
+    expect(attempt.draft.headline).not.toBe(sourceTitle);
     expectPublished(input, attempt);
   });
 });
@@ -165,6 +204,20 @@ const expectPublished = (
   input: ReaderSummaryModelInput,
   attempt: ProviderReaderSummaryAttempt,
 ): void => {
+  const decision = publicationDecision(input, attempt);
+  if (decision.status === "rejected") {
+    throw new Error(decision.reasons.join("; "));
+  }
+  expect(decision).toMatchObject({
+    status: "published",
+    qualityPassed: true,
+  });
+};
+
+const publicationDecision = (
+  input: ReaderSummaryModelInput,
+  attempt: ProviderReaderSummaryAttempt,
+) => {
   const readerSummaryId = "reader-summary-deterministic-test";
   const promotion = buildReaderPostPromotionProjection({
     evidence: input.evidence.selectedEvidence,
@@ -193,18 +246,9 @@ const expectPublished = (
     promotionAttestations: promotion.attestations,
     promotionEvidenceFacts: promotion.attestedEvidenceFacts,
   });
-  const decision = new ReaderSummaryPublicationPolicy().evaluate({
+  return new ReaderSummaryPublicationPolicy().evaluate({
     artifact,
     evidence: input.evidence,
-  });
-
-  if (decision.status === "rejected") {
-    throw new Error(decision.reasons.join("; "));
-  }
-
-  expect(decision).toMatchObject({
-    status: "published",
-    qualityPassed: true,
   });
 };
 
@@ -236,7 +280,7 @@ const citedClusterIds = (
   );
 };
 
-const readerSummaryInput = (): ReaderSummaryModelInput => {
+const readerSummaryInput = (sourceTitle: string): ReaderSummaryModelInput => {
   const selectedEvidence = [
     evidenceItem("rss", 1, 1.5),
     evidenceItem("rss", 2, 1.5),
@@ -247,7 +291,7 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
     evidenceItem("rss", 7, 1.495),
     evidenceItem("hacker-news", 8, 1.488),
     evidenceItem("reddit", 9, 1.437),
-    evidenceItem("hacker-news", 10, 1.238),
+    { ...evidenceItem("hacker-news", 10, 1.238), title: sourceTitle },
     evidenceItem("reddit", 11, 1),
     evidenceItem("github-issues", 12, 1),
   ];

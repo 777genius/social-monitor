@@ -6,8 +6,7 @@ from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Mapping
 
-from .canonical_search_invocation import CanonicalInvocation
-from .canonical_search_services import CanonicalSearchServices, CanonicalSearchObserver
+from . import __version__
 from .account_pool import AccountLimitOverride, AccountPoolLimits
 from .account_limit_profiles import AccountLimitProfile, load_account_limit_profiles
 from .adaptive_account_limits import (
@@ -21,7 +20,10 @@ from .account_usage_observer import (
 )
 from .account_usage import SearchPassUsage
 from .candidate_rejection_cache import (
+    CandidateRejectionCacheError,
     CandidateRejectionPolicy,
+    CandidateRejectionScope,
+    candidate_rejection_scope,
 )
 from .config import XCollectorSettings
 from .domain import (
@@ -32,7 +34,9 @@ from .domain import (
     XCollectorAuthError,
     XCollectorInvalidRequestError,
     XCollectorRateLimitError,
+    XCollectorRun,
     XCollectorUnavailableError,
+    XCollectorWarning,
     XPostMetrics,
     XPostContentKind,
     XEligibilityMetricsState,
@@ -44,10 +48,13 @@ from .ports import (
     Clock,
     DailySearchCollectorPort,
 )
+from .scoring import CandidateSignal, aggregate_candidates, rank_candidates
 from .search_budget import (
     SearchBudgetDecision,
     budget_search_passes,
     estimate_pass_request_cost,
+    retry_after_ms_until,
+    warnings_for_budget_decision,
 )
 from .scweet_account_pool_ledger import (
     SCWEET_REUSABLE_ACCOUNT_STATUSES,
@@ -56,7 +63,7 @@ from .scweet_account_pool_ledger import (
 from .scweet_errors import classify_scweet_error
 from .scweet_run_maintenance import reconcile_stale_scweet_runs
 from .scweet_run_identity import ScweetRunIdentityTracker
-from .search_plan import ScweetSearchPass
+from .search_plan import ScweetSearchPass, plan_scweet_search_passes
 from .sqlite_account_usage_event_repository import (
     SqliteAccountUsageEventRepository,
 )
@@ -271,22 +278,165 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
     def collect_daily_search(
         self,
         request: DailySearchRequest,
-        observer: CanonicalSearchObserver | None = None,
     ) -> DailySearchResult:
-        return CanonicalInvocation(CanonicalSearchServices(
-            clock=self._clock,
-            start_execution=self._scweet_factory,
-            prepare_account_pool=self._prepare_account_pool,
-            date_window=scweet_date_window,
-            budget_search_passes=self._budget_search_passes,
-            account_usage_observer=self._account_usage_observer,
-            execute_pass=self._run_pass_with_failover,
-            normalize_record=post_from_scweet_record,
-            in_window=post_is_in_window,
-            account_budget_is_depleted=self._account_budget_is_depleted,
-            rejection_repository=self._candidate_rejection_repository,
-            rejection_policy=self._candidate_rejection_policy,
-        ), observer).run(request)
+        started_at = self._clock.now()
+        scweet = self._scweet_factory()
+        self._prepare_account_pool()
+        since, until = scweet_date_window(request)
+        fetched_posts: list[tuple[XCollectedPost, CandidateSignal]] = []
+        warnings: list[XCollectorWarning] = []
+        if request.cursor:
+            warnings.append(
+                XCollectorWarning(
+                    code="x_collector.cursor_ignored",
+                    message=(
+                        "Daily multi-pass search ignores external cursor; "
+                        "dedupe is handled by the Social Monitor store."
+                    ),
+                ),
+            )
+
+        planned_passes = plan_scweet_search_passes(request)
+        budget = self._budget_search_passes(planned_passes)
+        self._account_usage_observer.record_budget_decision(request, budget)
+        warnings.extend(warnings_for_budget_decision(budget))
+        if not budget.passes and budget.remaining_request_budget is not None:
+            raise XCollectorRateLimitError(
+                "Scweet account pool budget exhausted",
+                retry_after_ms=retry_after_ms_until(
+                    self._clock.now(),
+                    budget.reset_at,
+                ),
+                reset_at=budget.reset_at,
+            )
+
+        for search_pass in budget.passes:
+            self._prepare_account_pool()
+            try:
+                records, scweet, usage, failover_count = (
+                    self._run_pass_with_failover(
+                        scweet,
+                        request=request,
+                        search_pass=search_pass,
+                        since=since,
+                        until=until,
+                    )
+                )
+            except Exception as classified:
+                warning = partial_warning_for_late_failure(
+                    classified,
+                    search_pass.label,
+                    len(fetched_posts),
+                )
+                if warning is not None:
+                    warnings.append(warning)
+                    break
+
+                raise classified
+
+            if failover_count > 0:
+                warnings.append(
+                    XCollectorWarning(
+                        code="x_collector.account_failover",
+                        message=(
+                            f"{search_pass.label} resumed with another account "
+                            f"after {failover_count} account-scoped failure(s)"
+                        ),
+                    ),
+                )
+
+            accepted_count = 0
+            for rank, record in enumerate(records, start=1):
+                post = post_from_scweet_record(record, search_pass.product)
+                if post is not None and post_is_in_window(post, request):
+                    fetched_posts.append((
+                        post,
+                        CandidateSignal(
+                            pass_label=search_pass.label,
+                            product=search_pass.product,
+                            rank=rank,
+                        ),
+                    ))
+                    accepted_count += 1
+
+            self._account_usage_observer.complete_pass_success(
+                request,
+                usage,
+                fetched_count=len(records),
+                accepted_count=accepted_count,
+            )
+            if len(records) < search_pass.limit:
+                warnings.append(
+                    XCollectorWarning(
+                        code="x_collector.partial_pass",
+                        message=(
+                            f"{search_pass.label} returned fewer records "
+                            "than requested"
+                        ),
+                    ),
+                )
+            if records and accepted_count == 0:
+                warnings.append(
+                    XCollectorWarning(
+                        code="x_collector.pass_filtered",
+                        message=(
+                            f"{search_pass.label} returned records, but all "
+                            "were outside the requested window or invalid"
+                        ),
+                    ),
+                )
+            if self._account_budget_is_depleted():
+                warnings.append(
+                    XCollectorWarning(
+                        code="x_collector.account_budget_depleted",
+                        message=(
+                            "Scweet account pool budget was depleted after "
+                            f"{search_pass.label}; returning partial daily "
+                            "search results"
+                        ),
+                    ),
+                )
+                break
+
+        ranking_posts, rejection_scope, rejection_cache_ready = (
+            self._filter_cached_rank_rejections(
+                request,
+                fetched_posts,
+                started_at,
+                warnings,
+            )
+        )
+        selected_posts = rank_candidates(
+            ranking_posts,
+            query=request.query,
+            window_end=request.window_end,
+            max_items=request.max_items,
+        )
+        completed_at = self._clock.now()
+        if rejection_cache_ready and rejection_scope is not None:
+            self._record_ranking_outcomes(
+                rejection_scope,
+                ranking_posts,
+                selected_posts,
+                completed_at,
+                warnings,
+            )
+
+        return DailySearchResult(
+            posts=tuple(selected_posts),
+            next_cursor=None,
+            warnings=tuple(warnings),
+            run=XCollectorRun(
+                collector_engine="scweet",
+                collector_version=f"scweet-5.3 service-{__version__}",
+                started_at=started_at,
+                completed_at=completed_at,
+                requested_limit=request.max_items,
+                fetched_count=len(fetched_posts),
+                returned_count=len(selected_posts),
+                partial=len(selected_posts) < request.max_items,
+            ),
+        )
 
     def _run_pass_with_failover(
         self,
@@ -373,6 +523,91 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
             and snapshot.total_remaining_requests >= estimated_cost
         )
 
+    def _filter_cached_rank_rejections(
+        self,
+        request: DailySearchRequest,
+        fetched_posts: list[tuple[XCollectedPost, CandidateSignal]],
+        now: datetime,
+        warnings: list[XCollectorWarning],
+    ) -> tuple[
+        list[tuple[XCollectedPost, CandidateSignal]],
+        CandidateRejectionScope | None,
+        bool,
+    ]:
+        repository = self._candidate_rejection_repository
+        if repository is None or not fetched_posts:
+            return fetched_posts, None, False
+
+        scope = candidate_rejection_scope(request)
+        unique_candidates = aggregate_candidates(fetched_posts)
+        try:
+            rejections = repository.load_rejections(
+                scope,
+                tuple(candidate.post.tweet_id for candidate in unique_candidates),
+            )
+            suppressed_ids = tuple(
+                candidate.post.tweet_id
+                for candidate in unique_candidates
+                if (
+                    (rejection := rejections.get(candidate.post.tweet_id))
+                    is not None
+                    and self._candidate_rejection_policy.should_suppress(
+                        rejection,
+                        candidate.post,
+                        request,
+                        now,
+                    )
+                )
+            )
+            maximum_suppressed_count = max(
+                0,
+                len(unique_candidates) - request.max_items,
+            )
+            suppressed_ids = suppressed_ids[:maximum_suppressed_count]
+            repository.mark_seen(scope, suppressed_ids, now)
+        except CandidateRejectionCacheError:
+            append_rejection_cache_warning(warnings)
+            return fetched_posts, scope, False
+
+        suppressed = set(suppressed_ids)
+        return (
+            [item for item in fetched_posts if item[0].tweet_id not in suppressed],
+            scope,
+            True,
+        )
+
+    def _record_ranking_outcomes(
+        self,
+        scope: CandidateRejectionScope,
+        ranking_posts: list[tuple[XCollectedPost, CandidateSignal]],
+        selected_posts: list[XCollectedPost],
+        now: datetime,
+        warnings: list[XCollectorWarning],
+    ) -> None:
+        repository = self._candidate_rejection_repository
+        if repository is None:
+            return
+
+        selected_ids = tuple(post.tweet_id for post in selected_posts)
+        selected_id_set = set(selected_ids)
+        rejected_posts = tuple(
+            candidate.post
+            for candidate in aggregate_candidates(ranking_posts)
+            if candidate.post.tweet_id not in selected_id_set
+        )
+        try:
+            repository.record_outcomes(
+                scope,
+                selected_ids,
+                tuple(
+                    self._candidate_rejection_policy.new_rejection(post, now)
+                    for post in rejected_posts
+                ),
+                now,
+            )
+        except CandidateRejectionCacheError:
+            append_rejection_cache_warning(warnings)
+
     def _budget_search_passes(
         self,
         planned_passes: tuple[ScweetSearchPass, ...],
@@ -404,6 +639,54 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
         now = self._clock.now()
         self._account_pool_ledger.apply_profile_cooldowns(now)
         self._account_pool_ledger.apply_collection_priorities(now)
+
+
+def append_rejection_cache_warning(
+    warnings: list[XCollectorWarning],
+) -> None:
+    if any(
+        warning.code == "x_collector.rejection_cache_unavailable"
+        for warning in warnings
+    ):
+        return
+    warnings.append(
+        XCollectorWarning(
+            code="x_collector.rejection_cache_unavailable",
+            message=(
+                "The derived candidate rejection cache was unavailable; "
+                "collection continued without cached suppression"
+            ),
+        ),
+    )
+
+
+def partial_warning_for_late_failure(
+    failure: Exception,
+    pass_label: str,
+    fetched_count: int,
+) -> XCollectorWarning | None:
+    if fetched_count <= 0:
+        return None
+
+    if isinstance(failure, XCollectorRateLimitError):
+        return XCollectorWarning(
+            code="x_collector.partial_rate_limit",
+            message=(
+                f"{pass_label} hit a rate limit after earlier passes returned "
+                "posts; returning partial daily search results"
+            ),
+        )
+
+    if isinstance(failure, XCollectorUnavailableError):
+        return XCollectorWarning(
+            code="x_collector.partial_provider_failure",
+            message=(
+                f"{pass_label} hit a transient provider failure after earlier "
+                "passes returned posts; returning partial daily search results"
+            ),
+        )
+
+    return None
 
 
 def collector_failure_kind(failure: Exception) -> str:

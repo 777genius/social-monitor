@@ -158,7 +158,7 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
     expect(result.ok).toBe(true);
     const snapshot = scenario.artifacts.all()[0]?.toSnapshot();
     expect(snapshot?.content?.topReads[0]).toMatchObject({
-      title: "Runtime regression discussion\n\nUsers are discussing a runtime regression.",
+      title: "Runtime regression discussion",
       providerKey: "reddit",
       citationIds: ["c1"],
       providerMetrics: [{ label: "Score", value: "50" }],
@@ -169,6 +169,15 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
     );
     expect(scenario.model.generatedEvidenceIds()).toEqual([["feed-1"]]);
     const modelEvidence = scenario.model.generatedEvidencePayloads()[0];
+    expect(JSON.parse(modelEvidence!).selectedEvidence).toEqual([
+      expect.objectContaining({
+        feedItemId: "feed-1",
+        sourceItemId: "reddit-post-1",
+        canonicalUrl: "https://reddit.example.test/post-1",
+        title: "Runtime regression discussion",
+        bodyPreview: "Users are discussing a runtime regression.",
+      }),
+    ]);
     expect(modelEvidence).not.toContain("feed-related");
     expect(modelEvidence).not.toContain("relation:related-topic");
     expect(modelEvidence).not.toContain("must-not-reach-model");
