@@ -63,6 +63,8 @@ import {
   readerSummaryV2DailyPublicationCandidates,
 } from
   "../../test-fixtures/reader-summary-v2-daily-publication.fixture";
+import { configuredPromotionInterests } from
+  "../../test-fixtures/configured-promotion-interests.spec-support";
 
 describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
   it("persists one immutable real-selector slate without changing order, lane, digest, or confidence", async () => {
@@ -115,6 +117,12 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
         feedItems,
         new InMemoryUserRelevanceProfileRepository(),
         clock,
+        undefined, undefined, undefined, undefined, undefined,
+        configuredPromotionInterests([{
+          tenantId: tenant, workspaceId: workspace,
+          interestId: "interest-engineering",
+          query: "Software engineering tools: database compiler runtime storage SDK CLI API cache worker",
+        }]),
       ),
       feedItems,
       clock,
@@ -327,6 +335,19 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
         feedItems,
         new InMemoryUserRelevanceProfileRepository(),
         clock,
+        undefined, undefined, undefined, undefined, undefined,
+        configuredPromotionInterests([
+          {
+            tenantId: tenant, workspaceId: workspace,
+            interestId: "interest-reliable-systems",
+            query: "Reliable systems: compiler runtime storage cache scheduler",
+          },
+          {
+            tenantId: tenant, workspaceId: workspace,
+            interestId: "interest-developer-workflows",
+            query: "Developer workflows: database API SDK CLI proxy",
+          },
+        ]),
       ),
       feedItems,
       clock,
