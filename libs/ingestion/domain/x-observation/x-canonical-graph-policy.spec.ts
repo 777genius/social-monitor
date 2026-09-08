@@ -41,22 +41,22 @@ describe("detached canonical coordinates and proposed maxima", () => {
     expect(proposedBounds(days, graph, [], "", hash)).toMatchObject({ ok: false, error: { code: "UNAPPROVED_AMENDMENT" } });
   });
   it("preserves every tracked main baseline byte and mode, without unreleased ancestry", () => {
-    // Exact git ls-tree -rz 8df17ed6eb2a6bc72e25cd1c0f40bbb6083dcc4c.
+    // Exact git ls-tree -rz fa6bb2036d792bcc868d3cd795ffe1c0fb3f169f.
     // Sealed source evidence works in depth-one checkouts and source archives.
     expect(lstatSync("test/fixtures/x-canonical/baseline.ls-tree.json").isSymbolicLink()).toBe(false);
     const representation = readFileSync("test/fixtures/x-canonical/baseline.ls-tree.json");
     expect(createHash("sha256").update(representation).digest("hex")).toBe(
-      "cbd19c8d28d68f35a1966af6f847e0228c95962c374edca8cf02aae8f615b5c7");
+      "616e75145832ecd3826a92cfc253d821de92ade0175215c60e740bb55601a8f7");
     const tuples = JSON.parse(representation.toString("utf8")) as
       { path: string; mode: string; kind: string; blob: string }[];
-    expect(tuples).toHaveLength(6314);
+    expect(tuples).toHaveLength(6318);
     const baseline = Buffer.from(tuples.map(({ path, mode, kind, blob }) =>
       `${mode} ${kind} ${blob}\t${path}\0`).join(""), "utf8");
-    expect(baseline.length).toBe(794718);
+    expect(baseline.length).toBe(795142);
     expect(createHash("sha256").update(baseline).digest("hex")).toBe(
-      "894d8c18f89ca18e67c894bef02145f7566c18f4fe9d4c1f488713126b960e07");
+      "20ff7f0ad57c6591f53c9e3567b672cec79940a654c952878310527bcb45e145");
     const entries = baseline.toString("utf8").split("\0").filter(Boolean);
-    expect(entries).toHaveLength(6314);
+    expect(entries).toHaveLength(6318);
     for (const entry of entries) {
       const [header, path] = entry.split("\t");
       const [mode, kind, expected] = header!.split(" ");

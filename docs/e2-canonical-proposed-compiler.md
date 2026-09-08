@@ -1,6 +1,6 @@
 # E2 detached proposed graph compiler
 
-This checkpoint integrates offline planning on main `8df17ed6eb2a6bc72e25cd1c0f40bbb6083dcc4c`.
+This checkpoint integrates offline planning on main `fa6bb2036d792bcc868d3cd795ffe1c0fb3f169f`.
 The input `base` remains the reviewed E1 semantic-profile token `429e0f229c50f596d708216708775456b788251b`;
 it is not a claim that unreleased ancestry is installed on main.
 It adds no runtime registration, grant, RPC, admission, provider configuration, schema3 release or database behavior.
@@ -105,9 +105,12 @@ The spec compares exact declarations and exercises numeric edges, missing budget
 Unicode, sparse arrays and canonical JSON rejection behavior. It intentionally preserves legacy JSON getter
 semantics; descriptor-safe input snapshotting remains the separate validation boundary.
 
-The ownership gate hashes every one of the 6314 tracked main baseline files as Git blobs and verifies file modes,
-including symlinks. Missing files, changed bytes or mode changes fail. A sealed UTF-8 JSON manifest supplies all6314 path/mode/kind/blob tuples from exact main `git ls-tree -rz`.
-The spec pins both representation SHA256 and the exact reconstructed NUL-manifest SHA256 and byte count.
+The refreshed UTF-8 JSON manifest supplies all 6318 path/mode/kind/blob tuples from exact main
+`git ls-tree -rz`. The ownership gate validates manifest seals before hashing filesystem bytes
+and checking executable and symlink modes. Missing files, changed bytes or mode changes fail.
+The ownership spec pins the independently generated fa6 representation and NUL-manifest seals,
+6318 entry counts and 795142 reconstructed bytes. The focused ownership suite passes all three tests;
+its assertions and filesystem byte/mode checks remain intact.
 It runs in a source archive or depth-one checkout without a baseline Git object. Updating HEAD cannot
 replace that baseline. The fixture is mechanically generated evidence; it does not change the ownership scope.
 The complete ten/eleven-lane fixture test additionally compares all 2205 descriptor normalized request hashes,

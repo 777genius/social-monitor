@@ -26,19 +26,21 @@ auth, provider, Runner, client or transport module is imported.
   command SHA256 is `55609464c4dc57b2f822940c35069a89ad28adcfc4818d0553c388f8a4facf20`.
   The original archive identity remains recorded in the unchanged license provenance;
   the archive is no longer a distributed fixture. This is not an installation recipe.
-- `baseline.ls-tree.json` contains all 6314 path/mode/kind/blob tuples in original
-  order for exact base `8df17ed6eb2a6bc72e25cd1c0f40bbb6083dcc4c`.
-  The 1224073-byte UTF-8 representation has independently hardcoded SHA256
-  `cbd19c8d28d68f35a1966af6f847e0228c95962c374edca8cf02aae8f615b5c7`.
-  Reconstructing each `mode kind blob\tpath\0` entry produces exactly 794718 bytes,
-  SHA256 `894d8c18f89ca18e67c894bef02145f7566c18f4fe9d4c1f488713126b960e07`.
-  Both seals and counts are asserted before every filesystem blob and mode assertion.
+- `baseline.ls-tree.json` contains all 6318 path/mode/kind/blob tuples in original
+  order for exact base `fa6bb2036d792bcc868d3cd795ffe1c0fb3f169f`.
+  The 1224769-byte UTF-8 representation has SHA256
+  `616e75145832ecd3826a92cfc253d821de92ade0175215c60e740bb55601a8f7`.
+  Reconstructing each `mode kind blob\tpath\0` entry produces exactly 795142 bytes,
+  SHA256 `20ff7f0ad57c6591f53c9e3567b672cec79940a654c952878310527bcb45e145`.
+  The ownership spec independently pins these fa6 seals, both 6318 entry counts
+  and the 795142-byte reconstructed length. All three focused ownership tests pass;
+  all byte/mode assertions remain intact.
   No Git history, HEAD substitution, missing-history skip or ignored input is used.
 
 ## Fixture size and license accounting
 
 `inventory.json` records payload hashes, byte counts and vendor line counts.
-The baseline is generated structured evidence (37886 lines). The four first-party
+The baseline is generated structured evidence (37910 lines). The four first-party
 `.ts.txt` evidence files remain unchanged (19955 bytes, 291 handwritten lines).
 The SDK evidence contains **427881 bytes / 10836 handwritten vendor lines** in
 30 files, plus 4160 bytes / 130 generated manifest lines and 827 bytes / 22 inert

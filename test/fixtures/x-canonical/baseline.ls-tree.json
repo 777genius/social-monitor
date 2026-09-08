@@ -194,7 +194,7 @@
   {
     "mode": "100755",
     "kind": "blob",
-    "blob": "68a9b5f9afd12bf558fa6d89e755925001825dfa",
+    "blob": "65ddfdd73d6f0228dbce3b23f10082b819d624c9",
     "path": "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs"
   },
   {
@@ -208,6 +208,18 @@
     "kind": "blob",
     "blob": "8779be3201bb2f5af58789de2c1fe78d714e0e05",
     "path": "apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs"
+  },
+  {
+    "mode": "100644",
+    "kind": "blob",
+    "blob": "121a55d655656ac992186d22f08130b8ff621f4c",
+    "path": "apps/agent-runtime/bin/subscription-runtime-failure-details.mjs"
+  },
+  {
+    "mode": "100644",
+    "kind": "blob",
+    "blob": "716bf02d185a7de2c3410fb1127d82a90a4d68d4",
+    "path": "apps/agent-runtime/bin/subscription-runtime-failure-details.test.mjs"
   },
   {
     "mode": "100644",
@@ -326,13 +338,13 @@
   {
     "mode": "100644",
     "kind": "blob",
-    "blob": "e929449a7db80cedb704e416e8039d5603a1224b",
+    "blob": "97c8cb05399b8701c8b51dc1c8f85be64ff815ee",
     "path": "apps/agent-runtime/src/subscription-runtime-cli-support.spec.ts"
   },
   {
     "mode": "100644",
     "kind": "blob",
-    "blob": "6e4bb1a584c0f56bbeb401b6a95eb2792e6841ba",
+    "blob": "a4e8777127d9e4f0bf09e0d67a13c79ed82da5fe",
     "path": "apps/agent-runtime/src/subscription-runtime-cli-support.ts"
   },
   {
@@ -350,13 +362,13 @@
   {
     "mode": "100644",
     "kind": "blob",
-    "blob": "67cbde499ccfefbab2bf5da489d494b117a75441",
+    "blob": "f595623e88e8a5c1abdda797067b9b5c3fda4c75",
     "path": "apps/agent-runtime/src/subscription-runtime-installation.spec.ts"
   },
   {
     "mode": "100644",
     "kind": "blob",
-    "blob": "de50577f51e5e7d327ab11ce229aa42329073076",
+    "blob": "6c4a0f81bb37b694b7742a40c0fa6bb6c96bf3cc",
     "path": "apps/agent-runtime/src/subscription-runtime-installation.ts"
   },
   {
@@ -23006,13 +23018,19 @@
   {
     "mode": "100644",
     "kind": "blob",
+    "blob": "446df3abd812e559d3785a2736de3116f2e124e3",
+    "path": "libs/shared-kernel/src/redaction-linear.spec.ts"
+  },
+  {
+    "mode": "100644",
+    "kind": "blob",
     "blob": "8caf989485a78f732f4c3d0f6ab55299e3ee4ca3",
     "path": "libs/shared-kernel/src/redaction.spec.ts"
   },
   {
     "mode": "100644",
     "kind": "blob",
-    "blob": "f8eda9c2da5c4ff82f55bbf1c802d7790c78c43f",
+    "blob": "c9382c0bfc651908a707965a84adc7511903b4ff",
     "path": "libs/shared-kernel/src/redaction.ts"
   },
   {
@@ -31298,7 +31316,7 @@
   {
     "mode": "100644",
     "kind": "blob",
-    "blob": "4c696c742fd5bfce564f0a969cb220f258bc5571",
+    "blob": "1b70b74da16e0fce78ed97e56fa4b35aa7d90ac8",
     "path": "package.json"
   },
   {
@@ -32912,7 +32930,7 @@
   {
     "mode": "100644",
     "kind": "blob",
-    "blob": "2a90e310eaf4b656f326273a3b84a14ca889dc7f",
+    "blob": "b504e40cf0e2faa78ba7cb6ecaa00f96d1b583d7",
     "path": "scripts/check-review-ci.mjs"
   },
   {
@@ -32966,8 +32984,14 @@
   {
     "mode": "100644",
     "kind": "blob",
-    "blob": "7358a12aa7b5ab2bcf0bd819e24b73cfeaeaf8b8",
+    "blob": "bcc43ab4fdcb5481b43cbb2177b4ab377df394c6",
     "path": "scripts/check-secrets.mjs"
+  },
+  {
+    "mode": "100644",
+    "kind": "blob",
+    "blob": "320685258b1659d430bdbcc8a0c985c77ac7c1db",
+    "path": "scripts/check-secrets.test.mjs"
   },
   {
     "mode": "100644",
