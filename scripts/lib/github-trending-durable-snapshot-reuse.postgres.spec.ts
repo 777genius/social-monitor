@@ -1,3 +1,6 @@
+import { deepStrictEqual } from "node:assert";
+import { buildGitHubTrendingCapacityGenerations } from "./github-trending-capacity-native-scenario";
+import { githubTrendingDurableSnapshotCandidatesFitBudget } from "./github-trending-durable-snapshot-candidate-budget";
 import { randomUUID } from "node:crypto";
 
 import { type Pool } from "pg";
@@ -30,6 +33,10 @@ export const githubTrendingPostgresScenarioNames = [
   "observedAt mismatch rejection",
   "invalid UUID scope rejection by PostgreSQL casts",
   "row-limit overflow rejection and parity",
+  "newest invalid and incomplete captures have no fallback",
+  "SQL NULL and missing metadata remain invalid",
+  "SQL Unicode caps and original octet lengths",
+  "200 accumulated valid rows and 201 sentinel",
 ] as const;
 
 export const runGitHubTrendingDurableSnapshotPostgresScenarios = async (
@@ -45,6 +52,10 @@ export const runGitHubTrendingDurableSnapshotPostgresScenarios = async (
   await observedAtMismatchIsRejected(pool);
   await invalidUuidScopeIsRejected(pool);
   await rowLimitOverflowIsRejected(pool);
+  await accumulatedCapacityAndSentinel(pool);
+  await unicodeCapsAndOctets(pool);
+  await nullAndMissingMetadata(pool);
+  await newestInvalidCaptures(pool);
 };
 
 const coherentTop10AndParity = async (pool: Pool): Promise<void> => {
@@ -254,6 +265,133 @@ const rowLimitOverflowIsRejected = async (pool: Pool): Promise<void> => {
   });
 };
 
+
+const readNativeCandidates = (pool: Pool) =>
+  new PrismaGitHubTrendingDurableSnapshotReader(pool).readCandidates({
+    ...githubTrendingPostgresFixtureScope,
+    requestedUtcDay: "2026-07-23",
+  });
+
+const accumulatedCapacityAndSentinel = async (pool: Pool): Promise<void> => {
+  const candidates = buildGitHubTrendingCapacityGenerations(20);
+  await prepare(pool, candidates);
+  const mapped = await readNativeCandidates(pool);
+  assert(mapped.length === 200, "native reader must retain all 200 candidates");
+  deepStrictEqual([...mapped].sort(byFeedId), [...candidates].sort(byFeedId),
+    "all 44 native fields must match the accumulated fixture");
+  const log = new ActualPostgresStatementLog(pool);
+  const proof = await reuse(log.reader());
+  assertOneStatementSnapshot(log);
+  assertDeepEqual(proof, await reuse(new InMemoryGitHubTrendingDurableSnapshotReader(candidates)),
+    "200-row native proof must match full memory proof");
+  assertDeepEqual(proof, await reuse(new InMemoryGitHubTrendingDurableSnapshotReader(candidates.slice(-10))),
+    "accumulation must preserve the exact latest-ten proof");
+  assert(githubTrendingDurableSnapshotProofPassesInvariants(proof), "capacity proof invariants");
+  const sentinel = buildGitHubTrendingPostgresCandidates({ groupKey: "sentinel", rowCount: 1 });
+  await seedGitHubTrendingPostgresCandidates(pool, sentinel);
+  assert((await readNativeCandidates(pool)).length === 201, "native overflow sentinel must be returned");
+  await assertPostgresAndMemoryReject({ pool, candidates: [...candidates, ...sentinel],
+    expectedMessage: "candidate_bound_exceeded" });
+};
+
+const byFeedId = (a: GitHubTrendingDurableSnapshotCandidate, b: GitHubTrendingDurableSnapshotCandidate) =>
+  a.feedItemId.localeCompare(b.feedItemId, "en-US");
+
+const unicodeCapsAndOctets = async (pool: Pool): Promise<void> => {
+  // Include supplementary code points, escaped controls, quotes and backslashes.
+  // U+0000 is not PostgreSQL text; U+0001 exercises JSON escaping natively.
+  for (const character of ["😀", "\u0001", '"', "\\"]) {
+    const title = character.repeat(514);
+    const body = character.repeat(4098);
+    const candidates = buildGitHubTrendingPostgresCandidates({ mutate: (row) => ({
+      ...row, sourceTitle: title, feedTitle: title, bodyPreview: body,
+      sourceTitleBytes: Buffer.byteLength(title), feedTitleBytes: Buffer.byteLength(title),
+      bodyPreviewBytes: Buffer.byteLength(body), feedProviderKey: character.repeat(65),
+      sourceProviderKey: character.repeat(65), feedStatus: character.repeat(33),
+      scanJobStatus: character.repeat(33), feedSnapshotProviderKey: character.repeat(65),
+    }) });
+    await prepare(pool, candidates);
+    const rows = await readNativeCandidates(pool);
+    assert(rows.length === 10, "invalid provider/status rows must not be filtered out by SQL");
+    for (const row of rows) {
+      assertDeepEqual([row.sourceTitle, row.feedTitle, row.bodyPreview],
+        [character.repeat(513), character.repeat(513), character.repeat(4097)],
+        "SQL left must count Unicode code points");
+      assertDeepEqual([row.sourceTitleBytes, row.feedTitleBytes, row.bodyPreviewBytes],
+        [Buffer.byteLength(title), Buffer.byteLength(title), Buffer.byteLength(body)],
+        "octet_length must retain original untruncated UTF8 sizes");
+      assertDeepEqual([row.feedProviderKey, row.sourceProviderKey, row.feedSnapshotProviderKey,
+        row.feedStatus, row.scanJobStatus], [character.repeat(64), character.repeat(64),
+        character.repeat(64), character.repeat(32), character.repeat(32)], "new SQL caps must match");
+    }
+    assert(githubTrendingDurableSnapshotCandidatesFitBudget(rows), "native capped values must fit transport budget");
+    await assertPostgresAndMemoryReject({ pool, candidates: rows, expectedMessage: "selected_group_invalid" });
+  }
+  // Isolate visible-text checks from provider/status rejection, with no truncation.
+  for (const text of ["é😀\t\n", "visible\u0001control", "😀".repeat(129)]) {
+    const candidates = buildGitHubTrendingPostgresCandidates({ mutate: (row) => ({
+      ...row, sourceTitle: text, feedTitle: text, bodyPreview: text,
+      sourceTitleBytes: Buffer.byteLength(text), feedTitleBytes: Buffer.byteLength(text),
+      bodyPreviewBytes: Buffer.byteLength(text),
+    }) });
+    await prepare(pool, candidates);
+    if (text === "é😀\t\n") {
+      assertDeepEqual(await reuse(new PrismaGitHubTrendingDurableSnapshotReader(pool)),
+        await reuse(new InMemoryGitHubTrendingDurableSnapshotReader(candidates)), "valid multibyte proof parity");
+    } else {
+      await assertPostgresAndMemoryReject({ pool, candidates, expectedMessage: "selected_group_invalid" });
+    }
+  }
+};
+
+const nullAndMissingMetadata = async (pool: Pool): Promise<void> => {
+  const cases = [
+    { sql: "update feed_items set provider_metadata = NULL", field: "feedCheckedAt", value: null,
+      error: "invalid_ordering_identity" },
+    { sql: "update source_items set metadata = metadata - 'kind'", field: "metadataKind", value: null,
+      error: "selected_group_invalid" },
+    { sql: `update source_items set metadata = jsonb_set(metadata, '{kind}', 'null'::jsonb)`,
+      field: "metadataKind", value: null, error: "selected_group_invalid" },
+    { sql: "update source_items set provider_content_hash = NULL", field: "sourceProviderContentHash", value: "",
+      error: "selected_group_invalid" },
+    { sql: "update source_items set metadata = metadata #- '{trending,rank}'", field: "rank", value: 0,
+      error: "selected_group_invalid" },
+  ] as const;
+  for (const scenario of cases) {
+    const candidates = buildGitHubTrendingCapacityGenerations(20);
+    await prepare(pool, candidates);
+    const metadataColumn = scenario.sql.startsWith("update feed_items") ? "provider_metadata" : "metadata";
+    await pool.query(`${scenario.sql} where ${metadataColumn}->'trending'->>'scanJobId' = $1`,
+      [candidates.at(-1)!.scanJobId]);
+    const rows = await readNativeCandidates(pool);
+    const newestIds = new Set(candidates.slice(-10).map((row) => row.feedItemId));
+    const newest = rows.filter((row) => newestIds.has(row.feedItemId));
+    assert(rows.length === 200 && newest.length === 10, "NULL newest evidence must remain alongside older fallback");
+    assert(newest.every((row) => row[scenario.field] === scenario.value), "native NULL/missing mapping parity");
+    assert(githubTrendingDurableSnapshotCandidatesFitBudget(rows), "NULL evidence fits transport budget");
+    await assertPostgresAndMemoryReject({ pool, candidates: rows, expectedMessage: scenario.error });
+  }
+};
+
+const newestInvalidCaptures = async (pool: Pool): Promise<void> => {
+  const cases = [
+    ["update source_items set metadata = jsonb_set(metadata, '{trending,fetchStartedAt}', '\"malformed\"'::jsonb) where metadata->'trending'->>'scanJobId' <> $1", "invalid_ordering_identity"],
+    ["update scan_jobs set status = 'FAILED' where id = $1::uuid", "selected_group_invalid"],
+    ["delete from scan_jobs where id = $1::uuid", "selected_group_invalid"],
+    ["update feed_items set status = 'HIDDEN' where provider_metadata->'trending'->>'scanJobId' = $1", "selected_group_invalid"],
+    ["delete from feed_items where id = (select id from feed_items where provider_metadata->'trending'->>'scanJobId' = $1 limit 1)", "partial_group"],
+    ["update feed_items set title = 'mismatch' where provider_metadata->'trending'->>'scanJobId' = $1", "selected_group_invalid"],
+  ] as const;
+  for (const [sql, expectedMessage] of cases) {
+    const candidates = buildGitHubTrendingCapacityGenerations(20);
+    await prepare(pool, candidates);
+    await pool.query(sql, [candidates.at(-1)!.scanJobId]);
+    const mapped = await readNativeCandidates(pool);
+    assert(mapped.length >= 199, "newest invalid evidence and older fallback must remain visible");
+    await assertPostgresAndMemoryReject({ pool, candidates: mapped, expectedMessage });
+  }
+};
+
 const prepare = async (
   pool: Pool,
   candidates: readonly GitHubTrendingDurableSnapshotCandidate[],
@@ -399,6 +537,10 @@ if (typeof describe === "function") {
         "observedAt mismatch rejection",
         "invalid UUID scope rejection by PostgreSQL casts",
         "row-limit overflow rejection and parity",
+        "newest invalid and incomplete captures have no fallback",
+        "SQL NULL and missing metadata remain invalid",
+        "SQL Unicode caps and original octet lengths",
+        "200 accumulated valid rows and 201 sentinel",
       ]);
     });
   });
