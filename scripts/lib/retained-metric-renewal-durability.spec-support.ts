@@ -9,13 +9,18 @@ import type { MetricRefreshManifest, RetainedMetricTarget } from "@social-monito
 import { RetainedMetricFetchAdapter } from "@social-monitor/ingestion/adapters/source/retained-metric-fetch.capability";
 import { metricRefreshDigest, SecureMetricRefreshReceipts } from "./retained-metric-refresh-receipts";
 
+export const renewalDurabilityHash = (originalHash: string) => (value: unknown) => {
+  const sha = metricRefreshDigest(value);
+  return sha === originalHash ? grant.predecessorManifestSha : sha;
+};
+
 // Disposable fake-provider process, no runtime/DB/provider composition.
 async function main() {
   if (process.env.NODE_ENV !== "test" || !process.send) throw new Error("TEST IPC required");
   const root = process.argv[2]!, mode = process.argv[3]!;
   const original = JSON.parse(readFileSync(join(root, grant.predecessorPath, "operation.json"), "utf8")).value as MetricRefreshManifest;
   const originalHash = metricRefreshDigest(original);
-  const hash = (v: unknown) => metricRefreshDigest(v) === originalHash ? grant.predecessorManifestSha : metricRefreshDigest(v);
+  const hash = renewalDurabilityHash(originalHash);
   const prior = SecureMetricRefreshReceipts.forTest(root), renewal = SecureMetricRefreshReceipts.forTest(root, undefined, "renewal");
   const log = (effect: string) => appendFileSync(join(root, "effects.log"), `${effect}\n`);
   let cached: RetainedMetricTarget[] | undefined;

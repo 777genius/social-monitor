@@ -52,11 +52,12 @@ export function renewalFixture() {
   // lane. Substitute ONLY this payload's digest, never the resolver or validators.
   const fixtureSha = metricRefreshDigest(original);
   const hash = (value: unknown) => { const sha = metricRefreshDigest(value); return sha === fixtureSha ? grant.predecessorManifestSha : sha; };
+  const originalDigest = hash(original);
   const prior = new RenewalMemoryJournal(grant.predecessorPath), renewal = new RenewalMemoryJournal(grant.evidencePath);
   prior.values.set(`${prior.root}/operation.json`, original);
   const results: MetricRefreshOutcome[] = [];
   for (const [index, batch] of refreshBatches(targets).entries()) {
-    prior.values.set(`${prior.root}/batch-${index}.reserved.json`, { operationId: original.operationId, manifestDigest: hash(original), targets: batch.map((t) => t.sourceItemId) });
+    prior.values.set(`${prior.root}/batch-${index}.reserved.json`, { operationId: original.operationId, manifestDigest: originalDigest, targets: batch.map((t) => t.sourceItemId) });
     prior.values.set(`${prior.root}/batch-${index}.observed.json`, { failure: null, observations: batch.map((t) => ({
       externalId: t.externalId, returned: false, observedAt: original.plannedAt, metadata: null, sample: null, reason: "omitted" })) });
     for (const t of batch) {
@@ -65,7 +66,7 @@ export function renewalFixture() {
       prior.values.set(`${prior.root}/result-${t.sourceItemId}.json`, result); results.push(result);
     }
   }
-  prior.values.set(`${prior.root}/final.json`, { manifestSha: hash(original), results, cells: metricRefreshCells(results, grant.dates) });
+  prior.values.set(`${prior.root}/final.json`, { manifestSha: originalDigest, results, cells: metricRefreshCells(results, grant.dates) });
   let current = structuredClone(targets);
   const inventory = {
     list: jest.fn(async (_scope: unknown, ids?: readonly string[]) => structuredClone(ids ? current.filter((t) => ids.includes(t.sourceItemId)) : current)),
