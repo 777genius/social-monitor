@@ -9,7 +9,7 @@ const scope = { tenantId: tenantId("00000000-0000-7000-8000-000000000001"),
 const row = { id: scope.interestId, tenantId: scope.tenantId, workspaceId: scope.workspaceId,
   name: "Fixture interest", query: "AI agents", createdAt: new Date("2026-09-08T00:00:00Z"),
   deletedAt: null, status: "ENABLED" };
-const databaseUrl = "postgresql://fixture:fixture@localhost:5432/fixture";
+const databaseUrl = "postgresql://fixture:password@localhost:5432/fixture";
 
 function lease() {
   const findFirst = jest.fn().mockImplementation(async () => {
