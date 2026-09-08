@@ -15,6 +15,36 @@ import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+require("ts-node").register({ transpileOnly: true, compilerOptions: { rootDir: resolve(dirname(fileURLToPath(import.meta.url)), "../../..") } });
+const { promotionResponseSchema, parseReviews } = require(
+  "../../../libs/relevance/adapters/model/source-content-quality-review-wire.ts",
+);
+const { promotionWireCandidate } = require(
+  "../../../libs/relevance/adapters/model/promotion-review-wire.ts",
+);
+// Native runtime canonicalizes unordered required lists; preserve every constraint.
+const nativeAssessmentSchema = JSON.parse(JSON.stringify(promotionResponseSchema,
+  (key, value) => key === "required" ? [...value].sort() : value));
+const assessmentRequest = {
+  candidateId: "sandbox-assessment", providerKey: "reddit",
+  title: "Measured compiler diagnostics", deterministic: { flags: [] },
+  promotion: { tenantId: "sandbox-tenant", workspaceId: "sandbox-workspace",
+    interestId: "sandbox-interest", sourceBindingId: "sandbox-binding",
+    sourceItemId: "sandbox-item", trustedIntent: "compiler diagnostics",
+    availability: "title_only" },
+};
+const assessmentOutput = { reviews: [{
+  candidateId: assessmentRequest.candidateId,
+  bindingId: promotionWireCandidate(assessmentRequest).bindingId,
+  decision: "promote", confidence: 0.9, qualityScore: 0.9,
+  interestRelevanceScore: 0.9, engagementIntegrityScore: 0.9,
+  flags: [], reason: "Captured diagnostic observation",
+  evidence: [{ field: "title", start: 0, end: assessmentRequest.title.length,
+    quote: assessmentRequest.title }], resolvedSoftFlags: [],
+}] };
 
 import { orderCodexAuthAccountsForTask } from "./codex-auth-pool-routing.mjs";
 import "./reader-promotion-v2-canary-lane.e2e.test.mjs";
@@ -190,14 +220,15 @@ test(
   },
 );
 
-for (const firstAccount of ["account-b", "account-a"]) {
-  test(`assessment reuses pool with one attempt starting on ${firstAccount}`, { timeout: 30_000 }, async () => {
-    const fixture = await createFixture();
+for (const [firstAccount, available] of [["account-b", false], ["account-a", false], ["account-a", true]]) {
+  test(`assessment native schema with one attempt starting on ${firstAccount}, available=${available}`, { timeout: 30_000 }, async () => {
+    const fixture = await createFixture(available);
     try {
       const request = agentTaskRequest(taskIdStartingWith(["account-a", "account-b"], firstAccount));
       request.context.purpose = "social_monitor.relevance.assess_source_content.v1";
       request.task.outputSchemaName = "social_monitor_source_content_quality_review";
       request.task.controls.outputSchemaName = "social_monitor_source_content_quality_review";
+      request.task.controls.outputSchema = promotionResponseSchema;
       await writeFile(fixture.requestPath, JSON.stringify(request));
       const execution = await execFileAsync(process.execPath, [runtimeBridgePath,
         "--provider", "codex", "--input", fixture.requestPath, "--format", "result-json",
@@ -212,9 +243,14 @@ for (const firstAccount of ["account-b", "account-a"]) {
       }).then(({ stdout }) => JSON.parse(stdout), (error) => JSON.parse(error.stdout));
       const attempts = (await readFile(fixture.attemptLogPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
       assert.equal(attempts.some(({ command }) => command === "exec"), false);
-      assert.equal(execution.status, firstAccount === "account-b" ? "completed" : "failed");
-      if (firstAccount === "account-b") {
-        assert.deepEqual(execution.structuredOutput, { ok: true, account: "account-b" });
+      assert.equal(execution.status, firstAccount === "account-b" || available ? "completed" : "failed");
+      if (firstAccount === "account-b" || available) {
+        assert.deepEqual(execution.structuredOutput, assessmentOutput);
+        assert.deepEqual(attempts.find(({ command }) => command === "turn").outputSchema, nativeAssessmentSchema);
+        assert.equal(execution.warnings?.some(({ code }) => code === "codex_app_server_output_schema_not_native") ?? false, false);
+        const [review] = parseReviews(JSON.stringify(execution.structuredOutput), [assessmentRequest]);
+        assert.equal(review.assessment.binding, assessmentRequest.promotion);
+        assert.equal(review.qualityScore, 0.9);
         assert.equal(attempts.filter(({ command }) => command === "turn").length, 1);
       } else {
         assert.equal(attempts.some(({ account }) => account === "account-b"), false);
@@ -225,7 +261,35 @@ for (const firstAccount of ["account-b", "account-a"]) {
   });
 }
 
-async function createFixture() {
+for (const invalid of ["missing-name", "wrong-name", "conflicting-name", "missing-schema", "null-schema", "array-schema"]) {
+  test(`assessment rejects ${invalid} before native startup`, async () => {
+    const fixture = await createFixture();
+    try {
+      const request = agentTaskRequest("sandbox-invalid-schema");
+      request.context.purpose = "social_monitor.relevance.assess_source_content.v1";
+      request.task.outputSchemaName = "social_monitor_source_content_quality_review";
+      request.task.controls.outputSchema = promotionResponseSchema;
+      if (invalid === "missing-name") delete request.task.outputSchemaName;
+      if (invalid === "wrong-name") request.task.outputSchemaName = "other";
+      if (invalid === "conflicting-name") request.task.controls.outputSchemaName = "other";
+      if (invalid === "missing-schema") delete request.task.controls.outputSchema;
+      if (invalid === "null-schema") request.task.controls.outputSchema = null;
+      if (invalid === "array-schema") request.task.controls.outputSchema = [];
+      await writeFile(fixture.requestPath, JSON.stringify(request));
+      await assert.rejects(execFileAsync(process.execPath, [runtimeBridgePath,
+        "--provider", "codex", "--input", fixture.requestPath], {
+        cwd: fixture.sandboxProject,
+        env: { PATH: process.env.PATH, LANG: "C.UTF-8" },
+      }), (error) => {
+        assert.match(error.stderr, /schema|outputSchema/);
+        return true;
+      });
+      await assert.rejects(stat(fixture.attemptLogPath), { code: "ENOENT" });
+    } finally { await fixture.cleanup(); }
+  });
+}
+
+async function createFixture(available = false) {
   const root = await mkdtemp(
     join(tmpdir(), "social-monitor-subscription-runtime-e2e-"),
   );
@@ -281,7 +345,7 @@ async function createFixture() {
   const codexBinaryPath = join(root, "fake-codex.mjs");
   await writeFile(
     codexBinaryPath,
-    fakeCodexBinarySource(attemptLogPath, stateRoot),
+    fakeCodexBinarySource(attemptLogPath, stateRoot, available),
     "utf8",
   );
   await chmod(codexBinaryPath, 0o755);
@@ -368,7 +432,7 @@ function fakeCodexAuth(accountId) {
   };
 }
 
-function fakeCodexBinarySource(attemptLogPath, stateRoot) {
+function fakeCodexBinarySource(attemptLogPath, stateRoot, available) {
   return `#!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
@@ -390,7 +454,7 @@ if (command === "app-server") {
       continue;
     }
     if (request.method === "account/rateLimits/read") {
-      const usedPercent = account === "account-a" ? 100 : 20;
+      const usedPercent = account === "account-a" && !${available} ? 100 : 20;
       await recordAttempt({ account, command: "rate-limits", usedPercent });
       send({
         id: request.id,
@@ -402,7 +466,7 @@ if (command === "app-server") {
               resetsAt: Math.floor(Date.now() / 1000) + 3600,
             },
             rateLimitReachedType:
-              account === "account-a" ? "usage_limit_reached" : null,
+              account === "account-a" && !${available} ? "usage_limit_reached" : null,
           },
         },
       });
@@ -452,7 +516,7 @@ if (command === "app-server") {
         materializedAuthChanged,
       });
       send({ id: request.id, result: { turn: { id: turnId } } });
-      if (account === "account-a") {
+      if (account === "account-a" && !${available}) {
         send({
           method: "turn/completed",
           params: {
@@ -470,7 +534,7 @@ if (command === "app-server") {
             turnId,
             item: {
               type: "agentMessage",
-              text: JSON.stringify({ ok: true, account }),
+              text: JSON.stringify(request.params.outputSchema?.properties?.reviews ? ${JSON.stringify(assessmentOutput)} : { ok: true, account }),
             },
           },
         });

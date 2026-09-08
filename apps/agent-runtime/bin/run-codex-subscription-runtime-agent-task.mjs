@@ -53,6 +53,9 @@ const admission = admitSubscriptionRuntimeWrapperRequest({
   : undefined);
 const isSourceContentAssessment = admission.canonicalRequest.context.purpose === "social_monitor.relevance.assess_source_content.v1";
 const isReaderPromotionV2Canary = admission.canonicalRequest.context.purpose === readerPromotionV2CanaryPurpose;
+const assessmentOutputSchemas = isSourceContentAssessment
+  ? sourceContentAssessmentOutputSchemas(admission.canonicalRequest.task)
+  : undefined;
 await writeFile(inputPath, JSON.stringify(admission.canonicalRequest), "utf8");
 
 const { FileBackendCodexWorker, NodeProcessRunner } = await import(
@@ -84,7 +87,7 @@ const createStrictCodexWorker = (input) => {
     if (isReaderPromotionV2Canary) {
       return createReaderPromotionV2CanaryWorker({ input, model, authPool });
     }
-    return createPooledCodexWorker({ input, model, authPool });
+    return createPooledCodexWorker({ input, model, authPool, outputSchemas: assessmentOutputSchemas });
   }
 
   if (isSourceContentAssessment) {
@@ -221,7 +224,18 @@ function readerPromotionV2CanaryWorkerOptions() {
   };
 }
 
-function createPooledCodexWorker({ input, model, authPool }) {
+function sourceContentAssessmentOutputSchemas(task) {
+  const name = "social_monitor_source_content_quality_review";
+  const schema = task.controls.outputSchema;
+  if (task.outputSchemaName !== name ||
+      (task.controls.outputSchemaName !== undefined && task.controls.outputSchemaName !== name) ||
+      schema === null || typeof schema !== "object" || Array.isArray(schema)) {
+    throw new Error("Source content assessment requires its named output schema object");
+  }
+  return { [name]: schema };
+}
+
+function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
   let executor;
   let disposed = false;
 
@@ -284,6 +298,7 @@ function createPooledCodexWorker({ input, model, authPool }) {
                 sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
                 model,
                 reasoningEffort: admission.profile.reasoningEffort,
+                ...(outputSchemas === undefined ? {} : { outputSchemas }),
                 ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
               },
             }),
