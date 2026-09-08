@@ -1,3 +1,4 @@
+import { dispatchYesterdayReplay } from "./lib/yesterday-replay-dispatch";
 import { checkConfiguredInterestReader, requireFreshCheckSelection } from "./lib/check-configured-interest-reader";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -88,9 +89,14 @@ const allowDirtyCollection = process.argv.includes("--allow-dirty-collection");
 const outputPath = "ops/evals/yesterday-reader-summary-evidence-replay.fresh.v1.json";
 const maxEvidenceItems = 40;
 const primarySources = ["reddit", "x-twitter"];
-const localDatabaseUrl = yesterdaySocialQualityDatabaseUrl();
 
-void main();
+export const replayCheck = dispatchYesterdayReplay(process.argv.slice(2), {
+  validateArtifact: () => {
+    validateExistingReport("ops/evals/yesterday-reader-summary-evidence-replay.v1.json");
+    console.log("Yesterday reader summary evidence stored artifact validation OK (artifact-only; no current configuration evidence)");
+  },
+  freshSelection: main,
+});
 
 async function main(): Promise<void> {
   requireFreshCheckSelection(process.argv.slice(2));
@@ -102,8 +108,8 @@ async function main(): Promise<void> {
         "Local yesterday social data source is unavailable; cannot update replay report.",
       );
     }
-    validateExistingReport();
-    return;
+    validateExistingReport(outputPath);
+    throw new Error("Fresh selection unavailable; stored replay report is not current configuration evidence");
   }
 
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
@@ -122,14 +128,14 @@ async function main(): Promise<void> {
 
   if (!existsSync(outputPath)) {
     throw new Error(
-      `${outputPath} is missing. Run npm run check:yesterday-reader-summary-evidence-replay -- --fresh-selection --update`,
+      `${outputPath} is missing. Run node -r ts-node/register -r tsconfig-paths/register scripts/check-yesterday-reader-summary-evidence-replay.ts --fresh-selection --update`,
     );
   }
 
   const expected = normalizeLineEndings(readFileSync(outputPath, "utf8"));
   if (expected !== serialized) {
     throw new Error(
-      `${outputPath} is stale. Run npm run check:yesterday-reader-summary-evidence-replay -- --fresh-selection --update`,
+      `${outputPath} is stale. Run node -r ts-node/register -r tsconfig-paths/register scripts/check-yesterday-reader-summary-evidence-replay.ts --fresh-selection --update`,
     );
   }
 
@@ -139,6 +145,7 @@ async function main(): Promise<void> {
 }
 
 async function tryBuildReport(): Promise<Report | undefined> {
+  const localDatabaseUrl = yesterdaySocialQualityDatabaseUrl();
   const scope = await readDominantFeedScope({
     databaseUrl: localDatabaseUrl,
     collectionDate,
@@ -264,7 +271,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
       selectionAuthority: "current_monitoring_configuration",
       artifactFormat: "yesterday-reader-summary-evidence-replay-v1",
       collectionDate,
-      generatedBy: "npm run check:yesterday-reader-summary-evidence-replay -- --fresh-selection",
+      generatedBy: "node -r ts-node/register -r tsconfig-paths/register scripts/check-yesterday-reader-summary-evidence-replay.ts --fresh-selection",
       model: {
         liveNetwork: false,
         replayTarget: "workspace-reader-summary-evidence",
@@ -306,18 +313,19 @@ async function tryBuildReport(): Promise<Report | undefined> {
   }
 }
 
-function validateExistingReport(): void {
+function validateExistingReport(outputPath: string): void {
   if (!existsSync(outputPath)) {
     throw new Error(
-      `${outputPath} is missing and local data source is unavailable.`,
+      `${outputPath} is missing.`,
     );
   }
 
-  const report = JSON.parse(readFileSync(outputPath, "utf8")) as Report;
+  const report = JSON.parse(readFileSync(outputPath, "utf8")) as Omit<Report, "selectionAuthority">;
   const valid =
     report.schemaVersion === 1 &&
     report.artifactFormat === "yesterday-reader-summary-evidence-replay-v1" &&
     report.blockingPassed === true &&
+    Object.values(report.qualityGates).every((passed) => passed === true) &&
     primarySources.every(
       (source) => (report.replay.primaryProviderCounts[source] ?? 0) >= 2,
     ) &&
@@ -326,8 +334,6 @@ function validateExistingReport(): void {
   if (!valid) {
     throw new Error(`${outputPath} failed existing artifact validation`);
   }
-
-  throw new Error("Fresh selection unavailable; stored replay report is not current configuration evidence");
 }
 
 function countBy<TValue>(
