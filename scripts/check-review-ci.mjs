@@ -340,6 +340,90 @@ const findJob = (source, jobId) => source.match(
   ),
 )?.[1];
 
+// Keep this small execution contract exact: extra YAML keys can skip or mask tests.
+const backendUnitShardingViolations = (source) => {
+  const expected = [
+    "  backend_unit_shards:",
+    "    name: Backend unit shard ${{ matrix.shard }}/4",
+    "    runs-on: ubuntu-latest",
+    "    timeout-minutes: 45",
+    "    strategy:",
+    "      fail-fast: false",
+    "      matrix:",
+    "        shard: [1, 2, 3, 4]",
+    "",
+    "    steps:",
+    "      - name: Check out the review commit",
+    "        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10",
+    "",
+    "      - name: Set up Node.js",
+    "        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
+    "        with:",
+    "          node-version: 22",
+    "          cache: npm",
+    "",
+    "      - name: Install exact dependencies",
+    "        run: npm ci",
+    "",
+    "      - name: Generate the pinned Prisma client",
+    "        run: npm run prisma:generate",
+    "",
+    "      - name: Run backend unit tests",
+    "        run: npm test -- --shard=${{ matrix.shard }}/4",
+    "",
+    "  backend_unit:",
+    "    name: Backend build and unit tests",
+    "    needs: backend_unit_shards",
+    "    if: always()",
+    "    runs-on: ubuntu-latest",
+    "    timeout-minutes: 45",
+    "",
+    "    steps:",
+    "      - name: Require every backend unit shard to succeed",
+    "        run: test \"${{ needs.backend_unit_shards.result }}\" = \"success\"",
+    "",
+    "      - name: Check out the review commit",
+    "        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10",
+    "",
+    "      - name: Set up Node.js",
+    "        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
+    "        with:",
+    "          node-version: 22",
+    "          cache: npm",
+    "",
+    "      - name: Install exact dependencies",
+    "        run: npm ci",
+    "",
+    "      - name: Generate the pinned Prisma client",
+    "        run: npm run prisma:generate",
+    "",
+    "      - name: Build backend packages",
+    "        run: npm run build",
+    "",
+    "      - name: Prove subscription runtime auth-pool failover",
+    "        run: npm run check:subscription-runtime-auth-pool-e2e",
+    "",
+    "      - name: Prove the vendored subscription runtime bills exact turn usage",
+    "        run: npm run check:subscription-runtime-usage-contract",
+    "",
+    "      - name: Prove Reader Promotion V2 canary control plane",
+    "        run: |",
+    "          node --test scripts/lib/reader-promotion-v2-production-canary-control.test.mjs",
+    "          node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=1024 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath scripts/lib/reader-promotion-v2-production-canary-runner.spec.ts",
+    "          bash ops/deploy/production-runtime/reader-promotion-v2-production-canary.test.sh",
+    "",
+    "",
+  ].join("\n");
+  const actual = ["backend_unit_shards", "backend_unit"].map(
+    (id) => `  ${id}:\n${findJob(source, id) ?? ""}`,
+  ).join("");
+  return actual === expected ? [] : [
+    "backend unit CI must retain four unfiltered shards and the strict stable aggregate",
+  ];
+};
+
+violations.push(...backendUnitShardingViolations(workflow));
+
 const transitionReviewJob = findJob(transitionReview, "review");
 const transitionPublisherJob = findJob(transitionPublish, "publish");
 const transitionActivationJob = findJob(transitionPublish, "activate");

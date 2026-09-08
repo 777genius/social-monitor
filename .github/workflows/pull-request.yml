@@ -91,10 +91,14 @@ jobs:
           npm run check:migrations
           npm run check:tenant-db-guards
 
-  backend_unit:
-    name: Backend build and unit tests
+  backend_unit_shards:
+    name: Backend unit shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     steps:
       - name: Check out the review commit
@@ -112,11 +116,37 @@ jobs:
       - name: Generate the pinned Prisma client
         run: npm run prisma:generate
 
+      - name: Run backend unit tests
+        run: npm test -- --shard=${{ matrix.shard }}/4
+
+  backend_unit:
+    name: Backend build and unit tests
+    needs: backend_unit_shards
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Require every backend unit shard to succeed
+        run: test "${{ needs.backend_unit_shards.result }}" = "success"
+
+      - name: Check out the review commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Generate the pinned Prisma client
+        run: npm run prisma:generate
+
       - name: Build backend packages
         run: npm run build
-
-      - name: Run backend unit tests
-        run: npm test
 
       - name: Prove subscription runtime auth-pool failover
         run: npm run check:subscription-runtime-auth-pool-e2e
