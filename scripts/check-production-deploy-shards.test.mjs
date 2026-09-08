@@ -21,7 +21,7 @@ const expectedBody = [
   'npm test -- --changedSince="$base" --shard=1/2',
   'npm test -- --changedSince="$base" --shard=2/2',
 ].join("\n") + "\n";
-const body = block.split("        run: |\n")[1]?.replace(/^          /gm, "");
+const body = block.split("        run: |\n")[1]?.replace(/^ {10}/gm, "");
 
 test("affected gate keeps its selection, two serial shards and npm budget", () => {
   assert.ok(start >= 0 && end > start);
@@ -42,16 +42,16 @@ test("release dependencies keep backend success required", () => {
   const job = (name) => workflow.match(new RegExp(`^  ${name}:\\n[\\s\\S]*?(?=^  \\w+:|$(?![\\s\\S]))`, "m"))?.[0];
   assert.doesNotMatch(workflow, /continue-on-error:|^\s*defaults:/m);
   for (const name of ["verify_backend", "release_a", "deploy"]) {
-    assert.match(job(name), /^    timeout-minutes: 120$/m);
-    assert.doesNotMatch(job(name), /^    if:|^    continue-on-error:|^    defaults:/m);
+    assert.match(job(name), /^ {4}timeout-minutes: 120$/m);
+    assert.doesNotMatch(job(name), /^ {4}if:|^ {4}continue-on-error:|^ {4}defaults:/m);
   }
-  assert.match(job("verify_backend"), /^    needs: plan$/m);
+  assert.match(job("verify_backend"), /^ {4}needs: plan$/m);
   for (const [name, needs] of [
     ["release_a", ["plan", "verify_reader_summary_publication", "verify_backend", "build_frontend"]],
     ["deploy", ["plan", "verify_reader_summary_publication", "verify_backend", "build_frontend", "release_a"]],
     ["acceptance", ["plan", "deploy"]],
   ]) {
-    assert.equal(job(name).match(/^    needs:\n((?:      - .*\n)+)/m)?.[1],
+    assert.equal(job(name).match(/^ {4}needs:\n((?: {6}- .*\n)+)/m)?.[1],
       needs.map((dependency) => `      - ${dependency}\n`).join(""));
   }
 });
