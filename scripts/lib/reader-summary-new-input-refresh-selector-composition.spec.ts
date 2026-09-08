@@ -1,3 +1,4 @@
+import { sourceContentAssessmentPurpose as assessmentPurpose } from "./reader-summary-new-input-refresh-assessment-runtime";
 import { AgentRuntimeModelProviderError } from "@social-monitor/summary/adapters/model/agent-runtime-model-support";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
@@ -25,8 +26,8 @@ describe("refresh canonical selector adapter exceptions", () => {
     expect(verify.mock.calls.map(([query]) => [query.verificationLane, query.candidates.length]))
       .toEqual([[undefined, 1], ["related_topic", 1]]);
     await expectInvalidWireSchema(verify.mock.results[1]!.value);
-    expect(test.commands.map((command) => command.purpose)).toEqual([purposes.storyRelations, purposes.relatedTopicRelations]);
-    expect(test.events.filter((event) => event.status === "completed")).toHaveLength(2);
+    expect(test.commands.map((command) => command.purpose)).toEqual([assessmentPurpose, purposes.storyRelations, purposes.relatedTopicRelations]);
+    expect(test.events.filter((event) => event.status === "completed")).toHaveLength(3);
     expect(test.sink.record.mock.calls.map(([value]) => value.taskRole)).toEqual(["story_relation"]);
     expect(() => test.runtime.assertUsable()).toThrow(/reconciliation/u);
     expect(test.events).toContainEqual(expect.objectContaining({ status: "requires_reconciliation",
@@ -44,7 +45,7 @@ describe("refresh canonical selector adapter exceptions", () => {
     expect(selection.approvedSameStoryRelations).toEqual([]);
     expect(selection.relatedTopicRelations).toEqual([]);
     await expectInvalidWireSchema(verify.mock.results[0]!.value);
-    expect(test.commands.map((command) => command.purpose)).toEqual([purposes.storyRelations]);
+    expect(test.commands.map((command) => command.purpose)).toEqual([assessmentPurpose, purposes.storyRelations]);
     expect(test.sink.record).not.toHaveBeenCalled();
     expect(test.events).toContainEqual(expect.objectContaining({ status: "requires_reconciliation",
       phase: "adapter_validation", taskRole: "story_relation" }));
@@ -60,7 +61,7 @@ describe("refresh canonical selector adapter exceptions", () => {
     await test.select();
     await expect(verify.mock.results[taskRole === "story_relation" ? 0 : 1]!.value).rejects.toBe(failure);
     expect(test.commands.map((command) => command.purpose)).toEqual(taskRole === "story_relation"
-      ? [purposes.storyRelations] : [purposes.storyRelations, purposes.relatedTopicRelations]);
+      ? [assessmentPurpose, purposes.storyRelations] : [assessmentPurpose, purposes.storyRelations, purposes.relatedTopicRelations]);
     expect(test.events).toContainEqual(expect.objectContaining({ status: "requires_reconciliation", taskRole }));
     await expectPermanentlyPoisoned(test);
   });
@@ -72,7 +73,7 @@ describe("refresh canonical selector adapter exceptions", () => {
       if (event.status === "requires_reconciliation") throw new Error("synthetic journal failure");
     } });
     await test.select();
-    expect(test.commands).toHaveLength(taskRole === "story_relation" ? 1 : 2);
+    expect(test.commands).toHaveLength(taskRole === "story_relation" ? 2 : 3);
     await expectPermanentlyPoisoned(test);
   });
 
@@ -84,7 +85,7 @@ describe("refresh canonical selector adapter exceptions", () => {
     await test.select();
     // Restoring a source check cannot restore consumed refresh authority.
     sourceChanged = false;
-    expect(test.commands).toHaveLength(taskRole === "story_relation" ? 1 : 2);
+    expect(test.commands).toHaveLength(taskRole === "story_relation" ? 2 : 3);
     await expectPermanentlyPoisoned(test);
   });
 });
@@ -104,7 +105,7 @@ describe("canonical selector accepted deterministic decisions", () => {
       expect(selection.selectedEvidence).toHaveLength(2);
       expect(selection.clusters).toHaveLength(2);
       expect(selection.relatedTopicRelations).toEqual([]);
-      expect(test.commands.map((command) => command.purpose)).toEqual([purposes.storyRelations, purposes.relatedTopicRelations]);
+      expect(test.commands.map((command) => command.purpose)).toEqual([assessmentPurpose, purposes.storyRelations, purposes.relatedTopicRelations]);
       expect(test.sink.record.mock.calls.map(([value]) => [value.taskRole, value.attempt]))
         .toEqual([["story_relation", "primary"], ["related_topic_relation", "related-topic"]]);
       if (kind.startsWith("empty")) {
@@ -121,7 +122,7 @@ describe("canonical selector accepted deterministic decisions", () => {
     const selection = await test.select();
     expect(selection.clusters).toHaveLength(1);
     expect(selection.approvedSameStoryRelations).toHaveLength(1);
-    expect(test.commands.map((command) => command.purpose)).toEqual([purposes.storyRelations]);
+    expect(test.commands.map((command) => command.purpose)).toEqual([assessmentPurpose, purposes.storyRelations]);
     await expectAcceptedPrimaryAndPublication(test);
   });
 
@@ -135,17 +136,17 @@ describe("canonical selector accepted deterministic decisions", () => {
     if (!topicMap.ok) throw topicMap.error;
     expect(evaluateReaderSummaryTopicMapStructure(topicMap.value).passed).toBe(true);
     expect(test.commands.map((command) => [command.purpose, command.metadata?.attemptNumber])).toEqual([
-      [purposes.storyRelations, undefined], [purposes.relatedTopicRelations, undefined], [purposes.generate, undefined],
+      [assessmentPurpose, undefined], [purposes.storyRelations, undefined], [purposes.relatedTopicRelations, undefined], [purposes.generate, undefined],
       [purposes.topicLabel, "1"], [purposes.topicRelations, "1"], [purposes.topicLabel, "2"], [purposes.topicRelations, "2"],
     ]);
-    expect(JSON.parse(test.commands[5]!.prompt).retryFeedback).toMatchObject({ reason: "grouped_coverage_below_minimum" });
+    expect(JSON.parse(test.commands[6]!.prompt).retryFeedback).toMatchObject({ reason: "grouped_coverage_below_minimum" });
     expect(test.sink.record).toHaveBeenCalledTimes(7);
     expect(test.events.filter((event) => event.status === "requires_reconciliation")).toEqual([]);
     const publication = publicationProbe(test.runtime);
     await publication.attempt();
     expect(publication.publish).toHaveBeenCalledTimes(1);
     await expect(test.model.model.generate(primaryInput(), primaryRoute(test.model.model))).rejects.toThrow(/budget/u);
-    expect(test.commands).toHaveLength(7);
+    expect(test.commands).toHaveLength(8);
   });
 
   it.each(malformed)("leaves ordinary daily fallback unchanged for $name without the optional guard", async ({ output }) => {
@@ -156,7 +157,7 @@ describe("canonical selector accepted deterministic decisions", () => {
     await expectInvalidWireSchema(verify.mock.results[1]!.value);
     expect(test.sink.record.mock.calls.map(([value]) => value.taskRole)).toEqual(["story_relation"]);
     await expectAcceptedPrimaryAndPublication(test);
-    expect(test.commands.map((command) => command.purpose)).toEqual([purposes.storyRelations, purposes.relatedTopicRelations, purposes.generate]);
+    expect(test.commands.map((command) => command.purpose)).toEqual([assessmentPurpose, purposes.storyRelations, purposes.relatedTopicRelations, purposes.generate]);
   });
 });
 

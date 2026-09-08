@@ -37,6 +37,7 @@ import {
 } from '../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
 import { resolveMetricsRuntimeConfig } from '../libs/platform/metrics/src/metrics-runtime-config';
 import {
+  resolveRelevanceContentQualityReviewerMode,
   resolveRelevanceMemoryProjectionMode,
   resolveRelevancePersistenceMode,
 } from '../libs/relevance/interfaces/rest/relevance-provider-tokens';
@@ -476,3 +477,14 @@ assert(resolveDeliverySummaryReadyEventQueueOptions(rabbitMqEnv).routingKey === 
   'shared queue must retain legacy summary.ready alongside the explicit reader binding');
 
 console.log('Runtime profile guards OK');
+
+assert(resolveRelevanceContentQualityReviewerMode({
+  ...betaEnv, AGENT_RUNTIME_GRPC_ADDRESS: 'synthetic-runtime:50051',
+}) === 'agent-runtime', 'assessment auto must reuse the hosted pool without API credentials');
+assert(resolveRelevanceContentQualityReviewerMode({}, 'agent-runtime') === 'agent-runtime',
+  'canonical capture must select its supplied runtime');
+assert(resolveRelevanceContentQualityReviewerMode({ RELEVANCE_CONTENT_QUALITY_REVIEWER: 'disabled',
+  AGENT_RUNTIME_GRPC_ADDRESS: 'synthetic-runtime:50051',
+}) === 'disabled', 'explicit assessment disable must remain fail closed');
+assertThrows(() => resolveRelevanceContentQualityReviewerMode({ RELEVANCE_CONTENT_QUALITY_REVIEWER: 'invalid' }),
+  'unknown assessment modes must be rejected');

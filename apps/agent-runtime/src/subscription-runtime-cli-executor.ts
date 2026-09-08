@@ -125,7 +125,9 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         const result = await this.attestCompletedResult(
           request,
           admission,
-          initialResult,
+          request.purpose === "social_monitor.relevance.assess_source_content.v1" && initialResult.failure
+            ? { ...initialResult, failure: { ...initialResult.failure, retryable: false } }
+            : initialResult,
           admittedInstallation,
         );
         this.logResult(request, result, startedAt);
@@ -188,9 +190,20 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         durationMs: Date.now() - startedAt,
         error: safeErrorMessage(error),
       });
+      if (request.purpose === "social_monitor.relevance.assess_source_content.v1") {
+        return { status: "failed", warnings: [], failure: {
+          code: "agent_runtime.cli_error", safeMessage: "Assessment runtime execution failed",
+          retryable: false, reconnectRequired: false,
+          causeCategory: "subscription_runtime_cli", details: {},
+        } };
+      }
       throw error;
     } finally {
-      await rm(tempDir, { recursive: true, force: true });
+      try {
+        await rm(tempDir, { recursive: true, force: true });
+      } catch (error) {
+        this.logFailure(request, "cleanup", error);
+      }
     }
   }
 

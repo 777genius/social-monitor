@@ -36,13 +36,14 @@ export function refreshTestRuntimeClient(execute: AgentRuntimeExecutorPort["exec
   const transport = {
     runAgentTask(request: AgentRuntimeTaskRequest, metadata: Metadata, _options: CallOptions,
       callback: (error: ServiceError | null, response: AgentRuntimeTaskResponse) => void): ClientUnaryCall {
-      service.runAgentTask({
+      const call = { cancelled: false,
         request: AgentRuntimeTaskRequest.decode(AgentRuntimeTaskRequest.encode(request).finish()), metadata,
-      } as ServerUnaryCall<AgentRuntimeTaskRequest, AgentRuntimeTaskResponse>, (error, response) => {
+      } as ServerUnaryCall<AgentRuntimeTaskRequest, AgentRuntimeTaskResponse>;
+      service.runAgentTask(call, (error, response) => {
         callback(error as ServiceError | null, response == null ? response as never
           : AgentRuntimeTaskResponse.decode(AgentRuntimeTaskResponse.encode(response).finish()));
       });
-      return { cancel: () => undefined } as ClientUnaryCall;
+      return { cancel: () => { call.cancelled = true; } } as ClientUnaryCall;
     },
   } as unknown as AgentRuntimeServiceClient;
   return new GrpcAgentRuntimeClient(transport, { now: () => refreshNow }, { timeoutMs: 1000 });

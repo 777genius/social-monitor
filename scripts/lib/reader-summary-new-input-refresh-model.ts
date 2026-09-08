@@ -1,3 +1,4 @@
+import { sourceContentAssessmentPurpose, refreshAssessmentBudget, refreshAssessmentLimits, verifyRefreshAssessmentExecution } from "./reader-summary-new-input-refresh-assessment-runtime";
 import { activeReaderSummaryPurposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { admitSubscriptionRuntimeRequest } from "../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy";
@@ -22,16 +23,16 @@ const noInvocation: AgentRuntimeClientPort = {
   checkHealth: async () => { throw new Error("Preparation cannot invoke runtime"); },
 };
 export function refreshGenerationSha256(env: NodeJS.ProcessEnv): string {
-  return refreshHash([
+  return refreshHash({ assessment: refreshAssessmentLimits, generation: [
     resolveAgentRuntimeReaderSummaryModelOptions(env, noInvocation),
     resolveAgentRuntimeReaderSummaryTopicLabelerOptions(env, noInvocation),
     resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(env, noInvocation),
     resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(env, noInvocation),
-  ].map(({ client, ...options }) => { void client; return options; }));
+  ].map(({ client, ...options }) => { void client; return options; }) });
 }
-type GuardedRefreshRuntime = AgentRuntimeClientPort & {
+export type GuardedRefreshRuntime = AgentRuntimeClientPort & {
   assertUsable(): void;
-  invalidateAdapter(taskRole: ReaderSummaryAttestedTaskRole): void;
+  invalidateAdapter(taskRole: ReaderSummaryAttestedTaskRole | "source_content_assessment"): void;
 };
 
 export function buildRefreshModelWiring(env: NodeJS.ProcessEnv, client: GuardedRefreshRuntime,
@@ -81,9 +82,10 @@ export function buildRefreshModelWiring(env: NodeJS.ProcessEnv, client: GuardedR
   };
 }
 export function guardedRefreshRuntime(input: {
-  delegate: AgentRuntimeClientPort; manifest: RefreshManifest;
+  delegate: AgentRuntimeClientPort; manifest: RefreshManifest; now?: () => number;
   assertLocal(): void; assertCurrent(): Promise<void>; record(event: unknown): void;
 }): GuardedRefreshRuntime {
+  const assessment = refreshAssessmentBudget(input.now ?? Date.now);
   const seen = new Set<string>();
   let ambiguous = false;
   let generated = false;
@@ -94,7 +96,7 @@ export function guardedRefreshRuntime(input: {
   };
   const purposes: readonly string[] = [activeReaderSummaryPurposes.generate, activeReaderSummaryPurposes.topicLabel,
     activeReaderSummaryPurposes.topicRelations, activeReaderSummaryPurposes.storyRelations,
-    activeReaderSummaryPurposes.relatedTopicRelations];
+    activeReaderSummaryPurposes.relatedTopicRelations, sourceContentAssessmentPurpose];
   return {
     assertUsable,
     invalidateAdapter: (taskRole) => {
@@ -127,6 +129,7 @@ export function guardedRefreshRuntime(input: {
         observedThrough: input.manifest.observedThrough, model: "gpt-5.6-sol", reasoningEffort: "high" };
       try {
         assertUsable();
+        const assessmentUsage = command.purpose === sourceContentAssessmentPurpose ? assessment.consume(command) : {};
         // Match GrpcAgentRuntimeClient JSON serialization and the service's
         // optional-string normalization, then use the executor's real admission
         // contract for profile defaults/controls. Hash before any awaited work;
@@ -141,9 +144,13 @@ export function guardedRefreshRuntime(input: {
         }).canonicalRequest);
         await input.assertCurrent();
         assertUsable();
-        input.record({ ...identity, status: "invocation_consumed" });
+        input.record({ ...identity, ...assessmentUsage, status: "invocation_consumed" });
         assertUsable(); // fsync/recording can itself cross the cutoff.
 
+        if (command.purpose === sourceContentAssessmentPurpose) {
+          assessment.assertTimely();
+          if (options?.signal?.aborted) throw new Error("Refresh assessment cancelled");
+        }
         const result = await input.delegate.runTask(command, options);
         input.record({ ...identity, status: "invocation_returned", outcome: result.status,
           ...(result.usage === undefined ? {} : { tokens: result.usage }) });
@@ -159,8 +166,14 @@ export function guardedRefreshRuntime(input: {
         } as Record<string, ReaderSummaryAttestedTaskRole>)[command.purpose]!;
         // Verify the attested response envelope here. The composed adapter guard
         // above also covers failures in the real parsers and normalizers.
-        await verifyAndRecordReaderSummaryExecution({ command, result, taskRole,
-          attempt: "primary", normalizedOutput: result.structuredOutput });
+        if (command.purpose === sourceContentAssessmentPurpose) {
+          assessment.assertTimely();
+          if (options?.signal?.aborted) throw new Error("Refresh assessment cancelled");
+          verifyRefreshAssessmentExecution(command, result);
+        } else {
+          await verifyAndRecordReaderSummaryExecution({ command, result, taskRole,
+            attempt: "primary", normalizedOutput: result.structuredOutput });
+        }
         const attestation = result.executionAttestation;
         if (attestation.canonicalRequestSha256 !== canonicalRequestSha256) {
           throw new Error("Refresh execution attestation does not bind the invoked request");
@@ -168,6 +181,9 @@ export function guardedRefreshRuntime(input: {
         assertRefreshEqual({ engine: attestation.runtimeEngine, packageVersion: attestation.runtimePackageVersion,
           launcherSha256: attestation.launcherSha256 }, input.manifest.runtime, "runtime attestation");
         assertUsable();
+        if (command.purpose === sourceContentAssessmentPurpose) {
+          input.record({ ...identity, status: "verified_attestation", taskRole: "source_content_assessment", attestation });
+        }
         input.record({ ...identity, status: result.status, tokens: result.usage,
           outputSha256: attestation.selectedOutputSha256 });
         assertUsable();

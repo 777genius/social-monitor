@@ -19,6 +19,9 @@ import { FakeStoryRankingMetrics } from "./relevance-reader-summary-evidence-tes
 import { configuredPromotionInterests } from
   "../../test-fixtures/configured-promotion-interests.spec-support";
 
+import { SyntheticPublicationAssessmentReviewer } from
+  "../../test-fixtures/synthetic-publication-assessment.spec-support";
+
 describe("reader-summary promotion upstream scan exhaustion", () => {
   it("rejects promotion when the configured interest reader is omitted", async () => {
     const tenant = tenantId("tenant-promotion-missing-reader");
@@ -130,11 +133,23 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       },
     });
 
+    const reviewer = new SyntheticPublicationAssessmentReviewer([{
+      candidateId: "eligible-normalized-x-original", providerKey: "  X-Twitter  ",
+      title: "Agent runtime release adds deterministic recovery",
+      bodyPreview: "Original release evidence eligible for reader promotion.",
+      evidenceField: "bodyPreview",
+      scope: {
+        tenantId: tenant, workspaceId: workspace, interestId: "interest-ai",
+        sourceItemId: "eligible-normalized-x-original:source",
+        sourceBindingId: "eligible-normalized-x-original:binding",
+        trustedIntent: "AI agents", availability: "body_present",
+      },
+    }]);
     const ranker = new RankFeedItemsUseCase(
       repository,
       new InMemoryUserRelevanceProfileRepository(),
       new FixedClock(now),
-      undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, reviewer, undefined,
       configuredPromotionInterests([{
         tenantId: tenant, workspaceId: workspace, interestId: "interest-ai",
         query: "AI agents",
@@ -179,6 +194,10 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       maxItems: 3,
     });
 
+    expect([...reviewer.assessedCandidateIds]).toEqual(["eligible-normalized-x-original"]);
+    expect(ranked.value.items.filter((item) => item.feedItemId !==
+      "eligible-normalized-x-original").every((item) =>
+      item.contentQuality.eligibleForTopRead === false)).toBe(true);
     const snapshot = await repository.readPromotionSnapshot!({
       tenantId: tenant,
       workspaceId: workspace,
@@ -362,11 +381,25 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
         },
       },
     });
+    const reviewer = new SyntheticPublicationAssessmentReviewer([
+      { id: "authoritative-winner-below-caps", providerKey: "x-twitter" },
+      { id: "independent-support-below-caps", providerKey: "hacker-news" },
+    ].map(({ id, providerKey }) => ({
+      candidateId: id, providerKey,
+      title: "Agent runtime transaction snapshot launches",
+      bodyPreview: "Original release evidence eligible for reader promotion.",
+      evidenceField: "bodyPreview",
+      scope: {
+        tenantId: tenant, workspaceId: workspace, interestId: "interest-ai",
+        sourceItemId: `${id}:source`, sourceBindingId: `${id}:binding`,
+        trustedIntent: "AI agents", availability: "body_present",
+      },
+    })));
     const ranker = new RankFeedItemsUseCase(
       repository,
       new InMemoryUserRelevanceProfileRepository(),
       new FixedClock(now),
-      undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, reviewer, undefined,
       configuredPromotionInterests([{
         tenantId: tenant, workspaceId: workspace, interestId: "interest-ai",
         query: "AI agents",
@@ -392,6 +425,9 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       observedThrough: now,
       maxItems: 120,
     });
+    expect([...reviewer.assessedCandidateIds].sort()).toEqual([
+      "authoritative-winner-below-caps", "independent-support-below-caps",
+    ]);
     const projection = buildReaderPostPromotionProjection({
       evidence: selection.selectedEvidence,
       clusters: selection.clusters,

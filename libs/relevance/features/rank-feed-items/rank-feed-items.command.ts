@@ -12,5 +12,6 @@ export type RankFeedItemsCommand = {
   readonly observedBefore?: Date;
   readonly publishedAtOrAfter?: Date;
   readonly publishedBefore?: Date;
+  readonly promotionAssessmentExecution?: { readonly deadlineAtMs: number; readonly signal?: AbortSignal };
   readonly rankingProfile?: "reader_post_promotion";
 };

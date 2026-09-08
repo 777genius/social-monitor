@@ -54,9 +54,16 @@ export const createAgentRuntimeGrpcService = (
       return;
     }
 
+    if (call.cancelled) {
+      callback(serviceError(status.CANCELLED, "Task cancelled before execution"), null);
+      return;
+    }
     void executor.execute(request).then(
-      (result) => callback(null, toGrpcTaskResponse(result)),
-      (error) =>
+      (result) => {
+        if (!call.cancelled) callback(null, toGrpcTaskResponse(result));
+      },
+      (error) => {
+        if (call.cancelled) return;
         callback(
           serviceError(
             status.UNAVAILABLE,
@@ -65,7 +72,8 @@ export const createAgentRuntimeGrpcService = (
               : "Agent runtime task failed",
           ),
           null,
-        ),
+        );
+      },
     );
   },
 

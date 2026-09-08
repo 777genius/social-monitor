@@ -66,6 +66,9 @@ import {
 import { configuredPromotionInterests } from
   "../../test-fixtures/configured-promotion-interests.spec-support";
 
+import { SyntheticPublicationAssessmentReviewer } from
+  "../../test-fixtures/synthetic-publication-assessment.spec-support";
+
 describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
   it("persists one immutable real-selector slate without changing order, lane, digest, or confidence", async () => {
     const tenant = tenantId("tenant-v2-combined-publication");
@@ -112,12 +115,26 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
     const artifacts = new InMemoryReaderSummaryArtifactRepository();
     const events = new InMemorySummaryEventPublisher();
     const clock = new FixedClock(now);
+    const reviewer = new SyntheticPublicationAssessmentReviewer(
+      publicationCandidates().map((candidate) => ({
+        candidateId: candidate.id, providerKey: "x-twitter",
+        title: candidate.title, bodyPreview: candidate.body,
+        evidenceField: "bodyPreview",
+        scope: {
+          tenantId: tenant, workspaceId: workspace, interestId: "interest-engineering",
+          sourceItemId: `${candidate.id}:source`,
+          sourceBindingId: "binding-x-publication-fixture",
+          trustedIntent: "Software engineering tools: database compiler runtime storage SDK CLI API cache worker",
+          availability: "body_present",
+        },
+      })),
+    );
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       new RankFeedItemsUseCase(
         feedItems,
         new InMemoryUserRelevanceProfileRepository(),
         clock,
-        undefined, undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, reviewer, undefined,
         configuredPromotionInterests([{
           tenantId: tenant, workspaceId: workspace,
           interestId: "interest-engineering",
@@ -175,6 +192,9 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
         readerSummaryId: artifactId,
       },
     });
+    expect([...reviewer.assessedCandidateIds].sort()).toEqual(
+      publicationCandidates().map((candidate) => candidate.id).sort(),
+    );
     const slate = selectedEvidence?.editorialSlate;
     expect(slate).toBeDefined();
     if (slate === undefined) return;
@@ -330,12 +350,30 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
     const artifacts = new InMemoryReaderSummaryArtifactRepository();
     const events = new InMemorySummaryEventPublisher();
     const clock = new FixedClock(now);
+    const reviewer = new SyntheticPublicationAssessmentReviewer(
+      readerSummaryV2DailyPublicationCandidates().map((candidate, index) => ({
+        candidateId: candidate.id, providerKey: candidate.providerKey,
+        title: candidate.title, bodyPreview: candidate.body,
+        evidenceField: "bodyPreview",
+        scope: {
+          tenantId: tenant, workspaceId: workspace,
+          interestId: index % 2 === 0
+            ? "interest-reliable-systems" : "interest-developer-workflows",
+          sourceItemId: `${candidate.id}:source`,
+          sourceBindingId: `binding-${candidate.providerKey}-${index}`,
+          trustedIntent: index % 2 === 0
+            ? "Reliable systems: compiler runtime storage cache scheduler"
+            : "Developer workflows: database API SDK CLI proxy",
+          availability: "body_present",
+        },
+      })),
+    );
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       new RankFeedItemsUseCase(
         feedItems,
         new InMemoryUserRelevanceProfileRepository(),
         clock,
-        undefined, undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, reviewer, undefined,
         configuredPromotionInterests([
           {
             tenantId: tenant, workspaceId: workspace,
@@ -401,6 +439,9 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
         readerSummaryId: artifactId,
       },
     });
+    expect([...reviewer.assessedCandidateIds].sort()).toEqual(
+      readerSummaryV2DailyPublicationCandidates().map((candidate) => candidate.id).sort(),
+    );
     const slate = selectedEvidence?.editorialSlate;
     expect(slate).toBeDefined();
     if (slate === undefined) return;

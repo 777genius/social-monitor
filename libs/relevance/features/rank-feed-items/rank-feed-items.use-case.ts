@@ -69,6 +69,7 @@ export class RankFeedItemsUseCase {
         feedItems: this.feedItems,
         clock: this.clock,
         qualityPolicy: this.qualityPolicy,
+        qualityReviewer: this.qualityReviewer,
         safetyPolicy: this.safetyPolicy,
       });
     }

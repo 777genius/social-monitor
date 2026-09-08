@@ -39,11 +39,24 @@ describe("new daily generation configured interest composition", () => {
   });
 
   it("wires historical replacement preflight with current intent independently of copied metadata", async () => {
+    const potentialInput = { assessmentCandidateCount: 1, canonicalEvidence: [expect.objectContaining({
+      feedItemId: "synthetic-feed", sourceItemId: "synthetic-source", interestId: "synthetic-interest",
+      contentQuality: expect.objectContaining({ decision: "needs_context", needsLlmReview: true,
+        eligibleForSummary: false, eligibleForTopRead: false,
+        reason: "promotion_assessment_pending:missing_result" }),
+    })] };
     const configuredInterests = reader("best");
     expect(await preflightRefreshSelection({ feed, date: "2026-09-03",
-      observedThrough: new Date("2026-09-04T00:00:00Z"), clock, configuredInterests })).toBe(1);
+      observedThrough: new Date("2026-09-04T00:00:00Z"), clock, configuredInterests })).toEqual(potentialInput);
     expect(configuredInterests.readCurrent).toHaveBeenCalledTimes(1);
+    expect(configuredInterests.readCurrent).toHaveBeenCalledWith({ ...scope, interestId: "synthetic-interest" });
+    const changedIntent = reader("Mistral financing");
+    // Preflight cannot certify contextual irrelevance without assessment. Both
+    // scopes have potential input; neither copied metadata nor a heuristic is admission.
     expect(await preflightRefreshSelection({ feed, date: "2026-09-03",
-      observedThrough: new Date("2026-09-04T00:00:00Z"), clock, configuredInterests: reader("Mistral financing") })).toBe(0);
+      observedThrough: new Date("2026-09-04T00:00:00Z"), clock, configuredInterests: changedIntent }))
+      .toEqual(potentialInput);
+    expect(changedIntent.readCurrent).toHaveBeenCalledTimes(1);
+    expect(changedIntent.readCurrent).toHaveBeenCalledWith({ ...scope, interestId: "synthetic-interest" });
   });
 });

@@ -55,7 +55,8 @@ export const cliExecutionResult = (
   result: CliExecution,
 ): AgentRuntimeExecutionResult => {
   const parsedResult = tryParseCliResult(result.stdout);
-  if (parsedResult !== undefined && !result.timedOut) {
+  if (parsedResult !== undefined && !result.timedOut &&
+      (parsedResult.status !== "completed" || (result.exitCode === 0 && result.signal === null))) {
     return parsedResult;
   }
   if (result.timedOut || result.exitCode !== 0) {
@@ -119,26 +120,44 @@ export const runCli = async (params: {
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let timedOut = false;
+    let settled = false;
+    let cleanupTimeout: ReturnType<typeof setTimeout> | undefined;
+    const stopLocalChild = () => {
+      // Best-effort local cleanup only; signals never acknowledge remote termination.
+      try { child.kill("SIGKILL"); } catch { /* Child may already be gone. */ }
+      for (const cleanup of [() => child.stdout?.destroy(), () => child.stderr?.destroy(), () => child.unref()]) {
+        try { cleanup(); } catch { /* Cleanup cannot replace the execution outcome. */ }
+      }
+    };
+    const finish = (exitCode: number | null, signal: NodeJS.Signals | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      clearTimeout(cleanupTimeout);
+      resolve({ exitCode, signal,
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"), timedOut });
+    };
     const timeout = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
+      // Bound the local wait even if SIGTERM is ignored or close never arrives.
+      cleanupTimeout = setTimeout(() => {
+        stopLocalChild();
+        finish(null, null);
+      }, 1_000);
+      try { child.kill("SIGTERM"); } catch { /* Cleanup deadline still applies. */ }
     }, params.timeoutMs);
-    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.stdout!.on("data", (chunk: Buffer) => { if (!settled) stdout.push(chunk); });
+    child.stderr!.on("data", (chunk: Buffer) => { if (!settled) stderr.push(chunk); });
     child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
+      clearTimeout(cleanupTimeout);
+      stopLocalChild();
       reject(error);
     });
-    child.on("close", (exitCode, signal) => {
-      clearTimeout(timeout);
-      resolve({
-        exitCode,
-        signal,
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"),
-        timedOut,
-      });
-    });
+    child.on("close", finish);
   });
 
 const subscriptionRuntimeChildBaseEnv = (

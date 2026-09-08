@@ -1,3 +1,4 @@
+import { createSourceContentAssessmentReviewer } from "@social-monitor/relevance/interfaces/rest/source-content-assessment-provider-tokens";
 import {
   AgentRuntimeReaderSummaryStoryRelationVerifier,
   resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions,
@@ -41,6 +42,11 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
       attestationSink: publicationInput.attestationSink,
       storyRelationVerifierGuard,
     }),
+    qualityReviewer: publicationInput.replay !== null ? undefined
+      : publicationInput.qualityReviewer ?? createSourceContentAssessmentReviewer({
+          env, summaryModelMode, client: agentRuntimeClient ?? undefined, clock: publicationInput.clock,
+        }),
+
   });
 };
 

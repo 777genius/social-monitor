@@ -9,6 +9,7 @@ import {
 } from "./subscription-runtime-purpose-model-policy";
 
 const dailyPurposes = [
+  "social_monitor.relevance.assess_source_content.v1",
   "social_monitor.reader_summary.generate.v2",
   "social_monitor.reader_summary.repair.v2",
   "social_monitor.reader_summary.topic_map.label.v2",
@@ -84,6 +85,7 @@ describe("subscription runtime purpose policy", () => {
         reasoningEffort: "high",
         outputKind: "structured_output",
         responseFormat: "json",
+        ...(purpose === "social_monitor.relevance.assess_source_content.v1" ? { retryMode: "never" } : {}),
       });
       expect(controls).toMatchObject({
         model: "gpt-5.6-sol",
