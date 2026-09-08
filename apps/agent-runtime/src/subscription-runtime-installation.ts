@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, readFile, realpath, stat } from "node:fs/promises";
+import { access, lstat, readFile, realpath, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import {
@@ -63,7 +63,13 @@ export class FileSubscriptionRuntimeInstallationInspector implements Subscriptio
     for (const [name, approvedSha256] of Object.entries(
       approvedSubscriptionRuntimeDependencies,
     )) {
-      const dependencyBytes = await readFile(join(dirname(executablePath), name));
+      const dependencyPath = join(dirname(executablePath), name);
+      // Node resolves helper symlinks before loading their adjacent imports.
+      // Require local regular files so the pinned closure is the loaded closure.
+      if (!(await lstat(dependencyPath)).isFile()) {
+        throw new Error(`Agent runtime launcher dependency is not a regular file: ${name}`);
+      }
+      const dependencyBytes = await readFile(dependencyPath);
       if (createHash("sha256").update(dependencyBytes).digest("hex") !== approvedSha256) {
         throw new Error(`Agent runtime launcher dependency bytes are not approved: ${name}`);
       }
