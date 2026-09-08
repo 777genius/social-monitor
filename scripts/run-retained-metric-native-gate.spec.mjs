@@ -26,6 +26,7 @@ function probe(body, original = 1500, total = 3000, startup = '') {
     }
     const runner = join(root, 'runner.mjs');
     writeFileSync(runner, copy);
+    writeFileSync(join(root, 'retained-metric-native-startup-guard.py'), readFileSync('scripts/retained-metric-native-startup-guard.py'));
     const started = performance.now();
     const result = spawnSync(process.execPath, [runner], { encoding: 'utf8', timeout: 8000 });
     assert.equal(result.error, undefined);
@@ -57,8 +58,10 @@ for (const body of [
   "process.send({phase:'renewal'})",
 ]) test(`fails closed: ${body}`, () => { assert.equal(probe(body).status, 1); });
 test('accepts mandatory renewal and completed cleanup exactly once', () => {
-  const result = probe(renewal.replace('BODY', "process.send('native-metric:completed'); process.once('message', () => process.disconnect())"));
+  const result = probe(renewal.replace('BODY', "process.send('native-metric:completed'); process.once('message', () => {})"));
   assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.elapsed < 1500, String(result.elapsed));
+  assert.doesNotMatch(result.stderr, /budget|timeout/i);
 });
 test('preserves stderr and nonzero exit code', () => {
   const result = probe('console.error("fixture failure"); process.exit(17)');
@@ -79,6 +82,17 @@ test('late exceptional original/renewal work and cleanup exit 124; early errors 
   }).outputText;
   const integrated = probe(compiled + '\nexports.runWithNativeMetricBudget(async budget => { await budget.runRenewal(async () => {}); }).catch(error => { console.error(error); process.exitCode = 1; });');
   assert.equal(integrated.status, 0, integrated.stderr);
+  assert.ok(integrated.elapsed < 1500, String(integrated.elapsed));
+  assert.doesNotMatch(integrated.stderr, /budget|timeout/i);
+  for (const [ending, status] of [['while (true) {}', 124], ['process.exit(17)', 17]]) {
+    const result = probe(compiled + `\nexports.runWithNativeMetricBudget(async b => { await b.runRenewal(async () => {}); }).then(() => { ${ending} });`);
+    assert.equal(result.status, status, result.stderr);
+    assert.ok(result.elapsed < (status === 124 ? 4500 : 1500), String(result.elapsed));
+    if (status === 124) {
+      assert.ok(result.elapsed >= 3000);
+      assert.match(result.stderr, /absolute 3000ms/);
+    } else assert.doesNotMatch(result.stderr, /budget|timeout/i);
+  }
   for (const phase of ['original', 'renewal', 'outer-cleanup']) for (const cleanup of [false, true]) for (const late of [false, true]) {
     const body = `
       let elapsed = 0;
@@ -124,8 +138,33 @@ test('late valid transition never resets the absolute total timer', () => {
   assert.ok(result.elapsed >= 3000 && result.elapsed < 3950, String(result.elapsed));
 });
 test('relays outer watchdog termination to the blocked fixture group', () => {
-  const result = probe("process.kill(process.ppid, 'SIGTERM'); while (true) {}", 1500, 3000);
+  const result = probe("const guardStat = require('node:fs').readFileSync('/proc/' + process.ppid + '/stat', 'utf8'); process.kill(Number(guardStat.split(') ')[1].split(' ')[1]), 'SIGTERM'); while (true) {}", 1500, 3000);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /watchdog received SIGTERM/);
   assert.match(result.stderr, /SIGKILL/);
+});
+
+for (const signal of ['SIGINT', 'SIGHUP', 'SIGKILL']) {
+  test(`preserves post-completion fixture signal ${signal}`, () => {
+    const result = probe(renewal.replace('BODY', `process.send('native-metric:completed'); process.once('message', () => process.kill(process.pid, '${signal}'))`));
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, new RegExp(signal));
+    assert.ok(result.elapsed < 1500, String(result.elapsed));
+    assert.doesNotMatch(result.stderr, /budget|timeout/i);
+  });
+}
+test('prompt successful exit removes descendants after IPC completion', () => {
+  const result = probe(renewal.replace('BODY', `
+    const child = require('node:child_process').spawn(process.execPath, ['-e', 'while (true) {}'], {stdio: 'ignore'});
+    child.unref();
+    console.log('DESCENDANT=' + child.pid);
+    process.send('native-metric:completed'); process.once('message', () => {});
+  `));
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.elapsed < 1500, String(result.elapsed));
+  assert.doesNotMatch(result.stderr, /budget|timeout/i);
+  const pid = Number(/DESCENDANT=(\d+)/.exec(result.stdout)?.[1]);
+  assert.ok(pid > 0);
+  try { assert.match(readFileSync(`/proc/${pid}/stat`, 'utf8'), /\) [ZX] /); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
 });
