@@ -63,7 +63,7 @@ async function finalAssessment(t, serialized) {
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
-    queueMicrotask(() => {
+    globalThis.queueMicrotask(() => {
       child.stdout.emit("data", Buffer.from(serialized.stdout));
       child.emit("close", serialized.exitCode, null);
     });
@@ -153,3 +153,43 @@ test("unrecognized code values are not exported as diagnostic data", async (t) =
   assert.equal(serialized.stdout.includes("synthetic-private-value"), false);
   assert.deepEqual(result.failure.details, { subscriptionWorkerCode: "subscription_worker_run_failed" });
 });
+
+for (const key of ["capacityReason", "safeExecutorStatus"]) {
+  test(`backend rejects malformed ${key} in direct CLI envelopes and final logs`, async (t) => {
+    const marker = "synthetic-private-provider-auth-marker";
+    for (const value of [marker, "", null, 17, true, [marker], { value: marker },
+      "account_unavailable", "constructor", "toString"]) {
+      // Bypass the wrapper helper: this JSON is the untrusted CLI boundary.
+      const details = {
+        reason: "account_unavailable", capacityReason: "quota_recheck_identity_changed",
+        safeExecutorStatus: "waiting_capacity", availability: "cooldown",
+        cooldownUntil: "2026-09-08T12:00:00.000Z",
+        subscriptionWorkerCode: "subscription_worker_run_failed", [key]: value,
+      };
+      const expected = { ...details };
+      delete expected[key];
+      const serialized = {
+        stdout: JSON.stringify({
+          status: "failed", warnings: [], failure: {
+            code: "unknown_runtime_failure", safeMessage: "Synthetic failure",
+            retryable: false, details,
+          },
+        }),
+        exitCode: 1, request: { ...assessmentRequest(), timeoutMs: 5_000 },
+      };
+      const parsed = parseSubscriptionRuntimeCliResult(serialized.stdout);
+      assert.deepEqual(parsed.failure.details, expected);
+      assert.equal(parsed.failure.code, "provider_session_invalid");
+      const { result, logs } = await finalAssessment(t, serialized);
+      assert.deepEqual(result.failure.details, expected);
+      assert.equal(result.failure.code, "provider_session_invalid");
+      assert.equal(result.failure.reconnectRequired, false);
+      const finalLog = logs.find(([message]) => message === "agent runtime task did not complete");
+      assert.ok(finalLog, "the final failure log must actually be emitted");
+      assert.deepEqual(JSON.parse(finalLog[1].failureDetails), expected);
+      for (const surface of [parsed, result, logs]) {
+        assert.equal(JSON.stringify(surface).includes(marker), false);
+      }
+    }
+  });
+}

@@ -292,6 +292,15 @@ const safeRuntimeFailureDetailKeys = new Set([
   "subscriptionWorkerCode",
 ]);
 
+// CLI JSON is untrusted even when the wrapper normally filters these values.
+const safeRuntimeCapacityReasons = new Set([
+  "quota_recheck_identity_changed", "quota_recheck_inconclusive",
+  "quota_recheck_failed", "rate_limit_threshold", "quota_limited", "account_exhausted",
+]);
+const safeRuntimeExecutorStatuses = new Set([
+  "waiting_capacity", "partial", "failed", "aborted",
+]);
+
 const readSafeRuntimeFailureDetails = (
   value: unknown,
 ): Readonly<Record<string, string>> => {
@@ -303,9 +312,16 @@ const readSafeRuntimeFailureDetails = (
   return Object.fromEntries(
     Object.entries(record).flatMap(([key, detail]) => {
       const safeValue = optionalString(detail);
-      return safeRuntimeFailureDetailKeys.has(key) && safeValue !== undefined
-        ? [[key, safeValue]]
-        : [];
+      if (!safeRuntimeFailureDetailKeys.has(key) || safeValue === undefined) {
+        return [];
+      }
+      if (key === "capacityReason" && !safeRuntimeCapacityReasons.has(safeValue)) {
+        return [];
+      }
+      if (key === "safeExecutorStatus" && !safeRuntimeExecutorStatuses.has(safeValue)) {
+        return [];
+      }
+      return [[key, safeValue]];
     }),
   );
 };

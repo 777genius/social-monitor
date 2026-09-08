@@ -65,3 +65,27 @@ describe("subscription CLI terminal process receipt", () => {
     }).status).toBe("completed");
   });
 });
+
+describe("subscription CLI safe failure diagnostic values", () => {
+  it.each([
+    ["capacityReason", "quota_recheck_identity_changed"],
+    ["capacityReason", "quota_recheck_inconclusive"],
+    ["capacityReason", "quota_recheck_failed"],
+    ["capacityReason", "rate_limit_threshold"],
+    ["capacityReason", "quota_limited"],
+    ["capacityReason", "account_exhausted"],
+    ["safeExecutorStatus", "waiting_capacity"],
+    ["safeExecutorStatus", "partial"],
+    ["safeExecutorStatus", "failed"],
+    ["safeExecutorStatus", "aborted"],
+  ])("preserves recognized %s=%s separately from classification", (key, value) => {
+    const details = { reason: "account_unavailable", [key]: value };
+    const result = parseSubscriptionRuntimeCliResult(JSON.stringify({
+      status: "failed", warnings: [], failure: {
+        code: "unknown_runtime_failure", details,
+      },
+    }));
+    expect(result.failure?.details).toEqual(details);
+    expect(result.failure?.code).toBe("provider_session_invalid");
+  });
+});
