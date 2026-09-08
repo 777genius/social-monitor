@@ -138,8 +138,8 @@ describe('linear URL credential redaction compatibility', () => {
     'http://u:p\u200b@host', 'http://u:p\ufeff@host',
     'http://u:p\n@host', 'http://u:p\t@host',
     'see https://u:p@one.test and custom://v:q@two.test',
-    'token=synthetic https://u:p@host Bearer abcdefgh',
-    '{"client_secret":"synthetic"} whsec_synthetic Basic abcdefgh',
+    'token=synthetic https://u:p@host Bearer token-value',
+    '{"client_secret":"synthetic"} whsec_generated_secret Basic abcdefgh',
     'Bearer JWT Basic client authorization is required',
   ];
 
