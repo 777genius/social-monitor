@@ -169,7 +169,7 @@ describe("groundedReaderHeadline", () => {
     );
   });
 
-  it("replaces a vague daily wrap headline with the concrete lead title", () => {
+  it("replaces a vague daily wrap headline with the complete lead title in a Reports discuss frame", () => {
     const lead = {
       ...topRead(),
       title: "Acme launches a lower-cost coding model",
@@ -181,7 +181,7 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Acme launches a lower-cost coding model");
+    ).toBe("Reports discuss Acme launches a lower-cost coding model");
   });
 
   it("does not trust a thematic headline when its citations come from one provider group", () => {
@@ -355,7 +355,7 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Acme sues Example Labs over alleged model theft");
+    ).toBe("Reports discuss Acme sues Example Labs over alleged model theft");
   });
 
   it("does not let unrelated cross-source coverage validate a single-source lead", () => {
