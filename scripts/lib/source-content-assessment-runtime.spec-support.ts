@@ -13,4 +13,3 @@ export const outputFor = (request: AgentRuntimeExecutionRequest) => {
       quote: candidate.untrustedSource.bodyPreview }],
   })) };
 };
-

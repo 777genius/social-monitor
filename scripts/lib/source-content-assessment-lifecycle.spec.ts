@@ -27,7 +27,7 @@ describe("assessment terminal receipts and execution lease accounting", () => {
       expect(result.candidates[0]!.evidenceQualityScore).toBe(0);
     });
 
-  it.each(["queued", "running"])("quarantines cancelled %s work across operations until terminal execution", async (phase) => {
+  it.each(["queued", "running"])("retains cancelled %s ownership while independent assessments complete", async (phase) => {
     jest.useFakeTimers();
     jest.setSystemTime(cutoff);
     try {
@@ -41,24 +41,33 @@ describe("assessment terminal receipts and execution lease accounting", () => {
         }
         return attestRefreshExecution(request, outputFor(request));
       });
-      let id = 0;
-      const reviewer = () => new AgentRuntimeSourceContentQualityReviewerAdapter({ client, clock: new SystemClock(),
-        ids: { generate: () => `lease-${++id}` }, batchTimeoutMs: 300_000, totalTimeoutMs: 600_000 });
+      const reviewer = (id: string) => new AgentRuntimeSourceContentQualityReviewerAdapter({ client, clock: new SystemClock(),
+        ids: { generate: () => `lease-${id}` }, batchTimeoutMs: 300_000, totalTimeoutMs: 600_000 });
       const controller = new AbortController();
-      const first = run([fixture("first")], reviewer(), { clock: new SystemClock(),
+      const first = run([fixture("first")], reviewer("first"), { clock: new SystemClock(),
         execution: { deadlineAtMs: cutoff.getTime() + 600_000, signal: controller.signal } });
       await jest.advanceTimersByTimeAsync(10_000);
+      const duplicate = () => run([fixture("first")], reviewer("first"), { clock: new SystemClock() });
+      expect((await duplicate()).ranking.orderedCandidateIds).toEqual([]);
+      expect(calls).toBe(1);
       controller.abort();
       const result = await first;
       expect(result.ranking.orderedCandidateIds).toEqual([]);
-      const second = await run([fixture("second")], reviewer(), { clock: new SystemClock() });
-      expect(second.ranking.orderedCandidateIds).toEqual([]);
+      expect((await duplicate()).ranking.orderedCandidateIds).toEqual([]);
       expect(calls).toBe(1);
+      const second = await run([fixture("second")], reviewer("second"), { clock: new SystemClock() });
+      expect(second.ranking.orderedCandidateIds).toEqual(["second"]);
+      expect(calls).toBe(2);
+      // An independent completion must not release the cancelled execution's ownership.
+      expect((await duplicate()).ranking.orderedCandidateIds).toEqual([]);
+      expect(calls).toBe(2);
       settle();
       await jest.advanceTimersByTimeAsync(1);
+      expect(result.ranking.orderedCandidateIds).toEqual([]);
       expect(result.candidates[0]!.evidenceQualityScore).toBe(0);
-      expect((await run([fixture("third")], reviewer(), { clock: new SystemClock() })).ranking.orderedCandidateIds).toEqual(["third"]);
-      expect(calls).toBe(2);
+      // Reuse the affected identity to prove terminal settlement, not merely independence.
+      expect((await duplicate()).ranking.orderedCandidateIds).toEqual(["first"]);
+      expect(calls).toBe(3);
     } finally { jest.useRealTimers(); }
   });
 
