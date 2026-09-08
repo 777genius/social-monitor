@@ -1,4 +1,5 @@
 import { insertNativeRenewalSourceRows, nativeFixturePhase, type NativeRenewalSourceWriter } from "./lib/retained-metric-native-fixture";
+import { runWithNativeMetricBudget, type RetainedMetricNativeBudget } from "./lib/retained-metric-native-budget";
 import { strict as assert } from "node:assert";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
@@ -37,7 +38,7 @@ export function requireMetricRefreshTestDatabase(env: NodeJS.ProcessEnv): string
       !/^\/metric_refresh_test_[a-z0-9_]+$/u.test(url.pathname) || url.search || url.hash) throw new Error("Only a loopback metric_refresh_test_* disposable database is allowed");
   return value;
 }
-async function main() {
+async function main(budget: RetainedMetricNativeBudget) {
   const database = requireMetricRefreshTestDatabase(process.env); // Fails before loading Prisma or opening a socket.
   mkdirSync(resolve(".cache"), { recursive: true });
   const PrismaClient = loadPrismaRuntimeClient<PrismaPgRuntimeClientConstructor<Client>>();
@@ -144,7 +145,7 @@ async function main() {
         assert(sameTarget(target, current, metricRefreshDigest));
         assert.equal(current?.authority.observedAt, clock.now().toISOString());
       }
-      await nativeFixturePhase("renewal-total", () => checkNativeRenewal(lease.client));
+      await budget.runRenewal(() => nativeFixturePhase("renewal-total", () => checkNativeRenewal(lease.client)));
       process.stdout.write(`${JSON.stringify({ evidenceKind: "disposable_postgres_fixture", lostAckResume: "passed", fetches, results: resumed.value }, null, 2)}\n`);
     });
   } finally { await lease.close(); rmSync(root, { recursive: true, force: true }); }
@@ -308,4 +309,4 @@ async function renewalRows(client: Client) {
     rollups: await rows("source_item_engagement_daily_rollups"), baselines: await rows("feed_signal_baseline_samples"),
     publications: await rows("reader_summary_publications") };
 }
-if (require.main === module) void main().catch((error: unknown) => { process.stderr.write(`${error instanceof Error ? error.message : "Metric refresh test gate failed"}\n`); process.exitCode = 1; });
+if (require.main === module) void runWithNativeMetricBudget(main).catch((error: unknown) => { process.stderr.write(`${error instanceof Error ? error.message : "Metric refresh test gate failed"}\n`); process.exitCode = 1; });
