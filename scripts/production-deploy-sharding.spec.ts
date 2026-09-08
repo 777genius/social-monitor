@@ -30,7 +30,7 @@ function check(text: string) {
       { name: 'Set up Node.js', if: condition, uses: setup,
         with: { 'node-version': 22, cache: 'npm' } },
       { name: 'Prepare the same backend source and generated dependencies', if: condition,
-        env: { DATABASE_URL: 'postgresql://fixture:fixture@127.0.0.1:5432/fixture' },
+        env: { DATABASE_URL: 'postgresql://fixture:social_monitor_local_password@127.0.0.1:5432/fixture' },
         run: 'set -euo pipefail\ntest "$(git rev-parse HEAD)" = "$GITHUB_SHA"\nnpm ci\nnpm run prisma:generate\nnpm run build\n' },
       { name: 'Test affected backend modules', if: condition,
         env: { BACKEND_BASE: '${{ needs.plan.outputs.backend_base }}' }, run: affectedCommand },
@@ -56,6 +56,21 @@ function check(text: string) {
 
 describe('production affected-test shards', () => {
   it('keeps the exact affected selector, dependency preparation and strict deploy gate', () => check(source));
+  it('keeps the lifecycle workflow line budget without dropping shard safety', () => {
+    expect(source.match(/\n/g)!.length).toBeLessThan(1000);
+    check(source);
+  });
+  it.each([
+    ['secrets', process.execPath, ['scripts/check-secrets.mjs']],
+    ['maintenance dispatch lifecycle', 'bash', ['ops/deploy/github-production-maintenance-dispatch.test.sh']],
+  ])('passes the focused %s CI integration gate offline', (_name, command, args) => {
+    const run = spawnSync(command as string, args as string[], {
+      env: process.env,
+      encoding: 'utf8', timeout: 30000,
+    });
+    expect(run.error).toBeUndefined();
+    expect({ status: run.status, stderr: run.stderr }).toEqual({ status: 0, stderr: '' });
+  });
   it.each([false, true])('loads actual Prisma config offline with preparation env supplied=%s', (supplied) => {
     const preparation = yaml.load(source).jobs.verify_backend_shards.steps[2];
     // A fresh process receives only the explicit fixture env, never ambient credentials.
@@ -90,10 +105,14 @@ describe('production affected-test shards', () => {
       : { name: 'PrismaConfigEnvError', message: 'Cannot resolve environment variable: DATABASE_URL.' });
   });
   it.each([
-    ['          DATABASE_URL: postgresql://fixture:fixture@127.0.0.1:5432/fixture\n', ''],
+    ['          DATABASE_URL: postgresql://fixture:social_monitor_local_password@127.0.0.1:5432/fixture\n', ''],
     ['shard: [1, 2, 3, 4]', 'shard: [1, 2, 3]'],
+    ['timeout-minutes: 45', 'timeout-minutes: 90'],
+    ['test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', 'true'],
+    ['npm ci\n          npm run prisma:generate\n          npm run build', 'npm ci\n          npm run build'],
+    ['--changedSince="$base"', '--changedSince=HEAD'],
     ['shard: [1, 2, 3, 4]', 'shard: [1, 2, 3, 3]'],
-    ['shard: [1, 2, 3, 4]', 'shard: [1, 2, 3, 4]\n        exclude: [{shard: 4}]'],
+    ['matrix: {shard: [1, 2, 3, 4]}', 'matrix: {shard: [1, 2, 3, 4], exclude: [{shard: 4}]}'],
     ['fail-fast: false', 'fail-fast: true'],
     ['--shard=${{ matrix.shard }}/4', '--shard=${{ matrix.shard }}/5'],
     ['--shard=${{ matrix.shard }}/4', '--shard=${{ matrix.shard }}/4 --passWithNoTests'],

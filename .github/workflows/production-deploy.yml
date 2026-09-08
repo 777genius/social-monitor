@@ -2,36 +2,11 @@ name: Production deploy
 on:
   push:
     branches: [main]
-    paths:
-      - .dockerignore
-      - .github/workflows/production-deploy.yml
-      - apps/api-gateway/**
-      - apps/agent-runtime/**
-      - apps/delivery-service/**
-      - apps/event-relay/**
-      - apps/frontend/**
-      - apps/ingestion-worker/**
-      - apps/intelligence-worker/**
-      - apps/social-research-grpc/**
-      - apps/social-research-mcp/**
-      - apps/social-research-runtime/**
-      - apps/x-collector/**
-      - libs/**
-      - ops/deploy/**
-      - ops/evals/**
-      - ops/observability/**
-      - prisma/**
-      - scripts/**
-      - test/**
-      - vendor/**
-      - Dockerfile
-      - docker-compose.yml
-      - package.json
-      - package-lock.json
-      - pnpm-lock.yaml
-      - prisma.config.ts
-      - tsconfig.json
-      - tsconfig.build.json
+    paths: [
+      .dockerignore, .github/workflows/production-deploy.yml, apps/api-gateway/**, apps/agent-runtime/**, apps/delivery-service/**, apps/event-relay/**, apps/frontend/**, apps/ingestion-worker/**, apps/intelligence-worker/**, apps/social-research-grpc/**,
+      apps/social-research-mcp/**, apps/social-research-runtime/**, apps/x-collector/**, libs/**, ops/deploy/**, ops/evals/**, ops/observability/**, prisma/**, scripts/**, test/**,
+      vendor/**, Dockerfile, docker-compose.yml, package.json, package-lock.json, pnpm-lock.yaml, prisma.config.ts, tsconfig.json, tsconfig.build.json,
+    ]
   workflow_dispatch:
     inputs:
       maintenance_action:
@@ -289,12 +264,8 @@ jobs:
     services:
       postgres:
         image: postgres:18.4-alpine
-        env:
-          POSTGRES_USER: social_monitor_publication_ci_admin
-          POSTGRES_PASSWORD: social_monitor_local_password
-          POSTGRES_DB: social_monitor_publication_ci_admin
-        ports:
-          - 5432:5432
+        env: {POSTGRES_USER: social_monitor_publication_ci_admin, POSTGRES_PASSWORD: social_monitor_local_password, POSTGRES_DB: social_monitor_publication_ci_admin}
+        ports: [5432:5432]
         options: >-
           --health-cmd "pg_isready -U social_monitor_publication_ci_admin -d social_monitor_publication_ci_admin"
           --health-interval 5s
@@ -334,8 +305,7 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
+      matrix: {shard: [1, 2, 3, 4]}
     # Keep jobs successful with skipped steps when backend is unchanged.
     # A skipped/cancelled/failed matrix job is never accepted by verify_backend.
     steps:
@@ -351,7 +321,7 @@ jobs:
         if: needs.plan.outputs.backend == 'true'
         env:
           # Inert test DSN for offline Prisma config loading; no database service needed.
-          DATABASE_URL: postgresql://fixture:fixture@127.0.0.1:5432/fixture
+          DATABASE_URL: postgresql://fixture:social_monitor_local_password@127.0.0.1:5432/fixture
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
@@ -360,8 +330,7 @@ jobs:
           npm run build
       - name: Test affected backend modules
         if: needs.plan.outputs.backend == 'true'
-        env:
-          BACKEND_BASE: ${{ needs.plan.outputs.backend_base }}
+        env: {BACKEND_BASE: '${{ needs.plan.outputs.backend_base }}'}
         run: |
           set -euo pipefail
           base=$BACKEND_BASE
@@ -378,12 +347,8 @@ jobs:
     services:
       postgres:
         image: postgres:18.4-alpine
-        env:
-          POSTGRES_USER: social_monitor_pool_ci
-          POSTGRES_PASSWORD: social_monitor_local_password
-          POSTGRES_DB: social_monitor_pool_ci
-        ports:
-          - 5432:5432
+        env: {POSTGRES_USER: social_monitor_pool_ci, POSTGRES_PASSWORD: social_monitor_local_password, POSTGRES_DB: social_monitor_pool_ci}
+        ports: [5432:5432]
         options: >-
           --health-cmd "pg_isready -U social_monitor_pool_ci -d social_monitor_pool_ci"
           --health-interval 5s
