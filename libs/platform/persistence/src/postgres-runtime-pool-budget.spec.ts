@@ -462,6 +462,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // The large-daily and linear-UTF16 synthetic PostgreSQL contracts receive
     // existing clients and import only the PoolClient type. Inventory their
     // exact paths even though they construct no runtime pools.
+    // The replay dispatch spec imports pg only to assert its throwing mock stays unused.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts
@@ -543,6 +544,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-weekly-review-manifest-postgres-contract.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.ts
+      scripts/lib/yesterday-replay-dispatch.spec.ts
       scripts/lib/yesterday-social-collection-quality-summary-counts.ts
       scripts/lib/yesterday-social-replay-support.ts
       scripts/read-reader-summary-daily-terminal-set-receipt.spec.ts
