@@ -105,16 +105,18 @@ export const rankPromotionSnapshot = async (params: {
       bodyPreview: sourceContent.body.slice(0, PROMOTION_SOURCE_TEXT_SAFETY_CAP),
       canonicalUrl: item.canonicalUrl,
     });
+    const providerMetadata = promotionSafeProviderMetadata(
+      item.providerKey,
+      item.providerMetadata,
+      item,
+    );
     const quality = params.qualityPolicy.evaluate({
       providerKey: item.providerKey,
       canonicalUrl: safety.sanitizedCanonicalUrl ?? item.canonicalUrl,
       title: safety.sanitizedTitle,
       bodyPreview: safety.sanitizedBodyPreview,
       authorHandle: item.authorHandle,
-      providerMetadata: promotionSafeProviderMetadata(
-        item.providerKey,
-        item.providerMetadata,
-      ),
+      providerMetadata,
     });
     return {
       feedItemId: item.id,
@@ -130,10 +132,7 @@ export const rankPromotionSnapshot = async (params: {
           0, PROMOTION_SOURCE_TEXT_SAFETY_CAP,
         ),
       }),
-      providerMetadata: promotionSafeProviderMetadata(
-        item.providerKey,
-        item.providerMetadata,
-      ),
+      providerMetadata,
       authorHandle: item.authorHandle,
       publishedAt: item.publishedAt.toISOString(),
       observedAt: item.observedAt.toISOString(),

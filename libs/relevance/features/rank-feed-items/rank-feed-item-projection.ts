@@ -15,6 +15,10 @@ import {
   presentSourceContentSafety,
 } from "../shared/relevance-presenter";
 import type { RankedFeedItemView } from "./rank-feed-items.result";
+import {
+  type PromotionTopicScope,
+  trustedPromotionTopicContext,
+} from "./trusted-promotion-topic-context";
 
 type FeedItemSnapshot = ReturnType<FeedItem["toSnapshot"]>;
 
@@ -89,13 +93,19 @@ const providerSignalScore = (
 export const promotionSafeProviderMetadata = (
   providerKey: string,
   providerMetadata: FeedItemSnapshot["providerMetadata"],
+  scope?: PromotionTopicScope,
 ): JsonObject | undefined => {
   const eligibility = classifyFeedPromotionEligibility({
     providerKey,
     providerMetadata,
   });
   if (!eligibility.eligible) return providerMetadata;
-  return canonicalProviderMetadata(eligibility);
+  return {
+    ...canonicalProviderMetadata(eligibility),
+    ...trustedPromotionTopicContext(
+      providerMetadata, scope?.providerKey === providerKey ? scope : undefined,
+    ),
+  };
 };
 
 const canonicalProviderMetadata = (
