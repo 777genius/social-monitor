@@ -1,4 +1,4 @@
-import { FeedItem } from "@social-monitor/feed/domain";
+import { FeedItem, type FeedItemProps } from "@social-monitor/feed/domain";
 import { buildReaderPostPromotionTitle, readerPostAvailableSourceText } from "@social-monitor/summary/domain/services/reader-post-promotion-title";
 import { selectorWiring } from "./reader-summary-new-input-refresh-selector-composition.spec-support";
 import { publicationProbe } from "./reader-summary-new-input-refresh-model-composition.spec-support";
@@ -80,7 +80,7 @@ it.each(providers.flatMap((provider) => ["tail", "removed", "snapshot mutation"]
 
 function canonicalProvider(providerKey: string, kind = "canonical") {
   const publish = FeedItem.publish.bind(FeedItem);
-  const providerInput = (input: Parameters<typeof FeedItem.publish>[0]) => input.id !== "synthetic-reddit" || providerKey === "x-twitter"
+  const providerInput = (input: FeedItemProps): FeedItemProps => input.id !== "synthetic-reddit" || providerKey === "x-twitter"
     ? input : { ...input, id: "synthetic-github", sourceItemId: "source-github", sourceBindingId: "binding-github",
       providerKey, canonicalUrl: "https://github.com/synthetic/compiler-tools",
       title: "Synthetic compiler tools for AI coding agents",
