@@ -37,7 +37,7 @@ export async function dailyFixture() {
   }
   f.renewal.values.set(`${f.renewal.root}/final.json`, { manifestSha, results, cells: metricRenewalCells(results, spentGrant.dates) });
   pinBytes(f.renewal, pins["retained-metrics-renewal-20260908"]);
-  const aliases = new Map([[metricRefreshDigest(manifest), manifestSha]]);
+  const aliases = new Map<string, string>([[metricRefreshDigest(manifest), manifestSha]]);
   for (const [journal, pin] of [[f.prior, pins["retained-metrics-v1"]], [f.renewal, pins["retained-metrics-renewal-20260908"]]] as const) {
     await journal.withOperation(async () => aliases.set(metricRefreshDigest(dailyPredecessorEntryList(await journal.entries())), pin.entryListSha256));
   }
