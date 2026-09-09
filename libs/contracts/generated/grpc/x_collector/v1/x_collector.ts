@@ -202,6 +202,679 @@ export function xEligibilityMetricsStateToJSON(object: XEligibilityMetricsState)
   }
 }
 
+/** Legacy private observation event codecs; unregistered and not V3 capture. */
+export enum XObservationStage {
+  X_OBSERVATION_STAGE_UNSPECIFIED = 0,
+  X_OBSERVATION_STAGE_HOME = 1,
+  X_OBSERVATION_STAGE_MIGRATION_GET = 2,
+  X_OBSERVATION_STAGE_MIGRATION_POST = 3,
+  X_OBSERVATION_STAGE_JS = 4,
+  X_OBSERVATION_STAGE_BOOTSTRAP_REDIRECT = 5,
+  X_OBSERVATION_STAGE_SEARCH = 6,
+  UNRECOGNIZED = -1,
+}
+
+export function xObservationStageFromJSON(object: any): XObservationStage {
+  switch (object) {
+    case 0:
+    case "X_OBSERVATION_STAGE_UNSPECIFIED":
+      return XObservationStage.X_OBSERVATION_STAGE_UNSPECIFIED;
+    case 1:
+    case "X_OBSERVATION_STAGE_HOME":
+      return XObservationStage.X_OBSERVATION_STAGE_HOME;
+    case 2:
+    case "X_OBSERVATION_STAGE_MIGRATION_GET":
+      return XObservationStage.X_OBSERVATION_STAGE_MIGRATION_GET;
+    case 3:
+    case "X_OBSERVATION_STAGE_MIGRATION_POST":
+      return XObservationStage.X_OBSERVATION_STAGE_MIGRATION_POST;
+    case 4:
+    case "X_OBSERVATION_STAGE_JS":
+      return XObservationStage.X_OBSERVATION_STAGE_JS;
+    case 5:
+    case "X_OBSERVATION_STAGE_BOOTSTRAP_REDIRECT":
+      return XObservationStage.X_OBSERVATION_STAGE_BOOTSTRAP_REDIRECT;
+    case 6:
+    case "X_OBSERVATION_STAGE_SEARCH":
+      return XObservationStage.X_OBSERVATION_STAGE_SEARCH;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return XObservationStage.UNRECOGNIZED;
+  }
+}
+
+export function xObservationStageToJSON(object: XObservationStage): string {
+  switch (object) {
+    case XObservationStage.X_OBSERVATION_STAGE_UNSPECIFIED:
+      return "X_OBSERVATION_STAGE_UNSPECIFIED";
+    case XObservationStage.X_OBSERVATION_STAGE_HOME:
+      return "X_OBSERVATION_STAGE_HOME";
+    case XObservationStage.X_OBSERVATION_STAGE_MIGRATION_GET:
+      return "X_OBSERVATION_STAGE_MIGRATION_GET";
+    case XObservationStage.X_OBSERVATION_STAGE_MIGRATION_POST:
+      return "X_OBSERVATION_STAGE_MIGRATION_POST";
+    case XObservationStage.X_OBSERVATION_STAGE_JS:
+      return "X_OBSERVATION_STAGE_JS";
+    case XObservationStage.X_OBSERVATION_STAGE_BOOTSTRAP_REDIRECT:
+      return "X_OBSERVATION_STAGE_BOOTSTRAP_REDIRECT";
+    case XObservationStage.X_OBSERVATION_STAGE_SEARCH:
+      return "X_OBSERVATION_STAGE_SEARCH";
+    case XObservationStage.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export enum XObservationCursorState {
+  X_OBSERVATION_CURSOR_STATE_UNSPECIFIED = 0,
+  X_OBSERVATION_CURSOR_STATE_NONE = 1,
+  X_OBSERVATION_CURSOR_STATE_BOTTOM = 2,
+  X_OBSERVATION_CURSOR_STATE_REPEATED = 3,
+  X_OBSERVATION_CURSOR_STATE_INVALID = 4,
+  UNRECOGNIZED = -1,
+}
+
+export function xObservationCursorStateFromJSON(object: any): XObservationCursorState {
+  switch (object) {
+    case 0:
+    case "X_OBSERVATION_CURSOR_STATE_UNSPECIFIED":
+      return XObservationCursorState.X_OBSERVATION_CURSOR_STATE_UNSPECIFIED;
+    case 1:
+    case "X_OBSERVATION_CURSOR_STATE_NONE":
+      return XObservationCursorState.X_OBSERVATION_CURSOR_STATE_NONE;
+    case 2:
+    case "X_OBSERVATION_CURSOR_STATE_BOTTOM":
+      return XObservationCursorState.X_OBSERVATION_CURSOR_STATE_BOTTOM;
+    case 3:
+    case "X_OBSERVATION_CURSOR_STATE_REPEATED":
+      return XObservationCursorState.X_OBSERVATION_CURSOR_STATE_REPEATED;
+    case 4:
+    case "X_OBSERVATION_CURSOR_STATE_INVALID":
+      return XObservationCursorState.X_OBSERVATION_CURSOR_STATE_INVALID;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return XObservationCursorState.UNRECOGNIZED;
+  }
+}
+
+export function xObservationCursorStateToJSON(object: XObservationCursorState): string {
+  switch (object) {
+    case XObservationCursorState.X_OBSERVATION_CURSOR_STATE_UNSPECIFIED:
+      return "X_OBSERVATION_CURSOR_STATE_UNSPECIFIED";
+    case XObservationCursorState.X_OBSERVATION_CURSOR_STATE_NONE:
+      return "X_OBSERVATION_CURSOR_STATE_NONE";
+    case XObservationCursorState.X_OBSERVATION_CURSOR_STATE_BOTTOM:
+      return "X_OBSERVATION_CURSOR_STATE_BOTTOM";
+    case XObservationCursorState.X_OBSERVATION_CURSOR_STATE_REPEATED:
+      return "X_OBSERVATION_CURSOR_STATE_REPEATED";
+    case XObservationCursorState.X_OBSERVATION_CURSOR_STATE_INVALID:
+      return "X_OBSERVATION_CURSOR_STATE_INVALID";
+    case XObservationCursorState.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export enum XObservationMetricState {
+  X_OBSERVATION_METRIC_STATE_UNSPECIFIED = 0,
+  X_OBSERVATION_METRIC_STATE_OBSERVED = 1,
+  X_OBSERVATION_METRIC_STATE_MISSING = 2,
+  X_OBSERVATION_METRIC_STATE_MALFORMED = 3,
+  X_OBSERVATION_METRIC_STATE_CONFLICT = 4,
+  UNRECOGNIZED = -1,
+}
+
+export function xObservationMetricStateFromJSON(object: any): XObservationMetricState {
+  switch (object) {
+    case 0:
+    case "X_OBSERVATION_METRIC_STATE_UNSPECIFIED":
+      return XObservationMetricState.X_OBSERVATION_METRIC_STATE_UNSPECIFIED;
+    case 1:
+    case "X_OBSERVATION_METRIC_STATE_OBSERVED":
+      return XObservationMetricState.X_OBSERVATION_METRIC_STATE_OBSERVED;
+    case 2:
+    case "X_OBSERVATION_METRIC_STATE_MISSING":
+      return XObservationMetricState.X_OBSERVATION_METRIC_STATE_MISSING;
+    case 3:
+    case "X_OBSERVATION_METRIC_STATE_MALFORMED":
+      return XObservationMetricState.X_OBSERVATION_METRIC_STATE_MALFORMED;
+    case 4:
+    case "X_OBSERVATION_METRIC_STATE_CONFLICT":
+      return XObservationMetricState.X_OBSERVATION_METRIC_STATE_CONFLICT;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return XObservationMetricState.UNRECOGNIZED;
+  }
+}
+
+export function xObservationMetricStateToJSON(object: XObservationMetricState): string {
+  switch (object) {
+    case XObservationMetricState.X_OBSERVATION_METRIC_STATE_UNSPECIFIED:
+      return "X_OBSERVATION_METRIC_STATE_UNSPECIFIED";
+    case XObservationMetricState.X_OBSERVATION_METRIC_STATE_OBSERVED:
+      return "X_OBSERVATION_METRIC_STATE_OBSERVED";
+    case XObservationMetricState.X_OBSERVATION_METRIC_STATE_MISSING:
+      return "X_OBSERVATION_METRIC_STATE_MISSING";
+    case XObservationMetricState.X_OBSERVATION_METRIC_STATE_MALFORMED:
+      return "X_OBSERVATION_METRIC_STATE_MALFORMED";
+    case XObservationMetricState.X_OBSERVATION_METRIC_STATE_CONFLICT:
+      return "X_OBSERVATION_METRIC_STATE_CONFLICT";
+    case XObservationMetricState.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export enum XObservationIdentityState {
+  X_OBSERVATION_IDENTITY_STATE_UNSPECIFIED = 0,
+  X_OBSERVATION_IDENTITY_STATE_VALID = 1,
+  UNRECOGNIZED = -1,
+}
+
+export function xObservationIdentityStateFromJSON(object: any): XObservationIdentityState {
+  switch (object) {
+    case 0:
+    case "X_OBSERVATION_IDENTITY_STATE_UNSPECIFIED":
+      return XObservationIdentityState.X_OBSERVATION_IDENTITY_STATE_UNSPECIFIED;
+    case 1:
+    case "X_OBSERVATION_IDENTITY_STATE_VALID":
+      return XObservationIdentityState.X_OBSERVATION_IDENTITY_STATE_VALID;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return XObservationIdentityState.UNRECOGNIZED;
+  }
+}
+
+export function xObservationIdentityStateToJSON(object: XObservationIdentityState): string {
+  switch (object) {
+    case XObservationIdentityState.X_OBSERVATION_IDENTITY_STATE_UNSPECIFIED:
+      return "X_OBSERVATION_IDENTITY_STATE_UNSPECIFIED";
+    case XObservationIdentityState.X_OBSERVATION_IDENTITY_STATE_VALID:
+      return "X_OBSERVATION_IDENTITY_STATE_VALID";
+    case XObservationIdentityState.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export enum XObservationTargetState {
+  X_OBSERVATION_TARGET_STATE_UNSPECIFIED = 0,
+  X_OBSERVATION_TARGET_STATE_OBSERVED = 1,
+  X_OBSERVATION_TARGET_STATE_OMITTED_UNKNOWN = 2,
+  X_OBSERVATION_TARGET_STATE_INVALID = 3,
+  X_OBSERVATION_TARGET_STATE_UNATTEMPTED = 4,
+  X_OBSERVATION_TARGET_STATE_BUDGET_EXHAUSTED = 5,
+  X_OBSERVATION_TARGET_STATE_TRANSPORT_FAILED = 6,
+  X_OBSERVATION_TARGET_STATE_UNCERTAIN = 7,
+  UNRECOGNIZED = -1,
+}
+
+export function xObservationTargetStateFromJSON(object: any): XObservationTargetState {
+  switch (object) {
+    case 0:
+    case "X_OBSERVATION_TARGET_STATE_UNSPECIFIED":
+      return XObservationTargetState.X_OBSERVATION_TARGET_STATE_UNSPECIFIED;
+    case 1:
+    case "X_OBSERVATION_TARGET_STATE_OBSERVED":
+      return XObservationTargetState.X_OBSERVATION_TARGET_STATE_OBSERVED;
+    case 2:
+    case "X_OBSERVATION_TARGET_STATE_OMITTED_UNKNOWN":
+      return XObservationTargetState.X_OBSERVATION_TARGET_STATE_OMITTED_UNKNOWN;
+    case 3:
+    case "X_OBSERVATION_TARGET_STATE_INVALID":
+      return XObservationTargetState.X_OBSERVATION_TARGET_STATE_INVALID;
+    case 4:
+    case "X_OBSERVATION_TARGET_STATE_UNATTEMPTED":
+      return XObservationTargetState.X_OBSERVATION_TARGET_STATE_UNATTEMPTED;
+    case 5:
+    case "X_OBSERVATION_TARGET_STATE_BUDGET_EXHAUSTED":
+      return XObservationTargetState.X_OBSERVATION_TARGET_STATE_BUDGET_EXHAUSTED;
+    case 6:
+    case "X_OBSERVATION_TARGET_STATE_TRANSPORT_FAILED":
+      return XObservationTargetState.X_OBSERVATION_TARGET_STATE_TRANSPORT_FAILED;
+    case 7:
+    case "X_OBSERVATION_TARGET_STATE_UNCERTAIN":
+      return XObservationTargetState.X_OBSERVATION_TARGET_STATE_UNCERTAIN;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return XObservationTargetState.UNRECOGNIZED;
+  }
+}
+
+export function xObservationTargetStateToJSON(object: XObservationTargetState): string {
+  switch (object) {
+    case XObservationTargetState.X_OBSERVATION_TARGET_STATE_UNSPECIFIED:
+      return "X_OBSERVATION_TARGET_STATE_UNSPECIFIED";
+    case XObservationTargetState.X_OBSERVATION_TARGET_STATE_OBSERVED:
+      return "X_OBSERVATION_TARGET_STATE_OBSERVED";
+    case XObservationTargetState.X_OBSERVATION_TARGET_STATE_OMITTED_UNKNOWN:
+      return "X_OBSERVATION_TARGET_STATE_OMITTED_UNKNOWN";
+    case XObservationTargetState.X_OBSERVATION_TARGET_STATE_INVALID:
+      return "X_OBSERVATION_TARGET_STATE_INVALID";
+    case XObservationTargetState.X_OBSERVATION_TARGET_STATE_UNATTEMPTED:
+      return "X_OBSERVATION_TARGET_STATE_UNATTEMPTED";
+    case XObservationTargetState.X_OBSERVATION_TARGET_STATE_BUDGET_EXHAUSTED:
+      return "X_OBSERVATION_TARGET_STATE_BUDGET_EXHAUSTED";
+    case XObservationTargetState.X_OBSERVATION_TARGET_STATE_TRANSPORT_FAILED:
+      return "X_OBSERVATION_TARGET_STATE_TRANSPORT_FAILED";
+    case XObservationTargetState.X_OBSERVATION_TARGET_STATE_UNCERTAIN:
+      return "X_OBSERVATION_TARGET_STATE_UNCERTAIN";
+    case XObservationTargetState.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export enum XObservationFinishState {
+  X_OBSERVATION_FINISH_STATE_UNSPECIFIED = 0,
+  X_OBSERVATION_FINISH_STATE_COMPLETE = 1,
+  X_OBSERVATION_FINISH_STATE_PARTIAL = 2,
+  X_OBSERVATION_FINISH_STATE_FAILED = 3,
+  X_OBSERVATION_FINISH_STATE_UNCERTAIN = 4,
+  X_OBSERVATION_FINISH_STATE_CANCELLED = 5,
+  UNRECOGNIZED = -1,
+}
+
+export function xObservationFinishStateFromJSON(object: any): XObservationFinishState {
+  switch (object) {
+    case 0:
+    case "X_OBSERVATION_FINISH_STATE_UNSPECIFIED":
+      return XObservationFinishState.X_OBSERVATION_FINISH_STATE_UNSPECIFIED;
+    case 1:
+    case "X_OBSERVATION_FINISH_STATE_COMPLETE":
+      return XObservationFinishState.X_OBSERVATION_FINISH_STATE_COMPLETE;
+    case 2:
+    case "X_OBSERVATION_FINISH_STATE_PARTIAL":
+      return XObservationFinishState.X_OBSERVATION_FINISH_STATE_PARTIAL;
+    case 3:
+    case "X_OBSERVATION_FINISH_STATE_FAILED":
+      return XObservationFinishState.X_OBSERVATION_FINISH_STATE_FAILED;
+    case 4:
+    case "X_OBSERVATION_FINISH_STATE_UNCERTAIN":
+      return XObservationFinishState.X_OBSERVATION_FINISH_STATE_UNCERTAIN;
+    case 5:
+    case "X_OBSERVATION_FINISH_STATE_CANCELLED":
+      return XObservationFinishState.X_OBSERVATION_FINISH_STATE_CANCELLED;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return XObservationFinishState.UNRECOGNIZED;
+  }
+}
+
+export function xObservationFinishStateToJSON(object: XObservationFinishState): string {
+  switch (object) {
+    case XObservationFinishState.X_OBSERVATION_FINISH_STATE_UNSPECIFIED:
+      return "X_OBSERVATION_FINISH_STATE_UNSPECIFIED";
+    case XObservationFinishState.X_OBSERVATION_FINISH_STATE_COMPLETE:
+      return "X_OBSERVATION_FINISH_STATE_COMPLETE";
+    case XObservationFinishState.X_OBSERVATION_FINISH_STATE_PARTIAL:
+      return "X_OBSERVATION_FINISH_STATE_PARTIAL";
+    case XObservationFinishState.X_OBSERVATION_FINISH_STATE_FAILED:
+      return "X_OBSERVATION_FINISH_STATE_FAILED";
+    case XObservationFinishState.X_OBSERVATION_FINISH_STATE_UNCERTAIN:
+      return "X_OBSERVATION_FINISH_STATE_UNCERTAIN";
+    case XObservationFinishState.X_OBSERVATION_FINISH_STATE_CANCELLED:
+      return "X_OBSERVATION_FINISH_STATE_CANCELLED";
+    case XObservationFinishState.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export enum XObservationEffects {
+  X_OBSERVATION_EFFECTS_UNSPECIFIED = 0,
+  X_OBSERVATION_EFFECTS_NONE = 1,
+  X_OBSERVATION_EFFECTS_POSSIBLE = 2,
+  X_OBSERVATION_EFFECTS_OBSERVED = 3,
+  UNRECOGNIZED = -1,
+}
+
+export function xObservationEffectsFromJSON(object: any): XObservationEffects {
+  switch (object) {
+    case 0:
+    case "X_OBSERVATION_EFFECTS_UNSPECIFIED":
+      return XObservationEffects.X_OBSERVATION_EFFECTS_UNSPECIFIED;
+    case 1:
+    case "X_OBSERVATION_EFFECTS_NONE":
+      return XObservationEffects.X_OBSERVATION_EFFECTS_NONE;
+    case 2:
+    case "X_OBSERVATION_EFFECTS_POSSIBLE":
+      return XObservationEffects.X_OBSERVATION_EFFECTS_POSSIBLE;
+    case 3:
+    case "X_OBSERVATION_EFFECTS_OBSERVED":
+      return XObservationEffects.X_OBSERVATION_EFFECTS_OBSERVED;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return XObservationEffects.UNRECOGNIZED;
+  }
+}
+
+export function xObservationEffectsToJSON(object: XObservationEffects): string {
+  switch (object) {
+    case XObservationEffects.X_OBSERVATION_EFFECTS_UNSPECIFIED:
+      return "X_OBSERVATION_EFFECTS_UNSPECIFIED";
+    case XObservationEffects.X_OBSERVATION_EFFECTS_NONE:
+      return "X_OBSERVATION_EFFECTS_NONE";
+    case XObservationEffects.X_OBSERVATION_EFFECTS_POSSIBLE:
+      return "X_OBSERVATION_EFFECTS_POSSIBLE";
+    case XObservationEffects.X_OBSERVATION_EFFECTS_OBSERVED:
+      return "X_OBSERVATION_EFFECTS_OBSERVED";
+    case XObservationEffects.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export enum XObservationFailureCode {
+  X_OBSERVATION_FAILURE_CODE_UNSPECIFIED = 0,
+  X_OBSERVATION_FAILURE_CODE_INVALID_GRANT = 1,
+  X_OBSERVATION_FAILURE_CODE_SCOPE_MISMATCH = 2,
+  X_OBSERVATION_FAILURE_CODE_DEPENDENCY_MISMATCH = 3,
+  X_OBSERVATION_FAILURE_CODE_PROTOCOL_ERROR = 4,
+  X_OBSERVATION_FAILURE_CODE_FENCE_BUSY = 5,
+  X_OBSERVATION_FAILURE_CODE_JOURNAL_FAILURE = 6,
+  X_OBSERVATION_FAILURE_CODE_BUDGET_EXHAUSTED = 7,
+  X_OBSERVATION_FAILURE_CODE_DEADLINE_EXCEEDED = 8,
+  X_OBSERVATION_FAILURE_CODE_CANCELLED = 9,
+  X_OBSERVATION_FAILURE_CODE_DESTINATION_REJECTED = 10,
+  X_OBSERVATION_FAILURE_CODE_REDIRECT_REJECTED = 11,
+  X_OBSERVATION_FAILURE_CODE_BODY_LIMIT = 12,
+  X_OBSERVATION_FAILURE_CODE_HEADER_LIMIT = 13,
+  X_OBSERVATION_FAILURE_CODE_DECODE_FAILED = 14,
+  X_OBSERVATION_FAILURE_CODE_SCHEMA_INVALID = 15,
+  X_OBSERVATION_FAILURE_CODE_BOOTSTRAP_FAILED = 16,
+  X_OBSERVATION_FAILURE_CODE_TRANSACTION_FAILED = 17,
+  X_OBSERVATION_FAILURE_CODE_AUTH_FAILED = 18,
+  X_OBSERVATION_FAILURE_CODE_RATE_LIMITED = 19,
+  X_OBSERVATION_FAILURE_CODE_PROVIDER_FAILED = 20,
+  X_OBSERVATION_FAILURE_CODE_TRANSPORT_UNVERIFIED = 21,
+  X_OBSERVATION_FAILURE_CODE_EFFECTS_UNKNOWN = 22,
+  X_OBSERVATION_FAILURE_CODE_AUTHORITY_CHANGED = 23,
+  X_OBSERVATION_FAILURE_CODE_PROJECTION_UNCERTAIN = 24,
+  UNRECOGNIZED = -1,
+}
+
+export function xObservationFailureCodeFromJSON(object: any): XObservationFailureCode {
+  switch (object) {
+    case 0:
+    case "X_OBSERVATION_FAILURE_CODE_UNSPECIFIED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_UNSPECIFIED;
+    case 1:
+    case "X_OBSERVATION_FAILURE_CODE_INVALID_GRANT":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_INVALID_GRANT;
+    case 2:
+    case "X_OBSERVATION_FAILURE_CODE_SCOPE_MISMATCH":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_SCOPE_MISMATCH;
+    case 3:
+    case "X_OBSERVATION_FAILURE_CODE_DEPENDENCY_MISMATCH":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_DEPENDENCY_MISMATCH;
+    case 4:
+    case "X_OBSERVATION_FAILURE_CODE_PROTOCOL_ERROR":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_PROTOCOL_ERROR;
+    case 5:
+    case "X_OBSERVATION_FAILURE_CODE_FENCE_BUSY":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_FENCE_BUSY;
+    case 6:
+    case "X_OBSERVATION_FAILURE_CODE_JOURNAL_FAILURE":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_JOURNAL_FAILURE;
+    case 7:
+    case "X_OBSERVATION_FAILURE_CODE_BUDGET_EXHAUSTED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_BUDGET_EXHAUSTED;
+    case 8:
+    case "X_OBSERVATION_FAILURE_CODE_DEADLINE_EXCEEDED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_DEADLINE_EXCEEDED;
+    case 9:
+    case "X_OBSERVATION_FAILURE_CODE_CANCELLED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_CANCELLED;
+    case 10:
+    case "X_OBSERVATION_FAILURE_CODE_DESTINATION_REJECTED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_DESTINATION_REJECTED;
+    case 11:
+    case "X_OBSERVATION_FAILURE_CODE_REDIRECT_REJECTED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_REDIRECT_REJECTED;
+    case 12:
+    case "X_OBSERVATION_FAILURE_CODE_BODY_LIMIT":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_BODY_LIMIT;
+    case 13:
+    case "X_OBSERVATION_FAILURE_CODE_HEADER_LIMIT":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_HEADER_LIMIT;
+    case 14:
+    case "X_OBSERVATION_FAILURE_CODE_DECODE_FAILED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_DECODE_FAILED;
+    case 15:
+    case "X_OBSERVATION_FAILURE_CODE_SCHEMA_INVALID":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_SCHEMA_INVALID;
+    case 16:
+    case "X_OBSERVATION_FAILURE_CODE_BOOTSTRAP_FAILED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_BOOTSTRAP_FAILED;
+    case 17:
+    case "X_OBSERVATION_FAILURE_CODE_TRANSACTION_FAILED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_TRANSACTION_FAILED;
+    case 18:
+    case "X_OBSERVATION_FAILURE_CODE_AUTH_FAILED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_AUTH_FAILED;
+    case 19:
+    case "X_OBSERVATION_FAILURE_CODE_RATE_LIMITED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_RATE_LIMITED;
+    case 20:
+    case "X_OBSERVATION_FAILURE_CODE_PROVIDER_FAILED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_PROVIDER_FAILED;
+    case 21:
+    case "X_OBSERVATION_FAILURE_CODE_TRANSPORT_UNVERIFIED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_TRANSPORT_UNVERIFIED;
+    case 22:
+    case "X_OBSERVATION_FAILURE_CODE_EFFECTS_UNKNOWN":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_EFFECTS_UNKNOWN;
+    case 23:
+    case "X_OBSERVATION_FAILURE_CODE_AUTHORITY_CHANGED":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_AUTHORITY_CHANGED;
+    case 24:
+    case "X_OBSERVATION_FAILURE_CODE_PROJECTION_UNCERTAIN":
+      return XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_PROJECTION_UNCERTAIN;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return XObservationFailureCode.UNRECOGNIZED;
+  }
+}
+
+export function xObservationFailureCodeToJSON(object: XObservationFailureCode): string {
+  switch (object) {
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_UNSPECIFIED:
+      return "X_OBSERVATION_FAILURE_CODE_UNSPECIFIED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_INVALID_GRANT:
+      return "X_OBSERVATION_FAILURE_CODE_INVALID_GRANT";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_SCOPE_MISMATCH:
+      return "X_OBSERVATION_FAILURE_CODE_SCOPE_MISMATCH";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_DEPENDENCY_MISMATCH:
+      return "X_OBSERVATION_FAILURE_CODE_DEPENDENCY_MISMATCH";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_PROTOCOL_ERROR:
+      return "X_OBSERVATION_FAILURE_CODE_PROTOCOL_ERROR";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_FENCE_BUSY:
+      return "X_OBSERVATION_FAILURE_CODE_FENCE_BUSY";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_JOURNAL_FAILURE:
+      return "X_OBSERVATION_FAILURE_CODE_JOURNAL_FAILURE";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_BUDGET_EXHAUSTED:
+      return "X_OBSERVATION_FAILURE_CODE_BUDGET_EXHAUSTED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_DEADLINE_EXCEEDED:
+      return "X_OBSERVATION_FAILURE_CODE_DEADLINE_EXCEEDED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_CANCELLED:
+      return "X_OBSERVATION_FAILURE_CODE_CANCELLED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_DESTINATION_REJECTED:
+      return "X_OBSERVATION_FAILURE_CODE_DESTINATION_REJECTED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_REDIRECT_REJECTED:
+      return "X_OBSERVATION_FAILURE_CODE_REDIRECT_REJECTED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_BODY_LIMIT:
+      return "X_OBSERVATION_FAILURE_CODE_BODY_LIMIT";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_HEADER_LIMIT:
+      return "X_OBSERVATION_FAILURE_CODE_HEADER_LIMIT";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_DECODE_FAILED:
+      return "X_OBSERVATION_FAILURE_CODE_DECODE_FAILED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_SCHEMA_INVALID:
+      return "X_OBSERVATION_FAILURE_CODE_SCHEMA_INVALID";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_BOOTSTRAP_FAILED:
+      return "X_OBSERVATION_FAILURE_CODE_BOOTSTRAP_FAILED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_TRANSACTION_FAILED:
+      return "X_OBSERVATION_FAILURE_CODE_TRANSACTION_FAILED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_AUTH_FAILED:
+      return "X_OBSERVATION_FAILURE_CODE_AUTH_FAILED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_RATE_LIMITED:
+      return "X_OBSERVATION_FAILURE_CODE_RATE_LIMITED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_PROVIDER_FAILED:
+      return "X_OBSERVATION_FAILURE_CODE_PROVIDER_FAILED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_TRANSPORT_UNVERIFIED:
+      return "X_OBSERVATION_FAILURE_CODE_TRANSPORT_UNVERIFIED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_EFFECTS_UNKNOWN:
+      return "X_OBSERVATION_FAILURE_CODE_EFFECTS_UNKNOWN";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_AUTHORITY_CHANGED:
+      return "X_OBSERVATION_FAILURE_CODE_AUTHORITY_CHANGED";
+    case XObservationFailureCode.X_OBSERVATION_FAILURE_CODE_PROJECTION_UNCERTAIN:
+      return "X_OBSERVATION_FAILURE_CODE_PROJECTION_UNCERTAIN";
+    case XObservationFailureCode.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export enum XObservationOutcomeKind {
+  X_OBSERVATION_OUTCOME_KIND_UNSPECIFIED = 0,
+  X_OBSERVATION_OUTCOME_KIND_SUCCESS = 1,
+  X_OBSERVATION_OUTCOME_KIND_REDIRECT = 2,
+  X_OBSERVATION_OUTCOME_KIND_FAILED = 3,
+  X_OBSERVATION_OUTCOME_KIND_UNCERTAIN = 4,
+  UNRECOGNIZED = -1,
+}
+
+export function xObservationOutcomeKindFromJSON(object: any): XObservationOutcomeKind {
+  switch (object) {
+    case 0:
+    case "X_OBSERVATION_OUTCOME_KIND_UNSPECIFIED":
+      return XObservationOutcomeKind.X_OBSERVATION_OUTCOME_KIND_UNSPECIFIED;
+    case 1:
+    case "X_OBSERVATION_OUTCOME_KIND_SUCCESS":
+      return XObservationOutcomeKind.X_OBSERVATION_OUTCOME_KIND_SUCCESS;
+    case 2:
+    case "X_OBSERVATION_OUTCOME_KIND_REDIRECT":
+      return XObservationOutcomeKind.X_OBSERVATION_OUTCOME_KIND_REDIRECT;
+    case 3:
+    case "X_OBSERVATION_OUTCOME_KIND_FAILED":
+      return XObservationOutcomeKind.X_OBSERVATION_OUTCOME_KIND_FAILED;
+    case 4:
+    case "X_OBSERVATION_OUTCOME_KIND_UNCERTAIN":
+      return XObservationOutcomeKind.X_OBSERVATION_OUTCOME_KIND_UNCERTAIN;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return XObservationOutcomeKind.UNRECOGNIZED;
+  }
+}
+
+export function xObservationOutcomeKindToJSON(object: XObservationOutcomeKind): string {
+  switch (object) {
+    case XObservationOutcomeKind.X_OBSERVATION_OUTCOME_KIND_UNSPECIFIED:
+      return "X_OBSERVATION_OUTCOME_KIND_UNSPECIFIED";
+    case XObservationOutcomeKind.X_OBSERVATION_OUTCOME_KIND_SUCCESS:
+      return "X_OBSERVATION_OUTCOME_KIND_SUCCESS";
+    case XObservationOutcomeKind.X_OBSERVATION_OUTCOME_KIND_REDIRECT:
+      return "X_OBSERVATION_OUTCOME_KIND_REDIRECT";
+    case XObservationOutcomeKind.X_OBSERVATION_OUTCOME_KIND_FAILED:
+      return "X_OBSERVATION_OUTCOME_KIND_FAILED";
+    case XObservationOutcomeKind.X_OBSERVATION_OUTCOME_KIND_UNCERTAIN:
+      return "X_OBSERVATION_OUTCOME_KIND_UNCERTAIN";
+    case XObservationOutcomeKind.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export enum XObservationReasonCode {
+  X_OBSERVATION_REASON_CODE_UNSPECIFIED = 0,
+  X_OBSERVATION_REASON_CODE_MATCHED = 1,
+  X_OBSERVATION_REASON_CODE_SEARCH_OMISSION = 2,
+  X_OBSERVATION_REASON_CODE_IDENTITY_INVALID = 3,
+  X_OBSERVATION_REASON_CODE_METRICS_INVALID = 4,
+  X_OBSERVATION_REASON_CODE_NOT_ATTEMPTED = 5,
+  X_OBSERVATION_REASON_CODE_LIMIT_REACHED = 6,
+  X_OBSERVATION_REASON_CODE_TRANSPORT_FAILURE = 7,
+  X_OBSERVATION_REASON_CODE_EFFECTS_UNKNOWN = 8,
+  X_OBSERVATION_REASON_CODE_PROJECTION_RANGE_UNSUPPORTED = 9,
+  UNRECOGNIZED = -1,
+}
+
+export function xObservationReasonCodeFromJSON(object: any): XObservationReasonCode {
+  switch (object) {
+    case 0:
+    case "X_OBSERVATION_REASON_CODE_UNSPECIFIED":
+      return XObservationReasonCode.X_OBSERVATION_REASON_CODE_UNSPECIFIED;
+    case 1:
+    case "X_OBSERVATION_REASON_CODE_MATCHED":
+      return XObservationReasonCode.X_OBSERVATION_REASON_CODE_MATCHED;
+    case 2:
+    case "X_OBSERVATION_REASON_CODE_SEARCH_OMISSION":
+      return XObservationReasonCode.X_OBSERVATION_REASON_CODE_SEARCH_OMISSION;
+    case 3:
+    case "X_OBSERVATION_REASON_CODE_IDENTITY_INVALID":
+      return XObservationReasonCode.X_OBSERVATION_REASON_CODE_IDENTITY_INVALID;
+    case 4:
+    case "X_OBSERVATION_REASON_CODE_METRICS_INVALID":
+      return XObservationReasonCode.X_OBSERVATION_REASON_CODE_METRICS_INVALID;
+    case 5:
+    case "X_OBSERVATION_REASON_CODE_NOT_ATTEMPTED":
+      return XObservationReasonCode.X_OBSERVATION_REASON_CODE_NOT_ATTEMPTED;
+    case 6:
+    case "X_OBSERVATION_REASON_CODE_LIMIT_REACHED":
+      return XObservationReasonCode.X_OBSERVATION_REASON_CODE_LIMIT_REACHED;
+    case 7:
+    case "X_OBSERVATION_REASON_CODE_TRANSPORT_FAILURE":
+      return XObservationReasonCode.X_OBSERVATION_REASON_CODE_TRANSPORT_FAILURE;
+    case 8:
+    case "X_OBSERVATION_REASON_CODE_EFFECTS_UNKNOWN":
+      return XObservationReasonCode.X_OBSERVATION_REASON_CODE_EFFECTS_UNKNOWN;
+    case 9:
+    case "X_OBSERVATION_REASON_CODE_PROJECTION_RANGE_UNSUPPORTED":
+      return XObservationReasonCode.X_OBSERVATION_REASON_CODE_PROJECTION_RANGE_UNSUPPORTED;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return XObservationReasonCode.UNRECOGNIZED;
+  }
+}
+
+export function xObservationReasonCodeToJSON(object: XObservationReasonCode): string {
+  switch (object) {
+    case XObservationReasonCode.X_OBSERVATION_REASON_CODE_UNSPECIFIED:
+      return "X_OBSERVATION_REASON_CODE_UNSPECIFIED";
+    case XObservationReasonCode.X_OBSERVATION_REASON_CODE_MATCHED:
+      return "X_OBSERVATION_REASON_CODE_MATCHED";
+    case XObservationReasonCode.X_OBSERVATION_REASON_CODE_SEARCH_OMISSION:
+      return "X_OBSERVATION_REASON_CODE_SEARCH_OMISSION";
+    case XObservationReasonCode.X_OBSERVATION_REASON_CODE_IDENTITY_INVALID:
+      return "X_OBSERVATION_REASON_CODE_IDENTITY_INVALID";
+    case XObservationReasonCode.X_OBSERVATION_REASON_CODE_METRICS_INVALID:
+      return "X_OBSERVATION_REASON_CODE_METRICS_INVALID";
+    case XObservationReasonCode.X_OBSERVATION_REASON_CODE_NOT_ATTEMPTED:
+      return "X_OBSERVATION_REASON_CODE_NOT_ATTEMPTED";
+    case XObservationReasonCode.X_OBSERVATION_REASON_CODE_LIMIT_REACHED:
+      return "X_OBSERVATION_REASON_CODE_LIMIT_REACHED";
+    case XObservationReasonCode.X_OBSERVATION_REASON_CODE_TRANSPORT_FAILURE:
+      return "X_OBSERVATION_REASON_CODE_TRANSPORT_FAILURE";
+    case XObservationReasonCode.X_OBSERVATION_REASON_CODE_EFFECTS_UNKNOWN:
+      return "X_OBSERVATION_REASON_CODE_EFFECTS_UNKNOWN";
+    case XObservationReasonCode.X_OBSERVATION_REASON_CODE_PROJECTION_RANGE_UNSUPPORTED:
+      return "X_OBSERVATION_REASON_CODE_PROJECTION_RANGE_UNSUPPORTED";
+    case XObservationReasonCode.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
 export interface CollectDailySearchRequest {
   schemaVersion: number;
   requestId: string;
@@ -283,6 +956,132 @@ export interface CheckHealthResponse {
   collectorEngine: string;
   collectorVersion: string;
   warnings: XCollectorWarning[];
+}
+
+export interface XObservationSendOffer {
+  operationId: string;
+  batchId: string;
+  epoch: number;
+  sequence: number;
+  stage: XObservationStage;
+  requestDigest: string;
+  destinationRuleId: string;
+  accountRef: string;
+  queryId?: string | undefined;
+  pageIndex?: number | undefined;
+  cursorHash?: string | undefined;
+  parentSequence?: number | undefined;
+  timeoutMs: number;
+}
+
+export interface XObservationSendOutcome {
+  operationId: string;
+  batchId: string;
+  sequence: number;
+  reservationHash: string;
+  requestDigest: string;
+  stage: XObservationStage;
+  startedAt: Date | undefined;
+  endedAt: Date | undefined;
+  responseObservedAt: Date | undefined;
+  outcome: XObservationOutcomeKind;
+  statusCode?: number | undefined;
+  encodedBytes: number;
+  decodedBytes: number;
+  headerBytes: number;
+  candidateCount?: number | undefined;
+  candidateCountLowerBound?: number | undefined;
+  cursorState: XObservationCursorState;
+  reducedObservations: XObservationReducedObservation[];
+  targetOutcomes: XObservationTargetOutcome[];
+  chunkIndex: number;
+  finalChunk: boolean;
+  resultHash: string;
+  /** Absent on v1: preserves the exact prior semantic bytes, including defaults. */
+  acquisition: XObservationAcquisitionV2 | undefined;
+}
+
+export interface XObservationFinished {
+  operationId: string;
+  batchId: string;
+  state: XObservationFinishState;
+  reaped: boolean;
+  consumedSequences: number[];
+  lastReceiptHash: string;
+  targetOutcomeCounts: XObservationTargetOutcomeCount[];
+  terminalError: XObservationTerminalError | undefined;
+}
+
+export interface XObservationMetric {
+  state: XObservationMetricState;
+  valueDecimal?: string | undefined;
+}
+
+export interface XObservationMetrics {
+  likes: XObservationMetric | undefined;
+  reposts: XObservationMetric | undefined;
+  replies: XObservationMetric | undefined;
+  quotes: XObservationMetric | undefined;
+  views: XObservationMetric | undefined;
+}
+
+export interface XObservationReducedObservation {
+  targetKey: string;
+  sourceItemId: string;
+  sourceBindingId: string;
+  externalId: string;
+  canonicalUrl: string;
+  publishedAt: Date | undefined;
+  responseObservedAt: Date | undefined;
+  requestSequence: number;
+  queryId: string;
+  metrics: XObservationMetrics | undefined;
+  identityState: XObservationIdentityState;
+}
+
+export interface XObservationTargetOutcome {
+  targetKey: string;
+  state: XObservationTargetState;
+  reasonCode: XObservationReasonCode;
+  observationRefs: string[];
+}
+
+export interface XObservationTargetOutcomeCount {
+  state: XObservationTargetState;
+  count: number;
+}
+
+export interface XObservationTerminalError {
+  code: XObservationFailureCode;
+  stage: XObservationStage;
+  sequence?: number | undefined;
+  effects: XObservationEffects;
+  receiptHash?: string | undefined;
+  retryable: boolean;
+}
+
+export interface XObservationEvent {
+  sendOffer?: XObservationSendOffer | undefined;
+  sendOutcome?: XObservationSendOutcome | undefined;
+  finished?: XObservationFinished | undefined;
+}
+
+export interface XObservationAcquisitionV2 {
+  schemaVersion: number;
+  acquiredPosts: XObservationAcquiredPost[];
+}
+
+export interface XObservationAcquiredPost {
+  primaryId: string;
+  canonicalUrl: string;
+  publishedAt: Date | undefined;
+  authorHandle?: string | undefined;
+  contentKind?: XPostContentKind | undefined;
+  text: string;
+  metrics: XObservationMetrics | undefined;
+  responseObservedAt: Date | undefined;
+  queryId: string;
+  sourceBindingId: string;
 }
 
 function createBaseCollectDailySearchRequest(): CollectDailySearchRequest {
@@ -1804,6 +2603,2314 @@ export const CheckHealthResponse: MessageFns<CheckHealthResponse> = {
     message.collectorEngine = object.collectorEngine ?? "";
     message.collectorVersion = object.collectorVersion ?? "";
     message.warnings = object.warnings?.map((e) => XCollectorWarning.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseXObservationSendOffer(): XObservationSendOffer {
+  return {
+    operationId: "",
+    batchId: "",
+    epoch: 0,
+    sequence: 0,
+    stage: 0,
+    requestDigest: "",
+    destinationRuleId: "",
+    accountRef: "",
+    queryId: undefined,
+    pageIndex: undefined,
+    cursorHash: undefined,
+    parentSequence: undefined,
+    timeoutMs: 0,
+  };
+}
+
+export const XObservationSendOffer: MessageFns<XObservationSendOffer> = {
+  encode(message: XObservationSendOffer, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.operationId !== "") {
+      writer.uint32(10).string(message.operationId);
+    }
+    if (message.batchId !== "") {
+      writer.uint32(18).string(message.batchId);
+    }
+    if (message.epoch !== 0) {
+      writer.uint32(24).uint32(message.epoch);
+    }
+    if (message.sequence !== 0) {
+      writer.uint32(32).uint32(message.sequence);
+    }
+    if (message.stage !== 0) {
+      writer.uint32(40).int32(message.stage);
+    }
+    if (message.requestDigest !== "") {
+      writer.uint32(50).string(message.requestDigest);
+    }
+    if (message.destinationRuleId !== "") {
+      writer.uint32(58).string(message.destinationRuleId);
+    }
+    if (message.accountRef !== "") {
+      writer.uint32(66).string(message.accountRef);
+    }
+    if (message.queryId !== undefined) {
+      writer.uint32(74).string(message.queryId);
+    }
+    if (message.pageIndex !== undefined) {
+      writer.uint32(80).uint32(message.pageIndex);
+    }
+    if (message.cursorHash !== undefined) {
+      writer.uint32(90).string(message.cursorHash);
+    }
+    if (message.parentSequence !== undefined) {
+      writer.uint32(96).uint32(message.parentSequence);
+    }
+    if (message.timeoutMs !== 0) {
+      writer.uint32(104).uint32(message.timeoutMs);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationSendOffer {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationSendOffer();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.operationId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.batchId = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.epoch = reader.uint32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.sequence = reader.uint32();
+          continue;
+        }
+        case 5: {
+          if (tag !== 40) {
+            break;
+          }
+
+          message.stage = reader.int32() as any;
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.requestDigest = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.destinationRuleId = reader.string();
+          continue;
+        }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.accountRef = reader.string();
+          continue;
+        }
+        case 9: {
+          if (tag !== 74) {
+            break;
+          }
+
+          message.queryId = reader.string();
+          continue;
+        }
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.pageIndex = reader.uint32();
+          continue;
+        }
+        case 11: {
+          if (tag !== 90) {
+            break;
+          }
+
+          message.cursorHash = reader.string();
+          continue;
+        }
+        case 12: {
+          if (tag !== 96) {
+            break;
+          }
+
+          message.parentSequence = reader.uint32();
+          continue;
+        }
+        case 13: {
+          if (tag !== 104) {
+            break;
+          }
+
+          message.timeoutMs = reader.uint32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationSendOffer {
+    return {
+      operationId: isSet(object.operationId)
+        ? globalThis.String(object.operationId)
+        : isSet(object.operation_id)
+        ? globalThis.String(object.operation_id)
+        : "",
+      batchId: isSet(object.batchId)
+        ? globalThis.String(object.batchId)
+        : isSet(object.batch_id)
+        ? globalThis.String(object.batch_id)
+        : "",
+      epoch: isSet(object.epoch) ? globalThis.Number(object.epoch) : 0,
+      sequence: isSet(object.sequence) ? globalThis.Number(object.sequence) : 0,
+      stage: isSet(object.stage) ? xObservationStageFromJSON(object.stage) : 0,
+      requestDigest: isSet(object.requestDigest)
+        ? globalThis.String(object.requestDigest)
+        : isSet(object.request_digest)
+        ? globalThis.String(object.request_digest)
+        : "",
+      destinationRuleId: isSet(object.destinationRuleId)
+        ? globalThis.String(object.destinationRuleId)
+        : isSet(object.destination_rule_id)
+        ? globalThis.String(object.destination_rule_id)
+        : "",
+      accountRef: isSet(object.accountRef)
+        ? globalThis.String(object.accountRef)
+        : isSet(object.account_ref)
+        ? globalThis.String(object.account_ref)
+        : "",
+      queryId: isSet(object.queryId)
+        ? globalThis.String(object.queryId)
+        : isSet(object.query_id)
+        ? globalThis.String(object.query_id)
+        : undefined,
+      pageIndex: isSet(object.pageIndex)
+        ? globalThis.Number(object.pageIndex)
+        : isSet(object.page_index)
+        ? globalThis.Number(object.page_index)
+        : undefined,
+      cursorHash: isSet(object.cursorHash)
+        ? globalThis.String(object.cursorHash)
+        : isSet(object.cursor_hash)
+        ? globalThis.String(object.cursor_hash)
+        : undefined,
+      parentSequence: isSet(object.parentSequence)
+        ? globalThis.Number(object.parentSequence)
+        : isSet(object.parent_sequence)
+        ? globalThis.Number(object.parent_sequence)
+        : undefined,
+      timeoutMs: isSet(object.timeoutMs)
+        ? globalThis.Number(object.timeoutMs)
+        : isSet(object.timeout_ms)
+        ? globalThis.Number(object.timeout_ms)
+        : 0,
+    };
+  },
+
+  toJSON(message: XObservationSendOffer): unknown {
+    const obj: any = {};
+    if (message.operationId !== "") {
+      obj.operationId = message.operationId;
+    }
+    if (message.batchId !== "") {
+      obj.batchId = message.batchId;
+    }
+    if (message.epoch !== 0) {
+      obj.epoch = Math.round(message.epoch);
+    }
+    if (message.sequence !== 0) {
+      obj.sequence = Math.round(message.sequence);
+    }
+    if (message.stage !== 0) {
+      obj.stage = xObservationStageToJSON(message.stage);
+    }
+    if (message.requestDigest !== "") {
+      obj.requestDigest = message.requestDigest;
+    }
+    if (message.destinationRuleId !== "") {
+      obj.destinationRuleId = message.destinationRuleId;
+    }
+    if (message.accountRef !== "") {
+      obj.accountRef = message.accountRef;
+    }
+    if (message.queryId !== undefined) {
+      obj.queryId = message.queryId;
+    }
+    if (message.pageIndex !== undefined) {
+      obj.pageIndex = Math.round(message.pageIndex);
+    }
+    if (message.cursorHash !== undefined) {
+      obj.cursorHash = message.cursorHash;
+    }
+    if (message.parentSequence !== undefined) {
+      obj.parentSequence = Math.round(message.parentSequence);
+    }
+    if (message.timeoutMs !== 0) {
+      obj.timeoutMs = Math.round(message.timeoutMs);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationSendOffer>): XObservationSendOffer {
+    return XObservationSendOffer.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationSendOffer>): XObservationSendOffer {
+    const message = createBaseXObservationSendOffer();
+    message.operationId = object.operationId ?? "";
+    message.batchId = object.batchId ?? "";
+    message.epoch = object.epoch ?? 0;
+    message.sequence = object.sequence ?? 0;
+    message.stage = object.stage ?? 0;
+    message.requestDigest = object.requestDigest ?? "";
+    message.destinationRuleId = object.destinationRuleId ?? "";
+    message.accountRef = object.accountRef ?? "";
+    message.queryId = object.queryId ?? undefined;
+    message.pageIndex = object.pageIndex ?? undefined;
+    message.cursorHash = object.cursorHash ?? undefined;
+    message.parentSequence = object.parentSequence ?? undefined;
+    message.timeoutMs = object.timeoutMs ?? 0;
+    return message;
+  },
+};
+
+function createBaseXObservationSendOutcome(): XObservationSendOutcome {
+  return {
+    operationId: "",
+    batchId: "",
+    sequence: 0,
+    reservationHash: "",
+    requestDigest: "",
+    stage: 0,
+    startedAt: undefined,
+    endedAt: undefined,
+    responseObservedAt: undefined,
+    outcome: 0,
+    statusCode: undefined,
+    encodedBytes: 0,
+    decodedBytes: 0,
+    headerBytes: 0,
+    candidateCount: undefined,
+    candidateCountLowerBound: undefined,
+    cursorState: 0,
+    reducedObservations: [],
+    targetOutcomes: [],
+    chunkIndex: 0,
+    finalChunk: false,
+    resultHash: "",
+    acquisition: undefined,
+  };
+}
+
+export const XObservationSendOutcome: MessageFns<XObservationSendOutcome> = {
+  encode(message: XObservationSendOutcome, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.operationId !== "") {
+      writer.uint32(10).string(message.operationId);
+    }
+    if (message.batchId !== "") {
+      writer.uint32(18).string(message.batchId);
+    }
+    if (message.sequence !== 0) {
+      writer.uint32(24).uint32(message.sequence);
+    }
+    if (message.reservationHash !== "") {
+      writer.uint32(34).string(message.reservationHash);
+    }
+    if (message.requestDigest !== "") {
+      writer.uint32(42).string(message.requestDigest);
+    }
+    if (message.stage !== 0) {
+      writer.uint32(48).int32(message.stage);
+    }
+    if (message.startedAt !== undefined) {
+      Timestamp.encode(toTimestamp(message.startedAt), writer.uint32(58).fork()).join();
+    }
+    if (message.endedAt !== undefined) {
+      Timestamp.encode(toTimestamp(message.endedAt), writer.uint32(66).fork()).join();
+    }
+    if (message.responseObservedAt !== undefined) {
+      Timestamp.encode(toTimestamp(message.responseObservedAt), writer.uint32(74).fork()).join();
+    }
+    if (message.outcome !== 0) {
+      writer.uint32(80).int32(message.outcome);
+    }
+    if (message.statusCode !== undefined) {
+      writer.uint32(88).uint32(message.statusCode);
+    }
+    if (message.encodedBytes !== 0) {
+      writer.uint32(96).uint32(message.encodedBytes);
+    }
+    if (message.decodedBytes !== 0) {
+      writer.uint32(104).uint32(message.decodedBytes);
+    }
+    if (message.headerBytes !== 0) {
+      writer.uint32(112).uint32(message.headerBytes);
+    }
+    if (message.candidateCount !== undefined) {
+      writer.uint32(120).uint32(message.candidateCount);
+    }
+    if (message.candidateCountLowerBound !== undefined) {
+      writer.uint32(128).uint32(message.candidateCountLowerBound);
+    }
+    if (message.cursorState !== 0) {
+      writer.uint32(136).int32(message.cursorState);
+    }
+    for (const v of message.reducedObservations) {
+      XObservationReducedObservation.encode(v!, writer.uint32(146).fork()).join();
+    }
+    for (const v of message.targetOutcomes) {
+      XObservationTargetOutcome.encode(v!, writer.uint32(154).fork()).join();
+    }
+    if (message.chunkIndex !== 0) {
+      writer.uint32(160).uint32(message.chunkIndex);
+    }
+    if (message.finalChunk !== false) {
+      writer.uint32(168).bool(message.finalChunk);
+    }
+    if (message.resultHash !== "") {
+      writer.uint32(178).string(message.resultHash);
+    }
+    if (message.acquisition !== undefined) {
+      XObservationAcquisitionV2.encode(message.acquisition, writer.uint32(186).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationSendOutcome {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationSendOutcome();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.operationId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.batchId = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.sequence = reader.uint32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.reservationHash = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.requestDigest = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.stage = reader.int32() as any;
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.startedAt = fromTimestamp(Timestamp.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.endedAt = fromTimestamp(Timestamp.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 9: {
+          if (tag !== 74) {
+            break;
+          }
+
+          message.responseObservedAt = fromTimestamp(Timestamp.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.outcome = reader.int32() as any;
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.statusCode = reader.uint32();
+          continue;
+        }
+        case 12: {
+          if (tag !== 96) {
+            break;
+          }
+
+          message.encodedBytes = reader.uint32();
+          continue;
+        }
+        case 13: {
+          if (tag !== 104) {
+            break;
+          }
+
+          message.decodedBytes = reader.uint32();
+          continue;
+        }
+        case 14: {
+          if (tag !== 112) {
+            break;
+          }
+
+          message.headerBytes = reader.uint32();
+          continue;
+        }
+        case 15: {
+          if (tag !== 120) {
+            break;
+          }
+
+          message.candidateCount = reader.uint32();
+          continue;
+        }
+        case 16: {
+          if (tag !== 128) {
+            break;
+          }
+
+          message.candidateCountLowerBound = reader.uint32();
+          continue;
+        }
+        case 17: {
+          if (tag !== 136) {
+            break;
+          }
+
+          message.cursorState = reader.int32() as any;
+          continue;
+        }
+        case 18: {
+          if (tag !== 146) {
+            break;
+          }
+
+          message.reducedObservations.push(XObservationReducedObservation.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 19: {
+          if (tag !== 154) {
+            break;
+          }
+
+          message.targetOutcomes.push(XObservationTargetOutcome.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 20: {
+          if (tag !== 160) {
+            break;
+          }
+
+          message.chunkIndex = reader.uint32();
+          continue;
+        }
+        case 21: {
+          if (tag !== 168) {
+            break;
+          }
+
+          message.finalChunk = reader.bool();
+          continue;
+        }
+        case 22: {
+          if (tag !== 178) {
+            break;
+          }
+
+          message.resultHash = reader.string();
+          continue;
+        }
+        case 23: {
+          if (tag !== 186) {
+            break;
+          }
+
+          message.acquisition = XObservationAcquisitionV2.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationSendOutcome {
+    return {
+      operationId: isSet(object.operationId)
+        ? globalThis.String(object.operationId)
+        : isSet(object.operation_id)
+        ? globalThis.String(object.operation_id)
+        : "",
+      batchId: isSet(object.batchId)
+        ? globalThis.String(object.batchId)
+        : isSet(object.batch_id)
+        ? globalThis.String(object.batch_id)
+        : "",
+      sequence: isSet(object.sequence) ? globalThis.Number(object.sequence) : 0,
+      reservationHash: isSet(object.reservationHash)
+        ? globalThis.String(object.reservationHash)
+        : isSet(object.reservation_hash)
+        ? globalThis.String(object.reservation_hash)
+        : "",
+      requestDigest: isSet(object.requestDigest)
+        ? globalThis.String(object.requestDigest)
+        : isSet(object.request_digest)
+        ? globalThis.String(object.request_digest)
+        : "",
+      stage: isSet(object.stage) ? xObservationStageFromJSON(object.stage) : 0,
+      startedAt: isSet(object.startedAt)
+        ? fromJsonTimestamp(object.startedAt)
+        : isSet(object.started_at)
+        ? fromJsonTimestamp(object.started_at)
+        : undefined,
+      endedAt: isSet(object.endedAt)
+        ? fromJsonTimestamp(object.endedAt)
+        : isSet(object.ended_at)
+        ? fromJsonTimestamp(object.ended_at)
+        : undefined,
+      responseObservedAt: isSet(object.responseObservedAt)
+        ? fromJsonTimestamp(object.responseObservedAt)
+        : isSet(object.response_observed_at)
+        ? fromJsonTimestamp(object.response_observed_at)
+        : undefined,
+      outcome: isSet(object.outcome) ? xObservationOutcomeKindFromJSON(object.outcome) : 0,
+      statusCode: isSet(object.statusCode)
+        ? globalThis.Number(object.statusCode)
+        : isSet(object.status_code)
+        ? globalThis.Number(object.status_code)
+        : undefined,
+      encodedBytes: isSet(object.encodedBytes)
+        ? globalThis.Number(object.encodedBytes)
+        : isSet(object.encoded_bytes)
+        ? globalThis.Number(object.encoded_bytes)
+        : 0,
+      decodedBytes: isSet(object.decodedBytes)
+        ? globalThis.Number(object.decodedBytes)
+        : isSet(object.decoded_bytes)
+        ? globalThis.Number(object.decoded_bytes)
+        : 0,
+      headerBytes: isSet(object.headerBytes)
+        ? globalThis.Number(object.headerBytes)
+        : isSet(object.header_bytes)
+        ? globalThis.Number(object.header_bytes)
+        : 0,
+      candidateCount: isSet(object.candidateCount)
+        ? globalThis.Number(object.candidateCount)
+        : isSet(object.candidate_count)
+        ? globalThis.Number(object.candidate_count)
+        : undefined,
+      candidateCountLowerBound: isSet(object.candidateCountLowerBound)
+        ? globalThis.Number(object.candidateCountLowerBound)
+        : isSet(object.candidate_count_lower_bound)
+        ? globalThis.Number(object.candidate_count_lower_bound)
+        : undefined,
+      cursorState: isSet(object.cursorState)
+        ? xObservationCursorStateFromJSON(object.cursorState)
+        : isSet(object.cursor_state)
+        ? xObservationCursorStateFromJSON(object.cursor_state)
+        : 0,
+      reducedObservations: globalThis.Array.isArray(object?.reducedObservations)
+        ? object.reducedObservations.map((e: any) => XObservationReducedObservation.fromJSON(e))
+        : globalThis.Array.isArray(object?.reduced_observations)
+        ? object.reduced_observations.map((e: any) => XObservationReducedObservation.fromJSON(e))
+        : [],
+      targetOutcomes: globalThis.Array.isArray(object?.targetOutcomes)
+        ? object.targetOutcomes.map((e: any) => XObservationTargetOutcome.fromJSON(e))
+        : globalThis.Array.isArray(object?.target_outcomes)
+        ? object.target_outcomes.map((e: any) => XObservationTargetOutcome.fromJSON(e))
+        : [],
+      chunkIndex: isSet(object.chunkIndex)
+        ? globalThis.Number(object.chunkIndex)
+        : isSet(object.chunk_index)
+        ? globalThis.Number(object.chunk_index)
+        : 0,
+      finalChunk: isSet(object.finalChunk)
+        ? globalThis.Boolean(object.finalChunk)
+        : isSet(object.final_chunk)
+        ? globalThis.Boolean(object.final_chunk)
+        : false,
+      resultHash: isSet(object.resultHash)
+        ? globalThis.String(object.resultHash)
+        : isSet(object.result_hash)
+        ? globalThis.String(object.result_hash)
+        : "",
+      acquisition: isSet(object.acquisition) ? XObservationAcquisitionV2.fromJSON(object.acquisition) : undefined,
+    };
+  },
+
+  toJSON(message: XObservationSendOutcome): unknown {
+    const obj: any = {};
+    if (message.operationId !== "") {
+      obj.operationId = message.operationId;
+    }
+    if (message.batchId !== "") {
+      obj.batchId = message.batchId;
+    }
+    if (message.sequence !== 0) {
+      obj.sequence = Math.round(message.sequence);
+    }
+    if (message.reservationHash !== "") {
+      obj.reservationHash = message.reservationHash;
+    }
+    if (message.requestDigest !== "") {
+      obj.requestDigest = message.requestDigest;
+    }
+    if (message.stage !== 0) {
+      obj.stage = xObservationStageToJSON(message.stage);
+    }
+    if (message.startedAt !== undefined) {
+      obj.startedAt = message.startedAt.toISOString();
+    }
+    if (message.endedAt !== undefined) {
+      obj.endedAt = message.endedAt.toISOString();
+    }
+    if (message.responseObservedAt !== undefined) {
+      obj.responseObservedAt = message.responseObservedAt.toISOString();
+    }
+    if (message.outcome !== 0) {
+      obj.outcome = xObservationOutcomeKindToJSON(message.outcome);
+    }
+    if (message.statusCode !== undefined) {
+      obj.statusCode = Math.round(message.statusCode);
+    }
+    if (message.encodedBytes !== 0) {
+      obj.encodedBytes = Math.round(message.encodedBytes);
+    }
+    if (message.decodedBytes !== 0) {
+      obj.decodedBytes = Math.round(message.decodedBytes);
+    }
+    if (message.headerBytes !== 0) {
+      obj.headerBytes = Math.round(message.headerBytes);
+    }
+    if (message.candidateCount !== undefined) {
+      obj.candidateCount = Math.round(message.candidateCount);
+    }
+    if (message.candidateCountLowerBound !== undefined) {
+      obj.candidateCountLowerBound = Math.round(message.candidateCountLowerBound);
+    }
+    if (message.cursorState !== 0) {
+      obj.cursorState = xObservationCursorStateToJSON(message.cursorState);
+    }
+    if (message.reducedObservations?.length) {
+      obj.reducedObservations = message.reducedObservations.map((e) => XObservationReducedObservation.toJSON(e));
+    }
+    if (message.targetOutcomes?.length) {
+      obj.targetOutcomes = message.targetOutcomes.map((e) => XObservationTargetOutcome.toJSON(e));
+    }
+    if (message.chunkIndex !== 0) {
+      obj.chunkIndex = Math.round(message.chunkIndex);
+    }
+    if (message.finalChunk !== false) {
+      obj.finalChunk = message.finalChunk;
+    }
+    if (message.resultHash !== "") {
+      obj.resultHash = message.resultHash;
+    }
+    if (message.acquisition !== undefined) {
+      obj.acquisition = XObservationAcquisitionV2.toJSON(message.acquisition);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationSendOutcome>): XObservationSendOutcome {
+    return XObservationSendOutcome.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationSendOutcome>): XObservationSendOutcome {
+    const message = createBaseXObservationSendOutcome();
+    message.operationId = object.operationId ?? "";
+    message.batchId = object.batchId ?? "";
+    message.sequence = object.sequence ?? 0;
+    message.reservationHash = object.reservationHash ?? "";
+    message.requestDigest = object.requestDigest ?? "";
+    message.stage = object.stage ?? 0;
+    message.startedAt = object.startedAt ?? undefined;
+    message.endedAt = object.endedAt ?? undefined;
+    message.responseObservedAt = object.responseObservedAt ?? undefined;
+    message.outcome = object.outcome ?? 0;
+    message.statusCode = object.statusCode ?? undefined;
+    message.encodedBytes = object.encodedBytes ?? 0;
+    message.decodedBytes = object.decodedBytes ?? 0;
+    message.headerBytes = object.headerBytes ?? 0;
+    message.candidateCount = object.candidateCount ?? undefined;
+    message.candidateCountLowerBound = object.candidateCountLowerBound ?? undefined;
+    message.cursorState = object.cursorState ?? 0;
+    message.reducedObservations =
+      object.reducedObservations?.map((e) => XObservationReducedObservation.fromPartial(e)) || [];
+    message.targetOutcomes = object.targetOutcomes?.map((e) => XObservationTargetOutcome.fromPartial(e)) || [];
+    message.chunkIndex = object.chunkIndex ?? 0;
+    message.finalChunk = object.finalChunk ?? false;
+    message.resultHash = object.resultHash ?? "";
+    message.acquisition = (object.acquisition !== undefined && object.acquisition !== null)
+      ? XObservationAcquisitionV2.fromPartial(object.acquisition)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseXObservationFinished(): XObservationFinished {
+  return {
+    operationId: "",
+    batchId: "",
+    state: 0,
+    reaped: false,
+    consumedSequences: [],
+    lastReceiptHash: "",
+    targetOutcomeCounts: [],
+    terminalError: undefined,
+  };
+}
+
+export const XObservationFinished: MessageFns<XObservationFinished> = {
+  encode(message: XObservationFinished, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.operationId !== "") {
+      writer.uint32(10).string(message.operationId);
+    }
+    if (message.batchId !== "") {
+      writer.uint32(18).string(message.batchId);
+    }
+    if (message.state !== 0) {
+      writer.uint32(24).int32(message.state);
+    }
+    if (message.reaped !== false) {
+      writer.uint32(32).bool(message.reaped);
+    }
+    writer.uint32(42).fork();
+    for (const v of message.consumedSequences) {
+      writer.uint32(v);
+    }
+    writer.join();
+    if (message.lastReceiptHash !== "") {
+      writer.uint32(50).string(message.lastReceiptHash);
+    }
+    for (const v of message.targetOutcomeCounts) {
+      XObservationTargetOutcomeCount.encode(v!, writer.uint32(58).fork()).join();
+    }
+    if (message.terminalError !== undefined) {
+      XObservationTerminalError.encode(message.terminalError, writer.uint32(66).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationFinished {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationFinished();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.operationId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.batchId = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.state = reader.int32() as any;
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.reaped = reader.bool();
+          continue;
+        }
+        case 5: {
+          if (tag === 40) {
+            message.consumedSequences.push(reader.uint32());
+
+            continue;
+          }
+
+          if (tag === 42) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.consumedSequences.push(reader.uint32());
+            }
+
+            continue;
+          }
+
+          break;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.lastReceiptHash = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.targetOutcomeCounts.push(XObservationTargetOutcomeCount.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.terminalError = XObservationTerminalError.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationFinished {
+    return {
+      operationId: isSet(object.operationId)
+        ? globalThis.String(object.operationId)
+        : isSet(object.operation_id)
+        ? globalThis.String(object.operation_id)
+        : "",
+      batchId: isSet(object.batchId)
+        ? globalThis.String(object.batchId)
+        : isSet(object.batch_id)
+        ? globalThis.String(object.batch_id)
+        : "",
+      state: isSet(object.state) ? xObservationFinishStateFromJSON(object.state) : 0,
+      reaped: isSet(object.reaped) ? globalThis.Boolean(object.reaped) : false,
+      consumedSequences: globalThis.Array.isArray(object?.consumedSequences)
+        ? object.consumedSequences.map((e: any) => globalThis.Number(e))
+        : globalThis.Array.isArray(object?.consumed_sequences)
+        ? object.consumed_sequences.map((e: any) => globalThis.Number(e))
+        : [],
+      lastReceiptHash: isSet(object.lastReceiptHash)
+        ? globalThis.String(object.lastReceiptHash)
+        : isSet(object.last_receipt_hash)
+        ? globalThis.String(object.last_receipt_hash)
+        : "",
+      targetOutcomeCounts: globalThis.Array.isArray(object?.targetOutcomeCounts)
+        ? object.targetOutcomeCounts.map((e: any) => XObservationTargetOutcomeCount.fromJSON(e))
+        : globalThis.Array.isArray(object?.target_outcome_counts)
+        ? object.target_outcome_counts.map((e: any) => XObservationTargetOutcomeCount.fromJSON(e))
+        : [],
+      terminalError: isSet(object.terminalError)
+        ? XObservationTerminalError.fromJSON(object.terminalError)
+        : isSet(object.terminal_error)
+        ? XObservationTerminalError.fromJSON(object.terminal_error)
+        : undefined,
+    };
+  },
+
+  toJSON(message: XObservationFinished): unknown {
+    const obj: any = {};
+    if (message.operationId !== "") {
+      obj.operationId = message.operationId;
+    }
+    if (message.batchId !== "") {
+      obj.batchId = message.batchId;
+    }
+    if (message.state !== 0) {
+      obj.state = xObservationFinishStateToJSON(message.state);
+    }
+    if (message.reaped !== false) {
+      obj.reaped = message.reaped;
+    }
+    if (message.consumedSequences?.length) {
+      obj.consumedSequences = message.consumedSequences.map((e) => Math.round(e));
+    }
+    if (message.lastReceiptHash !== "") {
+      obj.lastReceiptHash = message.lastReceiptHash;
+    }
+    if (message.targetOutcomeCounts?.length) {
+      obj.targetOutcomeCounts = message.targetOutcomeCounts.map((e) => XObservationTargetOutcomeCount.toJSON(e));
+    }
+    if (message.terminalError !== undefined) {
+      obj.terminalError = XObservationTerminalError.toJSON(message.terminalError);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationFinished>): XObservationFinished {
+    return XObservationFinished.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationFinished>): XObservationFinished {
+    const message = createBaseXObservationFinished();
+    message.operationId = object.operationId ?? "";
+    message.batchId = object.batchId ?? "";
+    message.state = object.state ?? 0;
+    message.reaped = object.reaped ?? false;
+    message.consumedSequences = object.consumedSequences?.map((e) => e) || [];
+    message.lastReceiptHash = object.lastReceiptHash ?? "";
+    message.targetOutcomeCounts =
+      object.targetOutcomeCounts?.map((e) => XObservationTargetOutcomeCount.fromPartial(e)) || [];
+    message.terminalError = (object.terminalError !== undefined && object.terminalError !== null)
+      ? XObservationTerminalError.fromPartial(object.terminalError)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseXObservationMetric(): XObservationMetric {
+  return { state: 0, valueDecimal: undefined };
+}
+
+export const XObservationMetric: MessageFns<XObservationMetric> = {
+  encode(message: XObservationMetric, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.state !== 0) {
+      writer.uint32(8).int32(message.state);
+    }
+    if (message.valueDecimal !== undefined) {
+      writer.uint32(18).string(message.valueDecimal);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationMetric {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationMetric();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.state = reader.int32() as any;
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.valueDecimal = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationMetric {
+    return {
+      state: isSet(object.state) ? xObservationMetricStateFromJSON(object.state) : 0,
+      valueDecimal: isSet(object.valueDecimal)
+        ? globalThis.String(object.valueDecimal)
+        : isSet(object.value_decimal)
+        ? globalThis.String(object.value_decimal)
+        : undefined,
+    };
+  },
+
+  toJSON(message: XObservationMetric): unknown {
+    const obj: any = {};
+    if (message.state !== 0) {
+      obj.state = xObservationMetricStateToJSON(message.state);
+    }
+    if (message.valueDecimal !== undefined) {
+      obj.valueDecimal = message.valueDecimal;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationMetric>): XObservationMetric {
+    return XObservationMetric.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationMetric>): XObservationMetric {
+    const message = createBaseXObservationMetric();
+    message.state = object.state ?? 0;
+    message.valueDecimal = object.valueDecimal ?? undefined;
+    return message;
+  },
+};
+
+function createBaseXObservationMetrics(): XObservationMetrics {
+  return { likes: undefined, reposts: undefined, replies: undefined, quotes: undefined, views: undefined };
+}
+
+export const XObservationMetrics: MessageFns<XObservationMetrics> = {
+  encode(message: XObservationMetrics, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.likes !== undefined) {
+      XObservationMetric.encode(message.likes, writer.uint32(10).fork()).join();
+    }
+    if (message.reposts !== undefined) {
+      XObservationMetric.encode(message.reposts, writer.uint32(18).fork()).join();
+    }
+    if (message.replies !== undefined) {
+      XObservationMetric.encode(message.replies, writer.uint32(26).fork()).join();
+    }
+    if (message.quotes !== undefined) {
+      XObservationMetric.encode(message.quotes, writer.uint32(34).fork()).join();
+    }
+    if (message.views !== undefined) {
+      XObservationMetric.encode(message.views, writer.uint32(42).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationMetrics {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationMetrics();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.likes = XObservationMetric.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.reposts = XObservationMetric.decode(reader, reader.uint32());
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.replies = XObservationMetric.decode(reader, reader.uint32());
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.quotes = XObservationMetric.decode(reader, reader.uint32());
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.views = XObservationMetric.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationMetrics {
+    return {
+      likes: isSet(object.likes) ? XObservationMetric.fromJSON(object.likes) : undefined,
+      reposts: isSet(object.reposts) ? XObservationMetric.fromJSON(object.reposts) : undefined,
+      replies: isSet(object.replies) ? XObservationMetric.fromJSON(object.replies) : undefined,
+      quotes: isSet(object.quotes) ? XObservationMetric.fromJSON(object.quotes) : undefined,
+      views: isSet(object.views) ? XObservationMetric.fromJSON(object.views) : undefined,
+    };
+  },
+
+  toJSON(message: XObservationMetrics): unknown {
+    const obj: any = {};
+    if (message.likes !== undefined) {
+      obj.likes = XObservationMetric.toJSON(message.likes);
+    }
+    if (message.reposts !== undefined) {
+      obj.reposts = XObservationMetric.toJSON(message.reposts);
+    }
+    if (message.replies !== undefined) {
+      obj.replies = XObservationMetric.toJSON(message.replies);
+    }
+    if (message.quotes !== undefined) {
+      obj.quotes = XObservationMetric.toJSON(message.quotes);
+    }
+    if (message.views !== undefined) {
+      obj.views = XObservationMetric.toJSON(message.views);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationMetrics>): XObservationMetrics {
+    return XObservationMetrics.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationMetrics>): XObservationMetrics {
+    const message = createBaseXObservationMetrics();
+    message.likes = (object.likes !== undefined && object.likes !== null)
+      ? XObservationMetric.fromPartial(object.likes)
+      : undefined;
+    message.reposts = (object.reposts !== undefined && object.reposts !== null)
+      ? XObservationMetric.fromPartial(object.reposts)
+      : undefined;
+    message.replies = (object.replies !== undefined && object.replies !== null)
+      ? XObservationMetric.fromPartial(object.replies)
+      : undefined;
+    message.quotes = (object.quotes !== undefined && object.quotes !== null)
+      ? XObservationMetric.fromPartial(object.quotes)
+      : undefined;
+    message.views = (object.views !== undefined && object.views !== null)
+      ? XObservationMetric.fromPartial(object.views)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseXObservationReducedObservation(): XObservationReducedObservation {
+  return {
+    targetKey: "",
+    sourceItemId: "",
+    sourceBindingId: "",
+    externalId: "",
+    canonicalUrl: "",
+    publishedAt: undefined,
+    responseObservedAt: undefined,
+    requestSequence: 0,
+    queryId: "",
+    metrics: undefined,
+    identityState: 0,
+  };
+}
+
+export const XObservationReducedObservation: MessageFns<XObservationReducedObservation> = {
+  encode(message: XObservationReducedObservation, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.targetKey !== "") {
+      writer.uint32(10).string(message.targetKey);
+    }
+    if (message.sourceItemId !== "") {
+      writer.uint32(18).string(message.sourceItemId);
+    }
+    if (message.sourceBindingId !== "") {
+      writer.uint32(26).string(message.sourceBindingId);
+    }
+    if (message.externalId !== "") {
+      writer.uint32(34).string(message.externalId);
+    }
+    if (message.canonicalUrl !== "") {
+      writer.uint32(42).string(message.canonicalUrl);
+    }
+    if (message.publishedAt !== undefined) {
+      Timestamp.encode(toTimestamp(message.publishedAt), writer.uint32(50).fork()).join();
+    }
+    if (message.responseObservedAt !== undefined) {
+      Timestamp.encode(toTimestamp(message.responseObservedAt), writer.uint32(58).fork()).join();
+    }
+    if (message.requestSequence !== 0) {
+      writer.uint32(64).uint32(message.requestSequence);
+    }
+    if (message.queryId !== "") {
+      writer.uint32(74).string(message.queryId);
+    }
+    if (message.metrics !== undefined) {
+      XObservationMetrics.encode(message.metrics, writer.uint32(82).fork()).join();
+    }
+    if (message.identityState !== 0) {
+      writer.uint32(88).int32(message.identityState);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationReducedObservation {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationReducedObservation();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.targetKey = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.sourceItemId = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.sourceBindingId = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.externalId = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.canonicalUrl = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.publishedAt = fromTimestamp(Timestamp.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.responseObservedAt = fromTimestamp(Timestamp.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 8: {
+          if (tag !== 64) {
+            break;
+          }
+
+          message.requestSequence = reader.uint32();
+          continue;
+        }
+        case 9: {
+          if (tag !== 74) {
+            break;
+          }
+
+          message.queryId = reader.string();
+          continue;
+        }
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.metrics = XObservationMetrics.decode(reader, reader.uint32());
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.identityState = reader.int32() as any;
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationReducedObservation {
+    return {
+      targetKey: isSet(object.targetKey)
+        ? globalThis.String(object.targetKey)
+        : isSet(object.target_key)
+        ? globalThis.String(object.target_key)
+        : "",
+      sourceItemId: isSet(object.sourceItemId)
+        ? globalThis.String(object.sourceItemId)
+        : isSet(object.source_item_id)
+        ? globalThis.String(object.source_item_id)
+        : "",
+      sourceBindingId: isSet(object.sourceBindingId)
+        ? globalThis.String(object.sourceBindingId)
+        : isSet(object.source_binding_id)
+        ? globalThis.String(object.source_binding_id)
+        : "",
+      externalId: isSet(object.externalId)
+        ? globalThis.String(object.externalId)
+        : isSet(object.external_id)
+        ? globalThis.String(object.external_id)
+        : "",
+      canonicalUrl: isSet(object.canonicalUrl)
+        ? globalThis.String(object.canonicalUrl)
+        : isSet(object.canonical_url)
+        ? globalThis.String(object.canonical_url)
+        : "",
+      publishedAt: isSet(object.publishedAt)
+        ? fromJsonTimestamp(object.publishedAt)
+        : isSet(object.published_at)
+        ? fromJsonTimestamp(object.published_at)
+        : undefined,
+      responseObservedAt: isSet(object.responseObservedAt)
+        ? fromJsonTimestamp(object.responseObservedAt)
+        : isSet(object.response_observed_at)
+        ? fromJsonTimestamp(object.response_observed_at)
+        : undefined,
+      requestSequence: isSet(object.requestSequence)
+        ? globalThis.Number(object.requestSequence)
+        : isSet(object.request_sequence)
+        ? globalThis.Number(object.request_sequence)
+        : 0,
+      queryId: isSet(object.queryId)
+        ? globalThis.String(object.queryId)
+        : isSet(object.query_id)
+        ? globalThis.String(object.query_id)
+        : "",
+      metrics: isSet(object.metrics) ? XObservationMetrics.fromJSON(object.metrics) : undefined,
+      identityState: isSet(object.identityState)
+        ? xObservationIdentityStateFromJSON(object.identityState)
+        : isSet(object.identity_state)
+        ? xObservationIdentityStateFromJSON(object.identity_state)
+        : 0,
+    };
+  },
+
+  toJSON(message: XObservationReducedObservation): unknown {
+    const obj: any = {};
+    if (message.targetKey !== "") {
+      obj.targetKey = message.targetKey;
+    }
+    if (message.sourceItemId !== "") {
+      obj.sourceItemId = message.sourceItemId;
+    }
+    if (message.sourceBindingId !== "") {
+      obj.sourceBindingId = message.sourceBindingId;
+    }
+    if (message.externalId !== "") {
+      obj.externalId = message.externalId;
+    }
+    if (message.canonicalUrl !== "") {
+      obj.canonicalUrl = message.canonicalUrl;
+    }
+    if (message.publishedAt !== undefined) {
+      obj.publishedAt = message.publishedAt.toISOString();
+    }
+    if (message.responseObservedAt !== undefined) {
+      obj.responseObservedAt = message.responseObservedAt.toISOString();
+    }
+    if (message.requestSequence !== 0) {
+      obj.requestSequence = Math.round(message.requestSequence);
+    }
+    if (message.queryId !== "") {
+      obj.queryId = message.queryId;
+    }
+    if (message.metrics !== undefined) {
+      obj.metrics = XObservationMetrics.toJSON(message.metrics);
+    }
+    if (message.identityState !== 0) {
+      obj.identityState = xObservationIdentityStateToJSON(message.identityState);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationReducedObservation>): XObservationReducedObservation {
+    return XObservationReducedObservation.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationReducedObservation>): XObservationReducedObservation {
+    const message = createBaseXObservationReducedObservation();
+    message.targetKey = object.targetKey ?? "";
+    message.sourceItemId = object.sourceItemId ?? "";
+    message.sourceBindingId = object.sourceBindingId ?? "";
+    message.externalId = object.externalId ?? "";
+    message.canonicalUrl = object.canonicalUrl ?? "";
+    message.publishedAt = object.publishedAt ?? undefined;
+    message.responseObservedAt = object.responseObservedAt ?? undefined;
+    message.requestSequence = object.requestSequence ?? 0;
+    message.queryId = object.queryId ?? "";
+    message.metrics = (object.metrics !== undefined && object.metrics !== null)
+      ? XObservationMetrics.fromPartial(object.metrics)
+      : undefined;
+    message.identityState = object.identityState ?? 0;
+    return message;
+  },
+};
+
+function createBaseXObservationTargetOutcome(): XObservationTargetOutcome {
+  return { targetKey: "", state: 0, reasonCode: 0, observationRefs: [] };
+}
+
+export const XObservationTargetOutcome: MessageFns<XObservationTargetOutcome> = {
+  encode(message: XObservationTargetOutcome, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.targetKey !== "") {
+      writer.uint32(10).string(message.targetKey);
+    }
+    if (message.state !== 0) {
+      writer.uint32(16).int32(message.state);
+    }
+    if (message.reasonCode !== 0) {
+      writer.uint32(24).int32(message.reasonCode);
+    }
+    for (const v of message.observationRefs) {
+      writer.uint32(34).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationTargetOutcome {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationTargetOutcome();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.targetKey = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.state = reader.int32() as any;
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.reasonCode = reader.int32() as any;
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.observationRefs.push(reader.string());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationTargetOutcome {
+    return {
+      targetKey: isSet(object.targetKey)
+        ? globalThis.String(object.targetKey)
+        : isSet(object.target_key)
+        ? globalThis.String(object.target_key)
+        : "",
+      state: isSet(object.state) ? xObservationTargetStateFromJSON(object.state) : 0,
+      reasonCode: isSet(object.reasonCode)
+        ? xObservationReasonCodeFromJSON(object.reasonCode)
+        : isSet(object.reason_code)
+        ? xObservationReasonCodeFromJSON(object.reason_code)
+        : 0,
+      observationRefs: globalThis.Array.isArray(object?.observationRefs)
+        ? object.observationRefs.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.observation_refs)
+        ? object.observation_refs.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: XObservationTargetOutcome): unknown {
+    const obj: any = {};
+    if (message.targetKey !== "") {
+      obj.targetKey = message.targetKey;
+    }
+    if (message.state !== 0) {
+      obj.state = xObservationTargetStateToJSON(message.state);
+    }
+    if (message.reasonCode !== 0) {
+      obj.reasonCode = xObservationReasonCodeToJSON(message.reasonCode);
+    }
+    if (message.observationRefs?.length) {
+      obj.observationRefs = message.observationRefs;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationTargetOutcome>): XObservationTargetOutcome {
+    return XObservationTargetOutcome.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationTargetOutcome>): XObservationTargetOutcome {
+    const message = createBaseXObservationTargetOutcome();
+    message.targetKey = object.targetKey ?? "";
+    message.state = object.state ?? 0;
+    message.reasonCode = object.reasonCode ?? 0;
+    message.observationRefs = object.observationRefs?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseXObservationTargetOutcomeCount(): XObservationTargetOutcomeCount {
+  return { state: 0, count: 0 };
+}
+
+export const XObservationTargetOutcomeCount: MessageFns<XObservationTargetOutcomeCount> = {
+  encode(message: XObservationTargetOutcomeCount, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.state !== 0) {
+      writer.uint32(8).int32(message.state);
+    }
+    if (message.count !== 0) {
+      writer.uint32(16).uint32(message.count);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationTargetOutcomeCount {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationTargetOutcomeCount();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.state = reader.int32() as any;
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.count = reader.uint32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationTargetOutcomeCount {
+    return {
+      state: isSet(object.state) ? xObservationTargetStateFromJSON(object.state) : 0,
+      count: isSet(object.count) ? globalThis.Number(object.count) : 0,
+    };
+  },
+
+  toJSON(message: XObservationTargetOutcomeCount): unknown {
+    const obj: any = {};
+    if (message.state !== 0) {
+      obj.state = xObservationTargetStateToJSON(message.state);
+    }
+    if (message.count !== 0) {
+      obj.count = Math.round(message.count);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationTargetOutcomeCount>): XObservationTargetOutcomeCount {
+    return XObservationTargetOutcomeCount.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationTargetOutcomeCount>): XObservationTargetOutcomeCount {
+    const message = createBaseXObservationTargetOutcomeCount();
+    message.state = object.state ?? 0;
+    message.count = object.count ?? 0;
+    return message;
+  },
+};
+
+function createBaseXObservationTerminalError(): XObservationTerminalError {
+  return { code: 0, stage: 0, sequence: undefined, effects: 0, receiptHash: undefined, retryable: false };
+}
+
+export const XObservationTerminalError: MessageFns<XObservationTerminalError> = {
+  encode(message: XObservationTerminalError, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.code !== 0) {
+      writer.uint32(8).int32(message.code);
+    }
+    if (message.stage !== 0) {
+      writer.uint32(16).int32(message.stage);
+    }
+    if (message.sequence !== undefined) {
+      writer.uint32(24).uint32(message.sequence);
+    }
+    if (message.effects !== 0) {
+      writer.uint32(32).int32(message.effects);
+    }
+    if (message.receiptHash !== undefined) {
+      writer.uint32(42).string(message.receiptHash);
+    }
+    if (message.retryable !== false) {
+      writer.uint32(48).bool(message.retryable);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationTerminalError {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationTerminalError();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.code = reader.int32() as any;
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.stage = reader.int32() as any;
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.sequence = reader.uint32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.effects = reader.int32() as any;
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.receiptHash = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.retryable = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationTerminalError {
+    return {
+      code: isSet(object.code) ? xObservationFailureCodeFromJSON(object.code) : 0,
+      stage: isSet(object.stage) ? xObservationStageFromJSON(object.stage) : 0,
+      sequence: isSet(object.sequence) ? globalThis.Number(object.sequence) : undefined,
+      effects: isSet(object.effects) ? xObservationEffectsFromJSON(object.effects) : 0,
+      receiptHash: isSet(object.receiptHash)
+        ? globalThis.String(object.receiptHash)
+        : isSet(object.receipt_hash)
+        ? globalThis.String(object.receipt_hash)
+        : undefined,
+      retryable: isSet(object.retryable) ? globalThis.Boolean(object.retryable) : false,
+    };
+  },
+
+  toJSON(message: XObservationTerminalError): unknown {
+    const obj: any = {};
+    if (message.code !== 0) {
+      obj.code = xObservationFailureCodeToJSON(message.code);
+    }
+    if (message.stage !== 0) {
+      obj.stage = xObservationStageToJSON(message.stage);
+    }
+    if (message.sequence !== undefined) {
+      obj.sequence = Math.round(message.sequence);
+    }
+    if (message.effects !== 0) {
+      obj.effects = xObservationEffectsToJSON(message.effects);
+    }
+    if (message.receiptHash !== undefined) {
+      obj.receiptHash = message.receiptHash;
+    }
+    if (message.retryable !== false) {
+      obj.retryable = message.retryable;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationTerminalError>): XObservationTerminalError {
+    return XObservationTerminalError.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationTerminalError>): XObservationTerminalError {
+    const message = createBaseXObservationTerminalError();
+    message.code = object.code ?? 0;
+    message.stage = object.stage ?? 0;
+    message.sequence = object.sequence ?? undefined;
+    message.effects = object.effects ?? 0;
+    message.receiptHash = object.receiptHash ?? undefined;
+    message.retryable = object.retryable ?? false;
+    return message;
+  },
+};
+
+function createBaseXObservationEvent(): XObservationEvent {
+  return { sendOffer: undefined, sendOutcome: undefined, finished: undefined };
+}
+
+export const XObservationEvent: MessageFns<XObservationEvent> = {
+  encode(message: XObservationEvent, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.sendOffer !== undefined) {
+      XObservationSendOffer.encode(message.sendOffer, writer.uint32(10).fork()).join();
+    }
+    if (message.sendOutcome !== undefined) {
+      XObservationSendOutcome.encode(message.sendOutcome, writer.uint32(18).fork()).join();
+    }
+    if (message.finished !== undefined) {
+      XObservationFinished.encode(message.finished, writer.uint32(26).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationEvent {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationEvent();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.sendOffer = XObservationSendOffer.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.sendOutcome = XObservationSendOutcome.decode(reader, reader.uint32());
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.finished = XObservationFinished.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationEvent {
+    return {
+      sendOffer: isSet(object.sendOffer)
+        ? XObservationSendOffer.fromJSON(object.sendOffer)
+        : isSet(object.send_offer)
+        ? XObservationSendOffer.fromJSON(object.send_offer)
+        : undefined,
+      sendOutcome: isSet(object.sendOutcome)
+        ? XObservationSendOutcome.fromJSON(object.sendOutcome)
+        : isSet(object.send_outcome)
+        ? XObservationSendOutcome.fromJSON(object.send_outcome)
+        : undefined,
+      finished: isSet(object.finished) ? XObservationFinished.fromJSON(object.finished) : undefined,
+    };
+  },
+
+  toJSON(message: XObservationEvent): unknown {
+    const obj: any = {};
+    if (message.sendOffer !== undefined) {
+      obj.sendOffer = XObservationSendOffer.toJSON(message.sendOffer);
+    }
+    if (message.sendOutcome !== undefined) {
+      obj.sendOutcome = XObservationSendOutcome.toJSON(message.sendOutcome);
+    }
+    if (message.finished !== undefined) {
+      obj.finished = XObservationFinished.toJSON(message.finished);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationEvent>): XObservationEvent {
+    return XObservationEvent.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationEvent>): XObservationEvent {
+    const message = createBaseXObservationEvent();
+    message.sendOffer = (object.sendOffer !== undefined && object.sendOffer !== null)
+      ? XObservationSendOffer.fromPartial(object.sendOffer)
+      : undefined;
+    message.sendOutcome = (object.sendOutcome !== undefined && object.sendOutcome !== null)
+      ? XObservationSendOutcome.fromPartial(object.sendOutcome)
+      : undefined;
+    message.finished = (object.finished !== undefined && object.finished !== null)
+      ? XObservationFinished.fromPartial(object.finished)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseXObservationAcquisitionV2(): XObservationAcquisitionV2 {
+  return { schemaVersion: 0, acquiredPosts: [] };
+}
+
+export const XObservationAcquisitionV2: MessageFns<XObservationAcquisitionV2> = {
+  encode(message: XObservationAcquisitionV2, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.schemaVersion !== 0) {
+      writer.uint32(8).uint32(message.schemaVersion);
+    }
+    for (const v of message.acquiredPosts) {
+      XObservationAcquiredPost.encode(v!, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationAcquisitionV2 {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationAcquisitionV2();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.schemaVersion = reader.uint32();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.acquiredPosts.push(XObservationAcquiredPost.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationAcquisitionV2 {
+    return {
+      schemaVersion: isSet(object.schemaVersion)
+        ? globalThis.Number(object.schemaVersion)
+        : isSet(object.schema_version)
+        ? globalThis.Number(object.schema_version)
+        : 0,
+      acquiredPosts: globalThis.Array.isArray(object?.acquiredPosts)
+        ? object.acquiredPosts.map((e: any) => XObservationAcquiredPost.fromJSON(e))
+        : globalThis.Array.isArray(object?.acquired_posts)
+        ? object.acquired_posts.map((e: any) => XObservationAcquiredPost.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: XObservationAcquisitionV2): unknown {
+    const obj: any = {};
+    if (message.schemaVersion !== 0) {
+      obj.schemaVersion = Math.round(message.schemaVersion);
+    }
+    if (message.acquiredPosts?.length) {
+      obj.acquiredPosts = message.acquiredPosts.map((e) => XObservationAcquiredPost.toJSON(e));
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationAcquisitionV2>): XObservationAcquisitionV2 {
+    return XObservationAcquisitionV2.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationAcquisitionV2>): XObservationAcquisitionV2 {
+    const message = createBaseXObservationAcquisitionV2();
+    message.schemaVersion = object.schemaVersion ?? 0;
+    message.acquiredPosts = object.acquiredPosts?.map((e) => XObservationAcquiredPost.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseXObservationAcquiredPost(): XObservationAcquiredPost {
+  return {
+    primaryId: "",
+    canonicalUrl: "",
+    publishedAt: undefined,
+    authorHandle: undefined,
+    contentKind: undefined,
+    text: "",
+    metrics: undefined,
+    responseObservedAt: undefined,
+    queryId: "",
+    sourceBindingId: "",
+  };
+}
+
+export const XObservationAcquiredPost: MessageFns<XObservationAcquiredPost> = {
+  encode(message: XObservationAcquiredPost, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.primaryId !== "") {
+      writer.uint32(10).string(message.primaryId);
+    }
+    if (message.canonicalUrl !== "") {
+      writer.uint32(18).string(message.canonicalUrl);
+    }
+    if (message.publishedAt !== undefined) {
+      Timestamp.encode(toTimestamp(message.publishedAt), writer.uint32(26).fork()).join();
+    }
+    if (message.authorHandle !== undefined) {
+      writer.uint32(34).string(message.authorHandle);
+    }
+    if (message.contentKind !== undefined) {
+      writer.uint32(40).int32(message.contentKind);
+    }
+    if (message.text !== "") {
+      writer.uint32(50).string(message.text);
+    }
+    if (message.metrics !== undefined) {
+      XObservationMetrics.encode(message.metrics, writer.uint32(58).fork()).join();
+    }
+    if (message.responseObservedAt !== undefined) {
+      Timestamp.encode(toTimestamp(message.responseObservedAt), writer.uint32(66).fork()).join();
+    }
+    if (message.queryId !== "") {
+      writer.uint32(74).string(message.queryId);
+    }
+    if (message.sourceBindingId !== "") {
+      writer.uint32(82).string(message.sourceBindingId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XObservationAcquiredPost {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXObservationAcquiredPost();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.primaryId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.canonicalUrl = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.publishedAt = fromTimestamp(Timestamp.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.authorHandle = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 40) {
+            break;
+          }
+
+          message.contentKind = reader.int32() as any;
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.text = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.metrics = XObservationMetrics.decode(reader, reader.uint32());
+          continue;
+        }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.responseObservedAt = fromTimestamp(Timestamp.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 9: {
+          if (tag !== 74) {
+            break;
+          }
+
+          message.queryId = reader.string();
+          continue;
+        }
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.sourceBindingId = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XObservationAcquiredPost {
+    return {
+      primaryId: isSet(object.primaryId)
+        ? globalThis.String(object.primaryId)
+        : isSet(object.primary_id)
+        ? globalThis.String(object.primary_id)
+        : "",
+      canonicalUrl: isSet(object.canonicalUrl)
+        ? globalThis.String(object.canonicalUrl)
+        : isSet(object.canonical_url)
+        ? globalThis.String(object.canonical_url)
+        : "",
+      publishedAt: isSet(object.publishedAt)
+        ? fromJsonTimestamp(object.publishedAt)
+        : isSet(object.published_at)
+        ? fromJsonTimestamp(object.published_at)
+        : undefined,
+      authorHandle: isSet(object.authorHandle)
+        ? globalThis.String(object.authorHandle)
+        : isSet(object.author_handle)
+        ? globalThis.String(object.author_handle)
+        : undefined,
+      contentKind: isSet(object.contentKind)
+        ? xPostContentKindFromJSON(object.contentKind)
+        : isSet(object.content_kind)
+        ? xPostContentKindFromJSON(object.content_kind)
+        : undefined,
+      text: isSet(object.text) ? globalThis.String(object.text) : "",
+      metrics: isSet(object.metrics) ? XObservationMetrics.fromJSON(object.metrics) : undefined,
+      responseObservedAt: isSet(object.responseObservedAt)
+        ? fromJsonTimestamp(object.responseObservedAt)
+        : isSet(object.response_observed_at)
+        ? fromJsonTimestamp(object.response_observed_at)
+        : undefined,
+      queryId: isSet(object.queryId)
+        ? globalThis.String(object.queryId)
+        : isSet(object.query_id)
+        ? globalThis.String(object.query_id)
+        : "",
+      sourceBindingId: isSet(object.sourceBindingId)
+        ? globalThis.String(object.sourceBindingId)
+        : isSet(object.source_binding_id)
+        ? globalThis.String(object.source_binding_id)
+        : "",
+    };
+  },
+
+  toJSON(message: XObservationAcquiredPost): unknown {
+    const obj: any = {};
+    if (message.primaryId !== "") {
+      obj.primaryId = message.primaryId;
+    }
+    if (message.canonicalUrl !== "") {
+      obj.canonicalUrl = message.canonicalUrl;
+    }
+    if (message.publishedAt !== undefined) {
+      obj.publishedAt = message.publishedAt.toISOString();
+    }
+    if (message.authorHandle !== undefined) {
+      obj.authorHandle = message.authorHandle;
+    }
+    if (message.contentKind !== undefined) {
+      obj.contentKind = xPostContentKindToJSON(message.contentKind);
+    }
+    if (message.text !== "") {
+      obj.text = message.text;
+    }
+    if (message.metrics !== undefined) {
+      obj.metrics = XObservationMetrics.toJSON(message.metrics);
+    }
+    if (message.responseObservedAt !== undefined) {
+      obj.responseObservedAt = message.responseObservedAt.toISOString();
+    }
+    if (message.queryId !== "") {
+      obj.queryId = message.queryId;
+    }
+    if (message.sourceBindingId !== "") {
+      obj.sourceBindingId = message.sourceBindingId;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XObservationAcquiredPost>): XObservationAcquiredPost {
+    return XObservationAcquiredPost.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XObservationAcquiredPost>): XObservationAcquiredPost {
+    const message = createBaseXObservationAcquiredPost();
+    message.primaryId = object.primaryId ?? "";
+    message.canonicalUrl = object.canonicalUrl ?? "";
+    message.publishedAt = object.publishedAt ?? undefined;
+    message.authorHandle = object.authorHandle ?? undefined;
+    message.contentKind = object.contentKind ?? undefined;
+    message.text = object.text ?? "";
+    message.metrics = (object.metrics !== undefined && object.metrics !== null)
+      ? XObservationMetrics.fromPartial(object.metrics)
+      : undefined;
+    message.responseObservedAt = object.responseObservedAt ?? undefined;
+    message.queryId = object.queryId ?? "";
+    message.sourceBindingId = object.sourceBindingId ?? "";
     return message;
   },
 };
