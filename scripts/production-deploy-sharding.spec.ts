@@ -13,7 +13,7 @@ base=$BACKEND_BASE
 if [[ $base == 0000000000000000000000000000000000000000 ]]; then
   base=$(git rev-list --max-parents=0 "$GITHUB_SHA" | tail -n 1)
 fi
-npm test -- --changedSince="$base" --shard=\${{ matrix.shard }}/4
+npm test -- --changedSince="$base" --shard=\${{ matrix.shard }}/5
 `;
 
 // Like check-review-ci, parse the complete YAML and keep execution keys exact:
@@ -21,9 +21,9 @@ npm test -- --changedSince="$base" --shard=\${{ matrix.shard }}/4
 function check(text: string) {
   const { jobs } = yaml.load(text, { json: false });
   expect(jobs.verify_backend_shards).toEqual({
-    name: 'Test affected backend shard ${{ matrix.shard }}/4',
+    name: 'Test affected backend shard ${{ matrix.shard }}/5',
     needs: 'plan', 'runs-on': 'ubuntu-latest', 'timeout-minutes': 45,
-    strategy: { 'fail-fast': false, matrix: { shard: [1, 2, 3, 4] } },
+    strategy: { 'fail-fast': false, matrix: { shard: [1, 2, 3, 4, 5] } },
     steps: [
       { name: 'Check out the release commit', if: condition, uses: checkout,
         with: { 'fetch-depth': 0, ref: '${{ github.sha }}' } },
@@ -106,17 +106,21 @@ describe('production affected-test shards', () => {
   });
   it.each([
     ['          DATABASE_URL: postgresql://fixture:social_monitor_local_password@127.0.0.1:5432/fixture\n', ''],
-    ['shard: [1, 2, 3, 4]', 'shard: [1, 2, 3]'],
+    ['shard: [1, 2, 3, 4, 5]', 'shard: [1, 2, 3, 4]'],
     ['timeout-minutes: 45', 'timeout-minutes: 90'],
     ['test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', 'true'],
     ['npm ci\n          npm run prisma:generate\n          npm run build', 'npm ci\n          npm run build'],
+    ['npm run build', 'true'],
     ['--changedSince="$base"', '--changedSince=HEAD'],
-    ['shard: [1, 2, 3, 4]', 'shard: [1, 2, 3, 3]'],
-    ['matrix: {shard: [1, 2, 3, 4]}', 'matrix: {shard: [1, 2, 3, 4], exclude: [{shard: 4}]}'],
+    ['shard: [1, 2, 3, 4, 5]', 'shard: [1, 2, 3, 4, 4]'],
+    ['matrix: {shard: [1, 2, 3, 4, 5]}', 'matrix: {shard: [1, 2, 3, 4, 5], exclude: [{shard: 4}]}'],
     ['fail-fast: false', 'fail-fast: true'],
-    ['--shard=${{ matrix.shard }}/4', '--shard=${{ matrix.shard }}/5'],
-    ['--shard=${{ matrix.shard }}/4', '--shard=${{ matrix.shard }}/4 --passWithNoTests'],
-    ['--shard=${{ matrix.shard }}/4', '--shard=${{ matrix.shard }}/4 --testPathPatterns=small'],
+    ['--shard=${{ matrix.shard }}/5', '--shard=${{ matrix.shard }}/4'],
+    ['--shard=${{ matrix.shard }}/5', '--shard=${{ matrix.shard }}/6'],
+    ['shard ${{ matrix.shard }}/5', 'shard ${{ matrix.shard }}/4'],
+    ['shard ${{ matrix.shard }}/5', 'shard ${{ matrix.shard }}/6'],
+    ['--shard=${{ matrix.shard }}/5', '--shard=${{ matrix.shard }}/5 --passWithNoTests'],
+    ['--shard=${{ matrix.shard }}/5', '--shard=${{ matrix.shard }}/5 --testPathPatterns=small'],
     ['needs: [plan, verify_backend_shards]', 'needs: plan'],
     ['!cancelled()', 'success()'],
     ['= "success"', '!= "failure"'],
@@ -129,6 +133,16 @@ describe('production affected-test shards', () => {
     expect(source).toContain(before);
     expect(() => check(source.replace(before, after))).toThrow();
   });
+  it.each(['release_a', 'deploy'])('rejects bypassed %s dependencies and failure policy', (id) => {
+    for (const field of ['needs', 'if', 'continue-on-error']) {
+      const workflow = yaml.load(source);
+      workflow.jobs[id][field] = field === 'needs' ? ['plan'] : field === 'if' ? 'always()' : true;
+      expect(() => check(yaml.dump(workflow))).toThrow();
+    }
+  });
+  it.each(['skipped', 'cancelled'])('rejects accepting %s shards', (result) => {
+    expect(() => check(source.replace('= "success"', `= "${result}"`))).toThrow();
+  });
   it.each(['success', 'failure', 'cancelled', 'skipped', ''])('aggregate result %s fails closed', (result) => {
     const gate = yaml.load(source).jobs.verify_backend.steps[0].run;
     const run = spawnSync('bash', ['-e', '-c', gate.replace('${{ needs.verify_backend_shards.result }}', result)]);
@@ -136,7 +150,7 @@ describe('production affected-test shards', () => {
   });
   it.each(['backend', 'control', 'frontend', 'x_collector', 'maintenance'])('preserves %s skip semantics', (mode) => {
     const { jobs } = yaml.load(source);
-    // Successful plan always schedules four jobs. Backend=false skips their
+    // Successful plan always schedules five jobs. Backend=false skips their
     // individual steps, yielding success, not a skipped matrix dependency.
     expect(jobs.verify_backend_shards.if).toBeUndefined();
     expect(jobs.verify_backend_shards.needs).toBe('plan');
@@ -159,13 +173,13 @@ describe('production affected-test shards', () => {
       expect(evaluate(jobs.verify_backend.if, result)).toBe(false);
     }
   });
-  it.each([0, 1, 2, 3, 4, 5, 34, 796])('Jest partitions %s files without loss or overlap', (count) => {
+  it.each([0, 1, 2, 3, 4, 5, 6, 34, 796])('Jest partitions %s files without loss or overlap', (count) => {
     const Sequencer = createRequire(`${process.cwd()}/package.json`)('@jest/test-sequencer').default;
     const sequencer = new Sequencer();
     const tests = Array.from({ length: count }, (_, i) => ({
       path: `/repo/test-${i}.spec.ts`, context: { config: { rootDir: '/repo' } },
     }));
-    const shards = [1, 2, 3, 4].map(shardIndex => sequencer.shard(tests, { shardIndex, shardCount: 4 }));
+    const shards = [1, 2, 3, 4, 5].map(shardIndex => sequencer.shard(tests, { shardIndex, shardCount: 5 }));
     const union = shards.flat().map((test: { path: string }) => test.path);
     expect(union.sort()).toEqual(tests.map(test => test.path).sort());
     expect(new Set(union).size).toBe(count);
@@ -178,7 +192,7 @@ describe('production affected-test shards', () => {
         env: { ...process.env, BACKEND_BASE: base, GITHUB_SHA: 'target-sha' }, encoding: 'utf8',
       });
       expect(run.status).toBe(0);
-      expect(run.stdout).toBe(`<test>\n<-->\n<--changedSince=${base === '0'.repeat(40) ? 'root-sha' : base}>\n<--shard=3/4>\n`);
+      expect(run.stdout).toBe(`<test>\n<-->\n<--changedSince=${base === '0'.repeat(40) ? 'root-sha' : base}>\n<--shard=3/5>\n`);
     },
   );
   it('propagates selector resolution and test-command failures', () => {
