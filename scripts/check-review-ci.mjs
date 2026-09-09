@@ -376,7 +376,7 @@ const backendUnitShardingViolations = (source) => {
     "        run: npm run prisma:generate",
     "",
     "      - name: Run backend unit tests",
-    "        run: npm test -- --shard=${{ matrix.shard }}/4",
+    "        run: node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4",
     "",
     "  backend_unit:",
     "    name: Backend build and unit tests",
