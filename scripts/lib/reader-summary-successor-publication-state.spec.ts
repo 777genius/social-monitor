@@ -16,7 +16,9 @@ const before: PublicationState = {
   reader_summary_new_input_refresh_reconciliations: [{ id: "receipt", accounting: { usage: "unknown" } }],
   reader_summary_new_input_refresh_reconciliation_counters: [{ id: "counter", counters: { tokens: 13 } }],
 };
-const after = structuredClone(before);
+// These SQL JSON fixtures must retain the test realm prototypes for strict assertions.
+const cloneState = (state: PublicationState): PublicationState => JSON.parse(JSON.stringify(state)) as PublicationState;
+const after = cloneState(before);
 after.reader_summary_jobs.push({ id: ids.job, idempotency_key: m.operation, status: "COMPLETED",
   reader_summary_artifact_id: ids.artifact, requested_at: at });
 after.reader_summary_artifacts[0]!.status = "SUPERSEDED";
@@ -38,7 +40,9 @@ after.outbox_events.push({ id: "database-generated-event", event_type: "reader_s
   status: "PENDING", correlation_id: ids.job, causation_id: ids.job, payload: {
     readerSummaryJobId: ids.job, readerSummaryId: ids.artifact, status: "completed", publicationProof: proof,
     reportSha256: "report-hash", proofSha256: "proof-hash" } });
-assert.equal(assertPublicationEffects(before, after, m, ids, at), "database-generated-event");
+test("accepts the exact publication effects and preserves original rows", () => {
+  assert.equal(assertPublicationEffects(before, after, m, ids, at), "database-generated-event");
+});
 const mutations: ((state: PublicationState) => void)[] = [
   state => { state.reader_summary_jobs[0]!.usage = "zero"; },
   state => { state.reader_summary_jobs[1]!.status = "FAILED"; },
@@ -55,8 +59,10 @@ const mutations: ((state: PublicationState) => void)[] = [
   state => { state.outbox_events.push({ id: "extra" }); },
   state => { state.reader_summary_weekly_publication_evidence.pop(); },
 ];
-for (const mutate of mutations) {
-  const changed = structuredClone(after); mutate(changed);
-  assert.throws(() => assertPublicationEffects(before, changed, m, ids, at));
-}
-console.log(JSON.stringify({ status: "local-effects-contract-verified", negativeControls: mutations.length, nativePublication: "not-executed" }));
+test.each(mutations.map((mutate, index) => ({ mutate, control: index + 1 })))(
+  "rejects publication corruption control $control",
+  ({ mutate }) => {
+    const changed = cloneState(after); mutate(changed);
+    assert.throws(() => assertPublicationEffects(before, changed, m, ids, at));
+  },
+);

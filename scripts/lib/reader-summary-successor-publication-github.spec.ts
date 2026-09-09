@@ -6,7 +6,7 @@ import { seedSuccessorPublicationGitHub, successorGitHubBoardSource, successorGi
 import { sourceItemContentHash, sourceItemProviderContentHash } from "@social-monitor/ingestion/domain";
 import { fixtureId } from "./reader-summary-successor-fixture-seed";
 
-async function main() {
+test("seeds the exact GitHub source, feed and scan contract without SQL execution", async () => {
   const statements: { sql: string; args: unknown[] }[] = [];
   // Recorder only; no connected client, emulation engine or database result assertions.
   const recorder = { query: async (sql: string, args: unknown[]) => { statements.push({ sql, args }); } };
@@ -33,6 +33,4 @@ async function main() {
   assert.equal(receipt.targetPublishedWindowEndedAt, "2026-09-04T00:00:00.000Z");
   const supplement = successorGitHubSupplement(successorGitHubProjection());
   assert.equal(supplement.posts.length, 10); assert.equal(supplement.appendix?.citationIds.length, 3);
-  console.log(JSON.stringify({ status: "local-seed-contract-verified", sourceRows: 10, feedRows: 10, databaseInvocations: 0 }));
-}
-void main().catch(error => { console.error(error); process.exitCode = 1; });
+});
