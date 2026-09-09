@@ -8,13 +8,16 @@ import { verifyNativeQuota } from "./verify-vioxen-subscription-runtime-main42-n
 import { fileURLToPath } from "node:url";
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const wireFix = process.argv.includes("--quota-wire-fix");
+assert.ok(process.argv.slice(2).every((arg) => arg === "--quota-wire-fix"), "Unknown verifier option");
+const version = wireFix ? "0.1.0-main.42-sm.1" : "0.1.0-main.42";
 const artifactPath = join(
   projectRoot,
-  "vendor/vioxen-subscription-runtime-0.1.0-main.42.tgz",
+  `vendor/vioxen-subscription-runtime-${version}.tgz`,
 );
 const provenancePath = join(
   projectRoot,
-  "vendor/vioxen-subscription-runtime-0.1.0-main.42.provenance.json",
+  `vendor/vioxen-subscription-runtime-${version}.provenance.json`,
 );
 const tempRoot = await mkdtemp(
   join(tmpdir(), "social-monitor-subscription-runtime-main42-"),
@@ -22,12 +25,13 @@ const tempRoot = await mkdtemp(
 
 try {
   const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
-  assert.equal(provenance.sourceCommit, "22db9bbca1c2315e93211887a7738a6b40f21167");
+  assert.equal(wireFix ? provenance.reviewedParentSourceCommit : provenance.sourceCommit, "22db9bbca1c2315e93211887a7738a6b40f21167");
+  if (wireFix) assert.equal(provenance.sourceCommit, null);
   assert.equal(provenance.baseCommit, "42ea16961987f8a626a5219b030a5029f28bcdfd");
   assert.equal(provenance.upstreamPublicationClaimed, false);
   assert.equal(provenance.approvedArchiveSha256, "d67569a97ee0b91d8ce7d989532c44ec58673190101cc5f481730e2f1af4aac3");
   assert.equal(provenance.upstreamPackageVersion, "0.1.0-main.40");
-  assert.equal(provenance.packageVersion, "0.1.0-main.42");
+  assert.equal(provenance.packageVersion, version);
   assert.equal(provenance.packageVersionIsLocal, true);
   for (const artifact of [provenance.baseSource, provenance.reviewedSourcePatch]) {
     assert.equal(sha256(await readFile(join(projectRoot, artifact.path))), artifact.sha256);
@@ -136,7 +140,7 @@ try {
   await mkdir(historicalRoot);
   run("tar", ["-xzf", join(projectRoot, "vendor/vioxen-subscription-runtime-0.1.0-main.41.tgz"), "-C", historicalRoot]);
   const historicalManifest = JSON.parse(await readFile(join(historicalRoot, "package/package.json"), "utf8"));
-  assert.deepEqual(manifest, { ...historicalManifest, version: "0.1.0-main.42" });
+  assert.deepEqual(manifest, { ...historicalManifest, version });
   // All exact-turn usage implementations are unchanged from main.41.
   for (const [path, hash] of await fileInventory(join(historicalRoot, "package"), "package")) {
     if (path.startsWith("package/dist/provider-codex/app-server/")) {
@@ -147,7 +151,8 @@ try {
     "dist/worker-codex/adapters/codex-quota-snapshot-observation.js": "893ae667bf4b401e0ecaaf7d35993cdb195a3a5f435358357fa8c44d44d118f5",
     "dist/worker-codex/adapters/codex-quota-snapshot-observation-catalog.js": "b3693f1eda3323392982e4f4bf3430e92d91ec66ddfc110071c3569d7a33085d",
     "node_modules/@vioxen/agent-account-observability/dist/infrastructure/JsonRpcLineClient.js": "3c24d6f1c3e3e894bcf8e454e354394a746427d479026b51586703100f581105",
-  })) assert.equal(sha256(await readFile(join(packageRoot, path))), hash, path);
+  })) assert.equal(sha256(await readFile(join(packageRoot, path))),
+    wireFix && path.endsWith("/JsonRpcLineClient.js") ? provenance.changedPackageFiles[`package/${path}`].after : hash, path);
   const sourceRoot = join(tempRoot, "reviewed-source");
   await mkdir(sourceRoot);
   run("tar", ["-xzf", join(projectRoot, provenance.baseSource.path), "-C", sourceRoot]);
@@ -159,19 +164,45 @@ try {
     .map(([path, hash]) => [path.slice("source/".length), hash]);
   assert.equal(sourceInventory.length, provenance.reviewedSourceFiles);
   assert.equal(inventoryHash(sourceInventory), provenance.reviewedSourceInventorySha256);
+  if (wireFix) {
+    assert.equal(sha256(await readFile(join(projectRoot, provenance.quotaWirePatch.path))), provenance.quotaWirePatch.sha256);
+    const appliedFix = spawnSync("git", ["apply", join(projectRoot, provenance.quotaWirePatch.path)], { cwd: sourceRoot, encoding: "utf8" });
+    assert.equal(appliedFix.status, 0, appliedFix.stderr);
+    const fixedInventory = (await fileInventory(sourceRoot, "source")).map(([path, hash]) => [path.slice(7), hash]);
+    assert.equal(fixedInventory.length, provenance.fixedSourceFiles);
+    assert.equal(inventoryHash(fixedInventory), provenance.fixedSourceInventorySha256);
+    const parentRoot = join(tempRoot, "parent");
+    await mkdir(parentRoot);
+    const parentArchive = join(projectRoot, provenance.parentArchive.path);
+    assert.equal(sha256(await readFile(parentArchive)), provenance.parentArchive.sha256);
+    assert.equal(provenance.parentArchive.sha256, "338499bc01bc08958d53bcad6fdf0da9ab4dbc542705b947eed8eb59afdc49ae");
+    run("tar", ["-xzf", parentArchive, "-C", parentRoot]);
+    const parentInventory = await fileInventory(join(parentRoot, "package"), "package");
+    assert.deepEqual(inventory.map(([path]) => path), parentInventory.map(([path]) => path));
+    const current = new Map(inventory);
+    const changed = Object.fromEntries(parentInventory.filter(([path, hash]) => current.get(path) !== hash)
+      .map(([path, before]) => [path, { before, after: current.get(path) }]));
+    assert.deepEqual(changed, provenance.changedPackageFiles);
+    const stems = ["infrastructure/JsonRpcLineClient", "providers/codex/CodexAppServerQuotaReader", "providers/codex/codexTypes"];
+    for (const path of Object.keys(changed)) {
+      assert.ok(path === "package/package.json" || stems.some((stem) =>
+        [".js", ".js.map", ".d.ts", ".d.ts.map"].some((ext) => path ===
+          `package/node_modules/@vioxen/agent-account-observability/dist/${stem}${ext}`)), path);
+    }
+  }
   const hostManifest = JSON.parse(await readFile(join(projectRoot, "package.json"), "utf8"));
   const lock = JSON.parse(await readFile(join(projectRoot, "package-lock.json"), "utf8"));
   const dependency = "@vioxen/subscription-runtime";
-  const pin = "file:vendor/vioxen-subscription-runtime-0.1.0-main.42.tgz";
+  const pin = `file:vendor/vioxen-subscription-runtime-${version}.tgz`;
   assert.equal(hostManifest.dependencies[dependency], pin);
   assert.equal(lock.packages[""].dependencies[dependency], pin);
   const locked = lock.packages[`node_modules/${dependency}`];
   assert.equal(locked.version, manifest.version);
   assert.equal(locked.resolved, pin);
   assert.equal(locked.integrity, `sha512-${createHash("sha512").update(artifactBytes).digest("base64")}`);
-  await verifyNativeQuota(packageRoot);
+  await verifyNativeQuota(packageRoot, { unitQuotaParams: wireFix });
   process.stdout.write(
-    `subscription-runtime ${manifest.version} vendor artifact verified from ${provenance.sourceCommit}\n`,
+    `subscription-runtime ${manifest.version} vendor artifact verified from ${provenance.sourceCommit ?? provenance.quotaWirePatch.sha256}\n`,
   );
 } finally {
   await rm(tempRoot, { recursive: true, force: true });
