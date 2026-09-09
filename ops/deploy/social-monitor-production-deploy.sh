@@ -106,7 +106,6 @@ BACKEND_PATHS=(
   ops/deploy/rabbitmq-quorum-recovery.sh
   ops/deploy/reader-summary-publication-deploy-lib.sh ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh ops/deploy/reader-summary-publication-system-runtime-deploy-lib.sh
   ops/deploy/reader-summary-publication-pre-migration.sql
-  ops/deploy/reader-summary-publication-tenant-ownership.sql
   ops/deploy/reader-summary-publication-post-migration.sql
   test
 )

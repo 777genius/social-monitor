@@ -118,14 +118,14 @@ git init -q -b main "$REPO"
 git -C "$REPO" config user.name 'Pool Bootstrap Contract'
 git -C "$REPO" config user.email bootstrap-contract@example.invalid
 git -C "$REPO" remote add origin "$ORIGIN"
-install -d "$REPO/ops/deploy" "$REPO/apps/api-gateway" "$STATE" \
+install -d "$REPO/ops/deploy" "$REPO/scripts/sql" "$REPO/apps/api-gateway" "$STATE" \
   "$ROOT/runtime/systemd" "$LEGACY_RUNTIME" "$NON_ACTIVATING_SNAPSHOT" \
   "$FIXTURE/bin"
 cp "$FIXTURE/legacy-entrypoint.sh" "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+cp "$PROJECT_ROOT/scripts/sql/reader-summary-publication-tenant-ownership.sql" "$REPO/scripts/sql/"
 cp "$PROJECT_ROOT/ops/deploy/reader-summary-publication-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-pre-migration.sql" \
-  "$PROJECT_ROOT/ops/deploy/reader-summary-publication-tenant-ownership.sql" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-post-migration.sql" \
   "$PROJECT_ROOT/ops/deploy/production-transition-b0-host-control.sh" \
   "$REPO/ops/deploy/"
@@ -172,7 +172,6 @@ cp "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
 cp "$PROJECT_ROOT/ops/deploy/reader-summary-publication-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-pre-migration.sql" \
-  "$PROJECT_ROOT/ops/deploy/reader-summary-publication-tenant-ownership.sql" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-post-migration.sql" \
   "$REPO/ops/deploy/"
 cp "$PROJECT_ROOT/ops/deploy/verify-postgres-runtime-topology.py" "$REPO/ops/deploy/"

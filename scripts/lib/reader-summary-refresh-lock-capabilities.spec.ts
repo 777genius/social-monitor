@@ -4,7 +4,7 @@ import { readPublicationBootstrapSql } from "./reader-summary-publication-bootst
 
 const migrationPath = "prisma/migrations/20260909120000_reader_summary_refresh_lock_capabilities/migration.sql";
 const sql = readFileSync(migrationPath, "utf8");
-const ownershipPath = "ops/deploy/reader-summary-publication-tenant-ownership.sql";
+const ownershipPath = "scripts/sql/reader-summary-publication-tenant-ownership.sql";
 const ownership = readFileSync(ownershipPath, "utf8");
 const prePath = "ops/deploy/reader-summary-publication-pre-migration.sql";
 const postPath = "ops/deploy/reader-summary-publication-post-migration.sql";
@@ -105,8 +105,9 @@ describe("reconciliation bootstrap replay parity", () => {
     expect(shell).toContain('[[ -f $ownership_sql && ! -L $ownership_sql ]] || return 64');
     expect(shell).toContain('$ownership_sql:/run/social-monitor-db/reader-summary-publication-tenant-ownership.sql:ro');
     expect(shell).toContain("--file=/run/social-monitor-db/publication-migration.sql");
-    for (const loader of ["social-monitor-production-deploy.sh", "production-backend-classification-lib.sh"]) {
-      expect(readFileSync(`ops/deploy/${loader}`, "utf8")).toContain(ownershipPath);
-    }
+    expect(readFileSync("ops/deploy/production-backend-classification-lib.sh", "utf8"))
+      .toContain(ownershipPath);
+    expect(readFileSync("ops/deploy/social-monitor-production-deploy.sh", "utf8"))
+      .toMatch(/^  scripts$/m);
   });
 });
