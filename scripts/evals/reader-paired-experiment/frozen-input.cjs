@@ -1,6 +1,6 @@
 'use strict';
 const fs = require('node:fs');
-const { check, sha, digest, OLD, FINAL } = require('./revision-source.cjs');
+const { check, sha, digest, OLD, FINAL, revisionSource } = require('./revision-source.cjs');
 const DAYS = ['2026-08-30', '2026-08-31', '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05'];
 const hash = value => check(typeof value === 'string' && /^[a-f0-9]{64}$/.test(value), 'missing/invalid SHA256');
 function read(ref) {
@@ -70,6 +70,7 @@ function evidence(item) {
   }
   const q = item.contentQuality; check(q && ['qualityScore', 'interestRelevanceScore', 'engagementIntegrityScore'].every(k => Number.isFinite(q[k]) && q[k] >= 0 && q[k] <= 1) &&
     ['eligibleForSummary', 'eligibleForTopRead', 'needsLlmReview'].every(k => typeof q[k] === 'boolean') && Array.isArray(q.flags), 'missing recorded quality');
+  check(q.needsLlmReview === false && !/^promotion_assessment_(pending|not_requested):/.test(q.reason ?? ''), 'unresolved assessment');
   return result;
 }
 function boundRecord(record, expected) {
@@ -80,7 +81,7 @@ function boundRecord(record, expected) {
   if (record.kind === 'model') for (const key of ['model', 'prompt', 'schema']) read(record[key]);
   else check([OLD, FINAL].includes(record.sourceRevision), 'deterministic provenance missing');
 }
-function bundle(ref, rawRef, raw, c) {
+function bundle(ref, rawRef, raw, c, repo = process.cwd()) {
   const b = read(ref); check(b.format === 'paired-policy-projection.v1', 'unsupported projection');
   check(b.snapshotSha256 === rawRef.sha256 && b.controlsSha256 === digest(c), 'projection/input binding mismatch');
   check(Array.isArray(b.selection.clusters) && Array.isArray(b.selection.approvedSameStoryRelations), 'missing explicit grouping controls');
@@ -89,7 +90,11 @@ function bundle(ref, rawRef, raw, c) {
   const source = unique(raw.snapshot.sourceContent, 'feedItemId');
   const raws = [...raw.snapshot.candidates, ...(raw.snapshot.supplementalItems || [])];
   const rawIds = raws.map(x => (x.item || x).props.id);
-  check(digest(all.map(x => x.feedItemId)) === digest(rawIds), 'projection coverage/order mismatch');
+  check(digest(b.candidates.map(x => x.feedItemId)) === digest(raw.snapshot.candidates.map(x => x.item.props.id)), 'primary coverage/order mismatch');
+  check(digest(b.supplemental.map(x => x.feedItemId)) === digest((raw.snapshot.supplementalItems || []).map(x => x.props.id)), 'supplemental coverage/order mismatch');
+  const unresolved = all.filter(x => !x.contentQuality || x.contentQuality.needsLlmReview !== false ||
+    /^promotion_assessment_(pending|not_requested):/.test(x.contentQuality.reason ?? '')).map(x => x.feedItemId);
+  if (unresolved.length) throw assessmentGap('unresolved_assessment', unresolved);
   const records = unique(b.records, 'feedItemId'); check(records.size === all.length, 'assessment coverage mismatch');
   all.forEach((item, i) => {
     const p = (raws[i].item || raws[i]).props;
@@ -101,6 +106,11 @@ function bundle(ref, rawRef, raw, c) {
     for (const k of ['tenantId', 'workspaceId']) check(r.request.promotion?.[k] === c[k], 'request scope mismatch');
     for (const k of ['sourceItemId', 'sourceBindingId', 'interestId']) check(r.request.promotion?.[k] === p[k], 'request promotion binding mismatch');
     const h = item.readerHeadline;
+    if (h?.status === 'accepted') {
+      const source = revisionSource(repo, FINAL, c.clock);
+      const validate = source.load('libs/summary/domain/services/reader-post-display-headline.ts').readerPostDisplayHeadline;
+      if (source.invoke(validate, [item, c]).status !== 'accepted') throw assessmentGap('invalid_accepted_headline', [item.feedItemId]);
+    }
     if (h?.status === 'accepted') for (const [k, v] of Object.entries({ candidateId: item.feedItemId, tenantId: c.tenantId, workspaceId: c.workspaceId, sourceItemId: p.sourceItemId })) check(h.binding[k] === v, 'headline scope mismatch');
   });
   check(digest(b.selection.selectedEvidence) === digest(b.candidates), 'preselection must contain all primary candidates');
@@ -108,7 +118,7 @@ function bundle(ref, rawRef, raw, c) {
   boundRecord(grouping, { snapshotSha256: rawRef.sha256, controlsSha256: digest(c),
     resultSha256: digest({ clusters: b.selection.clusters, approvedSameStoryRelations: b.selection.approvedSameStoryRelations,
       relatedTopicRelations: b.selection.relatedTopicRelations }) });
-  check(digest(grouping.inputIds) === digest(rawIds.slice(0, b.candidates.length)), 'grouping coverage mismatch');
+  check(digest(grouping.inputIds) === digest(raw.snapshot.candidates.map(x => x.item.props.id)), 'grouping coverage mismatch');
   check(Array.isArray(grouping.unclusteredIds), 'missing explicit unclustered inventory');
   const members = [...grouping.unclusteredIds, ...b.selection.clusters.flatMap(x => [x.representativeFeedItemId, ...x.duplicateFeedItemIds])];
   check(new Set(members).size === members.length && digest([...members].sort()) === digest(b.candidates.map(x => x.feedItemId).sort()), 'cluster membership mismatch');
@@ -127,9 +137,13 @@ function bundle(ref, rawRef, raw, c) {
     sourceWindow: dates(w, ['startedAt', 'endedAt', 'periodStartedAt', 'periodEndedAt', 'ingestionCutoff']),
     clusters: b.selection.clusters.map(x => ({ ...x, observedAtRange: dates(x.observedAtRange, ['startedAt', 'endedAt']) })) };
   return { candidates, supplemental, selection: hydratedSelection,
+    assessmentCoverage: { status: 'pending_producer_contract', pendingIds: rawIds, missingAssessmentCount: rawIds.length },
     normalizedSha256: digest({ candidates, supplemental, selection: hydratedSelection }),
     provenance: { projection: ref, grouping: b.grouping,
       records: b.records.map(r => ({ feedItemId: r.feedItemId, producer: r.producer, kind: r.kind, sourceRevision: r.sourceRevision ?? null,
         requestSha256: r.requestSha256, model: r.model ?? null, prompt: r.prompt ?? null, schema: r.schema ?? null })) } };
 }
-module.exports = { DAYS, read, date, digest, sha, hash, check, unique, controls, snapshot, evidence, boundRecord, bundle };
+function assessmentGap(code, pendingIds) {
+  return Object.assign(new Error(code), { code, pendingIds, missingAssessmentCount: pendingIds.length });
+}
+module.exports = { assessmentGap, DAYS, read, date, digest, sha, hash, check, unique, controls, snapshot, evidence, boundRecord, bundle };

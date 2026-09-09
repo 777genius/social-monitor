@@ -46,7 +46,7 @@ function inventory() {
 function execute(manifest, repo) {
   check(manifest.format === 'paired-policy-matrix.v1' && digest(manifest.days.map(d => d.day)) === digest(DAYS), 'exact ordered seven UTC days required');
   const result = { format: 'paired-policy-results.v1', complete: false,
-    label: 'conditional selection-policy comparison on producer-validated frozen assessments and grouping',
+    label: 'conditional selection-policy boundary; caller assertions pending producer contract',
     fullAlgorithmExperiment: { status: 'required_not_executed', missing: ['record-backed full-selector adapter', 'union request coverage', 'recorded deadline outcomes'] },
     algorithm: [], data: [], gaps: [] };
   for (const d of manifest.days) {
@@ -60,18 +60,20 @@ function execute(manifest, repo) {
         const raw = read(ref.snapshot), source = revisionSource(repo, revision, d.controls.clock);
         const FeedItem = source.load('libs/feed/domain/entities/feed-item.ts').FeedItem;
         const hydrated = snapshot(raw, d.day, d.controls, FeedItem);
-        const b = bundle(ref.projection, ref.snapshot, raw, d.controls);
+        const b = bundle(ref.projection, ref.snapshot, raw, d.controls, repo);
         arms[label] = { ...select(source, revision, b), snapshotSha256: ref.snapshot.sha256,
           projectionSha256: ref.projection.sha256, normalizedRawSha256: digest({ ...hydrated,
             candidates: hydrated.candidates.map(x => ({ ...x, item: x.item.toSnapshot() })), supplementalItems: hydrated.supplementalItems.map(x => x.toSnapshot()) }),
           controlsSha256: digest(d.controls), clock: d.controls.clock, observedThrough: raw.observedThrough };
-      } catch (e) { result.gaps.push({ day: d.day, arm: label, kind: e.code ?? e.message }); }
+      } catch (e) { result.gaps.push({ day: d.day, arm: label, kind: e.code ?? e.message,
+        pendingIds: e.pendingIds ?? null, missingAssessmentCount: e.missingAssessmentCount ?? null }); }
     }
     if (arms.oldCurrent && arms.finalCurrent) result.algorithm.push({ day: d.day, before: arms.oldCurrent, after: arms.finalCurrent, changes: compare(arms.oldCurrent, arms.finalCurrent) });
     if (arms.finalOriginal && arms.finalCurrent) result.data.push({ day: d.day, before: arms.finalOriginal, after: arms.finalCurrent, changes: compare(arms.finalOriginal, arms.finalCurrent) });
   }
   result.manifestSha256 = digest(manifest);
-  result.conditionalPolicyComplete = result.gaps.length === 0 && result.algorithm.length === 7 && result.data.length === 7;
+  // No producer-owned offline assessment/grouping contract is implemented.
+  result.conditionalPolicyComplete = false;
   return result;
 }
 function main(args) {

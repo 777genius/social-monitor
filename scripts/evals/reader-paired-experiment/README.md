@@ -1,11 +1,13 @@
 # Bounded offline paired policy executor
 
-This implements **conditional selection-policy comparison on frozen producer-validated
-post-assessment evidence and grouping**. The full algorithm experiment remains
+This implements a **conditional selection-policy boundary on caller-supplied
+post-assessment assertions and grouping**. No producer-owned offline contract has
+been established: all caller assertions remain pending, and policy CLI execution
+cannot certify them. Hashes bind bytes only; they do not prove execution. The full algorithm experiment remains
 required and is not implemented or claimed here. No production/model/provider/DB
 ports are constructed. There is no live fallback, publication, install, or runtime
-launch. `complete` always remains false; `conditionalPolicyComplete` describes only
-this narrower boundary. A conditional result says nothing about grouping accuracy,
+launch. `complete` always remains false; `conditionalPolicyComplete` also remains false until a concrete producer-owned
+contract is implemented and independently validated. A conditional result says nothing about grouping accuracy,
 model quality, generation, publication, or historical deployment identity.
 
 Source execution uses Git object reads, without checkout/index/history changes.
@@ -28,8 +30,8 @@ patch outside this sandbox. Do not push or merge as part of these commands.
 Run from the repository with both named Git objects and existing local dependencies.
 No archive, dependency install, environment secrets, or additional checkout is needed.
 Outputs are create-only, mode 0600, and restricted to `/tmp`; use a new output path
-for each run. Inventory and missing/invalid evidence exit **2**. Only a complete
-conditional seven-day policy matrix exits **0**, still with `complete: false`.
+for each run. Inventory and missing/invalid evidence exit **2**. Policy currently always exits **2** because producer provenance remains pending.
+There is no CLI synthetic bypass.
 
 ```sh
 node --test scripts/evals/reader-paired-experiment/adapter.test.cjs
@@ -43,7 +45,7 @@ raw structure/day checks; full joins and rehydration are checked before policy e
 Its `pendingManifest` is a template, not a runnable claim of complete evidence.
 Sep2 “original” means the supplied Sep8 capture, not publication-time input.
 
-Once genuine producer records and all original inputs exist, save a completed
+To inspect gaps (this cannot yet certify producer records), save a
 manifest as `/tmp/reader-paired/recorded-seven-days.json`, then run exactly:
 
 ```sh
@@ -51,14 +53,14 @@ manifest_sha=$(sha256sum /tmp/reader-paired/recorded-seven-days.json | cut -d ' 
 node scripts/evals/reader-paired-experiment/run.cjs --mode policy --manifest /tmp/reader-paired/recorded-seven-days.json --sha256 "$manifest_sha" --out /tmp/reader-paired/conditional-seven-days.json
 ```
 
-This single command runs two separate seven-day experiments: OLD versus FINAL on
+The intended conditional comparison covers two separate seven-day experiments: OLD versus FINAL on
 identical current snapshots/projections/controls, and FINAL original versus current
 with identical controls/common per-pair clocks. FINAL/current is shared, so neither
 experiment can quietly change that arm. The strict day order is Aug30–Sep5 UTC.
 OLD is `a88f6161197b7bf96315ae83969e49e51a833c2b`; FINAL is
 `e8b867268744c0047a42d813e6024b1cf4463096`. All seven current raw hashes and the Sep2 original hash are pinned in code.
 
-## Producer artifact contract
+## Caller assertion wire format (not a producer contract)
 
 `{path, sha256}` references bind exact file bytes. Object digests are SHA256 of UTF-8
 `JSON.stringify(value)`, preserving array and object insertion order. Generate these
@@ -97,7 +99,8 @@ provider and promotion scope/source joins. Model records additionally reference
 JSON `model`, `prompt`, `schema` provenance files by exact byte hashes; deterministic
 records retain their actual named `sourceRevision`. Do not relabel legacy prompts.
 Producer provenance and records are supplied evidence, not authenticated signatures.
-This executor validates receipt/request/projection bindings; it does not regenerate
+This executor validates structural receipt/request/projection bindings only and
+keeps every candidate pending. It does not regenerate
 model requests or replay verdict object identities at the full-selector boundary.
 
 `grouping` references a JSON receipt with the same producer/kind/request/provenance
@@ -116,3 +119,16 @@ tokens are labeled internal preflight bindings. Supplemental admission is separa
 A missing arm produces a gap and no successful pair; other validated days may remain
 as explicitly partial results. Full selectors, request-union replay, deadline outcomes,
 and required original/assessment coverage remain pending beyond these commands.
+
+## Regression boundary
+
+Run `node --test scripts/evals/reader-paired-experiment/*.test.cjs`. Direct policy
+tests explicitly pass `syntheticPolicyTest: true`; outputs say
+`synthetic_policy_test_only` and retain pending producer coverage. No synthetic
+flag in a manifest enables execution. Unresolved quality records raise gaps with
+IDs/counts before selection, and primary/supplemental ordered coverage is checked
+separately. Claimed accepted headlines must pass the pinned FINAL
+`readerPostDisplayHeadline` validation even for OLD inputs. This validates shape,
+source, support and bindings, not producer execution or prompt approval. Input
+headline availability is separate from admission. Missing coverage is never
+inferred to be zero from successful synthetic selection.
