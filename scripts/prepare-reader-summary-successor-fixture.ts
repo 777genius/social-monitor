@@ -18,26 +18,35 @@ import { assertRefreshReconciliationEvidence, reconcileConsumedRefreshJob, type 
 import { assertRefreshSuccessorCurrent } from "./lib/reader-summary-new-input-refresh-successor";
 import { readReviewedRefresh } from "./lib/reader-summary-new-input-refresh-files";
 
+import { successorFixtureUsage, successorPreparationFailure, type SuccessorPreparationPhase } from "./lib/reader-summary-successor-fixture-diagnostics";
+
+let preparationPhase: SuccessorPreparationPhase = "usage";
+
 async function main(): Promise<void> {
   const [raw, markerPath, outputPath, ...extra] = process.argv.slice(2);
   assert(raw && markerPath && outputPath && extra.length === 0,
-    "usage: prepare-reader-summary-successor-fixture.ts ADMIN_SOCKET_URL IMMUTABLE_MARKER NEW_OUTPUT_DIRECTORY");
+    successorFixtureUsage);
+  preparationPhase = "marker";
   const marker = readFixtureMarker(markerPath), url = assertFixtureTarget(raw, marker);
   // Do not consult ambient DB/auth configuration. The migration executor
   // inherits only this allowlist; repository dotenv imports read /dev/null.
   process.env = { PATH: [join(process.cwd(), "node_modules/.bin"), dirname(process.execPath), "/usr/bin", "/bin"].join(":"),
     DOTENV_CONFIG_PATH: "/dev/null", PGPASSFILE: "/dev/null", JITI_FS_CACHE: "false", TZ: "UTC" };
+  preparationPhase = "output";
   const output = resolve(outputPath);
   const parent = resolve(output, "..");
   assert.equal(realpathSync(parent), parent, "output parent must be a real existing directory");
   mkdirSync(output, { mode: 0o700 }); // exclusive, before any database mutation
+  preparationPhase = "attestation";
   const admin = new Pool({ connectionString: url.toString(), max: 1 });
   let runtime: Pool | undefined;
   let summary: PrismaSummaryConnection | undefined;
   let feed: PrismaFeedConnection | undefined;
   try {
     await attestEmptyFixture(admin, marker);
+    preparationPhase = "provisioning";
     const runtimeUrl = await migrateSuccessorFixture(admin, url);
+    preparationPhase = "seed";
     runtime = new Pool({ connectionString: runtimeUrl, max: 1 });
     const auditor = await admin.connect(), writer = await runtime.connect();
     try {
@@ -46,11 +55,13 @@ async function main(): Promise<void> {
       try { await seedSuccessorInput(auditor); await auditor.query("commit"); }
       catch (error) { await auditor.query("rollback"); throw error; }
     } finally { writer.release(); auditor.release(); }
+    preparationPhase = "runtime";
     const config = resolvePostgresRuntimePoolConfig({ DATABASE_URL: runtimeUrl,
       POSTGRES_RUNTIME_PROCESS: "daily-runner", POSTGRES_RUNTIME_POOL_MIN: "0", POSTGRES_RUNTIME_POOL_MAX: "2" });
     summary = await PrismaSummaryConnection.create(config);
     feed = await PrismaFeedConnection.create(config);
     const db = summary, feedReader = new PrismaFeedItemReadRepository(feed), clock = new FixedClock(fixtureNow);
+    preparationPhase = "manifest";
     const result = await runWithTenantDatabaseAccess(refreshScope, async () => {
       const prior = await readRefreshPrior(db, fixtureDate);
       const observedThrough = fixtureObservedThrough;
@@ -109,20 +120,24 @@ async function main(): Promise<void> {
       assert.deepEqual(counts, { publications: 1, outbox: 1, jobs: 2, artifacts: 1 });
       assert.equal((await db.$queryRaw<readonly unknown[]>`select * from reader_summary_new_input_refresh_reconciliation_counters`).length, 0);
       const manifestBytes = Buffer.from(JSON.stringify(manifest));
+      preparationPhase = "artifacts";
       for (const [name, bytes] of [["original.json", originalBytes], ["reconciliation.json", evidenceBytes],
         ["successor.json", manifestBytes]] as const) writeFileSync(join(output, name), bytes, { flag: "wx", mode: 0o444 });
       const manifestSha256 = refreshBytesHash(manifestBytes), manifestPath = join(output, "successor.json");
+      preparationPhase = "manifest";
       assert.deepEqual(readReviewedRefresh(manifestPath, manifestSha256), manifest);
       return { status: "prepared", synthetic: true, nativeGate: "not-run", nativeGateScope: "admission-no-chain-only", runtimeUrl,
         observerUrl: fixtureRoleUrl(url, fixtureObserverRole),
         markerPath: resolve(markerPath), manifestPath, manifestSha256, counts, reconciliation: receipt };
     });
+    preparationPhase = "receipt";
     writeFileSync(join(output, "receipt.json"), JSON.stringify(result, null, 2) + "\n", { flag: "wx", mode: 0o444 });
     console.log(JSON.stringify({ status: result.status, synthetic: true, nativeGate: result.nativeGate,
       nativeGateScope: result.nativeGateScope, receiptPath: join(output, "receipt.json") }));
+    preparationPhase = "cleanup";
   } finally { await feed?.close(); await summary?.close(); await runtime?.end(); await admin.end(); }
 }
-if (require.main === module) void main().catch(() => {
-  console.error("fixture preparation failed; no native PASS claimed");
+if (require.main === module) void main().catch((error: unknown) => {
+  console.error(JSON.stringify(successorPreparationFailure(preparationPhase, error)));
   process.exitCode = 1;
 });
