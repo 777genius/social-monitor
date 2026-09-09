@@ -11,7 +11,7 @@ import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { CryptoIdGenerator, tenantId, workspaceId, type Clock } from "@social-monitor/shared-kernel";
-import type { AgentRuntimeClientPort, ReaderSummaryPublicationPort } from "@social-monitor/summary/ports";
+import type { AgentRuntimeClientPort, ReaderSummaryPublicationPort, ReaderSummaryJobRepositoryPort } from "@social-monitor/summary/ports";
 import type { FeedItemReadRepositoryPort, PromotionFeedItemSnapshotRepositoryPort } from "@social-monitor/feed/ports";
 import { createReaderSummaryDailyCapturePublicationWiring } from "./reader-summary-daily-story-relation-verifier";
 import { assertRefreshManifest, refreshScope, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
@@ -23,6 +23,7 @@ import { withRefreshPublicationLocks, type RefreshSnapshotProtection } from "./r
 import { buildRefreshModelWiring, guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 import { createRefreshAssessmentReviewer, withRefreshAssessmentCompletion } from "./reader-summary-new-input-refresh-assessment";
 import { withRefreshSelectionAudit } from "./reader-summary-new-input-refresh-selection-audit";
+import { assertRefreshSuccessorCurrent, consumeRefreshSuccessor } from "./reader-summary-new-input-refresh-successor";
 
 export async function executeNewInputRefresh(input: {
   configuredInterests: ConfiguredInterestReaderPort;
@@ -48,6 +49,11 @@ export async function executeNewInputRefresh(input: {
       await readRefreshReconciliations(client, m.date), m.operation);
   const jobs = await readRefreshJobs(summary, m.date);
   const reconciled = await readRefreshReconciliations(summary, m.date);
+  if (m.successor) {
+    assertRefreshManifest(m, clock.now());
+    await assertRefreshSuccessorCurrent(summary, m, clock.now());
+    if (jobs.some((job) => job.operation === m.operation)) throw new Error("Refresh successor already consumed");
+  }
   const admissionState = reconcileRefresh(m, jobs, current, reconciled);
   if (admissionState === "published") {
     const countsAfter = await readRefreshCounts(summary, m.date);
@@ -95,7 +101,16 @@ export async function executeNewInputRefresh(input: {
       input.assertSource(); input.assertFences(); assertRefreshManifest(m, clock.now());
     },
   });
-  const request = await new RequestReaderSummaryUseCase(jobRepo,
+  const requestRepo: ReaderSummaryJobRepositoryPort = m.successor ? {
+    findById: (query) => jobRepo.findById(query),
+    findByIdempotencyKey: (query) => jobRepo.findByIdempotencyKey(query),
+    findRequested: (query) => jobRepo.findRequested(query),
+    claimForExecution: (command) => jobRepo.claimForExecution(command),
+    saveExecutionOutcome: (command) => jobRepo.saveExecutionOutcome(command),
+    save: (job) => consumeRefreshSuccessor({ summary, manifest: m, job, clock,
+      assertLocal: () => { input.assertSource(); input.assertFences(); } }),
+  } : jobRepo;
+  const request = await new RequestReaderSummaryUseCase(requestRepo,
     admission.queue, admission.quota, ids, clock).execute({
     tenantId: tenantId(m.tenantId), workspaceId: workspaceId(m.workspaceId), scope: { type: "workspace" },
     cadence: "daily", period, idempotencyKey: m.operation, correlationId: m.operation,
