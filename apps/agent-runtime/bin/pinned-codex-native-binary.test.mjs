@@ -83,7 +83,7 @@ test("installed pinned JS shim selects the same executable and forwards argument
     const argv = ["app-server", "--stdio", "-c", 'synthetic="two words"'];
     await evaluate((command, args, options) => {
       invocation = { command, args, options };
-      queueMicrotask(() => {
+      globalThis.queueMicrotask(() => {
         for (const handler of handlers.values()) handler();
         child.emit("exit", signal ? null : 17, signal);
       });
