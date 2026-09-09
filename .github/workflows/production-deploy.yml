@@ -299,13 +299,13 @@ jobs:
           npm run check:reader-summary-daily-canonical-recovery-production
           npm run check:reader-summary-publication-signal-regression
   verify_backend_shards:
-    name: Test affected backend shard ${{ matrix.shard }}/4
+    name: Test affected backend shard ${{ matrix.shard }}/5
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      matrix: {shard: [1, 2, 3, 4]}
+      matrix: {shard: [1, 2, 3, 4, 5]}
     # Keep jobs successful with skipped steps when backend is unchanged.
     # A skipped/cancelled/failed matrix job is never accepted by verify_backend.
     steps:
@@ -337,7 +337,7 @@ jobs:
           if [[ $base == 0000000000000000000000000000000000000000 ]]; then
             base=$(git rev-list --max-parents=0 "$GITHUB_SHA" | tail -n 1)
           fi
-          npm test -- --changedSince="$base" --shard=${{ matrix.shard }}/4
+          npm test -- --changedSince="$base" --shard=${{ matrix.shard }}/5
   verify_backend:
     name: Verify backend, collector and deploy control
     needs: [plan, verify_backend_shards]
