@@ -21,6 +21,9 @@ import {
 import { grantAndAssertReaderSummaryDailyProductionOwnerTopology } from
   "./lib/reader-summary-daily-production-owner-topology-postgres";
 
+import { endDailyCursorFixturePool, runDailyCursorFixtureWithCleanup } from
+  "./lib/reader-summary-daily-cursor-fixture-cleanup";
+
 const terminalRole = "social_monitor_reader_summary_daily_terminal";
 const schemaOwnerRole = "social_monitor_public_schema_owner";
 const definerRole = "social_monitor_reader_summary_daily_publication_definer";
@@ -138,7 +141,7 @@ const main = async (): Promise<void> => {
   let admin: PoolClient | undefined;
   let first: PoolClient | undefined;
   let second: PoolClient | undefined;
-  try {
+  await runDailyCursorFixtureWithCleanup(async () => {
     admin = await adminPool.connect();
     await admin.query(`ALTER SCHEMA public
         OWNER TO ${quoteIdentifier(migrationAdminRole)};
@@ -478,13 +481,18 @@ const main = async (): Promise<void> => {
       false &&
       retainedMigrationAdminSchemaPrivileges.rows[0]?.migration_admin_has_create === false,
     "daily execution cursor retained migration admin schema privileges");
-  } finally {
+  }, async () => {
     first?.release();
     second?.release();
     admin?.release();
-    await Promise.all([firstPool.end(), secondPool.end(), adminPool.end()]);
-  }
-  console.log("Reader summary daily execution cursor PostgreSQL 18 gate OK");
+    const ended = await Promise.allSettled(
+      [firstPool, secondPool, adminPool].map(endDailyCursorFixturePool),
+    );
+    const failures = ended.filter((result) => result.status === "rejected");
+    if (failures.length) throw new AggregateError(
+      failures.map((result) => result.reason), "Fixture pool cleanup failed",
+    );
+  });
 };
 const cleanup = async (): Promise<void> => {
   if (databaseCreated) {
@@ -503,7 +511,6 @@ const cleanup = async (): Promise<void> => {
   if (migrationAdminRoleCreated) {
     await server.query(`DROP ROLE ${quoteIdentifier(migrationAdminRole)}`);
   }
-  await server.end();
 };
 let schemaOwnerFixtureRoleActive = false;
 
@@ -972,9 +979,10 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-void main()
+void runDailyCursorFixtureWithCleanup(main, () =>
+  runDailyCursorFixtureWithCleanup(cleanup, () => server.end()))
+  .then(() => console.log("Reader summary daily execution cursor PostgreSQL 18 gate OK"))
   .catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(error);
     process.exitCode = 1;
-  })
-  .finally(cleanup);
+  });

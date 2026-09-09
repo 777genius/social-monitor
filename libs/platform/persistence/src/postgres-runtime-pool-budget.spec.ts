@@ -333,6 +333,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       )
       .sort();
 
+    // Cursor cleanup regression uses installed Pool lifecycle with a controlled wire client and an unused pool.
     expect(rawConstructions).toEqual(expectedSourceList(`
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:Pool
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:PrismaPg
@@ -408,6 +409,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts:Pool
       scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts:Pool
       scripts/lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli.ts:Pool
+      scripts/lib/reader-summary-daily-cursor-fixture-cleanup.spec.ts:Pool
+      scripts/lib/reader-summary-daily-cursor-fixture-cleanup.spec.ts:Pool
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts:Pool
       scripts/lib/reader-summary-production-day-scope.ts:Pool
       scripts/lib/reader-summary-promotion-v2-historical-postgres.ts:Pool
@@ -463,6 +466,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // existing clients and import only the PoolClient type. Inventory their
     // exact paths even though they construct no runtime pools.
     // The replay dispatch spec imports pg only to assert its throwing mock stays unused.
+    // Cursor cleanup helper imports only the Pool type; its spec exercises the installed Pool lifecycle.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts
@@ -512,6 +516,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-current-publication-bindings.ts
       scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts
       scripts/lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli.ts
+      scripts/lib/reader-summary-daily-cursor-fixture-cleanup.spec.ts
+      scripts/lib/reader-summary-daily-cursor-fixture-cleanup.ts
       scripts/lib/reader-summary-daily-production-owner-topology-postgres.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.spec.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts
