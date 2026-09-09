@@ -1,5 +1,5 @@
 import { classifyFeedPromotionEligibility } from "@social-monitor/feed/domain";
-import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
+import type { FeedItemReadRepositoryPort, PromotionFeedItemSnapshotResult } from "@social-monitor/feed/ports";
 import { FixedClock } from "@social-monitor/shared-kernel";
 import { fixture, review, cutoff, scope, query } from "../../../../test/support/promotion-content-assessment";
 import { SourceContentQualityPolicy, SourceContentSafetyPolicy } from "../../domain";
@@ -24,7 +24,7 @@ const setup = () => {
   const feedItems: FeedItemReadRepositoryPort = {
     list: jest.fn(async () => { throw new Error("Unexpected list"); }),
     findById: jest.fn(async () => { throw new Error("Unexpected lookup"); }),
-    readPromotionSnapshot: jest.fn(async () => ({ ok: true, candidates, supplementalItems: supplemental,
+    readPromotionSnapshot: jest.fn(async (): Promise<PromotionFeedItemSnapshotResult> => ({ ok: true, candidates, supplementalItems: supplemental,
       sourceContent, physicalRowsRead: 5, exhausted: true })),
   };
   const reviewBatch = jest.fn(async (requests: readonly SourceContentQualityReviewRequest[]) =>

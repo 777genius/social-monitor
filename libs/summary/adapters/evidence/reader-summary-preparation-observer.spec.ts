@@ -1,5 +1,5 @@
 import { classifyFeedPromotionEligibility } from "@social-monitor/feed/domain";
-import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
+import type { FeedItemReadRepositoryPort, PromotionFeedItemSnapshotResult } from "@social-monitor/feed/ports";
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import { preparationValue } from "@social-monitor/relevance/features/rank-feed-items/promotion-snapshot-preparation";
 import type { SourceContentQualityReviewRequest } from "@social-monitor/relevance/ports";
@@ -37,7 +37,7 @@ const setup = () => {
   const feedItems: FeedItemReadRepositoryPort = {
     list: jest.fn(async () => { throw new Error("Unexpected list"); }),
     findById: jest.fn(async () => { throw new Error("Unexpected lookup"); }),
-    readPromotionSnapshot: jest.fn(async () => ({ ok: true, exhausted: true, physicalRowsRead: 18,
+    readPromotionSnapshot: jest.fn(async (): Promise<PromotionFeedItemSnapshotResult> => ({ ok: true, exhausted: true, physicalRowsRead: 18,
       candidates: primary.map((item) => {
         const canonical = classifyFeedPromotionEligibility(item.toSnapshot());
         if (!canonical.eligible) throw new Error("Invalid synthetic metrics");
@@ -101,7 +101,7 @@ describe("reader summary preparation observation", () => {
     expect(ids(raw.supplemental)).toEqual([...Array.from({ length: 12 }, (_, i) => `github-${i + 1}`), "rss", "unsupported"]);
     expect(ids(raw.primary)).toEqual(ids(raw.ranked.primary));
     expect(ids(raw.supplemental)).toEqual(ids(raw.ranked.supplemental));
-    const ranked = await observed.execute.mock.results[0]!.value;
+    const ranked: Awaited<ReturnType<RankFeedItemsUseCase["execute"]>> = await observed.execute.mock.results[0]!.value;
     if (!ranked.ok) throw ranked.error;
     expect(ids(prepared.rankedInventory)).toEqual(ids(ranked.value.items));
     expect(prepared.rankingOrder).toEqual(ranked.value.items.map(({ feedItemId, rank }) => ({ feedItemId, rank })));
