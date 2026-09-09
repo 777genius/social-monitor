@@ -8,7 +8,7 @@ import { xCanonicalJson } from "./x-observation-digest";
 const enumPrefix = /^X_OBSERVATION_(?:MODE|STAGE|CURSOR_STATE|METRIC_STATE|IDENTITY_STATE|TARGET_STATE|FINISH_STATE|CANCEL_REASON|EFFECTS|FAILURE_CODE|OUTCOME_KIND|REASON_CODE)_/u;
 const enumFields = new Set(["stage", "outcome", "cursorState", "identityState", "reasonCode", "state", "code", "effects", "mode", "reason", "contentKind"]);
 function semantic(value: unknown, field = ""): unknown {
-  if (field === "stage" && value === 0) throw new Error("PROTOCOL_ERROR");
+  if (enumFields.has(field) && value === 0) throw new Error("PROTOCOL_ERROR");
   if (Array.isArray(value)) return value.map((item) => semantic(item));
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, semantic(item, key)]));
   // Public text and identifiers are data, even if they happen to spell an enum token.

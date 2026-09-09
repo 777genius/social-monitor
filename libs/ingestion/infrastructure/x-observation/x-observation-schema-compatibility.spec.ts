@@ -183,15 +183,55 @@ describe("legacy event schema compatibility", () => {
       Buffer.from([15]), Buffer.from([0x80]), Buffer.alloc(262145), Buffer.from(v3)]) parserOrProtocol(bad);
     good();
   });
-  it("rejects UNSPECIFIED enum values even when generated JSON omits their defaults", () => {
-    expect(decodeXEvent(bytes(0))).toMatchObject({ offer: { stage: "HOME" } });
-    const offer = wire.XObservationEvent.decode(bytes(0)).sendOffer!;
-    protocol(Buffer.from(wire.XObservationEvent.encode({ sendOffer: { ...offer, stage: 0 } }).finish()));
-    const outcome = wire.XObservationEvent.decode(bytes(2)).sendOutcome!;
-    protocol(Buffer.from(wire.XObservationEvent.encode({ sendOutcome: { ...outcome, stage: 0 } }).finish()));
-    const finished = wire.XObservationEvent.decode(bytes(3)).finished!;
-    protocol(Buffer.from(wire.XObservationEvent.encode({ finished: { ...finished, terminalError: { ...finished.terminalError!, stage: 0 } } }).finish()));
-    expect(decodeXEvent(bytes(1))).toMatchObject({ offer: { stage: "SEARCH", pageIndex: 0 } });
+  it("rejects defaults and unknown values for every enum while preserving scalar zeros and text", () => {
+    const encode = (event: wire.XObservationEvent) => Buffer.from(wire.XObservationEvent.encode(event).finish());
+    const withoutPacked = (raw: Buffer) => {
+      const outer = new BinaryReader(raw); expect(outer.uint32()).toBe(26);
+      const body = outer.bytes(), reader = new BinaryReader(body), kept: Uint8Array[] = [];
+      while (reader.pos < reader.len) {
+        const start = reader.pos, tag = reader.uint32(); reader.skip(tag & 7);
+        if (tag !== 42) kept.push(body.subarray(start, reader.pos));
+      }
+      return envelope(26, Buffer.concat(kept));
+    };
+    const good = () => {
+      expect(decodeXEvent(bytes(0))).toMatchObject({ offer: { stage: "HOME" } });
+      expect(decodeXEvent(bytes(1))).toMatchObject({ offer: { stage: "SEARCH", pageIndex: 0 } });
+      expect(decodeXEvent(bytes(2))).toMatchObject({ outcome: { encodedBytes: 0, finalChunk: false } });
+      expect(decodeXEvent(bytes(4))).toMatchObject({ outcome: { acquisition: { schemaVersion: 0 } } });
+      expect(decodeXEvent(withoutPacked(bytes(3)))).toEqual(decodeXEvent(bytes(3)));
+      expect(decodeXEvent(bytes(3))).toMatchObject({ finished: { terminalError: { sequence: 0, retryable: false } } });
+      expect(decodeXEvent(bytes(6))).toMatchObject({ outcome: { acquisition: { acquiredPosts: [
+        expect.objectContaining({ authorHandle: "", text: "UNRECOGNIZED 😀 X_OBSERVATION_STAGE_HOME",
+          metrics: expect.objectContaining({ likes: { state: "OBSERVED", valueDecimal: "0" } }) }), expect.anything(),
+      ] } } });
+    };
+    const cases: [number, string][] = [
+      [0, "sendOffer.stage"], [2, "sendOutcome.stage"], [2, "sendOutcome.outcome"], [2, "sendOutcome.cursorState"],
+      [3, "finished.state"], [3, "finished.terminalError.stage"], [3, "finished.terminalError.code"],
+      [3, "finished.terminalError.effects"], [6, "sendOutcome.acquisition.acquiredPosts.0.metrics.likes.state"],
+      [6, "sendOutcome.acquisition.acquiredPosts.0.contentKind"], [2, "sendOutcome.targetOutcomes.0.state"],
+      [2, "sendOutcome.targetOutcomes.0.reasonCode"], [2, "sendOutcome.reducedObservations.0.identityState"],
+      [3, "finished.targetOutcomeCounts.0.state"],
+    ];
+    for (const [index, path] of cases) {
+      good();
+      for (const value of [0, -1, 99]) {
+        const event = wire.XObservationEvent.decode(bytes(index));
+        if (event.sendOutcome) {
+          event.sendOutcome.targetOutcomes = [wire.XObservationTargetOutcome.fromJSON({ state: 1, reasonCode: 1 })];
+          event.sendOutcome.reducedObservations = [wire.XObservationReducedObservation.fromJSON({ identityState: 1 })];
+        }
+        if (event.finished) event.finished.targetOutcomeCounts = [wire.XObservationTargetOutcomeCount.fromJSON({ state: 1, count: 0 })];
+        expect(decodeXEvent(encode(event))).toHaveProperty(event.finished ? "finished" : event.sendOffer ? "offer" : "outcome");
+        const keys = path.split("."); let target: unknown = event;
+        for (const key of keys.slice(0, -1)) target = (target as Record<string, unknown>)[key];
+        (target as Record<string, unknown>)[keys[keys.length - 1]!] = value;
+        const raw = encode(event); protocol(raw);
+        if (event.finished) protocol(withoutPacked(raw));
+      }
+      good();
+    }
   });
   it("retains all structural chunk limits and resets after successful final merge", () => {
     const base = outcomeFixture(), { post } = acquisitionFixture();
