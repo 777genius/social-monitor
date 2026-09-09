@@ -20,7 +20,7 @@ class WireClient extends EventEmitter {
 }
 
 async function idleFixture(): Promise<{ pool: Pool; wire: WireClient }> {
-  const pool = new Pool({ Client: WireClient, max: 1 } as unknown as PoolConfig);
+  const pool = new Pool({ Client: WireClient, min: 0, max: 1 } as unknown as PoolConfig);
   const client = await pool.connect();
   client.release();
   expect(pool.idleCount).toBe(1);
@@ -64,7 +64,7 @@ describe("daily cursor fixture cleanup", () => {
   });
 
   it("ends an unused pool (partial setup failure)", async () => {
-    await expect(endDailyCursorFixturePool(new Pool())).resolves.toBeUndefined();
+    await expect(endDailyCursorFixturePool(new Pool({ min: 0, max: 1 }))).resolves.toBeUndefined();
   });
 
   it("does not swallow unexpected idle connection errors", async () => {
