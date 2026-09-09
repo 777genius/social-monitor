@@ -226,6 +226,8 @@ for (const [firstAccount, available] of [["account-b", false], ["account-a", fal
     const fixture = await createFixture(available);
     try {
       const request = agentTaskRequest(taskIdStartingWith(["account-a", "account-b"], firstAccount));
+      // Exercise schema handling after admission above the 20s cleanup reserve.
+      request.timeoutMs = 60_000;
       request.context.purpose = "social_monitor.relevance.assess_source_content.v1";
       request.task.outputSchemaName = "social_monitor_source_content_quality_review";
       request.task.controls.outputSchemaName = "social_monitor_source_content_quality_review";
@@ -234,7 +236,7 @@ for (const [firstAccount, available] of [["account-b", false], ["account-a", fal
       const execution = await execFileAsync(process.execPath, [runtimeBridgePath,
         "--provider", "codex", "--input", fixture.requestPath, "--format", "result-json",
         "--state-root", fixture.stateRoot, "--codex-binary", fixture.codexBinaryPath,
-        "--model", "gpt-5.6-sol", "--timeout-ms", "15000"], {
+        "--model", "gpt-5.6-sol", "--timeout-ms", "60000"], {
         cwd: fixture.sandboxProject, maxBuffer: 1024 * 1024,
         env: { PATH: process.env.PATH, HOME: process.env.HOME, LANG: "C.UTF-8",
           AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: fixture.poolRoot,
@@ -267,6 +269,8 @@ for (const invalid of ["missing-name", "wrong-name", "conflicting-name", "missin
     const fixture = await createFixture();
     try {
       const request = agentTaskRequest("sandbox-invalid-schema");
+      // Exercise schema handling after admission above the 20s cleanup reserve.
+      request.timeoutMs = 60_000;
       request.context.purpose = "social_monitor.relevance.assess_source_content.v1";
       request.task.outputSchemaName = "social_monitor_source_content_quality_review";
       request.task.controls.outputSchema = promotionResponseSchema;
