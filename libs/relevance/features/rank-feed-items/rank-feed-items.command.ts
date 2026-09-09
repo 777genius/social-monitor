@@ -1,5 +1,7 @@
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
+import type { PromotionSnapshotPreparationObserver } from "./promotion-snapshot-preparation";
+
 export type RankFeedItemsCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
@@ -13,5 +15,6 @@ export type RankFeedItemsCommand = {
   readonly publishedAtOrAfter?: Date;
   readonly publishedBefore?: Date;
   readonly promotionAssessmentExecution?: { readonly deadlineAtMs: number; readonly signal?: AbortSignal };
+  readonly observePromotionPreparation?: PromotionSnapshotPreparationObserver;
   readonly rankingProfile?: "reader_post_promotion";
 };
