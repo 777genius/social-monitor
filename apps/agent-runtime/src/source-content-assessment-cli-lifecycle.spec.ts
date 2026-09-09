@@ -3,10 +3,12 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-executor";
 import type { SubscriptionRuntimeInstallationIdentity } from "./subscription-runtime-installation";
-import { assessmentRequest, syntheticInstallation } from "./source-content-assessment-runtime.spec-support";
+import { assessmentRequest as shortAssessmentRequest, syntheticInstallation } from "./source-content-assessment-runtime.spec-support";
 
 jest.mock("node:child_process", () => ({ spawn: jest.fn() }));
 jest.mock("node:fs/promises", () => ({ mkdtemp: jest.fn(), rm: jest.fn(), writeFile: jest.fn() }));
+
+const assessmentRequest = (id?: string) => ({ ...shortAssessmentRequest(id), timeoutMs: 60_000 });
 
 const children: SyntheticChild[] = [];
 class SyntheticChild extends EventEmitter {
@@ -118,7 +120,7 @@ it.each(["timeout", "signal"])("rejects output after %s without retry", async (s
   const result = run(assessmentRequest());
   const child = await waitForChild(1);
   if (scenario === "timeout") {
-    await jest.advanceTimersByTimeAsync(100);
+    await jest.advanceTimersByTimeAsync(40_000);
     expect(child.kill).toHaveBeenCalledWith("SIGTERM");
   }
   child.close(null, "SIGTERM");
@@ -144,9 +146,9 @@ it("bounds cleanup when a child ignores SIGTERM and never closes", async () => {
   const run = makeRun();
   const result = run(assessmentRequest());
   const child = await waitForChild(1);
-  await jest.advanceTimersByTimeAsync(1_100);
+  await jest.advanceTimersByTimeAsync(61_000);
   expect(await result).toMatchObject({ status: "failed", failure: { code: "agent_runtime.cli_timeout", retryable: false } });
-  expect(child.kill.mock.calls).toEqual([["SIGTERM"], ["SIGKILL"]]);
+  expect(child.kill.mock.calls).toEqual([["SIGTERM"], ["SIGTERM"], ["SIGKILL"]]);
   expect(child.stdout.destroy).toHaveBeenCalledTimes(1);
   expect(child.stderr.destroy).toHaveBeenCalledTimes(1);
   expect(child.unref).toHaveBeenCalledTimes(1);
@@ -190,11 +192,47 @@ it("cleanup exceptions cannot replace the timeout failure", async () => {
   const child = await waitForChild(1);
   child.kill.mockImplementation(() => { throw new Error("Synthetic signal failure"); });
   child.stdout.destroy.mockImplementation(() => { throw new Error("Synthetic cleanup failure"); });
-  await jest.advanceTimersByTimeAsync(1_100);
+  await jest.advanceTimersByTimeAsync(61_000);
   expect(await result).toMatchObject({ status: "failed", failure: {
     code: "agent_runtime.cli_timeout", retryable: false,
   } });
   expect(child.stderr.destroy).toHaveBeenCalled();
   expect(child.unref).toHaveBeenCalled();
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+
+it.each([100, 20_000])("assessment budget %i cannot start provider work", async (timeoutMs) => {
+  const result = await makeRun()({ ...assessmentRequest(), timeoutMs });
+  expect(result).toMatchObject({ status: "failed", failure: { code: "agent_runtime.cli_timeout", retryable: false } });
+  expect(result.executionAttestation).toBeUndefined();
+  expect(spawn).not.toHaveBeenCalled();
+});
+
+it("delivers bounded progress to the existing logger before close, with parent-owned correlation", async () => {
+  const result = makeRun()(assessmentRequest());
+  const child = await waitForChild(1);
+  const record = { version: 1, phase: "provider.task", transition: "started", lastObservedPhase: "setup",
+    elapsedMs: 123, remainingMs: 55_000, providerOutcome: "unknown", tenantId: "synthetic-child-untrusted",
+    metadata: { text: "synthetic-private-text" } };
+  child.stderr.emit("data", Buffer.from("assessment-prog"));
+  child.stderr.emit("data", Buffer.from(`ress-v1 ${JSON.stringify(record)}\n`));
+  expect(logger.info).toHaveBeenCalledWith("agent runtime assessment progress", expect.objectContaining({
+    phase: "provider.task", transition: "started", correlationId: assessmentRequest().correlationId,
+    requestId: assessmentRequest().requestId, providerOutcome: "unknown",
+  }));
+  expect(JSON.stringify(logger.info.mock.calls)).not.toContain("synthetic-private-text");
+  expect(JSON.stringify(logger.info.mock.calls)).not.toContain("synthetic-child-untrusted");
+  logger.info.mockImplementationOnce(() => { throw new Error("Synthetic logger failure"); });
+  expect(() => child.stderr.emit("data", Buffer.from(`assessment-progress-v1 ${JSON.stringify(record)}\n`))).not.toThrow();
+  child.close(); expect((await result).status).toBe("completed");
+});
+
+it("late clean successful stdout after T-minus20 remains an unattested timeout", async () => {
+  jest.useFakeTimers();
+  const result = makeRun()(assessmentRequest()); const child = await waitForChild(1);
+  await jest.advanceTimersByTimeAsync(40_000); child.close();
+  expect(await result).toMatchObject({ status: "failed", failure: { code: "agent_runtime.cli_timeout", retryable: false } });
+  expect((await result).executionAttestation).toBeUndefined();
   expect(jest.getTimerCount()).toBe(0);
 });

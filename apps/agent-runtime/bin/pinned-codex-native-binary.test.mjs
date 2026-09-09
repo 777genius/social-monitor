@@ -7,6 +7,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createAssessmentCliLifecycle } from "./assessment-cli-lifecycle.mjs";
+import { createAssessmentProgress } from "./assessment-cli-progress.mjs";
 import { resolvePinnedCodexBinaryPath } from "./pinned-codex-native-binary.mjs";
 import { resolve as resolveProbe } from "../../../ops/deploy/support/reader-promotion-v2-canary-probe-loader.mjs";
 
@@ -144,7 +146,13 @@ test("every wrapper factory uses the native default and preserves explicit synth
     for (const override of [undefined, "/synthetic/fake-codex.mjs"]) {
       const captured = [];
       const isPool = lane.startsWith("pool") || lane === "assessment";
+      // Use the actual helpers without owning process signal handlers.
+      const lifecycle = createAssessmentCliLifecycle({ signals: new EventEmitter() });
+      lifecycle.configure(lane === "assessment", 60_000);
+      const progress = createAssessmentProgress({ write: () => {},
+        now: () => globalThis.performance.now(), remaining: lifecycle.remaining });
       const dependencies = {
+        lifecycle, progress,
         admission: { profile: { provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high", retryMode: "never" },
           canonicalRequest: { runId: "synthetic-native-contract" } },
         authPool: isPool ? { accounts: [{ id: "fixture-account" }] } : undefined,
@@ -172,14 +180,17 @@ test("every wrapper factory uses the native default and preserves explicit synth
       };
       const create = new Function(...Object.keys(dependencies), `${body}\nreturn createStrictCodexWorker;`)(...Object.values(dependencies));
       const env = { LANG: "C.UTF-8" };
-      const worker = create({ provider: "codex", stateRootDir: "/synthetic/state", cwd: "/synthetic/task",
-        codexBinaryPath: override, env });
-      if (isPool && !lane.endsWith("canary")) await worker.run({ runId: "synthetic-native-contract" });
-      assert.equal(captured.length, 1, lane);
-      assert.equal(captured[0].codexBinaryPath, override ?? resolvePinnedCodexBinaryPath(), lane);
-      assert.equal(captured[0].sourceEnv, env, lane);
-      assert.equal(captured[0].model, "gpt-5.6-sol", lane);
-      assert.equal(captured[0].reasoningEffort, "high", lane);
+      assert.equal(await lifecycle.runCli(async () => {
+        const worker = create({ provider: "codex", stateRootDir: "/synthetic/state", cwd: "/synthetic/task",
+          codexBinaryPath: override, env });
+        if (isPool && !lane.endsWith("canary")) await worker.run({ runId: "synthetic-native-contract" });
+        assert.equal(captured.length, 1, lane);
+        assert.equal(captured[0].codexBinaryPath, override ?? resolvePinnedCodexBinaryPath(), lane);
+        assert.equal(captured[0].sourceEnv, env, lane);
+        assert.equal(captured[0].model, "gpt-5.6-sol", lane);
+        assert.equal(captured[0].reasoningEffort, "high", lane);
+        return 0;
+      }), 0);
     }
   }
 });

@@ -32,6 +32,8 @@ import {
 
 const launcherName = "run-codex-subscription-runtime-agent-task.mjs";
 const dependencyNames = [
+  "assessment-cli-lifecycle.mjs",
+  "assessment-cli-progress.mjs",
   "pinned-codex-native-binary.mjs",
   "subscription-runtime-failure-details.mjs",
   "codex-worker-cli-usage.mjs",
