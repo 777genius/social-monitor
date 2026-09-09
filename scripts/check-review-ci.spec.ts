@@ -57,6 +57,9 @@ describe("backend unit whole-corpus CI sharding", () => {
     ["    strategy:", "    if: false\n    strategy:"],
     ["        shard: [1, 2, 3, 4]", "        shard: [1, 2, 3, 4]\n        exclude: [{shard: 4}]"],
     ["Backend build and unit tests", "Renamed backend check"],
+    ["          fetch-depth: 0", "          fetch-depth: 1"],
+    ["run: npm run check:reader-paired-experiment", "run: true"],
+    ["run: npm run check:reader-paired-experiment", "run: npm run check:reader-paired-experiment || true"],
     ["run: npm run build", "run: true"],
     ["run: npm run check:subscription-runtime-usage-contract", "run: true"],
     ["run: npm run check:subscription-runtime-auth-pool-e2e", "run: true"],
@@ -115,4 +118,28 @@ describe("subscription runtime deterministic sandbox CI allowlist", () => {
     expect(checkSandboxCommand(command))
       .toEqual([expect.stringContaining("only the reviewed deterministic sandbox tests")]);
   });
+});
+
+const packageScripts = JSON.parse(readFileSync("package.json", "utf8")).scripts;
+const commandHelper = checker.slice(
+  checker.indexOf("const pairedSelectorCommandViolations ="),
+  checker.indexOf("violations.push(...pairedSelectorCommandViolations(packageJson.scripts));"),
+);
+const checkCommand = (scripts: Record<string, string>): string[] => runInNewContext(
+  `${commandHelper}\npairedSelectorCommandViolations(scripts)`, { scripts },
+);
+
+describe("offline paired selector npm gate", () => {
+  it("accepts the bounded full inventory", () => expect(checkCommand(packageScripts)).toEqual([]));
+  it.each([
+    ["--test-concurrency=1", "--test-concurrency=2"],
+    ["--max-old-space-size=1536", "--max-old-space-size=4096"],
+    ["--timeout-ms 180000", "--timeout-ms 900000"],
+    ["*.test.cjs", "full-selector.test.cjs"],
+  ])("rejects command mutation %s", (before, after) => {
+    const command = packageScripts["check:reader-paired-experiment"] as string;
+    expect(command).toContain(before);
+    expect(checkCommand({ "check:reader-paired-experiment": command.replace(before, after) })).not.toEqual([]);
+  });
+  it("rejects a missing gate", () => expect(checkCommand({})).not.toEqual([]));
 });
