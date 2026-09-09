@@ -6,10 +6,13 @@ import { metricRefreshEvidencePath } from "@social-monitor/ingestion/features/re
 
 import { retainedMetricRenewalGrant } from "@social-monitor/ingestion/domain/policies/retained-metric-renewal-grant";
 
-export type MetricJournalNamespace = "original" | "renewal";
+import { retainedMetricDailyGrant, type MetricDailyDate } from "@social-monitor/ingestion/domain/policies/retained-metric-daily-grant";
+export type MetricJournalNamespace = "original" | "renewal" | MetricDailyDate;
 export function metricJournalPath(namespace: MetricJournalNamespace = "original"): string {
   if (namespace === "original") return metricRefreshEvidencePath;
   if (namespace === "renewal") return retainedMetricRenewalGrant.evidencePath;
+  const daily = retainedMetricDailyGrant(namespace);
+  if (daily) return daily.evidencePath;
   throw new Error("Unknown metric journal namespace");
 }
 
