@@ -20,7 +20,7 @@ git -C "$REPO" config user.name 'Deploy Contract Test'
 git -C "$REPO" config user.email deploy-contract@example.invalid
 git -C "$REPO" remote add origin "$ORIGIN"
 install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
-  "$REPO/apps/x-collector" "$REPO/ops/deploy" "$REPO/ops/recovery" \
+  "$REPO/apps/x-collector" "$REPO/ops/deploy" "$REPO/ops/recovery" "$REPO/scripts/sql" \
   "$REPO/prisma/migrations"/{20260716170000_reader_summary_fail_closed_publication,20260731153000_reader_summary_production_recovery_original_cutoff_authority} \
   "$STATE" "$STAGING"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
@@ -41,13 +41,13 @@ cp "$SCRIPT_DIR"/{production-transition-b0-host-control.sh,production-transition
   chmod 0644 "$REPO/ops/deploy"/{production-transition-b0-host-control.sh,production-transition-canonical-lib.sh}
 printf '#!/usr/bin/env bash\nexit 70\n' > "$REPO/ops/deploy/production-transition-admission.sh"; \
   chmod 0755 "$REPO/ops/deploy/production-transition-admission.sh"
-cp "$SCRIPT_DIR"/{reader-summary-publication-deploy-lib.sh,reader-summary-publication-system-dsn-bootstrap-lib.sh,reader-summary-publication-prebootstrap-lib.sh,reader-summary-publication-catalog-query-lib.sh,reader-summary-publication-pre-migration.sql,reader-summary-publication-tenant-ownership.sql,reader-summary-publication-post-migration.sql,reader-summary-original-cutoff-failed-migration-preflight.sql} \
+cp "$SCRIPT_DIR"/{reader-summary-publication-deploy-lib.sh,reader-summary-publication-system-dsn-bootstrap-lib.sh,reader-summary-publication-prebootstrap-lib.sh,reader-summary-publication-catalog-query-lib.sh,reader-summary-publication-pre-migration.sql,reader-summary-publication-post-migration.sql,reader-summary-original-cutoff-failed-migration-preflight.sql} \
   "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/verify-postgres-backup-coverage.sh" \
   "$SCRIPT_DIR/prune-pre-autodeploy-backups.sh" \
   "$BACKUP_LIBRARY" \
   "$REPO/ops/deploy/"
-cp "$ENTRYPOINT" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/../../scripts/sql/reader-summary-publication-tenant-ownership.sql" "$REPO/scripts/sql/"; cp "$ENTRYPOINT" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" "$REPO/ops/deploy/"
 for migration in 20260716170000_reader_summary_fail_closed_publication 20260731153000_reader_summary_production_recovery_original_cutoff_authority; do
   cp "$SCRIPT_DIR/../../prisma/migrations/$migration/migration.sql" "$REPO/prisma/migrations/$migration/"
@@ -57,7 +57,7 @@ cp -R "$SCRIPT_DIR/production-runtime" "$REPO/ops/deploy/"
 rm -f \
   "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
 printf 'base\n' > "$REPO/README.md"
-git -C "$REPO" add README.md ops/deploy prisma/migrations
+git -C "$REPO" add README.md ops/deploy prisma/migrations scripts/sql
 git -C "$REPO" commit -qm 'test: base'
 git -C "$REPO" push -q -u origin main
 BASE_SHA=$(git -C "$REPO" rev-parse HEAD)

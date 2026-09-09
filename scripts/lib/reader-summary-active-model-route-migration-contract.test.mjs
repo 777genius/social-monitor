@@ -26,7 +26,7 @@ const historicalMigrationDigests = Object.freeze({
 const sql = readFileSync(migrationPath, "utf8");
 const preBootstrapSql = readFileSync(preBootstrapPath, "utf8").replace(
   "\\ir reader-summary-publication-tenant-ownership.sql", () => readFileSync(
-    "ops/deploy/reader-summary-publication-tenant-ownership.sql", "utf8"));
+    "scripts/sql/reader-summary-publication-tenant-ownership.sql", "utf8"));
 const postBootstrapSql = readFileSync(postBootstrapPath, "utf8");
 
 test("historical plan and receipt migrations remain byte-identical", () => {
