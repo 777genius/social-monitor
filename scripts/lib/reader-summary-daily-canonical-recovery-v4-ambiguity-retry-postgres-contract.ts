@@ -7,6 +7,7 @@ import type {
 } from "./reader-summary-daily-canonical-recovery-v4";
 import { assertPgCatalogOnlySecurityDefinerSearchPaths } from "./reader-summary-daily-canonical-recovery-v4-postgres-contract";
 import type { RecoveryPostgresClient } from "./reader-summary-production-recovery-postgres-contract";
+import { readPublicationBootstrapSql } from "./reader-summary-publication-bootstrap-sql";
 const schema =
   "prisma/migrations/20260804130000_reader_summary_daily_v4_ambiguity_retry_schema/migration.sql";
 const transitions =
@@ -54,7 +55,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
   const periodGuardSql = readFileSync(resolve(periodGuard), "utf8");
   const backupContract = readFileSync(resolve(backupRestoreContract), "utf8");
   const tenantGuard = readFileSync(resolve(tenantGuardContract), "utf8");
-  const preBootstrapSql = readFileSync(resolve(preMigrationBootstrap), "utf8");
+  const preBootstrapSql = readPublicationBootstrapSql(preMigrationBootstrap);
   const postBootstrapSql = readFileSync(resolve(postMigrationBootstrap), "utf8");
   const sql = `${schemaSql}\n${transitionSql}\n${consumerSql}\n${evidenceSql}\n${periodGuardSql}`;
   const authorization = exactFunctionBody(
