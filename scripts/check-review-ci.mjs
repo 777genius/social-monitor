@@ -334,6 +334,12 @@ if (
   );
 }
 
+const pairedSelectorCommandViolations = (scripts) =>
+  scripts?.["check:reader-paired-experiment"] ===
+  "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1536 -- node --test --test-concurrency=1 scripts/evals/reader-paired-experiment/*.test.cjs"
+    ? [] : ["package.json: paired selector tests must remain serial, heap- and timeout-bounded with the full CJS inventory"];
+violations.push(...pairedSelectorCommandViolations(packageJson.scripts));
+
 const findJob = (source, jobId) => source.match(
   new RegExp(
     `^  ${jobId}:\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9_]*:|(?![\\s\\S]))`,
@@ -391,6 +397,8 @@ const backendUnitShardingViolations = (source) => {
     "",
     "      - name: Check out the review commit",
     "        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10",
+    "        with:",
+    "          fetch-depth: 0",
     "",
     "      - name: Set up Node.js",
     "        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
@@ -403,6 +411,9 @@ const backendUnitShardingViolations = (source) => {
     "",
     "      - name: Generate the pinned Prisma client",
     "        run: npm run prisma:generate",
+    "",
+    "      - name: Verify offline paired selector replay",
+    "        run: npm run check:reader-paired-experiment",
     "",
     "      - name: Build backend packages",
     "        run: npm run build",
