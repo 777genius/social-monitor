@@ -1,3 +1,4 @@
+import { acceptedFixtureReaderHeadline } from "../../test-fixtures/accepted-reader-headline";
 import type {
   SummaryEvidenceContentQuality,
   SummaryEvidenceSelection,
@@ -86,6 +87,9 @@ export const evidenceSelection = (
   };
   return {
     ...selection,
+    selectedEvidence: selection.selectedEvidence.map((item) => acceptedFixtureReaderHeadline(item, {
+      tenantId: "tenant-reader-summary-publication", workspaceId: "workspace-reader-summary-publication",
+    })),
     editorialSlate: publicationEditorialSlate(
       selection,
       ["feed-publication-1"],
@@ -164,6 +168,9 @@ export const dailyEvidenceSelection = (
       : ["feed-publication-1", "feed-publication-2"];
   return {
     ...selection,
+    selectedEvidence: selection.selectedEvidence.map((item) => acceptedFixtureReaderHeadline(item, {
+      tenantId: "tenant-reader-summary-publication", workspaceId: "workspace-reader-summary-publication",
+    })),
     editorialSlate: publicationEditorialSlate(
       selection,
       orderedCandidateIds,

@@ -87,6 +87,8 @@ final class RepeatedSignalApiDto {
 
 final class TopReadApiDto {
   const TopReadApiDto({
+    this.displayHeadline,
+    this.capturedSource,
     this.storyClusterId,
     this.cardKind,
     this.relationId,
@@ -117,6 +119,8 @@ final class TopReadApiDto {
     this.previewMedia,
   });
 
+  final Object? displayHeadline;
+  final Object? capturedSource;
   final String? storyClusterId;
   final String? cardKind;
   final String? relationId;

@@ -116,7 +116,17 @@ class _TopPostRowState extends State<_TopPostRow> {
                   horizontal: AppSpacing.sm,
                   vertical: widget.dense ? AppSpacing.sm + 2 : AppSpacing.md,
                 ),
-                child: _buildRow(context, metrics),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildRow(context, metrics),
+                    ReaderSummaryCapturedSource(
+                      key: ObjectKey(widget.item),
+                      source: widget.item.capturedSource,
+                      historicalText: widget.item.displayHeadline == null ? widget.item.title : null,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

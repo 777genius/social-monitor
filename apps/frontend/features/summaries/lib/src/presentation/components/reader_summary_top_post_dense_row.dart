@@ -32,11 +32,9 @@ Widget _denseTopPostRow(
       _TopPostProviderTile(providerKey: item.providerKey),
       const SizedBox(width: AppSpacing.sm + 4),
       Expanded(
-        child: ReaderSummarySourceText(
+        child: Text(
           item.title,
           key: ObjectKey(item),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: textTheme.bodyMedium?.copyWith(
             fontWeight: isGitHubTrendingBreakout(item)
                 ? FontWeight.w900

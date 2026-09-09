@@ -1,3 +1,5 @@
+import { readerPostDisplayHeadline } from "./reader-post-display-headline";
+import { immutableDisplayValue } from "./reader-post-display-identity";
 import type {
   SummaryEvidenceContentQuality,
   SummaryEvidenceConversationAncestor,
@@ -213,6 +215,7 @@ export const admittedSummaryEvidenceItem = (
   title: item.title,
   bodyPreview: item.bodyPreview,
   sourceText: item.sourceText,
+  readerHeadline: immutableDisplayValue(readerPostDisplayHeadline(item)),
   authorHandle: item.authorHandle,
   publishedAt: new Date(item.publishedAt.getTime()),
   observedAt: new Date(item.observedAt.getTime()),

@@ -42,6 +42,7 @@ const assessmentOutput = { reviews: [{
   decision: "promote", confidence: 0.9, qualityScore: 0.9,
   interestRelevanceScore: 0.9, engagementIntegrityScore: 0.9,
   flags: [], reason: "Captured diagnostic observation",
+  readerHeadline: { status: "unavailable", reasonCode: "insufficient_support" },
   evidence: [{ field: "title", start: 0, end: assessmentRequest.title.length,
     quote: assessmentRequest.title }], resolvedSoftFlags: [],
 }] };

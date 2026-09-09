@@ -252,7 +252,9 @@ describe("ReaderSummaryPublicationPolicy Promotion V2 authority", () => {
       }),
     ).toMatchObject({
       status: "rejected",
-      reasonCodes: ["top_read_ineligible_source"],
+      reasonCodes: _name === "extra"
+        ? ["editorial_quality", "top_read_ineligible_source"]
+        : ["top_read_ineligible_source"],
     });
   });
 

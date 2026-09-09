@@ -3,6 +3,8 @@ import type { SourceContentQualityPolicy } from "../../domain";
 import type { SourceContentQualityReviewerPort, SourceContentQualityReviewRequest,
   SourceContentQualityReviewResult } from "../../ports";
 import { assessedPromotionVerdict, pendingPromotionAssessment } from "./promotion-assessment-verdict";
+import { unavailablePromotionHeadline, type PromotionReaderHeadline } from "../../domain/promotion-reader-headline";
+import { assessPromotionReaderHeadline } from "./promotion-reader-headline-assessment";
 
 export const PROMOTION_ASSESSMENT_BOUNDS = Object.freeze({
   candidates: 200, batchCandidates: 8, batchBytes: 64_000,
@@ -28,16 +30,18 @@ export const assessPromotionContent = async (input: {
   }
   const verdicts = new Map(input.requests.map((request) => [request.candidateId,
     pendingPromotionAssessment(request.deterministic, "budget_exhausted")]));
+  const readerHeadlines = new Map<string, PromotionReaderHeadline>(input.requests.map((request) =>
+    [request.candidateId, unavailablePromotionHeadline("not_assessed")]));
   const requests = [...input.requests].sort((a, b) =>
     a.candidateId < b.candidateId ? -1 : a.candidateId > b.candidateId ? 1 : 0);
   if (new Set(requests.map(({ candidateId }) => candidateId)).size !== requests.length) {
     for (const request of requests) verdicts.set(request.candidateId,
       pendingPromotionAssessment(request.deterministic, "duplicate_candidate"));
-    return verdicts;
+    return { verdicts, readerHeadlines };
   }
   const startedAt = input.clock.now().getTime();
   const deadline = Math.min(startedAt + totalTimeoutMs, input.execution?.deadlineAtMs ?? Infinity);
-  if (!Number.isSafeInteger(deadline) || deadline <= startedAt || input.execution?.signal?.aborted) return verdicts;
+  if (!Number.isSafeInteger(deadline) || deadline <= startedAt || input.execution?.signal?.aborted) return { verdicts, readerHeadlines };
   const controller = new AbortController();
   const abort = () => controller.abort();
   input.execution?.signal?.addEventListener("abort", abort, { once: true });
@@ -78,13 +82,18 @@ export const assessPromotionContent = async (input: {
             : assessedPromotionVerdict(request,
                 timelyResponse.find((review) => review.candidateId === request.candidateId), input.policy);
         verdicts.set(request.candidateId, verdict);
+        readerHeadlines.set(request.candidateId,
+          malformed || timelyResponse === undefined || verdict.reason.startsWith("promotion_assessment_pending:")
+            ? unavailablePromotionHeadline("invalid_assessment")
+            : assessPromotionReaderHeadline(request,
+                timelyResponse.find((review) => review.candidateId === request.candidateId)));
       }
     }
   } finally {
     clearTimeout(timer);
     input.execution?.signal?.removeEventListener("abort", abort);
   }
-  return verdicts;
+  return { verdicts, readerHeadlines };
 };
 
 const reviewWithinDeadline = async (

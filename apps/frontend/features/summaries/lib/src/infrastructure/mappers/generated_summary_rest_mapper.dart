@@ -36,6 +36,12 @@ final class GeneratedSummaryRestMapper {
       content: _readerSummaryContentMapper.map(
         dto.readerBrief,
         binding: ReaderSummaryArtifactBinding(
+          tenantId: dto.tenantId,
+          workspaceId: dto.workspaceId,
+          feedItemIdsByCitation: {for (final citation in dto.citations)
+            citation.citationId: citation.feedItemId},
+          sourceItemIdsByCitation: {for (final citation in dto.citations)
+            citation.citationId: citation.sourceItemId},
           artifactId: dto.readerSummaryId,
           sourceWindowId: dto.sourceWindow.windowId,
           periodStart: dto.period.startedAt,

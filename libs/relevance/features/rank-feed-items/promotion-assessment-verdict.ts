@@ -1,7 +1,8 @@
 import type { SourceContentQualityPolicy, SourceContentQualityVerdict } from "../../domain";
 import { finalizeVerdict } from "../../domain/source-content-quality-verdict";
-import type { PromotionEvidenceReference, SourceContentQualityReviewRequest,
+import type { SourceContentQualityReviewRequest,
   SourceContentQualityReviewResult } from "../../ports";
+import { validPromotionReferences as validReferences } from "./promotion-evidence-reference";
 
 export const pendingPromotionAssessment = (
   verdict: SourceContentQualityVerdict, reason: string,
@@ -49,19 +50,6 @@ export const assessedPromotionVerdict = (
 
 const unitScore = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
-
-const validReferences = (
-  request: SourceContentQualityReviewRequest, refs: readonly PromotionEvidenceReference[],
-): boolean => Array.isArray(refs) && refs.length > 0 && refs.length <= 8 &&
-  refs.every((ref: PromotionEvidenceReference) => {
-    if (ref === null || typeof ref !== "object" ||
-        (ref.field !== "title" && ref.field !== "bodyPreview")) return false;
-    const text = request[ref.field] ?? "";
-    return Number.isSafeInteger(ref.start) && Number.isSafeInteger(ref.end) &&
-      ref.start >= 0 && ref.end > ref.start && ref.end <= text.length &&
-      typeof ref.quote === "string" && ref.quote.trim().length > 0 &&
-      ref.quote === text.slice(ref.start, ref.end);
-  });
 
 const reviewFlags = new Set<string>([
   "crypto_promo", "engagement_bait", "generic_question", "low_information_density",

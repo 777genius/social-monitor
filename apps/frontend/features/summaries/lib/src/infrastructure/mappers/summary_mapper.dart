@@ -8,6 +8,7 @@ import '../../domain/value_objects/reader_summary_provider_family.dart';
 import '../../domain/value_objects/summary_generation_status.dart';
 import '../../domain/value_objects/summary_id.dart';
 import '../api/summary_api_dto.dart';
+import 'reader_display_source_mapper.dart';
 
 part 'summary_mapper_coverage.dart';
 part 'summary_mapper_reader_content.dart';

@@ -1,3 +1,4 @@
+import { validReaderDisplayRestBinding } from "./reader-summary-display-rest-binding";
 import { readerPostPromotionCardFields } from "../../domain/entities/top-read";
 import { canonicalPromotionPayload } from
   "../../domain/services/reader-post-promotion-attestation";
@@ -265,6 +266,7 @@ const buildReaderCardRestAuthority = (
         attestation.candidateId !== candidateId ||
         attestation.canonicalIdentity !== canonicalIdentity ||
         attestation.placement !== placement ||
+        !validReaderDisplayRestBinding(item, attestation, view) ||
         attestation.slot !== restPromotionSlot(attestation, slot);
     })) return undefined;
     return {
@@ -335,6 +337,7 @@ const promotionAttestationView = (
     decision,
     citationIds: [...attestation.citationIds],
     ...(v2 === undefined ? {} : {
+      ...(v2.displayHeadline === undefined ? {} : { displayHeadline: v2.displayHeadline }),
       storyClusterId: v2.storyClusterId,
       scoreComponents: { ...v2.scoreComponents },
       reasonCodes: [...v2.reasonCodes],

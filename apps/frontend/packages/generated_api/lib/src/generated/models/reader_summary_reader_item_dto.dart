@@ -4,6 +4,8 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'reader_summary_captured_source_dto.dart';
+import 'reader_summary_display_headline_dto.dart';
 import 'reader_summary_preview_media_dto.dart';
 import 'reader_summary_promotion_attestation_dto.dart';
 import 'reader_summary_provider_metric_dto.dart';
@@ -30,6 +32,8 @@ class ReaderSummaryReaderItemDto {
     required this.whyImportant,
     required this.whyNow,
     this.canonicalUrl,
+    this.capturedSource,
+    this.displayHeadline,
     this.previewMedia,
     this.promotionAttestation,
     this.publishedAt,
@@ -39,9 +43,11 @@ class ReaderSummaryReaderItemDto {
       _$ReaderSummaryReaderItemDtoFromJson(json);
 
   final String? canonicalUrl;
+  final ReaderSummaryCapturedSourceDto? capturedSource;
   final List<String> citationIds;
   final ReaderSummaryReaderItemConfidenceDto confidence;
   final List<String> confirmedProviderKeys;
+  final ReaderSummaryDisplayHeadlineDto? displayHeadline;
   final List<String> matchedInterestIds;
   final List<String> matchedRules;
   final ReaderSummaryPreviewMediaDto? previewMedia;

@@ -31,6 +31,7 @@ import { resolvePromotionInterests } from "./resolve-promotion-interests";
 
 import { assessPromotionContent } from "./promotion-content-assessment";
 import { canCompeteForPromotionAssessment } from "./promotion-assessment-eligibility";
+import { unavailablePromotionHeadline, type PromotionReaderHeadline } from "../../domain/promotion-reader-headline";
 
 const PROMOTION_SOURCE_TEXT_SAFETY_CAP = 256_000;
 
@@ -133,6 +134,7 @@ export const rankPromotionSnapshot = async (params: {
       providerMetadata,
     });
     const projectedItem = {
+      readerHeadline: unavailablePromotionHeadline("not_assessed") as PromotionReaderHeadline,
       feedItemId: item.id,
       sourceItemId: item.sourceItemId,
       sourceBindingId: item.sourceBindingId,
@@ -203,7 +205,8 @@ export const rankPromotionSnapshot = async (params: {
     execution: command.promotionAssessmentExecution,
     reviewer: params.qualityReviewer, policy: params.qualityPolicy, clock: params.clock });
   for (const [index, item] of projected.entries()) {
-    const quality = assessed.get(item.feedItemId);
+    const quality = assessed.verdicts.get(item.feedItemId);
+    item.readerHeadline = assessed.readerHeadlines.get(item.feedItemId) ?? unavailablePromotionHeadline("not_assessed");
     if (quality !== undefined) item.contentQuality = presentSourceContentQuality(quality);
     item.score = Math.min(0.85,
       feedPromotionMetricStrength(snapshot.candidates[index]!.canonical.metrics) / 10,

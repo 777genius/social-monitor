@@ -72,11 +72,9 @@ class _TopPostTextBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ReaderSummarySourceText(
+        Text(
           item.title,
           key: ObjectKey(item),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
           style: textTheme.bodyMedium?.copyWith(
             fontWeight: isGitHubTrendingBreakout(item)
                 ? FontWeight.w900

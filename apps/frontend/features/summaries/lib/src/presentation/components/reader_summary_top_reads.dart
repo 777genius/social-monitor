@@ -3,10 +3,10 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
+import 'reader_summary_captured_source.dart';
 import 'reader_summary_confirmation.dart';
 import 'reader_summary_reason_text.dart';
 import 'reader_summary_sections.dart';
-import 'reader_summary_source_text.dart';
 import 'reader_summary_top_read_details.dart';
 import 'reader_summary_top_read_leading.dart';
 
@@ -141,16 +141,18 @@ class _TopReadRow extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ReaderSummarySourceText(
+                        Text(
                           item.title,
                           key: ObjectKey(item),
-                          maxLines: compact ? 2 : 1,
-                          overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.labelLarge
                               ?.copyWith(
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0,
                               ),
+                        ),
+                        ReaderSummaryCapturedSource(
+                          source: item.capturedSource,
+                          historicalText: item.displayHeadline == null ? item.title : null,
                         ),
                         const SizedBox(height: AppSpacing.xs),
                         Wrap(

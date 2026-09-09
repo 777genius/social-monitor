@@ -84,7 +84,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       throw ranked.error;
     }
     const expandedRankedItems = filterItemsByReaderSummaryPeriod(
-      ranked.value.items.map((item) => mapRankedItem(item, query.observedThrough)),
+      ranked.value.items.map((item) => mapRankedItem(item, query.observedThrough, params)),
       params.period,
       params.timestampPolicy,
     );

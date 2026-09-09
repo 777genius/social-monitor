@@ -204,11 +204,20 @@ void main() {
             );
             await tester.pumpAndSettle();
           }
-          expect(find.text('Source text'), findsWidgets);
-          expect(find.textContaining('Atlas'), findsNothing);
-          await tester.tap(find.widgetWithText(AppButton, 'Source text').first);
-          await tester.pumpAndSettle();
+          expect(find.text('Captured source'), findsWidgets);
           expect(find.text(sourceContextText), findsOneWidget);
+          final capturedSource =
+              find.widgetWithText(AppButton, 'Captured source').first;
+          await tester.scrollUntilVisible(
+            capturedSource.hitTestable(),
+            200,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pumpAndSettle();
+          expect(capturedSource.hitTestable(), findsOneWidget);
+          await tester.tap(capturedSource);
+          await tester.pumpAndSettle();
+          expect(find.widgetWithText(SelectableText, sourceContextText), findsOneWidget);
           expect(opened, isNull);
           expect(tester.takeException(), isNull);
         },
