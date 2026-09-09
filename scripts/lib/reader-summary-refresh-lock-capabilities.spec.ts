@@ -108,6 +108,6 @@ describe("reconciliation bootstrap replay parity", () => {
     expect(readFileSync("ops/deploy/production-backend-classification-lib.sh", "utf8"))
       .toContain(ownershipPath);
     expect(readFileSync("ops/deploy/social-monitor-production-deploy.sh", "utf8"))
-      .toMatch(/^  scripts$/m);
+      .toMatch(/^ {2}scripts$/m);
   });
 });
