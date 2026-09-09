@@ -22,10 +22,13 @@ import { createRefreshAdmission } from "./reader-summary-new-input-refresh-admis
 import { withRefreshPublicationLocks, type RefreshSnapshotProtection } from "./reader-summary-new-input-refresh-publication-lock";
 import { buildRefreshModelWiring, guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 import { createRefreshAssessmentReviewer, withRefreshAssessmentCompletion } from "./reader-summary-new-input-refresh-assessment";
+import { RefreshPairedExport } from "./reader-summary-new-input-refresh-paired-export";
+import { refreshCaptureModelControls } from "./reader-summary-new-input-refresh-model";
 import { withRefreshSelectionAudit } from "./reader-summary-new-input-refresh-selection-audit";
 import { assertRefreshSuccessorCurrent, consumeRefreshSuccessor } from "./reader-summary-new-input-refresh-successor";
 
-export async function executeNewInputRefresh(input: {
+type RefreshExecutionInput = {
+  capturePath?: string;
   configuredInterests: ConfiguredInterestReaderPort;
   manifest: RefreshManifest; summary: PrismaSummaryConnection;
   feed: FeedItemReadRepositoryPort & PromotionFeedItemSnapshotRepositoryPort;
@@ -33,7 +36,30 @@ export async function executeNewInputRefresh(input: {
   runtime: AgentRuntimeClientPort;
   assertFences(): void; assertSource(): void; assertRuntime(): Promise<void>;
   record(event: unknown): void;
-}) {
+};
+
+export async function executeNewInputRefresh(input: RefreshExecutionInput) {
+  if (input.capturePath === undefined) return executeRefresh(input);
+  const capture = new RefreshPairedExport(input.capturePath, input.manifest, () => input.clock.now().getTime());
+  let completed = false;
+  try {
+    const result = await executeRefresh(input, capture);
+    completed = result.status === "published";
+    return result;
+  } finally {
+    // A capture failure is reported independently; never turns a consumed job
+    // into a retry or changes its publication policy.
+    try {
+      const result = await capture.finish(completed);
+      try { input.record({ status: "paired_capture", path: result.path, complete: result.complete,
+        failures: result.failures, unresolvedCandidateCount: result.unresolvedCandidateCount }); } catch { /* no retry */ }
+    } catch {
+      try { input.record({ status: "paired_capture", complete: false, failures: ["capture_finalization_failed"] }); } catch { /* no retry */ }
+    }
+  }
+}
+
+async function executeRefresh(input: RefreshExecutionInput, capture?: RefreshPairedExport) {
   const { manifest: m, summary, feed, clock } = input;
   input.assertFences(); input.assertSource();
   const countsBefore = await readRefreshCounts(summary, m.date);
@@ -129,15 +155,27 @@ export async function executeNewInputRefresh(input: {
   });
   const runtime = guardedRefreshRuntime({ delegate: input.runtime, manifest: m, now: () => clock.now().getTime(),
     assertLocal: () => { input.assertSource(); guard.assertLocal(); },
-    assertCurrent: async () => { await input.assertRuntime(); await guard.assertCurrent(); }, record: input.record });
+    assertCurrent: async () => { await input.assertRuntime(); await guard.assertCurrent(); }, record: input.record,
+    ...(capture === undefined ? {} : { capture: capture.model, captureFailure: () => capture.fail("model_callback_failed") }) });
   const sink = { record: (attestation: unknown) => {
     try { runtime.assertUsable(); input.record({ status: "verified_attestation", attestation }); }
     catch (error) { guard.invalidate(); throw error; }
   } };
-  const assessment = createRefreshAssessmentReviewer({ env: input.env, runtime, clock, canonicalEvidence });
+  const assessment = createRefreshAssessmentReviewer({ env: input.env, runtime, clock, canonicalEvidence,
+    ...(capture === undefined ? {} : { capture: capture.assessment, captureCanonical: (value) => capture.canonicalBindings(value) }) });
+  if (capture) {
+    try {
+      capture.controls({ manifest: m, policy: policy.toSnapshot(), model: refreshCaptureModelControls(input.env),
+        canonicalEvidence, assessmentTiming: assessment.promotionTiming });
+    } catch { capture.fail("controls_capture_failed"); }
+    capture.assessmentCompletion(() => assessment.assertCaptureComplete());
+  }
   const canonical = createReaderSummaryDailyCapturePublicationWiring({
     qualityReviewer: assessment,
-    replay: null, configuredInterests: input.configuredInterests, feedItems: feed, summaryClient: summary, clock, attestationSink: sink,
+    replay: null, configuredInterests: capture?.interests(input.configuredInterests) ?? input.configuredInterests,
+    feedItems: capture?.feed(feed) ?? feed, summaryClient: summary, clock, attestationSink: sink,
+    ...(capture === undefined ? {} : { preparationObserver: capture.observer, relationCapture: capture.relations,
+      rankCommandCapture: { captured: (value) => capture.rankCommand(value), failed: () => capture.fail("rank_command_callback_failed") } }),
     summaryModelMode: "agent-runtime", env: input.env, agentRuntimeClient: runtime,
     storyRelationVerifierGuard: runtime,
   });
@@ -164,7 +202,7 @@ export async function executeNewInputRefresh(input: {
       save: async () => { throw new Error("Refresh policy mutation is prohibited"); },
     },
     withRefreshSelectionAudit({ selector: guard.selector(withRefreshAssessmentCompletion(
-      canonical.evidenceSelector, assessment, assessmentCandidateCount)), manifest: m,
+      (capture?.selector(canonical.evidenceSelector) ?? canonical.evidenceSelector), assessment, assessmentCandidateCount)), manifest: m,
       jobId: request.value.readerSummaryJobId, record: input.record, invalidate: () => guard.invalidate() }),
     model.model, publication, ids, clock,
     readerSummaryPromotionControl(new ReaderSummaryPromotionMetricsRecorder(new InMemoryMetricsRecorder())),
