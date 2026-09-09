@@ -55,3 +55,53 @@ describe("backend unit whole-corpus CI sharding", () => {
     expect(check(workflow.replace(before, after))).not.toEqual([]);
   });
 });
+
+const reviewedSandboxTests = [
+  "apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs",
+  "apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs",
+  "apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs",
+  "apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs",
+  "apps/agent-runtime/bin/subscription-runtime-failure-details.test.mjs",
+  "apps/agent-runtime/bin/pinned-codex-native-binary.test.mjs",
+  "apps/agent-runtime/src/source-content-assessment-pool.test.mjs",
+];
+const sandboxPrefix = "node --test --test-concurrency=1";
+const sandboxCommand = `${sandboxPrefix} ${reviewedSandboxTests.join(" ")}`;
+const sandboxContract = checker.slice(
+  checker.indexOf("const subscriptionRuntimeAuthPoolE2eCommand ="),
+  checker.indexOf("const dailyCursorPostgres18Command ="),
+);
+const sandboxAdmission = checker.slice(
+  checker.indexOf('if (\n  packageJson.scripts?.["check:subscription-runtime-auth-pool-e2e"]'),
+  checker.indexOf("for (const command of [rollingReceiptTest, rollingRunTest])"),
+);
+const checkSandboxCommand = (command: unknown): string[] => runInNewContext(
+  `${sandboxContract}\n${sandboxAdmission}\nviolations`,
+  { packageJson: { scripts: { "check:subscription-runtime-auth-pool-e2e": command } }, violations: [] },
+);
+
+describe("subscription runtime deterministic sandbox CI allowlist", () => {
+  it("accepts exactly the seven reviewed sandbox tests", () => {
+    expect(checkSandboxCommand(sandboxCommand)).toEqual([]);
+  });
+  it.each(reviewedSandboxTests)("rejects omission of %s", (omitted) => {
+    expect(checkSandboxCommand(`${sandboxPrefix} ${reviewedSandboxTests.filter((path) => path !== omitted).join(" ")}`))
+      .toEqual([expect.stringContaining("only the reviewed deterministic sandbox tests")]);
+  });
+  it.each([
+    undefined,
+    "",
+    `${sandboxPrefix} apps/agent-runtime/bin/*.test.mjs`,
+    `${sandboxCommand} apps/agent-runtime/bin/unreviewed.test.mjs`,
+    `${sandboxCommand} ${reviewedSandboxTests[0]}`,
+    `${sandboxCommand} && node unreviewed.mjs`,
+    sandboxCommand.replace("--test-concurrency=1", "--test-concurrency=2"),
+    sandboxCommand.replace("--test-concurrency=1 ", ""),
+    `${sandboxPrefix} ${[...reviewedSandboxTests].reverse().join(" ")}`,
+    sandboxCommand.replace("pinned-codex-native-binary.test.mjs", "*.test.mjs"),
+    sandboxCommand.replace("source-content-assessment-pool.test.mjs", "*.test.mjs"),
+  ])("rejects changed sandbox command %s", (command) => {
+    expect(checkSandboxCommand(command))
+      .toEqual([expect.stringContaining("only the reviewed deterministic sandbox tests")]);
+  });
+});
