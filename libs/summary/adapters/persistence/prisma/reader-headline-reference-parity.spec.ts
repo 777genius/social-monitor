@@ -1,7 +1,7 @@
 import { assessPromotionReaderHeadline } from "@social-monitor/relevance/features/rank-feed-items/promotion-reader-headline-assessment";
 import { headlineRequest, headlineReview, reference } from "../../../../../test/support/promotion-reader-headline";
 import { ReaderSummaryArtifact } from "../../../domain";
-import type { SummaryHeadlineReference, SummaryReaderHeadline } from "../../../domain/value-objects/summary-reader-headline";
+import type { ReaderCapturedSource, ReaderDisplayHeadlineSeal, SummaryHeadlineReference, SummaryReaderHeadline } from "../../../domain/value-objects/summary-reader-headline";
 import { readerPostDisplayHeadline } from "../../../domain/services/reader-post-display-headline";
 import { canonicalPromotionPayload, promotionPayloadDigest } from "../../../domain/services/reader-post-promotion-attestation";
 import { readerDisplayPublicationFindings } from "../../../domain/policies/reader-summary-display-publication";
@@ -35,11 +35,25 @@ const envelope = ({ lead, request, proposal }: Scenario) => {
 const load = (artifact: ReaderSummaryArtifact, payload = serializeReaderSummaryArtifact(artifact)) =>
   ReaderSummaryArtifact.rehydrate(normalizeReaderSummaryArtifactPayload(payload, headlineFallback(artifact)));
 
+// Typed mutable slots in the serialized fixture, retaining all other stored fields.
+type StoredHeadlinePayload = Record<string, unknown> & {
+  content: { topReads: [{
+    title: string;
+    capturedSource: ReaderCapturedSource;
+    displayHeadline: SummaryReaderHeadline;
+  }] };
+  promotionAttestations: [{
+    digest: string;
+    canonicalPayload: string;
+    displayHeadline: ReaderDisplayHeadlineSeal;
+  }];
+};
+
 // Recreate a stored accepted envelope with consistent canonical bytes. This tests
 // structural revalidation, rather than merely detecting an unrecomputed digest.
 const persistedEnvelope = (s: Scenario) => {
   const artifact = headlineArtifact(s.lead);
-  const payload = structuredClone(serializeReaderSummaryArtifact(artifact)) as Record<string, any>;
+  const payload = structuredClone(serializeReaderSummaryArtifact(artifact)) as StoredHeadlinePayload;
   const card = payload.content.topReads[0];
   card.title = s.proposal.text;
   card.displayHeadline = envelope(s).readerHeadline;

@@ -19,7 +19,7 @@ describe("headline annotation never participates in quality or ranking", () => {
       const actual = await run(items, { reviewBatch });
       expect(reviewBatch).toHaveBeenCalledTimes(1);
       const strip = (value: typeof actual) => JSON.stringify({ ...value,
-        items: value.items.map(({ readerHeadline: _headline, ...item }) => item) });
+        items: value.items.map(({ readerHeadline: _headline, ...item }) => { void _headline; return item; }) });
       expect(strip(actual)).toBe(strip(baseline));
       expect(actual.items.map((i) => i.readerHeadline?.status)).toEqual([state === "accepted" ? "accepted" : "unavailable",
         state === "accepted" ? "accepted" : "unavailable"]);

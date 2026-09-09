@@ -17,12 +17,12 @@ export const readerCapturedSourceDigest = (source: ReaderCapturedSource): string
   promotionPayloadDigest(canonicalPromotionPayload(source));
 
 export const isDisplayRoundTripText = (text: string): boolean =>
-  !/\u0000|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(text);
+  !text.includes("\u0000") && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(text);
 
 export const isConciseDisplayText = (text: unknown): text is string =>
   typeof text === "string" && text.length > 0 && text.length <= 119 &&
   text === text.trim() && isDisplayRoundTripText(text) &&
-  !/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069<>]|https?:\/\/|\.\.\.|…/u.test(text) &&
+  !hasHeadlineControlCharacter(text) && !/[\u2028\u2029\u202a-\u202e\u2066-\u2069<>]|https?:\/\/|\.\.\.|…/u.test(text) &&
   isReaderFacingTopReadTitle(text);
 
 /** Rechecks provenance, never generates text or infers semantic approval. */
@@ -130,3 +130,9 @@ const wholeSubjectToken = (source: ReaderCapturedSource, ref: SummaryHeadlineRef
   const continuation = /[\p{L}\p{M}\p{N}\p{Pc}\p{Pd}\p{Cf}.+\u2212'’]/u;
   return !continuation.test(before) && !continuation.test(after);
 };
+
+const hasHeadlineControlCharacter = (text: string): boolean =>
+  [...text].some((character) => {
+    const code = character.codePointAt(0)!;
+    return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+  });

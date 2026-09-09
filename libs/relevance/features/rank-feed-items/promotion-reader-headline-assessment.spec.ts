@@ -70,6 +70,7 @@ describe("candidate-bound reader headline structure (synthetic semantic judgment
     const request = headlineRequest();
     const review = headlineReview(request);
     const { headlineInput: _input, readerHeadline: _proposal, ...legacy } = review.assessment;
+    void _input; void _proposal;
     expect(assess(request, { ...review, assessment: legacy })).toEqual({ status: "unavailable", reasonCode: "not_assessed" });
     expect(assess(request, undefined).status).toBe("unavailable");
     expect(assess(request, { ...review, assessment: { ...review.assessment, headlineInput: undefined } }).status).toBe("unavailable");

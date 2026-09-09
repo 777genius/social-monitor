@@ -43,9 +43,15 @@ export const unavailablePromotionHeadline = (
 
 // JSON persistence must not silently repair digest-bound UTF-16 material.
 export const isRoundTrippingHeadlineText = (text: string): boolean =>
-  !/\u0000|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(text);
+  !text.includes("\u0000") && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(text);
 
 export const isConcisePromotionHeadline = (text: unknown): text is string =>
   typeof text === "string" && text.length >= 1 && text.length <= 119 &&
   text === text.trim() && isRoundTrippingHeadlineText(text) &&
-  !/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069<>]|https?:\/\/|\.\.\.|…/u.test(text);
+  !hasHeadlineControlCharacter(text) && !/[\u2028\u2029\u202a-\u202e\u2066-\u2069<>]|https?:\/\/|\.\.\.|…/u.test(text);
+
+const hasHeadlineControlCharacter = (text: string): boolean =>
+  [...text].some((character) => {
+    const code = character.codePointAt(0)!;
+    return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+  });

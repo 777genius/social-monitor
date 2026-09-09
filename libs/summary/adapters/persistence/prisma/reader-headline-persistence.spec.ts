@@ -7,6 +7,25 @@ import { serializeReaderSummaryArtifact } from "./prisma-reader-summary-json";
 import { normalizeReaderSummaryArtifactPayload } from "./prisma-reader-summary-artifact-payload";
 import { normalizePromotionAttestations } from "./prisma-reader-summary-promotion-attestation";
 
+import type { ReaderCapturedSource, SummaryReaderHeadline } from "../../../domain/value-objects/summary-reader-headline";
+
+type Mutable<T> = { -readonly [K in keyof T]: Mutable<T[K]> };
+// Only the stored fixture fields mutated below; all other serialized fields stay intact.
+type StoredHeadlinePayload = Record<string, unknown> & {
+  content: { topReads: [{
+    title: string;
+    capturedSource: Mutable<Required<ReaderCapturedSource>>;
+    displayHeadline: Mutable<Extract<SummaryReaderHeadline, { status: "accepted" }>>;
+    promotionCandidateId: string;
+    editorialSlot: number;
+  }] };
+  promotionAttestations: [{
+    digest: string;
+    canonicalPayload: string;
+    displayHeadline: { capturedSourceDigest: string };
+  }];
+};
+
 describe("headline and captured source persistence authority", () => {
   it("roundtrips exact Unicode, separate full source and canonical seal without reassessment", () => {
     const lead = assessedSource("Orion 🚀 cafe\u0301 研究。 Final correction: simulation only.",
@@ -24,12 +43,12 @@ describe("headline and captured source persistence authority", () => {
   it.each(["title", "source tail", "qualifier", "candidate", "scope", "slot", "digest"])(
     "rejects mutated %s at the persisted boundary", (field) => {
       const artifact = headlineArtifact();
-      const payload = structuredClone(serializeReaderSummaryArtifact(artifact)) as Record<string, any>;
+      const payload = structuredClone(serializeReaderSummaryArtifact(artifact)) as StoredHeadlinePayload;
       const card = payload.content.topReads[0];
       const seal = payload.promotionAttestations[0];
       if (field === "title") card.title += " changed";
       if (field === "source tail") card.capturedSource.body += " Retraction.";
-      if (field === "qualifier") card.displayHeadline.qualifications[0].phrase = "preliminary";
+      if (field === "qualifier") card.displayHeadline.qualifications[0]!.phrase = "preliminary";
       if (field === "candidate") card.promotionCandidateId = "wrong";
       if (field === "scope") card.displayHeadline.binding.tenantId = "wrong";
       if (field === "slot") card.editorialSlot = 2;
@@ -40,7 +59,7 @@ describe("headline and captured source persistence authority", () => {
 
   it("does not gain authority by recomputing a digest after changing captured text", () => {
     const artifact = headlineArtifact();
-    const payload = structuredClone(serializeReaderSummaryArtifact(artifact)) as Record<string, any>;
+    const payload = structuredClone(serializeReaderSummaryArtifact(artifact)) as StoredHeadlinePayload;
     payload.content.topReads[0].capturedSource.body += " Full retraction.";
     const seal = payload.promotionAttestations[0];
     seal.displayHeadline.capturedSourceDigest = promotionPayloadDigest(canonicalPromotionPayload(payload.content.topReads[0].capturedSource));
