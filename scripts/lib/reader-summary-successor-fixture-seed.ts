@@ -20,7 +20,8 @@ export function fixtureJob(id: string, operation: string, at: Date): ReaderSumma
     period: refreshPeriod(fixtureDate), idempotencyKey: operation, requestedAt: at });
 }
 export function fixturePriorPayload() {
-  const running = fixtureJob(fixtureId(1), "fabricated:canonical-prior", fixturePriorTime)
+  const requestedAt = new Date(`${fixtureDate}T23:00:00.000Z`);
+  const running = fixtureJob(fixtureId(1), "fabricated:canonical-prior", requestedAt)
     .start({ startedAt: fixturePriorTime });
   const period = refreshPeriod(fixtureDate);
   const evidence: SummaryEvidenceSelection = {
