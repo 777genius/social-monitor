@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { readerSummaryNewInputRefreshPrefix } from
   "@social-monitor/summary/application/contracts/reader-summary-new-input-refresh-authority";
 
+import { assertRefreshSuccessorGrant, refreshSuccessorIdentity, type RefreshSuccessorGrant } from
+  "./reader-summary-new-input-refresh-successor-grant";
+
 export const refreshScope = Object.freeze({
   tenantId: "00000000-0000-7000-8000-000000006101",
   workspaceId: "00000000-0000-7000-8000-000000006102",
@@ -33,6 +36,7 @@ export type RefreshManifest = Readonly<{
   fenceAuthority: Readonly<{ global: string; dates: string; fences: string }>;
   model: "gpt-5.6-sol"; reasoningEffort: "high";
   operation: string;
+  successor?: RefreshSuccessorGrant;
 }>;
 export const refreshHash = (value: unknown): string => createHash("sha256")
   .update(canonical(value)).digest("hex");
@@ -43,7 +47,9 @@ export const refreshKeyPrefix = (date: string): string =>
 // Cutoff, capture time and path are intentionally absent: recapture cannot buy
 // another generation. Authority includes all metric rows, including observedAt.
 export const refreshOperation = (m: Omit<RefreshManifest, "operation">): string =>
-  refreshKeyPrefix(m.date) + refreshHash({
+  m.successor !== undefined
+    ? refreshKeyPrefix(m.date) + refreshHash(refreshSuccessorIdentity(m.successor))
+    : refreshKeyPrefix(m.date) + refreshHash({
     scope: [m.tenantId, m.workspaceId, m.startedAt, m.endedAt, m.timezone],
     prior: m.prior, input: m.authority,
     source: m.sourceSha256, deployed: m.deployedSourceSha256, generation: m.generationSha256,
@@ -51,6 +57,7 @@ export const refreshOperation = (m: Omit<RefreshManifest, "operation">): string 
   });
 
 export function assertRefreshManifest(m: RefreshManifest, now: Date, fresh = true): void {
+  if (m.successor !== undefined) assertRefreshSuccessorGrant(m, now, { assertOriginal: assertRefreshManifest, hash: refreshHash });
   if (m.format !== "reader-summary-seven-day-new-input-v1" ||
       m.tenantId !== refreshScope.tenantId || m.workspaceId !== refreshScope.workspaceId ||
       !refreshDates.includes(m.date) || m.timezone !== "UTC" ||

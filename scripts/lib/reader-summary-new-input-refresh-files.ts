@@ -1,3 +1,4 @@
+import type { RefreshSuccessorGrant } from "./reader-summary-new-input-refresh-successor-grant";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { refreshBytesHash, refreshHash, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
@@ -62,12 +63,18 @@ export function refreshSourceSha256(root = process.cwd()): string {
   return refreshHash({ format: "reader-summary-source-inventory-v2", files });
 }
 export function readReviewedRefresh(path: string, sha256: string): RefreshManifest {
+  return readReviewedRefreshValue(path, sha256) as RefreshManifest;
+}
+export function readReviewedRefreshSuccessor(path: string, sha256: string): RefreshSuccessorGrant {
+  return readReviewedRefreshValue(path, sha256) as RefreshSuccessorGrant;
+}
+function readReviewedRefreshValue(path: string, sha256: string): unknown {
   const absolute = resolve(path);
   if (realpathSync(absolute) !== absolute || !lstatSync(absolute).isFile() ||
       lstatSync(absolute).nlink !== 1 || (lstatSync(absolute).mode & 0o222) !== 0) throw new Error("Refresh manifest must be a regular immutable file");
   const bytes = readFileSync(absolute);
   if (refreshBytesHash(bytes) !== sha256) throw new Error("Reviewed refresh manifest hash differs");
-  return JSON.parse(bytes.toString("utf8")) as RefreshManifest;
+  return JSON.parse(bytes.toString("utf8")) as unknown;
 }
 export type RefreshFenceAuthority = Readonly<{
   globalLock: string; dateDirectory: string; fenceDirectory: string;

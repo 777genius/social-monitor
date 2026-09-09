@@ -41,7 +41,7 @@ cp "$SCRIPT_DIR"/{production-transition-b0-host-control.sh,production-transition
   chmod 0644 "$REPO/ops/deploy"/{production-transition-b0-host-control.sh,production-transition-canonical-lib.sh}
 printf '#!/usr/bin/env bash\nexit 70\n' > "$REPO/ops/deploy/production-transition-admission.sh"; \
   chmod 0755 "$REPO/ops/deploy/production-transition-admission.sh"
-cp "$SCRIPT_DIR"/{reader-summary-publication-deploy-lib.sh,reader-summary-publication-system-dsn-bootstrap-lib.sh,reader-summary-publication-prebootstrap-lib.sh,reader-summary-publication-catalog-query-lib.sh,reader-summary-publication-pre-migration.sql,reader-summary-publication-post-migration.sql,reader-summary-original-cutoff-failed-migration-preflight.sql} \
+cp "$SCRIPT_DIR"/{reader-summary-publication-deploy-lib.sh,reader-summary-publication-system-dsn-bootstrap-lib.sh,reader-summary-publication-prebootstrap-lib.sh,reader-summary-publication-catalog-query-lib.sh,reader-summary-publication-pre-migration.sql,reader-summary-publication-tenant-ownership.sql,reader-summary-publication-post-migration.sql,reader-summary-original-cutoff-failed-migration-preflight.sql} \
   "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/verify-postgres-backup-coverage.sh" \
   "$SCRIPT_DIR/prune-pre-autodeploy-backups.sh" \

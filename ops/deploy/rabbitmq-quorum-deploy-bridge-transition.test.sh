@@ -68,15 +68,18 @@ assert_reviewed_upload_delta() {
   local bridge=$1 candidate=$2 timeout_line fallback_line scoped_timeout scoped_fallback
   cmp -s "$bridge" "$candidate" && return 0
   [[ $(sha256sum "$candidate" | awk '{print $1}') == \
-    b15e93451395568d49c2a1ef9c9ae86ace1320ef18e68ea42b2b90d9963529da ]] || return 1
+    bd2461878446e9955bdbfc1c48b56d53431249f8a7827514f324eff972e84d31 ]] || return 1
   timeout_line='    timeout 180 tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted"'
   fallback_line='    tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted"'
   scoped_timeout="    (umask 022; ${timeout_line#    })"
   scoped_fallback="    (umask 022; ${fallback_line#    })"
   [[ $(grep -Fxc "$scoped_timeout" "$candidate") == 1 && \
      $(grep -Fxc "$scoped_fallback" "$candidate") == 1 ]] || return 1
-  # Only the two reviewed extraction lines may differ from immutable W.
+  # PR340 extracts tenant ownership SQL: admit exactly its BACKEND_PATHS
+  # entry plus the two previously reviewed extraction lines against immutable W.
+  [[ $(grep -Fxc '  ops/deploy/reader-summary-publication-tenant-ownership.sql' "$candidate") == 1 ]] || return 1
   cmp -s "$bridge" <(sed \
+    -e '\|^  ops/deploy/reader-summary-publication-tenant-ownership.sql$|d' \
     -e "s|^$scoped_timeout\$|$timeout_line|" \
     -e "s|^$scoped_fallback\$|$fallback_line|" "$candidate")
 }
@@ -99,15 +102,18 @@ assert_rolling_entrypoint_bridge() {
   current_file=$FIXTURE/rolling-current.sh
   git -C "$PROJECT_ROOT" cat-file blob "$bridge_blob" > "$bridge_file"
   git -C "$PROJECT_ROOT" cat-file blob "$current_blob" > "$current_file"
-  # Keep W==HEAD unless the exact reviewed uploader delta is proven.
+  # Keep W==HEAD unless the exact reviewed asset/uploader delta is proven.
   [[ $bridge_blob == "$current_blob" ]] || assert_reviewed_upload_delta "$bridge_file" "$current_file" || {
     echo 'rolling entrypoint bridge has an unreviewed current-release delta' >&2
     exit 1
   }
   assert_reviewed_upload_delta "$bridge_file" "$bridge_file"
-  for variant in extra-edit missing-timeout missing-fallback wrong-umask; do
+  for variant in extra-edit missing-timeout missing-fallback wrong-umask missing-asset duplicate-asset wrong-asset; do
     cp "$current_file" "$FIXTURE/$variant.sh"
     case $variant in
+      missing-asset) sed '\|^  ops/deploy/reader-summary-publication-tenant-ownership.sql$|d' "$current_file" > "$FIXTURE/$variant.sh" ;;
+      duplicate-asset) printf '  ops/deploy/reader-summary-publication-tenant-ownership.sql\n' >> "$FIXTURE/$variant.sh" ;;
+      wrong-asset) sed 's/reader-summary-publication-tenant-ownership.sql/reader-summary-publication-unreviewed.sql/' "$current_file" > "$FIXTURE/$variant.sh" ;;
       extra-edit) printf '\n# unreviewed edit\n' >> "$FIXTURE/$variant.sh" ;;
       missing-timeout) sed '/(umask 022; timeout /d' "$current_file" > "$FIXTURE/$variant.sh" ;;
       missing-fallback) sed '/(umask 022; tar /d' "$current_file" > "$FIXTURE/$variant.sh" ;;
@@ -167,7 +173,7 @@ assert_real_bridge_target_assets() {
         expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
         alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
         reviewed_digest=cc869266046dbe9edc590e83944e93bab8ebdf19e8ef66f4917c896bbd48fcde
-        current_release_digest=b15e93451395568d49c2a1ef9c9ae86ace1320ef18e68ea42b2b90d9963529da
+        current_release_digest=bd2461878446e9955bdbfc1c48b56d53431249f8a7827514f324eff972e84d31
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
@@ -261,8 +267,10 @@ assert_current_backend_classification_asset() {
     echo 'current backend classification library mode drifted' >&2
     exit 1
   }
+  # Relative to 16c1f3c2, only the extracted tenant-ownership SQL path is added
+  # to the migrate-service classification; all other bytes remain frozen.
   [[ $(sha256sum "$actual_real" | awk '{print $1}') == \
-     4895b28caf0c3c906f107a3bd74df4cd046cf77fd61a7aeae003a15203db3fff ]] || {
+     5203c2df53b5cda83554b4d31d28d998b4540fe2181e3dab212e7995574b87b4 ]] || {
     echo 'current backend classification library digest drifted' >&2
     exit 1
   }
