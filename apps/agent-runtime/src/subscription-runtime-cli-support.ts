@@ -147,6 +147,8 @@ export const runCli = async (params: {
     };
     const finish = (exitCode: number | null, signal: NodeJS.Signals | null) => {
       if (settled) return;
+      // Close can run before an overdue timer after event-loop starvation.
+      if (params.assessment && remaining() <= 20_000) timedOut = true;
       settled = true;
       clearTimeout(timeout);
       clearTimeout(cleanupTimeout);

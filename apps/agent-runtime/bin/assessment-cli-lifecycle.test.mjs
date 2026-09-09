@@ -198,3 +198,32 @@ test("already aborted legacy signal cannot launch new worker work", async (t) =>
   const result = h.lifecycle.runCli(() => worker.run({ abortSignal: legacy.signal }));
   await h.clock.tickAsync(0); assert.equal(await result, 1); assert.equal(runs, 0);
 });
+
+for (const assessment of [true, false]) for (const elapsed of [39_999, 40_000, 41_000, 61_000]) {
+  test(`terminal disposal checks monotonic cutoff without timer dispatch: assessment=${assessment} elapsed=${elapsed}`, async () => {
+    const clock = FakeTimers.createClock(0), signals = new EventEmitter(), marks = [];
+    let monotonic = 0, disposals = 0;
+    const lifecycle = createAssessmentCliLifecycle({ now: () => monotonic, wallNow: () => clock.now,
+      timers: clock, signals, mark: (...args) => marks.push(args) });
+    lifecycle.configure(assessment, 60_000);
+    const stop = deferred();
+    const worker = lifecycle.decorateWorker({ dispose: () => { disposals++; return stop.promise; } });
+    const result = lifecycle.runCli(async () => { await worker.dispose(); return 0; });
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    assert.equal(disposals, 1);
+    assert.equal(marks.some(([phase]) => phase === "cancellation"), false);
+    monotonic = elapsed; // Advance only monotonic time; overdue callbacks remain undispatched.
+    stop.resolve();
+    const expired = assessment && elapsed >= 40_000;
+    assert.equal(await result, expired ? 1 : 0);
+    assert.equal(marks.filter(([phase]) => phase === "cancellation").length, expired ? 1 : 0);
+    if (expired) {
+      assert.ok(marks.some(([phase, , receipt]) => phase === "task_settlement" && receipt.taskSettled));
+      assert.deepEqual(marks.at(-1), ["disposal", "observed", { disposeSettled: true, disposeSucceeded: true }]);
+    }
+    assert.equal(disposals, 1);
+    assert.equal(clock.countTimers(), 0);
+    assert.equal(signals.listenerCount("SIGTERM"), 0);
+    assert.equal(signals.listenerCount("SIGINT"), 0);
+  });
+}

@@ -23,7 +23,7 @@ const approvedSubscriptionRuntimeDependencies = Object.freeze({
   "assessment-cli-progress.mjs":
     "f53430794ef6aaccf002dc47e7c7bbd0b2749a517556c0c46b261625ad24fe6d",
   "assessment-cli-lifecycle.mjs":
-    "51d15e38070782eebf142acb46a985097b3b16f8b3813971aa40012ae04682cb",
+    "5220f2a668cf77f1d763a690dead7eb233e076e245d544870399f3d9f72423ca",
   "pinned-codex-native-binary.mjs":
     "77a32f1ed6f6429b11428c0501d0d5f1712cc8bd913c74027f4ad0204facfb21",
   "subscription-runtime-failure-details.mjs":

@@ -123,6 +123,8 @@ export function createAssessmentCliLifecycle({
           return code;
         });
         const code = await Promise.race([normal, cancellation.then(() => undefined)]);
+        // Promise continuations can beat an overdue cancellation timer.
+        if (enabled && remaining() <= reserveMs) cancel();
         if (controller.signal.aborted) { await settleAndDispose(); return 1; }
         return code;
       } finally { finished = true; release(); }

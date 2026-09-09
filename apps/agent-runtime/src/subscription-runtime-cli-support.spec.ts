@@ -103,6 +103,31 @@ describe("assessment spawn budget and incremental transport", () => {
   beforeEach(() => { jest.useFakeTimers({ now: 1_000_000 }); jest.clearAllMocks(); });
   afterEach(() => jest.useRealTimers());
 
+  it.each([
+    [true, 39_999, false], [true, 40_000, true], [true, 41_000, true],
+    [true, 61_000, true], [false, 61_000, false],
+  ])("checks terminal monotonic time without timer dispatch: assessment=%s elapsed=%s", async (assessment, elapsed, timedOut) => {
+    let monotonic = 0;
+    const now = jest.spyOn(globalThis.performance, "now").mockImplementation(() => monotonic);
+    try {
+      const process = child();
+      jest.mocked(spawn).mockReturnValue(process as unknown as ReturnType<typeof spawn>);
+      const result = runCli({ command: "/synthetic", args: [], timeoutMs: 60_000,
+        ...(assessment ? { assessment: { onProgress: jest.fn() } } : {}) });
+      monotonic = elapsed;
+      jest.setSystemTime(1); // Wall-clock rollback cannot extend the work budget.
+      expect(process.kill).not.toHaveBeenCalled();
+      process.stdout.emit("data", Buffer.from(JSON.stringify({ status: "completed", warnings: [], structuredOutput: {} })));
+      process.emit("close", 0, null);
+      const receipt = await result;
+      expect(receipt.timedOut).toBe(timedOut);
+      expect(cliExecutionResult(receipt).status).toBe(timedOut ? "failed" : "completed");
+      if (timedOut) expect(cliExecutionResult(receipt).failure?.code).toBe("agent_runtime.cli_timeout");
+      expect(jest.getTimerCount()).toBe(0);
+      expect(process.kill).not.toHaveBeenCalled();
+    } finally { now.mockRestore(); }
+  });
+
   it("counts synchronous spawn startup against the same early and hard deadlines", async () => {
     const process = child();
     jest.mocked(spawn).mockImplementation(() => {
