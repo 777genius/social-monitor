@@ -1,3 +1,11 @@
+import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
+import type { RankFeedItemsCommand } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.command";
+import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
+import { RelevanceReaderSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence.selector";
+import type { ReaderSummaryPreparationObserver } from "@social-monitor/summary/adapters/evidence/reader-summary-preparation-observer";
+import { StoryRankingMetricsRecorder } from "@social-monitor/summary/adapters/metrics/story-ranking-metrics.recorder";
+import { PrismaReaderSummaryGitHubProjectionReader } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-github-projection.reader";
 import { createSourceContentAssessmentReviewer } from "@social-monitor/relevance/interfaces/rest/source-content-assessment-provider-tokens";
 import {
   AgentRuntimeReaderSummaryStoryRelationVerifier,
@@ -30,9 +38,12 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
     env,
     summaryModelMode,
     storyRelationVerifierGuard,
+    preparationObserver,
+    rankCommandCapture,
+    relationCapture,
     ...publicationInput
   } = input;
-  return createReaderSummaryDailyPublicationExecutionWiring({
+  const dependencies = {
     ...publicationInput,
     storyRelationVerifier: buildReaderSummaryDailyStoryRelationVerifier({
       replay: publicationInput.replay,
@@ -41,13 +52,63 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
       agentRuntimeClient,
       attestationSink: publicationInput.attestationSink,
       storyRelationVerifierGuard,
+      relationCapture,
     }),
     qualityReviewer: publicationInput.replay !== null ? undefined
       : publicationInput.qualityReviewer ?? createSourceContentAssessmentReviewer({
           env, summaryModelMode, client: agentRuntimeClient ?? undefined, clock: publicationInput.clock,
         }),
 
+  };
+  if ((preparationObserver === undefined && rankCommandCapture === undefined) || publicationInput.replay !== null) {
+    return createReaderSummaryDailyPublicationExecutionWiring(dependencies);
+  }
+  // This is the same fresh composition as the finalizer, with P1's trailing
+  // observer option. It runs one rank/selector invocation, never a capture pass.
+  if (dependencies.feedItems === undefined || dependencies.configuredInterests === undefined) {
+    throw new Error("Fresh capture requires feed and configured interest authority");
+  }
+  const rankFeedItems = new RankFeedItemsUseCase(
+    dependencies.feedItems,
+    new InMemoryUserRelevanceProfileRepository(),
+    dependencies.clock,
+    undefined, undefined, undefined, dependencies.qualityReviewer, undefined,
+    dependencies.configuredInterests,
+  );
+  if (rankCommandCapture !== undefined) {
+    const execute = rankFeedItems.execute.bind(rankFeedItems);
+    rankFeedItems.execute = (command) => {
+      try {
+        const { observePromotionPreparation: _observer, promotionAssessmentExecution, ...values } = command;
+        rankCommandCapture.captured({
+          ...values,
+          ...(promotionAssessmentExecution === undefined ? {} : {
+            promotionAssessmentExecution: { deadlineAtMs: promotionAssessmentExecution.deadlineAtMs },
+          }),
+        });
+      } catch {
+        try { rankCommandCapture.failed(); } catch { /* Capture cannot alter policy. */ }
+      }
+      return execute(command);
+    };
+  }
+  return Object.freeze({
+    evidenceSelector: new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems, dependencies.feedItems, dependencies.clock,
+      new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
+      dependencies.storyRelationVerifier ?? undefined, undefined, preparationObserver,
+    ),
+    githubProjectionReader: new PrismaReaderSummaryGitHubProjectionReader(dependencies.summaryClient),
   });
+};
+
+type RelationQuery = Parameters<ReaderSummaryStoryRelationVerifierPort["verify"]>[0];
+
+export type ReaderSummaryDailyRelationCapture = {
+  attempted(query: RelationQuery): void;
+  validated(query: RelationQuery, decisions: readonly unknown[]): void;
+  failed(query: RelationQuery): void;
+  captureFailed(): void;
 };
 
 type StoryRelationCompositionInput = {
@@ -59,6 +120,12 @@ type StoryRelationCompositionInput = {
   readonly env: NodeJS.ProcessEnv;
   readonly agentRuntimeClient: AgentRuntimeClientPort | null;
   readonly attestationSink: VerifiedReaderSummaryExecutionAttestationSink;
+  readonly rankCommandCapture?: {
+    captured(command: Omit<RankFeedItemsCommand, "observePromotionPreparation">): void;
+    failed(): void;
+  };
+  readonly preparationObserver?: ReaderSummaryPreparationObserver;
+  readonly relationCapture?: ReaderSummaryDailyRelationCapture;
   readonly storyRelationVerifierGuard?: {
     assertUsable(): void;
     invalidateAdapter(taskRole: "story_relation" | "related_topic_relation"): void;
@@ -84,18 +151,27 @@ const buildReaderSummaryDailyStoryRelationVerifier = (
     verifiedAttestationSink: input.attestationSink,
   });
   const guard = input.storyRelationVerifierGuard;
-  if (guard === undefined) return verifier;
+  const capture = input.relationCapture;
+  if (guard === undefined && capture === undefined) return verifier;
+  const observe = (callback: () => void): void => {
+    try { callback(); } catch {
+      try { capture?.captureFailed(); } catch { /* Capture cannot alter policy. */ }
+    }
+  };
   return {
     verify: async (query) => {
+      observe(() => capture?.attempted(query));
       try {
-        guard.assertUsable();
+        guard?.assertUsable();
         const decisions = await verifier.verify(query);
-        guard.assertUsable();
+        guard?.assertUsable();
+        observe(() => capture?.validated(query, decisions));
         return decisions;
       } catch (error) {
         // Refresh authority must be poisoned before selector fallback catches
         // adapter exceptions. Accepted decisions retain their normal reconciliation.
-        guard.invalidateAdapter(query.verificationLane === "related_topic"
+        observe(() => capture?.failed(query));
+        guard?.invalidateAdapter(query.verificationLane === "related_topic"
           ? "related_topic_relation" : "story_relation");
         throw error;
       }

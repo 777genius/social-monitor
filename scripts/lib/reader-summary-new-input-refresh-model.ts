@@ -12,7 +12,7 @@ import { resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions } from
   "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { BuildReaderSummaryTopicMapUseCase } from
   "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
-import type { AgentRuntimeClientPort, ReaderSummaryModelPort } from "@social-monitor/summary/ports";
+import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand, AgentRuntimeTaskResult, ReaderSummaryModelPort } from "@social-monitor/summary/ports";
 import { verifyAndRecordReaderSummaryExecution, type ReaderSummaryAttestedTaskRole, type VerifiedReaderSummaryExecutionAttestationSink } from
   "@social-monitor/summary/adapters/model/reader-summary-execution-attestation";
 import { refreshHash, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
@@ -22,13 +22,16 @@ const noInvocation: AgentRuntimeClientPort = {
   runTask: async () => { throw new Error("Preparation cannot invoke a model"); },
   checkHealth: async () => { throw new Error("Preparation cannot invoke runtime"); },
 };
-export function refreshGenerationSha256(env: NodeJS.ProcessEnv): string {
-  return refreshHash({ assessment: refreshAssessmentLimits, generation: [
+export function refreshCaptureModelControls(env: NodeJS.ProcessEnv) {
+  return { assessment: refreshAssessmentLimits, generation: [
     resolveAgentRuntimeReaderSummaryModelOptions(env, noInvocation),
     resolveAgentRuntimeReaderSummaryTopicLabelerOptions(env, noInvocation),
     resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(env, noInvocation),
     resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(env, noInvocation),
-  ].map(({ client, ...options }) => { void client; return options; }) });
+  ].map(({ client, ...options }) => { void client; return options; }) };
+}
+export function refreshGenerationSha256(env: NodeJS.ProcessEnv): string {
+  return refreshHash(refreshCaptureModelControls(env));
 }
 export type GuardedRefreshRuntime = AgentRuntimeClientPort & {
   assertUsable(): void;
@@ -81,10 +84,30 @@ export function buildRefreshModelWiring(env: NodeJS.ProcessEnv, client: GuardedR
     }),
   };
 }
+// This boundary validates the runtime envelope. Concrete assessment/relation
+// parsers separately capture semantic acceptance; envelope validity is not it.
+export type RefreshModelCaptureEvent =
+  | { readonly kind: "invocation_started"; readonly command: AgentRuntimeTaskCommand }
+  | { readonly kind: "invocation_returned"; readonly requestId: string; readonly status: AgentRuntimeTaskResult["status"] }
+  | { readonly kind: "invocation_aborted"; readonly requestId: string }
+  | { readonly kind: "invocation_failed"; readonly requestId: string; readonly delegated: boolean }
+  | { readonly kind: "envelope_verified"; readonly command: AgentRuntimeTaskCommand;
+      readonly result: Pick<AgentRuntimeTaskResult, "status" | "structuredOutput" | "usage" | "durationMs" | "executionAttestation"> };
+
 export function guardedRefreshRuntime(input: {
   delegate: AgentRuntimeClientPort; manifest: RefreshManifest; now?: () => number;
   assertLocal(): void; assertCurrent(): Promise<void>; record(event: unknown): void;
+  capture?(event: RefreshModelCaptureEvent): void; captureFailure?(): void;
 }): GuardedRefreshRuntime {
+  const capture = (event: RefreshModelCaptureEvent) => {
+    if (!input.capture) return;
+    try { input.capture(structuredClone(event)); }
+    catch {
+      // IO/observer failures are separate from consumed model authority. Never
+      // send a callback exception through the reconciliation/retry path.
+      try { input.captureFailure?.(); } catch { /* capture owner retains failure */ }
+    }
+  };
   const assessment = refreshAssessmentBudget(input.now ?? Date.now);
   const seen = new Set<string>();
   let ambiguous = false;
@@ -124,10 +147,18 @@ export function guardedRefreshRuntime(input: {
       seen.add(command.requestId);
       if (command.purpose === activeReaderSummaryPurposes.generate) generated = true;
       inFlight = true;
+      let delegated = false;
+      let removeAbortCapture: (() => void) | undefined;
+      let capturedCommand: AgentRuntimeTaskCommand | undefined;
+      if (input.capture) {
+        try { capturedCommand = structuredClone(command); }
+        catch { try { input.captureFailure?.(); } catch { /* capture owner retains failure */ } }
+      }
       const identity = { requestId: command.requestId, purpose: command.purpose,
         requestSha256: refreshHash(command), operation: input.manifest.operation,
         observedThrough: input.manifest.observedThrough, model: "gpt-5.6-sol", reasoningEffort: "high" };
       try {
+        if (capturedCommand) capture({ kind: "invocation_started", command: capturedCommand });
         assertUsable();
         const assessmentUsage = command.purpose === sourceContentAssessmentPurpose ? assessment.consume(command) : {};
         // Match GrpcAgentRuntimeClient JSON serialization and the service's
@@ -151,7 +182,20 @@ export function guardedRefreshRuntime(input: {
           assessment.assertTimely();
           if (options?.signal?.aborted) throw new Error("Refresh assessment cancelled");
         }
+        if (input.capture && options?.signal) {
+          const signal = options.signal;
+          const onAbort = () => capture({ kind: "invocation_aborted", requestId: command.requestId });
+          signal.addEventListener("abort", onAbort, { once: true });
+          removeAbortCapture = () => signal.removeEventListener("abort", onAbort);
+          if (signal.aborted) onAbort();
+        }
+        delegated = true;
         const result = await input.delegate.runTask(command, options);
+        if (["completed", "failed", "waiting_for_input"].includes(result.status)) {
+          capture({ kind: "invocation_returned", requestId: command.requestId, status: result.status });
+        } else if (input.capture) {
+          try { input.captureFailure?.(); } catch { /* capture owner retains failure */ }
+        }
         input.record({ ...identity, status: "invocation_returned", outcome: result.status,
           ...(result.usage === undefined ? {} : { tokens: result.usage }) });
         if (result.status !== "completed" || result.executionAttestation === undefined || result.usage === undefined) {
@@ -187,12 +231,16 @@ export function guardedRefreshRuntime(input: {
         input.record({ ...identity, status: result.status, tokens: result.usage,
           outputSha256: attestation.selectedOutputSha256 });
         assertUsable();
+        if (capturedCommand) capture({ kind: "envelope_verified", command: capturedCommand,
+          result: { status: result.status, structuredOutput: result.structuredOutput, usage: result.usage,
+            durationMs: result.durationMs, executionAttestation: result.executionAttestation } });
         return result;
       } catch {
+        capture({ kind: "invocation_failed", requestId: command.requestId, delegated });
         ambiguous = true;
         input.record({ ...identity, status: "requires_reconciliation" });
         throw new Error("Refresh invocation failed or is ambiguous; original operation remains consumed");
-      } finally { inFlight = false; }
+      } finally { removeAbortCapture?.(); inFlight = false; }
     },
   };
 }

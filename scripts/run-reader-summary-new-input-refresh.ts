@@ -24,8 +24,9 @@ import { resolveReaderSummaryServingAuthority } from "./lib/reader-summary-servi
 
 export function parseRefreshCommand(argv: readonly string[]) {
   if (argv.length === 1 && argv[0] === "--source-sha256") return { mode: "source" } as const;
-  if (argv.length === 4 && argv[0] === "--apply" && argv[2] === "--sha256" && /^[0-9a-f]{64}$/u.test(argv[3]!)) {
-    return { mode: "apply", path: argv[1]!, sha256: argv[3]! } as const;
+  if ((argv.length === 4 || (argv.length === 6 && argv[4] === "--capture-path" && argv[5]?.startsWith("/"))) && argv[0] === "--apply" && argv[2] === "--sha256" && /^[0-9a-f]{64}$/u.test(argv[3]!)) {
+    return { mode: "apply", path: argv[1]!, sha256: argv[3]!,
+      ...(argv.length === 6 ? { capturePath: argv[5]! } : {}) } as const;
   }
   if (argv.length === 0 || (argv.length === 1 && argv[0] === "--prepare")) {
     return { mode: "prepare", dates: refreshDates } as const;
@@ -33,7 +34,7 @@ export function parseRefreshCommand(argv: readonly string[]) {
   if (argv.length === 3 && argv[0] === "--prepare" && argv[1] === "--date" && refreshDates.includes(argv[2]!)) {
     return { mode: "prepare", dates: [argv[2]!] } as const;
   }
-  throw new Error("Use --prepare [--date ACCEPTED_DATE], --apply MANIFEST --sha256 HASH, or --source-sha256");
+  throw new Error("Use --prepare [--date ACCEPTED_DATE], --apply MANIFEST --sha256 HASH [--capture-path ABSOLUTE_DIRECTORY], or --source-sha256");
 }
 async function main(): Promise<void> {
   const command = parseRefreshCommand(process.argv.slice(2));
@@ -127,7 +128,7 @@ async function main(): Promise<void> {
       };
       try {
         const receipt = await executeNewInputRefresh({ configuredInterests, manifest, summary, feed, clock, env: process.env,
-          runtime, assertFences, assertSource, record,
+          runtime, assertFences, assertSource, record, capturePath: command.capturePath,
           assertRuntime: async () => {
             const serving = await resolveReaderSummaryServingAuthority({ summaryModelMode: "agent-runtime",
               topicLabelerMode: "agent-runtime", env: process.env, agentRuntimeClient: runtime,

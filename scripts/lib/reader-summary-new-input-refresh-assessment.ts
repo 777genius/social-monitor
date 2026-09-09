@@ -13,13 +13,35 @@ import type { GuardedRefreshRuntime } from "./reader-summary-new-input-refresh-m
 
 type AssessmentCompletion = {
   assertComplete(expected: number, selection?: SummaryEvidenceSelection): void;
+  assertCaptureComplete(): void;
 };
+
+export type RefreshAssessmentCanonicalCapture = Readonly<{
+  canonicalEvidenceJson: string;
+  exemptBindingsJson: string;
+  sourceTextBindingsJson: string;
+}>;
+
+export type RefreshAssessmentCaptureEvent = Readonly<{
+  phase: "attempt" | "completed" | "failed";
+  batch: number;
+  atMs: number;
+  requestsJson: string;
+  consumed: boolean;
+  deadlineAtMs?: number;
+  options?: { timeoutMs?: number; deadlineAtMs?: number; aborted: boolean };
+  reviewsJson?: string;
+  verdictsJson?: string;
+  failure?: "deadline" | "aborted" | "validation_or_runtime_failure";
+}>;
 
 // This caller only authorizes the existing subscription pool. A direct provider
 // override cannot bypass its invocation journal, installation or date authority.
 export function createRefreshAssessmentReviewer(input: {
   env: NodeJS.ProcessEnv; clock: Clock; runtime: GuardedRefreshRuntime;
   canonicalEvidence?: readonly SummaryEvidenceItem[];
+  capture?: (event: RefreshAssessmentCaptureEvent) => void;
+  captureCanonical?: (value: RefreshAssessmentCanonicalCapture) => void;
 }): SourceContentQualityReviewerPort & AssessmentCompletion {
   if (resolveRelevanceContentQualityReviewerMode(input.env, "agent-runtime") !== "agent-runtime") {
     throw new Error("Refresh assessment requires the guarded subscription runtime");
@@ -41,12 +63,31 @@ export function createRefreshAssessmentReviewer(input: {
   let completed = 0;
   let bytes = 0;
   let deadline: number | undefined;
+  let captureFailures = 0;
+  if (input.captureCanonical) {
+    try {
+      input.captureCanonical({ canonicalEvidenceJson: JSON.stringify(input.canonicalEvidence ?? []),
+        exemptBindingsJson: JSON.stringify([...exemptBindings]),
+        sourceTextBindingsJson: JSON.stringify([...sourceTextBindings]) });
+    } catch { captureFailures++; }
+  }
+  let batches = 0;
+  let terminalBatches = 0;
+  const capture = (event: () => RefreshAssessmentCaptureEvent): void => {
+    if (!input.capture) return;
+    try { input.capture(event()); } catch { captureFailures++; }
+  };
   const fail = (): never => {
     input.runtime.invalidateAdapter("source_content_assessment");
     throw new Error("Refresh assessment is incomplete; original operation requires reconciliation");
   };
   return {
     promotionTiming: reviewer.promotionTiming,
+    assertCaptureComplete: () => {
+      if ((input.capture || input.captureCanonical) && (captureFailures > 0 || terminalBatches !== batches)) {
+        throw new Error("Refresh assessment capture is incomplete");
+      }
+    },
     assertComplete: (expected, selection) => {
       input.runtime.assertUsable();
       // The snapshot count is an upper bound, not a mandate to spend on every
@@ -86,6 +127,15 @@ export function createRefreshAssessmentReviewer(input: {
       }
     },
     reviewBatch: async (requests, options) => {
+      const batch = ++batches;
+      let consumed = false;
+      const event = (phase: RefreshAssessmentCaptureEvent["phase"]): RefreshAssessmentCaptureEvent => ({
+        phase, batch, atMs: input.clock.now().getTime(), requestsJson: JSON.stringify(requests), consumed,
+        deadlineAtMs: deadline,
+        options: options && { timeoutMs: options.timeoutMs, deadlineAtMs: options.deadlineAtMs,
+          aborted: options.signal.aborted },
+      });
+      capture(() => event("attempt"));
       try {
         input.runtime.assertUsable();
         const now = input.clock.now().getTime();
@@ -97,14 +147,17 @@ export function createRefreshAssessmentReviewer(input: {
             size > PROMOTION_ASSESSMENT_BOUNDS.batchBytes ||
             bytes + size > PROMOTION_ASSESSMENT_BOUNDS.totalBytes) fail();
         requests.forEach((request) => seen.set(request.candidateId, request));
+        consumed = true;
         bytes += size; // Consumed before awaiting. Nothing refunds an attempt.
         const reviews = await reviewer.reviewBatch(requests, options);
         if (input.clock.now().getTime() >= deadline || options?.signal.aborted ||
             reviews.length !== requests.length || new Set(reviews.map((r) => r.candidateId)).size !== reviews.length ||
             requests.some((request) => !reviews.some((review) => review.candidateId === request.candidateId))) fail();
+        const verdicts: { candidateId: string; verdict: ReturnType<typeof assessedPromotionVerdict> }[] = [];
         for (const request of requests) {
           const verdict = assessedPromotionVerdict(request,
             reviews.find((review) => review.candidateId === request.candidateId), policy);
+          verdicts.push({ candidateId: request.candidateId, verdict });
           if (verdict.reason.startsWith("promotion_assessment_pending:")) {
             // These reasons are emitted only after binding, shape and quote
             // validation. All other pending outcomes remain authority failures.
@@ -115,8 +168,17 @@ export function createRefreshAssessmentReviewer(input: {
         }
         input.runtime.assertUsable();
         completed += requests.length;
+        terminalBatches++;
+        capture(() => ({ ...event("completed"), reviewsJson: JSON.stringify(reviews),
+          verdictsJson: JSON.stringify(verdicts) }));
         return reviews;
-      } catch { return fail(); }
+      } catch {
+        terminalBatches++;
+        capture(() => ({ ...event("failed"), failure: options?.signal.aborted ? "aborted"
+          : deadline !== undefined && input.clock.now().getTime() >= deadline ? "deadline"
+            : "validation_or_runtime_failure" }));
+        return fail();
+      }
     },
   };
 }

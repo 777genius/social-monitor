@@ -19,6 +19,15 @@ describe("bounded new-input refresh authority", () => {
     const m = { ...refreshManifest(), ...patch } as ReturnType<typeof refreshManifest>;
     expect(() => assertRefreshManifest({ ...m, operation: refreshOperation(m) }, refreshNow)).toThrow();
   });
+  it("allows only an additive absolute capture path for apply", () => {
+    const base = ["--apply", "manifest.json", "--sha256", "a".repeat(64)];
+    expect(parseRefreshCommand(base)).toEqual({ mode: "apply", path: "manifest.json", sha256: "a".repeat(64) });
+    expect(parseRefreshCommand([...base, "--capture-path", "/tmp/synthetic-capture"]))
+      .toMatchObject({ mode: "apply", capturePath: "/tmp/synthetic-capture" });
+    expect(() => parseRefreshCommand([...base, "--capture-path", "relative"])).toThrow();
+    expect(() => parseRefreshCommand(["--prepare", "--capture-path", "/tmp/capture"])).toThrow();
+    expect(() => parseRefreshCommand([...base, "--capture-path", "/tmp/capture", "--capture-path", "/tmp/again"])).toThrow();
+  });
   it("enforces 30 minute review age independently of content date", () => {
     expect(() => assertRefreshManifest(refreshManifest(), new Date("2026-09-05T22:30:00.001Z"))).toThrow(/stale/);
   });
