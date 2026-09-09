@@ -9,6 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import { resolvePinnedCodexBinaryPath } from "./pinned-codex-native-binary.mjs";
 import { withTrustedCodexWorkerUsage } from "./codex-worker-cli-usage.mjs";
 import { subscriptionRuntimeFailureDetails } from "./subscription-runtime-failure-details.mjs";
 
@@ -38,12 +39,6 @@ const requestedModel = optionalArgument(runtimeArgv, "--model");
 const requestedReasoningEffort =
   process.env.AGENT_RUNTIME_REASONING_EFFORT?.trim() || undefined;
 const request = JSON.parse(await readFile(inputPath, "utf8"));
-const pinnedCodexBinaryPath = join(
-  process.cwd(),
-  "node_modules",
-  ".bin",
-  "codex",
-);
 const admission = admitSubscriptionRuntimeWrapperRequest({
   request,
   provider,
@@ -99,7 +94,7 @@ const createStrictCodexWorker = (input) => {
     providerInstanceId: input.providerInstanceId,
     stateRootDir: input.stateRootDir,
     encryptionKey: input.encryptionKey,
-    codexBinaryPath: input.codexBinaryPath ?? pinnedCodexBinaryPath,
+    codexBinaryPath: input.codexBinaryPath ?? resolvePinnedCodexBinaryPath(),
     sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
     workspacePath: input.cwd,
     model,
@@ -123,7 +118,7 @@ function createReaderPromotionV2CanaryWorker({ input, model, authPool }) {
     capacityAccountId: selectedAccount.id,
     stateRootDir: input.stateRootDir,
     encryptionKey: input.encryptionKey,
-    codexBinaryPath: input.codexBinaryPath ?? pinnedCodexBinaryPath,
+    codexBinaryPath: input.codexBinaryPath ?? resolvePinnedCodexBinaryPath(),
     sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
     workspacePath: input.cwd,
     model,
@@ -295,7 +290,7 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
                 capacityAccountId: account.id,
                 stateRootDir: input.stateRootDir,
                 encryptionKey: input.encryptionKey,
-                codexBinaryPath: input.codexBinaryPath ?? pinnedCodexBinaryPath,
+                codexBinaryPath: input.codexBinaryPath ?? resolvePinnedCodexBinaryPath(),
                 sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
                 model,
                 reasoningEffort: admission.profile.reasoningEffort,

@@ -1,11 +1,22 @@
 // Used only by the no-network image test. Never starts a real worker/provider.
 const factoryProbe = `
   import assert from "node:assert/strict";
-  import { accessSync, constants } from "node:fs";
+  import { accessSync, closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
   export class FileBackendCodexWorker {
     constructor(input) {
-      assert.equal(input.codexBinaryPath, "/app/node_modules/.bin/codex");
+      assert.equal(process.platform, "linux");
+      const target = { x64: "x86_64-unknown-linux-musl", arm64: "aarch64-unknown-linux-musl" }[process.arch];
+      assert.ok(target, "unsupported native Codex architecture");
+      assert.equal(input.codexBinaryPath,
+        "/app/node_modules/@openai/codex-linux-" + process.arch + "/vendor/" + target + "/bin/codex");
       accessSync(input.codexBinaryPath, constants.X_OK);
+      const binary = openSync(input.codexBinaryPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        assert.ok(fstatSync(binary).isFile());
+        const header = Buffer.alloc(4);
+        assert.equal(readSync(binary, header, 0, 4, 0), 4);
+        assert.deepEqual(header, Buffer.from([127, 69, 76, 70]));
+      } finally { closeSync(binary); }
       assert.equal(input.model, "gpt-5.6-sol");
       assert.equal(input.reasoningEffort, "high");
       assert.equal(input.executionEngine, "packaged-exec");
