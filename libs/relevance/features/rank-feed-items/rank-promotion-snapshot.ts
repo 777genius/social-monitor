@@ -33,6 +33,8 @@ import { assessPromotionContent } from "./promotion-content-assessment";
 import { canCompeteForPromotionAssessment } from "./promotion-assessment-eligibility";
 import { unavailablePromotionHeadline, type PromotionReaderHeadline } from "../../domain/promotion-reader-headline";
 
+import { observePromotionSnapshotPreparation } from "./promotion-snapshot-preparation";
+
 const PROMOTION_SOURCE_TEXT_SAFETY_CAP = 256_000;
 
 export const rankPromotionSnapshot = async (params: {
@@ -263,6 +265,13 @@ export const rankPromotionSnapshot = async (params: {
       contentQuality: presentSourceContentQuality(quality),
     } satisfies RankedFeedItemView;
   });
+  if (command.observePromotionPreparation !== undefined) {
+    observePromotionSnapshotPreparation(command.observePromotionPreparation, {
+      primary: projected,
+      supplemental,
+      requestedCandidateIds: reviewRequests.map((request) => request.candidateId),
+    });
+  }
   const items = [...projected, ...supplemental]
     .sort((left, right) => right.score - left.score ||
       right.publishedAt.localeCompare(left.publishedAt) ||
