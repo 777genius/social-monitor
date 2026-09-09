@@ -2,9 +2,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, rmSync,
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { readReviewedRefresh, readRefreshFenceAuthority } from "./reader-summary-new-input-refresh-files";
+import { readReviewedRefreshSuccessor, readReviewedRefresh, readRefreshFenceAuthority } from "./reader-summary-new-input-refresh-files";
 import { refreshBytesHash } from "./reader-summary-new-input-refresh-manifest";
 import { refreshManifest } from "./reader-summary-new-input-refresh.spec-support";
+
+import { successorManifest } from "./reader-summary-new-input-refresh-successor.spec-support";
 
 describe("reviewed immutable refresh files and real locks", () => {
   const roots: string[] = [];
@@ -20,6 +22,18 @@ describe("reviewed immutable refresh files and real locks", () => {
     expect(() => readReviewedRefresh(join(dir, "alias"), refreshBytesHash(bytes))).toThrow();
     chmodSync(path, 0o600);
     expect(() => readReviewedRefresh(path, refreshBytesHash(bytes))).toThrow(/immutable/);
+  });
+  it("binds explicit grant bytes to an immutable regular file", () => {
+    const dir = root(), path = join(dir, "grant.json");
+    const grant = successorManifest().successor;
+    const bytes = Buffer.from(JSON.stringify(grant));
+    writeFileSync(path, bytes, { mode: 0o400 });
+    expect(readReviewedRefreshSuccessor(path, refreshBytesHash(bytes))).toEqual(grant);
+    expect(() => readReviewedRefreshSuccessor(path, "f".repeat(64))).toThrow(/hash/);
+    symlinkSync(path, join(dir, "alias"));
+    expect(() => readReviewedRefreshSuccessor(join(dir, "alias"), refreshBytesHash(bytes))).toThrow();
+    chmodSync(path, 0o600);
+    expect(() => readReviewedRefreshSuccessor(path, refreshBytesHash(bytes))).toThrow(/immutable/);
   });
   it("requires canonical global/date flocks and detects counter drift", () => {
     const dir = root();

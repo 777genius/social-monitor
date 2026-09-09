@@ -11,14 +11,16 @@ export type RefreshSnapshotProtection = (tx: PrismaReaderSummaryClient) => Promi
 export async function withRefreshPublicationLocks<T>(
   summary: Pick<PrismaSummaryConnection, "$transaction">,
   publish: (assertProtected: RefreshSnapshotProtection) => Promise<T>,
+  successorAdmission?: { lock: RefreshSnapshotProtection },
 ): Promise<T> {
+  const lock = successorAdmission?.lock ?? lockRefreshAuthority;
   let acquired!: () => void, failed!: (error: unknown) => void, release!: () => void;
   let identity: { pid: number; vxid: string } | undefined;
   let held = false;
   const ready = new Promise<void>((resolve, reject) => { acquired = resolve; failed = reject; });
   const finished = new Promise<void>((resolve) => { release = resolve; });
   const holder = summary.$transaction(async (tx) => {
-    await lockRefreshAuthority(tx);
+    await lock(tx);
     const rows = await tx.$queryRaw<readonly { pid: number; vxid: string }[]>`
       select pid, virtualxid as vxid from pg_catalog.pg_locks
       where pid = pg_backend_pid() and locktype = 'virtualxid' and granted
@@ -35,7 +37,7 @@ export async function withRefreshPublicationLocks<T>(
       // Transfer protection to the publisher itself. pg_locks is live, not an
       // MVCC read: prove overlap even if holder timeout/disconnect notification
       // has not reached JS yet. A lost holder can never validate an old snapshot.
-      await lockRefreshAuthority(tx);
+      await lock(tx);
       const rows = await tx.$queryRaw<readonly { held: boolean }[]>`
         select exists(select 1 from pg_catalog.pg_locks
           where pid = ${identity.pid} and virtualxid = ${identity.vxid}
@@ -43,6 +45,11 @@ export async function withRefreshPublicationLocks<T>(
       `;
       if (!held || rows.length !== 1 || rows[0]?.held !== true) {
         throw new Error("Refresh snapshot protection was lost");
+      }
+      if (successorAdmission) {
+        // Admission now owns overlapping SHARE locks. Release the holder before
+        // its insert upgrades the jobs lock; there is no unprotected interval.
+        held = false; release(); await holder;
       }
     });
   } finally {
