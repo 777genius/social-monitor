@@ -14,13 +14,15 @@ import {
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.42";
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "3e0082642f2705c678d3f21d2f083fd2c851aaf62759a12d24eb59be30a1a38e";
+  "a7bd7dc219461a1e42f957657b7fa628df201cd8ae74fe91159b842a42d0eef9";
 
 // Repository wrapper approval, separate from the vendored package provenance.
 // Pin the local import closure too: launcher bytes alone do not bind helpers.
-// These literal pins track the source at 40c9032bb8e93ae1bd5be3b522f042b661fa5ae8;
+// These literal pins track the reviewed source at 209858aa9a914bc86685cf5ef6e82065f4fa25a9;
 // changes to any member require a coordinated, reviewed admission update.
 const approvedSubscriptionRuntimeDependencies = Object.freeze({
+  "pinned-codex-native-binary.mjs":
+    "77a32f1ed6f6429b11428c0501d0d5f1712cc8bd913c74027f4ad0204facfb21",
   "subscription-runtime-failure-details.mjs":
     "5c7e12660c4500a533cda147be44723019c8b223353f1e2d25c3483ff5a1484a",
   "codex-worker-cli-usage.mjs":

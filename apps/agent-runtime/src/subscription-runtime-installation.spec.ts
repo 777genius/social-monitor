@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   appendFile,
   chmod,
@@ -6,6 +7,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   realpath,
   rename,
   rm,
@@ -30,6 +32,7 @@ import {
 
 const launcherName = "run-codex-subscription-runtime-agent-task.mjs";
 const dependencyNames = [
+  "pinned-codex-native-binary.mjs",
   "subscription-runtime-failure-details.mjs",
   "codex-worker-cli-usage.mjs",
   "codex-auth-pool-manifest.mjs",
@@ -40,7 +43,41 @@ const dependencyNames = [
 
 describe("subscription runtime installation admission", () => {
   let root: string | undefined;
+  let installationRoot: string;
   let previousPath: string | undefined;
+
+  beforeAll(async () => {
+    installationRoot = await mkdtemp(join(tmpdir(), "runtime-main42-installation-"));
+    const modules = join(installationRoot, "node_modules");
+    const packageRoot = join(modules, "@vioxen/subscription-runtime");
+    await mkdir(packageRoot, { recursive: true });
+    const archive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.42.tgz");
+    expect(createHash("sha256").update(await readFile(archive)).digest("hex")).toBe(
+      "338499bc01bc08958d53bcad6fdf0da9ab4dbc542705b947eed8eb59afdc49ae",
+    );
+    await promisify(execFile)("tar", [
+      "-xzf", archive, "-C", packageRoot, "--strip-components=1",
+    ], { timeout: 10_000 });
+    // Reuse provided dependencies without installing or changing their bytes.
+    const providedModules = await realpath(join(process.cwd(), "node_modules"));
+    for (const name of await readdir(providedModules)) {
+      if (name === "@vioxen") continue;
+      await symlink(join(providedModules, name), join(modules, name));
+    }
+    for (const name of await readdir(join(providedModules, "@vioxen"))) {
+      if (name === "subscription-runtime") continue;
+      await symlink(join(providedModules, "@vioxen", name), join(modules, "@vioxen", name));
+    }
+    expect(JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"))).toMatchObject({
+      name: "@vioxen/subscription-runtime", version: "0.1.0-main.42",
+    });
+  }, 15_000);
+
+  afterAll(async () => {
+    if (installationRoot !== undefined) {
+      await rm(installationRoot, { recursive: true, force: true });
+    }
+  });
 
   beforeEach(() => {
     previousPath = process.env.PATH;
@@ -59,18 +96,15 @@ describe("subscription runtime installation admission", () => {
     }
   });
 
-  it("admits the pinned repository launcher and its dependency tree", async () => {
-    const command = join(
-      process.cwd(),
-      "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs",
-    );
+  it("admits the exact repository launcher and vendored main.42 in a sandbox", async () => {
+    const command = join(await copyInstallation(), launcherName);
 
     await expect(
       new FileSubscriptionRuntimeInstallationInspector().inspect(command),
     ).resolves.toMatchObject({
       executablePath: await realpath(command),
       packageRootRealpath: await realpath(
-        join(process.cwd(), "node_modules/@vioxen/subscription-runtime"),
+        join(installationRoot, "node_modules/@vioxen/subscription-runtime"),
       ),
       runtimePackageVersion: approvedSubscriptionRuntimePackageVersion,
       launcherSha256: approvedSubscriptionRuntimeLauncherSha256,
@@ -86,7 +120,7 @@ describe("subscription runtime installation admission", () => {
       await copyFile(join(process.cwd(), "apps/agent-runtime/bin", name), join(bin, name));
     }
     await chmod(join(bin, launcherName), 0o755);
-    await symlink(join(process.cwd(), "node_modules"), join(root, "node_modules"));
+    await symlink(join(installationRoot, "node_modules"), join(root, "node_modules"));
     return bin;
   };
 
