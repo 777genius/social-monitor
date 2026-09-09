@@ -78,19 +78,24 @@ function execute(manifest, repo) {
 }
 async function main(args) {
   const options = {}; for (let i = 0; i < args.length; i += 2) {
-    check(['--mode', '--manifest', '--sha256', '--out', '--repo'].includes(args[i]) && args[i + 1] && !options[args[i]], 'invalid CLI'); options[args[i]] = args[i + 1];
+    check(['--mode', '--manifest', '--sha256', '--out', '--repo', '--owner-receipt-sha256s'].includes(args[i]) && args[i + 1] && !options[args[i]], 'invalid CLI'); options[args[i]] = args[i + 1];
   }
   check(options['--out'], '--out required'); let result;
   try {
-    check(['inventory', 'policy', 'full-selector'].includes(options['--mode']), 'unknown mode');
-    result = options['--mode'] === 'full-selector'
+    check(['inventory', 'policy', 'full-selector', 'controlled'].includes(options['--mode']), 'unknown mode');
+    result = options['--mode'] === 'controlled'
+      ? await require('./controlled-matrix.cjs').executeControlled(read({ path: options['--manifest'], sha256: options['--sha256'] }), options['--repo'] || process.cwd(), options['--owner-receipt-sha256s']?.split(',') ?? [])
+      : options['--mode'] === 'full-selector'
       ? await require('./full-selector-matrix.cjs').executeFull(read({ path: options['--manifest'], sha256: options['--sha256'] }), options['--repo'] || process.cwd())
       : options['--mode'] === 'inventory' ? inventory() : execute(read({ path: options['--manifest'], sha256: options['--sha256'] }), options['--repo'] || process.cwd());
   } catch (e) { result = { complete: false, conditionalPolicyComplete: false, gaps: [{ kind: e.code ?? e.message }] }; }
-  if (['policy', 'full-selector'].includes(options['--mode'])) result.manifestFileSha256 = options['--sha256'] ?? null;
-  const out = path.resolve(options['--out']); check(out.startsWith('/tmp/'), 'outputs must be under /tmp');
+  if (['policy', 'full-selector', 'controlled'].includes(options['--mode'])) result.manifestFileSha256 = options['--sha256'] ?? null;
+  const out = path.resolve(options['--out']);
+  const controlledTemporaryOutput = options['--mode'] === 'controlled' &&
+    out.startsWith(path.resolve(require('node:os').tmpdir()) + path.sep);
+  check(out.startsWith('/tmp/') || controlledTemporaryOutput, 'outputs must be under /tmp');
   fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
-  process.exitCode = result.conditionalPolicyComplete ? 0 : 2;
+  process.exitCode = result.conditionalPolicyComplete || result.controlledExperimentComplete ? 0 : 2;
 }
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 2; });
 module.exports = { inventory, execute, main };

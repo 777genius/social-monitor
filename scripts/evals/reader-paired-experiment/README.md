@@ -323,3 +323,126 @@ Identical commands and envelopes are insufficient when another tape disagrees
 on abort events, completion times, parsed reviews or verdict inventory. This
 ambiguity is sticky and independent of response-pool order; it cannot silently
 select the first tape's outcome.
+
+## Controlled offline experiment
+
+`--mode controlled` reads a separate `paired-controlled-experiment.v1` manifest.
+It preserves the historical/default completion contract. Controlled completion
+requires validated immutable observations, explicit common controls, exact successful
+response coverage through the real parsers, independently anchored local owner
+receipts, all 21 returned arms with complete inventories/stage audits, 14 matched
+comparisons and quiescent detached lanes. Missing obligations stay incomplete.
+
+The manifest requires `mode: "CONTROLLED"`, `pins: {old, final}` with the existing
+exact revisions, `schedule: "successful_immediate_lexicographic_record.v1"`, and
+all seven ordered UTC `days`. `before` supplies `{preflight, receipt, hostReceipt,
+directory}`: each reference is `{path, sha256}` pointing to original capture-core
+bytes. It reads every day and controls hash and receipt join without constructing
+P2 seals. Each day supplies `after` (an original P2 seal reference), optional
+`responsePool` seal references, `evaluationControls`, and `interventions` for
+`before` and `after`.
+
+`evaluationControls` contains `clock`, `locale`, `snapshot` and `selection`
+(each `{query, presentKeys}`), `interests` (scoped `{query, result}` records), and
+`model` (the existing explicit assessment/relation constructor options).
+The clock must equal AFTER observedThrough and follow BEFORE observedThrough.
+Both populations retain original timestamps and raw data. Snapshot filters and
+population windows cannot be changed by this adapter. Common interest controls
+may cover the union of both populations. The original capture-core ranking limit
+is never interpreted as selector maxItems.
+
+Each population intervention has `kind: "common_evaluation_controls"`,
+`observationSha256`, `originalControlsSha256`, and `evaluationControlsSha256`.
+Digests use `controlsDigest` from `controlled-evaluation-view.cjs`. The original
+control digest covers `{observationQuery, observationPresentKeys, controls,
+interests}`. These declarations disclose interventions; they are not independent
+producer authority. P2 observations and capture-core records retain their original
+controls and read-time provenance separately.
+
+Controlled delivery preserves observed durations, lifecycle events, full commands,
+transport IDs and attestations. Only successful completed records can supply
+responses. Equal semantic request/output duplicates select the lexicographically
+smallest record ID (`sealSha256:sequence`) across the frozen union; conflicting
+successful outputs fail closed. Historical failures remain in capture histories.
+Real revision adapters parse the selected responses and verify parser/verdict
+bindings. Missing and invalid requests remain sticky even when caught by selectors.
+Invocation-local clients isolate overlapping requests. Controlled host quiescence
+tracks the entire parser operation, drains FIFO immediates and microtasks, and
+rejects pending work without firing positive timers.
+
+Results keep historical timing/replay and publication claims false. They retain
+all primary/supplemental rows and two separate comparisons; FINAL/AFTER is reused.
+A partial request union is not a complete discovery inventory because later
+requests depend on earlier responses. No future capture, provider call or native
+execution is part of this offline command.
+
+
+### Local execution owner boundary
+
+The parent supplies `--owner-receipt-sha256s SHA1,SHA2,...` separately from the
+manifest. The list contains the independently inspected BEFORE host-receipt hash
+and each independently inspected P2 owner-receipt hash. The program never reads
+an anchor list from the experiment manifest, tape, receipt or environment.
+`executeControlled(manifest, repo, expectedReceiptSha256s)` exposes the same
+explicit boundary to the trusted local caller. Pin the experiment manifest with
+`--sha256` and freeze its response pool and schedule before comparing outcomes.
+
+Each AFTER/response-pool seal reference adds `ownerReceipt: {path, sha256}`.
+Keep this separate receipt outside the immutable P2 capture directory. The P2
+seal and journals remain unchanged. A `paired-p2-local-owner-receipt.v1` contains:
+
+- `authority: "local_execution_owner_attestation"`, `action: "actual_p2_apply"`;
+- `captureSealSha256`, exact `scope` from `started.json`, and `operationId`;
+- `commandManifestSha256`: SHA256 of the canonical JSON of
+  `controls.json.manifest` (`hash` exported by `capture-owner-receipt.cjs`);
+- equal full Git `reviewedSourceCommit` and `deployedSourceCommit`, `sourceSha256`
+  matching both source hashes in the recorded command manifest;
+- immutable `imageId` (`sha256:` plus 64 hex digits), `ownedContainerId`
+  (64 hex digits), and exact manifest `runtime: {engine, packageVersion,
+  launcherSha256}`;
+- UTC `startedAt`, `endedAt`, and `terminal: {status: "exited", exitCode: 0}`.
+
+The parent constructs that receipt only after independently executing and
+inspecting the reviewed P2 container and its sidecar. The receipt pins the actual
+apply, scope, manifest, runtime/container identity and execution interval. All
+sealed callback timestamps must fit that interval. The selected model callbacks
+must join the exact generated request, original transport IDs, canonical request
+hash, runtime, provider/model/reasoning, output attestation and real parser/verdict
+inventory. Native quota receipts cannot substitute for this actual-apply receipt.
+
+This is **local owner attestation**, not cryptographically authenticated remote
+execution. The evaluator can check receipt joins but cannot independently discover
+what the parent executed; supplying the expected SHA is the parent's trust
+assertion. Synthetic fixtures are regression evidence only. Marked synthetic P2
+captures cannot acquire real authority, even with a matching owner-shaped receipt.
+Returned provenance booleans cannot be injected as authority into selector calls;
+only immutable observations/tapes admitted by the readers retain that binding.
+
+Example (all referenced files are already available locally):
+
+```sh
+NODE_OPTIONS=--max-old-space-size=1536 node scripts/evals/reader-paired-experiment/run.cjs \
+  --mode controlled --manifest /tmp/paired/experiment.json --sha256 MANIFEST_SHA \
+  --owner-receipt-sha256s BEFORE_HOST_SHA,AFTER_OWNER_SHA,UNION_OWNER_SHA \
+  --out /tmp/paired/result.json
+```
+
+Reports are create-only, mode 0600; exit 0 requires controlled completion, otherwise
+exit 2 retains the gaps. `complete`, `historicalTimingVerified`,
+`historicalReplayComplete` and publication fields keep their separate meanings;
+publication artifact IDs remain null. An abstention or genuine count/byte-budget
+pending item need not prevent execution completion, but does prevent full quality
+resolution. Missing/failed response validation is always an execution gap.
+The successful-immediate policy explicitly excludes historical model/transport
+latency and deadline frequency. Historical failures are retained and never
+relabelled as successes. Data comparisons cover all observed population/content/
+metric/authority changes; no metrics-only or quality-improvement claim is made.
+
+Original capture-core limitations remain: prospective capture at
+`2026-09-09T11:47:10.523Z`, separate day/config transactions, possible post-cutoff
+engagement writes, and physical residuals without provider exclusion reasons.
+No historical as-of reconstruction or observed zero model-call claim is implied.
+Tests under this directory use only supplied dependencies and synthetic fixtures:
+`NODE_OPTIONS=--max-old-space-size=1536 node --test --test-concurrency=1
+scripts/evals/reader-paired-experiment/*.test.cjs` (set `NODE_PATH` to a supplied
+matching dependency tree if the workspace dependency link is unavailable).

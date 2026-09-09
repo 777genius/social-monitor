@@ -43,11 +43,18 @@ function capture(ref) {
   check(new Set(events.map(e => e.sequence)).size === events.length && events.every(e => Number.isSafeInteger(e.sequence) && e.sequence > 0 && Number.isSafeInteger(e.atMs)), 'invalid_journal_sequence');
   return { seal, files, hashes, sealSha256: ref.sha256 };
 }
-function ports(source, tape, gaps) {
-  const inputs = tape.files['inputs.json'], raw = inputs.snapshot;
-  const recorded = tape.files['snapshot-query.json'];
+function ports(source, tape, gaps, evaluation) {
+  const observation = evaluation?.observation;
+  const inputs = observation ? { snapshot: observation.snapshot, query: observation.observationQuery,
+    queryKeys: observation.observationPresentKeys,
+    primaryIds: observation.snapshot.candidates.map(c => c.item.id),
+    supplementalIds: (observation.snapshot.supplementalItems || []).map(i => i.id) } : tape.files['inputs.json'];
+  const raw = inputs.snapshot;
+  const recorded = observation ? { query: observation.observationQuery, presentKeys: observation.observationPresentKeys } : tape.files['snapshot-query.json'];
   check(same(inputs.query, recorded.query) && same(inputs.queryKeys, recorded.presentKeys), 'capture_query_disagreement');
   const q = recorded.query;
+  const expected = evaluation?.controls.snapshot ?? recorded;
+  const evaluationCutoff = evaluation?.evaluationClock ?? q.observedThrough;
   check(q.timestampPolicy === 'published_at', 'unsupported_snapshot_timestamp_policy');
   const day = q.windowStartedAt.slice(0, 10);
   check(date(q.windowEndedAt).getTime() - date(q.windowStartedAt).getTime() === 86400000 && q.windowStartedAt === `${day}T00:00:00.000Z`, 'snapshot_not_one_UTC_day');
@@ -56,7 +63,7 @@ function ports(source, tape, gaps) {
   const wrapped = { ...raw, candidates: raw.candidates.map(c => ({ ...c, item: { props: c.item } })),
     supplementalItems: raw.supplementalItems?.map(props => ({ props })) };
   const FeedItem = source.load('libs/feed/domain/entities/feed-item.ts').FeedItem;
-  const hydrate = () => snapshot({ format: 'read-only-full-promotion-snapshot.v1', capturedAt: q.observedThrough,
+  const hydrate = () => snapshot({ format: 'read-only-full-promotion-snapshot.v1', capturedAt: observation?.endedAt ?? q.observedThrough,
     observedThrough: q.observedThrough, snapshot: clone(wrapped) }, day,
   { tenantId: q.tenantId, workspaceId: q.workspaceId, clock: q.observedThrough, query: q }, FeedItem);
   hydrate(); // Validate before any selector catches a port exception.
@@ -66,11 +73,11 @@ function ports(source, tape, gaps) {
     if (key !== 'readPromotionSnapshot') return deny('feed')[key];
     return async query => {
       calls.push({ port: 'snapshot', query: canonical(query) });
-      if (!same(query, withKeys(q, recorded.presentKeys))) gaps.fail('snapshot_query_mismatch', query);
+      if (!same(query, withKeys(expected.query, expected.presentKeys))) gaps.fail('snapshot_query_mismatch', query);
       return hydrate();
     };
   } });
-  const interestRecords = (tape.files['interests.jsonl'] || []).map(row => row.event);
+  const interestRecords = evaluation?.controls.interests ?? (tape.files['interests.jsonl'] || []).map(row => row.event);
   const interests = { readCurrent: async query => {
     calls.push({ port: 'interest', query: canonical(query) });
     const matches = interestRecords.filter(r => same(r.query, query));
@@ -83,6 +90,6 @@ function ports(source, tape, gaps) {
     return clone(result);
   } };
   return { feed, interests, deny, calls, primaryIds, supplementalIds, day, raw,
-    clock: { now: () => date(q.observedThrough) }, cutoff: q.observedThrough };
+    clock: { now: () => date(evaluationCutoff) }, cutoff: evaluationCutoff };
 }
 module.exports = { capture, ports, ledger, clone, canonical, same, withKeys };
