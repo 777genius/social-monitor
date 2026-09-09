@@ -1,5 +1,7 @@
 import type { ReaderSummaryArtifact } from "../../../domain";
 
+import { encodeDisplaySourceContent } from "./prisma-reader-summary-display-source";
+
 export const serializeReaderSummaryArtifact = (
   artifact: ReaderSummaryArtifact,
 ): Readonly<Record<string, unknown>> => {
@@ -8,6 +10,7 @@ export const serializeReaderSummaryArtifact = (
   return jsonObjectForPrisma(
     {
       ...snapshot,
+      content: encodeDisplaySourceContent(snapshot.content),
       period: {
         cadence: snapshot.period.cadence,
         startedAt: snapshot.period.startedAt.toISOString(),

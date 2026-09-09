@@ -13,6 +13,8 @@ import type { SummarySourceWindow } from
   "../value-objects/summary-evidence-item";
 import {
   buildReaderPostPromotionAttestations,
+  canonicalPromotionPayload,
+  promotionPayloadDigest,
   type ReaderPostPromotionAttestationBinding,
 } from "./reader-post-promotion-attestation";
 
@@ -86,6 +88,15 @@ export const buildReaderPromotionV2TestAttestations = (
   return buildReaderPostPromotionAttestations(bound.selection, {
     ...binding,
     editorialSlate: bound.editorialSlate,
+  }, new Map([...bound.selection.top, ...bound.selection.additional].map((selected) => [
+    selected.candidate.candidateId,
+    { headline: { status: "unavailable" as const, reasonCode: "not_assessed" as const } },
+  ]))).map((attestation) => {
+    // Explicit historical fixture: new runtime writers always emit display state.
+    const { displayHeadline, digest, canonicalPayload, ...body } = attestation;
+    void displayHeadline; void digest; void canonicalPayload;
+    const payload = canonicalPromotionPayload(body);
+    return { ...body, canonicalPayload: payload, digest: promotionPayloadDigest(payload) };
   });
 };
 

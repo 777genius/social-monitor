@@ -40,6 +40,8 @@ import { readerPostPromotionSelectionFromEditorialSlate } from
 import { buildReaderPostPromotionReasons } from "./reader-post-promotion-reasons";
 import { readerPostPromotionEvidenceInput } from "./reader-post-promotion-evidence-input";
 
+import { capturedReaderSource, readerPostDisplayHeadline, readerCapturedSourceDigest } from "./reader-post-display-headline";
+
 export type ReaderPostPromotionProjection = {
   readonly topReads: readonly TopRead[];
   readonly additionalPosts: readonly TopRead[];
@@ -129,7 +131,14 @@ export const buildReaderPostPromotionProjection = (params: {
       : buildReaderPostPromotionAttestations(selection, {
           ...params.attestationBinding,
           editorialSlate: params.editorialSlate,
-        });
+        }, new Map([...topReads, ...additionalPosts].map((card) => [
+          card.promotionCandidateId!, {
+            headline: card.displayHeadline!,
+            ...(card.displayHeadline?.status !== "accepted" ? {} : {
+              capturedSourceDigest: readerCapturedSourceDigest(card.capturedSource!),
+            }),
+          },
+        ])));
   const attestedEvidenceFacts = [...selection.top, ...selection.additional]
     .flatMap((selected) => [selected.candidate, ...selected.support]);
   const admittedCitationIds = new Set(
@@ -198,7 +207,10 @@ const promotedPost = (params: {
     readerSummaryIndependentProviderFamily(item)))]
     .sort((left, right) => left.localeCompare(right));
   const interestIds = compactUnique(admitted.map((item) => item.interestId));
-  const title = buildReaderPostPromotionTitle({ lead });
+  const displayHeadline = readerPostDisplayHeadline(lead);
+  const capturedSource = capturedReaderSource(lead);
+  const title = displayHeadline.status === "accepted"
+    ? displayHeadline.text : buildReaderPostPromotionTitle({ lead });
   const whyImportant = buildReaderPostPromotionReasons({
     selected: params.selected,
     lead,
@@ -235,6 +247,8 @@ const promotedPost = (params: {
             params.selected.editorialSlateEntry.digestInput,
         }),
     title,
+    displayHeadline,
+    capturedSource,
     providerKey: lead.providerKey,
     providerName: lead.providerName ?? lead.providerKey,
     primaryActionKind: lead.readerActionKind ?? "read_source",

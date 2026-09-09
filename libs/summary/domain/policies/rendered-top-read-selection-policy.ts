@@ -1,4 +1,4 @@
-import { isFaithfulReaderSourcePresentation } from "../services/reader-post-promotion-title";
+import { hasValidReaderDisplayTitle } from "./reader-display-title-quality";
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead, TopReadCandidate } from "../entities/top-read";
 import { STORY_RANKING_POLICY_V1 } from "./story-ranking-policy";
@@ -21,7 +21,6 @@ import {
 import {
   isFallbackReaderReason,
   isReaderTitleReasonDuplicate,
-  isUnpolishedReaderTitle,
 } from "./reader-summary-reader-facing-text-policy";
 import {
   compareReaderSummaryEditorialPriority,
@@ -39,6 +38,8 @@ export type RenderedTopReadCandidate = {
 export type ReaderFacingTopReadQualityInput = Pick<
   TopRead,
   | "title"
+  | "displayHeadline"
+  | "capturedSource"
   | "reason"
   | "providerKey"
   | "canonicalUrl"
@@ -340,9 +341,7 @@ export const isReaderFacingQualityTopRead = (
   evidence: readonly SummaryEvidenceItem[] = [],
 ): boolean => {
   if (
-    ((isUnpolishedReaderTitle(read.title) ||
-      evidence.some((item) => item.canonicalUrl === read.canonicalUrl)) &&
-      !isFaithfulReaderSourcePresentation(read, evidence)) ||
+    !hasValidReaderDisplayTitle(read, evidence) ||
     hasFallbackReason(read) ||
     isReaderTitleReasonDuplicate(read.title, read.reason)
   ) {

@@ -1,3 +1,6 @@
+import type { ReaderCapturedSource, ReaderDisplayHeadline } from
+  "../value-objects/summary-reader-headline";
+
 import type { ReaderActionKind } from "./reader-action";
 import type { ProviderMetric } from "../value-objects/provider-metric-label";
 import type { PreviewMedia } from "../value-objects/preview-media";
@@ -38,6 +41,8 @@ export const readerPostPromotionCardFields = [
 ] as const;
 
 export type TopRead = {
+  readonly capturedSource?: ReaderCapturedSource;
+  readonly displayHeadline?: ReaderDisplayHeadline;
   readonly storyClusterId?: string;
   readonly cardKind?: ReaderSummaryCardKind;
   readonly promotionMarker?: "reader_post_promotion";

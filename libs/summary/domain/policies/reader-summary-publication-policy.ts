@@ -1,3 +1,5 @@
+import { readerDisplayPublicationFindings } from "./reader-summary-display-publication";
+
 import type {
   ReaderSummaryArtifact,
   ReaderSummaryContent,
@@ -68,7 +70,9 @@ export class ReaderSummaryPublicationPolicy {
     ]);
     const topReads = topReadReferences(snapshot);
     const shadow = publicationShadowReport(params);
-    const rejectionFindings: ReaderSummaryPublicationRejectionFinding[] = [];
+    const rejectionFindings: ReaderSummaryPublicationRejectionFinding[] = [
+      ...readerDisplayPublicationFindings(snapshot, params.evidence),
+    ];
 
     const verification = readerSummaryPromotionPublicationOracle({
       evidence: params.evidence.selectedEvidence,

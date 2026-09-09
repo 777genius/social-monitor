@@ -1,3 +1,4 @@
+import { assertDisplayHeadlineSealPayload } from "./prisma-reader-summary-display-schema";
 import {
   canonicalPromotionPayload,
   promotionPayloadDigest,
@@ -71,7 +72,7 @@ export const assertExactPromotionAttestationPayload = (value: unknown): void => 
     exactKeys(
       item,
       isV2 ? [...topRequired, ...v2Required] : topRequired,
-      topOptional,
+      isV2 ? [...topOptional, "displayHeadline"] : topOptional,
       `promotion attestation ${index}`,
     );
     strings(item, ["schemaVersion", "policyVersion", "digestVersion", "digest",
@@ -126,6 +127,7 @@ export const assertExactPromotionAttestationPayload = (value: unknown): void => 
       assertSupportFact(supportRaw, `${index}.${supportIndex}`);
     }
     if (isV2) assertV2EditorialFields(item, supportFacts);
+    if (item.displayHeadline !== undefined) assertDisplayHeadlineSealPayload(item.displayHeadline);
     const { digest, canonicalPayload, ...canonicalBody } = item;
     if (canonicalPayload !== canonicalPromotionPayload(canonicalBody) ||
         digest !== promotionPayloadDigest(canonicalPayload as string)) {

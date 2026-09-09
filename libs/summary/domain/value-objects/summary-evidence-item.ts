@@ -1,3 +1,5 @@
+import type { SummaryReaderHeadline } from "./summary-reader-headline";
+
 import type { ProviderMetric } from "./provider-metric-label";
 import type { PreviewMedia } from "./preview-media";
 import type { ReaderSummaryRelatedTopicRelationProps } from "./reader-summary-related-topic-relation";
@@ -91,6 +93,7 @@ export type SummaryEvidencePromotionFacts = {
 };
 
 export type SummaryEvidenceItem = {
+  readonly readerHeadline?: SummaryReaderHeadline;
   readonly feedItemId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;

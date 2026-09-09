@@ -1,3 +1,5 @@
+import { assertReaderDisplayIdentity } from "../services/reader-post-display-identity";
+
 import {
   type ReaderPostPromotionAttestation,
   type ReaderPostPromotionAttestationV1,
@@ -123,6 +125,15 @@ export const assertReaderSummaryPromotionAttestations = (
     if (matches.length === 1 && isPromotionAttestationV2(matches[0]!) &&
         !v2AttestationMatchesCard(matches[0]!, card, placement, slot)) {
       throw new Error("Reader card promotion attestation placement is invalid");
+    }
+    if (matches.length === 1) {
+      assertReaderDisplayIdentity(card, matches[0]!, props);
+      const headline = card.displayHeadline;
+      if (headline?.status === "accepted" && !props.citationMap.some((citation) =>
+        citation.citationId === matches[0]!.citationId &&
+        citation.sourceItemId === headline.binding.sourceItemId)) {
+        throw new Error("Reader promotion display source citation is invalid");
+      }
     }
     if (matches.length !== 1) {
       throw new Error("Reader card promotion attestation placement is invalid");

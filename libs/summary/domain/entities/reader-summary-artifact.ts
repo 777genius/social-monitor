@@ -1,3 +1,6 @@
+import { immutableReaderDisplayContent } from "./reader-summary-display-immutability";
+import { immutableDisplayValue } from "../services/reader-post-display-identity";
+
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import type { ReaderSummaryCitation } from "./citation";
@@ -169,6 +172,7 @@ const withImmutablePromotionAttestations = (
   props: ReaderSummaryArtifactProps,
 ): ReaderSummaryArtifactProps => ({
   ...props,
+  content: immutableReaderDisplayContent(props.content),
   period: freezeReaderSummaryPeriod(props.period),
   sourceWindow: freezeSummarySourceWindow(props.sourceWindow),
   promotionAttestations: Object.freeze(
@@ -293,6 +297,9 @@ const freezePromotionAttestation = (
   ...(attestation.schemaVersion !== "reader_post_promotion_attestation.v2"
     ? {}
     : {
+        ...(attestation.displayHeadline === undefined ? {} : {
+          displayHeadline: immutableDisplayValue(attestation.displayHeadline),
+        }),
         scoreComponents: Object.freeze({ ...attestation.scoreComponents }),
         reasonCodes: Object.freeze([...attestation.reasonCodes]),
         evidenceLineage: Object.freeze({
@@ -368,6 +375,9 @@ const clonePromotionAttestations = (
   ...(attestation.schemaVersion !== "reader_post_promotion_attestation.v2"
     ? {}
     : {
+        ...(attestation.displayHeadline === undefined ? {} : {
+          displayHeadline: immutableDisplayValue(attestation.displayHeadline),
+        }),
         scoreComponents: { ...attestation.scoreComponents },
         reasonCodes: [...attestation.reasonCodes],
         evidenceLineage: {

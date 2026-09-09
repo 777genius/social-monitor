@@ -58,6 +58,7 @@ export const readerSummaryProviderDiversityOrder = [
 export const mapRankedItem = (
   item: RankedFeedItemView,
   ingestionCutoff?: Date,
+  scope?: Readonly<{ tenantId: string; workspaceId: string }>,
 ): SummaryEvidenceItem => {
   const canonicalPromotion = classifyFeedPromotionEligibility({
     providerKey: item.providerKey,
@@ -81,6 +82,13 @@ export const mapRankedItem = (
   title: item.title,
   bodyPreview: item.bodyPreview,
   sourceText: item.sourceText,
+  readerHeadline: item.readerHeadline?.status === "accepted" && scope !== undefined &&
+    (item.readerHeadline.binding.tenantId !== scope.tenantId ||
+      item.readerHeadline.binding.workspaceId !== scope.workspaceId)
+    ? { status: "unavailable", reasonCode: "invalid_assessment" }
+    : item.readerHeadline === undefined
+      ? { status: "unavailable", reasonCode: "not_assessed" }
+      : structuredClone(item.readerHeadline),
   authorHandle: item.authorHandle,
   publishedAt: new Date(item.publishedAt),
   observedAt: new Date(item.observedAt),

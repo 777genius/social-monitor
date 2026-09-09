@@ -45,6 +45,8 @@ import {
 } from "./prisma-reader-summary-promotion-attestation";
 import { normalizeReaderSummarySourceWindow } from "./prisma-reader-summary-source-window";
 
+import { decodeDisplaySource } from "./prisma-reader-summary-display-source";
+
 export type PrismaReaderSummaryArtifactPayloadFallback = {
   readonly id: string;
   readonly tenantId: string;
@@ -432,7 +434,7 @@ const normalizeReaderSummarySelectedPosts = (
 const normalizeReaderSummaryItem = (
   item: ReaderSummaryItem,
 ): ReaderSummaryItem => ({
-  ...item,
+  ...decodeDisplaySource(item),
   ...(item.storyClusterId?.trim()
     ? { storyClusterId: item.storyClusterId.trim() }
     : {}),

@@ -1,5 +1,7 @@
+import { immutableDisplayValue } from "../../../domain/services/reader-post-display-identity";
 import type {
   ReaderPostPromotionAttestation,
+  ReaderPostPromotionAttestationV2,
   ReaderSummaryContent,
 } from "../../../domain";
 import { readerPostPromotionCardFields } from "../../../domain";
@@ -21,6 +23,11 @@ export const normalizePromotionAttestations = (
       "Reader summary promotion attestations",
     ).map((item) => ({
       ...(item as unknown as ReaderPostPromotionAttestation),
+      ...(item.displayHeadline === undefined ? {} : {
+        displayHeadline: immutableDisplayValue(item.displayHeadline as NonNullable<
+          ReaderPostPromotionAttestationV2["displayHeadline"]
+        >),
+      }),
       periodStartedAt: requireDate(
         item.periodStartedAt,
         "Reader summary promotion period start",
