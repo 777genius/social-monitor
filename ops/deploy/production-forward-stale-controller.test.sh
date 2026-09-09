@@ -226,12 +226,46 @@ fi
 C=$PRODUCTION_FORWARD_RECOVERY_BRIDGE
 export GIT_AUTHOR_NAME=stale-test GIT_AUTHOR_EMAIL=stale@example.invalid
 export GIT_COMMITTER_NAME=$GIT_AUTHOR_NAME GIT_COMMITTER_EMAIL=$GIT_AUTHOR_EMAIL
+# Current source adds exactly the reviewed tenant-ownership inventory line to
+# C (also the 16c1f3c2 entrypoint). Keep C's blob in the historical target:
+# admitting this source delta must not reseal recovery or change its scenario.
+assert_reviewed_entrypoint_inventory_delta() {
+  local candidate=$1 frozen_blob=$2
+  [[ $(sha256sum "$candidate" | awk '{print $1}') == \
+    bd2461878446e9955bdbfc1c48b56d53431249f8a7827514f324eff972e84d31 ]] || return 1
+  [[ $(grep -Fxc '  ops/deploy/reader-summary-publication-tenant-ownership.sql' "$candidate") == 1 ]] || return 1
+  [[ $(sed '\|^  ops/deploy/reader-summary-publication-tenant-ownership.sql$|d' "$candidate" | \
+    production_forward_git hash-object --stdin) == "$frozen_blob" ]]
+}
+entrypoint_blob=$(production_forward_git rev-parse "$C:$incident_entrypoint_path")
+assert_reviewed_entrypoint_inventory_delta "$PROJECT_ROOT/$incident_entrypoint_path" "$entrypoint_blob" || \
+  fail 'current entrypoint has an unreviewed recovery-controller delta'
+for variant in missing-asset duplicate-asset wrong-asset extra-edit; do
+  candidate=$fixture/entrypoint-$variant.sh
+  cp "$PROJECT_ROOT/$incident_entrypoint_path" "$candidate"
+  case $variant in
+    missing-asset) sed '\|^  ops/deploy/reader-summary-publication-tenant-ownership.sql$|d' \
+      "$PROJECT_ROOT/$incident_entrypoint_path" > "$candidate" ;;
+    duplicate-asset) printf '  ops/deploy/reader-summary-publication-tenant-ownership.sql\n' >> "$candidate" ;;
+    wrong-asset) sed 's/reader-summary-publication-tenant-ownership.sql/reader-summary-publication-unreviewed.sql/' \
+      "$PROJECT_ROOT/$incident_entrypoint_path" > "$candidate" ;;
+    extra-edit) printf '\n# unreviewed edit\n' >> "$candidate" ;;
+  esac
+  if assert_reviewed_entrypoint_inventory_delta "$candidate" "$entrypoint_blob"; then
+    fail "unreviewed entrypoint inventory variant admitted: $variant"
+  fi
+done
+printf 'stale-controller-test: exact reviewed inventory delta accepted; missing/duplicate/wrong asset and extra edit rejected\n'
 # Carry both reviewed control fixes into the fixture target, retaining real C
 # ancestry. All unrelated target files remain the protected main snapshot.
 GIT_INDEX_FILE=$fixture/recovery-target.index production_forward_git read-tree "$TARGET"
 for path in ops/deploy/deploy-control-lib.sh ops/deploy/social-monitor-production-deploy.sh; do
   blob=$(production_forward_git rev-parse "$C:$path")
-  [[ $(git -C "$PROJECT_ROOT" hash-object "$PROJECT_ROOT/$path") == "$blob" ]]
+  if [[ $path == "$incident_entrypoint_path" ]]; then
+    assert_reviewed_entrypoint_inventory_delta "$PROJECT_ROOT/$path" "$blob"
+  else
+    [[ $(git -C "$PROJECT_ROOT" hash-object "$PROJECT_ROOT/$path") == "$blob" ]]
+  fi
   GIT_INDEX_FILE=$fixture/recovery-target.index production_forward_git \
     update-index --cacheinfo "100644,$blob,$path"
 done
