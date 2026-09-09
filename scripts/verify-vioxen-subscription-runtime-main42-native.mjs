@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 const expect = (actual) => ({ toEqual: (expected) => assert.deepEqual(actual, expected), toBe: (expected) => assert.equal(actual, expected), toBeGreaterThan: (expected) => assert.ok(actual > expected) });
-export async function verifyNativeQuota(packageRoot) {
+export async function verifyNativeQuota(packageRoot, { unitQuotaParams = false } = {}) {
     const { CodexEphemeralSessionMaterializer } = await import(pathToFileURL(join(packageRoot, 'dist/provider-codex/codex-session-materializer.js')).href);
     const { CodexQuotaSnapshotObservation } = await import(pathToFileURL(join(packageRoot, 'dist/worker-codex/adapters/codex-quota-snapshot-observation.js')).href);
     const { CodexSnapshotObservationStatus: Status } = await import(pathToFileURL(join(packageRoot, 'dist/worker-codex/application/codex-account-capacity-rechecker.js')).href);
@@ -79,6 +79,7 @@ export async function verifyNativeQuota(packageRoot) {
                             return;
                         let result = {};
                         if (message.method === "initialize") {
+                            assert.deepEqual(message.params, { clientInfo: { name: "agent-account-observability", title: "Agent account observability", version: "0.1.0" }, capabilities: { experimentalApi: true, requestAttestation: false } });
                             const fileConfig = await readFile(join(env.CODEX_HOME, "config.toml"), "utf8");
                             expect(fileConfig.includes("model_providers.openai")).toBe(false);
                             const privateAuth = JSON.parse(await readFile(join(env.CODEX_HOME, "auth.json"), "utf8"));
@@ -88,13 +89,20 @@ export async function verifyNativeQuota(packageRoot) {
                         }
                         if (hooks.effectiveConfigConflict)
                             config.model_providers.openai = { env_key: "SYNTHETIC_ALTERNATE_KEY" };
-                        if (message.method === "config/read")
+                        if (message.method === "config/read") {
+                            assert.deepEqual(message.params, { includeLayers: false, cwd: env.HOME });
                             result = { config };
+                        }
                         if (message.method === "account/read") {
                             expect(message.params).toEqual({ refreshToken: false });
                             result = hooks.account === undefined ? { requiresOpenaiAuth: true, account: { type: "chatgpt", email: "same@example.invalid", planType: "plus" } } : hooks.account;
                         }
                         if (message.method === "account/rateLimits/read") {
+                            if (unitQuotaParams && message.params != null) {
+                                stdout.write(JSON.stringify({ id: message.id, error: { code: -32600, message: "synthetic_invalid_unit_params" } }) + "\n");
+                                return;
+                            }
+                            if (unitQuotaParams) assert.equal(Object.hasOwn(message, "params"), false);
                             if (hooks.mutate)
                                 await hooks.mutate(env.CODEX_HOME, source);
                             if (hooks.signal)
@@ -202,9 +210,31 @@ export async function verifyNativeQuota(packageRoot) {
         const child = Object.assign(new EventEmitter(), { stdout, stderr, exitCode: null, signalCode: null,
             kill() { this.signalCode = 'SIGTERM'; globalThis.queueMicrotask(() => { this.emit('exit', null, 'SIGTERM'); this.emit('close', null, 'SIGTERM'); }); return true; }
         });
-        child.stdin = new Writable({ write(chunk, _encoding, callback) { callback(); const request = JSON.parse(String(chunk)); globalThis.queueMicrotask(() => stdout.write(JSON.stringify({ id: request.id, result: {} }) + '\n')); } });
+        const requests = [];
+        child.stdin = new Writable({ write(chunk, _encoding, callback) {
+            callback();
+            const request = JSON.parse(String(chunk));
+            requests.push(request);
+            const invalidUnit = request.method === 'account/rateLimits/read' && request.params != null;
+            globalThis.queueMicrotask(() => stdout.write(JSON.stringify(invalidUnit
+                ? { id: request.id, error: { code: -32600, message: 'synthetic_invalid_unit_params' } }
+                : { id: request.id, result: {} }) + '\n'));
+        } });
         const client = new JsonRpcLineClient({ command: 'synthetic-never-spawned', args: [], cwd: tmpdir(), env: {}, spawnProcess: () => child, onTransportFailure: () => { failed = true; } });
         await client.start();
+        if (unitQuotaParams && partial === '') {
+            await client.call({ method: 'config/read', params: {} });
+            assert.deepEqual(requests.at(-1).params, {});
+            for (const input of [{ method: 'account/rateLimits/read' }, { method: 'account/rateLimits/read', params: {} }]) {
+                await assert.rejects(client.call(input), /synthetic_invalid_unit_params/u);
+                assert.deepEqual(requests.at(-1).params, {});
+            }
+            assert.equal(requests.filter((request) => request.method === 'account/rateLimits/read').length, 2);
+            await client.call({ method: 'account/rateLimits/read', omitParams: true });
+            assert.equal(Object.hasOwn(requests.at(-1), 'params'), false);
+            assert.equal(requests.length, 5);
+            failed = false; // Separate expected RPC rejection from final-frame assertion.
+        }
         stdout.write(partial);
         await client.close();
         assert.equal(failed, partial.length > 0);
