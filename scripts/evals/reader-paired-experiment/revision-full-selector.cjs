@@ -10,6 +10,16 @@ const { detach, preparationTrace, observedPreparation, auditPreparation } = requ
 const glueFiles = ['revision-source.cjs', 'revision-parser-dependencies.cjs', 'revision-full-selector.cjs',
   'recorded-selector-ports.cjs', 'recorded-model-responses.cjs', 'recorded-request-admission.cjs', 'selector-preparation-trace.cjs', 'replay-host.cjs', 'frozen-input.cjs'];
 const glue = () => Object.fromEntries(glueFiles.map(file => [file, sha(fs.readFileSync(path.join(__dirname, file)))]));
+function exclusionDecisions(revision, selection, native) {
+  const evaluations = new Map(native.evaluatedEvidence.map(e => [e.candidateId, e.decision]));
+  // FINAL materialization removes exclusions from selectedEvidence before projection.
+  const exclusions = new Map((revision === FINAL ? selection.editorialSlate?.excluded ?? [] : [])
+    .map(e => [e.candidateId, e.reasonCodes]));
+  return (id, assessmentReason) => ({
+    placement: exclusions.has(id) || evaluations.has(id) ? 'excluded' : 'noncandidate',
+    reason: exclusions.get(id) ?? evaluations.get(id) ?? assessmentReason,
+  });
+}
 async function fullSelector({ repo = process.cwd(), revision, tape, responseTapes = [tape], modelControls, observe = true }) {
   const host = replayHost(), gaps = ledger(), selectionRecord = tape.files['selection-query.json'];
   const cutoff = selectionRecord.query.observedThrough;
@@ -90,6 +100,7 @@ async function fullSelector({ repo = process.cwd(), revision, tape, responseTape
         supportIds: entry.citationIds.filter(id => id !== `promotion-preflight:${entry.promotionCandidateId}`).map(id => id.replace(/^promotion-preflight:/, '')) });
     });
     const requested = new Set(assessmentRequests.map(r => r.candidateId));
+    const exclusionDecision = exclusionDecisions(revision, selection, native);
     const qualityById = new Map(rankedItems.map(i => [i.feedItemId, i.contentQuality]));
     const rows = ids.map((id, index) => {
       const item = byId.get(id), quality = qualityById.get(id), reason = quality?.reason ?? 'missing_quality';
@@ -105,8 +116,7 @@ async function fullSelector({ repo = process.cwd(), revision, tape, responseTape
         partition: index < io.primaryIds.length ? 'primary' : 'supplemental', rawIndex: index < io.primaryIds.length ? index : index - io.primaryIds.length,
         status, requested: asked, attempted, quality, inputHeadlineStatus: item.readerHeadline?.status ?? 'unavailable',
         headlineStatus: admitted.selectedEvidence.find(i => i.feedItemId === id)?.readerHeadline?.status ?? 'unavailable',
-        placement: native.evaluatedEvidence.some(e => e.candidateId === id) ? 'excluded' : 'noncandidate',
-        slot: null, reason: native.evaluatedEvidence.find(e => e.candidateId === id)?.decision ?? reason,
+        ...exclusionDecision(id, reason), slot: null,
         groupingStages: groups.flatMap((g, stage) => g.input.items.some(i => i.feedItemId === id) ? [stage] : []),
         supportIds: [], ...placements.get(id), artifactId: null };
     });
@@ -130,4 +140,4 @@ async function fullSelector({ repo = process.cwd(), revision, tape, responseTape
     source: source.identity(), instrumentation: glue(), portCalls: io?.calls ?? [], replay: replayReport,
     host: hostReport, gaps: gaps.entries(), artifactId: null });
 }
-module.exports = { fullSelector };
+module.exports = { fullSelector, exclusionDecisions };
