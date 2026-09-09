@@ -6364,13 +6364,19 @@
             "type": "boolean"
           },
           "artifact": {
-            "allOf": [
+            "nullable": true,
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/ReaderSummaryWeeklyProjectionArtifactDto"
+              },
+              {
+                "enum": [
+                  null
+                ],
+                "nullable": true,
+                "type": "object"
               }
-            ],
-            "nullable": true,
-            "type": "object"
+            ]
           },
           "blockingReasons": {
             "items": {

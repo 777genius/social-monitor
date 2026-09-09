@@ -5,23 +5,22 @@
 import 'package:json_annotation/json_annotation.dart';
 
 @JsonEnum()
-enum ReaderSummaryWeeklyProjectionStoryDtoStatusStatus {
-  /// The name has been replaced because it contains a keyword. Original name: `new`.
-  @JsonValue('new')
-  valueNew('new'),
-  @JsonValue('developing')
-  developing('developing'),
-  @JsonValue('resolved')
-  resolved('resolved'),
-  @JsonValue('watch')
-  watch('watch'),
+enum ReaderSummaryHeadlineWholeInputDtoQualificationJudgmentQualificationJudgment {
+  @JsonValue('none')
+  none('none'),
+  @JsonValue('preserved')
+  preserved('preserved'),
+  @JsonValue('subject_only')
+  subjectOnly('subject_only'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);
 
-  const ReaderSummaryWeeklyProjectionStoryDtoStatusStatus(this.json);
+  const ReaderSummaryHeadlineWholeInputDtoQualificationJudgmentQualificationJudgment(
+    this.json,
+  );
 
-  factory ReaderSummaryWeeklyProjectionStoryDtoStatusStatus.fromJson(
+  factory ReaderSummaryHeadlineWholeInputDtoQualificationJudgmentQualificationJudgment.fromJson(
     String json,
   ) => values.firstWhere((e) => e.json == json, orElse: () => $unknown);
 
@@ -33,6 +32,8 @@ enum ReaderSummaryWeeklyProjectionStoryDtoStatusStatus {
   String toString() => json ?? super.toString();
 
   /// Returns all defined enum values excluding the $unknown value.
-  static List<ReaderSummaryWeeklyProjectionStoryDtoStatusStatus>
+  static List<
+    ReaderSummaryHeadlineWholeInputDtoQualificationJudgmentQualificationJudgment
+  >
   get $valuesDefined => values.where((value) => value != $unknown).toList();
 }

@@ -3,10 +3,10 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
+import 'reader_summary_captured_source.dart';
 import 'reader_summary_confirmation.dart';
 import 'reader_summary_reason_text.dart';
 import 'reader_summary_sections.dart';
-import 'reader_summary_captured_source.dart';
 import 'reader_summary_top_read_details.dart';
 import 'reader_summary_top_read_leading.dart';
 

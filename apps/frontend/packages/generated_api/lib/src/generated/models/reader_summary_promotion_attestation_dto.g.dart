@@ -39,6 +39,11 @@ _$ReaderSummaryPromotionAttestationDtoFromJson(
   slot: json['slot'] as num,
   sourceWindowId: json['sourceWindowId'] as String,
   candidateDigestInput: json['candidateDigestInput'] as String?,
+  displayHeadline: json['displayHeadline'] == null
+      ? null
+      : ReaderSummaryDisplayHeadlineSealDto.fromJson(
+          json['displayHeadline'] as Map<String, dynamic>,
+        ),
   evidenceLineage: json['evidenceLineage'] == null
       ? null
       : ReaderSummaryPromotionEvidenceLineageDto.fromJson(
@@ -70,6 +75,7 @@ Map<String, dynamic> _$ReaderSummaryPromotionAttestationDtoToJson(
   'decision': instance.decision,
   'digest': instance.digest,
   'digestVersion': instance.digestVersion,
+  'displayHeadline': instance.displayHeadline,
   'evidenceLineage': instance.evidenceLineage,
   'placement': instance.placement,
   'policyVersion': instance.policyVersion,

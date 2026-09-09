@@ -5,6 +5,7 @@ import '../api/summary_api_dto.dart';
 import 'reader_post_promotion_attestation_rest_mapper.dart';
 import 'reader_summary_artifact_binding.dart';
 import 'reader_summary_reserved_marker.dart';
+import 'reader_summary_topic_map_rest_mapper.dart';
 
 final class ReaderSummaryContentRestMapper {
   const ReaderSummaryContentRestMapper();
@@ -30,7 +31,7 @@ final class ReaderSummaryContentRestMapper {
           )
           .toList(growable: false),
       mainTopics: dto.mainTopics,
-      topicMap: _topicMap(dto.topicMap),
+      topicMap: const ReaderSummaryTopicMapRestMapper().map(dto.topicMap),
       qualityState: ReaderSummaryQualityStateApiDto(
         status: dto.qualityState.status.json ?? 'ready',
         flags: dto.qualityState.flags
@@ -61,71 +62,6 @@ final class ReaderSummaryContentRestMapper {
       openQuestions: dto.openQuestions,
       risks: dto.risks,
       nextActions: dto.nextActions.map(_nextAction).toList(growable: false),
-    );
-  }
-
-  ReaderSummaryTopicMapApiDto _topicMap(
-    generated.ReaderSummaryTopicMapDto dto,
-  ) {
-    return ReaderSummaryTopicMapApiDto(
-      generatedBy: dto.generatedBy.json ?? 'deterministic',
-      confidence: _topicMapConfidence(dto.confidence),
-      nodes: dto.nodes.map(_topicMapNode).toList(growable: false),
-      groups: dto.groups.map(_topicMapGroup).toList(growable: false),
-      edges: dto.edges.map(_topicMapEdge).toList(growable: false),
-      warnings: dto.warnings,
-    );
-  }
-
-  ReaderSummaryTopicMapConfidenceApiDto _topicMapConfidence(
-    generated.ReaderSummaryTopicMapConfidenceDto dto,
-  ) {
-    return ReaderSummaryTopicMapConfidenceApiDto(
-      level: dto.level.json ?? 'low',
-      score: _safeConfidenceScore(dto.score),
-      rationale: dto.rationale,
-    );
-  }
-
-  ReaderSummaryTopicMapNodeApiDto _topicMapNode(
-    generated.ReaderSummaryTopicMapNodeDto dto,
-  ) {
-    return ReaderSummaryTopicMapNodeApiDto(
-      id: dto.id,
-      label: dto.label,
-      groupId: dto.groupId,
-      storyClusterIds: dto.storyClusterIds,
-      popularityScore: _safeScore(dto.popularityScore),
-      sizeWeight: _safeConfidenceScore(dto.sizeWeight),
-      evidenceCount: _safeCount(dto.evidenceCount),
-      providerKeys: dto.providerKeys,
-      interestIds: dto.interestIds,
-      citationIds: dto.citationIds,
-      keywords: dto.keywords,
-      rationale: dto.rationale,
-    );
-  }
-
-  ReaderSummaryTopicMapGroupApiDto _topicMapGroup(
-    generated.ReaderSummaryTopicMapGroupDto dto,
-  ) {
-    return ReaderSummaryTopicMapGroupApiDto(
-      id: dto.id,
-      label: dto.label,
-      colorKey: dto.colorKey,
-      nodeIds: dto.nodeIds,
-      confidence: _topicMapConfidence(dto.confidence),
-    );
-  }
-
-  ReaderSummaryTopicMapEdgeApiDto _topicMapEdge(
-    generated.ReaderSummaryTopicMapEdgeDto dto,
-  ) {
-    return ReaderSummaryTopicMapEdgeApiDto(
-      sourceNodeId: dto.sourceNodeId,
-      targetNodeId: dto.targetNodeId,
-      weight: _safeConfidenceScore(dto.weight),
-      reason: dto.reason,
     );
   }
 

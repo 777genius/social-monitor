@@ -4,6 +4,7 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'reader_summary_display_headline_seal_dto.dart';
 import 'reader_summary_promotion_attestation_dto_decision_decision.dart';
 import 'reader_summary_promotion_attestation_dto_digest_version_digest_version.dart';
 import 'reader_summary_promotion_attestation_dto_placement_placement.dart';
@@ -31,6 +32,7 @@ class ReaderSummaryPromotionAttestationDto {
     required this.slot,
     required this.sourceWindowId,
     this.candidateDigestInput,
+    this.displayHeadline,
     this.evidenceLineage,
     this.reasonCodes,
     this.scoreComponents,
@@ -54,6 +56,7 @@ class ReaderSummaryPromotionAttestationDto {
   final String digest;
   final ReaderSummaryPromotionAttestationDtoDigestVersionDigestVersion
   digestVersion;
+  final ReaderSummaryDisplayHeadlineSealDto? displayHeadline;
   final ReaderSummaryPromotionEvidenceLineageDto? evidenceLineage;
   final ReaderSummaryPromotionAttestationDtoPlacementPlacement placement;
   final ReaderSummaryPromotionAttestationDtoPolicyVersionPolicyVersion

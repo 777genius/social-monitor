@@ -19,7 +19,9 @@ class _CapturedSourceState extends State<ReaderSummaryCapturedSource> {
   void didUpdateWidget(covariant ReaderSummaryCapturedSource oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.source != widget.source ||
-        oldWidget.historicalText != widget.historicalText) _expanded = false;
+        oldWidget.historicalText != widget.historicalText) {
+      _expanded = false;
+    }
   }
 
   @override

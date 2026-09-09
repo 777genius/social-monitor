@@ -98,7 +98,9 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
   if (!verifyReaderDisplayHeadline(payload: decoded, headline: displayHeadline,
       source: capturedSource, outerSeal: displayHeadlineSeal, title: cardTitle,
       providerKey: cardProviderKey, tenantId: tenantId, workspaceId: workspaceId,
-      sourceItemId: sourceItemId, sourceCandidateId: sourceCandidateId)) return null;
+      sourceItemId: sourceItemId, sourceCandidateId: sourceCandidateId)) {
+    return null;
+  }
   final payloadCitationIds = decoded['citationIds'];
   if (payloadCitationIds is! List<Object?> ||
       payloadCitationIds.any((value) => value is! String) ||

@@ -22,7 +22,9 @@ ReaderCapturedSource? mapReaderCapturedSource(Object? value) {
 
 ReaderDisplayHeadline? mapReaderDisplayHeadline(Object? value) {
   if (value is! Map<String, Object?> || value['status'] != 'accepted' ||
-      value['text'] is! String) return null;
+      value['text'] is! String) {
+    return null;
+  }
   final kind = switch (value['kind']) {
     'claim' => ReaderDisplayHeadlineKind.claim,
     'subject_label' => ReaderDisplayHeadlineKind.subjectLabel,

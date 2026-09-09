@@ -44,6 +44,16 @@ ReaderSummaryReaderItemDto _$ReaderSummaryReaderItemDtoFromJson(
       .toList(),
   whyNow: json['whyNow'] as String,
   canonicalUrl: json['canonicalUrl'] as String?,
+  capturedSource: json['capturedSource'] == null
+      ? null
+      : ReaderSummaryCapturedSourceDto.fromJson(
+          json['capturedSource'] as Map<String, dynamic>,
+        ),
+  displayHeadline: json['displayHeadline'] == null
+      ? null
+      : ReaderSummaryDisplayHeadlineDto.fromJson(
+          json['displayHeadline'] as Map<String, dynamic>,
+        ),
   previewMedia: json['previewMedia'] == null
       ? null
       : ReaderSummaryPreviewMediaDto.fromJson(
@@ -63,9 +73,11 @@ Map<String, dynamic> _$ReaderSummaryReaderItemDtoToJson(
   ReaderSummaryReaderItemDto instance,
 ) => <String, dynamic>{
   'canonicalUrl': instance.canonicalUrl,
+  'capturedSource': instance.capturedSource,
   'citationIds': instance.citationIds,
   'confidence': instance.confidence,
   'confirmedProviderKeys': instance.confirmedProviderKeys,
+  'displayHeadline': instance.displayHeadline,
   'matchedInterestIds': instance.matchedInterestIds,
   'matchedRules': instance.matchedRules,
   'previewMedia': instance.previewMedia,
