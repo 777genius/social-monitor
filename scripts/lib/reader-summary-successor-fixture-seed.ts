@@ -70,6 +70,18 @@ export async function seedSuccessorPrior(admin: PoolClient, runtime: PoolClient)
   await runtime.query("begin isolation level serializable");
   try {
     await insertFixtureJob(runtime, running);
+    // The publisher finalizes an existing candidate; it never creates one.
+    const report = payload.report;
+    await runtime.query(`insert into reader_summary_artifacts
+      (id,tenant_id,workspace_id,scope_type,scope_key,cadence,period_started_at,
+       period_ended_at,period_timezone,period_key,status,schema_version,model_version,
+       prompt_version,headline,summary_text,artifact_payload,citations,quality_signals,created_at,updated_at)
+      values ($1,$2,$3,'workspace','workspace','daily',$4,$5,'UTC',$6,'RUNNING',1,
+       $7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$14)`,
+    [payload.readerSummaryArtifactId, payload.tenantId, payload.workspaceId, payload.periodStartedAt,
+      payload.periodEndedAt, payload.periodKey, payload.modelVersion, report.promptVersion, report.headline,
+      report.summaryText, JSON.stringify(report.artifactPayload), JSON.stringify(report.citations),
+      JSON.stringify(report.qualitySignals), fixturePriorTime]);
     const published = await runtime.query("select * from publish_reader_summary($1::jsonb)", [JSON.stringify(payload)]);
     assert.equal(published.rows[0]?.outcome, "published");
     await runtime.query("commit");

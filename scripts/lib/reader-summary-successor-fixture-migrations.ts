@@ -5,6 +5,7 @@ import { Pool } from "pg";
 import {
   applyOrderedReaderSummaryMigrations, createReaderSummaryPublicationMigrationWorkspace,
   preparePrePublicationMigrations, installPublicationAndFollowingMigrations,
+  installPublicationMigrationsBeforeDailyActivation,
   readerSummaryMigrationNames, removeReaderSummaryPublicationMigrationWorkspace,
 } from "./reader-summary-publication-postgres-migrations";
 import {
@@ -45,6 +46,11 @@ export async function migrateSuccessorFixture(admin: Pool, url: URL): Promise<st
       migrationAdminRole: migrator, dailyTerminalPassword: "" });
     preparePrePublicationMigrations(workspace);
     applyOrderedReaderSummaryMigrations(migrationUrl, workspace);
+    await runReaderSummaryPublicationBootstrapSql("pre", migrationUrl, runtime);
+    installPublicationMigrationsBeforeDailyActivation(workspace);
+    applyOrderedReaderSummaryMigrations(migrationUrl, workspace);
+    // Historical terminal migrations revoke the migrator's legacy privileges.
+    // Reapply the canonical bootstrap before adding daily activation FKs.
     await runReaderSummaryPublicationBootstrapSql("pre", migrationUrl, runtime);
     installPublicationAndFollowingMigrations(workspace);
     applyOrderedReaderSummaryMigrations(migrationUrl, workspace);
