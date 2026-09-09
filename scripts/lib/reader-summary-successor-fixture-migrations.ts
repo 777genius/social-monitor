@@ -1,3 +1,4 @@
+import { provisionSuccessorObserver } from "./reader-summary-successor-fixture-observer";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -62,10 +63,7 @@ export async function migrateSuccessorFixture(admin: Pool, url: URL): Promise<st
     for (const row of applied.rows) assert.equal(row.checksum, createHash("sha256")
       .update(readFileSync(`prisma/migrations/${row.migration_name}/migration.sql`)).digest("hex"));
     assert.equal((await admin.query("select 1 from _prisma_migrations where finished_at is null and rolled_back_at is null")).rowCount, 0);
-    // Observer needs migration and cluster identity reads, never owner/BYPASSRLS.
-    await admin.query(`GRANT SELECT ON _prisma_migrations TO ${ident(runtime)};
-      GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO ${ident(runtime)};
-      GRANT pg_read_all_settings TO ${ident(runtime)}`);
+    await provisionSuccessorObserver(admin);
     const audit = await admin.query(`select rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls,
       pg_has_role(rolname,'social_monitor_public_schema_owner','MEMBER') as schema_owner,
       pg_has_role(rolname,'social_monitor_reader_summary_publication_owner','MEMBER') as publication_owner,

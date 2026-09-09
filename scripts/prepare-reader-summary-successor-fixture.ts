@@ -8,7 +8,7 @@ import { resolvePostgresRuntimePoolConfig, runWithTenantDatabaseAccess } from "@
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { PrismaFeedConnection } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-connection";
 import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
-import { assertFixtureTarget, readFixtureMarker, attestEmptyFixture } from "./lib/reader-summary-successor-fixture-safety";
+import { assertFixtureTarget, readFixtureMarker, attestEmptyFixture, fixtureRoleUrl, fixtureObserverRole } from "./lib/reader-summary-successor-fixture-safety";
 import { migrateSuccessorFixture } from "./lib/reader-summary-successor-fixture-migrations";
 import { fixtureDate, fixtureObservedThrough, fixtureNow, fixtureId, fixtureJob, insertFixtureJob, seedSuccessorPrior, seedSuccessorInput } from "./lib/reader-summary-successor-fixture-seed";
 import { assertRefreshManifest, refreshBytesHash, refreshHash, refreshOperation, refreshScope, type RefreshManifest } from "./lib/reader-summary-new-input-refresh-manifest";
@@ -113,14 +113,16 @@ async function main(): Promise<void> {
         ["successor.json", manifestBytes]] as const) writeFileSync(join(output, name), bytes, { flag: "wx", mode: 0o444 });
       const manifestSha256 = refreshBytesHash(manifestBytes), manifestPath = join(output, "successor.json");
       assert.deepEqual(readReviewedRefresh(manifestPath, manifestSha256), manifest);
-      return { status: "prepared", synthetic: true, nativeGate: "not-run", runtimeUrl,
+      return { status: "prepared", synthetic: true, nativeGate: "not-run", nativeGateScope: "admission-no-chain-only", runtimeUrl,
+        observerUrl: fixtureRoleUrl(url, fixtureObserverRole),
         markerPath: resolve(markerPath), manifestPath, manifestSha256, counts, reconciliation: receipt };
     });
     writeFileSync(join(output, "receipt.json"), JSON.stringify(result, null, 2) + "\n", { flag: "wx", mode: 0o444 });
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify({ status: result.status, synthetic: true, nativeGate: result.nativeGate,
+      nativeGateScope: result.nativeGateScope, receiptPath: join(output, "receipt.json") }));
   } finally { await feed?.close(); await summary?.close(); await runtime?.end(); await admin.end(); }
 }
-if (require.main === module) void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : "fixture preparation failed");
+if (require.main === module) void main().catch(() => {
+  console.error("fixture preparation failed; no native PASS claimed");
   process.exitCode = 1;
 });

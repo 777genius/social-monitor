@@ -4,7 +4,7 @@ import type { Clock } from "@social-monitor/shared-kernel";
 import type { ReaderSummaryJob } from "@social-monitor/summary/domain";
 import { consumeRefreshSuccessor } from "./reader-summary-new-input-refresh-successor";
 import type { RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
-import { assertUnlocked, instrument, lockConflict, poolTimeout, relations, sqlState, type Connection } from "./reader-summary-successor-native-support";
+import { assertObserverConflict, assertUnlocked, instrument, lockConflict, poolTimeout, relations, sqlState, type Connection } from "./reader-summary-successor-native-support";
 
 export async function nativeScenarios(input: { summary: Connection; observer: Client;
   manifest: RefreshManifest; clock: Clock; job(): ReaderSummaryJob; snapshot(): Promise<unknown> }) {
@@ -27,25 +27,20 @@ export async function nativeScenarios(input: { summary: Connection; observer: Cl
       }
     })), /Refresh successor input drifted/);
     assert(committed);
-  } finally { await observer.query(policy, [...scope, tone]); }
+  } finally { const restored = await observer.query(policy, [...scope, tone]); assert.equal(restored.rowCount, 1); }
   assert.deepEqual(await snapshot(), before); await assertUnlocked(observer);
 
   for (const table of relations) {
-    await observer.query("begin");
-    try {
-      await observer.query(`lock table ${table} in row exclusive mode`);
-      await assert.rejects(consume(), lockConflict);
-      await observer.query(`lock table ${relations.join(",")} in row exclusive mode nowait`);
-    } finally { await observer.query("rollback"); }
+    await assertObserverConflict(observer, table, consume);
     assert.deepEqual(await snapshot(), before); await assertUnlocked(observer);
   }
 
   let terminated = false, protectionRejected = false;
   const lost = instrument(summary, async (_tx, ordinal, sql, phase) => {
     if (ordinal === 2 && sql === "BEGIN" && phase === "after") {
-      const holders = await observer.query<{ pid: number }>("select pid from pg_locks where relation='reader_summary_jobs'::regclass and mode='ShareLock' and granted");
+      const holders = await observer.query<{ pid: number; vxid: string }>("select pid, virtualtransaction as vxid from pg_locks where database=(select oid from pg_database where datname=current_database()) and relation='public.reader_summary_jobs'::regclass and mode='ShareLock' and granted");
       assert.equal(holders.rowCount, 1);
-      const stopped = await observer.query<{ stopped: boolean }>("select pg_terminate_backend($1, 1000) as stopped", [holders.rows[0]!.pid]);
+      const stopped = await observer.query<{ stopped: boolean }>("select reader_summary_refresh_test_observer.terminate_holder($1, $2) as stopped", [holders.rows[0]!.pid, holders.rows[0]!.vxid]);
       assert.equal(stopped.rows[0]?.stopped, true); terminated = true;
     }
   });

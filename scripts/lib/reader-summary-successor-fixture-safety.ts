@@ -3,6 +3,7 @@ import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Pool } from "pg";
 
+export const fixtureObserverRole = "reader_summary_refresh_test_observer";
 export const fixtureRuntimeRole = "reader_summary_refresh_test_runtime";
 export const fixtureMigrationRole = "reader_summary_refresh_test_migrator";
 export type FixtureMarker = {
@@ -66,4 +67,26 @@ export async function attestEmptyFixture(admin: Pool, marker: FixtureMarker): Pr
 }
 export function fixtureRoleUrl(url: URL, role: string): string {
   const copy = new URL(url); copy.username = role; return copy.toString();
+}
+
+/** Both operator socket markers and the original native loopback marker are supported. */
+export function assertObserverTargets(subject: string, observer: string, marker: FixtureMarker): void {
+  const urls = [new URL(subject), new URL(observer)];
+  for (const url of urls) {
+    if (url.hostname === "localhost") assertFixtureTarget(url.toString(), marker);
+    else {
+      assert.equal(url.protocol, "postgresql:"); assert.equal(url.hostname, "127.0.0.1");
+      assert.equal(url.password, ""); assert.equal(url.search, ""); assert.equal(url.hash, "");
+      assert.match(url.pathname, /^\/reader_summary_refresh_test_[a-z0-9]+$/u);
+      assert.equal(url.pathname.slice(1), marker.database);
+      assert(Number.isInteger(marker.port) && marker.port >= 1024 && marker.port <= 65535);
+      assert.equal(url.port, String(marker.port));
+      assert.match(marker.dataDirectory, /^\/tmp\/reader_summary_refresh_test_[a-zA-Z0-9]+\/data$/u);
+      assert.match(marker.systemIdentifier, /^\d+$/u);
+    }
+  }
+  assert.equal(urls[0]!.username, fixtureRuntimeRole);
+  assert.equal(urls[1]!.username, fixtureObserverRole);
+  urls[1]!.username = fixtureRuntimeRole;
+  assert.equal(urls[0]!.toString(), urls[1]!.toString(), "observer and subject endpoints must match");
 }

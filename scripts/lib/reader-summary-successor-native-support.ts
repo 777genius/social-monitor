@@ -6,37 +6,46 @@ import { Client } from "pg";
 import type { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 
-export const relations = ["source_item_engagement_snapshots", "source_items", "feed_items",
-  "source_item_engagement_observations", "source_item_engagement_daily_rollups", "source_bindings",
-  "interests", "source_catalog_entries", "reader_summary_policies", "reader_summary_jobs",
-  "reader_summary_artifacts", "reader_summary_publications", "reader_summary_publication_slots",
-  "reader_summary_new_input_refresh_reconciliations"];
+import { assertObserverTargets, readFixtureMarker, fixtureObserverRole, fixtureRuntimeRole } from "./reader-summary-successor-fixture-safety";
+import { assertSubjectPrivileges, observerRelations } from "./reader-summary-successor-fixture-observer";
+export const relations = observerRelations.map(name => `public.${name}`);
 export const required = (key: string) => {
   const value = process.env[key];
   assert(value, `${key} required; native gate never skips`);
   return value;
 };
 export async function fixtureObserver() {
-  const raw = required("READER_SUMMARY_REFRESH_TEST_DATABASE_URL"), url = new URL(raw);
-  assert.equal(url.protocol, "postgresql:");
-  assert.equal(url.hostname, "127.0.0.1");
-  assert.match(url.port, /^\d+$/u);
-  assert(Number(url.port) >= 1024);
-  assert.equal(url.search, ""); assert.equal(url.hash, "");
-  assert.match(url.pathname, /^\/reader_summary_refresh_test_[a-z0-9]+$/u);
-  assert.equal(url.username, "reader_summary_refresh_test_runtime");
-  assert.equal(url.password, "");
-  const marker = JSON.parse(readFileSync(required("READER_SUMMARY_SUCCESSOR_CLUSTER_MARKER"), "utf8")) as {
-    database: string; dataDirectory: string; port: number; systemIdentifier: string;
-  };
-  assert.equal(marker.database, url.pathname.slice(1)); assert.equal(String(marker.port), url.port);
-  assert.match(marker.dataDirectory, /^\/tmp\/reader_summary_refresh_test_[a-zA-Z0-9]+\/data$/u);
-  const observer = new Client({ connectionString: raw });
-  await observer.connect();
+  const raw = required("READER_SUMMARY_REFRESH_TEST_DATABASE_URL");
+  const observerUrl = required("READER_SUMMARY_REFRESH_TEST_OBSERVER_DATABASE_URL");
+  const marker = readFixtureMarker(required("READER_SUMMARY_SUCCESSOR_CLUSTER_MARKER"));
+  assertObserverTargets(raw, observerUrl, marker);
+  const observer = new Client({ connectionString: observerUrl });
   try {
+    await observer.connect();
     const result = await observer.query<{ directory: string; identifier: string; database: string }>(
-      "select current_setting('data_directory') as directory, system_identifier::text as identifier, current_database() as database from pg_control_system()");
+      "select * from reader_summary_refresh_test_observer.identity()");
     assert.deepEqual(result.rows, [{ directory: marker.dataDirectory, identifier: marker.systemIdentifier, database: marker.database }]);
+    // This temporary subject connection is closed before the max-two Prisma pool exists.
+    const subject = new Client({ connectionString: raw });
+    try {
+      await subject.connect();
+      const identity = await subject.query("select session_user, current_user");
+      assert.deepEqual(identity.rows, [{ session_user: fixtureRuntimeRole, current_user: fixtureRuntimeRole }]);
+      const live = await subject.query<{ pid: number; database: string }>(
+        "select pg_backend_pid() as pid, current_database() as database");
+      assert.equal(live.rows[0]?.database, marker.database);
+      // The attested observer must see this live subject PID in the same database.
+      // Matching endpoints plus this cross-connection observation binds system-id
+      // without granting any cluster metadata capability to the subject.
+      const seen = await observer.query("select pid, datname as database, usename as username from pg_catalog.pg_stat_activity where pid=$1",
+        [live.rows[0]!.pid]);
+      assert.deepEqual(seen.rows, [{ ...live.rows[0], username: fixtureRuntimeRole }]);
+    } finally { await subject.end(); }
+    assert.deepEqual((await observer.query("select session_user, current_user")).rows,
+      [{ session_user: fixtureObserverRole, current_user: fixtureObserverRole }]);
+    await assertSubjectPrivileges(observer);
+    assert.deepEqual((await observer.query("select pg_has_role($1,$2,'MEMBER') as member",
+      [fixtureRuntimeRole, fixtureObserverRole])).rows, [{ member: false }]);
     const role = await observer.query("select rolsuper, rolbypassrls from pg_roles where rolname=current_user");
     assert.deepEqual(role.rows, [{ rolsuper: false, rolbypassrls: false }]);
     const pending = await observer.query<{ count: number }>(
@@ -48,6 +57,7 @@ export async function fixtureObserver() {
     assert.deepEqual(migrations.rows.map((row) => row.migration_name), names, "fixture must include every current migration exactly once");
     for (const row of migrations.rows) assert.equal(row.checksum,
       createHash("sha256").update(readFileSync(`prisma/migrations/${row.migration_name}/migration.sql`)).digest("hex"));
+    await assertUnlocked(observer);
     return { observer, url: raw };
   } catch (error) { await observer.end(); throw error; }
 }
@@ -87,4 +97,16 @@ export async function assertUnlocked(observer: Client) {
   await observer.query("begin");
   try { await observer.query(`lock table ${relations.join(",")} in row exclusive mode nowait`); }
   finally { await observer.query("rollback"); }
+}
+
+/** A setup refusal is never a subject contention result. */
+export async function assertObserverConflict(observer: Pick<Client, "query">, table: string,
+  consume: () => Promise<unknown>): Promise<void> {
+  assert(relations.includes(table), "unknown observer relation");
+  await observer.query("begin");
+  try {
+    await observer.query(`lock table ${table} in row exclusive mode nowait`);
+    await assert.rejects(consume(), lockConflict);
+    await observer.query(`lock table ${relations.join(",")} in row exclusive mode nowait`);
+  } finally { await observer.query("rollback"); }
 }
