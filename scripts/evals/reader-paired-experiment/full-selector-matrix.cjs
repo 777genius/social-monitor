@@ -42,6 +42,7 @@ async function executeFull(manifest, repo) {
       let changes = null;
       if (left?.rows && right?.rows && matchedControls) {
         const { missingAssessmentCount, ...differences } = compare(left, right);
+        void missingAssessmentCount; // Full-selector coverage replaces the diagnostic-only count.
         changes = { ...differences, unresolvedCandidateCount: new Set([...left.assessmentCoverage.pendingIds, ...right.assessmentCoverage.pendingIds]).size,
           replayMissingRequestCount: new Set([...left.gaps, ...right.gaps].filter(g => g.kind.startsWith('missing_')).map(g => g.kind + ':' + g.requestSha256)).size };
       }

@@ -3,9 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { OLD, FINAL, revisionSource, digest, sha } = require('./revision-source.cjs');
+const { OLD, FINAL, revisionSource, digest } = require('./revision-source.cjs');
 const { date, read, evidence, snapshot, bundle, controls, boundRecord } = require('./frozen-input.cjs');
 const { select, compare } = require('./revision-selection.cjs');
 const { execute } = require('./run.cjs');

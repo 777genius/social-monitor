@@ -5,6 +5,8 @@ const { verifyRecordedRequestAdmission } = require('./recorded-request-admission
 const ASSESSMENT = 'social_monitor.relevance.assess_source_content.v1';
 const semantic = command => {
   const { requestId, correlationId, ...rest } = command;
+  void requestId; // Transport identity is excluded only from semantic request comparison.
+  void correlationId;
   return clone(rest);
 };
 function recordedResponses(source, tapes, gaps, clock, controls) {
