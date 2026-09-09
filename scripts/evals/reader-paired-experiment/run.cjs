@@ -76,19 +76,21 @@ function execute(manifest, repo) {
   result.conditionalPolicyComplete = false;
   return result;
 }
-function main(args) {
+async function main(args) {
   const options = {}; for (let i = 0; i < args.length; i += 2) {
     check(['--mode', '--manifest', '--sha256', '--out', '--repo'].includes(args[i]) && args[i + 1] && !options[args[i]], 'invalid CLI'); options[args[i]] = args[i + 1];
   }
   check(options['--out'], '--out required'); let result;
   try {
-    check(['inventory', 'policy'].includes(options['--mode']), 'only inventory/policy modes implemented; full algorithm remains required');
-    result = options['--mode'] === 'inventory' ? inventory() : execute(read({ path: options['--manifest'], sha256: options['--sha256'] }), options['--repo'] || process.cwd());
+    check(['inventory', 'policy', 'full-selector'].includes(options['--mode']), 'unknown mode');
+    result = options['--mode'] === 'full-selector'
+      ? await require('./full-selector-matrix.cjs').executeFull(read({ path: options['--manifest'], sha256: options['--sha256'] }), options['--repo'] || process.cwd())
+      : options['--mode'] === 'inventory' ? inventory() : execute(read({ path: options['--manifest'], sha256: options['--sha256'] }), options['--repo'] || process.cwd());
   } catch (e) { result = { complete: false, conditionalPolicyComplete: false, gaps: [{ kind: e.code ?? e.message }] }; }
-  if (options['--mode'] === 'policy') result.manifestFileSha256 = options['--sha256'] ?? null;
+  if (['policy', 'full-selector'].includes(options['--mode'])) result.manifestFileSha256 = options['--sha256'] ?? null;
   const out = path.resolve(options['--out']); check(out.startsWith('/tmp/'), 'outputs must be under /tmp');
   fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   process.exitCode = result.conditionalPolicyComplete ? 0 : 2;
 }
-if (require.main === module) main(process.argv.slice(2));
+if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 2; });
 module.exports = { inventory, execute, main };

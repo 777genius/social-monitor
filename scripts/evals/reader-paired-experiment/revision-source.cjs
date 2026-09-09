@@ -9,7 +9,15 @@ const FINAL = 'e8b867268744c0047a42d813e6024b1cf4463096';
 const sha = value => createHash('sha256').update(value).digest('hex');
 const digest = value => sha(JSON.stringify(value));
 function check(condition, message) { if (!condition) throw new Error(message); }
-function revisionSource(repo, revision, clock) {
+const blobCache = new Map(), compileCache = new Map();
+const admissionFiles = new Set([
+  'apps/agent-runtime/src/subscription-runtime-purpose-model-policy.ts',
+  'apps/agent-runtime/src/reader-promotion-v2-canary-contract.ts',
+  'apps/agent-runtime/bin/reader-promotion-v2-canary-contract.cjs',
+]);
+const canaryBridge = 'apps/agent-runtime/src/reader-promotion-v2-canary-contract.ts';
+const canaryContract = 'apps/agent-runtime/bin/reader-promotion-v2-canary-contract.cjs';
+function revisionSource(repo, revision, clock, host) {
   check([OLD, FINAL].includes(revision), 'unapproved revision');
   const git = args => execFileSync('git', ['-C', repo, ...args], { maxBuffer: 32 * 1024 * 1024 });
   check(git(['rev-parse', `${revision}^{commit}`]).toString().trim() === revision, 'revision mismatch');
@@ -18,7 +26,9 @@ function revisionSource(repo, revision, clock) {
   }));
   const source = name => { check(tree.has(name), `missing revision file: ${name}`);
     check(tree.get(name)[0] === '100644' || tree.get(name)[0] === '100755', 'source symlink forbidden');
-    return git(['cat-file', 'blob', tree.get(name)[2]]); };
+    const blob = tree.get(name)[2];
+    if (!blobCache.has(blob)) blobCache.set(blob, git(['cat-file', 'blob', blob]));
+    return blobCache.get(blob);  };
   const configBytes = source('tsconfig.json');
   const config = ts.parseConfigFileTextToJson('tsconfig.json', configBytes.toString());
   check(!config.error && !config.config.extends, 'unsupported revision tsconfig');
@@ -27,7 +37,8 @@ function revisionSource(repo, revision, clock) {
   const compilerLock = JSON.parse(lockBytes).packages['node_modules/typescript'];
   check(compilerLock?.version === ts.version, 'local compiler version does not match revision lock');
   const modules = new Map(), closure = {};
-  const context = vm.createContext({ URL, TextEncoder, TextDecoder, __isDate: require('node:util').types.isDate }, { codeGeneration: { strings: false, wasm: false } });
+  const dependencies = host ? require('./revision-parser-dependencies.cjs').parserDependencies(lockBytes) : undefined;
+  const context = vm.createContext({ ...host?.globals, URL, TextEncoder, TextDecoder, __isDate: require('node:util').types.isDate }, { codeGeneration: { strings: false, wasm: false } });
   new vm.Script(`const NativeDate = Date; Date = class extends NativeDate {
     constructor(...args) { super(...(args.length ? args : [${JSON.stringify(clock)}])); }
     static [Symbol.hasInstance](value) { return __isDate(value); }
@@ -44,21 +55,45 @@ function revisionSource(repo, revision, clock) {
     }
     check(base && !base.startsWith('../'), `external dependency forbidden: ${specifier}`);
     const name = [base, `${base}.ts`, `${base}/index.ts`].find(p => tree.has(p));
-    check(name && name.startsWith('libs/') && name.endsWith('.ts'), `outside source closure: ${specifier}`);
+    check(name && ((name.startsWith('libs/') && name.endsWith('.ts')) || (host && admissionFiles.has(name))), `outside source closure: ${specifier}`);
     return name;
   }
   function load(name) {
+    check((name.startsWith('libs/') && name.endsWith('.ts')) || (host && admissionFiles.has(name)), 'entry_outside_source_closure');
     if (modules.has(name)) return modules.get(name).exports;
     const bytes = source(name); closure[name] = { gitBlob: tree.get(name)[2], sha256: sha(bytes) };
-    const output = ts.transpileModule(bytes.toString(), { compilerOptions: { ...options,
-      declaration: false, sourceMap: false, incremental: false }, fileName: name });
+    const cacheKey = `${sha(configBytes)}:${tree.get(name)[2]}:${name}`;
+    if (!compileCache.has(cacheKey)) compileCache.set(cacheKey, name.endsWith('.cjs') ? { outputText: bytes.toString() } : ts.transpileModule(bytes.toString(), { compilerOptions: { ...options,
+      declaration: false, sourceMap: false, incremental: false }, fileName: name }));
+    const output = compileCache.get(cacheKey);
     const module = { exports: {} }; modules.set(name, module);
-    const localRequire = specifier => ['crypto', 'node:crypto'].includes(specifier)
+    const bridgeRequire = specifier => {
+      // The sole virtual filesystem/module capability serves the immutable
+      // canary contract imported by admission. It cannot access the host FS.
+      if (specifier === 'node:path') return Object.freeze({ join: path.join });
+      if (specifier === 'node:fs') return Object.freeze({ existsSync: filename => {
+        check(filename === `/revision/${canaryContract}`, 'virtual_file_forbidden');
+        return tree.has(canaryContract);
+      } });
+      if (specifier === 'node:module') return Object.freeze({ createRequire: filename => {
+        check(filename === `/revision/${canaryBridge}`, 'virtual_require_origin_forbidden');
+        return target => {
+          check(target === `/revision/${canaryContract}`, 'virtual_require_target_forbidden');
+          return load(canaryContract);
+        };
+      } });
+      throw Error('virtual_builtin_forbidden');
+    };
+    const localRequire = specifier => host && name === canaryBridge && ['node:fs', 'node:path', 'node:module'].includes(specifier)
+      ? bridgeRequire(specifier) : host && ['zod', '@grpc/grpc-js'].includes(specifier)
+      ? dependencies.load(specifier) : ['crypto', 'node:crypto'].includes(specifier)
       ? Object.freeze({ createHash }) : specifier === 'node:util'
         ? Object.freeze({ types: require('node:util').types }) : load(resolve(specifier, name));
     context.__module = module; context.__require = localRequire;
-    new vm.Script(`(function(require,module,exports){${output.outputText}\n})(__require,__module,__module.exports)`,
-      { filename: `${revision}/${name}` }).runInContext(context, { timeout: 10000 });
+    new vm.Script(`(function(require,module,exports,__filename,__dirname){${output.outputText}\n})(__require,__module,__module.exports,${JSON.stringify(`/revision/${name}`)},${JSON.stringify(`/revision/${path.dirname(name)}`)})`,
+      // Cold module initialization includes nested Git reads/transpilation.
+      // Keep actual selector invocation at 10s; initialization has a separate cap.
+      { filename: `${revision}/${name}` }).runInContext(context, { timeout: 60000 });
     return module.exports;
   }
   return { load, invoke(fn, args) { context.__fn = fn; context.__args = args;
@@ -66,6 +101,7 @@ function revisionSource(repo, revision, clock) {
   identity: () => ({ revision, tree: git(['rev-parse', `${revision}^{tree}`]).toString().trim(),
     tsconfigSha256: sha(configBytes), lockSha256: sha(lockBytes), compilerVersion: ts.version,
     compilerSha256: sha(require('node:fs').readFileSync(require.resolve('typescript'))),
-    nodeVersion: process.version, closure, closureSha256: digest(closure) }) };
+    nodeVersion: process.version, closure: { ...closure }, closureSha256: digest(closure),
+    parserDependencies: { ...dependencies?.closure } }) };
 }
 module.exports = { OLD, FINAL, sha, digest, check, revisionSource };

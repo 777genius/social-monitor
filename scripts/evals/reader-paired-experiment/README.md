@@ -1,11 +1,12 @@
-# Bounded offline paired policy executor
+# Bounded offline paired selector executor
 
-This implements a **conditional selection-policy boundary on caller-supplied
-post-assessment assertions and grouping**. No producer-owned offline contract has
-been established: all caller assertions remain pending, and policy CLI execution
+The `policy` mode implements a **conditional selection-policy boundary on caller-supplied
+post-assessment assertions and grouping**. That diagnostic format has no
+validated producer binding: all caller assertions remain pending, and policy CLI execution
 cannot certify them. Hashes bind bytes only; they do not prove execution. The full algorithm experiment remains
-required and is not implemented or claimed here. No production/model/provider/DB
-ports are constructed. There is no live fallback, publication, install, or runtime
+required. The new `full-selector` mode below executes the actual selectors as an
+explicitly incomplete checkpoint; it cannot certify the experiment. No live production/model/provider/DB
+clients are constructed. There is no live fallback, publication, install, or runtime
 launch. `complete` always remains false; `conditionalPolicyComplete` also remains false until a concrete producer-owned
 contract is implemented and independently validated. A conditional result says nothing about grouping accuracy,
 model quality, generation, publication, or historical deployment identity.
@@ -15,15 +16,21 @@ Every relative import and alias resolves through the named revision's tree and
 `tsconfig.json`, including barrels and transitive imports. The local TypeScript
 compiler must match each revision's lock version; its actual file hash, Node
 version, lock hash, tsconfig hash, tree and every loaded blob/hash are reported.
-There are no external runtime dependencies except restricted `createHash` and
-`util.types` builtins. The isolated VM denies other imports, process, network APIs,
-timers and randomness, freezes Date, and bounds each module/call to ten seconds.
+Policy mode exposes only restricted `createHash` and `util.types` builtins.
+Full-selector mode additionally exposes the bounded host described below and
+version-checked, byte-hashed Zod schema interpretation plus the installed gRPC
+pure status enum. It never loads the gRPC client entrypoint. Other gRPC
+capabilities throw. The VM denies other imports, process, network APIs and
+randomness. Date stays frozen. Calls retain the ten-second synchronous limit;
+cold module initialization (including recursive Git reads/transpilation) has a
+separate sixty-second limit. Async work uses a bounded driver.
 This is a trusted, pinned-source execution boundary, not a hostile-code sandbox.
 Source loading is transpilation of the small dependency closure, not a full build.
 
-All modifications belong to this directory. Git lock create/remove was attempted
-at writer start and failed with EROFS; orchestration must apply/commit the delivered
-patch outside this sandbox. Do not push or merge as part of these commands.
+All modifications belong to this directory. The earlier policy writer recorded
+an EROFS Git-lock failure. This P3 worker makes no index or commit writes; parent
+orchestration must integrate the delivered patch. Do not push or merge as part
+of these commands.
 
 ## Commands
 
@@ -132,3 +139,187 @@ separately. Claimed accepted headlines must pass the pinned FINAL
 source, support and bindings, not producer execution or prompt approval. Input
 headline availability is separate from admission. Missing coverage is never
 inferred to be zero from successful synthetic selection.
+
+
+## Actual full-selector checkpoint (P3)
+
+`revision-full-selector.cjs` constructs the **named revision's** real
+`RelevanceReaderSummaryEvidenceSelector` and `RankFeedItemsUseCase`. OLD
+`a88f6161197b7bf96315ae83969e49e51a833c2b` deterministically assesses its raw
+population and never reads configured interests or calls the quality reviewer.
+FINAL `e8b867268744c0047a42d813e6024b1cf4463096` creates its actual assessment
+adapter. Both execute their genuine clustering, relation reconciliation,
+reduction and admission. Selection stops before any summary job or publication.
+
+Input is the concrete P2 `reader-refresh-paired-capture.v1` directory, referenced
+by the exact hash/path of `complete.json` or `incomplete.json`. Every listed file
+is checked for regular-file type, size and hash, with bounded bytes/events and
+unique journal sequences. Inputs hydrate through revision-local `FeedItem`;
+primary/supplemental raw order, full bodies, source joins, exact timestamp strings,
+metric authority and arbitrary metadata survive. The snapshot port matches all
+query fields and present-key semantics. Interest reads match exact scoped
+recorded requests. Other feed/profile/memory capabilities fail into a sticky
+ledger. A complete P2 marker is capture metadata, never experiment authority.
+
+The real quality and relation adapters build commands, validate output
+attestations and run their concrete parsers over P2 model responses. Matching
+includes the full actual assessment request or relation query, context, lane,
+prompt, schema, controls and original transport identity. Changed input does not
+reuse a candidate-ID response. Parsed reviews/decisions must equal the corresponding
+P2 terminal values; FINAL's produced verdicts require the exact complete,
+duplicate-free attempted candidate inventory and matching values.
+`recorded-request-admission.cjs` additionally executes the pinned concrete
+`admitSubscriptionRuntimeRequest` and canonical JSON hash functions used by P2.
+The captured canonical request hash must match before a response is supplied.
+Its three-file admission closure includes the canary contract through a narrow
+virtual filesystem serving only that immutable Git blob; no host filesystem,
+executor or live client becomes accessible. Admission consistency is reported
+per consumed record and remains separate from unverified producer origin. Relation
+fail-closed catches cannot erase missing requests. The ledger retains exact
+requests and shared immutable tape/event IDs for subsequent union recovery.
+Original transport IDs and attestations are never rewritten.
+
+Rank-result, cluster-method and named stage-function wrappers only observe actual
+invocations. The exported period/default-provider filters, supplemental policy,
+verified relations and promotion-policy inputs/outputs are retained from the
+actual call. Async observation returns the original promise; failures are
+reported separately. Wrappers are restored before later projection/admission. No
+pinned blob is edited, no grouping is injected and no second ranking pass runs.
+All ranked identities are reindexed into the original two partitions.
+`selector-preparation-trace.cjs` builds the complete P2 FINAL preparation shape
+from these observations: stage-local exclusions, both genuine groupings,
+unclustered IDs, relation candidates/pairs, graduated relations, policy input and
+admitted supplemental items. P2's pre-sort rank field is compared by undoing the
+source's final rank assignment; ranking order is retained independently. This
+is explicit derived normalization, not a claimed pre-sort callback. All captured
+promotion/preparation/selection fields must match, including the complete raw
+partitions. OLD retains its own multiple stages without interpreting them as
+FINAL's preparation contract. Missing projection files are capture gaps, not
+missing model requests. Content equality never establishes producer origin. Full
+mapped and ranked inventory, request eligibility, attempted IDs, native
+scores/placements, reject/abstention/pending/exempt/hard-gate states, grouping
+calls and admitted supplemental evidence remain separate. Wrappers and host
+hashes are reported separately from the complete immutable source closure.
+
+### Controlled timing, explicitly incomplete
+
+The host implements only the primitives required by this tested slice:
+AbortController, controlled AbortSignal timeout/any, structuredClone, Buffer,
+registered timeout handles, clearTimeout, setImmediate/clearImmediate, and
+ref/unref bookkeeping. It flushes real Promise microtasks through Node's check
+phase and then runs scheduled shadow callbacks. It never sleeps on wall timers
+or advances the editorial cutoff. Timer-dependent awaits stop with
+`precise_timing_replay_required`; registered deadline callbacks are **not** fired
+at invented times. The driver is capped at 256 turns.
+
+Only recorded same-millisecond completed envelopes enter the immediate-response
+path. Nonzero elapsed, observed deadline/abort, failed and still-pending events
+remain named gaps, with their original recorded times/outcomes retained. Their
+source-produced pending rows are diagnostic outcomes, not claims that precise
+historical timing was reproduced. Even same-millisecond records cannot prove
+historical microtask/timer ordering. Every arm therefore reports
+`historicalTimingVerified:false`, `actualProducerVerified:false`, `complete:false`.
+No synthetic flag or self-hashed attestation can change those values. Missing
+responses and unresolved candidates have different counters; newly changed
+pending assessments can discover additional missing downstream relation requests.
+
+### Full-selector CLI
+
+```sh
+NODE_OPTIONS=--max-old-space-size=1536 node scripts/evals/reader-paired-experiment/run.cjs \
+  --mode full-selector --manifest /tmp/paired-full.json --sha256 EXACT_FILE_SHA256 \
+  --out /tmp/paired-full-results.json
+```
+
+The manifest format is `paired-full-selector-matrix.v1`, with exactly the seven
+ordered days already listed above. Each day has `current.capture` and
+`original.capture` references (`{path,sha256}`), optional `responsePool` capture
+references, and shared `modelControls`:
+
+```json
+{
+  "assessment": {"batchTimeoutMs": 300000, "totalTimeoutMs": 600000},
+  "relation": {},
+  "relatedTopicVerifierTimeoutMs": 15000
+}
+```
+
+These numbers describe the supplied synthetic example, not inferred controls
+for any real operation. Relation omissions use the pinned adapter defaults.
+Actual captured controls still need an independent authority/binding audit.
+Three arm slots are retained per day; available arms actually execute. Seven
+algorithm comparison rows and seven separate FINAL original/current rows are
+always emitted, with missing arm counts null. FINAL/current is executed once
+and its exact digest is reused in both comparisons. Data-pair controls must
+match (query, snapshot query, interest returns) before differences are emitted.
+Every comparison is partial and the CLI always exits 2 in this checkpoint.
+Existing diagnostic policy mode remains fail-closed; there is no fallback to it.
+
+### Portable synthetic example and focused checks
+
+`fixtures/p2-synthetic-capture.json` is machine-copied callback data from P2's
+explicitly synthetic example. It retains four primary plus twelve supplemental
+identities and the concrete assessment/relation tapes. Large producer projections
+are omitted so tests have to recompute grouping and selection. Its exported seal
+is deliberately incomplete. This is fixture input, never a historical original
+or native provider attestation. The FINAL example resolves two assessments,
+abstains on one, preserves one hard gate and twelve GitHub deterministic branches.
+The example also makes an explicitly synthetic original population by removing
+three supplemental identities, then runs all three arms for that day; the other
+six days remain named gaps. OLD discovers a different, missing relation request. A separate regression feeds
+a real parsed rejection and a rehashed binding forgery.
+
+```sh
+# Check available memory first. Use a fresh create-only destination.
+NODE_OPTIONS=--max-old-space-size=1536 node scripts/evals/reader-paired-experiment/write-full-selector-example.cjs \
+  /tmp/paired-full-selector-synthetic-example
+NODE_OPTIONS=--max-old-space-size=1536 node --test --test-concurrency=1 scripts/evals/reader-paired-experiment/*.test.cjs
+npm run check:architecture
+npm run check:code-quality
+npm run check:source-line-cap
+```
+
+### Exact remaining work before experiment completion
+
+1. Implement and test actual recorded execution-time/deadline ordering, including
+   before/at/late/cancellation, batch and total deadlines and overlapping lanes.
+   Keep execution elapsed time separate from immutable editorial cutoff. This
+   checkpoint intentionally does not implement a universal scheduler.
+2. Validate concrete producer origin, source/runtime/policy/config authority
+   and all canonical/exempt/full-source bindings. Canonical runtime request
+   admission and output hashes are now recomputed through real pinned functions;
+   that consistency still cannot establish the capture's actual origin.
+3. Run the implemented field-by-field P2 promotion/preparation/selection audit
+   over real recovered populations and source-controlled captures. Synthetic
+   complete-field equality and stage tampering are tested; remaining parser,
+   headline and grouping/lane stress cases still need coverage.
+4. Recover six historical original full snapshots and their actual controls;
+   bridge the established eight raw files to verified P2 inputs without replacing
+   populations. Recover exact OLD/FINAL/original/current request union, including
+   all related-topic/shadow requests. No new live calls are authorized here.
+5. Run the full 21-arm/14-pair matrix twice with verified raw/control/source pins,
+   prove repeated equality and fully resolved coverage. Until then no seven-day
+   completion, no quality-gain/no-signal conclusion, no publication IDs.
+
+This is a useful actual-selector implementation checkpoint within the P3 file
+lease, not the entire acceptance matrix or a production-certified experiment.
+
+The zero-elapsed host drains nested Promise reactions between individual immediate
+callbacks, matching the tested Node cancellation ordering. A microtask from the
+first callback can cancel a later queued callback; newly queued immediates remain
+in the next replay batch. Rejected promises retain falsy rejection reasons and
+cannot silently become successful results. These host checks do not certify
+historical timer/deadline ordering or advance the frozen editorial clock.
+
+Response observations retain the full associated P2 model journal, including
+invocation abort and envelope-not-consumed events with their original sequence
+and timestamps. Even same-millisecond abort/deadline events require precise
+timing replay; a verified envelope alone cannot override them. Both assessment
+and relation calls reject overlapping response slots until lane timing can be
+replayed without overwriting another call's binding.
+
+A response union rejects conflicting observations of the same semantic request.
+Identical commands and envelopes are insufficient when another tape disagrees
+on abort events, completion times, parsed reviews or verdict inventory. This
+ambiguity is sticky and independent of response-pool order; it cannot silently
+select the first tape's outcome.
