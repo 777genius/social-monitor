@@ -16,7 +16,7 @@ import { withTrustedCodexWorkerUsage } from "./codex-worker-cli-usage.mjs";
 // usage instead of the cumulative thread counter.
 const artifactPath = join(
   process.cwd(),
-  process.env.USAGE_CONTRACT_ARTIFACT ?? "vendor/vioxen-subscription-runtime-0.1.0-main.42.tgz",
+  process.env.USAGE_CONTRACT_ARTIFACT ?? "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.1.tgz",
 );
 
 try {

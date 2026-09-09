@@ -12,7 +12,7 @@ import {
 } from "node:path";
 
 export const approvedSubscriptionRuntimePackageVersion =
-  "0.1.0-main.42";
+  "0.1.0-main.42-sm.1";
 export const approvedSubscriptionRuntimeLauncherSha256 =
   "a7bd7dc219461a1e42f957657b7fa628df201cd8ae74fe91159b842a42d0eef9";
 
