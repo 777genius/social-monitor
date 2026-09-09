@@ -19,13 +19,17 @@ import { assertRefreshSuccessorCurrent } from "./lib/reader-summary-new-input-re
 import { readReviewedRefresh } from "./lib/reader-summary-new-input-refresh-files";
 
 import { successorFixtureUsage, successorPreparationFailure, type SuccessorPreparationPhase } from "./lib/reader-summary-successor-fixture-diagnostics";
+import { seedSuccessorPublicationGitHub } from "./lib/reader-summary-successor-publication-github";
+import { successorPublicationCommand } from "./lib/reader-summary-successor-publication-evidence";
+import { PrismaReaderSummaryGitHubProjectionReader } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-github-projection.reader";
 
 let preparationPhase: SuccessorPreparationPhase = "usage";
 
 async function main(): Promise<void> {
-  const [raw, markerPath, outputPath, ...extra] = process.argv.slice(2);
-  assert(raw && markerPath && outputPath && extra.length === 0,
-    successorFixtureUsage);
+  const [raw, markerPath, outputPath, mode, ...extra] = process.argv.slice(2);
+  assert(raw && markerPath && outputPath && extra.length === 0 && (mode === undefined || mode === "--publication"),
+    `${successorFixtureUsage} [--publication]`);
+  const publication = mode === "--publication";
   preparationPhase = "marker";
   const marker = readFixtureMarker(markerPath), url = assertFixtureTarget(raw, marker);
   // Do not consult ambient DB/auth configuration. The migration executor
@@ -52,7 +56,11 @@ async function main(): Promise<void> {
     try {
       await seedSuccessorPrior(auditor, writer);
       await auditor.query("begin isolation level serializable");
-      try { await seedSuccessorInput(auditor); await auditor.query("commit"); }
+      try {
+        await seedSuccessorInput(auditor);
+        if (publication) await seedSuccessorPublicationGitHub(auditor);
+        await auditor.query("commit");
+      }
       catch (error) { await auditor.query("rollback"); throw error; }
     } finally { writer.release(); auditor.release(); }
     preparationPhase = "runtime";
@@ -66,9 +74,19 @@ async function main(): Promise<void> {
       const prior = await readRefreshPrior(db, fixtureDate);
       const observedThrough = fixtureObservedThrough;
       await assertRefreshHasNewInput(db, fixtureDate, prior.observedThrough, observedThrough);
+      if (publication) {
+        const running = fixtureJob(fixtureId(80), "synthetic:preparation", fixtureNow).start({ startedAt: fixtureNow });
+        const snapshot = running.toSnapshot();
+        const github = await new PrismaReaderSummaryGitHubProjectionReader(db).read({
+          tenantId: snapshot.tenantId, workspaceId: snapshot.workspaceId,
+          dayStartedAt: snapshot.period.startedAt, dayEndedAt: snapshot.period.endedAt,
+          observedThrough: new Date(observedThrough),
+        });
+        successorPublicationCommand(running, fixtureId(81), fixtureId(82), github);
+      }
       const authority = await captureRefreshAuthority({ client: db, feed: feedReader, date: fixtureDate,
         observedThrough: new Date(observedThrough), clock });
-      assert.equal(authority.feedCount, 1); assert.equal(authority.eligibleCount, 1); assert.equal(authority.metricRowCount, 2);
+      assert.equal(authority.feedCount, publication ? 11 : 1); assert.equal(authority.eligibleCount, 1); assert.equal(authority.metricRowCount, 2);
       const period = refreshPeriod(fixtureDate);
       const base: Omit<RefreshManifest, "operation"> = {
         format: "reader-summary-seven-day-new-input-v1", ...refreshScope, date: fixtureDate,
