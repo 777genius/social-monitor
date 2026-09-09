@@ -31,17 +31,23 @@ export const parseAssessmentProgressLine = (line: string): AssessmentProgress | 
   } catch { return undefined; }
 };
 
-// Fixed storage, including for unterminated/oversized stderr; no raw text reaches logging.
+// Fixed storage and lifetime work budgets, including invalid/oversized stderr.
+// Exhaustion permanently closes diagnostics; no raw text reaches logging.
 export const createAssessmentProgressParser = (receive: (record: AssessmentProgress) => void) => {
   const line = Buffer.alloc(1024);
-  let size = 0, dropping = false, records = 0;
+  let size = 0, dropping = false, records = 0, frames = 0;
+  let remainingBytes = 256 * 1024;
   return (chunk: Buffer): void => {
-    for (let offset = 0; offset < chunk.length && records < 64;) {
-      const newline = chunk.indexOf(10, offset);
-      const end = newline < 0 ? chunk.length : newline;
+    if (records >= 64 || frames >= 256 || remainingBytes === 0) return;
+    const input = chunk.subarray(0, remainingBytes);
+    for (let offset = 0; offset < input.length && records < 64 && frames < 256;) {
+      const newline = input.indexOf(10, offset);
+      const end = newline < 0 ? input.length : newline;
+      remainingBytes -= end - offset + (newline < 0 ? 0 : 1);
       if (size + end - offset > line.length) dropping = true;
-      if (!dropping) { chunk.copy(line, size, offset, end); size += end - offset; }
+      if (!dropping) { input.copy(line, size, offset, end); size += end - offset; }
       if (newline < 0) return;
+      frames++;
       if (!dropping) {
         const record = parseAssessmentProgressLine(line.toString("utf8", 0, size));
         if (record) { records++; try { receive(record); } catch { /* Logging cannot fail execution. */ } }

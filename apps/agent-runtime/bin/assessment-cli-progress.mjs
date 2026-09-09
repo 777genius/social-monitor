@@ -14,13 +14,22 @@ const transitions = new Set(["started", "completed", "skipped", "failed", "obser
 export function createAssessmentProgress({ write, now, remaining }) {
   const started = now();
   let lastObservedPhase = "setup";
-  let records = 0;
+  let ordinaryRecords = 0;
+  const cleanupSlots = new Set();
   const mark = (phase, transition, receipt = {}) => {
     if (!phases.has(phase) || !transitions.has(transition)) return;
     const previous = lastObservedPhase;
     if (!["cancellation", "task_settlement", "disposal"].includes(phase)) lastObservedPhase = phase;
-    // Keep three records for cancellation and the two final cleanup observations.
-    if (records >= (phase === "cancellation" || transition === "observed" ? 64 : 61)) return;
+    // Only the three actual lifecycle observations own reserved, one-shot slots.
+    const cleanup = transition === "observed" &&
+      ["cancellation", "task_settlement", "disposal"].includes(phase);
+    if (cleanup) {
+      if (cleanupSlots.has(phase)) return;
+      cleanupSlots.add(phase);
+    } else {
+      if (ordinaryRecords >= 61) return;
+      ordinaryRecords++;
+    }
     const record = { version: 1, phase, transition,
       elapsedMs: Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(now() - started))),
       remainingMs: Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(remaining()))),
@@ -28,7 +37,6 @@ export function createAssessmentProgress({ write, now, remaining }) {
     for (const key of ["taskSettled", "disposeSettled", "disposeSucceeded"]) {
       if (typeof receipt[key] === "boolean") record[key] = receipt[key];
     }
-    records++;
     try { write(`${assessmentProgressPrefix}${JSON.stringify(record)}\n`); } catch { /* Diagnostics are best effort. */ }
   };
   return { mark, emit(event) {

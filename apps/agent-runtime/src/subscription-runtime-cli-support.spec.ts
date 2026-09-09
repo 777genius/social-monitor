@@ -160,15 +160,16 @@ describe("assessment spawn budget and incremental transport", () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 
-  it("does not retain raw assessment stderr and bounds logging at 64 records", async () => {
+  it.each([[2_000, 64], [2_000_000, 0]])(
+    "does not retain raw assessment stderr: %i junk bytes allow %i records", async (junkBytes, expectedRecords) => {
     const process = child(), receive = jest.fn();
     jest.mocked(spawn).mockReturnValue(process as unknown as ReturnType<typeof spawn>);
     const result = runCli({ command: "/synthetic", args: [], timeoutMs: 60_000, assessment: { onProgress: receive } });
     const line = `assessment-progress-v1 ${JSON.stringify({ version: 1, phase: "setup", transition: "started",
       elapsedMs: 0, remainingMs: 60_000, lastObservedPhase: "setup", providerOutcome: "unknown" })}\n`;
-    const junk = Buffer.alloc(2_000_000, 120); process.stderr.emit("data", junk);
+    const junk = Buffer.alloc(junkBytes, 120); process.stderr.emit("data", junk);
     process.stderr.emit("data", Buffer.from(`\n${line.repeat(100)}`));
-    expect(receive).toHaveBeenCalledTimes(64);
+    expect(receive).toHaveBeenCalledTimes(expectedRecords);
     process.emit("close", 1, null);
     const receipt = await result;
     expect(receipt.stderr).toBe(""); expect(receipt.stderrBytes).toBe(junk.length + 1 + 100 * Buffer.byteLength(line));

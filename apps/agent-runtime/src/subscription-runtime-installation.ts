@@ -21,7 +21,7 @@ export const approvedSubscriptionRuntimeLauncherSha256 =
 // Changes to any member require a coordinated, reviewed admission update.
 const approvedSubscriptionRuntimeDependencies = Object.freeze({
   "assessment-cli-progress.mjs":
-    "f53430794ef6aaccf002dc47e7c7bbd0b2749a517556c0c46b261625ad24fe6d",
+    "76e82b76acd1f8664e78980d7cc75d8485e73316fef183bb4ee97e2466bef002",
   "assessment-cli-lifecycle.mjs":
     "5220f2a668cf77f1d763a690dead7eb233e076e245d544870399f3d9f72423ca",
   "pinned-codex-native-binary.mjs":
