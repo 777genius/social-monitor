@@ -80,7 +80,7 @@ export function pairedFixture(options: { capture?: boolean; path?: string; suppl
   });
   const query = { ...scope, scope: { type: "workspace" as const }, period: refreshPeriod(manifest.date),
     maxItems: 120, observedThrough: new Date(manifest.observedThrough) };
-  return { path, parent, capture, feed, raw, interests, delegate, query,
+  return { path, parent, capture, feed, raw, interests, delegate, query, clock, runtime,
     select: () => (capture?.selector(wiring.evidenceSelector) ?? wiring.evidenceSelector).select(query) };
 }
 

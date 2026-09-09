@@ -1,3 +1,5 @@
+import { sourceContentAssessmentPurpose, verifyRefreshAssessmentExecution } from "./reader-summary-new-input-refresh-assessment-runtime";
+import { activeReaderSummaryPurposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import type { AgentRuntimeTaskResult } from "@social-monitor/summary/ports";
 import { guardedRefreshRuntime, refreshCaptureModelControls, refreshGenerationSha256, type RefreshModelCaptureEvent } from "./reader-summary-new-input-refresh-model";
 import { completedRefreshModelRequest, refreshModelCommand } from "./reader-summary-new-input-refresh-model.spec-support";
@@ -115,8 +117,8 @@ describe("refresh runtime private capture (synthetic transport)", () => {
       await expect(runtime.runTask(refreshModelCommand())).rejects.toThrow(/budget/);
       expect(runTask).toHaveBeenCalledTimes(1);
       if (observe) {
-        expect(events.map((event) => event.kind)).toEqual(["invocation_started", "invocation_aborted", "invocation_failed"]);
-        expect(events.at(-1)).toMatchObject({ delegated: true });
+        expect(events.map((event) => event.kind)).toEqual(["invocation_started", "invocation_aborted", "invocation_failed", "invocation_rejected"]);
+        expect(events.find((e) => e.kind === "invocation_failed")).toMatchObject({ delegated: true });
         expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
         expect(JSON.stringify(events)).not.toContain("must not be captured");
       } else {
@@ -137,4 +139,79 @@ describe("refresh runtime private capture (synthetic transport)", () => {
     expect(events.at(-1)).toMatchObject({ kind: "invocation_failed", delegated: true });
     expect(runTask).toHaveBeenCalledTimes(1);
   });
+  it.each(["deadline", "aborted", "authority_or_runtime_rejected"] as const)(
+    "retains independently valid %s assessment bytes without consuming them for selection", async (reason) => {
+      const command = { ...refreshModelCommand(sourceContentAssessmentPurpose),
+        prompt: JSON.stringify({ candidates: [{ candidateId: "synthetic-late" }] }) };
+      const result = await completedRefreshModelRequest(command, { reviews: [] });
+      expect(() => verifyRefreshAssessmentExecution(command, result)).not.toThrow();
+      for (const observe of [false, true]) {
+        let now = 0, authority = true;
+        const controller = new AbortController();
+        const events: RefreshModelCaptureEvent[] = [];
+        const runTask = jest.fn(async () => {
+          if (reason === "deadline") now = command.timeoutMs!;
+          if (reason === "aborted") controller.abort("private abort diagnostic");
+          if (reason === "authority_or_runtime_rejected") authority = false;
+          return { ...result, outputText: "private unused output" };
+        });
+        const runtime = guardedRefreshRuntime({ manifest: refreshManifest(), now: () => now,
+          delegate: { runTask, checkHealth: jest.fn() }, assertCurrent: async () => undefined,
+          assertLocal: () => { if (!authority) throw new Error("private authority diagnostic"); }, record: jest.fn(),
+          ...(observe ? { capture: (event: RefreshModelCaptureEvent) => events.push(event) } : {}) });
+        await expect(runtime.runTask(command, { signal: controller.signal })).rejects.toThrow(/original operation remains consumed/);
+        expect(() => runtime.assertUsable()).toThrow(/reconciliation/);
+        if (observe) {
+          expect(events.find((e) => e.kind === "envelope_not_consumed")).toEqual({
+            kind: "envelope_not_consumed", command, selectionOutcome: "not_consumed", reason,
+            result: { status: result.status, structuredOutput: result.structuredOutput, usage: result.usage,
+              durationMs: result.durationMs, executionAttestation: result.executionAttestation } });
+          expect(events.some((e) => e.kind === "envelope_verified")).toBe(false);
+          expect(JSON.stringify(events)).not.toContain("private");
+        } else expect(events).toEqual([]);
+        await expect(runtime.runTask(command)).rejects.toThrow(/budget/);
+        expect(runTask).toHaveBeenCalledTimes(1);
+      }
+    });
+
+  it("does not retain invalid late response bytes", async () => {
+    const command = { ...refreshModelCommand(sourceContentAssessmentPurpose),
+      prompt: JSON.stringify({ candidates: [{ candidateId: "synthetic-late" }] }) };
+    const result = await completedRefreshModelRequest({ ...command, requestId: "different-request" });
+    let now = 0;
+    const events: RefreshModelCaptureEvent[] = [];
+    const runTask = jest.fn(async () => { now = 1000; return result; });
+    const runtime = guardedRefreshRuntime({ manifest: refreshManifest(), now: () => now,
+      delegate: { runTask, checkHealth: jest.fn() }, assertLocal: () => undefined,
+      assertCurrent: async () => undefined, record: jest.fn(), capture: (event) => events.push(event) });
+    await expect(runtime.runTask(command)).rejects.toThrow(/ambiguous/);
+    expect(events.some((e) => "result" in e)).toBe(false);
+    expect(runTask).toHaveBeenCalledTimes(1);
+  });
+
+  it("records overlapping shadow command as a locally rejected attempt, with one delegate call", async () => {
+    for (const observe of [false, true]) {
+      const summary = refreshModelCommand();
+      const shadow = { ...refreshModelCommand(activeReaderSummaryPurposes.storyRelations),
+        metadata: { attempt: "primary", verificationLane: "safe_recall_shadow" } };
+      const result = await completedRefreshModelRequest(summary);
+      let release!: (value: AgentRuntimeTaskResult) => void;
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => { entered = resolve; });
+      const runTask = jest.fn(() => { entered(); return new Promise<AgentRuntimeTaskResult>((resolve) => { release = resolve; }); });
+      const events: RefreshModelCaptureEvent[] = [];
+      const { runtime } = wiring(runTask, observe ? (event) => events.push(event) : undefined);
+      const pending = runtime.runTask(summary);
+      await started;
+      await expect(runtime.runTask(shadow)).rejects.toThrow(/budget/);
+      expect(() => runtime.assertUsable()).not.toThrow();
+      if (observe) expect(events).toEqual([{ kind: "invocation_started", command: summary },
+        { kind: "invocation_rejected", command: shadow, delegated: false, reason: "in_flight" }]);
+      else expect(events).toEqual([]);
+      release(result);
+      await expect(pending).resolves.toEqual(result);
+      expect(runTask).toHaveBeenCalledTimes(1);
+    }
+  });
+
 });

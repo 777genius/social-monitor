@@ -226,10 +226,15 @@ export class RefreshPairedExport {
   model = (event: RefreshModelCaptureEvent): void => this.safe("model_capture_failed", () => {
     // Only capture the task inputs/outputs needed for selection, not summary generation.
     const context = "command" in event ? this.modelContexts.get(event.command.requestId) : this.modelContexts.get(event.requestId);
-    if (event.kind === "invocation_started") {
+    if (event.kind === "invocation_started" || event.kind === "invocation_rejected") {
       if (![sourceContentAssessmentPurpose, activeReaderSummaryPurposes.storyRelations, activeReaderSummaryPurposes.relatedTopicRelations].includes(event.command.purpose)) return;
       this.assertScope(event.command);
-      if (context) throw new Error("Duplicate request id");
+      if (context) {
+        if (event.kind !== "invocation_rejected" || context.commandJson !== JSON.stringify(event.command)) throw new Error("Duplicate request id");
+        this.models.push(JSON.parse(JSON.stringify(event)) as RefreshModelCaptureEvent);
+        this.append("models.jsonl", { ...event, assessmentBatch: context.assessmentBatch, relationId: context.relationId });
+        return;
+      }
       const assessmentBatch = [...this.activeAssessmentBatches][0];
       const relationId = [...this.pendingRelations].at(-1);
       const assessmentPurpose = event.command.purpose === sourceContentAssessmentPurpose;
@@ -256,18 +261,18 @@ export class RefreshPairedExport {
         }
       }
       const binding = { ...(assessmentPurpose ? { assessmentBatch } : { relationId }),
-        commandJson: JSON.stringify(event.command), terminal: false, verified: false };
+        commandJson: JSON.stringify(event.command), terminal: event.kind === "invocation_rejected", verified: false };
       this.modelContexts.set(event.command.requestId, binding);
       const ids = assessmentPurpose ? this.assessmentModelIds : this.relationModelIds;
       const id = (assessmentPurpose ? assessmentBatch : relationId)!;
       ids.set(id, [...(ids.get(id) ?? []), event.command.requestId]);
     } else {
       if (!context) return;
-      if (event.kind === "envelope_verified") {
+      if (event.kind === "envelope_verified" || event.kind === "envelope_not_consumed") {
         this.assertScope(event.command);
         if (context.commandJson !== JSON.stringify(event.command) || context.terminal) throw new Error("Request mismatch");
         context.terminal = true;
-        context.verified = true;
+        context.verified = event.kind === "envelope_verified";
       } else if (event.kind === "invocation_failed") context.terminal = true;
     }
     const bound = "command" in event ? this.modelContexts.get(event.command.requestId) : context;

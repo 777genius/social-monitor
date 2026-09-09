@@ -32,7 +32,7 @@ type DailyPublicationExecutionInput = Omit<
 
 export const createReaderSummaryDailyCapturePublicationWiring = (
   input: DailyPublicationExecutionInput & StoryRelationCompositionInput,
-) => {
+): ReturnType<typeof createReaderSummaryDailyPublicationExecutionWiring> => {
   const {
     agentRuntimeClient,
     env,
@@ -80,6 +80,7 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
     rankFeedItems.execute = (command) => {
       try {
         const { observePromotionPreparation: _observer, promotionAssessmentExecution, ...values } = command;
+        void _observer;
         rankCommandCapture.captured({
           ...values,
           ...(promotionAssessmentExecution === undefined ? {} : {

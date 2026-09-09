@@ -87,6 +87,11 @@ export function buildRefreshModelWiring(env: NodeJS.ProcessEnv, client: GuardedR
 // This boundary validates the runtime envelope. Concrete assessment/relation
 // parsers separately capture semantic acceptance; envelope validity is not it.
 export type RefreshModelCaptureEvent =
+  | { readonly kind: "invocation_rejected"; readonly command: AgentRuntimeTaskCommand;
+      readonly delegated: false; readonly reason: "in_flight" | "duplicate_request" | "generation_already_consumed" | "authority_rejected" }
+  | { readonly kind: "envelope_not_consumed"; readonly command: AgentRuntimeTaskCommand;
+      readonly selectionOutcome: "not_consumed"; readonly reason: "deadline" | "aborted" | "authority_or_runtime_rejected";
+      readonly result: Pick<AgentRuntimeTaskResult, "status" | "structuredOutput" | "usage" | "durationMs" | "executionAttestation"> }
   | { readonly kind: "invocation_started"; readonly command: AgentRuntimeTaskCommand }
   | { readonly kind: "invocation_returned"; readonly requestId: string; readonly status: AgentRuntimeTaskResult["status"] }
   | { readonly kind: "invocation_aborted"; readonly requestId: string }
@@ -135,6 +140,16 @@ export function guardedRefreshRuntime(input: {
     runTask: async (command, options) => {
       if (ambiguous || inFlight || seen.has(command.requestId) ||
           (generated && command.purpose === activeReaderSummaryPurposes.generate)) {
+        // Only scoped, allowed task inputs can enter the private tape. This is
+        // an attempt, not admission, and must not change guard state.
+        if (purposes.includes(command.purpose) && command.metadata?.attempt !== "repair" &&
+            command.tenantId === input.manifest.tenantId && command.workspaceId === input.manifest.workspaceId &&
+            command.provider === "codex" && command.controls.model === "gpt-5.6-sol" &&
+            command.controls.reasoningEffort === "high") {
+          capture({ kind: "invocation_rejected", command, delegated: false,
+            reason: ambiguous ? "authority_rejected" : inFlight ? "in_flight" :
+              seen.has(command.requestId) ? "duplicate_request" : "generation_already_consumed" });
+        }
         throw new Error("Refresh invocation budget or model authority rejected");
       }
       if (!purposes.includes(command.purpose) || command.metadata?.attempt === "repair" ||
@@ -148,6 +163,9 @@ export function guardedRefreshRuntime(input: {
       if (command.purpose === activeReaderSummaryPurposes.generate) generated = true;
       inFlight = true;
       let delegated = false;
+      let returnedResult: AgentRuntimeTaskResult | undefined;
+      let canonicalRequestSha256: string | undefined;
+      let notConsumedReason: "deadline" | "aborted" | "authority_or_runtime_rejected" = "authority_or_runtime_rejected";
       let removeAbortCapture: (() => void) | undefined;
       let capturedCommand: AgentRuntimeTaskCommand | undefined;
       if (input.capture) {
@@ -157,6 +175,31 @@ export function guardedRefreshRuntime(input: {
       const identity = { requestId: command.requestId, purpose: command.purpose,
         requestSha256: refreshHash(command), operation: input.manifest.operation,
         observedThrough: input.manifest.observedThrough, model: "gpt-5.6-sol", reasoningEffort: "high" };
+      const verifyResponse = (result: AgentRuntimeTaskResult): void | Promise<unknown> => {
+        const taskRole = ({
+          [activeReaderSummaryPurposes.generate]: "summary",
+          [activeReaderSummaryPurposes.topicLabel]: "topic_label",
+          [activeReaderSummaryPurposes.topicRelations]: "topic_relation",
+          [activeReaderSummaryPurposes.storyRelations]: "story_relation",
+          [activeReaderSummaryPurposes.relatedTopicRelations]: "related_topic_relation",
+        } as Record<string, ReaderSummaryAttestedTaskRole>)[command.purpose]!;
+        // Verify the attested response envelope here. The composed adapter guard
+        // above also covers failures in the real parsers and normalizers.
+        if (command.purpose === sourceContentAssessmentPurpose) {
+          verifyRefreshAssessmentExecution(command, result);
+        } else {
+          return verifyAndRecordReaderSummaryExecution({ command, result, taskRole,
+            attempt: "primary", normalizedOutput: result.structuredOutput });
+        }
+      };
+      const verifyIdentity = (result: AgentRuntimeTaskResult) => {
+        const attestation = result.executionAttestation!;
+        if (attestation.canonicalRequestSha256 !== canonicalRequestSha256) {
+          throw new Error("Refresh execution attestation does not bind the invoked request");
+        }
+        assertRefreshEqual({ engine: attestation.runtimeEngine, packageVersion: attestation.runtimePackageVersion,
+          launcherSha256: attestation.launcherSha256 }, input.manifest.runtime, "runtime attestation");
+      };
       try {
         if (capturedCommand) capture({ kind: "invocation_started", command: capturedCommand });
         assertUsable();
@@ -165,7 +208,7 @@ export function guardedRefreshRuntime(input: {
         // optional-string normalization, then use the executor's real admission
         // contract for profile defaults/controls. Hash before any awaited work;
         // the journal's refreshHash(command) is not the canonical runtime request.
-        const canonicalRequestSha256 = canonicalJsonSha256(admitSubscriptionRuntimeRequest({
+        canonicalRequestSha256 = canonicalJsonSha256(admitSubscriptionRuntimeRequest({
           ...command,
           providerInstanceId: command.providerInstanceId?.trim() || undefined,
           cwd: command.cwd?.trim() || undefined,
@@ -191,6 +234,7 @@ export function guardedRefreshRuntime(input: {
         }
         delegated = true;
         const result = await input.delegate.runTask(command, options);
+        returnedResult = result;
         if (["completed", "failed", "waiting_for_input"].includes(result.status)) {
           capture({ kind: "invocation_returned", requestId: command.requestId, status: result.status });
         } else if (input.capture) {
@@ -201,29 +245,15 @@ export function guardedRefreshRuntime(input: {
         if (result.status !== "completed" || result.executionAttestation === undefined || result.usage === undefined) {
           throw new Error("Refresh invocation outcome requires reconciliation");
         }
-        const taskRole = ({
-          [activeReaderSummaryPurposes.generate]: "summary",
-          [activeReaderSummaryPurposes.topicLabel]: "topic_label",
-          [activeReaderSummaryPurposes.topicRelations]: "topic_relation",
-          [activeReaderSummaryPurposes.storyRelations]: "story_relation",
-          [activeReaderSummaryPurposes.relatedTopicRelations]: "related_topic_relation",
-        } as Record<string, ReaderSummaryAttestedTaskRole>)[command.purpose]!;
-        // Verify the attested response envelope here. The composed adapter guard
-        // above also covers failures in the real parsers and normalizers.
         if (command.purpose === sourceContentAssessmentPurpose) {
-          assessment.assertTimely();
-          if (options?.signal?.aborted) throw new Error("Refresh assessment cancelled");
-          verifyRefreshAssessmentExecution(command, result);
-        } else {
-          await verifyAndRecordReaderSummaryExecution({ command, result, taskRole,
-            attempt: "primary", normalizedOutput: result.structuredOutput });
+          try { assessment.assertTimely(); }
+          catch (error) { notConsumedReason = "deadline"; throw error; }
+          if (options?.signal?.aborted) { notConsumedReason = "aborted"; throw new Error("Refresh assessment cancelled"); }
         }
+        const verification = verifyResponse(result);
+        if (verification) await verification;
+        verifyIdentity(result);
         const attestation = result.executionAttestation;
-        if (attestation.canonicalRequestSha256 !== canonicalRequestSha256) {
-          throw new Error("Refresh execution attestation does not bind the invoked request");
-        }
-        assertRefreshEqual({ engine: attestation.runtimeEngine, packageVersion: attestation.runtimePackageVersion,
-          launcherSha256: attestation.launcherSha256 }, input.manifest.runtime, "runtime attestation");
         assertUsable();
         if (command.purpose === sourceContentAssessmentPurpose) {
           input.record({ ...identity, status: "verified_attestation", taskRole: "source_content_assessment", attestation });
@@ -236,8 +266,23 @@ export function guardedRefreshRuntime(input: {
             durationMs: result.durationMs, executionAttestation: result.executionAttestation } });
         return result;
       } catch {
-        capture({ kind: "invocation_failed", requestId: command.requestId, delegated });
         ambiguous = true;
+        // A paid response can be independently valid while admission for
+        // selection has expired. Retain only verified semantic bytes, without
+        // retrying the delegate or restoring publication authority.
+        if (capturedCommand && returnedResult) {
+          try {
+            const verification = verifyResponse(returnedResult);
+            if (verification) await verification;
+            verifyIdentity(returnedResult);
+            capture({ kind: "envelope_not_consumed", command: capturedCommand,
+              selectionOutcome: "not_consumed", reason: notConsumedReason,
+              result: { status: returnedResult.status, structuredOutput: returnedResult.structuredOutput,
+                usage: returnedResult.usage, durationMs: returnedResult.durationMs,
+                executionAttestation: returnedResult.executionAttestation } });
+          } catch { /* Unvalidated diagnostics never enter the private tape. */ }
+        }
+        capture({ kind: "invocation_failed", requestId: command.requestId, delegated });
         input.record({ ...identity, status: "requires_reconciliation" });
         throw new Error("Refresh invocation failed or is ambiguous; original operation remains consumed");
       } finally { removeAbortCapture?.(); inFlight = false; }

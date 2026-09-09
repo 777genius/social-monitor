@@ -1,3 +1,8 @@
+import type * as NodeFs from "node:fs";
+import { AgentRuntimeReaderSummaryStoryRelationVerifier, resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions } from
+  "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
+import type { ReaderSummaryStoryRelationVerifierInput, AgentRuntimeTaskResult } from "@social-monitor/summary/ports";
+import { completedRefreshModelRequest, refreshModelCommand } from "./reader-summary-new-input-refresh-model.spec-support";
 import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { pairedFixture } from "./reader-summary-new-input-refresh-paired-export.spec-support";
@@ -23,7 +28,7 @@ describe("synthetic bounded refresh paired export", () => {
     expect(result.failures).toEqual([]);
     expect(result.complete).toBe(true);
     expect(on.feed.readPromotionSnapshot).toHaveBeenCalledTimes(1);
-    expect(on.delegate.runTask.mock.calls.map(([{ requestId, correlationId, ...command }]) => command)).toEqual(off.delegate.runTask.mock.calls.map(([{ requestId, correlationId, ...command }]) => command));
+    expect(on.delegate.runTask.mock.calls.map(([{ requestId, correlationId, ...command }]) => { void requestId; void correlationId; return command; })).toEqual(off.delegate.runTask.mock.calls.map(([{ requestId, correlationId, ...command }]) => { void requestId; void correlationId; return command; }));
     const raw = json(on.path, "inputs.json");
     const promotion = json(on.path, "promotion.json");
     const prep = json(on.path, "preparation.json");
@@ -62,6 +67,67 @@ describe("synthetic bounded refresh paired export", () => {
     expect(tape).toContain('"sameStory":false');
     expect(tape).toContain('"status":"validated"');
     expect(readFileSync(join(fixture.path, "models.jsonl"), "utf8")).toContain('"relationId":1');
+  });
+
+  it("keeps real late assessment envelope bytes on disk without certifying semantic completion", async () => {
+    const fixture = setup();
+    let current = refreshNow.getTime();
+    jest.spyOn(fixture.clock, "now").mockImplementation(() => new Date(current));
+    const original = fixture.delegate.runTask.getMockImplementation()!;
+    fixture.delegate.runTask.mockImplementation(async (command) => {
+      const result = await original(command);
+      current += command.timeoutMs!;
+      return result;
+    });
+    await fixture.select();
+    const result = await fixture.capture!.finish(false);
+    expect(result.complete).toBe(false);
+    const tape = readFileSync(join(fixture.path, "models.jsonl"), "utf8");
+    expect(tape).toContain('"envelope_not_consumed"');
+    expect(tape).toContain('"reason":"deadline"');
+    expect(tape).toContain('"executionAttestation"');
+    expect(tape).not.toContain('"envelope_verified"');
+    expect(fixture.delegate.runTask).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(fixture.path, "complete.json"))).toBe(false);
+    const statuses = json(fixture.path, "candidate-status.json");
+    expect(statuses.filter((s: { status: string }) => s.status === "model_resolved")).toHaveLength(0);
+  });
+
+  it("persists the real shadow adapter command rejected by an overlapping guarded generation", async () => {
+    const fixture = setup({ relationCase: true });
+    let actualQuery!: ReaderSummaryStoryRelationVerifierInput;
+    const attempt = fixture.capture!.relations.attempted;
+    jest.spyOn(fixture.capture!.relations, "attempted").mockImplementation((query) => { actualQuery = query; attempt(query); });
+    await fixture.select();
+    const shadow = { ...actualQuery, verificationLane: "safe_recall_shadow" as const };
+    const summary = refreshModelCommand();
+    const result = await completedRefreshModelRequest(summary);
+    let release!: (value: AgentRuntimeTaskResult) => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const priorCalls = fixture.delegate.runTask.mock.calls.length;
+    fixture.delegate.runTask.mockImplementation(() => { entered(); return new Promise((resolve) => { release = resolve; }); });
+    const pending = fixture.runtime.runTask(summary);
+    await started;
+    const adapter = new AgentRuntimeReaderSummaryStoryRelationVerifier(
+      resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions({}, fixture.runtime));
+    fixture.capture!.relations.attempted(shadow);
+    await expect(adapter.verify(shadow)).rejects.toThrow();
+    fixture.capture!.relations.failed(shadow);
+    const tape = readFileSync(join(fixture.path, "models.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line).event);
+    const rejected = tape.find((event) => event.kind === "invocation_rejected");
+    expect(rejected).toMatchObject({ delegated: false, reason: "in_flight", relationId: 2,
+      command: { metadata: { verificationLane: "safe_recall_shadow" } } });
+    expect(rejected.command.prompt).toContain(shadow.candidates[0]!.leftFeedItemId);
+    expect(rejected.command.outputSchema).toBeDefined();
+    release(result);
+    await pending;
+    expect(fixture.delegate.runTask.mock.calls.length).toBe(priorCalls + 1);
+    const completion = await fixture.capture!.finish(true);
+    expect(completion.complete).toBe(true); // The local refusal is a fully observed terminal attempt.
+    // A failed verifier still cannot manufacture parser-validated decisions.
+    fixture.capture!.relations.validated(shadow, []);
+    expect(existsSync(join(fixture.path, "complete.json"))).toBe(false);
   });
 
   it("retains genuine budget pending beyond 200 rather than calling eligibility completion", async () => {
@@ -114,7 +180,7 @@ describe("synthetic bounded refresh paired export", () => {
   it("withdraws completion when durability fails after the atomic link", async () => {
     const fixture = setup();
     await fixture.select();
-    const fs = jest.requireActual<typeof import("node:fs")>("node:fs");
+    const fs = jest.requireActual<typeof NodeFs>("node:fs");
     const sync = fs.fsyncSync;
     jest.spyOn(fs, "fsyncSync").mockImplementation((fd) => {
       if (existsSync(join(fixture.path, "complete.json")) && fs.fstatSync(fd).isDirectory()) throw new Error("Synthetic directory sync failure");
