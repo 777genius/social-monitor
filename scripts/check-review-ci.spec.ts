@@ -32,6 +32,17 @@ describe("backend unit whole-corpus CI sharding", () => {
     },
   );
   it.each([
+    ["node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=2048 -- ", ""],
+    ["--timeout-ms 900000", "--timeout-ms 600000"],
+    ["--timeout-ms 900000", "--timeout-ms 900001"],
+    ["--timeout-ms 900000", "--timeout-ms 0"],
+    ["node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4", "npm test -- --shard=${{ matrix.shard }}/4"],
+    ["node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4", "true"],
+    ["--shard=${{ matrix.shard }}/4", "--shard=${{ matrix.shard }}/4 --testPathIgnorePatterns=retained-metric"],
+    ["--shard=${{ matrix.shard }}/4", "--shard=${{ matrix.shard }}/4 --testNamePattern=small"],
+    ["      - name: Run backend unit tests", "      - name: Run backend unit tests\n        if: false"],
+    ["--max-old-space-size=2048", "--max-old-space-size=1536"],
+    ["--runInBand ", ""],
     ["[1, 2, 3, 4]", "[1, 2, 3]"],
     ["[1, 2, 3, 4]", "[1, 2, 3, 3]"],
     ["fail-fast: false", "fail-fast: true"],

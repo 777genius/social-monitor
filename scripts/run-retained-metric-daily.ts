@@ -5,28 +5,29 @@ import { acquirePrismaPgRuntimeConnection, defaultPostgresRuntimePoolConfig, run
 import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
 import type { PrismaSourceEngagementClient } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-client";
 import { PrismaRetainedMetricInventory, type PrismaMetricInventoryClient } from "@social-monitor/ingestion/adapters/persistence/prisma-retained-metric-inventory";
-import { RenewRetainedMetricsUseCase, type MetricRenewalFinal } from "@social-monitor/ingestion/features/refresh-retained-metrics/renew-retained-metrics.use-case";
-import type { MetricRenewalManifest } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-renewal.contracts";
+import { RenewDailyRetainedMetricsUseCase, type MetricRenewalFinal } from "@social-monitor/ingestion/features/refresh-retained-metrics/renew-daily-retained-metrics.use-case";
+import type { MetricDailyManifest } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-daily.contracts";
 import { metricRenewalCells } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-renewal-report";
-import { resolveMetricRenewal } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-renewal-evidence";
-import { retainedMetricRenewalGrant as grant } from "@social-monitor/ingestion/domain/policies/retained-metric-renewal-grant";
+import { resolveMetricDaily } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-daily-evidence";
+import { retainedMetricDailyGrant } from "@social-monitor/ingestion/domain/policies/retained-metric-daily-grant";
 import type { MetricRefreshOperation } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-operation.contracts";
 import { metricRefreshDigest as hash } from "./lib/retained-metric-refresh-receipts";
-import { retainedMetricRenewalReceipts } from "./lib/retained-metric-renewal-receipts";
+import { retainedMetricDailyReceipts } from "./lib/retained-metric-daily-receipts";
 import { metricExecutableIdentity, metricMaintenanceAdmission } from "./lib/retained-metric-maintenance";
 
 type RuntimeClient = PrismaMetricInventoryClient & PrismaSourceEngagementClient & { $disconnect(): Promise<void> };
 const scoped = (operation: MetricRefreshOperation) => ({ ...operation,
   withOperation: async <T>(work: (held: MetricRefreshOperation) => Promise<T>) => { operation.assertHeld(); return work(operation); } });
-function renewalReport(final: MetricRenewalFinal, manifest: MetricRenewalManifest) {
-  const originals = new Set(manifest.predecessor.originalSourceItemIds);
+function renewalReport(final: MetricRenewalFinal, manifest: MetricDailyManifest) {
+  const originals = new Set(manifest.capture.originalAudit.map((a) => a.sourceItemId));
   return { ...final, cohorts: {
+    oldMissing: manifest.capture.originalAudit.filter((a) => a.currentTarget === null),
     originals: { count: originals.size, cells: metricRenewalCells(final.results.filter((r) => originals.has(r.sourceItemId)), manifest.scope.dates) },
     lateArrivals: { count: manifest.capture.lateArrivalSourceItemIds.length,
       cells: metricRenewalCells(final.results.filter((r) => !originals.has(r.sourceItemId)), manifest.scope.dates) },
   } };
 }
-export async function runRetainedMetricRenewal(args: readonly string[], env: NodeJS.ProcessEnv): Promise<void> {
+export async function runRetainedMetricDaily(args: readonly string[], env: NodeJS.ProcessEnv): Promise<void> {
   if (args.length === 1 && args[0] === "--implementation") {
     process.stdout.write(`${JSON.stringify(metricExecutableIdentity())}\n`); return;
   }
@@ -34,7 +35,7 @@ export async function runRetainedMetricRenewal(args: readonly string[], env: Nod
   const modes = ["--prepare", "--apply", "--resume", "--diagnostic"];
   for (let i = 0; i < args.length; i++) {
     const key = args[i]!;
-    if (![...modes, "--manifest-sha", "--source-sha", "--executable-sha", "--legacy-retirement-ref"].includes(key) || options.has(key)) throw new Error("Invalid renewal flag");
+    if (![...modes, "--date", "--manifest-sha", "--source-sha", "--executable-sha", "--legacy-retirement-ref"].includes(key) || options.has(key)) throw new Error("Invalid renewal flag");
     const value = modes.includes(key) ? "true" : args[++i];
     if (!value || value.startsWith("--")) throw new Error("Missing renewal value");
     options.set(key, value);
@@ -42,10 +43,12 @@ export async function runRetainedMetricRenewal(args: readonly string[], env: Nod
   const apply = options.has("--apply") || options.has("--resume");
   if (modes.filter((m) => options.has(m)).length !== 1 || options.has("--manifest-sha") !== apply ||
       (apply && !/^[a-f0-9]{64}$/u.test(options.get("--manifest-sha")!))) throw new Error("Invalid renewal mode/SHA");
+  const grant = retainedMetricDailyGrant(options.get("--date") ?? "");
+  if (!grant) throw new Error("Daily date not reviewed");
   const maintenance = metricMaintenanceAdmission(options.get("--source-sha"), options.get("--executable-sha"), options.get("--legacy-retirement-ref"));
-  const clock = new SystemClock(), authorities = retainedMetricRenewalReceipts(maintenance.assertHeld);
-  await authorities.predecessor.withOperation((prior) => authorities.renewal.withOperation(async (operation) => {
-    const existing = await resolveMetricRenewal(operation, prior, hash, clock.now());
+  const clock = new SystemClock(), authorities = retainedMetricDailyReceipts(grant.date, maintenance.assertHeld);
+  await authorities.predecessor.withOperation((prior) => authorities.spent.withOperation((spent) => authorities.renewal.withOperation(async (operation) => {
+    const existing = await resolveMetricDaily(grant.date, operation, prior, spent, hash, clock.now());
     if (apply && (!existing || hash(existing) !== options.get("--manifest-sha"))) throw new Error("Reviewed renewal SHA mismatch");
     if (existing && (existing.capture.implementation.sourceSha !== maintenance.implementation.sourceSha ||
         existing.capture.implementation.executableSha !== maintenance.implementation.executableSha)) throw new Error("Renewal release changed");
@@ -65,12 +68,12 @@ export async function runRetainedMetricRenewal(args: readonly string[], env: Nod
           if (!existing) throw new Error("Prepare renewal first");
           const captureStartedAt = clock.now().toISOString();
           const currentWindow = await inventory.list(existing.scope);
-          const originals = await inventory.list(existing.scope, existing.predecessor.originalSourceItemIds);
+          const originals = await inventory.list(existing.scope, existing.capture.originalAudit.map((a) => a.sourceItemId));
           process.stdout.write(`${JSON.stringify({ diagnostic: true, manifestSha: hash(existing), captureStartedAt, captureCompletedAt: clock.now().toISOString(), currentWindow, originals,
             outsideGrantSourceItemIds: currentWindow.filter((t) => !existing.targets.some((f) => f.sourceItemId === t.sourceItemId)).map((t) => t.sourceItemId) })}\n`); return;
         }
         const { projection, fetcher } = retainedMetricRenewalEffects(connection.client, existing, clock, env);
-        const usecase = new RenewRetainedMetricsUseCase(inventory, fetcher, projection, scoped(prior), scoped(operation), clock, hash);
+        const usecase = new RenewDailyRetainedMetricsUseCase(grant.date, inventory, fetcher, projection, scoped(prior), scoped(spent), scoped(operation), clock, hash);
         const result = apply ? await usecase.execute(options.get("--manifest-sha")!) : await usecase.prepare(maintenance.implementation);
         const output = apply && result.ok && "results" in result.value && existing ? renewalReport(result.value, existing) :
           { result, ...(!apply && result.ok ? { manifestSha: hash(result.value) } : {}) };
@@ -82,8 +85,8 @@ export async function runRetainedMetricRenewal(args: readonly string[], env: Nod
         }
       });
     } finally { await connection.close(); }
-  }));
+  })));
 }
-if (require.main === module) void runRetainedMetricRenewal(process.argv.slice(2), process.env).catch(() => {
+if (require.main === module) void runRetainedMetricDaily(process.argv.slice(2), process.env).catch(() => {
   process.stderr.write("Metric renewal failed closed; preserve both canonical journals and reconcile.\n"); process.exitCode = 1;
 });

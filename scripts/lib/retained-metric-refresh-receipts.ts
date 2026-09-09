@@ -42,7 +42,7 @@ export class SecureMetricRefreshReceipts implements MetricRefreshOperationAuthor
       install: async (path, value) => {
         const bytes = Buffer.from(canonicalMetricRefreshJson({ digest: metricRefreshDigest(value), value }));
         // Renewal admission must fail size/depth before creating an authority name.
-        if (this.namespace === "renewal") {
+        if (this.namespace !== "original") {
           if (bytes.length > 16 * 1024 * 1024) throw new Error("Metric evidence size limit");
           decodeMetricEnvelope(bytes);
         }
