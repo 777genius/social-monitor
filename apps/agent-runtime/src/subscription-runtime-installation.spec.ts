@@ -47,6 +47,10 @@ describe("subscription runtime installation admission", () => {
   let previousPath: string | undefined;
 
   beforeAll(async () => {
+    const rootManifest = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8"));
+    expect(rootManifest.dependencies["@vioxen/subscription-runtime"]).toBe(
+      `file:vendor/vioxen-subscription-runtime-${approvedSubscriptionRuntimePackageVersion}.tgz`,
+    );
     installationRoot = await mkdtemp(join(tmpdir(), "runtime-main42-sm1-installation-"));
     const modules = join(installationRoot, "node_modules");
     const packageRoot = join(modules, "@vioxen/subscription-runtime");
