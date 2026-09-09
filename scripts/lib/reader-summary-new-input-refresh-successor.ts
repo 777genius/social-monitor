@@ -107,17 +107,27 @@ export async function consumeRefreshSuccessor(input: {
     `;
     input.assertLocal(); assertRefreshManifest(m, clock.now());
   }, { isolationLevel: "Serializable", maxWait: 5_000, timeout: 30_000 }),
-  { lock: lockSuccessorAuthority });
+  { lock: (tx) => lockSuccessorAuthority(tx, m) });
 }
 
 /** Both connections hold SHARE locks during transfer. The admission snapshot
  * starts after holder acquisition, including any runtime tenant SELECTs. */
-async function lockSuccessorAuthority(tx: PrismaReaderSummaryClient): Promise<void> {
+async function lockSuccessorAuthority(tx: PrismaReaderSummaryClient, m: RefreshManifest): Promise<void> {
   await lockRefreshAuthority(tx);
   if (!("$executeRaw" in tx) || typeof tx.$executeRaw !== "function") {
     throw new Error("Refresh successor requires transaction locks");
   }
-  await tx.$executeRaw`lock table reader_summary_jobs, reader_summary_artifacts,
-    reader_summary_publications, reader_summary_publication_slots,
-    reader_summary_new_input_refresh_reconciliations in share mode nowait`;
+  await tx.$executeRaw`lock table public.reader_summary_jobs, public.reader_summary_artifacts in share mode nowait`;
+  const publications = await tx.$queryRaw<readonly { locked: boolean }[]>`
+    select public.lock_reader_summary_refresh_publication_ledgers(
+      ${m.tenantId}::uuid, ${m.workspaceId}::uuid, ${m.date}::date) as locked`;
+  if (publications.length !== 1 || publications[0]?.locked !== true) {
+    throw new Error("Refresh successor publication locks were not acquired");
+  }
+  const reconciliation = await tx.$queryRaw<readonly { locked: boolean }[]>`
+    select public.lock_reader_summary_refresh_reconciliation(
+      ${m.tenantId}::uuid, ${m.workspaceId}::uuid, ${m.date}::date) as locked`;
+  if (reconciliation.length !== 1 || reconciliation[0]?.locked !== true) {
+    throw new Error("Refresh successor reconciliation lock was not acquired");
+  }
 }

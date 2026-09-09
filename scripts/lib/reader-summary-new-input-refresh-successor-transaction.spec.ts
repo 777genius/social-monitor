@@ -31,7 +31,7 @@ function fixture() {
   const order: string[] = [];
   let exclusive: number | undefined, sequence = 0, inserts = 0, transactions = 0;
   const state = { valid: true, lostHolder: false, busy: false, driftBeforeLock: false,
-    database: authority, prior: m.prior };
+    lockResult: [{ locked: true }] as unknown, malformedCapability: "ledgers", capabilityFailure: "", database: authority, prior: m.prior };
   const summary: Pick<PrismaSummaryConnection, "$transaction"> = {
     $transaction: async (work, options) => {
       expect(options?.isolationLevel).toBe("Serializable");
@@ -50,15 +50,24 @@ function fixture() {
               if ([...shares].some((owner) => owner !== id)) throw new Error("55P03 concurrent grant");
               exclusive = id; order.push("upgrade");
             } else {
-              for (const table of ["reader_summary_artifacts", "reader_summary_publications",
-                "reader_summary_publication_slots", "reader_summary_new_input_refresh_reconciliations"]) expect(sql).toContain(table);
+              expect(sql).toContain("public.reader_summary_artifacts");
+              expect(sql).not.toMatch(/reader_summary_publications|reader_summary_publication_slots|reconciliations/);
               shares.add(id); order.push("share");
             }
           }
+          if (sql.includes("source_item_engagement_snapshots")) order.push("authority");
           return 0;
         },
         $queryRaw: async (strings: TemplateStringsArray, ...values: readonly unknown[]) => {
           const sql = strings.join(" ? ");
+          if (sql.includes("public.lock_reader_summary_refresh_")) {
+            expect(values).toEqual([m.tenantId, m.workspaceId, m.date]);
+            expect(shares.has(id)).toBe(true);
+            const capability = sql.includes("publication_ledgers") ? "ledgers" : "reconciliation";
+            order.push(capability);
+            if (state.capabilityFailure === capability) throw new Error("55P03 capability conflict");
+            return capability === state.malformedCapability ? state.lockResult : [{ locked: true }];
+          }
           if (sql.includes("select exists(select 1 from pg_catalog.pg_locks")) {
             expect(shares.has(id)).toBe(true);
             return [{ held: active.has(values[0] as number) && !state.lostHolder }];
@@ -116,8 +125,26 @@ describe("successor atomic admission contract (modeled connection locks)", () =>
     const f = fixture(), before = JSON.stringify(f.original);
     await f.consume();
     expect(f.jobs).toHaveLength(2); expect(JSON.stringify(f.original)).toBe(before);
-    expect(f.order).toEqual(["share", "share", "holder end", "upgrade", "validate", "insert", "commit"]);
+    expect(f.order).toEqual(["authority", "share", "ledgers", "reconciliation",
+      "authority", "share", "ledgers", "reconciliation", "holder end", "upgrade", "validate", "insert", "commit"]);
     expect(f.active.size).toBe(0);
+  });
+  it.each(["ledgers", "reconciliation"])("rejects every malformed %s lock result", async (capability) => {
+    for (const rows of [[], [{ locked: false }], [{ locked: null }], [{ locked: "true" }],
+      [{ locked: true }, { locked: true }]]) {
+      const f = fixture(); f.state.lockResult = rows; f.state.malformedCapability = capability;
+      await expect(f.consume()).rejects.toThrow(/lock.*not acquired/);
+      expect(f.jobs).toHaveLength(1); expect(f.active.size).toBe(0);
+      expect(f.order).not.toContain("upgrade");
+      expect(f.transactions()).toBe(1);
+      if (capability === "ledgers") expect(f.order).not.toContain("reconciliation");
+    }
+  });
+  it.each(["ledgers", "reconciliation"])("unwinds %s capability conflict without retry", async (capability) => {
+    const f = fixture(); f.state.capabilityFailure = capability;
+    await expect(f.consume()).rejects.toThrow(/55P03/);
+    expect(f.transactions()).toBe(1); expect(f.active.size).toBe(0);
+    expect(f.inserts()).toBe(0);
   });
   it("rejects a second grant with changed expiry after consumption", async () => {
     const f = fixture(); await f.consume();
