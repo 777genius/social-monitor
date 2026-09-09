@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { JsonObject } from "@social-monitor/shared-kernel";
 import type { PromotionReviewAssessment, SourceContentQualityReviewRequest } from "../../ports";
+import { promotionReaderHeadlineInstructions, promotionReaderHeadlineSchema } from "./promotion-reader-headline-wire";
 
 export const promotionReviewInstructions = [
   "Assess captured HN, Reddit and X content for the separately supplied trusted configured intent.",
@@ -18,6 +19,7 @@ export const promotionReviewInstructions = [
   "Never clear any other flag or override hard blockers. Do not add llm_* control flags yourself.",
   "Return needs_context for insufficient evidence; return confidence below 0.8 for uncertain judgments.",
   "Return only JSON matching the schema, one result per candidate.",
+  promotionReaderHeadlineInstructions,
 ].join("\n");
 
 export const promotionWireCandidate = (request: SourceContentQualityReviewRequest) => ({
@@ -46,6 +48,9 @@ export const bindPromotionAssessment = (
   }
   // Evidence is validated against the exact request by the application policy.
   return { binding: request.promotion,
+    headlineInput: Object.freeze({ request, reviewedInputDigest: bindingId(request),
+      title: request.title, body: request.bodyPreview ?? "" }),
+    readerHeadline: raw.readerHeadline,
     evidence: raw.evidence as unknown as PromotionReviewAssessment["evidence"],
     resolvedSoftFlags: raw.resolvedSoftFlags as unknown as PromotionReviewAssessment["resolvedSoftFlags"] };
 };
@@ -58,6 +63,7 @@ const referenceSchema = {
     quote: { type: "string", minLength: 1 } },
 } as const;
 export const promotionReviewSchemaProperties = {
+  readerHeadline: promotionReaderHeadlineSchema(referenceSchema),
   bindingId: { type: "string", minLength: 1 },
   evidence: { type: "array", maxItems: 8, items: referenceSchema },
   resolvedSoftFlags: { type: "array", maxItems: 1, items: {

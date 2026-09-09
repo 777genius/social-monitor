@@ -8,6 +8,7 @@ import type {
   UserRelevanceProfileView,
 } from '../shared/relevance-presenter';
 import type { RelevanceMemoryGuidanceStatus } from '../../ports';
+import type { PromotionReaderHeadline } from '../../domain/promotion-reader-headline';
 
 export type RelevanceMemoryGuidanceView = {
   readonly status: RelevanceMemoryGuidanceStatus;
@@ -29,6 +30,7 @@ export type RankedFeedItemView = {
   readonly title: string;
   readonly bodyPreview?: string;
   readonly sourceText?: string;
+  readonly readerHeadline?: PromotionReaderHeadline;
   readonly providerMetadata?: JsonObject;
   readonly authorHandle?: string;
   readonly publishedAt: string;
