@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 
@@ -6,6 +8,13 @@ import '../api/summary_api_dto.dart';
 
 ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
   generated.ReaderSummaryPromotionAttestationDto? dto, {
+  Object? displayHeadline,
+  Object? capturedSource,
+  String? cardTitle,
+  String? tenantId,
+  String? workspaceId,
+  String? sourceItemId,
+  String? sourceCandidateId,
   String? cardProviderKey,
   String? cardStoryClusterId,
   DateTime? cardPublishedAt,
@@ -74,9 +83,29 @@ ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
             supportCitationIds: dto.evidenceLineage!.supportCitationIds,
             citationIds: dto.evidenceLineage!.citationIds,
           ),
+    displayHeadline: displayHeadline,
+    capturedSource: capturedSource,
+    displayHeadlineSeal: displayJson(dto.toJson()['displayHeadline']),
+    cardTitle: cardTitle,
+    tenantId: tenantId,
+    workspaceId: workspaceId,
+    sourceItemId: sourceItemId,
+    sourceCandidateId: sourceCandidateId,
     cardProviderKey: cardProviderKey,
     cardStoryClusterId: cardStoryClusterId,
     cardPublishedAt: cardPublishedAt,
     cardCitationIds: cardCitationIds,
   );
+}
+
+// Generated optional fields serialize null; absence is preserved for sealed JSON.
+Object? displayJson(Object? value) => _withoutNulls(jsonDecode(jsonEncode(value)));
+
+Object? _withoutNulls(Object? value) {
+  if (value is List<Object?>) return value.map(_withoutNulls).toList();
+  if (value is Map<String, Object?>) {
+    return {for (final entry in value.entries)
+      if (entry.value != null) entry.key: _withoutNulls(entry.value)};
+  }
+  return value;
 }

@@ -204,11 +204,11 @@ void main() {
             );
             await tester.pumpAndSettle();
           }
-          expect(find.text('Source text'), findsWidgets);
-          expect(find.textContaining('Atlas'), findsNothing);
-          await tester.tap(find.widgetWithText(AppButton, 'Source text').first);
-          await tester.pumpAndSettle();
+          expect(find.text('Captured source'), findsWidgets);
           expect(find.text(sourceContextText), findsOneWidget);
+          await tester.tap(find.widgetWithText(AppButton, 'Captured source').first);
+          await tester.pumpAndSettle();
+          expect(find.widgetWithText(SelectableText, sourceContextText), findsOneWidget);
           expect(opened, isNull);
           expect(tester.takeException(), isNull);
         },

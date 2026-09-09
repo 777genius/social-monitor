@@ -48,11 +48,11 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.textContaining('Atlas'), findsNothing);
-        if (editorial != null) expect(find.text(editorial), findsWidgets);
-        await tester.tap(find.widgetWithText(AppButton, 'Source text').first);
-        await tester.pumpAndSettle();
         expect(find.text(source), findsOneWidget);
+        if (editorial != null) expect(find.text(editorial), findsWidgets);
+        await tester.tap(find.widgetWithText(AppButton, 'Captured source').first);
+        await tester.pumpAndSettle();
+        expect(find.widgetWithText(SelectableText, source), findsOneWidget);
         expect(
           tester.widget<SelectableText>(find.byType(SelectableText)).data,
           endsWith('production writes require explicit operator approval.'),

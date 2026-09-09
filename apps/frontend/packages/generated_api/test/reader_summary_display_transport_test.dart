@@ -1,0 +1,64 @@
+import 'dart:convert';
+
+import 'package:social_monitor_generated_api/social_monitor_generated_api.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('generated reader contract preserves exact display and captured source', () {
+    const title = 'Orion model discussion';
+    const body = 'Synthetic é 漢字 🚀 context.\nFinal correction: simulation only.';
+    final headline = {
+      'status': 'accepted', 'kind': 'subject_label', 'text': title,
+      'binding': {
+        'candidateId': 'candidate-fixture', 'providerKey': 'reddit',
+        'tenantId': 'tenant-fixture', 'workspaceId': 'workspace-fixture',
+        'interestId': 'interest-fixture', 'sourceBindingId': 'binding-fixture',
+        'sourceItemId': 'source-fixture', 'trustedIntent': 'Synthetic model research',
+        'availability': 'body_present', 'reviewedInputDigest': 'digest-fixture',
+      },
+      'support': [
+        {'field': 'title', 'start': 0, 'end': 5, 'quote': 'Orion'},
+        {'field': 'title', 'start': 6, 'end': 11, 'quote': 'model'},
+      ],
+      'qualifications': <Object?>[], 'confidence': .95,
+      'wholeInput': {'titleLength': title.length, 'bodyLength': body.length,
+        'qualificationJudgment': 'subject_only'},
+    };
+    final source = {'title': title, 'body': body,
+      'captureAvailability': 'available', 'reviewAvailability': 'body_present'};
+    final seal = {'headline': headline, 'capturedSourceDigest': 'digest-fixture'};
+    final item = ReaderSummaryReaderItemDto.fromJson({
+      'title': title, 'providerKey': 'reddit', 'providerName': 'Reddit',
+      'primaryActionKind': 'read_source', 'reason': 'Synthetic context',
+      'matchedInterestIds': <String>[], 'matchedRules': <String>[],
+      'signalScore': .7,
+      'confidence': {'level': 'high', 'score': .95, 'rationale': 'Synthetic fixture'},
+      'confirmedProviderKeys': ['reddit'], 'providerMetrics': <Object?>[],
+      'whyImportant': <String>[], 'whyNow': 'Synthetic period',
+      'citationIds': ['citation-fixture'], 'displayHeadline': headline,
+      'capturedSource': source,
+      'promotionAttestation': {
+        'schemaVersion': 'reader_post_promotion_attestation.v2',
+        'policyVersion': 'reader_post_promotion.v2',
+        'digestVersion': 'reader_post_promotion_digest.sha256.v2',
+        'digest': 'digest-fixture', 'canonicalPayload': 'synthetic transport only',
+        'artifactId': 'artifact-fixture', 'sourceWindowId': 'window-fixture',
+        'slot': 1, 'candidateId': 'candidate-fixture',
+        'canonicalIdentity': 'identity-fixture', 'placement': 'top',
+        'decision': 'promote_top', 'citationIds': ['citation-fixture'],
+        'displayHeadline': seal,
+      },
+    });
+    final encoded = jsonDecode(jsonEncode(item.toJson())) as Map<String, Object?>;
+    expect(encoded['title'], title);
+    final mappedSource = encoded['capturedSource']! as Map<String, Object?>;
+    expect(mappedSource['body'], body);
+    expect(mappedSource['title'], title);
+    final mappedHeadline = encoded['displayHeadline']! as Map<String, Object?>;
+    expect(mappedHeadline['text'], title);
+    expect(mappedHeadline['support'], headline['support']);
+    expect(mappedHeadline['qualifications'], isEmpty);
+    final attestation = encoded['promotionAttestation']! as Map<String, Object?>;
+    expect((attestation['displayHeadline']! as Map<String, Object?>)['headline'], mappedHeadline);
+  });
+}

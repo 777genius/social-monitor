@@ -66,8 +66,8 @@ import {
 import { configuredPromotionInterests } from
   "../../test-fixtures/configured-promotion-interests.spec-support";
 
-import { SyntheticPublicationAssessmentReviewer } from
-  "../../test-fixtures/synthetic-publication-assessment.spec-support";
+import { GroundedPublicationAssessmentReviewer } from
+  "./reader-summary-grounded-publication.spec-support";
 
 describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
   it("persists one immutable real-selector slate without changing order, lane, digest, or confidence", async () => {
@@ -115,7 +115,7 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
     const artifacts = new InMemoryReaderSummaryArtifactRepository();
     const events = new InMemorySummaryEventPublisher();
     const clock = new FixedClock(now);
-    const reviewer = new SyntheticPublicationAssessmentReviewer(
+    const reviewer = new GroundedPublicationAssessmentReviewer(
       publicationCandidates().map((candidate) => ({
         candidateId: candidate.id, providerKey: "x-twitter",
         title: candidate.title, bodyPreview: candidate.body,
@@ -350,7 +350,7 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
     const artifacts = new InMemoryReaderSummaryArtifactRepository();
     const events = new InMemorySummaryEventPublisher();
     const clock = new FixedClock(now);
-    const reviewer = new SyntheticPublicationAssessmentReviewer(
+    const reviewer = new GroundedPublicationAssessmentReviewer(
       readerSummaryV2DailyPublicationCandidates().map((candidate, index) => ({
         candidateId: candidate.id, providerKey: candidate.providerKey,
         title: candidate.title, bodyPreview: candidate.body,

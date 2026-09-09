@@ -104,6 +104,7 @@ extension on SummaryMapper {
       explicitCardKind,
     );
     final promotionCardIsValid =
+        dto.title.trim().isNotEmpty &&
         promotionAttestation != null &&
         (!promotionAttestation.isV2 ||
             promotionAttestation.storyClusterId == storyClusterId) &&
@@ -138,7 +139,9 @@ extension on SummaryMapper {
       relationId: relatedTopicIsValid ? relationId : null,
       targetStoryClusterId: relatedTopicIsValid ? targetStoryClusterId : null,
       promotionAttestation: promotionAttestation,
-      title: _nonEmpty(dto.title, fallback: 'Untitled item'),
+      title: dto.title,
+      displayHeadline: promotionCardIsValid ? mapReaderDisplayHeadline(dto.displayHeadline) : null,
+      capturedSource: promotionCardIsValid ? mapReaderCapturedSource(dto.capturedSource) : null,
       providerKey: _nonEmpty(dto.providerKey, fallback: 'unknown'),
       reason: _readerItemReason(dto.reason, dto.title),
       matchedInterestIds: _safeTextList(dto.matchedInterestIds),

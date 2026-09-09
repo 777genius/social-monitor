@@ -243,6 +243,15 @@ final class ReaderSummaryContentRestMapper {
           : targetClusterMarker.value,
       promotionAttestation: mapReaderPostPromotionAttestation(
         dto.promotionAttestation,
+        displayHeadline: displayJson(dto.toJson()['displayHeadline']),
+        capturedSource: displayJson(dto.toJson()['capturedSource']),
+        cardTitle: dto.title,
+        tenantId: binding.tenantId,
+        workspaceId: binding.workspaceId,
+        sourceCandidateId: binding.feedItemIdsByCitation[
+          dto.promotionAttestation?.evidenceLineage?.leadCitationId],
+        sourceItemId: binding.sourceItemIdsByCitation[
+          dto.promotionAttestation?.evidenceLineage?.leadCitationId],
         cardProviderKey: dto.providerKey,
         cardStoryClusterId: storyClusterMarker.value,
         cardPublishedAt: dto.publishedAt,
@@ -253,6 +262,8 @@ final class ReaderSummaryContentRestMapper {
         enclosingPeriodEnd: binding.periodEnd,
         enclosingIngestionCutoff: binding.ingestionCutoff,
       ),
+      displayHeadline: displayJson(dto.toJson()['displayHeadline']),
+      capturedSource: displayJson(dto.toJson()['capturedSource']),
       title: dto.title,
       providerKey: dto.providerKey,
       providerName: dto.providerName,

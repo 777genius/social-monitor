@@ -1,3 +1,4 @@
+import 'reader_summary_captured_source.dart';
 import 'dart:async';
 import 'dart:math' as math;
 

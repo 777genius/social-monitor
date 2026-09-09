@@ -1,3 +1,4 @@
+import { ReaderSummaryCapturedSourceDto, ReaderSummaryDisplayHeadlineDto } from "./reader-summary-display-headline.dto";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 import {
@@ -43,6 +44,12 @@ export class ReaderSummaryPreviewMediaDto {
 }
 
 export class ReaderSummaryReaderItemDto {
+  @ApiPropertyOptional({ type: () => ReaderSummaryDisplayHeadlineDto })
+  declare readonly displayHeadline?: ReaderSummaryDisplayHeadlineDto;
+
+  @ApiPropertyOptional({ type: () => ReaderSummaryCapturedSourceDto })
+  declare readonly capturedSource?: ReaderSummaryCapturedSourceDto;
+
   @ApiPropertyOptional({ type: () => ReaderSummaryPromotionAttestationDto })
   declare readonly promotionAttestation?: ReaderSummaryPromotionAttestationDto;
 

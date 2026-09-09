@@ -1,3 +1,4 @@
+import { ReaderSummaryDisplayHeadlineSealDto } from "./reader-summary-display-headline.dto";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 import {
@@ -67,6 +68,9 @@ export class ReaderSummaryPromotionEvidenceLineageDto {
 }
 
 export class ReaderSummaryPromotionAttestationDto {
+  @ApiPropertyOptional({ type: () => ReaderSummaryDisplayHeadlineSealDto })
+  declare readonly displayHeadline?: ReaderSummaryDisplayHeadlineSealDto;
+
   @ApiProperty({
     enum: [
       READER_POST_PROMOTION_ATTESTATION_SCHEMA_V1,
