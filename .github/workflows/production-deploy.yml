@@ -459,7 +459,7 @@ jobs:
             ops/deploy/reader-summary-publication-signal-regression.test.sh
             ops/deploy/fixtures/reader-summary-publication-fake-docker.sh
             ops/deploy/fixtures/reader-summary-publication-pause-worker.sh
-            ops/deploy/reader-summary-publication-pre-migration.sql ops/deploy/reader-summary-publication-tenant-ownership.sql
+            ops/deploy/reader-summary-publication-pre-migration.sql scripts/sql/reader-summary-publication-tenant-ownership.sql
             ops/deploy/reader-summary-publication-post-migration.sql
             prisma/migrations/20260716170000_reader_summary_fail_closed_publication/migration.sql
           )
