@@ -89,7 +89,7 @@ async function launch(t, { hold, neverStop = false, failedTask = false, parentLo
       },
     }],
   ]);
-  const context = createContext({ process: fakeProcess, performance, Date, AbortController, console,
+  const context = createContext({ process: fakeProcess, performance: globalThis.performance, Date, AbortController, console,
     setTimeout, clearTimeout });
   const modules = new Map();
   async function load(specifier) {

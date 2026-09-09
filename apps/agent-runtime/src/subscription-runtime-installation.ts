@@ -14,7 +14,7 @@ import {
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.42-sm.1";
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "36bdad8282a593107380545c25b607fe3a42aeb26e421b84f18f4fb7b60d096e";
+  "dea632563dce502f42e6fca28ce82d0e0438a23c5c28c23f251f828bf0cb31a0";
 
 // Repository wrapper approval, separate from the vendored package provenance.
 // Pin the local import closure too: launcher bytes alone do not bind helpers.
@@ -23,7 +23,7 @@ const approvedSubscriptionRuntimeDependencies = Object.freeze({
   "assessment-cli-progress.mjs":
     "f53430794ef6aaccf002dc47e7c7bbd0b2749a517556c0c46b261625ad24fe6d",
   "assessment-cli-lifecycle.mjs":
-    "be50c50e909dd6aefcdc053df502cf5b4b94996d5bdd5b745c666b7a59c9eb42",
+    "51d15e38070782eebf142acb46a985097b3b16f8b3813971aa40012ae04682cb",
   "pinned-codex-native-binary.mjs":
     "77a32f1ed6f6429b11428c0501d0d5f1712cc8bd913c74027f4ad0204facfb21",
   "subscription-runtime-failure-details.mjs":

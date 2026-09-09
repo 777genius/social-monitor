@@ -1,6 +1,6 @@
 // Local promise receipts only: abort and disposal never attest remote/descendant termination.
 export function createAssessmentCliLifecycle({
-  now = () => performance.now(), wallNow = () => Date.now(), timers = globalThis,
+  now = () => globalThis.performance.now(), wallNow = () => Date.now(), timers = globalThis,
   signals = process, parentDeadline, reserveMs = 20_000, settlementMs = 5_000,
   disposalMs = 11_000, marginMs = 4_000, mark = () => {},
 } = {}) {

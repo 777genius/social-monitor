@@ -156,7 +156,7 @@ test("legacy input setup held before factory is an unsettled operation", async (
   assert.equal(factories, 0); assert.equal(h.signals.listenerCount("SIGTERM"), 0);
 });
 
-test("direct admission uses entry time, and configurable small fake reserves do not restart a deadline", async (t) => {
+test("direct admission uses entry time, and configurable small fake reserves do not restart a deadline", async () => {
   const clock = FakeTimers.createClock(0), signals = new EventEmitter(), marks = [];
   const lifecycle = createAssessmentCliLifecycle({ now: () => clock.now, wallNow: () => clock.now,
     timers: clock, signals, reserveMs: 20, settlementMs: 5, disposalMs: 11, marginMs: 4,

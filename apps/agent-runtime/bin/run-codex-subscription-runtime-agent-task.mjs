@@ -34,7 +34,7 @@ import {
 let lifecycle;
 let progress = process.env.SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS === undefined ? undefined :
   createAssessmentProgress({ write: (line) => process.stderr.write(line),
-    now: () => performance.now(), remaining: () => lifecycle?.remaining() ?? 0 });
+    now: () => globalThis.performance.now(), remaining: () => lifecycle?.remaining() ?? 0 });
 lifecycle = createAssessmentCliLifecycle({
   parentDeadline: process.env.SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS,
   mark: (...args) => progress?.mark(...args),
@@ -62,7 +62,7 @@ const isSourceContentAssessment = admission.canonicalRequest.context.purpose ===
 lifecycle.configure(isSourceContentAssessment, admission.canonicalRequest.timeoutMs);
 if (isSourceContentAssessment) {
   progress ??= createAssessmentProgress({ write: (line) => process.stderr.write(line),
-    now: () => performance.now(), remaining: lifecycle.remaining });
+    now: () => globalThis.performance.now(), remaining: lifecycle.remaining });
   progress.mark("setup", "started");
 }
 const isReaderPromotionV2Canary = admission.canonicalRequest.context.purpose === readerPromotionV2CanaryPurpose;
