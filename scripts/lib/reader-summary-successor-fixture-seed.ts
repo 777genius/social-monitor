@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import type { PoolClient } from "pg";
+import { engagementObservationBucketStartedAt, nextEngagementObservationDueAt,
+  sourceItemContentHash, sourceItemProviderContentHash, type SourceItemProps } from "@social-monitor/ingestion/domain";
 import { tenantId, workspaceId, eventId, correlationId, causationId } from "@social-monitor/shared-kernel";
 import { ReaderSummaryJob, ReaderSummaryPublicationPolicy, type SummaryEvidenceSelection } from "@social-monitor/summary/domain";
 import { buildPromotionNoSignalArtifact } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-no-signal";
@@ -11,6 +13,7 @@ import { provisionReaderSummaryPublicationFixtureScope, setReaderSummaryPublicat
 
 export const fixtureMetadata = { kind: "hacker_news_story", points: 123, comments: 7, synthetic: true } as const;
 export const fixtureDate = "2026-09-03";
+export const fixtureObservedThrough = "2026-09-05T21:59:00.000Z";
 export const fixtureNow = new Date("2026-09-05T22:00:00.000Z");
 export const fixturePriorTime = new Date("2026-09-04T00:00:00.000Z");
 export const fixtureId = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -92,7 +95,7 @@ export async function seedSuccessorPrior(admin: PoolClient, runtime: PoolClient)
  * Deliberately one new fabricated HN story, observed after the empty prior. */
 export async function seedSuccessorInput(client: PoolClient): Promise<void> {
   const scope = [refreshScope.tenantId, refreshScope.workspaceId];
-  const created = fixturePriorTime.toISOString(), observed = "2026-09-05T21:59:00.000Z";
+  const created = fixturePriorTime.toISOString(), observed = fixtureObservedThrough;
   await client.query(`insert into source_catalog_entries
     (id,provider_key,display_name,acquisition_mode,readiness,created_at,updated_at)
     values ($1,'hacker-news','Fabricated fixture source','fixture','READY',$2,$2)`, [fixtureId(10), created]);
@@ -106,11 +109,18 @@ export async function seedSuccessorInput(client: PoolClient): Promise<void> {
   const url = "https://fixture.example.test/story/violet-queue";
   const published = "2026-09-03T12:00:00.000Z";
   const metadata = JSON.stringify(fixtureMetadata);
+  const source: SourceItemProps = { id: fixtureId(13), tenantId: tenantId(refreshScope.tenantId),
+    workspaceId: workspaceId(refreshScope.workspaceId), sourceBindingId: fixtureId(12), externalId: "fabricated-violet-queue",
+    canonicalUrl: url, title, body, publishedAt: new Date(published), ingestedAt: new Date(observed),
+    metadata: fixtureMetadata };
+  const bucket = engagementObservationBucketStartedAt(source.ingestedAt);
+  const nextDue = nextEngagementObservationDueAt({ publishedAt: source.publishedAt, observedAt: source.ingestedAt });
   await client.query(`insert into source_items (id,tenant_id,workspace_id,source_binding_id,provider_key,
     provider_item_id,canonical_url,title,body,published_at,content_hash,provider_content_hash,
     observed_at,last_observed_at,metadata,created_at)
-    values ($1,$2,$3,$4,'hacker-news','fabricated-violet-queue',$5,$6,$7,$8,$9,$9,$10,$10,$11::jsonb,$10)`,
-  [fixtureId(13), ...scope, fixtureId(12), url, title, body, published, refreshHash({ title, body }), observed, metadata]);
+    values ($1,$2,$3,$4,'hacker-news','fabricated-violet-queue',$5,$6,$7,$8,$9,$12,$10,$10,$11::jsonb,$10)`,
+  [fixtureId(13), ...scope, fixtureId(12), url, title, body, published, sourceItemContentHash(source), observed, metadata,
+    sourceItemProviderContentHash({ providerKey: "hacker-news", snapshot: source })]);
   await client.query(`insert into feed_items (id,tenant_id,workspace_id,interest_id,source_item_id,
     source_binding_id,provider_key,dedupe_key,canonical_url,title,body_preview,published_at,
     observed_at,provider_metadata,status,created_at,updated_at)
@@ -120,15 +130,15 @@ export async function seedSuccessorInput(client: PoolClient): Promise<void> {
     (tenant_id,workspace_id,source_item_id,provider_key,points,comments,metrics_hash,
     first_observed_at,last_observed_at,last_changed_at,last_observation_at,next_observation_due_at,created_at,updated_at)
     values ($1,$2,$3,'hacker-news',123,7,$4,$5,$5,$5,$5,$6,$5,$5)`,
-  [...scope, fixtureId(13), refreshHash({ points: 123, comments: 7 }), observed, fixtureNow]);
+  [...scope, fixtureId(13), refreshHash({ points: 123, comments: 7 }), observed, nextDue]);
   await client.query(`insert into source_item_engagement_observations
     (id,tenant_id,workspace_id,source_item_id,source_binding_id,provider_key,points,comments,
     metrics_hash,observed_at,bucket_started_at,reason,metrics_changed,has_regression,created_at)
-    values ($1,$2,$3,$4,$5,'hacker-news',123,7,$6,$7,$7,'INITIAL',true,false,$7)`,
-  [fixtureId(16), ...scope, fixtureId(13), fixtureId(12), refreshHash({ points: 123, comments: 7 }), observed]);
+    values ($1,$2,$3,$4,$5,'hacker-news',123,7,$6,$7,$8,'INITIAL',true,false,$7)`,
+  [fixtureId(16), ...scope, fixtureId(13), fixtureId(12), refreshHash({ points: 123, comments: 7 }), observed, bucket]);
   await client.query(`insert into reader_summary_policies (id,tenant_id,workspace_id,scope_type,scope_key,
     language,format,tone,max_stories,include_risks,include_interest_highlights,include_repeated_signals,
     dedupe_strategy,rules_version,schedule_enabled,schedule_timezone,schedule_cadences,created_at,updated_at)
-    values ($1,$2,$3,'workspace','workspace','en','brief','neutral',8,true,true,true,
-      'canonical_url','reader_promotion_policy.v2',false,'UTC',ARRAY['daily'],$4,$4)`, [fixtureId(15), ...scope, created]);
+    values ($1,$2,$3,'workspace','workspace','en','executive_brief','neutral',8,true,true,true,
+      'canonical_url_then_title','reader_promotion_policy.v2',false,'UTC',ARRAY['daily'],$4,$4)`, [fixtureId(15), ...scope, created]);
 }

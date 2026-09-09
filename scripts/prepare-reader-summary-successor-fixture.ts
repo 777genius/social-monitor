@@ -10,7 +10,7 @@ import { PrismaFeedConnection } from "@social-monitor/feed/adapters/persistence/
 import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { assertFixtureTarget, readFixtureMarker, attestEmptyFixture } from "./lib/reader-summary-successor-fixture-safety";
 import { migrateSuccessorFixture } from "./lib/reader-summary-successor-fixture-migrations";
-import { fixtureDate, fixtureNow, fixtureId, fixtureJob, insertFixtureJob, seedSuccessorPrior, seedSuccessorInput } from "./lib/reader-summary-successor-fixture-seed";
+import { fixtureDate, fixtureObservedThrough, fixtureNow, fixtureId, fixtureJob, insertFixtureJob, seedSuccessorPrior, seedSuccessorInput } from "./lib/reader-summary-successor-fixture-seed";
 import { assertRefreshManifest, refreshBytesHash, refreshHash, refreshOperation, refreshScope, type RefreshManifest } from "./lib/reader-summary-new-input-refresh-manifest";
 import { captureRefreshAuthority, assertRefreshHasNewInput, refreshPeriod } from "./lib/reader-summary-new-input-refresh-capture";
 import { readRefreshPrior, readRefreshJobs, readRefreshCounts } from "./lib/reader-summary-new-input-refresh-postgres";
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
     const db = summary, feedReader = new PrismaFeedItemReadRepository(feed), clock = new FixedClock(fixtureNow);
     const result = await runWithTenantDatabaseAccess(refreshScope, async () => {
       const prior = await readRefreshPrior(db, fixtureDate);
-      const observedThrough = "2026-09-05T21:59:00.000Z";
+      const observedThrough = fixtureObservedThrough;
       await assertRefreshHasNewInput(db, fixtureDate, prior.observedThrough, observedThrough);
       const authority = await captureRefreshAuthority({ client: db, feed: feedReader, date: fixtureDate,
         observedThrough: new Date(observedThrough), clock });
