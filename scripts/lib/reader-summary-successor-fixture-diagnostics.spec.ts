@@ -10,7 +10,7 @@ import {
 
 const secret = "FABRICATED_DO_NOT_EMIT";
 const secretError = (code?: unknown) => Object.assign(new Error(
-  `postgresql://fake:${secret}@invalid/db SQL parameter ${secret}`,
+  `postgresql://fake:raw-password@invalid/db SQL parameter ${secret}`,
 ), { code, actual: { token: secret }, expected: secret, detail: secret,
   query: `SELECT '${secret}'`, cause: new Error(secret), stdout: secret, stderr: secret });
 
@@ -50,7 +50,7 @@ describe("successor fixture preparation diagnostics", () => {
     const receipt = successorPreparationFailure(phase, secretError());
     expect(receipt).toMatchObject({ phase, status: "failed", nativeGate: "not-run" });
     expect(receipt.reason.length).toBeGreaterThan(20);
-    expect(JSON.stringify(receipt)).not.toMatch(/FABRICATED_DO_NOT_EMIT|postgresql:|SELECT/);
+    expect(JSON.stringify(receipt)).not.toMatch(/FABRICATED_DO_NOT_EMIT|raw-password|postgresql:|SELECT/);
   });
 
   it("ignores assertion payloads, thrown primitives and hostile code accessors", () => {
