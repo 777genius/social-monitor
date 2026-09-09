@@ -36,7 +36,7 @@ function recordedResponses(source, tapes, gaps, clock, controls, experiment = {}
     }
   }
   let active, generated = 0;
-  const exactRecord = (kind, request) => {
+  const exactRecord = (kind, request, command) => {
     let matches = records.filter(record => kind === 'assessment'
       ? record.assessment && same(JSON.parse(record.assessment.event.requestsJson), clone(request))
       : record.relation && same(record.relation.event.query, clone({ ...request, signal: undefined, aborted: request.signal?.aborted ?? false })));
@@ -47,6 +47,10 @@ function recordedResponses(source, tapes, gaps, clock, controls, experiment = {}
         (kind === 'assessment' ? record.assessmentEnd?.event.phase === 'completed' && record.assessmentEnd.event.consumed === true
           : record.relationEnd?.event.outcome.status === 'validated' && !record.relationEnd.event.outcome.aborted));
       if (!matches.length) return gaps.fail(`missing_successful_${kind}_request`, request);
+      // The first pass supplies only an original ID to the real command builder.
+      if (!command) return matches[0];
+      matches = matches.filter(record => same(semantic(command), semantic(record.start.event.command)));
+      if (!matches.length) return gaps.fail('missing_model_command', command);
       const output = record => ({ command: semantic(record.start.event.command),
         structuredOutput: record.terminal.event.result.structuredOutput, outputText: record.terminal.event.result.outputText,
         reviews: record.assessmentEnd?.event.reviewsJson, verdicts: record.assessmentEnd?.event.verdictsJson,
@@ -110,13 +114,25 @@ function recordedResponses(source, tapes, gaps, clock, controls, experiment = {}
       originalStartAtMs: record.start.atMs, originalTerminalAtMs: end.atMs });
     return clone(end.event.result);
   } });
+  // Discover the complete command through the pinned adapter, without delivering
+  // an output or consuming a record. Rebuild with the selected original ID so
+  // neither the transport identity nor its attestation needs rewriting.
+  const selectCommand = async (kind, request, build) => {
+    const seed = exactRecord(kind, request);
+    const stop = new Error('command_observed');
+    let command;
+    try { await build(seed, { async runTask(value) { command = value; throw stop; } }); }
+    catch (error) { if (error !== stop) throw error; }
+    check(command, 'model_command_not_generated');
+    return exactRecord(kind, request, command);
+  };
   const assessmentFile = 'libs/relevance/adapters/model/agent-runtime-source-content-quality-reviewer.adapter.ts';
   const owned = (label, action) => controlled ? experiment.host.track(label, action) : action();
   const reviewer = () => {
     const Adapter = source.load(assessmentFile).AgentRuntimeSourceContentQualityReviewerAdapter;
-    const createAdapter = record => new Adapter({ ...controls.assessment, client: clientFor(record), clock,
+    const createAdapter = (record, client) => new Adapter({ ...controls.assessment, client: client ?? clientFor(record), clock,
       ids: { generate() {
-        generated++;
+        if (!client) generated++;
         const id = record?.start.event.command.requestId;
         check(id?.startsWith('source-content-assessment:'), 'assessment_transport_id_missing');
         return id.slice('source-content-assessment:'.length);
@@ -130,7 +146,8 @@ function recordedResponses(source, tapes, gaps, clock, controls, experiment = {}
         try {
           if (options?.signal?.aborted || (options?.deadlineAtMs !== undefined && options.deadlineAtMs <= clock.now().getTime()))
             return gaps.fail('assessment_request_expired', { requests });
-          record = exactRecord('assessment', requests);
+          record = controlled ? await selectCommand('assessment', requests, (seed, client) =>
+            createAdapter(seed, client).reviewBatch(requests, options)) : exactRecord('assessment', requests);
           if (!controlled) active = record;
           const reviews = await createAdapter(record).reviewBatch(requests, options);
           assessedRecords.push(record);
@@ -149,9 +166,10 @@ function recordedResponses(source, tapes, gaps, clock, controls, experiment = {}
       let record;
       try {
         if (query.signal?.aborted) return gaps.fail('relation_request_expired', query);
-        record = exactRecord('relation', query);
-        if (!controlled) active = record;
         const Adapter = source.load('libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.ts').AgentRuntimeReaderSummaryStoryRelationVerifier;
+        record = controlled ? await selectCommand('relation', query, (_seed, client) =>
+          new Adapter({ ...controls.relation, client }).verify(query)) : exactRecord('relation', query);
+        if (!controlled) active = record;
         const adapter = new Adapter({ ...controls.relation, client: clientFor(record) });
         const decisions = await adapter.verify(query);
         if (record.relationEnd?.event.outcome.status !== 'validated' || !same(decisions, record.relationEnd.event.outcome.decisions)) gaps.fail('relation_parser_replay_mismatch', { recordId: record.id });

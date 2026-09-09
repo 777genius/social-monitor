@@ -8,7 +8,7 @@ const { recordedResponses } = require('./recorded-model-responses.cjs');
 const { replayHost } = require('./replay-host.cjs');
 const { detach, preparationTrace, observedPreparation, auditPreparation } = require('./selector-preparation-trace.cjs');
 const glueFiles = ['revision-source.cjs', 'revision-parser-dependencies.cjs', 'revision-full-selector.cjs',
-  'capture-owner-receipt.cjs', 'capture-core-observation.cjs', 'p2-observation.cjs', 'controlled-matrix.cjs', 'run.cjs', 'controlled-evaluation-view.cjs', 'recorded-selector-ports.cjs', 'recorded-model-responses.cjs', 'recorded-request-admission.cjs', 'selector-preparation-trace.cjs', 'replay-host.cjs', 'frozen-input.cjs'];
+  'relation-completion-ledger.cjs', 'capture-owner-receipt.cjs', 'capture-core-observation.cjs', 'p2-observation.cjs', 'controlled-matrix.cjs', 'run.cjs', 'controlled-evaluation-view.cjs', 'recorded-selector-ports.cjs', 'recorded-model-responses.cjs', 'recorded-request-admission.cjs', 'selector-preparation-trace.cjs', 'replay-host.cjs', 'frozen-input.cjs'];
 const glue = () => Object.fromEntries(glueFiles.map(file => [file, sha(fs.readFileSync(path.join(__dirname, file)))]));
 function exclusionDecisions(revision, selection, native) {
   const evaluations = new Map(native.evaluatedEvidence.map(e => [e.candidateId, e.decision]));
@@ -83,7 +83,9 @@ async function fullSelector({ repo = process.cwd(), revision, tape, responseTape
     };
     if (observe) trace = preparationTrace(source);
     const Selector = load('libs/summary/adapters/evidence/relevance-reader-summary-evidence.selector.ts', 'RelevanceReaderSummaryEvidenceSelector');
-    const selector = new Selector(rank, io.feed, io.clock, undefined, replay.relation(), modelControls.relatedTopicVerifierTimeoutMs);
+    const selector = new Selector(rank, io.feed, io.clock,
+      controlled ? require('./relation-completion-ledger.cjs').relationCompletionMetrics(source, gaps) : undefined,
+      replay.relation(), modelControls.relatedTopicVerifierTimeoutMs);
     if (observe) {
       const originalCluster = selector.clusterer.cluster.bind(selector.clusterer);
       selector.clusterer.cluster = params => {
