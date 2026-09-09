@@ -29,7 +29,7 @@ export async function migrateSuccessorFixture(admin: Pool, url: URL): Promise<st
   await admin.query(`ALTER DATABASE ${ident(url.pathname.slice(1))} OWNER TO ${ident(migrator)}`);
   await admin.query(`ALTER DATABASE ${ident(url.pathname.slice(1))} SET timezone TO 'UTC'`);
   const migrationUrl = fixtureRoleUrl(url, migrator);
-  const migrationAdmin = new Pool({ connectionString: migrationUrl, max: 1 });
+  const migrationAdmin = new Pool({ connectionString: migrationUrl, min: 0, max: 1 });
   const workspace = createReaderSummaryPublicationMigrationWorkspace();
   try {
     await provisionPublicationFixtureProtectedRoles({ serverAdmin: admin, migrationAdmin, migrationAdminRole: migrator });

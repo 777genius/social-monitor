@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   assert.equal(realpathSync(parent), parent, "output parent must be a real existing directory");
   mkdirSync(output, { mode: 0o700 }); // exclusive, before any database mutation
   preparationPhase = "attestation";
-  const admin = new Pool({ connectionString: url.toString(), max: 1 });
+  const admin = new Pool({ connectionString: url.toString(), min: 0, max: 1 });
   let runtime: Pool | undefined;
   let summary: PrismaSummaryConnection | undefined;
   let feed: PrismaFeedConnection | undefined;
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
     preparationPhase = "provisioning";
     const runtimeUrl = await migrateSuccessorFixture(admin, url);
     preparationPhase = "seed";
-    runtime = new Pool({ connectionString: runtimeUrl, max: 1 });
+    runtime = new Pool({ connectionString: runtimeUrl, min: 0, max: 1 });
     const auditor = await admin.connect(), writer = await runtime.connect();
     try {
       await seedSuccessorPrior(auditor, writer);

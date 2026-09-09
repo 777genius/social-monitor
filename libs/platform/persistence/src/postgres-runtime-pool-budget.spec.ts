@@ -414,7 +414,10 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-quality-dashboard-report-builder.ts:Pool
       scripts/lib/reader-summary-ready-delivery-postgres-fixture.ts:Pool
       scripts/lib/reader-summary-ready-delivery-postgres-fixture.ts:Pool
+      scripts/lib/reader-summary-successor-fixture-migrations.ts:Pool
       scripts/lib/yesterday-social-replay-support.ts:Pool
+      scripts/prepare-reader-summary-successor-fixture.ts:Pool
+      scripts/prepare-reader-summary-successor-fixture.ts:Pool
       scripts/read-reader-summary-daily-terminal-set-receipt.ts:Pool
       scripts/reader-summary-publication-postgres-legacy.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
@@ -535,6 +538,16 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-ready-delivery-postgres-fixture.ts
       scripts/lib/reader-summary-ready-recovery-postgres-fixture.ts
       scripts/lib/reader-summary-recovery-postgres-contract.ts
+      scripts/lib/reader-summary-successor-fixture-migrations.ts
+      scripts/lib/reader-summary-successor-fixture-observer.spec.ts
+      scripts/lib/reader-summary-successor-fixture-observer.ts
+      scripts/lib/reader-summary-successor-fixture-safety.ts
+      scripts/lib/reader-summary-successor-fixture-seed.spec.ts
+      scripts/lib/reader-summary-successor-fixture-seed.ts
+      scripts/lib/reader-summary-successor-native-scenarios.ts
+      scripts/lib/reader-summary-successor-native-support.ts
+      scripts/lib/reader-summary-successor-publication-github.spec.ts
+      scripts/lib/reader-summary-successor-publication-github.ts
       scripts/lib/reader-summary-weekly-atomic-publication-postgres-contract.ts
       scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts
       scripts/lib/reader-summary-weekly-daily-certification-backfill-postgres-contract.ts
@@ -547,6 +560,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/yesterday-replay-dispatch.spec.ts
       scripts/lib/yesterday-social-collection-quality-summary-counts.ts
       scripts/lib/yesterday-social-replay-support.ts
+      scripts/prepare-reader-summary-successor-fixture.ts
       scripts/read-reader-summary-daily-terminal-set-receipt.spec.ts
       scripts/read-reader-summary-daily-terminal-set-receipt.ts
       scripts/reader-summary-publication-postgres-legacy.ts
@@ -682,7 +696,11 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
           readSource(path),
         ),
       );
-    expect(productionImporters).toEqual([]);
+    // The disposable successor bootstrap reuses protected-role provisioning.
+    // Keep this exact importer inventoried without exempting its pool caps.
+    expect(productionImporters).toEqual([
+      'scripts/lib/reader-summary-successor-fixture-migrations.ts',
+    ]);
     expect(readSource('package.json')).toContain(
       'check:reader-summary-publication-postgres',
     );
