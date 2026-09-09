@@ -286,7 +286,9 @@ function assertRlsMigration() {
     }
   }
 
-  const publicationBootstrap = readFileSync(publicationBootstrapPath, 'utf8');
+  const publicationBootstrap = readFileSync(publicationBootstrapPath, 'utf8')
+    .replace('\\ir reader-summary-publication-tenant-ownership.sql', () => readFileSync(
+      'ops/deploy/reader-summary-publication-tenant-ownership.sql', 'utf8'));
   for (const required of [
     "social_monitor.bootstrap_system_runtime_role",
     "CREATE ROLE social_monitor_tenant_system_runtime",

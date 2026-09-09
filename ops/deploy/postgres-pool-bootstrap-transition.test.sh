@@ -125,6 +125,7 @@ cp "$FIXTURE/legacy-entrypoint.sh" "$REPO/ops/deploy/social-monitor-production-d
 cp "$PROJECT_ROOT/ops/deploy/reader-summary-publication-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-pre-migration.sql" \
+  "$PROJECT_ROOT/ops/deploy/reader-summary-publication-tenant-ownership.sql" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-post-migration.sql" \
   "$PROJECT_ROOT/ops/deploy/production-transition-b0-host-control.sh" \
   "$REPO/ops/deploy/"
@@ -171,6 +172,7 @@ cp "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
 cp "$PROJECT_ROOT/ops/deploy/reader-summary-publication-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-pre-migration.sql" \
+  "$PROJECT_ROOT/ops/deploy/reader-summary-publication-tenant-ownership.sql" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-post-migration.sql" \
   "$REPO/ops/deploy/"
 cp "$PROJECT_ROOT/ops/deploy/verify-postgres-runtime-topology.py" "$REPO/ops/deploy/"
