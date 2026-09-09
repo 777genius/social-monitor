@@ -24,6 +24,13 @@ weekly_review_admission=$REPO/scripts/lib/reader-summary-weekly-review-admission
 publication_pre_migration=$REPO/ops/deploy/reader-summary-publication-pre-migration.sql
 publication_post_migration=$REPO/ops/deploy/reader-summary-publication-post-migration.sql
 
+# Count the canonical SQL, including psql's reviewed relative ownership include.
+# Capture synchronously so loader errors fail the gate; no temporary SQL cleanup.
+publication_pre_migration_sql=$(node --experimental-strip-types --input-type=module -e '
+  const { readPublicationBootstrapSql } = await import(process.argv[1]);
+  process.stdout.write(readPublicationBootstrapSql(process.argv[2]));
+' "$REPO/scripts/lib/reader-summary-publication-bootstrap-sql.ts" "$publication_pre_migration")
+
 [[ -f $service ]]
 [[ -f $timer ]]
 [[ -f $weekly_timer_state_lib ]]
@@ -91,35 +98,35 @@ grep -F 'capability_table_acl_count === "0"' "$weekly_seal_contract" \
 grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
   >/dev/null
 [[ $(grep -Fc "'reader_summary_weekly_certification_seals'" \
-  "$publication_pre_migration") -eq 6 ]]
+  <<< "$publication_pre_migration_sql") -eq 6 ]]
 [[ $(awk '
   /AND relation\.relname NOT IN \(/ { in_owner_exclusion = 1; next }
   in_owner_exclusion && /reader_summary_weekly_certification_seals/ { count++ }
   in_owner_exclusion && /^      \)/ { in_owner_exclusion = 0 }
   END { print count + 0 }
-' "$publication_pre_migration") -eq 3 ]]
+' <<< "$publication_pre_migration_sql") -eq 3 ]]
 [[ $(awk '
   /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
   in_owner_audit && /AND relation\.relname IN \(/ { in_owner_list = 1; next }
   in_owner_list && /reader_summary_weekly_certification_seals/ { count++ }
   in_owner_list && /^      \)/ { in_owner_list = 0 }
   END { print count + 0 }
-' "$publication_pre_migration") -eq 1 ]]
+' <<< "$publication_pre_migration_sql") -eq 1 ]]
 [[ $(grep -Fc "'reader_summary_weekly_review_manifests'" \
-  "$publication_pre_migration") -eq 7 ]]
+  <<< "$publication_pre_migration_sql") -eq 7 ]]
 [[ $(awk '
   /AND relation\.relname NOT IN \(/ { in_owner_exclusion = 1; next }
   in_owner_exclusion && /reader_summary_weekly_review_manifests/ { count++ }
   in_owner_exclusion && /^      \)/ { in_owner_exclusion = 0 }
   END { print count + 0 }
-' "$publication_pre_migration") -eq 3 ]]
+' <<< "$publication_pre_migration_sql") -eq 3 ]]
 [[ $(awk '
   /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
   in_owner_audit && /AND relation\.relname IN \(/ { in_owner_list = 1; next }
   in_owner_list && /reader_summary_weekly_review_manifests/ { count++ }
   in_owner_list && /^[[:space:]]*\)[,;]?$/ { in_owner_list = 0 }
   END { print count + 0 }
-' "$publication_pre_migration") -eq 2 ]]
+' <<< "$publication_pre_migration_sql") -eq 2 ]]
 [[ $(awk '
   /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
   in_owner_audit && /FROM unnest\(ARRAY\[/ {
@@ -136,7 +143,7 @@ grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
     in_protected_array = 0
   }
   END { print count + 0 }
-' "$publication_pre_migration") -eq 1 ]]
+' <<< "$publication_pre_migration_sql") -eq 1 ]]
 [[ $(grep -Fc "'reader_summary_weekly_review_manifests'" \
   "$publication_post_migration") -eq 3 ]]
 [[ $(awk '
@@ -235,7 +242,7 @@ awk '
       transfer_end < audit
     exit !(valid_safe_owners && valid_order && !expect_revoke_grantee)
   }
-' "$publication_pre_migration"
+' <<< "$publication_pre_migration_sql"
 ! grep -Eq '(GRANT|REVOKE).+reader_summary_weekly_certification_seals' \
   "$weekly_seal_contract"
 
