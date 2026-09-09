@@ -11,6 +11,8 @@ import {
 import { join } from "node:path";
 import { resolvePinnedCodexBinaryPath } from "./pinned-codex-native-binary.mjs";
 import { withTrustedCodexWorkerUsage } from "./codex-worker-cli-usage.mjs";
+import { createAssessmentCliLifecycle } from "./assessment-cli-lifecycle.mjs";
+import { createAssessmentProgress } from "./assessment-cli-progress.mjs";
 import { subscriptionRuntimeFailureDetails } from "./subscription-runtime-failure-details.mjs";
 
 import {
@@ -29,6 +31,15 @@ import {
   orderCodexAuthAccountsForTask,
 } from "./codex-auth-pool-routing.mjs";
 
+let lifecycle;
+let progress = process.env.SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS === undefined ? undefined :
+  createAssessmentProgress({ write: (line) => process.stderr.write(line),
+    now: () => performance.now(), remaining: () => lifecycle?.remaining() ?? 0 });
+lifecycle = createAssessmentCliLifecycle({
+  parentDeadline: process.env.SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS,
+  mark: (...args) => progress?.mark(...args),
+});
+process.exitCode = await lifecycle.runCli(async () => {
 const argv = process.argv.slice(2);
 const canaryActivationFlag = "--activate-reader-promotion-v2-canary";
 const canaryActivationRequested = argv.includes(canaryActivationFlag);
@@ -38,7 +49,7 @@ const inputPath = requiredArgument(runtimeArgv, "--input");
 const requestedModel = optionalArgument(runtimeArgv, "--model");
 const requestedReasoningEffort =
   process.env.AGENT_RUNTIME_REASONING_EFFORT?.trim() || undefined;
-const request = JSON.parse(await readFile(inputPath, "utf8"));
+const request = JSON.parse(await lifecycle.work(() => readFile(inputPath, "utf8")));
 const admission = admitSubscriptionRuntimeWrapperRequest({
   request,
   provider,
@@ -48,28 +59,36 @@ const admission = admitSubscriptionRuntimeWrapperRequest({
   ? readerPromotionV2CanaryActivationCapability
   : undefined);
 const isSourceContentAssessment = admission.canonicalRequest.context.purpose === "social_monitor.relevance.assess_source_content.v1";
+lifecycle.configure(isSourceContentAssessment, admission.canonicalRequest.timeoutMs);
+if (isSourceContentAssessment) {
+  progress ??= createAssessmentProgress({ write: (line) => process.stderr.write(line),
+    now: () => performance.now(), remaining: lifecycle.remaining });
+  progress.mark("setup", "started");
+}
 const isReaderPromotionV2Canary = admission.canonicalRequest.context.purpose === readerPromotionV2CanaryPurpose;
 const assessmentOutputSchemas = isSourceContentAssessment
   ? sourceContentAssessmentOutputSchemas(admission.canonicalRequest.task)
   : undefined;
-await writeFile(inputPath, JSON.stringify(admission.canonicalRequest), "utf8");
+await lifecycle.work(() => writeFile(inputPath, JSON.stringify(admission.canonicalRequest), "utf8"));
 
-const { FileBackendCodexWorker, NodeProcessRunner } = await import(
+const { FileBackendCodexWorker, NodeProcessRunner } = await lifecycle.work(() => import(
   "@vioxen/subscription-runtime/worker-codex"
-);
-const { FileBackendCodexSafeExecutor } = await import(
+));
+const { FileBackendCodexSafeExecutor } = await lifecycle.work(() => import(
   "@vioxen/subscription-runtime/worker-codex"
-);
-const { SubscriptionWorkerError } = await import(
+));
+const { SubscriptionWorkerError } = await lifecycle.work(() => import(
   "@vioxen/subscription-runtime/worker-core"
-);
-const { runSubscriptionAgentTaskCli } = await import(
+));
+const { runSubscriptionAgentTaskCli } = await lifecycle.work(() => import(
   "../../../node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js"
-);
+));
 
-const authPool = await loadCodexAuthPoolFromEnv(process.env);
+const authPool = await lifecycle.work(() => loadCodexAuthPoolFromEnv(process.env));
+progress?.mark("setup", "completed");
 
 const createStrictCodexWorker = (input) => {
+  lifecycle.checkpoint();
   if (input.provider !== admission.profile.provider) {
     throw new Error("Agent runtime provider conflicts with purpose policy");
   }
@@ -272,19 +291,22 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
         taskHash,
       );
       await mkdir(workspacePath, { recursive: true, mode: 0o700 });
+      lifecycle.checkpoint();
+      progress?.mark("account_materialization", "started");
       const materializedAuthRoot = await createAuthMaterializationRoot(
         input.stateRootDir,
         taskId,
       );
 
       try {
+        lifecycle.checkpoint();
         const accounts = await Promise.all(
           orderCodexAuthAccountsForTask(authPool.accounts, taskId).map(
             async (account) => ({
-              codexAuthJsonPath: await materializeCodexAuthAccount(
+              codexAuthJsonPath: await lifecycle.work(() => materializeCodexAuthAccount(
                 materializedAuthRoot,
                 account,
-              ),
+              )),
               worker: {
                 providerInstanceId: `codex:${account.id}`,
                 capacityAccountId: account.id,
@@ -300,6 +322,8 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
             }),
           ),
         );
+        lifecycle.checkpoint();
+        progress?.mark("account_materialization", "completed");
         executor = new FileBackendCodexSafeExecutor({
           executorId: `social-monitor-agent-task:${taskHash}`,
           stateRootDir: input.stateRootDir,
@@ -318,9 +342,12 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
           accounts,
           // Assessment never consumes native startup guidance or continuation.
           ...(isSourceContentAssessment ? {
+            observability: progress, shutdownTimeoutMs: 1_000,
             controlInbox: { consumeForContinuation: async () => undefined },
           } : {}),
         });
+        lifecycle.checkpoint();
+        progress?.mark("executor_run", "started");
         const result = await executor.run({
           ...job,
           taskId,
@@ -328,6 +355,7 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
           effectMode: "read_only",
           maxAccountCycles: 1,
         });
+        progress?.mark("executor_run", "completed");
         if (result.status === "completed") {
           return result.result;
         }
@@ -345,7 +373,9 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
           },
         );
       } finally {
+        progress?.mark("auth_cleanup", "started");
         await removeAuthMaterialization(materializedAuthRoot);
+        progress?.mark("auth_cleanup", "completed");
       }
     },
 
@@ -378,10 +408,13 @@ async function removeAuthMaterialization(path) {
   }
 }
 
-process.exitCode = await runSubscriptionAgentTaskCli(
+return await runSubscriptionAgentTaskCli(
   withExactModel(runtimeArgv, admission.profile.model),
   undefined,
-  (input) => withTrustedCodexWorkerUsage(createStrictCodexWorker(input)),
+  (input) => {
+    const worker = withTrustedCodexWorkerUsage(createStrictCodexWorker(input));
+    return isSourceContentAssessment ? lifecycle.decorateWorker(worker) : worker;
+  },
 );
 
 function nonEmptyRunId(value) {
@@ -422,3 +455,5 @@ function optionalArgument(args, name) {
   }
   return values[0];
 }
+
+});

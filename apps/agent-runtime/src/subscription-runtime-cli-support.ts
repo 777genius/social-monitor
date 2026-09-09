@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createAssessmentProgressParser, type AssessmentProgress } from "./subscription-runtime-cli-progress";
 
 import type {
   AgentRuntimeExecutionFailure,
@@ -76,7 +77,7 @@ export const cliExecutionResult = (
         details: {
           exitCode: result.exitCode === null ? "null" : String(result.exitCode),
           signal: result.signal ?? "",
-          stderrBytes: String(Buffer.byteLength(result.stderr)),
+          stderrBytes: String(result.stderrBytes ?? Buffer.byteLength(result.stderr)),
         },
       },
     };
@@ -105,22 +106,37 @@ export const runCli = async (params: {
   readonly args: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
   readonly timeoutMs: number;
+  readonly assessment?: { readonly onProgress: (record: AssessmentProgress) => void };
 }): Promise<{
   readonly exitCode: number | null;
   readonly signal: NodeJS.Signals | null;
   readonly stdout: string;
   readonly stderr: string;
+  readonly stderrBytes?: number;
   readonly timedOut: boolean;
 }> =>
   new Promise((resolve, reject) => {
+    const deadline = Date.now() + params.timeoutMs;
+    const startedAt = performance.now();
+    const remaining = () => Math.max(0, params.timeoutMs - (performance.now() - startedAt));
+    if (params.assessment && params.timeoutMs <= 20_000) {
+      resolve({ exitCode: null, signal: null, stdout: "", stderr: "", timedOut: true });
+      return;
+    }
+    const env = { ...subscriptionRuntimeChildBaseEnv(process.env), ...params.env };
+    delete env.SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS;
+    if (params.assessment) env.SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS = String(deadline);
+    const progress = params.assessment && createAssessmentProgressParser(params.assessment.onProgress);
+    let stderrBytes = 0;
     const child = spawn(params.command, params.args, {
-      env: { ...subscriptionRuntimeChildBaseEnv(process.env), ...params.env },
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let timedOut = false;
     let settled = false;
+    let earlyTimeout: ReturnType<typeof setTimeout> | undefined;
     let cleanupTimeout: ReturnType<typeof setTimeout> | undefined;
     const stopLocalChild = () => {
       // Best-effort local cleanup only; signals never acknowledge remote termination.
@@ -134,9 +150,10 @@ export const runCli = async (params: {
       settled = true;
       clearTimeout(timeout);
       clearTimeout(cleanupTimeout);
+      clearTimeout(earlyTimeout);
       resolve({ exitCode, signal,
         stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"), timedOut });
+        stderr: Buffer.concat(stderr).toString("utf8"), stderrBytes, timedOut });
     };
     const timeout = setTimeout(() => {
       timedOut = true;
@@ -146,14 +163,23 @@ export const runCli = async (params: {
         finish(null, null);
       }, 1_000);
       try { child.kill("SIGTERM"); } catch { /* Cleanup deadline still applies. */ }
-    }, params.timeoutMs);
+    }, params.assessment ? remaining() : params.timeoutMs);
+    if (params.assessment) earlyTimeout = setTimeout(() => {
+      timedOut = true;
+      try { child.kill("SIGTERM"); } catch { /* Hard deadline remains authoritative. */ }
+    }, Math.max(0, remaining() - 20_000));
     child.stdout!.on("data", (chunk: Buffer) => { if (!settled) stdout.push(chunk); });
-    child.stderr!.on("data", (chunk: Buffer) => { if (!settled) stderr.push(chunk); });
+    child.stderr!.on("data", (chunk: Buffer) => {
+      if (settled) return;
+      stderrBytes = Math.min(Number.MAX_SAFE_INTEGER, stderrBytes + chunk.length);
+      if (progress) progress(chunk); else stderr.push(chunk);
+    });
     child.on("error", (error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
       clearTimeout(cleanupTimeout);
+      clearTimeout(earlyTimeout);
       stopLocalChild();
       reject(error);
     });

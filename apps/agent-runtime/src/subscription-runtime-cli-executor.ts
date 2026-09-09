@@ -119,6 +119,11 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
             admission.profile,
           ),
           timeoutMs: request.timeoutMs,
+          ...(request.purpose === "social_monitor.relevance.assess_source_content.v1" ? {
+            assessment: { onProgress: (fields) => this.logger.info("agent runtime assessment progress", {
+              ...fields, ...taskFields(request),
+            }) },
+          } : {}),
         }),
       );
       if (admission.profile.retryMode === "never") {

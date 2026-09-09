@@ -29,7 +29,8 @@ test("rejects malformed and conflicting metadata without guessing missing counts
 });
 test("shared outer factory covers every selection and preserves single invocation and lifecycle", async () => {
   const source = await readFile(new URL("./run-codex-subscription-runtime-agent-task.mjs", import.meta.url), "utf8");
-  assert.match(source, /\(input\) => withTrustedCodexWorkerUsage\(createStrictCodexWorker\(input\)\)/u);
+  assert.match(source, /const worker = withTrustedCodexWorkerUsage\(createStrictCodexWorker\(input\)\);/u);
+  assert.match(source, /return isSourceContentAssessment \? lifecycle\.decorateWorker\(worker\) : worker;/u);
   for (const route of ["direct", "pooled", "strict"]) {
     const events = [];
     const worker = withTrustedCodexWorkerUsage({
