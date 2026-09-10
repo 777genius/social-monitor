@@ -43,18 +43,6 @@ export type HistoricalPromotionCliOptions = Readonly<{
   timestampPolicy: "published_at" | "observed_at";
 }>;
 
-if (require.main === module) {
-  loadDotenvIfPresent(".env");
-  void main().catch((error) => {
-    console.error(
-      error instanceof Error
-        ? error.message
-        : "Historical promotion rebuild failed",
-    );
-    process.exitCode = 1;
-  });
-}
-
 async function main(): Promise<void> {
   const options = parseHistoricalPromotionCliOptions(process.argv.slice(2));
   const now = new Date();
@@ -352,3 +340,15 @@ const assertHttpUrl = (value: string): void => {
     throw new Error("Promotion rebuild API base URL must use HTTP(S)");
   }
 };
+
+if (require.main === module) {
+  loadDotenvIfPresent(".env");
+  void main().catch((error) => {
+    console.error(
+      error instanceof Error
+        ? error.message
+        : "Historical promotion rebuild failed",
+    );
+    process.exitCode = 1;
+  });
+}
