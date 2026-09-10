@@ -44,7 +44,7 @@ const expectIndependentCompletion = async (run: ReturnType<typeof makeRun>) => {
   (await waitForChild(count)).close();
   expect(await result).toMatchObject({ status: "completed", executionAttestation: {
     requestId: `independent-${count}`, purpose: assessmentRequest().purpose,
-    model: "gpt-5.6-sol", reasoningEffort: "high", selectedOutputKind: "structured_output",
+    model: "gpt-5.6-sol", reasoningEffort: "low", selectedOutputKind: "structured_output",
   } });
 };
 

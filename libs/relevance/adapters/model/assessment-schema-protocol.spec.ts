@@ -89,11 +89,11 @@ describe("assessment schema consumer protocol", () => {
       await jest.advanceTimersByTimeAsync(300_001);
       const result = await pending;
       expect(calls).toBe(3);
-      expect(result.ranking.orderedCandidateIds).toHaveLength(valid ? 8 : 0);
-      expect(result.items.filter((item) => item.contentQuality.needsLlmReview)).toHaveLength(valid ? 16 : 24);
+      expect(result.ranking.orderedCandidateIds).toHaveLength(valid ? 16 : 0);
+      expect(result.items.filter((item) => item.contentQuality.needsLlmReview)).toHaveLength(valid ? 8 : 24);
       await jest.advanceTimersByTimeAsync(300_000);
       expect(calls).toBe(3);
-      expect(result.ranking.orderedCandidateIds).toHaveLength(valid ? 8 : 0);
+      expect(result.ranking.orderedCandidateIds).toHaveLength(valid ? 16 : 0);
     } finally { jest.useRealTimers(); }
   });
 });

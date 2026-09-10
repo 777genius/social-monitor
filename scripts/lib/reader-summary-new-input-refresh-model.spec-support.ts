@@ -10,6 +10,7 @@ import { createAgentRuntimeGrpcService } from "../../apps/agent-runtime/src/agen
 import type { AgentRuntimeExecutionRequest, AgentRuntimeExecutorPort } from "../../apps/agent-runtime/src/agent-runtime-executor.port";
 import { attachExecutorOwnedExecutionAttestation } from "../../apps/agent-runtime/src/subscription-runtime-execution-attestation";
 import { admitSubscriptionRuntimeRequest } from "../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy";
+import { sourceContentAssessmentPurpose } from "./reader-summary-new-input-refresh-assessment-runtime";
 import { refreshManifest, refreshNow } from "./reader-summary-new-input-refresh.spec-support";
 
 export const refreshModelCommand = (purpose: string = purposes.generate): AgentRuntimeTaskCommand => ({
@@ -17,7 +18,7 @@ export const refreshModelCommand = (purpose: string = purposes.generate): AgentR
   tenantId: tenantId(refreshManifest().tenantId), workspaceId: workspaceId(refreshManifest().workspaceId),
   provider: "codex", prompt: "Synthetic prompt", systemPrompt: "Synthetic instruction",
   outputSchema: {}, timeoutMs: 1000, controls: {
-    model: "gpt-5.6-sol", reasoningEffort: "high",
+    model: "gpt-5.6-sol", reasoningEffort: purpose === sourceContentAssessmentPurpose ? "low" : "high",
     ...(purpose === purposes.relatedTopicRelations ? {
       outputSchemaName: "social_monitor_reader_summary_related_topic_relations",
       schemaVersion: "reader_summary.related_topic_relation.v1",

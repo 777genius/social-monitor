@@ -39,6 +39,14 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
     expect(() => test.runtime.assertUsable()).toThrow(/reconciliation/u);
   });
 
+  it("rejects nonempty partial coverage within the configured candidate cap", async () => {
+    const fixture = await selectorWiring();
+    const selection = await fixture.selectComplete();
+    expect(selection.selectedEvidence).not.toHaveLength(0);
+    expect(() => fixture.assessment.assertComplete(3, selection)).toThrow(/reconciliation/u);
+    expect(() => fixture.runtime.assertUsable()).toThrow(/reconciliation/u);
+  });
+
   it.each(["missing", "one missing", "wrong binding", "wrong quote", "duplicate"])(
     "keeps %s assessment pending and prevents publication and subsequent spend", async (kind) => {
       const test = await selectorWiring({ output: (command) => {
@@ -98,7 +106,7 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
       expect(test.commands).toEqual([]);
       const selection = await test.selectComplete();
       const calls = test.commands.filter((c) => c.purpose === purpose);
-      expect(calls).toHaveLength(50);
+      expect(calls).toHaveLength(25);
       const reviewedIds = calls.flatMap((call) =>
         (JSON.parse(call.prompt).candidates as { candidateId: string }[]).map((c) => c.candidateId));
       expect(reviewedIds).toHaveLength(200);

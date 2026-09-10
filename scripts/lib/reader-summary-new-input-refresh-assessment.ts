@@ -90,9 +90,10 @@ export function createRefreshAssessmentReviewer(input: {
     },
     assertComplete: (expected, selection) => {
       input.runtime.assertUsable();
-      // The snapshot count is an upper bound, not a mandate to spend on every
-      // candidate. Every attempted batch must still have a verified outcome.
-      if (!Number.isSafeInteger(expected) || expected < completed || completed !== seen.size) fail();
+      // Historical refresh must assess the complete captured universe. Partial
+      // UUID-ordered coverage would bias selection toward whichever batches ran first.
+      const required = Math.min(expected, PROMOTION_ASSESSMENT_BOUNDS.candidates);
+      if (!Number.isSafeInteger(expected) || expected < 0 || required !== completed || completed !== seen.size) fail();
       if (selection === undefined) return;
       // An empty bounded/uncertain result cannot support exhaustive no-signal.
       if (selection.selectedEvidence.length === 0 && (completed < expected || abstained > 0)) {

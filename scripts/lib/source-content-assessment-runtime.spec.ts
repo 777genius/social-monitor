@@ -30,12 +30,12 @@ describe("pool-backed assessment through runtime transport and actual promotion"
     const result = await run(Array.from({ length: 32 }, (_, index) =>
       fixture(`pool-${index}`, ["reddit", "hacker-news", "x-twitter"][index % 3])), reviewer);
     expect(result.ranking.orderedCandidateIds).toHaveLength(32);
-    expect(requests).toHaveLength(8);
-    expect(new Set(requests.map((request) => request.requestId)).size).toBe(8);
+    expect(requests).toHaveLength(4);
+    expect(new Set(requests.map((request) => request.requestId)).size).toBe(4);
     for (const request of requests) {
       expect(request).toMatchObject({ tenantId: scope.tenantId, workspaceId: scope.workspaceId,
         providerInstanceId: "synthetic-existing-pool", timeoutMs: 300_000 });
-      expect(JSON.parse(request.prompt).candidates).toHaveLength(4);
+      expect(JSON.parse(request.prompt).candidates).toHaveLength(8);
       expect(request.prompt).not.toMatch(/canonicalUrl|deterministic|upvoteRatio/);
     }
   });
@@ -50,8 +50,8 @@ describe("pool-backed assessment through runtime transport and actual promotion"
       return attestRefreshExecution(request, output);
     });
     const result = await run(Array.from({ length: 32 }, (_, index) => fixture(`partial-${index}`)), reviewer);
-    expect(calls).toBe(8);
-    expect(result.ranking.orderedCandidateIds).toHaveLength(27);
+    expect(calls).toBe(4);
+    expect(result.ranking.orderedCandidateIds).toHaveLength(23);
   });
 
   it.each(["binding", "identity", "range"])("rejects mismatched %s evidence", async (mutation) => {
@@ -96,9 +96,9 @@ describe("pool-backed assessment through runtime transport and actual promotion"
         { clock: new SystemClock() });
       await jest.advanceTimersByTimeAsync(60_001);
       const result = await pending;
-      expect(result.ranking.orderedCandidateIds).toHaveLength(4);
+      expect(result.ranking.orderedCandidateIds).toHaveLength(8);
       await jest.advanceTimersByTimeAsync(40_000);
-      expect(result.ranking.orderedCandidateIds).toHaveLength(4);
+      expect(result.ranking.orderedCandidateIds).toHaveLength(8);
       expect(requests).toHaveLength(2);
       expect(requests.map((request) => request.timeoutMs)).toEqual([50_000, 20_000]);
     } finally { jest.useRealTimers(); }

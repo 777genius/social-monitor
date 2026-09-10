@@ -52,7 +52,7 @@ it("preserves all quality verdicts with malformed or oversized annotations in co
       client: refreshTestRuntimeClient(async (command) => {
         calls++;
         const candidates = JSON.parse(command.prompt).candidates as { candidateId: string }[];
-        expect(candidates).toHaveLength(4);
+        expect(candidates).toHaveLength(8);
         const reviews = candidates.map(({ candidateId }) => {
           const input = requests.find((request) => request.candidateId === candidateId)!;
           const { assessment, ...quality } = headlineReview(input, readerHeadline);
@@ -66,7 +66,7 @@ it("preserves all quality verdicts with malformed or oversized annotations in co
     });
     const result = await assessPromotionContent({ requests, reviewer: adapter, clock,
       policy: new SourceContentQualityPolicy() });
-    expect(calls).toBe(2);
+    expect(calls).toBe(1);
     expect(result.verdicts.size).toBe(8);
     expect([...result.verdicts.values()].every((verdict) => verdict.qualityScore === 0.8)).toBe(true);
     expect([...result.readerHeadlines.values()].every((headline) => headline.status === "unavailable")).toBe(true);

@@ -138,7 +138,7 @@ describe("synthetic bounded refresh paired export", () => {
     const statuses = json(fixture.path, "candidate-status.json");
     expect(statuses.filter((s: { attempted: boolean }) => s.attempted)).toHaveLength(200);
     expect(statuses.filter((s: { status: string }) => s.status === "pending").length).toBe(3);
-    expect(fixture.delegate.runTask.mock.calls.filter(([c]) => c.purpose.includes("assess_source_content"))).toHaveLength(50);
+    expect(fixture.delegate.runTask.mock.calls.filter(([c]) => c.purpose.includes("assess_source_content"))).toHaveLength(25);
   });
 
   it("refuses absent swallowed P1 callback and keeps capture failures separate from selection", async () => {
