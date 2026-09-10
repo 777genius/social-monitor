@@ -104,6 +104,11 @@ export class RefreshPairedExport {
     });
   }
 
+  /** Private sidecars may use only this invocation's exclusive reservation. */
+  get reservedDirectory(): string | undefined {
+    return this.initialized ? this.directory : undefined;
+  }
+
   fail = (reason: string): void => {
     // Only fixed codes from our concrete closures, never exception messages.
     this.failures.add(reason);

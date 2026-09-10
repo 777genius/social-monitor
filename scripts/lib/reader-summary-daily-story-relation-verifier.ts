@@ -1,4 +1,4 @@
-import { createHeadlineDiagnosticArtifact, type HeadlineDiagnosticArtifactOptions } from "./reader-summary-headline-diagnostic-artifact";
+import { createHeadlineDiagnosticArtifact, type HeadlineDiagnosticArtifactOptions, type HeadlineDiagnosticPersist } from "./reader-summary-headline-diagnostic-artifact";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
 import type { RankFeedItemsCommand } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.command";
@@ -41,6 +41,7 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
     storyRelationVerifierGuard,
     preparationObserver,
     headlineDiagnosticArtifact,
+    headlineDiagnosticPersist,
     rankCommandCapture,
     relationCapture,
     ...publicationInput
@@ -101,10 +102,10 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
     rankFeedItems.execute = async (command) => {
       // Diagnostic setup failures also fall back to the exact original invocation.
       let artifact: ReturnType<typeof createHeadlineDiagnosticArtifact> | undefined;
-      try { artifact = createHeadlineDiagnosticArtifact(headlineDiagnosticArtifact, command); } catch { /* fail safe */ }
+      try { artifact = createHeadlineDiagnosticArtifact(headlineDiagnosticArtifact, command, headlineDiagnosticPersist); } catch { /* fail safe */ }
       try {
         return await execute(artifact === undefined ? command : { ...command, observeHeadlineDiagnostic: artifact.observe });
-      } finally { artifact?.flush(); }
+      } finally { void artifact?.flush(); }
     };
   }
   return Object.freeze({
@@ -140,6 +141,7 @@ type StoryRelationCompositionInput = {
     failed(): void;
   };
   readonly preparationObserver?: ReaderSummaryPreparationObserver;
+  readonly headlineDiagnosticPersist?: HeadlineDiagnosticPersist;
   readonly headlineDiagnosticArtifact?: HeadlineDiagnosticArtifactOptions;
   readonly relationCapture?: ReaderSummaryDailyRelationCapture;
   readonly storyRelationVerifierGuard?: {

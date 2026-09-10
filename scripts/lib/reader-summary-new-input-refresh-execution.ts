@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { ConfiguredInterestReaderPort } from "@social-monitor/relevance/ports";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
@@ -170,7 +171,11 @@ async function executeRefresh(input: RefreshExecutionInput, capture?: RefreshPai
     } catch { capture.fail("controls_capture_failed"); }
     capture.assessmentCompletion(() => assessment.assertCaptureComplete());
   }
+  const reservedCaptureRoot = capture?.reservedDirectory;
   const canonical = createReaderSummaryDailyCapturePublicationWiring({
+    ...(reservedCaptureRoot === undefined ? {} : { headlineDiagnosticArtifact: {
+      path: join(reservedCaptureRoot, "headline-diagnostic.json"), attemptId: request.value.readerSummaryJobId,
+    } }),
     qualityReviewer: assessment,
     replay: null, configuredInterests: capture?.interests(input.configuredInterests) ?? input.configuredInterests,
     feedItems: capture?.feed(feed) ?? feed, summaryClient: summary, clock, attestationSink: sink,

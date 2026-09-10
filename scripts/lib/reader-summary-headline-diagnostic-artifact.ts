@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import type {
   PromotionHeadlineDiagnostic, PromotionHeadlineDiagnosticObserver,
 } from "@social-monitor/relevance/features/rank-feed-items/promotion-headline-diagnostic";
@@ -12,6 +12,8 @@ const origins = new Set([
 ]);
 export const HEADLINE_DIAGNOSTIC_BOUNDS = Object.freeze({ count: 200, bytes: 80_000 });
 export type HeadlineDiagnosticArtifactOptions = Readonly<{ path: string; attemptId: string }>;
+export type HeadlineDiagnosticPersist = (path: string, bytes: string, signal: AbortSignal) => void | Promise<void>;
+export const HEADLINE_DIAGNOSTIC_COMPLETION_MS = 1_000;
 const digest = (values: readonly string[]) => createHash("sha256").update(JSON.stringify(values)).digest("hex");
 
 /** One private artifact per fresh rank invocation. No raw identifiers or source data.
@@ -21,8 +23,8 @@ const digest = (values: readonly string[]) => createHash("sha256").update(JSON.s
 export const createHeadlineDiagnosticArtifact = (
   options: HeadlineDiagnosticArtifactOptions,
   scope: { tenantId: string; workspaceId: string },
-  persist: (path: string, bytes: string) => void = (path, bytes) =>
-    writeFileSync(path, bytes, { flag: "wx", mode: 0o600 }),
+  persist: HeadlineDiagnosticPersist = (path, bytes, signal) =>
+    writeFile(path, bytes, { flag: "wx", mode: 0o600, signal }),
 ) => {
   const rows: string[] = [];
   let bytes = 2;
@@ -42,11 +44,24 @@ export const createHeadlineDiagnosticArtifact = (
       rows.push(row); bytes += size;
     } catch { /* Private diagnostics cannot change selection. */ }
   };
-  return Object.freeze({ observe, flush: (): void => {
+  return Object.freeze({ observe, flush: async (): Promise<void> => {
     if (flushed) return;
     flushed = true;
-    try { persist(options.path, `[${rows.join(",")}]`); }
-    catch { /* No retries, logs containing source data, or propagation. */ }
+    const payload = `[${rows.join(",")}]`;
+    rows.length = 0;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const expired = new Promise<void>((resolve) => {
+        timer = setTimeout(() => { controller.abort(); resolve(); }, HEADLINE_DIAGNOSTIC_COMPLETION_MS);
+        timer.unref();
+      });
+      // Async fs keeps the event loop free. Abort is best effort, not syscall
+      // preemption. Injected implementations must also avoid blocking code.
+      const pending = Promise.resolve().then(() => persist(options.path, payload, controller.signal));
+      await Promise.race([pending, expired]);
+    } catch { /* Consume throws and rejections; no retries or source logs. */ }
+    finally { if (timer !== undefined) clearTimeout(timer); }
   } });
 };
 
