@@ -178,7 +178,10 @@ if [[ -n $token_output ]]; then
   mkdir -p "$(dirname -- "$token_output")"
   token_dir=$(dirname -- "$token_output")
   token_name=$(basename -- "$token_output")
-  [[ ! -L $token_dir && ! -L $token_output ]] || {
+  inherited_fd_dir=false
+  [[ $token_dir =~ ^/proc/self/fd/[0-9]+$ ]] && inherited_fd_dir=true
+  [[ ( ! -L $token_dir || $inherited_fd_dir == true ) &&
+     ! -L $token_output ]] || {
     echo "reader-summary fence token output cannot be a symlink" >&2
     exit 76
   }
