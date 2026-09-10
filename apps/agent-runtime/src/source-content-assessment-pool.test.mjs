@@ -79,7 +79,7 @@ async function fixture() {
     removeAuthMaterialization: async () => {},
     subscriptionOnlyCodexEnvironment: () => ({}), resolvePinnedCodexBinaryPath: () => "/synthetic/never-executed",
     isSourceContentAssessment: true,
-    admission: { profile: { retryMode: "never", reasoningEffort: "high" } },
+    admission: { profile: { retryMode: "never", reasoningEffort: "low" } },
     FileBackendCodexSafeExecutor: SyntheticExecutor, SubscriptionWorkerError: core.SubscriptionWorkerError,
   };
   const create = new Function(...Object.keys(dependencies), `${body}\nreturn createPooledCodexWorker;`)(...Object.values(dependencies));
@@ -202,7 +202,7 @@ test("missing pool fails closed for assessment while ordinary worker selection s
   let directStarts = 0;
   const dependencies = {
     lifecycle: lifecycleFixture(),
-    admission: { profile: { provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high" } },
+    admission: { profile: { provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "low" } },
     authPool: undefined, isReaderPromotionV2Canary: false,
     FileBackendCodexWorker: class { constructor() { directStarts++; } },
     resolvePinnedCodexBinaryPath: () => "/synthetic/unused", subscriptionOnlyCodexEnvironment: () => ({}),

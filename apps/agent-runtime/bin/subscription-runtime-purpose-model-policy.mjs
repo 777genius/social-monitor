@@ -45,6 +45,12 @@ const activeReaderSummaryTextProfile = Object.freeze({
   responseFormat: "text",
 });
 
+const sourceContentAssessmentStructuredProfile = Object.freeze({
+  ...activeReaderSummaryStructuredProfile,
+  reasoningEffort: "low",
+  retryMode: "never",
+});
+
 const readerPromotionV2CanaryProfile = Object.freeze({
   provider: "codex",
   model: "gpt-5.6-sol",
@@ -55,9 +61,8 @@ const readerPromotionV2CanaryProfile = Object.freeze({
 });
 
 const profilesByPurpose = Object.freeze({
-  "social_monitor.relevance.assess_source_content.v1": Object.freeze({
-    ...activeReaderSummaryStructuredProfile, retryMode: "never",
-  }),
+  "social_monitor.relevance.assess_source_content.v1":
+    sourceContentAssessmentStructuredProfile,
   "social_monitor.summary.generate": genericSummaryStructuredProfile,
   "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.repair.v2": activeReaderSummaryStructuredProfile,

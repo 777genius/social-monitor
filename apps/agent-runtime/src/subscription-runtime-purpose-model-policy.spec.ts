@@ -82,14 +82,14 @@ describe("subscription runtime purpose policy", () => {
       expect(admission.profile).toEqual({
         provider: "codex",
         model: "gpt-5.6-sol",
-        reasoningEffort: "high",
+        reasoningEffort: purpose === "social_monitor.relevance.assess_source_content.v1" ? "low" : "high",
         outputKind: "structured_output",
         responseFormat: "json",
         ...(purpose === "social_monitor.relevance.assess_source_content.v1" ? { retryMode: "never" } : {}),
       });
       expect(controls).toMatchObject({
         model: "gpt-5.6-sol",
-        reasoningEffort: "high",
+        reasoningEffort: purpose === "social_monitor.relevance.assess_source_content.v1" ? "low" : "high",
         responseFormat: "json",
         outputSchema: { type: "object" },
       });

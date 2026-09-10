@@ -61,7 +61,7 @@ export class AgentRuntimeSourceContentQualityReviewerAdapter implements SourceCo
       provider: "codex" as const, providerInstanceId: this.options.providerInstanceId,
       purpose: sourceContentAssessmentPurpose,
       systemPrompt: promotionReviewInstructions, prompt, outputSchema: promotionResponseSchema,
-      controls: { interactive: false, model: "gpt-5.6-sol", reasoningEffort: "high",
+      controls: { interactive: false, model: "gpt-5.6-sol", reasoningEffort: "low",
         outputSchemaName: "social_monitor_source_content_quality_review",
         schemaVersion: "source_content_assessment.v1", maxOutputTokens: 6_000 },
       timeoutMs, metadata: { adapter: "agent-runtime-source-content-quality-reviewer" },

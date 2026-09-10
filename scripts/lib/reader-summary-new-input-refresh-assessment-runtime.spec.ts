@@ -9,7 +9,7 @@ const command = (index = 0, count = 1, padding = 0): AgentRuntimeTaskCommand => 
   prompt: JSON.stringify({ candidates: Array.from({ length: count }, (_, i) => ({
     candidateId: `candidate-${index + i}`, text: "x".repeat(padding),
   })) }),
-  controls: { model: "gpt-5.6-sol", reasoningEffort: "high", interactive: false,
+  controls: { model: "gpt-5.6-sol", reasoningEffort: "low", interactive: false,
     outputSchemaName: "social_monitor_source_content_quality_review", schemaVersion: "source_content_assessment.v1" },
 });
 function wiring(mutate?: (result: AgentRuntimeTaskResult) => AgentRuntimeTaskResult) {
@@ -28,13 +28,13 @@ function wiring(mutate?: (result: AgentRuntimeTaskResult) => AgentRuntimeTaskRes
 describe("refresh operation assessment runtime budgets and receipts", () => {
   it("consumes exactly 200 candidates then blocks another batch without refunding", async () => {
     const test = wiring();
-    for (let i = 0; i < 200; i += 4) await test.runtime.runTask(command(i, 4));
+    for (let i = 0; i < 200; i += 8) await test.runtime.runTask(command(i, 8));
     await expect(test.runtime.runTask(command(200))).rejects.toThrow(/consumed/u);
     await expect(test.runtime.runTask(command(201, 4))).rejects.toThrow(/budget/u);
-    expect(test.runTask).toHaveBeenCalledTimes(50);
+    expect(test.runTask).toHaveBeenCalledTimes(25);
     expect(() => test.runtime.assertUsable()).toThrow(/reconciliation/u);
     expect(test.events).toContainEqual(expect.objectContaining({ status: "invocation_consumed",
-      assessmentAttempts: 50, assessmentCandidates: 200 }));
+      assessmentAttempts: 25, assessmentCandidates: 200 }));
   });
   it("exhausts actual wire bytes independently of candidate count", async () => {
     const test = wiring();

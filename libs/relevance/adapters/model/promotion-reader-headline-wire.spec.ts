@@ -59,7 +59,7 @@ describe("existing batch headline wire and authenticated runtime", () => {
       batchTimeoutMs: 15_000, totalTimeoutMs: 60_000,
       client: refreshTestRuntimeClient(async (command) => {
         calls++;
-        expect(JSON.parse(command.controlsJson)).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "high",
+        expect(JSON.parse(command.controlsJson)).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "low",
           schemaVersion: "source_content_assessment.v1", maxOutputTokens: 6_000 });
         expect(JSON.parse(command.outputSchemaJson)).toEqual(promotionResponseSchema);
         const old = outputFor(command);

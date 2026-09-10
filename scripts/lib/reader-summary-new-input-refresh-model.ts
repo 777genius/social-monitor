@@ -125,6 +125,8 @@ export function guardedRefreshRuntime(input: {
   const purposes: readonly string[] = [activeReaderSummaryPurposes.generate, activeReaderSummaryPurposes.topicLabel,
     activeReaderSummaryPurposes.topicRelations, activeReaderSummaryPurposes.storyRelations,
     activeReaderSummaryPurposes.relatedTopicRelations, sourceContentAssessmentPurpose];
+  const expectedReasoningEffort = (purpose: string) =>
+    purpose === sourceContentAssessmentPurpose ? "low" : "high";
   return {
     assertUsable,
     invalidateAdapter: (taskRole) => {
@@ -145,7 +147,7 @@ export function guardedRefreshRuntime(input: {
         if (purposes.includes(command.purpose) && command.metadata?.attempt !== "repair" &&
             command.tenantId === input.manifest.tenantId && command.workspaceId === input.manifest.workspaceId &&
             command.provider === "codex" && command.controls.model === "gpt-5.6-sol" &&
-            command.controls.reasoningEffort === "high") {
+            command.controls.reasoningEffort === expectedReasoningEffort(command.purpose)) {
           capture({ kind: "invocation_rejected", command, delegated: false,
             reason: ambiguous ? "authority_rejected" : inFlight ? "in_flight" :
               seen.has(command.requestId) ? "duplicate_request" : "generation_already_consumed" });
@@ -155,7 +157,7 @@ export function guardedRefreshRuntime(input: {
       if (!purposes.includes(command.purpose) || command.metadata?.attempt === "repair" ||
           command.tenantId !== input.manifest.tenantId || command.workspaceId !== input.manifest.workspaceId ||
           command.provider !== "codex" || command.controls.model !== "gpt-5.6-sol" ||
-          command.controls.reasoningEffort !== "high") {
+          command.controls.reasoningEffort !== expectedReasoningEffort(command.purpose)) {
         ambiguous = true;
         throw new Error("Refresh invocation budget or model authority rejected");
       }
@@ -174,7 +176,8 @@ export function guardedRefreshRuntime(input: {
       }
       const identity = { requestId: command.requestId, purpose: command.purpose,
         requestSha256: refreshHash(command), operation: input.manifest.operation,
-        observedThrough: input.manifest.observedThrough, model: "gpt-5.6-sol", reasoningEffort: "high" };
+        observedThrough: input.manifest.observedThrough, model: "gpt-5.6-sol",
+        reasoningEffort: expectedReasoningEffort(command.purpose) };
       const verifyResponse = (result: AgentRuntimeTaskResult): void | Promise<unknown> => {
         const taskRole = ({
           [activeReaderSummaryPurposes.generate]: "summary",

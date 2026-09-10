@@ -20,7 +20,7 @@ export type SubscriptionRuntimeRetryMode = "standard" | "never";
 export type SubscriptionRuntimePurposeProfile = {
   readonly provider: "codex";
   readonly model: "gpt-5.6-sol";
-  readonly reasoningEffort: "high" | "xhigh";
+  readonly reasoningEffort: "low" | "high" | "xhigh";
   readonly outputKind: SubscriptionRuntimeOutputKind;
   readonly responseFormat: "json" | "text";
   readonly retryMode?: SubscriptionRuntimeRetryMode;
@@ -66,6 +66,12 @@ const activeReaderSummaryTextProfile = Object.freeze({
   responseFormat: "text",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
+const sourceContentAssessmentStructuredProfile = Object.freeze({
+  ...activeReaderSummaryStructuredProfile,
+  reasoningEffort: "low",
+  retryMode: "never",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
 const readerPromotionV2CanaryProfile = Object.freeze({
   provider: "codex",
   model: productionAgentRuntimeModel,
@@ -78,9 +84,8 @@ const readerPromotionV2CanaryProfile = Object.freeze({
 const profilesByPurpose: Readonly<
   Record<string, SubscriptionRuntimePurposeProfile>
 > = Object.freeze({
-  "social_monitor.relevance.assess_source_content.v1": Object.freeze({
-    ...activeReaderSummaryStructuredProfile, retryMode: "never",
-  }),
+  "social_monitor.relevance.assess_source_content.v1":
+    sourceContentAssessmentStructuredProfile,
   "social_monitor.summary.generate": genericSummaryStructuredProfile,
   "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.repair.v2": activeReaderSummaryStructuredProfile,

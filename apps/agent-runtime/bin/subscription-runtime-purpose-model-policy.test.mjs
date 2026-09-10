@@ -364,5 +364,5 @@ test("assessment uses the standard structured pool profile with no retry", () =>
   assert.equal(result.profile.retryMode, "never");
   assert.equal(result.profile.outputKind, "structured_output");
   assert.equal(result.profile.model, "gpt-5.6-sol");
-  assert.equal(result.profile.reasoningEffort, "high");
+  assert.equal(result.profile.reasoningEffort, "low");
 });

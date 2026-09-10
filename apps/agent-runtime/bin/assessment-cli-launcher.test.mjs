@@ -147,7 +147,7 @@ test("actual launcher/legacy/fake executor forwards existing callbacks before cl
     assert.equal(h.options.safeExecutionPolicy[key], false);
   }
   assert.equal(h.options.accounts[0].worker.model, "gpt-5.6-sol");
-  assert.equal(h.options.accounts[0].worker.reasoningEffort, "high");
+  assert.equal(h.options.accounts[0].worker.reasoningEffort, "low");
   await h.clock.tickAsync(40_000); assert.equal(h.aborts, 1);
   await h.clock.tickAsync(5_000); assert.equal(h.disposeCount, 1);
   await h.clock.tickAsync(1_000); assert.ok(h.events.includes("native-stop"));

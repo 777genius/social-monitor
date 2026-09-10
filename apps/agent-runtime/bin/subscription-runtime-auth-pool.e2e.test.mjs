@@ -241,7 +241,7 @@ for (const [firstAccount, available] of [["account-b", false], ["account-a", fal
         env: { PATH: process.env.PATH, HOME: process.env.HOME, LANG: "C.UTF-8",
           AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: fixture.poolRoot,
           AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: "current.json",
-          AGENT_RUNTIME_REASONING_EFFORT: "high",
+          AGENT_RUNTIME_REASONING_EFFORT: "low",
           SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64") },
       }).then(({ stdout }) => JSON.parse(stdout), (error) => JSON.parse(error.stdout));
       const attempts = (await readFile(fixture.attemptLogPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
