@@ -31,6 +31,15 @@ describe("new-input refresh consumed-job reconciliation", () => {
     database.assertJobsUntouched();
   });
 
+  it("accounts for a completed provider response with exact reported usage", async () => {
+    const database = new FakeReconciliationDatabase([{ ...consumed }]);
+    const usage = { inputTokens: 90_824, outputTokens: 6_325, totalTokens: 97_149 };
+    const receipt = await apply(database, { invocation: {
+      ...reconciliationEvidence().invocation, providerUsageReported: true, usage } });
+    expect(receipt.accounting).toEqual(expect.objectContaining({ providerUsage: "reported", usage }));
+    database.assertJobsUntouched();
+  });
+
   it("is idempotent: an exact replay returns the committed record and adds nothing", async () => {
     const database = new FakeReconciliationDatabase([{ ...consumed }]);
     const first = await apply(database);

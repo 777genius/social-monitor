@@ -163,7 +163,8 @@ export function createRefreshAssessmentReviewer(input: {
             // These reasons are emitted only after binding, shape and quote
             // validation. All other pending outcomes remain authority failures.
             if (verdict.reason !== "promotion_assessment_pending:needs_context" &&
-                verdict.reason !== "promotion_assessment_pending:low_confidence") fail();
+                verdict.reason !== "promotion_assessment_pending:low_confidence" &&
+                verdict.reason !== "promotion_assessment_pending:invalid_assessment") fail();
             abstained++;
           } else if (verdict.eligibleForSummary) eligible.set(request.candidateId, { request, verdict });
         }

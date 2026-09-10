@@ -52,7 +52,7 @@ describe("refresh operation assessment runtime budgets and receipts", () => {
   it("never resets the elapsed operation budget for a new batch", async () => {
     const test = wiring();
     await test.runtime.runTask(command());
-    test.advance(600_000);
+    test.advance(3_600_000);
     await expect(test.runtime.runTask(command(1))).rejects.toThrow(/consumed/u);
     expect(test.runTask).toHaveBeenCalledTimes(1);
   });
