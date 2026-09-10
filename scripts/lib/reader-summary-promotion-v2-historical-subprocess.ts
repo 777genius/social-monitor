@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import type {
   HistoricalPromotionDurableStateReader,
@@ -131,6 +131,9 @@ export class ProductionDayHistoricalPromotionMutation
         READER_SUMMARY_PRODUCTION_DAY_REPORT_DIR: "/proc/self/fd/10",
         DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH:
           input.bundle.datasetManifestPath,
+        READER_SUMMARY_PRODUCTION_DAY_RECOVERY_DIR: dirname(
+          input.bundle.datasetManifestPath,
+        ),
         DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256:
           input.bundle.datasetManifestSha256,
         DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY:
