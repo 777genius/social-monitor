@@ -4,6 +4,17 @@ import { join } from "node:path";
 import { resolveProductionDayExecutionRequest } from "./lib/reader-summary-production-day-reuse-provenance";
 
 describe("production-day execution request", () => {
+  it("reuses an already opened runtime artifact directory", () => {
+    const source = readFileSync(
+      join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      "if (!existsSync(runtimeArtifactDirectory)) {\n    mkdirSync(runtimeArtifactDirectory, { recursive: true });\n  }",
+    );
+  });
+
   it("binds production history readiness to its exact-day artifact", () => {
     const source = readFileSync(
       join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
