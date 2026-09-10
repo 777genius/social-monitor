@@ -27,7 +27,8 @@ export const assessPromotionContent = async (input: {
   const timing = input.reviewer?.promotionTiming;
   const totalTimeoutMs = timing?.totalTimeoutMs ?? bounds.deadlineMs;
   const batchTimeoutMs = timing?.batchTimeoutMs ?? bounds.batchTimeoutMs;
-  if (![totalTimeoutMs, batchTimeoutMs].every((ms) => Number.isSafeInteger(ms) && ms > 0 && ms <= 600_000)) {
+  if (!Number.isSafeInteger(batchTimeoutMs) || batchTimeoutMs <= 0 || batchTimeoutMs > 600_000 ||
+      !Number.isSafeInteger(totalTimeoutMs) || totalTimeoutMs <= 0 || totalTimeoutMs > 3_600_000) {
     throw new Error("Invalid promotion assessment deadline");
   }
   const verdicts = new Map(input.requests.map((request) => [request.candidateId,

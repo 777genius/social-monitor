@@ -6,7 +6,7 @@ import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "@social-mo
 
 export { sourceContentAssessmentPurpose };
 export const refreshAssessmentLimits = Object.freeze({ ...PROMOTION_ASSESSMENT_BOUNDS,
-  totalTimeoutMs: 600_000, batchTimeoutMs: 600_000 });
+  totalTimeoutMs: 3_600_000, batchTimeoutMs: 600_000 });
 
 // Per consumed operation, not per selection or adapter instance. Request IDs
 // alone cannot prevent a second assessment of the same captured candidate.
