@@ -262,7 +262,11 @@ async function main(): Promise<void> {
       runProductionDay: () => spawnSync(command[0]!, command.slice(1), {
         cwd: process.cwd(),
         env: process.env,
-        stdio: "inherit",
+        stdio: [
+          "inherit", "inherit", "inherit",
+          "ignore", "ignore", "ignore", "ignore", "ignore", "ignore",
+          9, 10, 11,
+        ],
       }).status,
     });
   } finally {

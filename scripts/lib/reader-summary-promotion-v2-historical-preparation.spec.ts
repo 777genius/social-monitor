@@ -83,6 +83,14 @@ describe("historical Promotion V2 active-publication preparation", () => {
       bundle,
     };
     const command = historicalPromotionProductionDayCommand(rebuildInput);
+    expect(command).toEqual(expect.arrayContaining([
+      "--inherit-fd",
+      "9",
+      "--inherit-fd",
+      "10",
+      "--inherit-fd",
+      "11",
+    ]));
     const scriptIndex = command.findIndex((value) =>
       value.endsWith("run-reader-summary-production-day.ts"));
     const request = resolveProductionDayExecutionRequest(
