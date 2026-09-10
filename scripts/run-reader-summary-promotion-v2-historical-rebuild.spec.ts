@@ -38,6 +38,33 @@ describe("historical Reader Promotion V2 CLI", () => {
     );
   });
 
+  it("initializes the locked preflight entrypoint before parsing its command", () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-r",
+        "ts-node/register",
+        "-r",
+        "tsconfig-paths/register",
+        resolve(__dirname, "run-reader-summary-promotion-v2-locked-date.ts"),
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: { ...process.env, NODE_ENV: "test" },
+        timeout: 30_000,
+      },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "Locked historical promotion command is required",
+    );
+    expect(result.stderr).not.toContain(
+      "historicalPromotionLockedChildCommand) is not a function",
+    );
+  });
+
   it("defaults to dry-run with explicit dates and a batch cap of two", () => {
     expect(parseHistoricalPromotionCliOptions([
       "--dates",
