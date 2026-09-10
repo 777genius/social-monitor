@@ -117,7 +117,8 @@ export function guardedRefreshRuntime(input: {
   const seen = new Set<string>();
   let ambiguous = false;
   let generated = false;
-  let inFlight = false;
+  let exclusiveInFlight = false;
+  const assessmentInFlight = new Set<string>();
   const assertUsable = () => {
     if (ambiguous) throw new Error("Refresh invocation budget requires reconciliation");
     try { input.assertLocal(); } catch (error) { ambiguous = true; throw error; }
@@ -140,7 +141,11 @@ export function guardedRefreshRuntime(input: {
       catch (error) { ambiguous = true; throw error; }
     },
     runTask: async (command, options) => {
-      if (ambiguous || inFlight || seen.has(command.requestId) ||
+      const isAssessment = command.purpose === sourceContentAssessmentPurpose;
+      const concurrencyFull = isAssessment
+        ? exclusiveInFlight || assessmentInFlight.size >= 6
+        : exclusiveInFlight || assessmentInFlight.size > 0;
+      if (ambiguous || concurrencyFull || seen.has(command.requestId) ||
           (generated && command.purpose === activeReaderSummaryPurposes.generate)) {
         // Only scoped, allowed task inputs can enter the private tape. This is
         // an attempt, not admission, and must not change guard state.
@@ -149,7 +154,7 @@ export function guardedRefreshRuntime(input: {
             command.provider === "codex" && command.controls.model === "gpt-5.6-sol" &&
             command.controls.reasoningEffort === expectedReasoningEffort(command.purpose)) {
           capture({ kind: "invocation_rejected", command, delegated: false,
-            reason: ambiguous ? "authority_rejected" : inFlight ? "in_flight" :
+            reason: ambiguous ? "authority_rejected" : concurrencyFull ? "in_flight" :
               seen.has(command.requestId) ? "duplicate_request" : "generation_already_consumed" });
         }
         throw new Error("Refresh invocation budget or model authority rejected");
@@ -163,7 +168,8 @@ export function guardedRefreshRuntime(input: {
       }
       seen.add(command.requestId);
       if (command.purpose === activeReaderSummaryPurposes.generate) generated = true;
-      inFlight = true;
+      if (isAssessment) assessmentInFlight.add(command.requestId);
+      else exclusiveInFlight = true;
       let delegated = false;
       let returnedResult: AgentRuntimeTaskResult | undefined;
       let canonicalRequestSha256: string | undefined;
@@ -225,7 +231,7 @@ export function guardedRefreshRuntime(input: {
         assertUsable(); // fsync/recording can itself cross the cutoff.
 
         if (command.purpose === sourceContentAssessmentPurpose) {
-          assessment.assertTimely();
+          assessment.assertTimely(command);
           if (options?.signal?.aborted) throw new Error("Refresh assessment cancelled");
         }
         if (input.capture && options?.signal) {
@@ -249,7 +255,7 @@ export function guardedRefreshRuntime(input: {
           throw new Error("Refresh invocation outcome requires reconciliation");
         }
         if (command.purpose === sourceContentAssessmentPurpose) {
-          try { assessment.assertTimely(); }
+          try { assessment.assertTimely(command); }
           catch (error) { notConsumedReason = "deadline"; throw error; }
           if (options?.signal?.aborted) { notConsumedReason = "aborted"; throw new Error("Refresh assessment cancelled"); }
         }
@@ -288,7 +294,11 @@ export function guardedRefreshRuntime(input: {
         capture({ kind: "invocation_failed", requestId: command.requestId, delegated });
         input.record({ ...identity, status: "requires_reconciliation" });
         throw new Error("Refresh invocation failed or is ambiguous; original operation remains consumed");
-      } finally { removeAbortCapture?.(); inFlight = false; }
+      } finally {
+        removeAbortCapture?.();
+        if (isAssessment) assessmentInFlight.delete(command.requestId);
+        else exclusiveInFlight = false;
+      }
     },
   };
 }

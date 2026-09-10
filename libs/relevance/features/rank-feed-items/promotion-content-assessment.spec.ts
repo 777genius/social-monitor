@@ -1,3 +1,4 @@
+import { SystemClock } from "@social-monitor/shared-kernel";
 import type { SourceContentQualityReviewerPort, SourceContentQualityReviewRequest } from "../../ports";
 import { accepting, body, cutoff, fixture, query, review, run, scope } from "../../../../test/support/promotion-content-assessment";
 
@@ -44,6 +45,34 @@ describe("promotion assessment through Summary candidate and V2 (synthetic revie
     expect(high!.components.total).toBeGreaterThan(low!.components.total);
     expect(high!.components.relevance).toBe(low!.components.relevance);
     expect(high!.components.evidenceQuality).toBe(low!.components.evidenceQuality);
+  });
+
+  it("finishes the 81-candidate historical universe in two bounded pool waves", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(cutoff);
+    let active = 0;
+    let peak = 0;
+    let calls = 0;
+    try {
+      const reviewer = {
+        promotionTiming: { batchTimeoutMs: 600_000, totalTimeoutMs: 600_000, batchConcurrency: 6 },
+        reviewBatch: async (requests: readonly SourceContentQualityReviewRequest[]) => {
+          calls++;
+          peak = Math.max(peak, ++active);
+          await new Promise((resolve) => setTimeout(resolve, 225_711));
+          active--;
+          return requests.map((request) => review(request));
+        },
+      } as SourceContentQualityReviewerPort;
+      const pending = run(Array.from({ length: 81 }, (_, i) => fixture(`throughput-${String(i).padStart(2, "0")}`)),
+        reviewer, { clock: new SystemClock(), execution: { deadlineAtMs: cutoff.getTime() + 600_000 } });
+      await jest.advanceTimersByTimeAsync(451_423);
+      const result = await pending;
+      expect(calls).toBe(11);
+      expect(peak).toBe(6);
+      expect(result.ranking.orderedCandidateIds).toHaveLength(81);
+      expect(result.items.every((item) => !item.contentQuality.needsLlmReview)).toBe(true);
+    } finally { jest.useRealTimers(); }
   });
 
   it("reviews clean lists alongside product experience and preserves popularity competition", async () => {

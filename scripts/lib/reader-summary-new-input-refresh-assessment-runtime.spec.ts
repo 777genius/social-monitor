@@ -26,6 +26,25 @@ function wiring(mutate?: (result: AgentRuntimeTaskResult) => AgentRuntimeTaskRes
 }
 
 describe("refresh operation assessment runtime budgets and receipts", () => {
+  it("admits six bound assessment batches concurrently and keeps other work exclusive", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const runTask = jest.fn(async (request: AgentRuntimeTaskCommand) => {
+      await gate;
+      return completedRefreshModelRequest(request, { reviews: [] });
+    });
+    const runtime = guardedRefreshRuntime({ delegate: { runTask, checkHealth: jest.fn() }, manifest: refreshManifest(),
+      assertLocal: () => undefined, assertCurrent: async () => undefined, record: jest.fn() });
+    const pending = Array.from({ length: 6 }, (_, i) => runtime.runTask(command(i)));
+    for (let i = 0; i < 12; i++) await Promise.resolve();
+    expect(runTask).toHaveBeenCalledTimes(6);
+    await expect(runtime.runTask(command(6))).rejects.toThrow(/budget/u);
+    expect(() => runtime.assertUsable()).not.toThrow();
+    release();
+    await expect(Promise.all(pending)).resolves.toHaveLength(6);
+    expect(() => runtime.assertUsable()).not.toThrow();
+  });
+
   it("consumes exactly 200 candidates then blocks another batch without refunding", async () => {
     const test = wiring();
     for (let i = 0; i < 200; i += 8) await test.runtime.runTask(command(i, 8));
