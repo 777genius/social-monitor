@@ -75,7 +75,7 @@ describe("reader summary daily story relation production wiring", () => {
     const options = { sameStory: false, attested: true,
       secondTitle: "Go rewrite of the TypeScript compiler reaches developers" };
     const plain = await selectDailyEvidence(options);
-    const persist = jest.fn((_path: string, _bytes: string, _signal: AbortSignal) => {
+    const persist = jest.fn<Promise<void>, [string, string, AbortSignal]>(() => {
       if (mode === "throw") throw new Error("synthetic persistence failure");
       return mode === "reject" ? Promise.reject(new Error("synthetic persistence rejection")) : new Promise<void>(() => undefined);
     });

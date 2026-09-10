@@ -14,7 +14,7 @@ describe("bounded private headline artifact", () => {
     try {
       const path = join(directory, "diagnostic.json");
       const sink = createHeadlineDiagnosticArtifact({ path, attemptId: "synthetic-attempt" }, scope);
-      for (let i = 0; i < 300; i++) sink.observe(`synthetic-candidate-${i}`, { ...row, title: "synthetic private content" } as PromotionHeadlineDiagnostic);
+      for (let i = 0; i < 300; i++) await sink.observe(`synthetic-candidate-${i}`, { ...row, title: "synthetic private content" } as PromotionHeadlineDiagnostic);
       await sink.flush();
       const bytes = readFileSync(path, "utf8");
       const records = JSON.parse(bytes);
@@ -33,7 +33,7 @@ describe("bounded private headline artifact", () => {
     let bytes = "";
     const sink = createHeadlineDiagnosticArtifact({ path: "unused", attemptId: "attempt" }, scope,
       (_path, value) => { bytes = value; });
-    for (let i = 0; i < 300; i++) sink.observe("candidate", { ...row,
+    for (let i = 0; i < 300; i++) await sink.observe("candidate", { ...row,
       reasonOrigin: "model_unresolved_qualifications", reviewedTitleUtf16: Number.MAX_SAFE_INTEGER,
       reviewedBodyUtf16: Number.MAX_SAFE_INTEGER });
     await sink.flush();
@@ -45,10 +45,10 @@ describe("bounded private headline artifact", () => {
   it("flushes once after capture and isolates persistence failures without retry", async () => {
     const persist = jest.fn(() => { throw new Error("synthetic disk failure"); });
     const sink = createHeadlineDiagnosticArtifact({ path: "unused", attemptId: "attempt" }, scope, persist);
-    sink.observe("candidate", row);
+    await sink.observe("candidate", row);
     expect(persist).not.toHaveBeenCalled();
     await expect(sink.flush()).resolves.toBeUndefined();
-    sink.observe("later", row); await sink.flush();
+    await sink.observe("later", row); await sink.flush();
     expect(persist).toHaveBeenCalledTimes(1);
   });
 
@@ -56,10 +56,10 @@ describe("bounded private headline artifact", () => {
     jest.useFakeTimers();
     try {
       let reject!: (reason: Error) => void;
-      const persist = jest.fn((_path: string, _bytes: string, _signal: AbortSignal) =>
+      const persist = jest.fn<Promise<void>, [string, string, AbortSignal]>(() =>
         new Promise<void>((_resolve, fail) => { reject = fail; }));
       const sink = createHeadlineDiagnosticArtifact({ path: "unused", attemptId: "attempt" }, scope, persist);
-      sink.observe("candidate", row);
+      await sink.observe("candidate", row);
       const completion = sink.flush();
       await Promise.resolve();
       expect(persist.mock.calls[0]![2].aborted).toBe(false);
@@ -79,9 +79,9 @@ describe("bounded private headline artifact", () => {
     for (const [attemptId, workspaceId] of [["a", "w"], ["b", "w"], ["a", "v"]]) {
       const sink = createHeadlineDiagnosticArtifact({ path: "unused", attemptId: attemptId! },
         { ...scope, workspaceId: workspaceId! }, (_path, bytes) => { captures.push(bytes); });
-      sink.observe("candidate", { ...row, reasonOrigin: "private source text" } as never);
-      sink.observe("candidate", { ...row, reviewedTitleUtf16: NaN });
-      sink.observe("candidate", row); await sink.flush();
+      await sink.observe("candidate", { ...row, reasonOrigin: "private source text" } as never);
+      await sink.observe("candidate", { ...row, reviewedTitleUtf16: NaN });
+      await sink.observe("candidate", row); await sink.flush();
     }
     expect(captures.map((bytes) => JSON.parse(bytes).length)).toEqual([1, 1, 1]);
     expect(new Set(captures.map((bytes) => JSON.parse(bytes)[0].candidateHash)).size).toBe(3);
