@@ -987,18 +987,14 @@ function validateExistingReport(): void {
           expectedDate: report.requestedDate,
         });
   const valid = violations.length === 0 && noRawSecretFragments(report);
-
   if (!valid) {
     throw new Error(`${outputPath} failed validation`);
   }
-
   printProductionDayStats(report as ProductionDayReport);
 }
-
 function readJsonIfExists<TValue>(path: string): TValue | null {
   if (!existsSync(path)) {
     return null;
   }
-
   return JSON.parse(readFileSync(path, "utf8")) as TValue;
 }
