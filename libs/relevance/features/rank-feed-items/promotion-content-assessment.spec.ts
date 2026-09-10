@@ -14,6 +14,38 @@ describe("promotion assessment through Summary candidate and V2 (synthetic revie
     expect(result.candidates[0]!.evidenceQualityScore).toBe(0.8);
   });
 
+  it("reviews eight candidates sequentially in ordered fours and retains second-batch popularity", async () => {
+    const ids = Array.from({ length: 8 }, (_, i) => `candidate-${i}`);
+    let active = 0;
+    let peak = 0;
+    const reviewBatch = jest.fn(async (requests: readonly SourceContentQualityReviewRequest[]) => {
+      peak = Math.max(peak, ++active);
+      await Promise.resolve();
+      active--;
+      return requests.map((request) => review(request));
+    });
+    const items = ids.map((id, i) => fixture(id, "reddit", {
+      providerMetadata: { kind: "reddit_post", score: i === 7 ? 900 : 90, upvoteRatio: 0.95 },
+    })).reverse();
+    const result = await run(items, { reviewBatch });
+    expect(reviewBatch).toHaveBeenCalledTimes(2);
+    expect(reviewBatch.mock.calls.map(([requests]) => requests.map((r) => r.candidateId)))
+      .toEqual([ids.slice(0, 4), ids.slice(4)]);
+    expect(peak).toBe(1);
+    expect(result.items.map((item) => item.feedItemId).sort()).toEqual(ids);
+    for (const item of result.items) expect(item.contentQuality).toMatchObject({
+      qualityScore: 0.8, decision: "promote", needsLlmReview: false,
+    });
+    expect(result.candidates.map((candidate) => candidate.candidateId).sort()).toEqual(ids);
+    expect(result.candidates.every((candidate) => candidate.evidenceQualityScore === 0.8)).toBe(true);
+    expect([...result.ranking.orderedCandidateIds].sort()).toEqual(ids);
+    expect(result.ranking.orderedCandidateIds[0]).toBe("candidate-7");
+    const [high, low] = result.ranking.ranked;
+    expect(high!.components.total).toBeGreaterThan(low!.components.total);
+    expect(high!.components.relevance).toBe(low!.components.relevance);
+    expect(high!.components.evidenceQuality).toBe(low!.components.evidenceQuality);
+  });
+
   it("reviews clean lists alongside product experience and preserves popularity competition", async () => {
     const items = [fixture("low"), fixture("high", "reddit", {
       providerMetadata: { kind: "reddit_post", score: 900, upvoteRatio: 0.95 },
