@@ -8,7 +8,7 @@ const { recordedResponses } = require('./recorded-model-responses.cjs');
 const { replayHost } = require('./replay-host.cjs');
 const { detach, preparationTrace, observedPreparation, auditPreparation } = require('./selector-preparation-trace.cjs');
 const glueFiles = ['revision-source.cjs', 'revision-parser-dependencies.cjs', 'revision-full-selector.cjs',
-  'recorded-selector-ports.cjs', 'recorded-model-responses.cjs', 'recorded-request-admission.cjs', 'selector-preparation-trace.cjs', 'replay-host.cjs', 'frozen-input.cjs'];
+  'relation-completion-ledger.cjs', 'capture-owner-receipt.cjs', 'capture-core-observation.cjs', 'p2-observation.cjs', 'controlled-matrix.cjs', 'run.cjs', 'controlled-evaluation-view.cjs', 'recorded-selector-ports.cjs', 'recorded-model-responses.cjs', 'recorded-request-admission.cjs', 'selector-preparation-trace.cjs', 'replay-host.cjs', 'frozen-input.cjs'];
 const glue = () => Object.fromEntries(glueFiles.map(file => [file, sha(fs.readFileSync(path.join(__dirname, file)))]));
 function exclusionDecisions(revision, selection, native) {
   const evaluations = new Map(native.evaluatedEvidence.map(e => [e.candidateId, e.decision]));
@@ -20,26 +20,41 @@ function exclusionDecisions(revision, selection, native) {
     reason: exclusions.get(id) ?? evaluations.get(id) ?? assessmentReason,
   });
 }
-async function fullSelector({ repo = process.cwd(), revision, tape, responseTapes = [tape], modelControls, observe = true }) {
-  const host = replayHost(), gaps = ledger(), selectionRecord = tape.files['selection-query.json'];
+async function fullSelector({ repo = process.cwd(), revision, tape, responseTapes = [tape], modelControls, observe = true, mode, evaluation }) {
+  const controlled = mode === 'CONTROLLED';
+  check(mode === undefined || controlled, 'unsupported_experiment_mode');
+  check(controlled === Boolean(evaluation), 'controlled_evaluation_view_required');
+  if (controlled) {
+    evaluation = require('./controlled-evaluation-view.cjs').evaluationView(evaluation.observation, evaluation.controls, evaluation.declaration);
+    check(digest(modelControls) === digest(evaluation.controls.model), 'evaluation_model_controls_mismatch');
+  }
+  const host = replayHost(), gaps = ledger(), selectionRecord = controlled ? evaluation.controls.selection : tape.files['selection-query.json'];
   const cutoff = selectionRecord.query.observedThrough;
   const source = revisionSource(repo, revision, cutoff, host);
   const load = (file, symbol) => source.load(file)[symbol];
-  let result, selection, rankedItems, mappedItems, io, replay, hostReport, trace;
+  let result, selection, rankedItems, mappedItems, io, replay, hostReport, trace, quiescence;
   const groups = [], assessmentRequests = [], commands = [];
   try {
     check([OLD, FINAL].includes(revision), 'unapproved_revision');
-    gaps.add('historical_timing_not_verified');
-    if (!tape.seal.complete) gaps.add('capture_incomplete', { sealSha256: tape.sealSha256 });
+    if (!controlled) {
+      gaps.add('historical_timing_not_verified');
+      if (!tape.seal.complete) gaps.add('capture_incomplete', { sealSha256: tape.sealSha256 });
+    } else {
+      if (!evaluation.observation.provenance.integrityVerified) gaps.add('observation_integrity_unverified');
+      if (!require('./p2-observation.cjs').originFor(evaluation.observation) &&
+          !require('./capture-core-observation.cjs').coreOriginVerified(evaluation.observation))
+        gaps.add('observation_origin_unverified', evaluation.observation.observationRef);
+    }
     check(modelControls?.assessment && modelControls?.relation, 'missing_explicit_model_controls');
-    io = ports(source, tape, gaps);
+    io = ports(source, tape, gaps, evaluation);
     check(cutoff === io.cutoff, 'selection_snapshot_cutoff_mismatch');
     const query = withKeys(clone(selectionRecord.query), selectionRecord.presentKeys);
     query.observedThrough = date(cutoff);
     query.period = { ...query.period, startedAt: date(query.period.startedAt), endedAt: date(query.period.endedAt) };
-    check(query.tenantId === tape.seal.scope.tenantId && query.workspaceId === tape.seal.scope.workspaceId &&
+    const scope = controlled ? evaluation.observation.scope : tape.seal.scope;
+    check(query.tenantId === scope.tenantId && query.workspaceId === scope.workspaceId &&
       query.period.startedAt.toISOString().slice(0, 10) === io.day, 'selection_scope_or_day_mismatch');
-    replay = recordedResponses(source, responseTapes, gaps, io.clock, modelControls);
+    replay = recordedResponses(source, responseTapes, gaps, io.clock, modelControls, controlled ? { mode, host } : {});
     if (revision === FINAL) {
       const assessment = source.load('libs/relevance/features/rank-feed-items/promotion-content-assessment.ts');
       const original = assessment.assessPromotionContent;
@@ -68,7 +83,9 @@ async function fullSelector({ repo = process.cwd(), revision, tape, responseTape
     };
     if (observe) trace = preparationTrace(source);
     const Selector = load('libs/summary/adapters/evidence/relevance-reader-summary-evidence.selector.ts', 'RelevanceReaderSummaryEvidenceSelector');
-    const selector = new Selector(rank, io.feed, io.clock, undefined, replay.relation(), modelControls.relatedTopicVerifierTimeoutMs);
+    const selector = new Selector(rank, io.feed, io.clock,
+      controlled ? require('./relation-completion-ledger.cjs').relationCompletionMetrics(source, gaps) : undefined,
+      replay.relation(), modelControls.relatedTopicVerifierTimeoutMs);
     if (observe) {
       const originalCluster = selector.clusterer.cluster.bind(selector.clusterer);
       selector.clusterer.cluster = params => {
@@ -77,7 +94,14 @@ async function fullSelector({ repo = process.cwd(), revision, tape, responseTape
         return grouped;
       };
     }
-    selection = await host.run(source.invoke(selector.select.bind(selector), [query]));
+    const selectionOperation = Promise.resolve(source.invoke(selector.select.bind(selector), [query])).then(value => {
+      selection = value; return value;
+    });
+    try { await host.run(selectionOperation, { requireQuiescence: controlled }); }
+    catch (error) {
+      if (!controlled || selection === undefined) throw error;
+      gaps.add('controlled_host_not_quiescent', { code: error.message, ...host.quiescence() });
+    }
     trace?.restore();
     for (const failure of trace?.failures ?? []) gaps.add('preparation_observation_failed', failure);
     check(rankedItems && mappedItems, 'rank_inventory_missing');
@@ -85,7 +109,14 @@ async function fullSelector({ repo = process.cwd(), revision, tape, responseTape
     check(byId.size === ids.length && ids.every(id => byId.has(id)), 'rank_inventory_partition_mismatch');
     const preparation = observe ? observedPreparation({ revision, stages: trace.stages, groups, rankedItems, mappedItems,
       primaryIds: io.primaryIds, supplementalIds: io.supplementalIds, requests: assessmentRequests }) : null;
-    const preparationAudit = observe ? auditPreparation(tape, preparation, selection, revision, gaps) : { status: 'observation_disabled', fields: [] };
+    const preparationAudit = controlled
+      ? { status: observe ? 'controlled_actual_stage_inventory' : 'observation_disabled', historicalCallbackEqualityVerified: false,
+        rankInvocations: commands.length, snapshotInvocations: io.calls.filter(c => c.port === 'snapshot').length,
+        stages: (trace?.stages ?? []).map(s => s.kind), inventoryComplete: true }
+      : observe ? auditPreparation(tape, preparation, selection, revision, gaps) : { status: 'observation_disabled', fields: [] };
+    if (controlled && (!observe || commands.length !== 1 || preparationAudit.snapshotInvocations !== 1 ||
+        !['period', 'default_provider', 'supplemental', 'verified_relations', 'promotion_policy'].every(kind =>
+          trace.stages.some(stage => stage.kind === kind)) || groups.length !== 2)) gaps.add('controlled_preparation_audit_incomplete');
     const projection = load('libs/summary/domain/services/reader-post-promotion-projection.ts', 'buildReaderPostPromotionProjection');
     const native = source.invoke(projection, [{ evidence: selection.selectedEvidence, clusters: selection.clusters,
       sourceWindow: selection.sourceWindow, approvedSameStoryRelations: selection.approvedSameStoryRelations,
@@ -131,12 +162,18 @@ async function fullSelector({ repo = process.cwd(), revision, tape, responseTape
     gaps.add('full_selector_failed', { code: error.message });
     result = { rows: null, assessmentCoverage: { pendingIds: null, unresolvedCandidateCount: null }, groupingCalls: groups,
       rankCommands: commands, assessmentRequests, partialRankedInventory: rankedItems ?? null };
-  } finally { trace?.restore(); hostReport = host.report(); host.close(); }
+  } finally { trace?.restore(); hostReport = host.report(); quiescence = host.quiescence(); host.close(); }
   const replayReport = replay?.report() ?? { consumed: [], observedOutcomes: [], replayMissingRequestCount: gaps.missing() };
+  if (controlled) replayReport.quiescence = quiescence;
   return clone({ format: 'paired-full-selector-arm.v1', revision, complete: false,
     evidenceStatus: 'uncertified_offline_full_selector_slice', actualProducerVerified: false,
     historicalTimingVerified: false, selectorReturned: selection !== undefined,
-    ...result, inputSealSha256: tape.sealSha256, controlsSha256: digest(modelControls),
+    ...result, inputSealSha256: tape?.sealSha256 ?? null, controlsSha256: digest(modelControls),
+    ...(controlled ? { format: 'paired-controlled-selector-arm.v1', mode,
+      controlledExperimentComplete: selection !== undefined && result.rows !== null && gaps.entries().length === 0 && quiescence.settled,
+      historicalReplayComplete: false, actualProducerVerified: gaps.entries().length === 0 && quiescence.settled, observation: evaluation.observation, evaluationControlsSha256: evaluation.controlsSha256,
+      evaluationClock: cutoff, evaluationDeclaration: evaluation.declaration, quiescence,
+      evidenceStatus: 'controlled_offline_execution_with_explicit_provenance_gaps' } : {}),
     source: source.identity(), instrumentation: glue(), portCalls: io?.calls ?? [], replay: replayReport,
     host: hostReport, gaps: gaps.entries(), artifactId: null });
 }
