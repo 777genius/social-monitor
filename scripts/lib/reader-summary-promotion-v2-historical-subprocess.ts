@@ -127,6 +127,7 @@ export class ProductionDayHistoricalPromotionMutation
       ],
       {
         ...this.input.environment,
+        READER_SUMMARY_PROMOTION_INHERITED_DIRECTORY_FDS: "9,10,11",
         READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR: "/proc/self/fd/9",
         READER_SUMMARY_PRODUCTION_DAY_REPORT_DIR: "/proc/self/fd/10",
         DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH:

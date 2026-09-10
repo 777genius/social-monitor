@@ -30,7 +30,7 @@ const child = spawn(childCommand, childArgs, {
   detached: process.platform !== 'win32',
   env: childEnv,
   shell: process.platform === 'win32',
-  stdio: childStdio(args.slice(0, separatorIndex)),
+  stdio: childStdio(args.slice(0, separatorIndex), childEnv),
 });
 
 let timedOut = false;
@@ -148,8 +148,10 @@ function buildChildEnv(optionArgs) {
   return env;
 }
 
-function childStdio(optionArgs) {
-  const inheritedFds = [];
+function childStdio(optionArgs, environment) {
+  const inheritedFds = String(
+    environment.READER_SUMMARY_PROMOTION_INHERITED_DIRECTORY_FDS ?? '',
+  ).split(',').filter(Boolean).map(Number);
   for (let index = 0; index < optionArgs.length; index += 1) {
     if (optionArgs[index] === '--inherit-fd') {
       const fd = Number(optionArgs[index + 1]);
@@ -159,6 +161,9 @@ function childStdio(optionArgs) {
       inheritedFds.push(fd);
       index += 1;
     }
+  }
+  if (inheritedFds.some((fd) => !Number.isInteger(fd) || fd < 3)) {
+    throw new Error('Invalid inherited file descriptor environment');
   }
   if (inheritedFds.length === 0) return 'inherit';
   const inherited = new Set(inheritedFds);
