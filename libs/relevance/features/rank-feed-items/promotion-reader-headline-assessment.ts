@@ -1,3 +1,4 @@
+import type { PromotionHeadlineDiagnosticObserver, PromotionHeadlineReasonOrigin } from "./promotion-headline-diagnostic";
 import {
   isConcisePromotionHeadline, isRoundTrippingHeadlineText, unavailablePromotionHeadline,
   type PromotionEvidenceReference, type PromotionHeadlineQualification,
@@ -12,48 +13,73 @@ import { validPromotionReferences } from "./promotion-evidence-reference";
 export const assessPromotionReaderHeadline = (
   request: SourceContentQualityReviewRequest,
   review: SourceContentQualityReviewResult | undefined,
+  observe?: PromotionHeadlineDiagnosticObserver,
 ): PromotionReaderHeadline => {
-  const unavailable = unavailablePromotionHeadline;
+  let wholeInputShape: boolean | null = null;
+  let titleCountEqual: boolean | null = null;
+  let bodyCountEqual: boolean | null = null;
+  const record = (reasonOrigin: PromotionHeadlineReasonOrigin): void => {
+    if (observe === undefined) return;
+    try {
+      const availability = request.promotion?.availability;
+      const pending = observe(request.candidateId, Object.freeze({ reasonOrigin,
+        reviewedTitleUtf16: request.title.length, reviewedBodyUtf16: (request.bodyPreview ?? "").length,
+        availability: availability === "body_present" || availability === "title_only" || availability === "truncated"
+          ? availability : "unknown", wholeInputShape, titleCountEqual, bodyCountEqual }));
+      if (pending !== undefined) void Promise.resolve(pending).catch(() => {});
+    } catch { /* Diagnostics never affect the assessment or its caller's retries. */ }
+  };
+  const unavailable = (reason: Parameters<typeof unavailablePromotionHeadline>[0], origin: PromotionHeadlineReasonOrigin) => {
+    record(origin);
+    return unavailablePromotionHeadline(reason);
+  };
   const assessment = review?.assessment;
   const input = assessment?.headlineInput;
   const context = request.promotion;
-  if (assessment?.readerHeadline === undefined) return unavailable("not_assessed");
+  if (assessment?.readerHeadline === undefined) return unavailable("not_assessed", "not_assessed");
   if (!context || assessment.binding !== context || review?.candidateId !== request.candidateId ||
       input?.request !== request || input.title !== request.title ||
       input.body !== (request.bodyPreview ?? "") || !/^[a-f0-9]{64}$/.test(input.reviewedInputDigest)) {
-    return unavailable("invalid_assessment");
+    return unavailable("invalid_assessment", "invalid_binding");
   }
-  if (context.availability === "truncated" || request.title.length > 2_000 || input.body.length > 12_000 ||
-      !["body_present", "title_only"].includes(context.availability) ||
-      (context.availability === "title_only") !== !input.body.trim()) return unavailable("incomplete_source");
+  if (context.availability === "truncated") return unavailable("incomplete_source", "request_truncated");
+  if (request.title.length > 2_000 || input.body.length > 12_000) return unavailable("incomplete_source", "request_length");
+  if (!["body_present", "title_only"].includes(context.availability) ||
+      (context.availability === "title_only") !== !input.body.trim()) return unavailable("incomplete_source", "request_availability");
   if (!isRoundTrippingHeadlineText(input.title) || !isRoundTrippingHeadlineText(input.body)) {
-    return unavailable("unsafe_text");
+    return unavailable("unsafe_text", "input_unsafe");
   }
   const raw = assessment.readerHeadline;
   if (hasKeys(raw, ["status", "reasonCode"]) && raw.status === "unavailable" &&
       typeof raw.reasonCode === "string" &&
       ["incomplete_source", "unresolved_qualifications", "insufficient_support"].includes(raw.reasonCode)) {
-    return unavailable(raw.reasonCode as "incomplete_source" | "unresolved_qualifications" | "insufficient_support");
+    return unavailable(raw.reasonCode as "incomplete_source" | "unresolved_qualifications" | "insufficient_support",
+      raw.reasonCode === "incomplete_source" ? "model_incomplete_source"
+        : raw.reasonCode === "unresolved_qualifications" ? "model_unresolved_qualifications" : "model_insufficient_support");
   }
   if (!hasKeys(raw, ["status", "kind", "text", "support", "qualifications", "confidence", "wholeInput"]) ||
       raw.status !== "available" || (raw.kind !== "claim" && raw.kind !== "subject_label") ||
       !isConcisePromotionHeadline(raw.text) || typeof raw.confidence !== "number" ||
       !Number.isFinite(raw.confidence) || raw.confidence < 0.8 || raw.confidence > 1 ||
       !strictReferences(request, raw.support) || !Array.isArray(raw.qualifications) ||
-      raw.qualifications.length > 8) return unavailable("invalid_assessment");
+      raw.qualifications.length > 8) return unavailable("invalid_assessment", "invalid_proposal");
   const whole = raw.wholeInput;
-  if (!hasKeys(whole, ["titleLength", "bodyLength", "qualificationJudgment"]) ||
-      whole.titleLength !== input.title.length || whole.bodyLength !== input.body.length) {
-    return unavailable("incomplete_source");
-  }
+  wholeInputShape = hasKeys(whole, ["titleLength", "bodyLength", "qualificationJudgment"]);
+  if (!wholeInputShape) return unavailable("incomplete_source", "whole_input_shape");
+  // Preserve short-circuit evaluation: the body comparison is only reached after title equality.
+  const shapedWhole = whole as Record<string, unknown>;
+  titleCountEqual = shapedWhole.titleLength === input.title.length;
+  if (!titleCountEqual) return unavailable("incomplete_source", "whole_input_count");
+  bodyCountEqual = shapedWhole.bodyLength === input.body.length;
+  if (!bodyCountEqual) return unavailable("incomplete_source", "whole_input_count");
   const text = raw.text;
   const safety = new SourceContentSafetyPolicy().evaluate({ title: text, providerKey: request.providerKey });
-  if (safety.status !== "allowed" || safety.sanitizedTitle !== text) return unavailable("unsafe_text");
+  if (safety.status !== "allowed" || safety.sanitizedTitle !== text) return unavailable("unsafe_text", "headline_unsafe");
   const qualifications: PromotionHeadlineQualification[] = [];
   for (const entry of raw.qualifications) {
     if (!hasKeys(entry, ["phrase", "evidence"]) || !isConcisePromotionHeadline(entry.phrase) ||
         !text.includes(entry.phrase) || !strictReferences(request, entry.evidence) ||
-        qualifications.some((q) => q.phrase === entry.phrase)) return unavailable("invalid_assessment");
+        qualifications.some((q) => q.phrase === entry.phrase)) return unavailable("invalid_assessment", "invalid_qualification");
     qualifications.push(Object.freeze({ phrase: entry.phrase, evidence: copyReferences(entry.evidence) }));
   }
   // Count every serialized occurrence, including repeated coordinates across roles.
@@ -61,21 +87,22 @@ export const assessPromotionReaderHeadline = (
   const allRefs = [...raw.support, ...qualifications.flatMap((q) => q.evidence)];
   if (allRefs.length > 8 || allRefs.some((ref) => ref.quote.length > 256) ||
       allRefs.reduce((sum, ref) => sum + ref.quote.length, 0) > 512 ||
-      allRefs.reduce((sum, ref) => sum + JSON.stringify(ref.quote).length, 0) > 1_024) return unavailable("unresolved_qualifications");
+      allRefs.reduce((sum, ref) => sum + JSON.stringify(ref.quote).length, 0) > 1_024) return unavailable("unresolved_qualifications", "reference_budget");
   if (raw.kind === "claim") {
-    if ((qualifications.length === 0 && whole.qualificationJudgment !== "none") ||
-        (qualifications.length > 0 && whole.qualificationJudgment !== "preserved")) {
-      return unavailable("unresolved_qualifications");
+    if ((qualifications.length === 0 && shapedWhole.qualificationJudgment !== "none") ||
+        (qualifications.length > 0 && shapedWhole.qualificationJudgment !== "preserved")) {
+      return unavailable("unresolved_qualifications", "claim_qualification");
     }
-  } else if (whole.qualificationJudgment !== "subject_only" || qualifications.length !== 0 ||
-      renderSubjectLabel(request, raw.support) !== text) return unavailable("insufficient_support");
+  } else if (shapedWhole.qualificationJudgment !== "subject_only" || qualifications.length !== 0 ||
+      renderSubjectLabel(request, raw.support) !== text) return unavailable("insufficient_support", "subject_support");
+  record("accepted");
   return Object.freeze({ status: "accepted", kind: raw.kind, text,
     binding: Object.freeze({ ...context, candidateId: request.candidateId, providerKey: request.providerKey,
       availability: context.availability, reviewedInputDigest: input.reviewedInputDigest }),
     confidence: raw.confidence, support: copyReferences(raw.support),
     qualifications: Object.freeze(qualifications),
     wholeInput: Object.freeze({ titleLength: input.title.length, bodyLength: input.body.length,
-      qualificationJudgment: whole.qualificationJudgment as "none" | "preserved" | "subject_only" }),
+      qualificationJudgment: shapedWhole.qualificationJudgment as "none" | "preserved" | "subject_only" }),
   });
 };
 

@@ -1,3 +1,8 @@
+import { writeFile } from "node:fs/promises";
+import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { accepting } from "../../test/support/promotion-content-assessment";
 import { InMemoryFeedItemReadRepository } from
   "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
@@ -40,6 +45,58 @@ const period = buildReaderSummaryPeriod({
 });
 
 describe("reader summary daily story relation production wiring", () => {
+  it("persists actual headline observations through fresh composition without changing selection or calls", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "headline-wiring-"));
+    try {
+      const options = { sameStory: false, attested: true,
+        secondTitle: "Go rewrite of the TypeScript compiler reaches developers" };
+      const plain = await selectDailyEvidence(options);
+      const rankCommandCapture = { captured: jest.fn(), failed: jest.fn() };
+      const path = join(directory, "private.json");
+      let persisted!: Promise<void>;
+      const observed = await selectDailyEvidence({ ...options, rankCommandCapture,
+        headlineDiagnosticPersist: (path, bytes, signal) => (persisted = writeFile(path, bytes, { flag: "wx", mode: 0o600, signal })),
+        headlineDiagnosticArtifact: { path, attemptId: "synthetic-attempt" } });
+      expect(observed.selection).toEqual(plain.selection);
+      expect(observed.runtime.storyCommands).toEqual(plain.runtime.storyCommands);
+      await persisted;
+      const rows = JSON.parse(readFileSync(path, "utf8"));
+      expect(rows).toHaveLength(2);
+      expect(rows.every((row: { reasonOrigin: string }) => row.reasonOrigin === "not_assessed")).toBe(true);
+      expect(rankCommandCapture.captured.mock.calls[0]![0]).not.toHaveProperty("observeHeadlineDiagnostic");
+      const failed = await selectDailyEvidence({ ...options,
+        headlineDiagnosticArtifact: { path: directory, attemptId: "synthetic-attempt" } });
+      expect(failed.selection).toEqual(plain.selection);
+      expect(failed.runtime.storyCommands).toEqual(plain.runtime.storyCommands);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it.each(["throw", "reject", "pending"] as const)("isolates %s persistence at composition on success and failure", async (mode) => {
+    const options = { sameStory: false, attested: true,
+      secondTitle: "Go rewrite of the TypeScript compiler reaches developers" };
+    const plain = await selectDailyEvidence(options);
+    const persist = jest.fn<Promise<void>, [string, string, AbortSignal]>(() => {
+      if (mode === "throw") throw new Error("synthetic persistence failure");
+      return mode === "reject" ? Promise.reject(new Error("synthetic persistence rejection")) : new Promise<void>(() => undefined);
+    });
+    const diagnostic = { headlineDiagnosticArtifact: { path: "unused", attemptId: "synthetic" },
+      headlineDiagnosticPersist: persist };
+    const observed = await selectDailyEvidence({ ...options, ...diagnostic });
+    expect(observed.selection).toEqual(plain.selection);
+    expect(observed.runtime.storyCommands).toEqual(plain.runtime.storyCommands);
+    expect(persist).toHaveBeenCalledTimes(1);
+    if (mode === "pending") expect(persist.mock.calls[0]![2].aborted).toBe(false);
+    const failure = new Error("synthetic rank failure");
+    const rank = jest.spyOn(RankFeedItemsUseCase.prototype, "execute").mockRejectedValue(failure);
+    try {
+      await expect(selectDailyEvidence({ ...options, ...diagnostic })).rejects.toBe(failure);
+      await Promise.resolve();
+      expect(rank).toHaveBeenCalledTimes(1);
+      expect(persist).toHaveBeenCalledTimes(2);
+      if (mode === "pending") expect(persist.mock.calls[1]![2].aborted).toBe(false);
+    } finally { rank.mockRestore(); }
+  });
+
   it("captures preparation and validated rejected relations without changing selection or calls", async () => {
     const rankCommandCapture = { captured: jest.fn(), failed: jest.fn() };
     const promotionSnapshot = jest.fn();
@@ -337,7 +394,7 @@ describe("reader summary daily story relation production wiring", () => {
 
 const selectDailyEvidence = async (input: Pick<
   Parameters<typeof createReaderSummaryDailyCapturePublicationWiring>[0],
-  "preparationObserver" | "relationCapture" | "rankCommandCapture"
+  "preparationObserver" | "relationCapture" | "rankCommandCapture" | "headlineDiagnosticArtifact" | "headlineDiagnosticPersist"
 > & {
   readonly sameStory: boolean;
   readonly attested: boolean;
@@ -356,6 +413,8 @@ const selectDailyEvidence = async (input: Pick<
   });
   const wiring = createReaderSummaryDailyCapturePublicationWiring({
     rankCommandCapture: input.rankCommandCapture,
+    headlineDiagnosticArtifact: input.headlineDiagnosticArtifact,
+    headlineDiagnosticPersist: input.headlineDiagnosticPersist,
     preparationObserver: input.preparationObserver,
     relationCapture: input.relationCapture,
     qualityReviewer: accepting, // Explicit synthetic content evidence; this suite tests story relations.

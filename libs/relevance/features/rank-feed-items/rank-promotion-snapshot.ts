@@ -205,6 +205,7 @@ export const rankPromotionSnapshot = async (params: {
   });
   const assessed = await assessPromotionContent({ requests: reviewRequests,
     execution: command.promotionAssessmentExecution,
+    observeHeadlineDiagnostic: command.observeHeadlineDiagnostic,
     reviewer: params.qualityReviewer, policy: params.qualityPolicy, clock: params.clock });
   for (const [index, item] of projected.entries()) {
     const quality = assessed.verdicts.get(item.feedItemId);

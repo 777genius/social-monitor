@@ -1,3 +1,4 @@
+import type { PromotionHeadlineDiagnosticObserver } from "./promotion-headline-diagnostic";
 import type { Clock } from "@social-monitor/shared-kernel";
 import type { SourceContentQualityPolicy } from "../../domain";
 import type { SourceContentQualityReviewerPort, SourceContentQualityReviewRequest,
@@ -15,6 +16,7 @@ export const PROMOTION_ASSESSMENT_BOUNDS = Object.freeze({
 // Every candidate starts pending; budget, transport and protocol failures cannot
 // fall through to a heuristic pass. Batches are sequential and popularity-free.
 export const assessPromotionContent = async (input: {
+  readonly observeHeadlineDiagnostic?: PromotionHeadlineDiagnosticObserver;
   readonly execution?: { readonly deadlineAtMs: number; readonly signal?: AbortSignal };
   readonly requests: readonly SourceContentQualityReviewRequest[];
   readonly reviewer?: SourceContentQualityReviewerPort;
@@ -86,7 +88,7 @@ export const assessPromotionContent = async (input: {
           malformed || timelyResponse === undefined || verdict.reason.startsWith("promotion_assessment_pending:")
             ? unavailablePromotionHeadline("invalid_assessment")
             : assessPromotionReaderHeadline(request,
-                timelyResponse.find((review) => review.candidateId === request.candidateId)));
+                timelyResponse.find((review) => review.candidateId === request.candidateId), input.observeHeadlineDiagnostic));
       }
     }
   } finally {
