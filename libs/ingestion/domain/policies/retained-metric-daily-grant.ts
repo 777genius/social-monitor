@@ -1,42 +1,42 @@
-// Seven reviewed single-use incident authorities. No caller-selected IDs or paths.
-// Original and spent September 8 authorities retain their independent policies.
+// Seven reviewed single-use incident authorities for the final E2E refresh.
+// Prior September 9 evidence remains immutable at its original paths.
 import { retainedMetricRenewalGrant } from "./retained-metric-renewal-grant";
 
 export const retainedMetricDailyAuthorities = [
   {
     "date": "2026-08-30",
-    "operationId": "86770141-d9f3-51fb-bf59-aa4abeb17382",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260909-2026-08-30"
+    "operationId": "036aa064-a511-5e4a-a4b0-72c14b0e9844",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-08-30"
   },
   {
     "date": "2026-08-31",
-    "operationId": "8fb5d83e-8c23-5247-8504-c33c0f8f3dc5",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260909-2026-08-31"
+    "operationId": "b8f0c1b6-8fc1-5a75-b9ba-751b58e58ee6",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-08-31"
   },
   {
     "date": "2026-09-01",
-    "operationId": "0b7667b2-6beb-5792-b40f-de555cea66d9",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260909-2026-09-01"
+    "operationId": "7b851fad-99fc-534d-b83b-b11752892569",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-09-01"
   },
   {
     "date": "2026-09-02",
-    "operationId": "fc9502a0-1ea0-549e-9ec7-5636bcd4504e",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260909-2026-09-02"
+    "operationId": "f1f6e28f-5098-537a-a579-7772005dca93",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-09-02"
   },
   {
     "date": "2026-09-03",
-    "operationId": "615132b4-7a50-58c6-a442-11b356aadc7e",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260909-2026-09-03"
+    "operationId": "0c3cd874-29cf-5310-876c-b0395210127b",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-09-03"
   },
   {
     "date": "2026-09-04",
-    "operationId": "a3ebd553-5563-5d97-af26-5c0d3c3c9cd1",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260909-2026-09-04"
+    "operationId": "dc918eab-879b-5070-b952-632561a272fc",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-09-04"
   },
   {
     "date": "2026-09-05",
-    "operationId": "83c3311c-a3c2-50bc-877d-0a5b1cf76cf9",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260909-2026-09-05"
+    "operationId": "98a0c5da-4e3b-5c8f-956b-8c982d6fd7ce",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-09-05"
   }
 ] as const;
 export type MetricDailyDate = typeof retainedMetricDailyAuthorities[number]["date"];
