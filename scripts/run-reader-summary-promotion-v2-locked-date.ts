@@ -262,7 +262,7 @@ async function main(): Promise<void> {
       runProductionDay: () => spawnSync(command[0]!, command.slice(1), {
         cwd: process.cwd(),
         env: process.env,
-        stdio: "inherit",
+        stdio: inheritedDirectoryStdio(process.env),
       }).status,
     });
   } finally {
@@ -272,6 +272,21 @@ async function main(): Promise<void> {
 }
 
 class UnderLockDriftError extends Error {}
+
+const inheritedDirectoryStdio = (
+  environment: NodeJS.ProcessEnv,
+): Array<"inherit" | "ignore" | number> => {
+  const inherited = new Set(
+    (environment.READER_SUMMARY_PROMOTION_INHERITED_DIRECTORY_FDS ?? "")
+      .split(",")
+      .filter((value) => /^\d+$/u.test(value))
+      .map(Number)
+      .filter((value) => value > 2),
+  );
+  const highest = Math.max(2, ...inherited);
+  return Array.from({ length: highest + 1 }, (_, fd) =>
+    fd < 3 ? "inherit" : inherited.has(fd) ? fd : "ignore");
+};
 
 const requiredEnv = (name: string): string => {
   const value = process.env[name]?.trim();

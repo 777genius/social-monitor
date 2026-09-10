@@ -30,8 +30,21 @@ const child = spawn(childCommand, childArgs, {
   detached: process.platform !== 'win32',
   env: childEnv,
   shell: process.platform === 'win32',
-  stdio: 'inherit',
+  stdio: buildChildStdio(childEnv),
 });
+
+function buildChildStdio(environment) {
+  const inherited = new Set(
+    String(environment.READER_SUMMARY_PROMOTION_INHERITED_DIRECTORY_FDS ?? '')
+      .split(',')
+      .filter((value) => /^\d+$/.test(value))
+      .map(Number)
+      .filter((value) => value > 2),
+  );
+  const highest = Math.max(2, ...inherited);
+  return Array.from({ length: highest + 1 }, (_, fd) =>
+    fd < 3 ? 'inherit' : inherited.has(fd) ? fd : 'ignore');
+}
 
 let timedOut = false;
 const timer = setTimeout(() => {
