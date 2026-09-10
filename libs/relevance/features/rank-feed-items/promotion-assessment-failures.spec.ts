@@ -9,7 +9,7 @@ describe("promotion assessment protocol and budgets through V2", () => {
     const result = await run(items, { reviewBatch });
     expect(result.ranking.ranked).toHaveLength(37);
     const calls = reviewBatch.mock.calls;
-    expect(calls.map(([requests]) => requests.length)).toEqual([8, 8, 8, 8, 5]);
+    expect(calls.map(([requests]) => requests.length)).toEqual([4, 4, 4, 4, 4, 4, 4, 4, 4, 1]);
     expect(calls.flatMap(([requests]) => requests.map((r) => r.candidateId)))
       .toEqual(items.map((i) => i.toSnapshot().id).sort());
     for (const [requests] of calls) expect(new TextEncoder().encode(JSON.stringify(requests)).length)

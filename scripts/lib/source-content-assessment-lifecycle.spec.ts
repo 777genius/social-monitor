@@ -83,13 +83,14 @@ describe("assessment completed receipts and caller abandonment", () => {
       await jest.advanceTimersByTimeAsync(100_001);
       const result = await pending;
       expect(timeouts).toEqual([100_000, 30_000]);
-      expect(result.ranking.orderedCandidateIds).toHaveLength(8);
-      expect(result.candidates.filter((item) => item.evidenceQualityScore === 0)).toHaveLength(16);
+      expect(result.ranking.orderedCandidateIds).toHaveLength(4);
+      expect(result.candidates.filter((item) => item.evidenceQualityScore === 0)).toHaveLength(20);
       await jest.advanceTimersByTimeAsync(60_000);
-      expect(result.ranking.orderedCandidateIds).toHaveLength(8);
+      expect(result.ranking.orderedCandidateIds).toHaveLength(4);
     } finally { jest.useRealTimers(); }
   });
-  it.each([[20_000, 200], [70_000, 64]])("accounts for all 200 candidates at %i ms per batch", async (latency, admitted) => {
+  // Completion at the 600-second deadline is late: 29 or 8 timely batches of four.
+  it.each([[20_000, 116], [70_000, 32]])("accounts for all 200 candidates at %i ms per batch", async (latency, admitted) => {
     jest.useFakeTimers();
     jest.setSystemTime(cutoff);
     try {

@@ -8,7 +8,7 @@ import { unavailablePromotionHeadline, type PromotionReaderHeadline } from "../.
 import { assessPromotionReaderHeadline } from "./promotion-reader-headline-assessment";
 
 export const PROMOTION_ASSESSMENT_BOUNDS = Object.freeze({
-  candidates: 200, batchCandidates: 8, batchBytes: 64_000,
+  candidates: 200, batchCandidates: 4, batchBytes: 64_000,
   totalBytes: 512_000, batchTimeoutMs: 15_000, deadlineMs: 60_000,
 });
 

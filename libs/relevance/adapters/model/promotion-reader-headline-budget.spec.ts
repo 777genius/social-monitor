@@ -37,7 +37,7 @@ it("counts JSON escape expansion too", () => {
   expect(assess(request, headlineReview(request, proposal)).status).toBe("unavailable");
 });
 
-it("preserves all quality verdicts with malformed or oversized annotations in a completed bounded actual adapter batch", async () => {
+it("preserves all quality verdicts with malformed or oversized annotations in completed bounded actual adapter batches", async () => {
   const { request, proposal } = fixture(100, 8, 8);
   const clock = new FixedClock(new Date("2026-09-09T00:00:00Z"));
   const requests = Array.from({ length: 8 }, (_, i) => ({ ...request, candidateId: `synthetic-${i}` }));
@@ -51,7 +51,10 @@ it("preserves all quality verdicts with malformed or oversized annotations in a 
       ids: { generate: () => "synthetic-budget" }, batchTimeoutMs: 15000, totalTimeoutMs: 60000,
       client: refreshTestRuntimeClient(async (command) => {
         calls++;
-        const reviews = requests.map((input) => {
+        const candidates = JSON.parse(command.prompt).candidates as { candidateId: string }[];
+        expect(candidates).toHaveLength(4);
+        const reviews = candidates.map(({ candidateId }) => {
+          const input = requests.find((request) => request.candidateId === candidateId)!;
           const { assessment, ...quality } = headlineReview(input, readerHeadline);
           return { ...quality, bindingId: promotionWireCandidate(input).bindingId,
             evidence: assessment.evidence, resolvedSoftFlags: [], readerHeadline };
@@ -63,7 +66,7 @@ it("preserves all quality verdicts with malformed or oversized annotations in a 
     });
     const result = await assessPromotionContent({ requests, reviewer: adapter, clock,
       policy: new SourceContentQualityPolicy() });
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
     expect(result.verdicts.size).toBe(8);
     expect([...result.verdicts.values()].every((verdict) => verdict.qualityScore === 0.8)).toBe(true);
     expect([...result.readerHeadlines.values()].every((headline) => headline.status === "unavailable")).toBe(true);
