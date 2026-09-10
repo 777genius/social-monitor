@@ -1,3 +1,4 @@
+import { createHeadlineDiagnosticArtifact, type HeadlineDiagnosticArtifactOptions } from "./reader-summary-headline-diagnostic-artifact";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
 import type { RankFeedItemsCommand } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.command";
@@ -39,6 +40,7 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
     summaryModelMode,
     storyRelationVerifierGuard,
     preparationObserver,
+    headlineDiagnosticArtifact,
     rankCommandCapture,
     relationCapture,
     ...publicationInput
@@ -60,7 +62,7 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
         }),
 
   };
-  if ((preparationObserver === undefined && rankCommandCapture === undefined) || publicationInput.replay !== null) {
+  if ((preparationObserver === undefined && rankCommandCapture === undefined && headlineDiagnosticArtifact === undefined) || publicationInput.replay !== null) {
     return createReaderSummaryDailyPublicationExecutionWiring(dependencies);
   }
   // This is the same fresh composition as the finalizer, with P1's trailing
@@ -79,7 +81,8 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
     const execute = rankFeedItems.execute.bind(rankFeedItems);
     rankFeedItems.execute = (command) => {
       try {
-        const { observePromotionPreparation: _observer, promotionAssessmentExecution, ...values } = command;
+        const { observePromotionPreparation: _observer, observeHeadlineDiagnostic: _headlineObserver, promotionAssessmentExecution, ...values } = command;
+        void _headlineObserver;
         void _observer;
         rankCommandCapture.captured({
           ...values,
@@ -91,6 +94,17 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
         try { rankCommandCapture.failed(); } catch { /* Capture cannot alter policy. */ }
       }
       return execute(command);
+    };
+  }
+  if (headlineDiagnosticArtifact !== undefined) {
+    const execute = rankFeedItems.execute.bind(rankFeedItems);
+    rankFeedItems.execute = async (command) => {
+      // Diagnostic setup failures also fall back to the exact original invocation.
+      let artifact: ReturnType<typeof createHeadlineDiagnosticArtifact> | undefined;
+      try { artifact = createHeadlineDiagnosticArtifact(headlineDiagnosticArtifact, command); } catch { /* fail safe */ }
+      try {
+        return await execute(artifact === undefined ? command : { ...command, observeHeadlineDiagnostic: artifact.observe });
+      } finally { artifact?.flush(); }
     };
   }
   return Object.freeze({
@@ -126,6 +140,7 @@ type StoryRelationCompositionInput = {
     failed(): void;
   };
   readonly preparationObserver?: ReaderSummaryPreparationObserver;
+  readonly headlineDiagnosticArtifact?: HeadlineDiagnosticArtifactOptions;
   readonly relationCapture?: ReaderSummaryDailyRelationCapture;
   readonly storyRelationVerifierGuard?: {
     assertUsable(): void;

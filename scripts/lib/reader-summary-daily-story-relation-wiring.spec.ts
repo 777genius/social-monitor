@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { accepting } from "../../test/support/promotion-content-assessment";
 import { InMemoryFeedItemReadRepository } from
   "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
@@ -40,6 +43,29 @@ const period = buildReaderSummaryPeriod({
 });
 
 describe("reader summary daily story relation production wiring", () => {
+  it("persists actual headline observations through fresh composition without changing selection or calls", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "headline-wiring-"));
+    try {
+      const options = { sameStory: false, attested: true,
+        secondTitle: "Go rewrite of the TypeScript compiler reaches developers" };
+      const plain = await selectDailyEvidence(options);
+      const rankCommandCapture = { captured: jest.fn(), failed: jest.fn() };
+      const path = join(directory, "private.json");
+      const observed = await selectDailyEvidence({ ...options, rankCommandCapture,
+        headlineDiagnosticArtifact: { path, attemptId: "synthetic-attempt" } });
+      expect(observed.selection).toEqual(plain.selection);
+      expect(observed.runtime.storyCommands).toEqual(plain.runtime.storyCommands);
+      const rows = JSON.parse(readFileSync(path, "utf8"));
+      expect(rows).toHaveLength(2);
+      expect(rows.every((row: { reasonOrigin: string }) => row.reasonOrigin === "not_assessed")).toBe(true);
+      expect(rankCommandCapture.captured.mock.calls[0]![0]).not.toHaveProperty("observeHeadlineDiagnostic");
+      const failed = await selectDailyEvidence({ ...options,
+        headlineDiagnosticArtifact: { path: directory, attemptId: "synthetic-attempt" } });
+      expect(failed.selection).toEqual(plain.selection);
+      expect(failed.runtime.storyCommands).toEqual(plain.runtime.storyCommands);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("captures preparation and validated rejected relations without changing selection or calls", async () => {
     const rankCommandCapture = { captured: jest.fn(), failed: jest.fn() };
     const promotionSnapshot = jest.fn();
@@ -337,7 +363,7 @@ describe("reader summary daily story relation production wiring", () => {
 
 const selectDailyEvidence = async (input: Pick<
   Parameters<typeof createReaderSummaryDailyCapturePublicationWiring>[0],
-  "preparationObserver" | "relationCapture" | "rankCommandCapture"
+  "preparationObserver" | "relationCapture" | "rankCommandCapture" | "headlineDiagnosticArtifact"
 > & {
   readonly sameStory: boolean;
   readonly attested: boolean;
@@ -356,6 +382,7 @@ const selectDailyEvidence = async (input: Pick<
   });
   const wiring = createReaderSummaryDailyCapturePublicationWiring({
     rankCommandCapture: input.rankCommandCapture,
+    headlineDiagnosticArtifact: input.headlineDiagnosticArtifact,
     preparationObserver: input.preparationObserver,
     relationCapture: input.relationCapture,
     qualityReviewer: accepting, // Explicit synthetic content evidence; this suite tests story relations.
