@@ -220,7 +220,9 @@ async function main(): Promise<void> {
             : []),
           ...(allowHistorical ? [] : ["--wait-for-x-readiness"]),
         ]);
-  mkdirSync(runtimeArtifactDirectory, { recursive: true });
+  if (!existsSync(runtimeArtifactDirectory)) {
+    mkdirSync(runtimeArtifactDirectory, { recursive: true });
+  }
   isolateCaptureArtifacts();
   const isolatedQuality = historicalPromotionQualityOutput({
     enabled: executionRequest.mode === "historical-regeneration" &&
