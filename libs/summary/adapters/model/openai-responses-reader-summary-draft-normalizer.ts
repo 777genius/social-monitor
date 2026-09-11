@@ -60,10 +60,14 @@ export const normalizeOpenAiReaderSummaryDraft = (
   const headline = readerSummaryHeadline(
     requiredString(raw.headline, "reader summary headline"),
   );
-  const legacyExecutiveSummary = requiredString(
-    raw.executiveSummary,
-    "reader summary executive summary",
-  );
+  const legacyExecutiveSummary =
+    typeof raw.executiveSummary === "string" &&
+      raw.executiveSummary.trim().length === 0
+      ? ""
+      : requiredString(
+          raw.executiveSummary,
+          "reader summary executive summary",
+        );
   const topStories = normalizeRecordArray(raw.topStories);
   const normalizedTopStories = normalizeTopStories(
     topStories,
