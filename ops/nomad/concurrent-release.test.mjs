@@ -99,7 +99,7 @@ function createIndexTrackingNomad() {
     async waitForHealthy(deploymentId) {
       return { status: "healthy", checkedAt: new Date().toISOString(), reason: "", observedAllocation: deploymentId };
     },
-    async getCandidateEndpoint(_namespace, _jobId) {
+    async getCandidateEndpoint() {
       const last = [...deployments.values()].at(-1);
       return last ? { allocId: "alloc", ...last } : null;
     },
