@@ -56,9 +56,12 @@ export async function assertRefreshSuccessorCurrent(client: Client, m: RefreshMa
   if (refreshHash(row.accounting) !== refreshHash(refreshReconciliationAccountingFor(row.evidence))) {
     throw new Error("Refresh successor original/reconciliation is missing, changed or not an unpublished failure");
   }
-  if (row.evidence.invocation.outcome !== "failed" ||
-      row.evidence.invocation.purpose !== "social_monitor.relevance.assess_source_content.v1") {
-    throw new Error("Refresh successor requires a known failed assessment, never unknown completion");
+  const invocation = row.evidence.invocation;
+  const knownTerminalAssessment = invocation.outcome === "failed" ||
+    (invocation.outcome === "completed" && invocation.providerUsageReported);
+  if (!knownTerminalAssessment ||
+      invocation.purpose !== "social_monitor.relevance.assess_source_content.v1") {
+    throw new Error("Refresh successor requires a known terminal assessment outcome");
   }
 }
 
