@@ -1,0 +1,352 @@
+{
+  "baselineCommit": "fa6bb2036d792bcc868d3cd795ffe1c0fb3f169f",
+  "baselineTree": "01d89610182cba9c55ee4874f6dd4551bc923f8f",
+  "reviewedCommit": "b8ad9fa535dea1b28de0478162b8cc0aeee347be",
+  "files": [
+    {
+      "path": "baseline.ls-tree.json",
+      "bytes": 1224769,
+      "sha256": "616e75145832ecd3826a92cfc253d821de92ade0175215c60e740bb55601a8f7",
+      "classification": "mechanically generated transparent structured manifest",
+      "lines": 37910
+    },
+    {
+      "path": "days.ts.txt",
+      "bytes": 6798,
+      "sha256": "469774ca51540bd161e3e36de3ca4791b041772da70eeff4ab783abdc8fe1409",
+      "lines": 82,
+      "classification": "unchanged first-party handwritten source evidence",
+      "license": "Apache-2.0",
+      "originalPath": "libs/ingestion/domain/x-observation/x-observation-contract.ts"
+    },
+    {
+      "path": "digest.ts.txt",
+      "bytes": 1086,
+      "sha256": "3e891d7e32dbe1781776b77088ba4bc54bd17cff09f333dd4fdd516659ac2aba",
+      "lines": 13,
+      "classification": "unchanged first-party handwritten source evidence",
+      "license": "Apache-2.0",
+      "originalPath": "libs/ingestion/infrastructure/x-observation/x-observation-digest.ts"
+    },
+    {
+      "path": "predicate.ts.txt",
+      "bytes": 8314,
+      "sha256": "cd94710c8baafcfb3b90a815118674039f40af12b00341795a7eced8a86dfc6f",
+      "lines": 115,
+      "classification": "unchanged first-party handwritten source evidence",
+      "license": "Apache-2.0",
+      "originalPath": "libs/ingestion/features/observe-retained-x/x-receipt-ingestion.contracts.ts"
+    },
+    {
+      "path": "selection.ts.txt",
+      "bytes": 3757,
+      "sha256": "fcd5d670991fdcad8c68f6a0767cc4861bc5136dc100f7df5bc24e25403361b7",
+      "lines": 81,
+      "classification": "unchanged first-party handwritten source evidence",
+      "license": "Apache-2.0",
+      "originalPath": "libs/ingestion/adapters/source/x-twitter-experimental-daily/x-twitter-canonical-selection.ts"
+    },
+    {
+      "path": "LICENSE.Scweet-MIT.txt",
+      "bytes": 1065,
+      "lines": 17,
+      "sha256": "ef710bc067dfed2b632e01fc08bf646e52b99fa724ed7e72f122e0472e76f58a",
+      "classification": "upstream license text"
+    },
+    {
+      "path": "scweet-license-provenance.json",
+      "bytes": 8779,
+      "lines": 281,
+      "sha256": "1edd231b9f19154478bf99f618c8cd2e872d915e6b1115b363c35f9b775ab1c4",
+      "classification": "generated license provenance"
+    }
+  ],
+  "sdkMembers": [
+    {
+      "path": "sdk-installed-source/manifest.json",
+      "bytes": 4160,
+      "lines": 130,
+      "sha256": "0aa986455c1775520b7621a61c57204924c4ec12b6a5a9371a6db7412ca7797a",
+      "classification": "generated provenance",
+      "license": "generated provenance, not SDK program source"
+    },
+    {
+      "path": "sdk-installed-source/command.json",
+      "bytes": 827,
+      "lines": 22,
+      "sha256": "55609464c4dc57b2f822940c35069a89ad28adcfc4818d0553c388f8a4facf20",
+      "classification": "generated provenance",
+      "license": "generated provenance, not SDK program source"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/client.py.txt",
+      "bytes": 30359,
+      "lines": 788,
+      "sha256": "bac31bf86530a395c0ef72e287f65cde9917e0064bb4422692e778b8d44dd1a9",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/client.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/auth.py.txt",
+      "bytes": 30467,
+      "lines": 927,
+      "sha256": "40d43d3310cc9cbb5ff24914eed0f110747bc4191fc1a0f158b2759ccffc9723",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/auth.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/outputs.py.txt",
+      "bytes": 8188,
+      "lines": 248,
+      "sha256": "d2581bb80aff39859f6691b94174e85b90768715298aba9f76248d8f64809e75",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/outputs.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/transaction.py.txt",
+      "bytes": 6447,
+      "lines": 169,
+      "sha256": "6d93ef74dc5c5bbdfa6d76fd1391bf1128bc04babe7a8e9566c85395d731e2ec",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/transaction.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/scheduler.py.txt",
+      "bytes": 2073,
+      "lines": 65,
+      "sha256": "98058884feaad91243b432a04a6a24cf15729945dc534e50b88fbd3453adfd70",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/scheduler.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/__version__.py.txt",
+      "bytes": 60,
+      "lines": 3,
+      "sha256": "bf44cddc7f1f5089b0a5bba9b34b12bfcb93aee638d301fb06c380edd1bb898f",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/__version__.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/schema.py.txt",
+      "bytes": 9781,
+      "lines": 188,
+      "sha256": "9dfbf8ad7e4a0b41824eff163190d27195e9a717b5924550ba4973f9199cb103",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/schema.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/user_identity.py.txt",
+      "bytes": 9846,
+      "lines": 310,
+      "sha256": "e87d65a10cb9ec0add3c3c29a20443e2807a83d4ee3d2ffbff3c14083b545dcd",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/user_identity.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/limiter.py.txt",
+      "bytes": 1485,
+      "lines": 41,
+      "sha256": "6bbb64cda56ec2fcb4bdbf567241d503d50f39dd35dfa3325d5842155aaff066",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/limiter.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/query.py.txt",
+      "bytes": 14118,
+      "lines": 404,
+      "sha256": "c182cc89e24d1a55f83d8c0115726ae723678ead8cbddbf5c76fc5b96bc281f9",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/query.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/runner.py.txt",
+      "bytes": 57888,
+      "lines": 1392,
+      "sha256": "3ea37e6163dd8c046ee4c4566ab7dfc74b66f6556288eaaac79d7d985c0b32d4",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/runner.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/cooldown.py.txt",
+      "bytes": 3097,
+      "lines": 93,
+      "sha256": "639bf7d15d477cec6450df6c03dd039cabb723378a5d8fc7ecb0223418b1cc40",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/cooldown.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/storage.py.txt",
+      "bytes": 3098,
+      "lines": 103,
+      "sha256": "5590166be6d8aa93f704be3f58a45ca116087139f3b8df986edc02a0c6ed48dd",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/storage.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/account_session.py.txt",
+      "bytes": 12294,
+      "lines": 343,
+      "sha256": "bc46ce04e044b1b0db6df24dd82b6c1bbc1b7985da183dd02c8cfc5ae7824bd5",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/account_session.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/logging_config.py.txt",
+      "bytes": 3093,
+      "lines": 86,
+      "sha256": "347983accd10968f4278f38d4cb3855354cf9b4af005aadebbe8ecd59d8dc593",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/logging_config.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/repos.py.txt",
+      "bytes": 34761,
+      "lines": 821,
+      "sha256": "1f8f85869dfd1d357b3c0da22e2496f721fba553dea89d63f1693e4d1ca11848",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/repos.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/api_engine.py.txt",
+      "bytes": 117640,
+      "lines": 2648,
+      "sha256": "a82716938aa4cf701156098ef382f6cd299a565489e565c3e9fde569b8d5a081",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/api_engine.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/resume.py.txt",
+      "bytes": 1899,
+      "lines": 60,
+      "sha256": "370c3d0a2209fe1ed3f8fdcca3fd2bc453e86f83704d8a7418ead25dd3697746",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/resume.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/__init__.py.txt",
+      "bytes": 598,
+      "lines": 32,
+      "sha256": "5a6cc8c6498f220a7f2e069b6878adc27287ae5e383e62be1582a1664e6738f4",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/__init__.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/manifest.py.txt",
+      "bytes": 19615,
+      "lines": 471,
+      "sha256": "b90199bab2cd047a70ee14727265a7d9cae460c4967141938ee69b2cdb946e16",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/manifest.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/http_utils.py.txt",
+      "bytes": 4232,
+      "lines": 145,
+      "sha256": "851f8c712e18e37aafce6da7e6f852cc7fb490c5d6a0d026ee448550624b3ca4",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/http_utils.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/async_tools.py.txt",
+      "bytes": 1095,
+      "lines": 40,
+      "sha256": "6dcb7c2ac8f0fa5a73b577c73627646b56d1edb6e467eeebd9a1f7982d8447c2",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/async_tools.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/models.py.txt",
+      "bytes": 4009,
+      "lines": 124,
+      "sha256": "87a2b9c9151b1d6069e9200442981c68ef927d4cb00d0c6d90fbbc9730aac89f",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/models.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/config.py.txt",
+      "bytes": 4019,
+      "lines": 115,
+      "sha256": "cba491a4cae1d20e92b841f48ef237590d0054bb6a16f5615bb78088530310c2",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/config.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/exceptions.py.txt",
+      "bytes": 2981,
+      "lines": 102,
+      "sha256": "33cae9d2c00585c76a7cfb322991d6404ae397572a037742ddde03f942269ba9",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/exceptions.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/__main__.py.txt",
+      "bytes": 30,
+      "lines": 3,
+      "sha256": "6d8b7d7846a845059d7a3107143f11131f63c5511d669b44085b15ec5e3d2279",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/__main__.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/cli.py.txt",
+      "bytes": 14339,
+      "lines": 326,
+      "sha256": "441961c40042861c2fe137d139929be9101017e335de60b9b911a8f7545f0f89",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/cli.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/utils.py.txt",
+      "bytes": 995,
+      "lines": 34,
+      "sha256": "393e6fa52652e9eff82394d7cec1a6e368ecfd92f22edaa7bc4bd1aa691e31ee",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/utils.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/db.py.txt",
+      "bytes": 25850,
+      "lines": 662,
+      "sha256": "6d28a30f4cb32c674182c5113541ac1d2053585d291e0c5835b64b6e71705678",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/db.py"
+    },
+    {
+      "path": "sdk-installed-source/Scweet/queue.py.txt",
+      "bytes": 3524,
+      "lines": 93,
+      "sha256": "5cee32eea0479c04beb7bc4eb4769d8c65b30a9d8c38e2e018ef81d20d315b80",
+      "classification": "unchanged vendored handwritten source",
+      "license": "MIT; see LICENSE.Scweet-MIT.txt and scweet-license-provenance.json",
+      "originalPath": "Scweet/queue.py"
+    }
+  ]
+}
