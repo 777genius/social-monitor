@@ -56,8 +56,8 @@ export const refreshOperation = (m: Omit<RefreshManifest, "operation">): string 
     runtime: m.runtime, model: m.model, effort: m.reasoningEffort,
   });
 
-export function assertRefreshManifest(m: RefreshManifest, now: Date, fresh = true): void {
-  if (m.successor !== undefined) assertRefreshSuccessorGrant(m, now, { assertOriginal: assertRefreshManifest, hash: refreshHash });
+export function assertRefreshManifest(m: RefreshManifest, now: Date, fresh = true, depth = 0): void {
+  if (m.successor !== undefined) assertRefreshSuccessorGrant(m, now, { assertOriginal: assertRefreshManifest, hash: refreshHash }, depth);
   if (m.format !== "reader-summary-seven-day-new-input-v1" ||
       m.tenantId !== refreshScope.tenantId || m.workspaceId !== refreshScope.workspaceId ||
       !refreshDates.includes(m.date) || m.timezone !== "UTC" ||

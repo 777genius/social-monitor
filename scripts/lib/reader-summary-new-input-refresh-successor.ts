@@ -14,57 +14,95 @@ import { assertRefreshSuccessorGrant } from "./reader-summary-new-input-refresh-
 import { withRefreshPublicationLocks } from "./reader-summary-new-input-refresh-publication-lock";
 
 type Client = Pick<PrismaReaderSummaryClient, "$queryRaw">;
-/** Verify the committed reconciliation and the exact unchanged FAILED row.
- * Unknown provider usage remains unknown; a grant supplies no usage estimate. */
-export async function assertRefreshSuccessorCurrent(client: Client, m: RefreshManifest, now: Date) {
-  assertRefreshManifest(m, now);
-  const original = assertRefreshSuccessorGrant(m, now, { assertOriginal: assertRefreshManifest, hash: refreshHash });
-  const grant = m.successor!;
+const sourceContentAssessmentPurpose = "social_monitor.relevance.assess_source_content.v1";
+const storyRelationVerificationPurpose = "social_monitor.reader_summary.verify_story_relations.v2";
+const resumablePurposes = new Set([sourceContentAssessmentPurpose, storyRelationVerificationPurpose]);
+const knownTerminalAssessment = (invocation: RefreshReconciliationEvidence["invocation"]) =>
+  invocation.outcome === "failed" || (invocation.outcome === "completed" && invocation.providerUsageReported);
+
+type RefreshSuccessorHop = Readonly<{
+  tenantId: string; workspaceId: string; date: string; startedAt: string; endedAt: string;
+  reconciliationId: string; originalJobId: string; expectedOperation: string; expectedManifestJson: string;
+}>;
+/** Verify the committed reconciliation and the exact unchanged FAILED row for
+ * one hop of the chain (the manifest under preparation, or a nested original). */
+async function readRefreshSuccessorHopEvidence(client: Client, hop: RefreshSuccessorHop):
+  Promise<RefreshReconciliationEvidence> {
   const rows = await client.$queryRaw<readonly {
     evidence: RefreshReconciliationEvidence; accounting: unknown; valid: boolean;
   }[]>`
     select jsonb_build_object('format', 'reader-summary-new-input-refresh-reconciliation-v1',
-      'tenantId', r.tenant_id, 'workspaceId', r.workspace_id, 'date', ${m.date}::text,
+      'tenantId', r.tenant_id, 'workspaceId', r.workspace_id, 'date', ${hop.date}::text,
       'jobId', r.reader_summary_job_id, 'operation', r.operation,
       'manifestSha256', btrim(r.manifest_sha256), 'reason', r.reason,
       'invocation', r.invocation) as evidence, r.accounting,
       (j.status::text = 'FAILED' and r.job_status = 'FAILED'
         and j.reader_summary_artifact_id is null and j.completed_at is null and j.failed_at is not null
         and btrim(r.job_sha256) = encode(sha256(convert_to(to_jsonb(j)::text, 'UTF8')), 'hex')
-        and j.idempotency_key = r.operation and r.operation = ${original.operation}
-        and btrim(r.manifest_sha256) = ${refreshBytesHash(Buffer.from(grant.originalManifestJson))}
+        and j.idempotency_key = r.operation and r.operation = ${hop.expectedOperation}
+        and btrim(r.manifest_sha256) = ${refreshBytesHash(Buffer.from(hop.expectedManifestJson))}
         and j.cadence = 'daily' and j.scope_type = 'workspace' and j.scope_key = 'workspace'
         and j.period_timezone = 'UTC' and j.interest_id is null
         and j.user_id is null and j.subscription_id is null
-        and j.period_started_at = ${m.startedAt}::timestamptz
-        and j.period_ended_at = ${m.endedAt}::timestamptz
+        and j.period_started_at = ${hop.startedAt}::timestamptz
+        and j.period_ended_at = ${hop.endedAt}::timestamptz
         and r.period_started_at = j.period_started_at and r.period_ended_at = j.period_ended_at
         and not exists (select 1 from reader_summary_publications p where p.reader_summary_job_id = j.id)
       ) as valid
     from reader_summary_new_input_refresh_reconciliations r
     join reader_summary_jobs j on j.id = r.reader_summary_job_id
       and j.tenant_id = r.tenant_id and j.workspace_id = r.workspace_id
-    where r.id = ${grant.reconciliationId}::uuid
-      and r.reader_summary_job_id = ${grant.originalJobId}::uuid
-      and r.tenant_id = ${m.tenantId}::uuid and r.workspace_id = ${m.workspaceId}::uuid
+    where r.id = ${hop.reconciliationId}::uuid
+      and r.reader_summary_job_id = ${hop.originalJobId}::uuid
+      and r.tenant_id = ${hop.tenantId}::uuid and r.workspace_id = ${hop.workspaceId}::uuid
   `;
   const row = rows[0];
   if (rows.length !== 1 || row?.valid !== true) {
     throw new Error("Refresh successor original/reconciliation is missing, changed or not an unpublished failure");
   }
-  assertRefreshReconciliationEvidence(row.evidence, [m.date]);
+  assertRefreshReconciliationEvidence(row.evidence, [hop.date]);
   if (refreshHash(row.accounting) !== refreshHash(refreshReconciliationAccountingFor(row.evidence))) {
     throw new Error("Refresh successor original/reconciliation is missing, changed or not an unpublished failure");
   }
-  const invocation = row.evidence.invocation;
-  const knownTerminalAssessment = invocation.outcome === "failed" ||
-    (invocation.outcome === "completed" && invocation.providerUsageReported);
-  const resumablePurposes = new Set([
-    "social_monitor.relevance.assess_source_content.v1",
-    "social_monitor.reader_summary.verify_story_relations.v2",
-  ]);
-  if (!knownTerminalAssessment || !resumablePurposes.has(invocation.purpose)) {
-    throw new Error("Refresh successor requires a known terminal resumable provider outcome");
+  return row.evidence;
+}
+
+/** Verify the committed reconciliation and the exact unchanged FAILED row.
+ * Unknown provider usage remains unknown; a grant supplies no usage estimate.
+ * A bounded two-stage chain additionally requires the exact production
+ * recovery order: the root failed the source-content assessment and only its
+ * immediate (already-resumed) successor failed the story-relation
+ * verification. Any other purpose pairing, and any depth or identity issue
+ * already rejected by `assertRefreshSuccessorGrant`, keeps the chain closed. */
+export async function assertRefreshSuccessorCurrent(client: Client, m: RefreshManifest, now: Date) {
+  assertRefreshManifest(m, now);
+  const original = assertRefreshSuccessorGrant(m, now, { assertOriginal: assertRefreshManifest, hash: refreshHash });
+  const grant = m.successor!;
+  const evidence = await readRefreshSuccessorHopEvidence(client, {
+    tenantId: m.tenantId, workspaceId: m.workspaceId, date: m.date, startedAt: m.startedAt, endedAt: m.endedAt,
+    reconciliationId: grant.reconciliationId, originalJobId: grant.originalJobId,
+    expectedOperation: original.operation, expectedManifestJson: grant.originalManifestJson,
+  });
+  if (original.successor === undefined) {
+    if (!knownTerminalAssessment(evidence.invocation) || !resumablePurposes.has(evidence.invocation.purpose)) {
+      throw new Error("Refresh successor requires a known terminal resumable provider outcome");
+    }
+    return;
+  }
+  if (!knownTerminalAssessment(evidence.invocation) ||
+      evidence.invocation.purpose !== storyRelationVerificationPurpose) {
+    throw new Error("Refresh successor requires a known terminal story-relation verification outcome");
+  }
+  const rootGrant = original.successor;
+  const root = JSON.parse(rootGrant.originalManifestJson) as RefreshManifest;
+  const rootEvidence = await readRefreshSuccessorHopEvidence(client, {
+    tenantId: m.tenantId, workspaceId: m.workspaceId, date: m.date, startedAt: m.startedAt, endedAt: m.endedAt,
+    reconciliationId: rootGrant.reconciliationId, originalJobId: rootGrant.originalJobId,
+    expectedOperation: root.operation, expectedManifestJson: rootGrant.originalManifestJson,
+  });
+  if (!knownTerminalAssessment(rootEvidence.invocation) ||
+      rootEvidence.invocation.purpose !== sourceContentAssessmentPurpose) {
+    throw new Error("Refresh successor chain root requires a known terminal source-content assessment outcome");
   }
 }
 

@@ -1,7 +1,7 @@
 import { assertRefreshManifest, refreshOperation, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
 import { parseRefreshCommand } from "../run-reader-summary-new-input-refresh";
 import { refreshManifest, refreshNow } from "./reader-summary-new-input-refresh.spec-support";
-import { successorManifest } from "./reader-summary-new-input-refresh-successor.spec-support";
+import { successorManifest, chainedSuccessorManifests } from "./reader-summary-new-input-refresh-successor.spec-support";
 
 describe("explicit one-time successor manifest", () => {
   it("requires an explicit date, grant file and reviewed digest", () => {
@@ -58,5 +58,56 @@ describe("explicit one-time successor manifest", () => {
     const m = refreshManifest();
     expect(refreshOperation({ ...m, preparedAt: refreshNow.toISOString() })).toBe(m.operation);
     expect(refreshOperation({ ...m, authority: { ...m.authority, engagementSha256: "b".repeat(64) } })).not.toBe(m.operation);
+  });
+});
+
+describe("bounded two-stage successor recovery chain", () => {
+  it("admits a second successor whose original is itself a resumed successor of a root with no successor", () => {
+    const { second } = chainedSuccessorManifests();
+    expect(() => assertRefreshManifest(second, refreshNow)).not.toThrow();
+  });
+  it("admits an expired historical nested grant while requiring the active grant to remain live", () => {
+    const { second } = chainedSuccessorManifests();
+    const later = new Date("2026-09-05T22:24:00.000Z");
+    const first = JSON.parse(second.successor!.originalManifestJson) as RefreshManifest;
+    const expiredNested = { ...first, successor: { ...first.successor!, expiresAt: "2026-09-05T22:15:00.000Z" } };
+    const activeDraft = { ...second, successor: { ...second.successor!, originalManifestJson: JSON.stringify(expiredNested) } };
+    const active = { ...activeDraft, operation: refreshOperation(activeDraft) };
+    expect(() => assertRefreshManifest(active, later)).not.toThrow();
+    expect(() => assertRefreshManifest(active, new Date("2026-09-05T22:25:00.000Z"))).toThrow(/expired/);
+  });
+  it("rejects a third successor stage on top of an already-nested chain", () => {
+    const { second } = chainedSuccessorManifests();
+    const thirdDraft = { ...second, successor: {
+      format: "reader-summary-new-input-refresh-successor-v1" as const,
+      originalJobId: "00000000-0000-4000-8000-000000000050",
+      reconciliationId: "00000000-0000-4000-8000-000000000051",
+      originalManifestJson: JSON.stringify(second), expiresAt: "2026-09-05T22:25:00.000Z",
+    } };
+    const third = { ...thirdDraft, operation: refreshOperation(thirdDraft) };
+    expect(() => assertRefreshManifest(third, refreshNow)).toThrow(/depth/);
+  });
+  it("rejects a nested chain that reuses the same original job/reconciliation identity across both stages", () => {
+    const { first } = chainedSuccessorManifests();
+    // Both stages point at the exact same root job/reconciliation instead of
+    // the first successor authorizing the second: a degenerate, non-advancing chain.
+    const secondDraft = { ...first, successor: { ...first.successor!, originalManifestJson: JSON.stringify(first) } };
+    const second = { ...secondDraft, operation: refreshOperation(secondDraft) };
+    expect(() => assertRefreshManifest(second, refreshNow)).toThrow(/chain/);
+  });
+  it("rejects a chain whose nested root bytes were altered after being embedded", () => {
+    const { root, first, second } = chainedSuccessorManifests();
+    const tamperedRootDraft = { ...root, authority: { ...root.authority, engagementSha256: "b".repeat(64) } };
+    const tamperedRoot = { ...tamperedRootDraft, operation: refreshOperation(tamperedRootDraft) };
+    const tamperedFirst = { ...first, successor: { ...first.successor!, originalManifestJson: JSON.stringify(tamperedRoot) } };
+    const tamperedSecondDraft = { ...second, successor: { ...second.successor!, originalManifestJson: JSON.stringify(tamperedFirst) } };
+    const tamperedSecond = { ...tamperedSecondDraft, operation: refreshOperation(tamperedSecondDraft) };
+    expect(() => assertRefreshManifest(tamperedSecond, refreshNow)).toThrow(/differs from the original authority/);
+  });
+  it("rejects a chain that reuses the root's job id for the second stage's own grant, even with a distinct reconciliation id", () => {
+    const { first, second } = chainedSuccessorManifests();
+    const secondDraft = { ...second, successor: { ...second.successor!, originalJobId: first.successor!.originalJobId } };
+    const partiallyReused = { ...secondDraft, operation: refreshOperation(secondDraft) };
+    expect(() => assertRefreshManifest(partiallyReused, refreshNow)).toThrow(/chain/);
   });
 });

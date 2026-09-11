@@ -17,10 +17,19 @@ export function refreshSuccessorIdentity(grant: RefreshSuccessorGrant) {
     reconciliationId: grant.reconciliationId };
 }
 
+/** A successor chain is bounded to exactly two stages: the manifest under
+ * active preparation (depth 0) may authorize against an original that is
+ * itself a successor (the resumed first attempt), but that nested original's
+ * own original must be a root with no further successor. Depth counts hops
+ * already unwrapped by the caller, so depth 1 is the deepest nested grant
+ * this function will ever unwrap; anything past it is an unbounded chain. */
+const nestedGrantDepthLimit = 1;
+
 // Dependencies are supplied by manifest validation, avoiding a runtime cycle.
 export function assertRefreshSuccessorGrant(
   m: Omit<RefreshManifest, "operation">, now: Date,
-  deps: { assertOriginal(m: RefreshManifest, now: Date, fresh: boolean): void; hash(value: unknown): string },
+  deps: { assertOriginal(m: RefreshManifest, now: Date, fresh: boolean, depth: number): void; hash(value: unknown): string },
+  depth = 0,
 ): RefreshManifest {
   const grant = m.successor;
   const uuid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u;
@@ -33,17 +42,29 @@ export function assertRefreshSuccessorGrant(
     throw new Error("Refresh successor grant is malformed");
   }
   const expires = new Date(grant.expiresAt);
+  // A nested (depth > 0) grant already lived out its window when its own
+  // successor was consumed; only its bounded shape is re-checked here, never
+  // whether it is still open right now.
   if (!Number.isFinite(expires.getTime()) || expires.toISOString() !== grant.expiresAt ||
-      expires.getTime() <= now.getTime() ||
+      (depth === 0 && expires.getTime() <= now.getTime()) ||
       expires.getTime() <= Date.parse(m.preparedAt) ||
       expires.getTime() > Date.parse(m.preparedAt) + 30 * 60_000) {
     throw new Error("Refresh successor grant is expired or has invalid expiry");
   }
   const original = JSON.parse(grant.originalManifestJson) as RefreshManifest;
-  if (!original || original.successor !== undefined) {
+  if (!original) {
     throw new Error("Refresh successor cannot authorize a successor chain");
   }
-  deps.assertOriginal(original, now, false);
+  if (original.successor !== undefined) {
+    if (depth >= nestedGrantDepthLimit) {
+      throw new Error("Refresh successor chain depth exceeds the bounded two-stage recovery limit");
+    }
+    if (grant.originalJobId === original.successor.originalJobId ||
+        grant.reconciliationId === original.successor.reconciliationId) {
+      throw new Error("Refresh successor chain cannot reuse the same original reconciliation");
+    }
+  }
+  deps.assertOriginal(original, now, false, depth + 1);
   if (original.date !== m.date || original.tenantId !== m.tenantId || original.workspaceId !== m.workspaceId ||
       original.startedAt !== m.startedAt || original.endedAt !== m.endedAt || original.timezone !== m.timezone ||
       deps.hash(original.prior) !== deps.hash(m.prior) || deps.hash(original.authority) !== deps.hash(m.authority)) {
