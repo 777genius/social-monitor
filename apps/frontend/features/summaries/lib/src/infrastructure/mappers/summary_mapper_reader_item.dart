@@ -140,8 +140,13 @@ extension on SummaryMapper {
       targetStoryClusterId: relatedTopicIsValid ? targetStoryClusterId : null,
       promotionAttestation: promotionAttestation,
       title: dto.title,
-      displayHeadline: promotionCardIsValid ? mapReaderDisplayHeadline(dto.displayHeadline) : null,
-      capturedSource: promotionCardIsValid ? mapReaderCapturedSource(dto.capturedSource) : null,
+      displayHeadline: promotionCardIsValid
+          ? mapReaderDisplayHeadline(dto.displayHeadline)
+          : null,
+      capturedSource: promotionCardIsValid
+          ? mapReaderCapturedSource(dto.capturedSource)
+          : null,
+      summary: promotionCardIsValid ? dto.summary : null,
       providerKey: _nonEmpty(dto.providerKey, fallback: 'unknown'),
       reason: _readerItemReason(dto.reason, dto.title),
       matchedInterestIds: _safeTextList(dto.matchedInterestIds),

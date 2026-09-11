@@ -89,7 +89,7 @@ export const openAiReaderSummaryJsonSchema = {
       {
         storyClusterId: stringSchema(120),
         title: stringSchema(180),
-        summary: stringSchema(720),
+        summary: stringSchema(300),
         interestIds: stringArraySchema(5),
         providerKeys: stringArraySchema(5),
         citationIds: { ...stringArraySchema(2), minItems: 1 },

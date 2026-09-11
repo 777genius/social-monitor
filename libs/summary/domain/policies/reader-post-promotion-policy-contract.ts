@@ -233,6 +233,8 @@ export type ReaderPostPromotionAttestationV2 = Omit<
   readonly evidenceLineage: ReaderPostPromotionEvidenceLineage;
   /** Missing only on immutable historical source presentations. */
   readonly displayHeadline?: ReaderDisplayHeadlineSeal;
+  /** Grounded model prose sealed with the selected card when available. */
+  readonly displaySummary?: string;
 };
 
 export type ReaderPostPromotionAttestation =

@@ -300,6 +300,9 @@ const freezePromotionAttestation = (
         ...(attestation.displayHeadline === undefined ? {} : {
           displayHeadline: immutableDisplayValue(attestation.displayHeadline),
         }),
+        ...(attestation.displaySummary === undefined ? {} : {
+          displaySummary: attestation.displaySummary,
+        }),
         scoreComponents: Object.freeze({ ...attestation.scoreComponents }),
         reasonCodes: Object.freeze([...attestation.reasonCodes]),
         evidenceLineage: Object.freeze({
@@ -377,6 +380,9 @@ const clonePromotionAttestations = (
     : {
         ...(attestation.displayHeadline === undefined ? {} : {
           displayHeadline: immutableDisplayValue(attestation.displayHeadline),
+        }),
+        ...(attestation.displaySummary === undefined ? {} : {
+          displaySummary: attestation.displaySummary,
         }),
         scoreComponents: { ...attestation.scoreComponents },
         reasonCodes: [...attestation.reasonCodes],

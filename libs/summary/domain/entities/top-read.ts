@@ -62,6 +62,8 @@ export type TopRead = {
   readonly relationId?: string;
   readonly targetStoryClusterId?: string;
   readonly title: string;
+  /** Grounded reader-facing model prose. Historical cards may omit it. */
+  readonly summary?: string;
   readonly providerKey: string;
   readonly providerName: string;
   readonly primaryActionKind: TopReadPrimaryActionKind;

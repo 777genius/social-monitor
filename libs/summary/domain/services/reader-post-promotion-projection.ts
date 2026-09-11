@@ -37,7 +37,10 @@ import { projectReaderPostPromotionAdmittedClusters } from
   "./reader-post-promotion-admitted-clusters";
 import { readerPostPromotionSelectionFromEditorialSlate } from
   "./reader-post-promotion-editorial-slate-selection";
-import { buildReaderPostPromotionReasons } from "./reader-post-promotion-reasons";
+import {
+  buildReaderPostPromotionReasons,
+  readerPostPromotionModelSummary,
+} from "./reader-post-promotion-reasons";
 import { readerPostPromotionEvidenceInput } from "./reader-post-promotion-evidence-input";
 
 import { capturedReaderSource, readerPostDisplayHeadline, readerCapturedSourceDigest } from "./reader-post-display-headline";
@@ -133,10 +136,13 @@ export const buildReaderPostPromotionProjection = (params: {
           editorialSlate: params.editorialSlate,
         }, new Map([...topReads, ...additionalPosts].map((card) => [
           card.promotionCandidateId!, {
-            headline: card.displayHeadline!,
-            ...(card.displayHeadline?.status !== "accepted" ? {} : {
-              capturedSourceDigest: readerCapturedSourceDigest(card.capturedSource!),
-            }),
+            headline: {
+              headline: card.displayHeadline!,
+              ...(card.displayHeadline?.status !== "accepted" ? {} : {
+                capturedSourceDigest: readerCapturedSourceDigest(card.capturedSource!),
+              }),
+            },
+            ...(card.summary === undefined ? {} : { summary: card.summary }),
           },
         ])));
   const attestedEvidenceFacts = [...selection.top, ...selection.additional]
@@ -211,6 +217,11 @@ const promotedPost = (params: {
   const capturedSource = capturedReaderSource(lead);
   const title = displayHeadline.status === "accepted"
     ? displayHeadline.text : buildReaderPostPromotionTitle({ lead });
+  const summary = readerPostPromotionModelSummary({
+    selected: params.selected,
+    lead,
+    stories: params.stories,
+  });
   const whyImportant = buildReaderPostPromotionReasons({
     selected: params.selected,
     lead,
@@ -250,9 +261,12 @@ const promotedPost = (params: {
     displayHeadline,
     capturedSource,
     providerKey: lead.providerKey,
+    ...(summary === undefined ? {} : { summary }),
     providerName: lead.providerName ?? lead.providerKey,
     primaryActionKind: lead.readerActionKind ?? "read_source",
-    reason: whyImportant[0] ?? title,
+    reason: params.selected.editorialSlateEntry === undefined
+      ? "Selected by the reader promotion policy."
+      : `Selected by editorial policy: ${params.selected.editorialSlateEntry.reasonCodes.join(", ")}.`,
     matchedInterestIds: interestIds.length === 0
       ? ["unknown-interest"]
       : interestIds,

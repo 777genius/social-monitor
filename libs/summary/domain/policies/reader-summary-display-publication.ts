@@ -16,8 +16,10 @@ export const readerDisplayPublicationFindings = (
     const attestation = snapshot.promotionAttestations?.find((item) => item.candidateId === card.promotionCandidateId);
     const seal = attestation?.schemaVersion === "reader_post_promotion_attestation.v2"
       ? attestation.displayHeadline : undefined;
+    const sealedSummary = attestation?.schemaVersion === "reader_post_promotion_attestation.v2"
+      ? attestation.displaySummary : undefined;
     if (accepted?.status === "accepted" && lead !== undefined &&
-        readerDisplayIdentityMatches(card, seal, snapshot) &&
+        readerDisplayIdentityMatches(card, seal, snapshot, sealedSummary) &&
         canonicalPromotionPayload(accepted) === canonicalPromotionPayload(card.displayHeadline) &&
         canonicalPromotionPayload(capturedReaderSource(lead)) === canonicalPromotionPayload(card.capturedSource)) return [];
     return [{ code: "editorial_quality" as const,

@@ -90,7 +90,7 @@ export const buildReaderPromotionV2TestAttestations = (
     editorialSlate: bound.editorialSlate,
   }, new Map([...bound.selection.top, ...bound.selection.additional].map((selected) => [
     selected.candidate.candidateId,
-    { headline: { status: "unavailable" as const, reasonCode: "not_assessed" as const } },
+    { headline: { headline: { status: "unavailable" as const, reasonCode: "not_assessed" as const } } },
   ]))).map((attestation) => {
     // Explicit historical fixture: new runtime writers always emit display state.
     const { displayHeadline, digest, canonicalPayload, ...body } = attestation;

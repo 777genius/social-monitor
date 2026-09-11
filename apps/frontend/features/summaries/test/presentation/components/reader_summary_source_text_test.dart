@@ -1,8 +1,11 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/reader_captured_source.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_sections.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_source_text.dart';
@@ -168,6 +171,18 @@ void main() {
           addTearDown(tester.view.resetDevicePixelRatio);
           final item = topPostFixture(
             title: sourceContextText,
+            summary: 'Atlas keeps resumed agent context for one workflow.',
+            displayHeadline: const ReaderDisplayHeadline(
+              text: 'Atlas preserves resumed agent context',
+              kind: ReaderDisplayHeadlineKind.claim,
+            ),
+            capturedSource: const ReaderCapturedSource(
+              title: '',
+              body: sourceContextText,
+              captureAvailability: ReaderCaptureAvailability.available,
+              reviewAvailability: ReaderSourceReviewAvailability.bodyPresent,
+            ),
+            providerKey: 'x',
             cardKind: kind,
             storyClusterId: 'synthetic-context',
             canonicalUrl: 'https://example.test/source',
@@ -204,26 +219,94 @@ void main() {
             );
             await tester.pumpAndSettle();
           }
-          expect(find.text('Captured source'), findsWidgets);
-          expect(find.text(sourceContextText), findsOneWidget);
-          final capturedSource =
-              find.widgetWithText(AppButton, 'Captured source').first;
-          await tester.scrollUntilVisible(
-            capturedSource.hitTestable(),
-            200,
-            scrollable: find.byType(Scrollable).first,
+          expect(find.text('Captured source'), findsNothing);
+          expect(find.text(sourceContextText), findsNothing);
+          expect(
+            find.text('Atlas preserves resumed agent context'),
+            findsOneWidget,
           );
+          expect(
+            find.text('Atlas keeps resumed agent context for one workflow.'),
+            findsOneWidget,
+          );
+          expect(
+            find.text('$sourceContextText is relevant evidence.'),
+            findsNothing,
+          );
+          expect(find.text('Original'), findsOneWidget);
+          await tester.tap(find.byType(Switch).first);
           await tester.pumpAndSettle();
-          expect(capturedSource.hitTestable(), findsOneWidget);
-          await tester.tap(capturedSource);
+          expect(
+            find.widgetWithText(SelectableText, sourceContextText),
+            findsOneWidget,
+          );
+          expect(find.text('Show more'), findsOneWidget);
+          await tester.tap(find.widgetWithText(AppButton, 'Show more'));
           await tester.pumpAndSettle();
-          expect(find.widgetWithText(SelectableText, sourceContextText), findsOneWidget);
+          expect(find.text('Show less'), findsOneWidget);
           expect(opened, isNull);
           expect(tester.takeException(), isNull);
         },
       );
     }
   }
+
+  testWidgets('wide top post reveals Original only while card is hovered', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(2000, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final item = topPostFixture(
+      title: 'Provider source title',
+      summary: 'A concise model summary of the post.',
+      capturedSource: const ReaderCapturedSource(
+        title: 'Provider source title',
+        body: 'The original post body.',
+        captureAvailability: ReaderCaptureAvailability.available,
+        reviewAvailability: ReaderSourceReviewAvailability.bodyPresent,
+      ),
+      providerKey: 'x',
+      cardKind: ReaderSummaryCardKind.curatedTopRead,
+      storyClusterId: 'hover-source',
+    );
+    final summary = topPostsSummaryFixture(topReads: [item]);
+    await tester.pumpWidget(
+      _app(
+        ReaderSummaryTopPosts(
+          projection: readerSummaryTopPostsProjection(summary),
+          selectedPostCount: 1,
+          period: summary.period,
+          citationsById: const {},
+          ratingFor: null,
+          onRated: null,
+          onOpenUrl: (_) {},
+        ),
+        width: 1800,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Original'), findsNothing);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getCenter(find.text('A concise model summary of the post.')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Original'), findsOneWidget);
+
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(find.text('Provider source title'), findsNothing);
+    expect(
+      find.widgetWithText(SelectableText, 'The original post body.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   for (final title in [
     'Atlas release',
@@ -255,7 +338,7 @@ void main() {
   }
 }
 
-Widget _app(Widget child, {double scale = 1}) {
+Widget _app(Widget child, {double scale = 1, double width = 358}) {
   final theme = AppTheme.light();
   return AppHeadlessScope(
     theme: theme,
@@ -266,7 +349,7 @@ Widget _app(Widget child, {double scale = 1}) {
         body: MediaQuery(
           data: MediaQueryData(textScaler: TextScaler.linear(scale)),
           child: SingleChildScrollView(
-            child: SizedBox(width: 358, child: child),
+            child: SizedBox(width: width, child: child),
           ),
         ),
       ),

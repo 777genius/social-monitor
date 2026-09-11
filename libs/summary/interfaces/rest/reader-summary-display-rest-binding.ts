@@ -13,6 +13,8 @@ export const validReaderDisplayRestBinding = (
 ): boolean => {
   const seal = attestation.schemaVersion === "reader_post_promotion_attestation.v2"
     ? attestation.displayHeadline : undefined;
+  const sealedSummary = attestation.schemaVersion === "reader_post_promotion_attestation.v2"
+    ? attestation.displaySummary : undefined;
   let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(attestation.canonicalPayload) as Record<string, unknown>;
@@ -26,7 +28,8 @@ export const validReaderDisplayRestBinding = (
   }
   if (seal?.headline.status !== "accepted" ||
       canonicalPromotionPayload(payload.displayHeadline) !== canonicalPromotionPayload(seal) ||
-      !readerDisplayIdentityMatches(card, seal, view)) return false;
+      payload.displaySummary !== sealedSummary ||
+      !readerDisplayIdentityMatches(card, seal, view, sealedSummary)) return false;
   const binding = seal.headline.binding;
   return view.citations.some((citation) =>
     citation.citationId === attestation.citationId &&

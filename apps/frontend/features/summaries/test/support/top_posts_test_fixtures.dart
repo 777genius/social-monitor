@@ -1,11 +1,16 @@
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/domain/entities/summary_citation.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/reader_captured_source.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 
 import 'summaries_test_fixtures.dart';
 
 TopRead topPostFixture({
   required String title,
+  String? summary,
+  ReaderDisplayHeadline? displayHeadline,
+  ReaderCapturedSource? capturedSource,
+  bool hasDisplayHeadline = true,
   String? storyClusterId,
   ReaderSummaryCardKind cardKind = ReaderSummaryCardKind.unsupported,
   String providerKey = 'reddit',
@@ -50,6 +55,15 @@ TopRead topPostFixture({
     cardKind: cardKind,
     promotionAttestation: promotionAttestation,
     title: title,
+    summary: summary ?? '$title summary.',
+    displayHeadline: hasDisplayHeadline
+        ? displayHeadline ??
+              ReaderDisplayHeadline(
+                text: title,
+                kind: ReaderDisplayHeadlineKind.subjectLabel,
+              )
+        : null,
+    capturedSource: capturedSource,
     providerKey: providerKey,
     reason: '$title is relevant evidence.',
     matchedInterestIds: matchedInterestIds,

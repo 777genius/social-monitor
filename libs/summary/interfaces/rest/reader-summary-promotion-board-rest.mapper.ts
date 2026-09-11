@@ -338,6 +338,7 @@ const promotionAttestationView = (
     citationIds: [...attestation.citationIds],
     ...(v2 === undefined ? {} : {
       ...(v2.displayHeadline === undefined ? {} : { displayHeadline: v2.displayHeadline }),
+      ...(v2.displaySummary === undefined ? {} : { displaySummary: v2.displaySummary }),
       storyClusterId: v2.storyClusterId,
       scoreComponents: { ...v2.scoreComponents },
       reasonCodes: [...v2.reasonCodes],
@@ -380,6 +381,7 @@ const validV2RestCardBinding = (
   placement: "top" | "additional",
   zeroBasedIndex: number,
 ): boolean => item.storyClusterId === attestation.storyClusterId &&
+  item.summary === attestation.displaySummary &&
   item.promotionPolicyVersion === attestation.policyVersion &&
   item.editorialPolicyVersion === "reader_promotion_policy.v2" &&
   item.editorialPlacement === placement &&

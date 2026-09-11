@@ -72,7 +72,7 @@ export const assertExactPromotionAttestationPayload = (value: unknown): void => 
     exactKeys(
       item,
       isV2 ? [...topRequired, ...v2Required] : topRequired,
-      isV2 ? [...topOptional, "displayHeadline"] : topOptional,
+      isV2 ? [...topOptional, "displayHeadline", "displaySummary"] : topOptional,
       `promotion attestation ${index}`,
     );
     strings(item, ["schemaVersion", "policyVersion", "digestVersion", "digest",
@@ -128,6 +128,9 @@ export const assertExactPromotionAttestationPayload = (value: unknown): void => 
     }
     if (isV2) assertV2EditorialFields(item, supportFacts);
     if (item.displayHeadline !== undefined) assertDisplayHeadlineSealPayload(item.displayHeadline);
+    if (item.displaySummary !== undefined &&
+        (typeof item.displaySummary !== "string" || item.displaySummary.trim().length === 0 ||
+          item.displaySummary.length > 300)) invalid("displaySummary");
     const { digest, canonicalPayload, ...canonicalBody } = item;
     if (canonicalPayload !== canonicalPromotionPayload(canonicalBody) ||
         digest !== promotionPayloadDigest(canonicalPayload as string)) {
