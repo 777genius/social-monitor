@@ -33,7 +33,7 @@ any of them are ready.
 | --- | --- | --- |
 | PR1 | `api.Dockerfile`, `contracts.mjs`(+test), `preflight.sh`(+test), `.github/workflows/production-api-nomad.yml` | An immutable, digest-pinned API image builds and pushes to GHCR without touching production; the six narrow release/health/traffic contracts validate correctly. |
 | PR2 | `ownership.mjs`(+test), `ownership-guard.sh`(+test), `api-env-entrypoint.mjs`(+test), `host/nomad.hcl`, `host/acl.hcl`, `versions.json`, `bootstrap.sh`(+test) | A durable `compose`/`nomad` owner marker exists and round-trips atomically; the API's env-file entrypoint parses safely without `eval`; the Nomad agent/ACL config and pinned version are reviewable; bootstrap is dry-run-only in this PR. |
-| PR3 | `adapters/nomad.mjs`(+test), `adapters/nginx.mjs`, `release.mjs`, `reconcile-traffic.mjs`, `rollout.test.mjs`, `api.nomad.hcl`, `host/api-deploy.service`, `host/api-traffic.service`, `.github/workflows/production-api-nomad-deploy.yml` | The full canary sequence (candidate → healthy → nginx switch → promote, or revert/restore on any failure) works end-to-end against fakes, including untrusted-endpoint rejection and the first-deployment-has-no-previous-release case. |
+| PR3 | `adapters/nomad.mjs`(+test), `adapters/nginx.mjs`, `release.mjs`, `release-cli.test.mjs`, `reconcile-traffic.mjs`, `rollout.test.mjs`, `jobspec-contract.test.mjs`, `api.nomad.hcl`, `host/api-deploy.service`, `host/api-traffic.service`, `.github/workflows/production-api-nomad-deploy.yml` | The full canary sequence (candidate → healthy → nginx switch → promote, or revert/restore on any failure) works end-to-end against fakes, including untrusted-endpoint rejection and the first-deployment-has-no-previous-release case; `jobspec-contract.test.mjs` statically checks the Dockerfile's entrypoint env path stays consistent with the jobspec's volume mount. |
 | PR4 | `concurrent-release.test.mjs`, `failure-drill.test.sh`, this README | Concurrent/stale submissions, a fully offline Nomad backend, and recovery after a mid-release crash are all proven not to corrupt the route or the owner marker. |
 
 ## Running the tests locally
@@ -46,12 +46,16 @@ git diff --check
 npm run check:source-line-cap
 npm run check:architecture
 npm run check:code-quality
+npm run check:secrets
+npx eslint ops/nomad
+npx tsc --noEmit
 
 node --test ops/nomad/*.test.mjs ops/nomad/adapters/*.test.mjs
 bash ops/nomad/preflight.test.sh
 bash ops/nomad/bootstrap.test.sh
 bash ops/nomad/ownership-guard.test.sh
 bash ops/nomad/failure-drill.test.sh
+shellcheck -S warning ops/nomad/*.sh
 ```
 
 If the `nomad` CLI is available in your environment, also run
@@ -184,7 +188,8 @@ runs any of these steps automatically.
    any public traffic moves.
 4. **Cut over.** Switch nginx to the approved, healthy Nomad endpoint.
    Verify both public origins and auth/session behavior. Only now commit
-   the owner marker to `nomad` (`ops/nomad/ownership.mjs set-owner nomad`)
+   the owner marker to `nomad` (`node ops/nomad/ownership.mjs set-owner nomad`
+   - the file is not executable on its own, unlike the `.sh` scripts here)
    and stop the old Compose API, keeping its image/config in place. Repeat
    one controlled update afterward to prove native canary from an already
    `nomad`-owned stable release, not just the from-Compose transition.
