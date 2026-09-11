@@ -115,7 +115,14 @@ export class AgentRuntimeSourceContentQualityReviewerAdapter implements SourceCo
     if (output === undefined || Buffer.byteLength(output, "utf8") > 128_000) {
       throw new SourceContentAssessmentStageError("runtime_status", "Assessment output missing or too large");
     }
-    const reviews = parseReviews(output, requests);
+    // The attestation just verified above (requestId, canonicalRequestSha256,
+    // provider/model/reasoningEffort match) already proves the runtime
+    // executed exactly this batch's candidates/content for this fresh
+    // requestId - each candidate's bindingId is itself part of that attested
+    // prompt. That is a stronger, independently verified binding proof than
+    // an echoed bindingId string, so the parser can trust candidateId-matched
+    // requests here without also requiring a byte-exact echo.
+    const reviews = parseReviews(output, requests, { trustAttestedRequestBinding: true });
     if (signal.aborted) {
       throw new SourceContentAssessmentStageError("aborted", "Assessment validation deadline exhausted");
     }

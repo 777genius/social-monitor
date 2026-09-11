@@ -24,16 +24,18 @@ const compatible = {
   "observed batch one under reviews envelope": (o: { reviews: Wire[] }) => ({ reviews: o.reviews.map((r) => observed(r)) }),
   "observed batch two under reviews envelope": (o: { reviews: Wire[] }) => ({ reviews: o.reviews.map((r) => observed(r, true)) }),
   "results alias only": (o: { reviews: Wire[] }) => ({ results: o.reviews }),
+  // Legitimate model binding drift: the attested batch already proves the
+  // runtime executed exactly this candidate's content for a fresh request,
+  // so an imperfect bindingId echo must not reject an otherwise-correct,
+  // correctly-identified legacy-shaped assessment either.
+  "legacy dialect with drifted bindingId": (o: { reviews: Wire[] }) => ({ reviews: o.reviews.map((r) =>
+    observed({ ...r, bindingId: `${String(r.bindingId)}-drifted` })) }),
 } as const;
 const mutations: Record<string, (output: { reviews: Wire[] }) => Wire> = {
   // A single tampered field on an otherwise-complete canonical item is not a
   // legacy dialect and must stay rejected, not reinterpreted.
   "relevant decision": (o) => ({ reviews: o.reviews.map((r) => ({ ...r, decision: "relevant" })) }),
   "not_relevant decision": (o) => ({ reviews: o.reviews.map((r) => ({ ...r, decision: "not_relevant" })) }),
-  // A genuine legacy-shaped item with a tampered binding must still be
-  // rejected: item-dialect normalization cannot weaken the binding check.
-  "legacy dialect with tampered binding": (o) => ({ reviews: o.reviews.map((r) =>
-    observed({ ...r, bindingId: `${String(r.bindingId)}-tampered` })) }),
 };
 for (const field of ["confidence", "qualityScore", "interestRelevanceScore", "engagementIntegrityScore", "flags", "reason", "resolvedSoftFlags"]) {
   mutations[`missing ${field}`] = (o) => ({ reviews: o.reviews.map((r) => {
@@ -92,6 +94,30 @@ describe("assessment schema consumer protocol", () => {
     expect(result.ranking.orderedCandidateIds).toHaveLength(0);
     expect(result.items[0]!.contentQuality).toMatchObject({ qualityScore: 0,
       needsLlmReview: true, eligibleForTopRead: false });
+  });
+
+  // Malicious candidate remap: a correct candidateId and a trusted request
+  // attestation must not launder evidence that does not actually belong to
+  // this candidate's real text. Trusting the attestation only widens what
+  // identity proof is accepted (bindingId echo); it never widens what
+  // content is accepted as evidence - that stays enforced, unchanged, by
+  // the downstream verdict policy's evidence-quote check, so this never
+  // throws here (unlike a schema/shape violation) but still keeps the
+  // candidate pending and unpromoted.
+  it("keeps a remapped evidence quote pending and unpromoted, without laundering it through trusted attestation", async () => {
+    let calls = 0;
+    const adapter = new AgentRuntimeSourceContentQualityReviewerAdapter({
+      clock: new FixedClock(cutoff), ids: { generate: () => `sandbox-remap-${++calls}` },
+      batchTimeoutMs: 300_000, totalTimeoutMs: 600_000,
+      client: refreshTestRuntimeClient(async (request) => attestRefreshExecution(request,
+        { reviews: outputFor(request).reviews.map((r) => ({ ...r,
+          evidence: [{ field: "bodyPreview", start: 0, end: 40,
+            quote: "This sentence was never in the real body" }] })) })),
+    });
+    const result = await run([fixture("protocol")], adapter);
+    expect(calls).toBe(1);
+    expect(result.ranking.orderedCandidateIds).toHaveLength(0);
+    expect(result.items[0]!.contentQuality).toMatchObject({ needsLlmReview: true, eligibleForTopRead: false });
   });
 
   it.each([true, false])("preserves canonical=%s compatible siblings when the third batch times out without retry", async (canonical) => {

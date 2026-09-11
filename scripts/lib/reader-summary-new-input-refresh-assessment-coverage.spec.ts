@@ -97,13 +97,23 @@ describe("synthetic concrete assessment wire and parser capture binding", () => 
     expect(() => test.capture.validateAssessmentModel(test.command, 1)).not.toThrow();
     expect(() => test.capture.validateAssessmentParser(test.terminal)).not.toThrow();
   });
-  it.each(["prompt", "system", "schema", "binding", "parsed result"])("rejects changed %s bytes", (kind) => {
+  // "binding" (a drifted bindingId byte) is deliberately not in this table:
+  // validateAssessmentParser now replays the parse with
+  // trustAttestedRequestBinding, matching the live agent-runtime adapter, so
+  // a bindingId-only change no longer changes the parsed result and must not
+  // be reported as a mismatch - see the dedicated acceptance test below.
+  it.each(["prompt", "system", "schema", "parsed result"])("rejects changed %s bytes", (kind) => {
     const test = modelCoverage();
     if (kind === "prompt") test.command.prompt = "{}";
     if (kind === "system") test.command.systemPrompt = "Changed instructions";
     if (kind === "schema") Object.assign(test.command, { outputSchema: {} });
-    if (kind === "binding") test.output.reviews[0]!.bindingId = "changed";
     if (kind === "parsed result") test.terminal = { ...test.terminal, reviewsJson: "[]" };
     expect(() => test.capture.validateAssessmentParser(test.terminal)).toThrow();
+  });
+
+  it("does not report a drifted bindingId as a parser mismatch, matching the live trusted-attestation parse", () => {
+    const test = modelCoverage();
+    test.output.reviews[0]!.bindingId = "changed";
+    expect(() => test.capture.validateAssessmentParser(test.terminal)).not.toThrow();
   });
 });

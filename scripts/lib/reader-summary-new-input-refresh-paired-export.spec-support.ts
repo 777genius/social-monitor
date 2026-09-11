@@ -84,7 +84,7 @@ export function pairedFixture(options: { capture?: boolean; path?: string; suppl
     select: () => (capture?.selector(wiring.evidenceSelector) ?? wiring.evidenceSelector).select(query) };
 }
 
-function syntheticOutput(command: AgentRuntimeTaskCommand, relationCase = false): Record<string, unknown> {
+export function syntheticOutput(command: AgentRuntimeTaskCommand, relationCase = false): Record<string, unknown> {
   if (command.purpose === sourceContentAssessmentPurpose) {
     const { candidates } = JSON.parse(command.prompt) as { candidates: { candidateId: string; bindingId: string;
       untrustedSource: { bodyPreview: string } }[] };

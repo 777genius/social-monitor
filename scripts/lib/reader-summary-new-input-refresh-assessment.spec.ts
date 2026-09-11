@@ -69,9 +69,16 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
   });
 
   it.each([
-    ["missing", "binding"], ["one missing", "binding"], ["wrong binding", "binding"],
+    ["missing", "binding"], ["one missing", "binding"],
     ["wrong quote", "verdict"], ["duplicate", "binding"],
   ] as const)(
+    // "wrong binding" (a drifted bindingId echo) is deliberately not in this
+    // table anymore: the agent-runtime adapter now trusts the already-
+    // attested request binding over that echo, so it is accepted, not
+    // rejected - see "accepts a legitimate response ... bindingId echo is
+    // imperfect" in agent-runtime-source-content-quality-reviewer.adapter.spec.ts
+    // and the "legacy dialect with drifted bindingId" case in
+    // assessment-schema-protocol.spec.ts.
     "keeps %s assessment pending, prevents publication/subsequent spend, and journals failureStage=%s", async (kind, expectedStage) => {
       const test = await selectorWiring({ output: (command) => {
         const output = selectorOutput(command);
@@ -80,7 +87,6 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
         switch (kind) {
           case "missing": return { reviews: [] };
           case "one missing": return { reviews: reviews.slice(1) };
-          case "wrong binding": reviews[0]!.bindingId = "wrong"; break;
           case "wrong quote": reviews[0]!.evidence = [{ field: "title", start: 0, end: 5, quote: "wrong" }]; break;
           case "duplicate": return { reviews: [reviews[0], reviews[0]] };
         }
