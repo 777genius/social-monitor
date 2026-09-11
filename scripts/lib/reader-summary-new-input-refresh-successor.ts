@@ -59,9 +59,12 @@ export async function assertRefreshSuccessorCurrent(client: Client, m: RefreshMa
   const invocation = row.evidence.invocation;
   const knownTerminalAssessment = invocation.outcome === "failed" ||
     (invocation.outcome === "completed" && invocation.providerUsageReported);
-  if (!knownTerminalAssessment ||
-      invocation.purpose !== "social_monitor.relevance.assess_source_content.v1") {
-    throw new Error("Refresh successor requires a known terminal assessment outcome");
+  const resumablePurposes = new Set([
+    "social_monitor.relevance.assess_source_content.v1",
+    "social_monitor.reader_summary.verify_story_relations.v2",
+  ]);
+  if (!knownTerminalAssessment || !resumablePurposes.has(invocation.purpose)) {
+    throw new Error("Refresh successor requires a known terminal resumable provider outcome");
   }
 }
 
