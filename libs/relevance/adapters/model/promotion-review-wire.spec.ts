@@ -1,4 +1,5 @@
 import { OpenAiSourceContentQualityReviewerAdapter } from "./openai-source-content-quality-reviewer.adapter";
+import { promotionReviewInstructions } from "./promotion-review-wire";
 import { SourceContentQualityPolicy } from "../../domain";
 import { assessedPromotionVerdict } from "../../features/rank-feed-items/promotion-assessment-verdict";
 import type { SourceContentQualityReviewRequest } from "../../ports";
@@ -20,6 +21,11 @@ const response = (reviews: unknown) => new Response(JSON.stringify({ status: "co
 ] }] }), { status: 200 });
 
 describe("existing review adapter promotion wire contract", () => {
+  it("states the 0-1 fraction scale for every numeric score field the parser bounds", () => {
+    expect(promotionReviewInstructions).toContain(
+      "confidence, qualityScore, interestRelevanceScore and engagementIntegrityScore are each a fraction from 0 to 1 inclusive");
+  });
+
   it.each(["hacker-news", "reddit", "x-twitter"])("separates trusted intent, binds %s text and omits popularity", async (provider) => {
     const input = request(provider);
     const adapter = new OpenAiSourceContentQualityReviewerAdapter({ apiKey: "synthetic-test-key", fetchFn: async (_url, init) => {

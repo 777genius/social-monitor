@@ -151,7 +151,11 @@ export const asOptionalRecord = (value: unknown): JsonObject | undefined =>
     ? (value as JsonObject)
     : undefined;
 
-const allowedFlags = new Set<SourceContentQualityFlag>([
+// Single source of truth for the review-flag vocabulary. The schema enum and
+// the parser's semantic check must stay in lockstep: a flag value that the
+// schema lets the model emit but the parser rejects turns an otherwise valid,
+// attested completion into a hard adapter failure.
+export const sourceContentQualityFlagValues = [
   "crypto_promo",
   "engagement_bait",
   "generic_question",
@@ -173,7 +177,9 @@ const allowedFlags = new Set<SourceContentQualityFlag>([
   "llm_needs_context",
   "llm_promoted",
   "llm_rejected",
-]);
+] as const satisfies readonly SourceContentQualityFlag[];
+
+const allowedFlags = new Set<SourceContentQualityFlag>(sourceContentQualityFlagValues);
 
 export const responseSchema = {
   type: "object",
@@ -207,7 +213,7 @@ export const responseSchema = {
           engagementIntegrityScore: { type: "number", minimum: 0, maximum: 1 },
           flags: {
             type: "array",
-            items: { type: "string" },
+            items: { type: "string", enum: sourceContentQualityFlagValues },
           },
           reason: { type: "string", minLength: 1 },
         },

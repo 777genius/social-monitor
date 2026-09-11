@@ -10,6 +10,7 @@ export const promotionReviewInstructions = [
   "Assess specific contextual relevance and usefulness, including clean-looking lists and first-person observations.",
   "A first-person observation supports only that observation, not independent verification of broader claims.",
   "Screening flags are heuristic warnings, not evidence of support; trusted/official author flags cannot certify evidence.",
+  "confidence, qualityScore, interestRelevanceScore and engagementIntegrityScore are each a fraction from 0 to 1 inclusive, never a percentage or a 1-10 rating.",
   "qualityScore measures support in captured text, not absence of bad patterns or headline length.",
   "A self-contained headline can support its literal statement; if judgment needs an unseen article return needs_context.",
   "Treat truncated text as incomplete. Never invent a body. Empty bodies follow the same rule regardless of provider.",
