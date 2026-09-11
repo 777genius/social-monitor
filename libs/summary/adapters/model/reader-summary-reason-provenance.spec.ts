@@ -16,8 +16,11 @@ const expectReason = (
   const draft = normalizeReasonDraft(evidence, stories);
   assertReaderSummaryCitationsAgainstEvidence(draft, evidence);
   const assembled = buildReaderSummaryDraftWithPromotionContent(evidence, draft);
+  const editorialReason = evidence.editorialSlate === undefined
+    ? "Selected by the reader promotion policy."
+    : "Selected by editorial policy: reader_promotion_v2_admitted, semantic_story_representative, top_slot_assigned.";
   for (const content of [draft.content!, assembled.content]) {
-    expect(content.topReads[0]?.reason).toBe(reason);
+    expect(content.topReads[0]?.reason).toBe(editorialReason);
     expect(content.topReads[0]?.whyImportant[0]).toBe(reason);
     expect(content.topReads[0]?.citationIds).toEqual(["c1"]);
   }
@@ -154,7 +157,10 @@ describe("original reader explanation provenance through model normalization", (
       const result = buildReaderSummaryDraftWithPromotionContent(evidence, {
         ...draft, topStories: [{ ...draft.topStories[0]!, ...override }],
       });
-      expect(result.content.topReads[0]?.reason).toBe(metricReason);
+      expect(result.content.topReads[0]?.reason).toBe(
+        "Selected by editorial policy: reader_promotion_v2_admitted, semantic_story_representative, top_slot_assigned.",
+      );
+      expect(result.content.topReads[0]?.whyImportant[0]).toBe(metricReason);
     }
   });
 });
