@@ -70,16 +70,40 @@ function main(argv) {
     return;
   }
   const child = spawn(command, commandArgs, { env: mergedEnv, stdio: "inherit" });
+
+  child.on("error", (error) => {
+    // Without this listener, a launch failure (e.g. ENOENT because
+    // `command` is wrong, EACCES on the binary) is an unhandled 'error'
+    // event, which Node re-throws as an uncaught exception instead of a
+    // clear, actionable message.
+    process.stderr.write(`api-env-entrypoint: failed to launch "${command}": ${error.message}\n`);
+    process.exitCode = 1;
+  });
+
+  const signalHandlers = new Map();
+  for (const signal of ["SIGTERM", "SIGINT"]) {
+    const handler = () => child.kill(signal);
+    signalHandlers.set(signal, handler);
+    process.on(signal, handler);
+  }
+
   child.on("exit", (code, signal) => {
     if (signal) {
+      // Remove our own forwarding listener for this exact signal before
+      // re-raising it on ourselves: as long as that listener stays
+      // registered, Node treats the signal as handled and never applies
+      // its default (terminating) action, so process.kill below would
+      // just re-invoke the handler against the now-dead child forever
+      // instead of actually letting this process exit.
+      const handler = signalHandlers.get(signal);
+      if (handler) {
+        process.removeListener(signal, handler);
+      }
       process.kill(process.pid, signal);
       return;
     }
     process.exitCode = code ?? 1;
   });
-  for (const signal of ["SIGTERM", "SIGINT"]) {
-    process.on(signal, () => child.kill(signal));
-  }
 }
 
 const isMainModule = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;

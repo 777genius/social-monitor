@@ -48,7 +48,7 @@ async function withTempIncludeDir(run) {
   }
 }
 
-function createTrafficSwitchOverTempDir(dir, { validate, reload } = {}) {
+function createTrafficSwitchOverTempDir(dir, { validate, reload, lockTimeoutMs, lockPollIntervalMs } = {}) {
   const adapter = createNginxAdapter({
     includeDir: dir,
     allowedNamespace: ALLOWED_NAMESPACE,
@@ -56,6 +56,8 @@ function createTrafficSwitchOverTempDir(dir, { validate, reload } = {}) {
     allowedCidr: ALLOWED_CIDR,
     validate: validate ?? (async () => {}),
     reload: reload ?? (async () => {}),
+    lockTimeoutMs,
+    lockPollIntervalMs,
   });
   return createTrafficSwitch(adapter);
 }
@@ -150,6 +152,29 @@ test("promoteDeployment failing after a successful traffic switch is reported as
     const route = await trafficSwitch.inspect();
     assert.equal(route.currentEndpoint.address, "172.20.0.8");
   });
+});
+
+test("trafficSwitch.inspect() failing before any switch is attempted is a clean failure, not a crash", async () => {
+  const trafficSwitch = createTrafficSwitch({
+    async inspect() {
+      throw new Error("state file is corrupt");
+    },
+    async switch() {
+      throw new Error("must not be called: inspect() already failed");
+    },
+    async restore() {
+      throw new Error("must not be called");
+    },
+  });
+  const nomad = createFakeNomad({
+    candidateEndpoint: { allocId: "alloc-9", address: "172.20.0.14", port: 3000 },
+  });
+
+  const result = await runRelease({ nomad, trafficSwitch, manifest: manifest(), target: target(), jobHcl: JOB_HCL });
+
+  assert.equal(result.outcome, "failed");
+  assert.match(result.error, /state file is corrupt/);
+  assert.equal(nomad.calls.promoteDeployment, 0);
 });
 
 test("unhealthy candidate: no traffic switch, no promotion, previous route untouched", async () => {
@@ -296,6 +321,64 @@ test("nginx adapter rejects a concurrent-modification switch (stale expectedPrev
       () => trafficSwitch.switch(null, { namespace: ALLOWED_NAMESPACE, jobId: ALLOWED_JOB, address: "172.20.0.10", port: 3000 }),
       /TrafficSwitchConflictError|conflict/i,
     );
+  });
+});
+
+test("nginx adapter serializes concurrent switch() calls across the shared lock instead of interleaving them", async () => {
+  await withTempIncludeDir(async (dir) => {
+    let validateCallCount = 0;
+    let releaseFirstValidate;
+    const gate = new Promise((resolve) => {
+      releaseFirstValidate = resolve;
+    });
+    const trafficSwitch = createTrafficSwitchOverTempDir(dir, {
+      lockTimeoutMs: 2000,
+      lockPollIntervalMs: 10,
+      validate: async () => {
+        validateCallCount += 1;
+        if (validateCallCount === 1) {
+          await gate; // first switch() holds the lock here until released below
+        }
+      },
+    });
+
+    const first = trafficSwitch.switch(null, { namespace: ALLOWED_NAMESPACE, jobId: ALLOWED_JOB, address: "172.20.0.11", port: 3000 });
+    // Give the first call a chance to acquire the lock and enter validate().
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const second = trafficSwitch.switch(null, { namespace: ALLOWED_NAMESPACE, jobId: ALLOWED_JOB, address: "172.20.0.12", port: 3000 });
+    // The second call must be blocked acquiring the lock, not racing ahead:
+    // give it time to poll a few times, then prove it still has not written
+    // its own state while the first call holds the lock.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(existsSync(join(dir, "api-upstream.state.json")), false, "no switch has completed yet");
+
+    releaseFirstValidate();
+    await first;
+    // The second call was rejected by the CAS check (it still expected
+    // `null` as previous, but the first call already published) - proving
+    // it genuinely waited for the lock instead of racing past it.
+    await assert.rejects(() => second, /TrafficSwitchConflictError|conflict/i);
+
+    const finalState = JSON.parse(readFileSync(join(dir, "api-upstream.state.json"), "utf8"));
+    assert.equal(finalState.currentEndpoint.address, "172.20.0.11", "only the first call's write must have landed");
+  });
+});
+
+test("a first-ever publish that fails validation leaves no candidate file behind (nothing to restore to)", async () => {
+  await withTempIncludeDir(async (dir) => {
+    const trafficSwitch = createTrafficSwitchOverTempDir(dir, {
+      validate: async () => {
+        throw new Error("nginx -t: [emerg] invalid directive");
+      },
+    });
+
+    await assert.rejects(
+      () => trafficSwitch.switch(null, { namespace: ALLOWED_NAMESPACE, jobId: ALLOWED_JOB, address: "172.20.0.13", port: 3000 }),
+      /invalid directive/,
+    );
+
+    assert.equal(existsSync(join(dir, "api-upstream.conf")), false, "an invalid, never-validated candidate must not be left on disk");
   });
 });
 

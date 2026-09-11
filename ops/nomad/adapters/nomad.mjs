@@ -40,6 +40,7 @@ export function createNomadClient({
   token = null,
   fetchImpl = fetch,
   sleep = defaultSleep,
+  requestTimeoutMs = 10_000,
 } = {}) {
   async function request(method, path, body) {
     const headers = { "content-type": "application/json" };
@@ -50,9 +51,25 @@ export function createNomadClient({
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      // Without this, a stalled Nomad connection hangs the request forever,
+      // defeating waitForHealthy's own polling deadline (it never gets a
+      // chance to re-check Date.now() against that deadline mid-request).
+      signal: AbortSignal.timeout(requestTimeoutMs),
     });
     const text = typeof response.text === "function" ? await response.text() : "";
-    const parsed = text && text.length > 0 ? JSON.parse(text) : null;
+    let parsed = null;
+    if (text && text.length > 0) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // Nomad (or a proxy in front of it) can return a non-JSON body, e.g.
+        // a plain-text error or an HTML error page. Fall back to the raw
+        // text instead of throwing here, so a 409 (stale plan) or any other
+        // error status still reaches the caller as a NomadApiError with its
+        // body intact, rather than as an unrelated SyntaxError.
+        parsed = text;
+      }
+    }
     if (!response.ok) {
       throw new NomadApiError(`${method} ${path} failed with status ${response.status}`, {
         status: response.status,
@@ -63,7 +80,10 @@ export function createNomadClient({
   }
 
   async function getJobAllocations(namespace, jobId) {
-    const result = await request("GET", `/v1/job/${jobId}/allocations?namespace=${encodeURIComponent(namespace)}`);
+    const result = await request(
+      "GET",
+      `/v1/job/${encodeURIComponent(jobId)}/allocations?namespace=${encodeURIComponent(namespace)}`,
+    );
     return (result ?? []).map((alloc) => ({
       allocId: alloc.ID,
       clientStatus: alloc.ClientStatus,
@@ -73,7 +93,7 @@ export function createNomadClient({
   }
 
   async function getAllocationEndpoint(allocId, { port = 3000 } = {}) {
-    const alloc = await request("GET", `/v1/allocation/${allocId}`);
+    const alloc = await request("GET", `/v1/allocation/${encodeURIComponent(allocId)}`);
     const address = alloc?.NetworkStatus?.Address ?? null;
     if (!address) {
       return null;
@@ -89,7 +109,7 @@ export function createNomadClient({
     async planJob(namespace, jobId, jobHcl) {
       const result = await request(
         "POST",
-        `/v1/job/${jobId}/plan?namespace=${encodeURIComponent(namespace)}`,
+        `/v1/job/${encodeURIComponent(jobId)}/plan?namespace=${encodeURIComponent(namespace)}`,
         { Job: jobHcl, Diff: true },
       );
       return { jobModifyIndex: result?.JobModifyIndex ?? null, warnings: result?.Warnings ?? "" };
@@ -102,7 +122,7 @@ export function createNomadClient({
      * section 7). Returns submission identifiers only - not health.
      */
     async runJob(namespace, jobId, jobHcl, { checkIndex } = {}) {
-      const result = await request("POST", `/v1/job/${jobId}?namespace=${encodeURIComponent(namespace)}`, {
+      const result = await request("POST", `/v1/job/${encodeURIComponent(jobId)}?namespace=${encodeURIComponent(namespace)}`, {
         Job: jobHcl,
         EnforceIndex: checkIndex !== undefined && checkIndex !== null,
         JobModifyIndex: checkIndex ?? undefined,
@@ -116,7 +136,7 @@ export function createNomadClient({
     },
 
     async getDeployment(deploymentId) {
-      const result = await request("GET", `/v1/deployment/${deploymentId}`);
+      const result = await request("GET", `/v1/deployment/${encodeURIComponent(deploymentId)}`);
       return {
         status: result?.Status ?? "unknown",
         statusDescription: result?.StatusDescription ?? "",
@@ -159,12 +179,12 @@ export function createNomadClient({
     },
 
     async promoteDeployment(deploymentId) {
-      await request("POST", `/v1/deployment/promote/${deploymentId}`, { All: true });
+      await request("POST", `/v1/deployment/promote/${encodeURIComponent(deploymentId)}`, { All: true });
       return { promoted: true };
     },
 
     async failDeployment(deploymentId) {
-      await request("POST", `/v1/deployment/fail/${deploymentId}`, {});
+      await request("POST", `/v1/deployment/fail/${encodeURIComponent(deploymentId)}`, {});
       return { failed: true };
     },
 
@@ -174,17 +194,32 @@ export function createNomadClient({
      * back as `unknown`, and `release.mjs` treats `unknown` the same as
      * `unhealthy` for promotion purposes (fail closed).
      * @param {string} deploymentId
-     * @param {{timeoutMs?: number, intervalMs?: number}} [options]
+     * @param {{timeoutMs?: number, intervalMs?: number, groupName?: string}} [options]
      */
-    async waitForHealthy(deploymentId, { timeoutMs = 5 * 60 * 1000, intervalMs = 2000 } = {}) {
+    async waitForHealthy(deploymentId, { timeoutMs = 5 * 60 * 1000, intervalMs = 2000, groupName = "api" } = {}) {
       const deadline = Date.now() + timeoutMs;
       let lastStatus = "unknown";
       let lastDescription = "";
       for (;;) {
         try {
-          const deployment = await request("GET", `/v1/deployment/${deploymentId}`);
+          const deployment = await request("GET", `/v1/deployment/${encodeURIComponent(deploymentId)}`);
           lastStatus = deployment?.Status ?? "unknown";
           lastDescription = deployment?.StatusDescription ?? "";
+          if (lastStatus === "running") {
+            // Nomad marks a deployment "running" as soon as the canary
+            // allocation is placed - well before its own health checks
+            // pass. Without also checking the task group's canary health
+            // counts, this would report "healthy" the moment a candidate
+            // exists, letting release.mjs switch traffic to an unverified
+            // allocation. Treat "running" as still-pending until the group's
+            // healthy count actually reaches its desired canary count.
+            const group = deployment?.TaskGroups?.[groupName];
+            const desiredCanaries = group?.DesiredCanaries ?? 0;
+            const healthyAllocs = group?.HealthyAllocs ?? 0;
+            if (desiredCanaries <= 0 || healthyAllocs < desiredCanaries) {
+              lastStatus = "pending";
+            }
+          }
         } catch (error) {
           lastDescription = error instanceof Error ? error.message : String(error);
         }

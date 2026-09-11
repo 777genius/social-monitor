@@ -94,7 +94,8 @@ production today, even though every test above is green:
    the legacy Compose side.
 2. **The restricted SSH wrapper does not implement the `nomad-*` verbs**
    `.github/workflows/production-api-nomad-deploy.yml` calls
-   (`nomad-plan`/`nomad-deploy`/`nomad-status`/`nomad-rollback`). That
+   (`nomad-plan`/`nomad-deploy`/`nomad-status`; rollback is a separate,
+   explicit operator action, not wired into this workflow). That
    workflow is `workflow_dispatch`-only, gated behind an explicit
    `confirm_wrapper_extended` input, and refuses to run until that wrapper
    extension ships separately.

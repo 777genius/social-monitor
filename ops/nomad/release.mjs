@@ -118,7 +118,27 @@ export async function runRelease({
     };
   }
 
-  const previousRoute = await trafficSwitch.inspect();
+  let previousRoute;
+  try {
+    previousRoute = await trafficSwitch.inspect();
+  } catch (error) {
+    // Still before the one trafficSwitch.switch() call: the route is
+    // guaranteed untouched, so this is a clean "failed" outcome with the
+    // real health/deploymentId we already have, not an uncaught rejection.
+    return {
+      outcome: "failed",
+      health,
+      receipt: createRollbackReceipt({
+        previousReleaseId: manifest.previousReleaseId,
+        newReleaseId: manifest.sourceSha,
+        jobId: target.jobId,
+        deploymentId: run.deploymentId ?? "unknown",
+        configPreimage: rollbackTarget,
+        outcome: "failed",
+      }),
+      error: `nginx adapter inspect() failed before any switch was attempted: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
   const endpoint = {
     namespace: target.namespace,
     jobId: target.jobId,
@@ -128,7 +148,7 @@ export async function runRelease({
 
   let switchResult;
   try {
-    switchResult = await trafficSwitch.switch(previousRoute.currentEndpoint ?? null, endpoint);
+    switchResult = await trafficSwitch.switch(previousRoute?.currentEndpoint ?? null, endpoint);
   } catch (error) {
     // The candidate is healthy per Nomad but the switch itself failed
     // (validation/reload/conflict): the route is guaranteed unchanged by

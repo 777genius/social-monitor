@@ -32,11 +32,33 @@ actual=$(SOCIAL_MONITOR_DEPLOY_STATE="$STATE" bash "$GUARD" filter api <<< $'api
 [[ $actual == $'api\ningestion-worker' ]] || \
   fail_test 'reverting to compose must restore the unfiltered list'
 
-# Missing ownership.mjs (node unavailable) fails open: no filtering happens.
-node_dir=$(dirname "$(command -v node)")
-safe_path=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vFx "$node_dir" | paste -sd: -)
-actual=$(PATH="$safe_path" SOCIAL_MONITOR_DEPLOY_STATE="$STATE" bash "$GUARD" filter api <<< $'api\ningestion-worker')
-[[ $actual == $'api\ningestion-worker' ]] || fail_test 'a missing node must fail open, not drop services'
+# Missing node (ownership check cannot run) fails closed: refuse rather
+# than silently assuming "compose" and letting a caller mutate a service
+# Nomad might actually already own.
+#
+# `command -v` only reports the first PATH hit, but a dev machine can have
+# node resolvable from more than one directory (e.g. both Homebrew and a
+# stray /usr/local/bin) - stripping only the first would leave node
+# reachable via the other and silently exercise the wrong code path.
+safe_path=""
+IFS=':' read -ra path_dirs <<< "$PATH"
+for path_dir in "${path_dirs[@]}"; do
+  [[ -x "$path_dir/node" ]] && continue
+  safe_path+="${safe_path:+:}$path_dir"
+done
+# Earlier lines in this script already ran `node ...` at its real location,
+# so bash has that resolved path cached in its command hash table. A
+# temporary `PATH=... command` prefix does not itself invalidate that cache,
+# so `command -v node` would keep reporting the stale, real path here
+# without this - silently testing nothing.
+hash -r
+PATH="$safe_path" command -v node >/dev/null 2>&1 && fail_test 'test setup bug: node is still reachable after PATH scrubbing'
+set +e
+PATH="$safe_path" SOCIAL_MONITOR_DEPLOY_STATE="$STATE" bash "$GUARD" filter api \
+  <<< $'api\ningestion-worker' >"$STATE/missing-node-stdout" 2>"$STATE/missing-node-stderr"
+status=$?
+set -e
+[[ $status -ne 0 ]] || fail_test 'a missing node must refuse (fail closed), not silently pass services through'
 
 # A service name containing a regex metacharacter is matched literally, not
 # as a pattern (grep -Fx, not -x): a stray "." must not make this match more

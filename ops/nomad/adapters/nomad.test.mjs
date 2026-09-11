@@ -71,6 +71,28 @@ test("a non-2xx response raises NomadApiError with the status and parsed body", 
   );
 });
 
+test("a non-JSON error body does not crash the client - it reaches NomadApiError as raw text", async () => {
+  const fetchImpl = fakeFetch([
+    async () => ({
+      ok: false,
+      status: 502,
+      async text() {
+        return "<html>502 Bad Gateway</html>";
+      },
+    }),
+  ]);
+  const client = createNomadClient({ fetchImpl });
+  await assert.rejects(
+    () => client.runJob("social-monitor", "sm-api", "job \"sm-api\" {}", { checkIndex: 1 }),
+    (error) => {
+      assert.ok(error instanceof NomadApiError);
+      assert.equal(error.status, 502);
+      assert.match(error.body, /502 Bad Gateway/);
+      return true;
+    },
+  );
+});
+
 test("getCandidateEndpoint resolves the running canary allocation's driver-mode address", async () => {
   const fetchImpl = fakeFetch([
     async () =>
@@ -98,7 +120,37 @@ test("waitForHealthy polls until a terminal deployment status, sleeping between 
   const statuses = ["pending", "running"];
   const fetchImpl = fakeFetch([
     async () => jsonResponse(200, { Status: statuses[0], StatusDescription: "" }),
-    async () => jsonResponse(200, { Status: statuses[1], StatusDescription: "canary healthy" }),
+    async () =>
+      jsonResponse(200, {
+        Status: statuses[1],
+        StatusDescription: "canary healthy",
+        TaskGroups: { api: { DesiredCanaries: 1, HealthyAllocs: 1 } },
+      }),
+  ]);
+  const sleeps = [];
+  const client = createNomadClient({ fetchImpl, sleep: async (ms) => sleeps.push(ms) });
+  const health = await client.waitForHealthy("deploy-1", { intervalMs: 10, timeoutMs: 1000 });
+  assert.equal(health.status, "healthy");
+  assert.deepEqual(sleeps, [10]);
+});
+
+test("waitForHealthy keeps polling a 'running' deployment until the canary's own health count catches up", async () => {
+  // Nomad flips Status to "running" the instant the canary is placed, long
+  // before its health checks pass - a deployment status of "running" alone
+  // must never be enough to call the candidate healthy.
+  const fetchImpl = fakeFetch([
+    async () =>
+      jsonResponse(200, {
+        Status: "running",
+        StatusDescription: "canary placed",
+        TaskGroups: { api: { DesiredCanaries: 1, HealthyAllocs: 0 } },
+      }),
+    async () =>
+      jsonResponse(200, {
+        Status: "running",
+        StatusDescription: "canary healthy",
+        TaskGroups: { api: { DesiredCanaries: 1, HealthyAllocs: 1 } },
+      }),
   ]);
   const sleeps = [];
   const client = createNomadClient({ fetchImpl, sleep: async (ms) => sleeps.push(ms) });

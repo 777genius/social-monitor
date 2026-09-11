@@ -11,8 +11,14 @@
 # rather than being a second, unused namespace stanza here.
 
 namespace "social-monitor" {
-  policy = "deny"
-
+  # No `policy` shorthand here on purpose: Nomad merges a namespace block's
+  # `policy` shorthand into the same capabilities list as any explicit
+  # `capabilities` entries, and "deny" itself expands to a "deny" capability
+  # that takes precedence over every other capability once merged in. Adding
+  # `policy = "deny"` alongside the explicit list below would silently deny
+  # everything in this namespace regardless of the capabilities named here -
+  # the explicit list is already the complete, minimal grant; it does not
+  # need (and must not get) a coarse-grained policy shorthand layered on top.
   capabilities = [
     "submit-job",
     "read-job",

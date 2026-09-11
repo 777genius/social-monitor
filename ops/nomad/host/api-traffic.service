@@ -5,6 +5,10 @@
 # Runs continuously; the tested logic is ops/nomad/reconcile-traffic.mjs's
 # `reconcileTick` (see rollout.test.mjs) - this unit just calls it on an
 # interval and is not itself exercised by any test in this PR.
+#
+# NOMAD_ADDR is https:// to match host/nomad.hcl's TLS requirement, but
+# ops/nomad/adapters/nomad.mjs does not consume it or support TLS/mTLS yet -
+# see api-deploy.service's comment for the same, not-yet-implemented gap.
 
 [Unit]
 Description=Social Monitor sm-api nginx traffic reconciliation
@@ -16,7 +20,7 @@ Wants=network-online.target
 Type=simple
 User=root
 Group=root
-Environment=NOMAD_ADDR=http://127.0.0.1:4646
+Environment=NOMAD_ADDR=https://127.0.0.1:4646
 ExecStart=/usr/bin/node /var/data/social-monitor/integration/ops/nomad/reconcile-traffic.mjs
 Restart=on-failure
 RestartSec=5s

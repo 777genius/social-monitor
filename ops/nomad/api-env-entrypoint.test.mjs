@@ -1,9 +1,16 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseEnvFile, readEnvFile } from "./api-env-entrypoint.mjs";
+
+// main() sets this process's own process.exitCode and registers signal
+// handlers on it, so it can only be exercised safely as a real subprocess
+// (spawning it in-process would corrupt the test runner's own exit status).
+const entrypointPath = fileURLToPath(new URL("./api-env-entrypoint.mjs", import.meta.url));
 
 test("parseEnvFile parses simple KEY=VALUE lines", () => {
   const env = parseEnvFile("PORT=3000\nNODE_ENV=production\n");
@@ -53,6 +60,54 @@ test("readEnvFile reads and parses a real file from disk", () => {
     const path = join(dir, "api.env");
     writeFileSync(path, "PORT=3000\n# comment\nNODE_ENV=production\n");
     assert.deepEqual(readEnvFile(path), { PORT: "3000", NODE_ENV: "production" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("main() reports a clean error instead of an uncaught exception when the target command cannot be launched", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sm-api-env-entrypoint-spawn-test-"));
+  try {
+    const envPath = join(dir, "api.env");
+    writeFileSync(envPath, "PORT=3000\n");
+    const result = spawnSync(process.execPath, [entrypointPath, "/definitely/does-not-exist-xyz"], {
+      env: { ...process.env, SOCIAL_MONITOR_API_ENV_FILE: envPath },
+      encoding: "utf8",
+    });
+    assert.equal(result.signal, null, "a launch failure must not crash the entrypoint itself");
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /failed to launch/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("main() forwards SIGTERM to the child and then actually terminates itself, instead of re-forwarding to a dead child forever", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sm-api-env-entrypoint-signal-test-"));
+  try {
+    const envPath = join(dir, "api.env");
+    writeFileSync(envPath, "PORT=3000\n");
+    const childScript = join(dir, "sleep.mjs");
+    writeFileSync(childScript, "setInterval(() => {}, 1000);\n");
+
+    const proc = spawn(process.execPath, [entrypointPath, process.execPath, childScript], {
+      env: { ...process.env, SOCIAL_MONITOR_API_ENV_FILE: envPath },
+      stdio: "ignore",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    proc.kill("SIGTERM");
+
+    const exited = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), 5000);
+      proc.on("exit", (code, signal) => {
+        clearTimeout(timer);
+        resolve({ code, signal });
+      });
+    });
+
+    assert.notEqual(exited, null, "the entrypoint must actually exit after SIGTERM, not hang re-forwarding to the now-dead child");
+    assert.equal(exited.signal, "SIGTERM");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

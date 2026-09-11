@@ -17,7 +17,7 @@
  * (ISP: callers should depend on that narrow port, not on this file).
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 export class TrafficSwitchConflictError extends Error {
@@ -44,6 +44,43 @@ export class NginxReloadError extends Error {
 
 const ACTIVE_FILE_NAME = "api-upstream.conf";
 const STATE_FILE_NAME = "api-upstream.state.json";
+const LOCK_DIR_NAME = "api-upstream.lock";
+
+/**
+ * Cross-process mutex for the read-decide-write sequence in `switch`/
+ * `restore`. `release.mjs` (occasional deploys) and reconcile-traffic.mjs's
+ * periodic loop (every ~5s, plan section 4) both call this adapter and are
+ * not otherwise serialized against each other - without a real lock here,
+ * two callers could both read the same "current" state and then both write,
+ * corrupting either the served config or the state file's own bookkeeping.
+ * `mkdirSync` is used as the atomic primitive (EEXIST is atomic and
+ * portable); a crashed holder fails loudly on the next attempt instead of
+ * silently racing, matching this repo's fail-closed conventions.
+ */
+async function acquireLock(lockPath, { timeoutMs = 5000, pollIntervalMs = 50 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      mkdirSync(lockPath);
+      return;
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+      if (Date.now() >= deadline) {
+        throw new TrafficSwitchConflictError(
+          `nginx adapter: could not acquire cross-process lock at ${lockPath} within ${timeoutMs}ms ` +
+            "(a concurrent switch/reconcile is in progress, or a prior holder crashed and left it behind)",
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+  }
+}
+
+function releaseLock(lockPath) {
+  rmSync(lockPath, { recursive: true, force: true });
+}
 
 function ipToInt(ip) {
   const parts = ip.split(".").map(Number);
@@ -97,6 +134,8 @@ function writeAtomic(path, content, mode) {
  *   allowedCidr: string,
  *   validate?: (path: string) => Promise<void>,
  *   reload?: () => Promise<void>,
+ *   lockTimeoutMs?: number,
+ *   lockPollIntervalMs?: number,
  * }} options
  */
 export function createNginxAdapter({
@@ -106,10 +145,14 @@ export function createNginxAdapter({
   allowedCidr,
   validate = async () => {},
   reload = async () => {},
+  lockTimeoutMs = 5000,
+  lockPollIntervalMs = 50,
 }) {
   mkdirSync(includeDir, { recursive: true, mode: 0o755 });
   const activePath = join(includeDir, ACTIVE_FILE_NAME);
   const statePath = join(includeDir, STATE_FILE_NAME);
+  const lockPath = join(includeDir, LOCK_DIR_NAME);
+  const withLock = () => acquireLock(lockPath, { timeoutMs: lockTimeoutMs, pollIntervalMs: lockPollIntervalMs });
 
   function assertAllowedEndpoint(endpoint) {
     if (!endpoint || typeof endpoint !== "object") {
@@ -142,77 +185,121 @@ export function createNginxAdapter({
      * clobbering a route someone else already changed.
      */
     async switch(expectedPrevious, endpoint) {
-      const state = readState(statePath);
-      const expectedKey = JSON.stringify(expectedPrevious ?? null);
-      const actualKey = JSON.stringify(state.currentEndpoint ?? null);
-      if (expectedKey !== actualKey) {
-        throw new TrafficSwitchConflictError(
-          "nginx adapter: expectedPrevious does not match the current route (concurrent switch?)",
-        );
-      }
-      assertAllowedEndpoint(endpoint);
-
-      const rendered = renderUpstreamInclude(endpoint);
-      const previousContent = existsSync(activePath) ? readFileSync(activePath, "utf8") : null;
-
-      writeAtomic(activePath, rendered, 0o644);
+      await withLock();
       try {
-        await validate(activePath);
-      } catch (error) {
-        if (previousContent !== null) {
-          writeAtomic(activePath, previousContent, 0o644);
+        const state = readState(statePath);
+        const expectedKey = JSON.stringify(expectedPrevious ?? null);
+        const actualKey = JSON.stringify(state.currentEndpoint ?? null);
+        if (expectedKey !== actualKey) {
+          throw new TrafficSwitchConflictError(
+            "nginx adapter: expectedPrevious does not match the current route (concurrent switch?)",
+          );
         }
-        throw new NginxReloadError(`nginx adapter: config validation failed, kept previous route: ${error.message}`, {
-          restored: true,
-        });
-      }
+        assertAllowedEndpoint(endpoint);
 
-      try {
-        await reload();
-      } catch (error) {
-        if (previousContent !== null) {
-          writeAtomic(activePath, previousContent, 0o644);
+        const rendered = renderUpstreamInclude(endpoint);
+        const previousContent = existsSync(activePath) ? readFileSync(activePath, "utf8") : null;
+
+        writeAtomic(activePath, rendered, 0o644);
+        try {
+          await validate(activePath);
+        } catch (error) {
+          if (previousContent !== null) {
+            writeAtomic(activePath, previousContent, 0o644);
+          } else {
+            // First-ever publish: there is no previous route to restore to.
+            // Remove the invalid candidate instead of leaving it behind -
+            // the include directory must never hold content nginx never
+            // actually validated.
+            rmSync(activePath, { force: true });
+          }
+          throw new NginxReloadError(`nginx adapter: config validation failed, kept previous route: ${error.message}`, {
+            restored: true,
+          });
+        }
+
+        try {
+          await reload();
+        } catch (error) {
+          if (previousContent !== null) {
+            writeAtomic(activePath, previousContent, 0o644);
+            let restored = true;
+            try {
+              await reload();
+            } catch {
+              restored = false;
+            }
+            throw new NginxReloadError(`nginx adapter: reload failed after switch, restored previous route: ${error.message}`, {
+              restored,
+            });
+          }
+          // First-ever publish and reload failed: remove the unreloaded
+          // candidate so the include directory matches "nothing configured"
+          // (what nginx actually has loaded), then try to bring nginx's own
+          // state back in line with that by reloading once more.
+          rmSync(activePath, { force: true });
           let restored = true;
           try {
             await reload();
           } catch {
             restored = false;
           }
-          throw new NginxReloadError(`nginx adapter: reload failed after switch, restored previous route: ${error.message}`, {
-            restored,
-          });
+          throw new NginxReloadError(
+            `nginx adapter: reload failed on first publish, removed unreloaded candidate: ${error.message}`,
+            { restored },
+          );
         }
-        throw new NginxReloadError(`nginx adapter: reload failed on first publish, no previous route to restore: ${error.message}`, {
-          restored: false,
-        });
-      }
 
-      writeAtomic(
-        statePath,
-        JSON.stringify({ currentEndpoint: endpoint, configPreimage: rendered }, null, 2),
-        0o644,
-      );
-      return { switched: true, previousEndpoint: state.currentEndpoint ?? null, configPreimage: rendered };
+        writeAtomic(
+          statePath,
+          JSON.stringify({ currentEndpoint: endpoint, configPreimage: rendered }, null, 2),
+          0o644,
+        );
+        return { switched: true, previousEndpoint: state.currentEndpoint ?? null, configPreimage: rendered };
+      } finally {
+        releaseLock(lockPath);
+      }
     },
 
     /**
-     * Restores a previously recorded receipt's config verbatim (used on
-     * explicit rollback, not on the automatic validate/reload failure path
-     * above, which already restores inline).
+     * @typedef {object} NginxRestoreToken
+     * @property {string} configPreimage - exact file content a prior `switch()` rendered, not a `contracts.mjs` RollbackReceipt's opaque reference/hash.
+     * @property {{namespace: string, jobId: string, address: string, port: number}|null} currentEndpoint - the endpoint that configPreimage actually serves, so `inspect()` stays accurate after this restore.
      */
-    async restore(receipt) {
-      if (!receipt || typeof receipt.configPreimage !== "string") {
-        throw new EndpointNotAllowedError("nginx adapter: restore requires a receipt with configPreimage");
+    /**
+     * Restores a previously recorded config verbatim (used on an explicit,
+     * operator-triggered rollback, not on the automatic validate/reload
+     * failure path above, which already restores inline).
+     *
+     * Takes an `NginxRestoreToken`, deliberately not a bare `contracts.mjs`
+     * RollbackReceipt: RollbackReceipt has no `currentEndpoint` field at
+     * all, and its `configPreimage` is documented as an opaque
+     * reference/hash, not literal file content. Passing a RollbackReceipt
+     * here directly would silently record `currentEndpoint: null`
+     * regardless of what was actually restored. Build the token from
+     * whichever store durably holds the real content+endpoint pair (e.g.
+     * this adapter's own prior successful `switch()` result) before calling
+     * this.
+     * @param {NginxRestoreToken} token
+     */
+    async restore(token) {
+      if (!token || typeof token.configPreimage !== "string") {
+        throw new EndpointNotAllowedError("nginx adapter: restore requires a token with configPreimage");
       }
-      writeAtomic(activePath, receipt.configPreimage, 0o644);
-      await validate(activePath);
-      await reload();
-      writeAtomic(
-        statePath,
-        JSON.stringify({ currentEndpoint: receipt.currentEndpoint ?? null, configPreimage: receipt.configPreimage }, null, 2),
-        0o644,
-      );
-      return { restored: true };
+      await withLock();
+      try {
+        writeAtomic(activePath, token.configPreimage, 0o644);
+        await validate(activePath);
+        await reload();
+        writeAtomic(
+          statePath,
+          JSON.stringify({ currentEndpoint: token.currentEndpoint ?? null, configPreimage: token.configPreimage }, null, 2),
+          0o644,
+        );
+        return { restored: true };
+      } finally {
+        releaseLock(lockPath);
+      }
     },
   });
 }

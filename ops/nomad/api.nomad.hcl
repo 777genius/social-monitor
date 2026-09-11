@@ -96,10 +96,15 @@ job "sm-api" {
         address_mode = "driver"
 
         check {
-          type     = "http"
-          path     = "/ready"
-          interval = "10s"
-          timeout  = "5s"
+          type         = "http"
+          path         = "/ready"
+          interval     = "10s"
+          timeout      = "5s"
+          # Explicit, not inherited: this task has no host port at all (see
+          # the network_mode comment above), so the check must resolve the
+          # container's own driver-mode IP:port, matching the service block
+          # above, not fall back to a host address that does not serve /ready.
+          address_mode = "driver"
         }
       }
 

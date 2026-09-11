@@ -10,8 +10,9 @@ name: Production API deploy (Nomad MVP)
 #
 # HONEST LIMITATION (documented, not hidden): the restricted SSH wrapper
 # (`ops/deploy/social-monitor-production-ssh-wrapper.sh`) does not yet
-# recognize the `nomad-plan`/`nomad-deploy`/`nomad-status`/`nomad-rollback`
-# verbs this workflow calls. That file is protected by this repo's
+# recognize the `nomad-plan`/`nomad-deploy`/`nomad-status` verbs this
+# workflow calls (rollback is a separate, explicit operator action, not
+# wired into this workflow). That file is protected by this repo's
 # cryptographic transition-review bridge
 # (`ops/deploy/production-transition-review-lib.sh`), so extending it
 # requires a real human-signed review PR, not something produced here. This

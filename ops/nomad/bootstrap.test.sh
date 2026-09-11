@@ -23,13 +23,12 @@ printf '%s\n' "$output" | grep -q 'would verify pinned Nomad' || \
 # --apply is an explicit, safe refusal in this PR: it must fail rather than
 # silently doing nothing or performing an untested mutation.
 set +e
-bash "$BOOTSTRAP" --apply --root "$FIXTURE/root" >/dev/null 2>/tmp/bootstrap-apply-stderr.$$
+bash "$BOOTSTRAP" --apply --root "$FIXTURE/root" >/dev/null 2>"$FIXTURE/bootstrap-apply-stderr"
 status=$?
 set -e
 [[ $status -ne 0 ]] || fail_test '--apply must not report success in this PR'
-grep -q 'not implemented' /tmp/bootstrap-apply-stderr.$$ || \
+grep -q 'not implemented' "$FIXTURE/bootstrap-apply-stderr" || \
   fail_test '--apply must explain that it refuses to run'
-rm -f /tmp/bootstrap-apply-stderr.$$
 
 # Missing mode flag is rejected with the documented usage exit code.
 set +e

@@ -13,6 +13,12 @@
 # own error message): this unit is real, reviewable shape, but wiring it to
 # a live Nomad agent/nginx host is a separate, explicitly reviewed
 # activation step (plan section 7), not something this PR turns on.
+#
+# NOMAD_ADDR below is set to https:// to match host/nomad.hcl's `tls { http
+# = true }` requirement, but nothing consumes it yet: ops/nomad/adapters/
+# nomad.mjs does not read this env var or support TLS/mTLS today - that is
+# part of the same future --apply implementation work, not a gap this
+# comment is hiding.
 
 [Unit]
 Description=Social Monitor sm-api Nomad release transaction
@@ -25,7 +31,7 @@ Type=oneshot
 User=root
 Group=root
 WorkingDirectory=/var/data/social-monitor/control/nomad
-Environment=NOMAD_ADDR=http://127.0.0.1:4646
+Environment=NOMAD_ADDR=https://127.0.0.1:4646
 ExecStart=/usr/bin/node /var/data/social-monitor/integration/ops/nomad/release.mjs --apply --manifest /var/data/social-monitor/control/deploy-state/nomad/pending-manifest.json
 TimeoutStartSec=900
 # A partially-applied release must not silently vanish: journald keeps the

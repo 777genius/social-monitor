@@ -60,10 +60,9 @@ owner=$(SOCIAL_MONITOR_DEPLOY_STATE="$FIXTURE/deploy-state" node "$SCRIPT_DIR/ow
 mkdir -p "$FIXTURE/deploy-state/nomad"
 printf 'not-a-real-owner\n' > "$FIXTURE/deploy-state/nomad/api-owner"
 set +e
-SOCIAL_MONITOR_DEPLOY_STATE="$FIXTURE/deploy-state" node "$SCRIPT_DIR/ownership.mjs" get-owner >/dev/null 2>/tmp/failure-drill-corrupt-marker.$$
+SOCIAL_MONITOR_DEPLOY_STATE="$FIXTURE/deploy-state" node "$SCRIPT_DIR/ownership.mjs" get-owner >/dev/null 2>"$FIXTURE/corrupt-marker-stderr"
 status=$?
 set -e
 [[ $status -ne 0 ]] || fail_test 'a corrupt marker file must not be silently treated as a valid owner'
-rm -f /tmp/failure-drill-corrupt-marker.$$
 
 printf 'nomad failure-drill tests passed\n'
