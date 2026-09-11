@@ -119,3 +119,239 @@ message CheckHealthResponse {
   string collector_version = 3;
   repeated XCollectorWarning warnings = 4;
 }
+
+// Legacy private observation event codecs; unregistered and not V3 capture.
+enum XObservationStage {
+  X_OBSERVATION_STAGE_UNSPECIFIED = 0;
+  X_OBSERVATION_STAGE_HOME = 1;
+  X_OBSERVATION_STAGE_MIGRATION_GET = 2;
+  X_OBSERVATION_STAGE_MIGRATION_POST = 3;
+  X_OBSERVATION_STAGE_JS = 4;
+  X_OBSERVATION_STAGE_BOOTSTRAP_REDIRECT = 5;
+  X_OBSERVATION_STAGE_SEARCH = 6;
+}
+
+enum XObservationCursorState {
+  X_OBSERVATION_CURSOR_STATE_UNSPECIFIED = 0;
+  X_OBSERVATION_CURSOR_STATE_NONE = 1;
+  X_OBSERVATION_CURSOR_STATE_BOTTOM = 2;
+  X_OBSERVATION_CURSOR_STATE_REPEATED = 3;
+  X_OBSERVATION_CURSOR_STATE_INVALID = 4;
+}
+
+enum XObservationMetricState {
+  X_OBSERVATION_METRIC_STATE_UNSPECIFIED = 0;
+  X_OBSERVATION_METRIC_STATE_OBSERVED = 1;
+  X_OBSERVATION_METRIC_STATE_MISSING = 2;
+  X_OBSERVATION_METRIC_STATE_MALFORMED = 3;
+  X_OBSERVATION_METRIC_STATE_CONFLICT = 4;
+}
+
+enum XObservationIdentityState {
+  X_OBSERVATION_IDENTITY_STATE_UNSPECIFIED = 0;
+  X_OBSERVATION_IDENTITY_STATE_VALID = 1;
+}
+
+enum XObservationTargetState {
+  X_OBSERVATION_TARGET_STATE_UNSPECIFIED = 0;
+  X_OBSERVATION_TARGET_STATE_OBSERVED = 1;
+  X_OBSERVATION_TARGET_STATE_OMITTED_UNKNOWN = 2;
+  X_OBSERVATION_TARGET_STATE_INVALID = 3;
+  X_OBSERVATION_TARGET_STATE_UNATTEMPTED = 4;
+  X_OBSERVATION_TARGET_STATE_BUDGET_EXHAUSTED = 5;
+  X_OBSERVATION_TARGET_STATE_TRANSPORT_FAILED = 6;
+  X_OBSERVATION_TARGET_STATE_UNCERTAIN = 7;
+}
+
+enum XObservationFinishState {
+  X_OBSERVATION_FINISH_STATE_UNSPECIFIED = 0;
+  X_OBSERVATION_FINISH_STATE_COMPLETE = 1;
+  X_OBSERVATION_FINISH_STATE_PARTIAL = 2;
+  X_OBSERVATION_FINISH_STATE_FAILED = 3;
+  X_OBSERVATION_FINISH_STATE_UNCERTAIN = 4;
+  X_OBSERVATION_FINISH_STATE_CANCELLED = 5;
+}
+
+enum XObservationEffects {
+  X_OBSERVATION_EFFECTS_UNSPECIFIED = 0;
+  X_OBSERVATION_EFFECTS_NONE = 1;
+  X_OBSERVATION_EFFECTS_POSSIBLE = 2;
+  X_OBSERVATION_EFFECTS_OBSERVED = 3;
+}
+
+enum XObservationFailureCode {
+  X_OBSERVATION_FAILURE_CODE_UNSPECIFIED = 0;
+  X_OBSERVATION_FAILURE_CODE_INVALID_GRANT = 1;
+  X_OBSERVATION_FAILURE_CODE_SCOPE_MISMATCH = 2;
+  X_OBSERVATION_FAILURE_CODE_DEPENDENCY_MISMATCH = 3;
+  X_OBSERVATION_FAILURE_CODE_PROTOCOL_ERROR = 4;
+  X_OBSERVATION_FAILURE_CODE_FENCE_BUSY = 5;
+  X_OBSERVATION_FAILURE_CODE_JOURNAL_FAILURE = 6;
+  X_OBSERVATION_FAILURE_CODE_BUDGET_EXHAUSTED = 7;
+  X_OBSERVATION_FAILURE_CODE_DEADLINE_EXCEEDED = 8;
+  X_OBSERVATION_FAILURE_CODE_CANCELLED = 9;
+  X_OBSERVATION_FAILURE_CODE_DESTINATION_REJECTED = 10;
+  X_OBSERVATION_FAILURE_CODE_REDIRECT_REJECTED = 11;
+  X_OBSERVATION_FAILURE_CODE_BODY_LIMIT = 12;
+  X_OBSERVATION_FAILURE_CODE_HEADER_LIMIT = 13;
+  X_OBSERVATION_FAILURE_CODE_DECODE_FAILED = 14;
+  X_OBSERVATION_FAILURE_CODE_SCHEMA_INVALID = 15;
+  X_OBSERVATION_FAILURE_CODE_BOOTSTRAP_FAILED = 16;
+  X_OBSERVATION_FAILURE_CODE_TRANSACTION_FAILED = 17;
+  X_OBSERVATION_FAILURE_CODE_AUTH_FAILED = 18;
+  X_OBSERVATION_FAILURE_CODE_RATE_LIMITED = 19;
+  X_OBSERVATION_FAILURE_CODE_PROVIDER_FAILED = 20;
+  X_OBSERVATION_FAILURE_CODE_TRANSPORT_UNVERIFIED = 21;
+  X_OBSERVATION_FAILURE_CODE_EFFECTS_UNKNOWN = 22;
+  X_OBSERVATION_FAILURE_CODE_AUTHORITY_CHANGED = 23;
+  X_OBSERVATION_FAILURE_CODE_PROJECTION_UNCERTAIN = 24;
+}
+
+enum XObservationOutcomeKind {
+  X_OBSERVATION_OUTCOME_KIND_UNSPECIFIED = 0;
+  X_OBSERVATION_OUTCOME_KIND_SUCCESS = 1;
+  X_OBSERVATION_OUTCOME_KIND_REDIRECT = 2;
+  X_OBSERVATION_OUTCOME_KIND_FAILED = 3;
+  X_OBSERVATION_OUTCOME_KIND_UNCERTAIN = 4;
+}
+
+enum XObservationReasonCode {
+  X_OBSERVATION_REASON_CODE_UNSPECIFIED = 0;
+  X_OBSERVATION_REASON_CODE_MATCHED = 1;
+  X_OBSERVATION_REASON_CODE_SEARCH_OMISSION = 2;
+  X_OBSERVATION_REASON_CODE_IDENTITY_INVALID = 3;
+  X_OBSERVATION_REASON_CODE_METRICS_INVALID = 4;
+  X_OBSERVATION_REASON_CODE_NOT_ATTEMPTED = 5;
+  X_OBSERVATION_REASON_CODE_LIMIT_REACHED = 6;
+  X_OBSERVATION_REASON_CODE_TRANSPORT_FAILURE = 7;
+  X_OBSERVATION_REASON_CODE_EFFECTS_UNKNOWN = 8;
+  X_OBSERVATION_REASON_CODE_PROJECTION_RANGE_UNSUPPORTED = 9;
+}
+
+message XObservationSendOffer {
+  string operation_id = 1;
+  string batch_id = 2;
+  uint32 epoch = 3;
+  uint32 sequence = 4;
+  XObservationStage stage = 5;
+  string request_digest = 6;
+  string destination_rule_id = 7;
+  string account_ref = 8;
+  optional string query_id = 9;
+  optional uint32 page_index = 10;
+  optional string cursor_hash = 11;
+  optional uint32 parent_sequence = 12;
+  uint32 timeout_ms = 13;
+}
+
+message XObservationSendOutcome {
+  string operation_id = 1;
+  string batch_id = 2;
+  uint32 sequence = 3;
+  string reservation_hash = 4;
+  string request_digest = 5;
+  XObservationStage stage = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp ended_at = 8;
+  google.protobuf.Timestamp response_observed_at = 9;
+  XObservationOutcomeKind outcome = 10;
+  optional uint32 status_code = 11;
+  uint32 encoded_bytes = 12;
+  uint32 decoded_bytes = 13;
+  uint32 header_bytes = 14;
+  optional uint32 candidate_count = 15;
+  optional uint32 candidate_count_lower_bound = 16;
+  XObservationCursorState cursor_state = 17;
+  repeated XObservationReducedObservation reduced_observations = 18;
+  repeated XObservationTargetOutcome target_outcomes = 19;
+  uint32 chunk_index = 20;
+  bool final_chunk = 21;
+  string result_hash = 22;
+  // Absent on v1: preserves the exact prior semantic bytes, including defaults.
+  XObservationAcquisitionV2 acquisition = 23;
+}
+
+message XObservationFinished {
+  string operation_id = 1;
+  string batch_id = 2;
+  XObservationFinishState state = 3;
+  bool reaped = 4;
+  repeated uint32 consumed_sequences = 5;
+  string last_receipt_hash = 6;
+  repeated XObservationTargetOutcomeCount target_outcome_counts = 7;
+  XObservationTerminalError terminal_error = 8;
+}
+
+message XObservationMetric {
+  XObservationMetricState state = 1;
+  optional string value_decimal = 2;
+}
+
+message XObservationMetrics {
+  XObservationMetric likes = 1;
+  XObservationMetric reposts = 2;
+  XObservationMetric replies = 3;
+  XObservationMetric quotes = 4;
+  XObservationMetric views = 5;
+}
+
+message XObservationReducedObservation {
+  string target_key = 1;
+  string source_item_id = 2;
+  string source_binding_id = 3;
+  string external_id = 4;
+  string canonical_url = 5;
+  google.protobuf.Timestamp published_at = 6;
+  google.protobuf.Timestamp response_observed_at = 7;
+  uint32 request_sequence = 8;
+  string query_id = 9;
+  XObservationMetrics metrics = 10;
+  XObservationIdentityState identity_state = 11;
+}
+
+message XObservationTargetOutcome {
+  string target_key = 1;
+  XObservationTargetState state = 2;
+  XObservationReasonCode reason_code = 3;
+  repeated string observation_refs = 4;
+}
+
+message XObservationTargetOutcomeCount {
+  XObservationTargetState state = 1;
+  uint32 count = 2;
+}
+
+message XObservationTerminalError {
+  XObservationFailureCode code = 1;
+  XObservationStage stage = 2;
+  optional uint32 sequence = 3;
+  XObservationEffects effects = 4;
+  optional string receipt_hash = 5;
+  bool retryable = 6;
+}
+
+message XObservationEvent {
+  oneof payload {
+    XObservationSendOffer send_offer = 1;
+    XObservationSendOutcome send_outcome = 2;
+    XObservationFinished finished = 3;
+  }
+}
+
+message XObservationAcquisitionV2 {
+  uint32 schema_version = 1;
+  repeated XObservationAcquiredPost acquired_posts = 2;
+}
+
+message XObservationAcquiredPost {
+  string primary_id = 1;
+  string canonical_url = 2;
+  google.protobuf.Timestamp published_at = 3;
+  optional string author_handle = 4;
+  optional XPostContentKind content_kind = 5;
+  string text = 6;
+  XObservationMetrics metrics = 7;
+  google.protobuf.Timestamp response_observed_at = 8;
+  string query_id = 9;
+  string source_binding_id = 10;
+}

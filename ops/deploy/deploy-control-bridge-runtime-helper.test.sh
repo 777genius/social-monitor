@@ -25,6 +25,10 @@ for source_name in "${bridge_sources[@]}"; do
 done
 
 git -C "$REPO" init -q
+# Commits may start automatic maintenance. Keep its writers in the foreground
+# so the EXIT trap cannot remove .git while detached GC is still updating it.
+git -C "$REPO" config gc.autoDetach false
+git -C "$REPO" config maintenance.autoDetach false
 git -C "$REPO" config user.email deploy-control-bridge-test@example.invalid
 git -C "$REPO" config user.name deploy-control-bridge-test
 git -C "$REPO" add ops/deploy
@@ -150,8 +154,8 @@ cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
 
 commit_target_state() {
   local message=$1
-  git -C "$REPO" add -A
-  git -C "$REPO" commit -qm "$message"
+  git -C "$REPO" add -A || return $?
+  git -C "$REPO" commit -qm "$message" || return $?
   git -C "$REPO" rev-parse HEAD
 }
 
