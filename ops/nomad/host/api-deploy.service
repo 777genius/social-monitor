@@ -1,0 +1,38 @@
+# Host-owned deploy transaction service for `sm-api` (plan section 7).
+# The restricted GitHub deploy client starts this unit (via the existing
+# restricted SSH wrapper's `nomad-deploy` action) and then polls its status
+# instead of holding the SSH connection open for the whole rollout - a
+# dropped SSH session or a cancelled workflow must not abort a release
+# already past the point of no return. This unit does not run in CI: it
+# only exists on the production host after `ops/nomad/bootstrap.sh`.
+#
+# ExecStart intentionally does not accept shell/HCL/stdin from the caller:
+# it reads a single, already-validated, root-owned release manifest path.
+#
+# `release.mjs --apply` is deliberately not implemented yet (see the CLI's
+# own error message): this unit is real, reviewable shape, but wiring it to
+# a live Nomad agent/nginx host is a separate, explicitly reviewed
+# activation step (plan section 7), not something this PR turns on.
+
+[Unit]
+Description=Social Monitor sm-api Nomad release transaction
+Requires=nomad.service
+After=nomad.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/var/data/social-monitor/control/nomad
+Environment=NOMAD_ADDR=http://127.0.0.1:4646
+ExecStart=/usr/bin/node /var/data/social-monitor/integration/ops/nomad/release.mjs --apply --manifest /var/data/social-monitor/control/deploy-state/nomad/pending-manifest.json
+TimeoutStartSec=900
+# A partially-applied release must not silently vanish: journald keeps the
+# phase transitions (plan section 7's prepared/submitted/switched/committed
+# journal) for the next reconnect to read back.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

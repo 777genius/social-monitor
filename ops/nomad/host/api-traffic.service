@@ -1,0 +1,27 @@
+# Host-owned nginx traffic reconciliation loop for `sm-api` (plan section
+# 4): keeps the nginx upstream pointed at whatever allocation Nomad reports
+# as the current stable/promoted one, so a restart/reschedule/auto-revert
+# doesn't leave nginx routing to a container IP that no longer exists.
+# Runs continuously; the tested logic is ops/nomad/reconcile-traffic.mjs's
+# `reconcileTick` (see rollout.test.mjs) - this unit just calls it on an
+# interval and is not itself exercised by any test in this PR.
+
+[Unit]
+Description=Social Monitor sm-api nginx traffic reconciliation
+Requires=nomad.service
+After=nomad.service network-online.target social-monitor-prod.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+Environment=NOMAD_ADDR=http://127.0.0.1:4646
+ExecStart=/usr/bin/node /var/data/social-monitor/integration/ops/nomad/reconcile-traffic.mjs
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
