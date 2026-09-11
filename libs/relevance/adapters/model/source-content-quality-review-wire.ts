@@ -1,6 +1,7 @@
 import type { JsonObject, JsonValue } from "@social-monitor/shared-kernel";
 import type { SourceContentQualityDecision, SourceContentQualityFlag } from "../../domain";
 import type { SourceContentQualityReviewRequest, SourceContentQualityReviewResult } from "../../ports";
+import { SourceContentAssessmentStageError } from "../../ports";
 import { bindPromotionAssessment, promotionReviewSchemaProperties } from "./promotion-review-wire";
 
 export const buildInstructions = (): string =>
@@ -17,6 +18,23 @@ export const buildInstructions = (): string =>
   ].join("\n");
 
 export const parseReviews = (
+  outputText: string | undefined,
+  requests?: readonly SourceContentQualityReviewRequest[],
+): readonly SourceContentQualityReviewResult[] => {
+  try {
+    return parseReviewsUnclassified(outputText, requests);
+  } catch (error) {
+    // Any exception reaching here (JSON.parse syntax errors, shape checks,
+    // the score/decision/flag validation below) is a parse/schema-contract
+    // failure by definition, except a binding failure already tagged inside
+    // the loop, which is rethrown unchanged.
+    if (error instanceof SourceContentAssessmentStageError) throw error;
+    throw new SourceContentAssessmentStageError("parse_schema",
+      error instanceof Error ? error.message : "Invalid quality review output");
+  }
+};
+
+const parseReviewsUnclassified = (
   outputText: string | undefined,
   requests?: readonly SourceContentQualityReviewRequest[],
 ): readonly SourceContentQualityReviewResult[] => {
@@ -60,9 +78,20 @@ export const parseReviews = (
           typeof flag !== "string" || !allowedFlags.has(flag as SourceContentQualityFlag)))) {
       throw new Error("Invalid promotion review result");
     }
+    let assessment: ReturnType<typeof bindPromotionAssessment> | undefined;
+    if (request !== undefined) {
+      try { assessment = bindPromotionAssessment(record, request); }
+      catch (error) {
+        // The only distinct failure class inside this map body: the model's
+        // own bindingId/evidence/resolvedSoftFlags echo did not match this
+        // exact request, as opposed to a schema/shape/enum mismatch above.
+        throw new SourceContentAssessmentStageError("binding",
+          error instanceof Error ? error.message : "Invalid promotion assessment binding");
+      }
+    }
     return {
       candidateId,
-      ...(request === undefined ? {} : { assessment: bindPromotionAssessment(record, request) }),
+      ...(assessment === undefined ? {} : { assessment }),
       decision: readDecision(record.decision),
       confidence: clampNumber(record.confidence, 0, 1),
       qualityScore: optionalScore(record.qualityScore),

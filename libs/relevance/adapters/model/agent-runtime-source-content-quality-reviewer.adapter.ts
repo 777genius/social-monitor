@@ -6,6 +6,7 @@ import {
   subscriptionRuntimeEngine,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import type { SourceContentQualityReviewerPort, SourceContentQualityReviewRequest } from "../../ports";
+import { SourceContentAssessmentStageError } from "../../ports";
 import { promotionReviewInstructions, promotionWireCandidate } from "./promotion-review-wire";
 import { parseReviews, promotionResponseSchema } from "./source-content-quality-review-wire";
 
@@ -44,16 +45,22 @@ export class AgentRuntimeSourceContentQualityReviewerAdapter implements SourceCo
         requests.length > 8 || requests.some((request) =>
           request.promotion?.tenantId !== scope.tenantId ||
           request.promotion?.workspaceId !== scope.workspaceId)) {
-      throw new Error("Assessment task requires a single tenant/workspace scope");
+      throw new SourceContentAssessmentStageError("runtime_status",
+        "Assessment task requires a single tenant/workspace scope");
     }
     const deadlineAtMs = options?.deadlineAtMs ?? (this.options.clock.now().getTime() + this.options.batchTimeoutMs);
     const timeoutMs = Math.min(this.options.batchTimeoutMs, deadlineAtMs - this.options.clock.now().getTime(),
       options?.timeoutMs ?? this.options.batchTimeoutMs);
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || options?.signal.aborted) {
-      throw new Error("Assessment task deadline exhausted");
+    if (options?.signal.aborted) {
+      throw new SourceContentAssessmentStageError("aborted", "Assessment task deadline exhausted");
+    }
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+      throw new SourceContentAssessmentStageError("deadline", "Assessment task deadline exhausted");
     }
     const prompt = JSON.stringify({ candidates: requests.map(promotionWireCandidate) });
-    if (Buffer.byteLength(prompt, "utf8") > 64_000) throw new Error("Assessment request too large");
+    if (Buffer.byteLength(prompt, "utf8") > 64_000) {
+      throw new SourceContentAssessmentStageError("runtime_status", "Assessment request too large");
+    }
     const requestId = `source-content-assessment:${this.options.ids.generate()}`;
     const command = {
       requestId, correlationId: requestId,
@@ -68,9 +75,31 @@ export class AgentRuntimeSourceContentQualityReviewerAdapter implements SourceCo
     };
     const signal = options === undefined ? AbortSignal.timeout(timeoutMs)
       : AbortSignal.any([options.signal, AbortSignal.timeout(timeoutMs)]);
-    const result = await this.options.client.runTask(command, { signal });
+    // The transport call itself (network/gRPC/runtime-pool failure before any
+    // completed attempt exists) is a distinct, earlier failure than an
+    // attested-but-invalid completion below. Classify it separately so
+    // telemetry can tell "never got a result" apart from "got one and it was
+    // malformed" without ever reading the underlying transport error text.
+    let result: Awaited<ReturnType<AgentRuntimeClientPort["runTask"]>>;
+    try {
+      result = await this.options.client.runTask(command, { signal });
+    } catch (error) {
+      if (error instanceof SourceContentAssessmentStageError) throw error;
+      // The message is kept on the error object itself (never written into
+      // telemetry, which only ever reads `.stage`) so existing transport-level
+      // validation detail stays visible to direct callers/tests.
+      const message = error instanceof Error ? error.message : "Assessment runtime call failed";
+      if (signal.aborted) throw new SourceContentAssessmentStageError("aborted", message);
+      throw new SourceContentAssessmentStageError("runtime_status", message);
+    }
     const attestation = result.executionAttestation;
-    if (signal.aborted || this.options.clock.now().getTime() >= deadlineAtMs || result.status !== "completed" || result.failure !== undefined ||
+    if (signal.aborted) {
+      throw new SourceContentAssessmentStageError("aborted", "Assessment task deadline exhausted after runtime call");
+    }
+    if (this.options.clock.now().getTime() >= deadlineAtMs) {
+      throw new SourceContentAssessmentStageError("deadline", "Assessment task deadline exhausted after runtime call");
+    }
+    if (result.status !== "completed" || result.failure !== undefined ||
         attestation === undefined || attestation.schemaVersion !== 1 ||
         attestation.requestId !== requestId || attestation.purpose !== command.purpose ||
         attestation.provider !== command.provider || attestation.model !== command.controls.model ||
@@ -80,15 +109,18 @@ export class AgentRuntimeSourceContentQualityReviewerAdapter implements SourceCo
         !isSha256Hex(attestation.canonicalRequestSha256) || !isSha256Hex(attestation.launcherSha256) ||
         attestation.selectedOutputKind !== "structured_output" ||
         !executionAttestationOutputMatches(attestation, result)) {
-      throw new Error("Invalid assessment runtime completion");
+      throw new SourceContentAssessmentStageError("runtime_status", "Invalid assessment runtime completion");
     }
     const output = JSON.stringify(result.structuredOutput);
     if (output === undefined || Buffer.byteLength(output, "utf8") > 128_000) {
-      throw new Error("Assessment output missing or too large");
+      throw new SourceContentAssessmentStageError("runtime_status", "Assessment output missing or too large");
     }
     const reviews = parseReviews(output, requests);
-    if (signal.aborted || this.options.clock.now().getTime() >= deadlineAtMs) {
-      throw new Error("Assessment validation deadline exhausted");
+    if (signal.aborted) {
+      throw new SourceContentAssessmentStageError("aborted", "Assessment validation deadline exhausted");
+    }
+    if (this.options.clock.now().getTime() >= deadlineAtMs) {
+      throw new SourceContentAssessmentStageError("deadline", "Assessment validation deadline exhausted");
     }
     return reviews;
   }
