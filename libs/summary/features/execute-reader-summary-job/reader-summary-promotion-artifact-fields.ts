@@ -33,6 +33,7 @@ export const buildReaderSummaryPromotionArtifactFields = (params: {
             params.modelEvidence.approvedSameStoryRelations,
           relatedTopicRelations: params.modelEvidence.relatedTopicRelations,
           editorialSlate: params.modelEvidence.editorialSlate,
+          topStories: params.draft.topStories,
           attestationBinding: {
             artifactId: params.artifactId,
             sourceWindow: params.modelEvidence.sourceWindow,
