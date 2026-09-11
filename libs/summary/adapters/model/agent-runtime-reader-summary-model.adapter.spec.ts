@@ -66,10 +66,10 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
       "Preserve material qualifiers exactly as stated",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
-      "must explain why the item matters",
+      "its concrete product or workflow impact",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
-      "each topStories summary 420-650 characters",
+      "each topStories summary 140-300 characters",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
       "Keep source validation out of topStories summary prose",
