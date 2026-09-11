@@ -4,11 +4,15 @@
 # wrapper authenticates with a token tied to this policy, never the
 # bootstrap management token.
 #
-# The nginx traffic-reconciliation adapter (plan section 4) needs its own,
-# separate, strictly read-only policy ("read-job"/"list-jobs" only, no
-# submit-job/dispatch-job). That adapter does not exist until the rollout PR
-# ships its `ops/nomad/adapters/nginx.mjs`, so its policy file is added then
-# rather than being a second, unused namespace stanza here.
+# The nginx traffic-reconciliation adapter (plan section 4;
+# `ops/nomad/adapters/nginx.mjs` and `reconcile-traffic.mjs` already exist in
+# this repo) still needs its own, separate, strictly read-only policy
+# ("read-job"/"list-jobs" only, no submit-job/dispatch-job) and a matching
+# token wired into `host/api-traffic.service`. Neither exists yet - this is
+# tracked as an open gap in ops/nomad/README.md, not a "future PR" this
+# comment can describe as not-yet-relevant: the code that will need it is
+# already shipped, only the policy/token plumbing for real activation is
+# missing.
 
 namespace "social-monitor" {
   # No `policy` shorthand here on purpose: Nomad merges a namespace block's

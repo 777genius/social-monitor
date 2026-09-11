@@ -73,8 +73,16 @@ plugin "docker" {
     # UID/GID at runtime, so CHOWN/SETUID/SETGID have no real consumer here -
     # granting them would only widen what a compromised container could do.
     allow_caps              = []
+    # false (the default, spelled out here so it can never be flipped by a
+    # careless future edit without touching this exact line): `true` would
+    # let any job with submit-job capability (the restricted deploy token
+    # in acl.hcl has exactly that) bind-mount arbitrary host paths via its
+    # own task config `volumes` list, regardless of privileged mode -
+    # directly contradicting this repo's "no arbitrary host mounts" ACL
+    # boundary. The named `host_volume` above does not need this: Nomad
+    # resolves `host_volume`/`volume_mount` independently of this setting.
     volumes {
-      enabled = true
+      enabled = false
     }
   }
 }

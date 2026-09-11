@@ -151,6 +151,13 @@ production today, even though every test above is green:
     request fields, JSON job object response) that `planJob`/`runJob` now
     depend on. Both are tested only against fakes. Confirm both against a
     real cluster before relying on either.
+11. **The nginx traffic-reconciliation adapter has no ACL policy or token of
+    its own yet.** `ops/nomad/adapters/nginx.mjs`/`reconcile-traffic.mjs`
+    already exist and are fully tested, but `host/acl.hcl` only defines the
+    deploy token's policy - the separate, strictly read-only
+    ("read-job"/"list-jobs" only) policy this adapter needs, and a matching
+    token wired into `host/api-traffic.service`, do not exist yet. Add both
+    before wiring the reconciliation loop to a real Nomad agent.
 
 None of the above are things a future PR can silently work around by
 editing a hash constant, a signature file, or an `allowed_signers` entry -
