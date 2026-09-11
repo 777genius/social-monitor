@@ -37,12 +37,19 @@ export const parseReviews = (
 
     const candidateId = nonEmptyString(raw.candidateId, "candidateId");
     const request = requests?.find((request) => request.candidateId === candidateId);
-    // Two attested native completions used the earlier `results` dialect even
-    // though the canonical schema was supplied. Normalize only that complete,
-    // request-bound dialect. Its single quality/support score supplies the
-    // missing relevance score; integrity retains the deterministic assessment.
-    // No source, identity, evidence or blocker is inferred.
-    const record = compatibilityResults === undefined || request === undefined ? raw
+    // Two attested native completions used an earlier item dialect even though
+    // the canonical schema was supplied under a `results` outer envelope. The
+    // same item dialect can also arrive under the schema-compliant `reviews`
+    // envelope, so detection is
+    // item-level and envelope-independent: only the exact documented legacy
+    // markers (relevant/not_relevant plus a missing score/flags field or a
+    // documented alias key) trigger normalization, so a merely incomplete
+    // canonical item or a single tampered field is never silently reinterpreted.
+    // Its single quality/support score supplies the missing relevance score;
+    // integrity retains the deterministic assessment. No source, identity,
+    // evidence or blocker is inferred, and binding/evidence checks below run
+    // unchanged against the normalized record.
+    const record = request === undefined || !isLegacyPromotionReviewItem(raw) ? raw
       : normalizeCompatiblePromotionReview(raw, request);
     if (requests !== undefined && (request === undefined ||
         ![record.confidence, record.qualityScore, record.interestRelevanceScore,
@@ -66,6 +73,23 @@ export const parseReviews = (
     };
   });
 };
+
+const hasLegacyAliasKey = (record: JsonObject): boolean =>
+  (!Object.hasOwn(record, "reason") && Object.hasOwn(record, "justification")) ||
+  (!Object.hasOwn(record, "resolvedSoftFlags") &&
+    (Object.hasOwn(record, "flagResolutions") || Object.hasOwn(record, "screeningFlagResolutions")));
+
+// The legacy `relevant`/`not_relevant` decision never appears in a canonical
+// response (the schema enum only allows promote/keep/downrank/reject/needs_context),
+// so it is an unambiguous dialect signal on its own. It is still not sufficient
+// alone: a tampered but otherwise-complete canonical item (every newer field
+// present, no alias keys) must keep being rejected, not reinterpreted. Only the
+// combination with a missing newer field or a documented alias key marks a
+// genuine legacy-shaped item.
+const isLegacyPromotionReviewItem = (record: JsonObject): boolean =>
+  (record.decision === "relevant" || record.decision === "not_relevant") &&
+  (!Object.hasOwn(record, "interestRelevanceScore") || !Object.hasOwn(record, "engagementIntegrityScore") ||
+    !Object.hasOwn(record, "flags") || hasLegacyAliasKey(record));
 
 const normalizeCompatiblePromotionReview = (
   record: JsonObject, request: SourceContentQualityReviewRequest,
