@@ -1,4 +1,9 @@
 import type { XAcquisitionPayload, XSupplementary, XPredecessorEvidence } from "./x-observation-acquisition-contract";
+
+// OWNER STATUS: dormant historical-recovery experiment, not an approved runtime path.
+// Prefer a simpler bounded and auditable recovery for any concrete missed-post incident.
+// Do not compose, activate, or extend this design without fresh explicit owner agreement
+// and evidence that the simpler recovery path cannot safely meet the requirement.
 // Incident-only values. Generated transport types never enter the authority model.
 export const xOperationId = "seven-day-6101-6102/x-observation-v1";
 export const xTenantId = "00000000-0000-7000-8000-000000006101";
