@@ -15,7 +15,7 @@ export const buildReaderPostPromotionReasons = (params: {
   readonly lead: SummaryEvidenceItem;
   readonly stories: readonly TopReadCandidate[];
 }): readonly string[] => {
-  const { selected } = params;
+  const { selected, lead } = params;
   // Model prose may describe only this lead and its admitted support. Retain
   // the complete summary, including qualifications; never salvage a claim by
   // dropping its out-of-scope citation or clipping its limiting sentence.
@@ -31,17 +31,26 @@ export const buildReaderPostPromotionReasons = (params: {
       ];
 };
 
+// The compact `summary` display field is capped for readability; the
+// long-form `whyImportant` reasons must retain the complete qualified model
+// description (see the note above `buildReaderPostPromotionReasons`).
+const COMPACT_SUMMARY_MAX_LENGTH = 300;
+
 export const readerPostPromotionModelSummary = (params: {
   readonly selected: SelectedReaderPostPromotion;
   readonly lead: SummaryEvidenceItem;
   readonly stories: readonly TopReadCandidate[];
-}): string | undefined => readerPostPromotionModelStory(params)?.summary;
+}): string | undefined =>
+  readerPostPromotionModelStory(params, COMPACT_SUMMARY_MAX_LENGTH)?.summary;
 
-const readerPostPromotionModelStory = (params: {
-  readonly selected: SelectedReaderPostPromotion;
-  readonly lead: SummaryEvidenceItem;
-  readonly stories: readonly TopReadCandidate[];
-}): TopReadCandidate | undefined => {
+const readerPostPromotionModelStory = (
+  params: {
+    readonly selected: SelectedReaderPostPromotion;
+    readonly lead: SummaryEvidenceItem;
+    readonly stories: readonly TopReadCandidate[];
+  },
+  maxSummaryLength?: number,
+): TopReadCandidate | undefined => {
   const { selected, lead } = params;
   return params.stories.find(
     (candidate) =>
@@ -57,7 +66,8 @@ const readerPostPromotionModelStory = (params: {
       candidate.readerReasonProvenance.originalSummary === candidate.summary &&
       candidate.storyClusterId === selected.candidate.clusterId &&
       candidate.summary.trim().length >= 40 &&
-      candidate.summary.trim().length <= 300 &&
+      (maxSummaryLength === undefined ||
+        candidate.summary.trim().length <= maxSummaryLength) &&
       !isReaderTitleReasonDuplicate(candidate.title, candidate.summary) &&
       isUsableModelSummary(params, candidate.summary),
   );
