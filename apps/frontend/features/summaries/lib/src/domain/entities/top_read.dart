@@ -1,10 +1,13 @@
 import '../value_objects/preview_media.dart';
 import '../value_objects/provider_metric_label.dart';
+import '../value_objects/reader_captured_source.dart';
 import '../value_objects/reader_post_promotion_attestation.dart';
 import '../value_objects/signal_score.dart';
 
 final class TopRead {
   const TopRead({
+    this.displayHeadline,
+    this.capturedSource,
     this.storyClusterId,
     this.cardKind = ReaderSummaryCardKind.unsupported,
     this.relationId,
@@ -27,6 +30,8 @@ final class TopRead {
     this.previewMedia,
   });
 
+  final ReaderDisplayHeadline? displayHeadline;
+  final ReaderCapturedSource? capturedSource;
   final String? storyClusterId;
   final ReaderSummaryCardKind cardKind;
   final String? relationId;

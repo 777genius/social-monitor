@@ -1,0 +1,1815 @@
+diff --git a/docs/agent-account-observability.md b/docs/agent-account-observability.md
+index 956765f6d6f2916f358419b0e453873ffa2302f1..6e3cab1bb4f6a711d3ca973f004f5962dfb949cc 100644
+--- a/docs/agent-account-observability.md
++++ b/docs/agent-account-observability.md
+@@ -153,3 +153,61 @@ Next integration step:
+ - `/usage` may miss Claude usage from other devices or claude.ai.
+ - Never persist or print raw auth JSON, access tokens, refresh tokens, cookies
+   or id tokens.
++
++### Native snapshot-bound capacity rechecks
++
++The native rechecker uses a fresh `CodexQuotaSnapshotObservation`, independently
++hashing the selected `tokens.account_id` only after strict ID/access JWT claim
++consistency checks. Email, OAuth subject, slot aliases and the claimed capacity
++ID never supply missing identity. JWT decoding is local consistency evidence,
++not signature verification; successful authenticated native usage supplies the
++remote evidence. The application compares the result with the canonical ID on
++the original claim and resolves only that record through the existing CAS.
++Failures preserve any still-future prior block.
++
++The supported deployment is trusted Linux host/runtime UID, a deployment-owned
++absolute stock ELF executable mapped to Codex 0.147.0 source
++`be6e8eac029b183056b7e4402879f15d2c85f61b`, and direct trusted first-party
++backend/OAuth/TLS routes. Relative commands and wrappers are outside this
++profile. Local system/managed/requirements files and inherited project config
++must be absent; present files reject this profile, rather than hiding policy.
++Enterprise cloud requirements remain enabled and strict startup must succeed.
++No hostile or concurrent authorized writer may modify the fresh private home.
++This is a construction/deployment contract, not arbitrary-binary certification.
++
++Each observation copies the selected source with the existing codec and
++ephemeral materializer, supplies private HOME/CODEX_HOME/cwd and minimal env,
++and starts `app-server --strict-config --stdio`. Root overrides pin File auth,
++first-party backend/provider, disabled analytics/exporters and a nonempty static
++catalog. The packaged catalog is one complete entry from that revision's
++`codex-rs/models-manager/models.json`; it suppresses discovery and is **not**
++model-availability evidence. After initialize, private credentials and the final
++cloud-inclusive `config/read` projection are checked. The same client performs
++one `account/read(refreshToken=false)` followed by one `account/rateLimits/read`.
++There are no observation retries, recovery, login, model or reset calls.
++
++Binding currently covers main five-hour/seven-day quota with usable future
++resets. Model/service-tier-specific demand, special-model prior limits and
++unmodeled workspace credit/spend-control limits reject conservatively; a
++successful main-bucket response cannot clear those records. Null/malformed auth,
++unknown account identity fields, empty/irrelevant quota and inconsistent main
++root/map snapshots reject before permissive diagnostics conversion. Legacy
++diagnostics retain their separate behavior.
++
++Managed same-principal token rotation, serialization changes and optional null
++normalization are accepted. Source bytes, raw selected account ID, consistent
++user identity and non-token auth/config content must remain unchanged. Stock
++startup may refresh credentials and retry cloud loading; a quota RPC performs
++usage and credit-detail GETs. `refreshToken=false` does not disable automatic
++refresh, and the adapter does not claim an invisible auth-error history or zero
++background traffic. Successful usage with unchanged valid credentials remains
++acceptable even if an internal transient refresh failed without a wire signal.
++
++Credential server requests, login notifications, invalid auth-mode transitions
++and visible transport failures invalidate the observation. Notification/request
++classification precedes response-ID matching. Final evidence follows confirmed
++process exit and stdio closure, including signal exit, before private cleanup.
++A maximum 60-second deadline, unconfirmed stop, invalid final evidence or cleanup
++failure returns no usable quota. The adapter retains failed cleanup ownership
++for `dispose()` and never deletes a live child's tree. Source credentials are
++never updated from the rotated private copy.
+diff --git a/packages/agent-account-observability/src/infrastructure/JsonRpcLineClient.ts b/packages/agent-account-observability/src/infrastructure/JsonRpcLineClient.ts
+index baa7558f6a0f9fc10a927845deb5ea0ce1e7386e..d93e97c3e07f5ef9ada9f18f6f3da73c4e94bc0e 100644
+--- a/packages/agent-account-observability/src/infrastructure/JsonRpcLineClient.ts
++++ b/packages/agent-account-observability/src/infrastructure/JsonRpcLineClient.ts
+@@ -19,6 +19,8 @@ export type JsonRpcLineClientOptions = {
+   readonly startupTimeoutMs?: number;
+   readonly requestTimeoutMs?: number;
+   readonly spawnProcess?: typeof spawn;
++  readonly onServerMessage?: (message: Readonly<Record<string, unknown>>) => void;
++  readonly onTransportFailure?: () => void;
+ };
+ 
+ export const DEFAULT_CODEX_APP_SERVER_LAUNCH_MIN_INTERVAL_MS = 10_000;
+@@ -31,6 +33,11 @@ export class JsonRpcLineClient implements CodexAppServerClientPort {
+   private child: ChildProcessWithoutNullStreams | null = null;
+   private nextId = 1;
+   private stdoutBuffer = "";
++  private exited = false;
++  private streamsClosed = false;
++  private failedToSpawn = false;
++  private closing = false;
++  private closePromise: Promise<void> | undefined;
+   private readonly pending = new Map<
+     number,
+     {
+@@ -54,12 +61,26 @@ export class JsonRpcLineClient implements CodexAppServerClientPort {
+     );
+     this.child.stdout.setEncoding("utf8");
+     this.child.stderr.setEncoding("utf8");
++    this.child.stderr.resume();
++    this.child.on("close", () => {
++      this.streamsClosed = true;
++      if (this.stdoutBuffer.trim()) this.options.onTransportFailure?.();
++    });
+     this.child.stdout.on("data", (chunk) => this.onStdout(String(chunk)));
+-    this.child.stdin.on("error", (error) => this.rejectAll(error));
++    this.child.stdin.on("error", (error) => {
++      this.options.onTransportFailure?.();
++      this.rejectAll(error);
++    });
+     this.child.on("exit", (code, signal) => {
++      this.exited = true;
++      if (!this.closing) this.options.onTransportFailure?.();
+       this.rejectAll(new Error(`json_rpc_process_exited:${code ?? signal}`));
+     });
+-    this.child.on("error", (error) => this.rejectAll(error));
++    this.child.on("error", (error) => {
++      if (!this.child?.pid) this.failedToSpawn = true;
++      this.options.onTransportFailure?.();
++      this.rejectAll(error);
++    });
+     try {
+       await this.call({
+         method: "initialize",
+@@ -124,19 +145,40 @@ export class JsonRpcLineClient implements CodexAppServerClientPort {
+   }
+ 
+   async close(): Promise<void> {
++    if (this.closePromise) return this.closePromise;
++    this.closePromise = this.stop();
++    try { await this.closePromise; } finally { this.closePromise = undefined; }
++  }
++
++  private async stop(): Promise<void> {
+     if (!this.child) return;
++    this.closing = true;
+     const child = this.child;
+-    this.child = null;
+     this.rejectAll(new Error("json_rpc_process_closed"));
+-    if (child.exitCode !== null) return;
+-    child.kill("SIGTERM");
+-    if (await waitForChildExit(child, 250)) return;
+-    child.kill("SIGKILL");
+-    await waitForChildExit(child, 250);
++    const stopped = () => this.isStopped() && this.streamsClosed;
++    if (stopped()) { this.child = null; return; }
++    child.stdin.end();
++    if (await waitForChildExit(child, 250, stopped)) { this.child = null; return; }
++    if (!this.isStopped()) child.kill("SIGTERM");
++    if (await waitForChildExit(child, 250, stopped)) { this.child = null; return; }
++    if (!this.isStopped()) child.kill("SIGKILL");
++    if (await waitForChildExit(child, 250, stopped)) { this.child = null; return; }
++    // Keep ownership: callers must not remove a live child's private home.
++    throw new Error("json_rpc_process_stop_unconfirmed");
++  }
++
++  isStopped(): boolean {
++    return !this.child || this.exited || this.failedToSpawn || childHasExited(this.child);
+   }
+ 
+   private onStdout(chunk: string): void {
+     this.stdoutBuffer += chunk;
++    if (this.stdoutBuffer.length > 2 * 1024 * 1024) {
++      this.options.onTransportFailure?.();
++      this.rejectAll(new Error("json_rpc_output_limit"));
++      this.stdoutBuffer = "";
++      return;
++    }
+     const lines = this.stdoutBuffer.split(/\n/);
+     this.stdoutBuffer = lines.pop() ?? "";
+     for (const line of lines) {
+@@ -146,12 +188,25 @@ export class JsonRpcLineClient implements CodexAppServerClientPort {
+       try {
+         message = JSON.parse(trimmed);
+       } catch {
++        this.options.onTransportFailure?.();
+         continue;
+       }
+       const record =
+         message && typeof message === "object"
+           ? (message as Record<string, unknown>)
+           : null;
++      // Server request IDs occupy a different namespace from client request IDs.
++      if (record && "method" in record) {
++        if (typeof record.method !== "string") {
++          this.options.onTransportFailure?.();
++          this.rejectAll(new Error("json_rpc_invalid_method"));
++          continue;
++        }
++        try { this.options.onServerMessage?.(record); }
++        catch { this.rejectAll(new Error("json_rpc_observation_invalidated")); }
++        continue;
++      }
++      if (record?.error) this.options.onTransportFailure?.();
+       const id = typeof record?.id === "number" ? record.id : undefined;
+       if (id === undefined) continue;
+       const pending = this.pending.get(id);
+@@ -196,23 +251,28 @@ function toError(error: unknown): Error {
+ function waitForChildExit(
+   child: ChildProcessWithoutNullStreams,
+   timeoutMs: number,
++  stopped: () => boolean,
+ ): Promise<boolean> {
+-  if (child.exitCode !== null) return Promise.resolve(true);
++  if (stopped()) return Promise.resolve(true);
+   return new Promise((resolve) => {
+     let settled = false;
+     const finish = (exited: boolean) => {
+       if (settled) return;
+       settled = true;
+       clearTimeout(timer);
+-      child.off("exit", onExit);
++      child.off("close", onExit);
+       resolve(exited);
+     };
+-    const onExit = () => finish(true);
+-    const timer = setTimeout(() => finish(child.exitCode !== null), timeoutMs);
+-    child.once("exit", onExit);
++    const onExit = () => finish(stopped());
++    const timer = setTimeout(() => finish(stopped()), timeoutMs);
++    child.once("close", onExit);
+   });
+ }
+ 
++function childHasExited(child: ChildProcessWithoutNullStreams): boolean {
++  return child.exitCode != null || child.signalCode != null;
++}
++
+ export class CodexAppServerClientFactory
+   implements CodexAppServerClientFactoryPort
+ {
+@@ -226,6 +286,9 @@ export class CodexAppServerClientFactory
+       readonly requestTimeoutMs?: number;
+       readonly appServerLaunchThrottle?: AppServerLaunchThrottlePort;
+       readonly appServerLaunchMinIntervalMs?: number;
++      readonly isolatedLaunch?: JsonRpcLineClientOptions;
++      /** Retain lifecycle ownership even when initialize fails. */
++      readonly onClientCreated?: (client: JsonRpcLineClient) => void;
+     } = {},
+   ) {
+     const minIntervalMs =
+@@ -264,7 +327,9 @@ export class CodexAppServerClientFactory
+       ...(input.timeoutMs ?? this.options.requestTimeoutMs
+         ? { requestTimeoutMs: input.timeoutMs ?? this.options.requestTimeoutMs }
+         : {}),
++      ...this.options.isolatedLaunch,
+     });
++    this.options.onClientCreated?.(client);
+     await client.start();
+     return client;
+   }
+diff --git a/packages/agent-account-observability/src/infrastructure/tests/JsonRpcLineClient.test.ts b/packages/agent-account-observability/src/infrastructure/tests/JsonRpcLineClient.test.ts
+index 9989c6991be3925d59e780152a2900e5b170b6fc..d4f8fc5e5a92e6e29c34e4cbf7fa74f85d1efbab 100644
+--- a/packages/agent-account-observability/src/infrastructure/tests/JsonRpcLineClient.test.ts
++++ b/packages/agent-account-observability/src/infrastructure/tests/JsonRpcLineClient.test.ts
+@@ -66,6 +66,45 @@ done
+     });
+     await client.close();
+   });
++  it("classifies server messages before matching colliding response IDs", async () => {
++    const child = createFakeChildWithSecondWriteFailure();
++    const received: string[] = [];
++    const stdin = new Writable({ write(chunk, _encoding, callback) {
++      callback();
++      const request = JSON.parse(String(chunk));
++      queueMicrotask(() => {
++        if (request.method !== "initialize") child.stdout.emit("data", JSON.stringify({
++          id: request.id, method: "account/updated", params: { authMode: "chatgpt" }, result: { wrong: true },
++        }) + "\n");
++        child.stdout.emit("data", JSON.stringify({ id: request.id, result: { correct: true } }) + "\n");
++      });
++    } });
++    Object.assign(child, { stdin });
++    const client = new JsonRpcLineClient({ command: "synthetic", args: [], cwd: "/tmp", env: {},
++      spawnProcess: (() => child) as typeof import("node:child_process").spawn,
++      onServerMessage: (message) => { received.push(String(message.method)); },
++    });
++    await client.start();
++    expect(await client.call({ method: "account/read" })).toEqual({ correct: true });
++    expect(received).toEqual(["account/updated"]);
++    await client.close();
++    expect(client.isStopped()).toBe(true);
++  });
++
++  it("invalidates a partial final frame while draining shutdown output", async () => {
++    const child = createFakeChildWithSecondWriteFailure();
++    let failed = false;
++    const client = new JsonRpcLineClient({ command: "synthetic", args: [], cwd: "/tmp", env: {},
++      spawnProcess: (() => child) as typeof import("node:child_process").spawn,
++      onTransportFailure: () => { failed = true; },
++    });
++    await client.start();
++    child.stdout.emit("data", '{"method":');
++    await client.close();
++    expect(failed).toBe(true);
++    expect(client.isStopped()).toBe(true);
++  });
++
+ });
+ 
+ function createFakeChildWithSecondWriteFailure(): ChildProcessWithoutNullStreams {
+@@ -94,7 +133,7 @@ function createFakeChildWithSecondWriteFailure(): ChildProcessWithoutNullStreams
+     kill(signal: NodeJS.Signals = "SIGTERM") {
+       this.killed = true;
+       this.exitCode = 0;
+-      queueMicrotask(() => this.emit("exit", 0, signal));
++      queueMicrotask(() => { this.emit("exit", 0, signal); this.emit("close", 0, signal); });
+       return true;
+     },
+   });
+diff --git a/packages/agent-account-observability/src/providers/codex/CodexAppServerQuotaReader.ts b/packages/agent-account-observability/src/providers/codex/CodexAppServerQuotaReader.ts
+index 6f1e9c9ec44a0d849cd676ccaef193c32b68d105..cea5fb92f8b780f891ad1cf4637264ebb31dc7db 100644
+--- a/packages/agent-account-observability/src/providers/codex/CodexAppServerQuotaReader.ts
++++ b/packages/agent-account-observability/src/providers/codex/CodexAppServerQuotaReader.ts
+@@ -28,7 +28,14 @@ import {
+ import type {
+   CodexAccountSlot,
+   CodexAppServerClientFactoryPort,
++  CodexAppServerClientPort,
+ } from "./codexTypes";
++import { strictCodexAccountRead, strictCodexMainRateLimits } from "./CodexAppServerQuotaReaderStrict";
++
++export enum CodexQuotaValidationMode {
++  Diagnostics = "diagnostics",
++  NativeSnapshot = "native_snapshot",
++}
+ 
+ export type CodexAuthAndQuotaRead = {
+   readonly auth: AuthSession;
+@@ -46,6 +53,8 @@ export class CodexAppServerQuotaReader {
+   constructor(
+     private readonly dependencies: {
+       readonly clientFactory: CodexAppServerClientFactoryPort;
++      readonly validationMode?: CodexQuotaValidationMode;
++      readonly afterInitialize?: (client: CodexAppServerClientPort) => Promise<void>;
+     },
+   ) {}
+ 
+@@ -59,11 +68,13 @@ export class CodexAppServerQuotaReader {
+       ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+     });
+     try {
++      await this.dependencies.afterInitialize?.(client);
+       const accountResult = await client.call({
+         method: "account/read",
+         params: { refreshToken: false },
+         ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+       });
++      if (this.dependencies.validationMode === CodexQuotaValidationMode.NativeSnapshot) strictCodexAccountRead(accountResult);
+       const auth = authSessionFromAccountRead({
+         result: accountResult,
+         account: input.account,
+@@ -75,7 +86,8 @@ export class CodexAppServerQuotaReader {
+         ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+       });
+       const quota = quotaSnapshotFromRateLimits({
+-        result: rateLimitsResult,
++        result: this.dependencies.validationMode === CodexQuotaValidationMode.NativeSnapshot
++          ? strictCodexMainRateLimits(rateLimitsResult, input.now) : rateLimitsResult,
+         now: input.now,
+       });
+       return {
+@@ -95,6 +107,9 @@ export class CodexAppServerQuotaReader {
+         ],
+       };
+     } catch (error) {
++      if (this.dependencies.validationMode === CodexQuotaValidationMode.NativeSnapshot) {
++        throw new Error("codex_native_quota_read_rejected");
++      }
+       if (isReloginError(error)) {
+         return {
+           auth: {
+diff --git a/packages/agent-account-observability/src/providers/codex/CodexAppServerQuotaReaderStrict.ts b/packages/agent-account-observability/src/providers/codex/CodexAppServerQuotaReaderStrict.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1ad224ff845ee3534c315ac655fb7218aaaf6b3f
+--- /dev/null
++++ b/packages/agent-account-observability/src/providers/codex/CodexAppServerQuotaReaderStrict.ts
+@@ -0,0 +1,62 @@
++import { isDeepStrictEqual } from "node:util";
++
++function invalid(): never { throw new Error("codex_native_quota_invalid"); }
++function object(value: unknown): Record<string, unknown> {
++  if (!value || typeof value !== "object" || Array.isArray(value)) return invalid();
++  return value as Record<string, unknown>;
++}
++
++export function strictCodexAccountRead(value: unknown): void {
++  const root = object(value);
++  const account = object(root.account);
++  if (Object.keys(root).some((key) => !["account", "requiresOpenaiAuth"].includes(key))) invalid();
++  if (root.requiresOpenaiAuth !== true || account.type !== "chatgpt" ||
++    typeof account.planType !== "string" || !account.planType ||
++    !(account.email === null || typeof account.email === "string") ||
++    Object.keys(account).some((key) => !["type", "email", "planType"].includes(key))) invalid();
++}
++
++/** Validate the correlated main bucket before permissive diagnostics conversion. */
++export function strictCodexMainRateLimits(value: unknown, now: Date): unknown {
++  const root = object(value);
++  const main = object(root.rateLimits);
++  if (main.limitId !== "codex") invalid();
++  if (Object.keys(root).some((key) => !["rateLimits", "rateLimitsByLimitId", "rateLimitResetCredits"].includes(key)) ||
++    Object.keys(main).some((key) => !["limitId", "limitName", "primary", "secondary", "credits", "individualLimit",
++      "spendControlReached", "planType", "rateLimitReachedType"].includes(key))) invalid();
++  for (const key of ["limitName", "planType"]) {
++    if (main[key] != null && typeof main[key] !== "string") invalid();
++  }
++  if (root.rateLimitsByLimitId != null) {
++    const buckets = object(root.rateLimitsByLimitId);
++    if (!isDeepStrictEqual(buckets.codex, main)) invalid();
++    for (const [key, bucket] of Object.entries(buckets)) {
++      if (object(bucket).limitId !== key) invalid();
++    }
++  }
++  for (const [key, duration] of [["primary", 300], ["secondary", 10080]] as const) {
++    const window = object(main[key]);
++    if (!Number.isInteger(window.usedPercent) || (window.usedPercent as number) < 0 ||
++      (window.usedPercent as number) > 2_147_483_647 ||
++      window.windowDurationMins !== duration || !Number.isSafeInteger(window.resetsAt) ||
++      (window.resetsAt as number) <= now.getTime() / 1000 ||
++      (window.resetsAt as number) > 8_640_000_000_000 ||
++      Object.keys(window).some((field) => !["usedPercent", "windowDurationMins", "resetsAt"].includes(field))) invalid();
++  }
++  if (main.credits != null) {
++    const credits = object(main.credits);
++    if (typeof credits.hasCredits !== "boolean" || typeof credits.unlimited !== "boolean" ||
++      !(credits.balance === null || (typeof credits.balance === "string" && /^\d+(\.\d+)?$/.test(credits.balance)))) invalid();
++  }
++  // Workspace spend-control uncertainty cannot clear the account-wide record.
++  if (main.spendControlReached != null && typeof main.spendControlReached !== "boolean") invalid();
++  if (main.spendControlReached !== false &&
++    !["free", "go", "plus", "pro"].includes(String(main.planType))) invalid();
++  if (main.individualLimit != null || main.spendControlReached === true) invalid();
++  if (main.rateLimitReachedType != null) {
++    if (main.rateLimitReachedType !== "rate_limit_reached" ||
++      ![main.primary, main.secondary].some((window) => (object(window).usedPercent as number) >= 100)) invalid();
++  }
++  // Special-model buckets never become account-wide main-quota evidence.
++  return { rateLimits: main };
++}
+diff --git a/packages/agent-account-observability/src/providers/codex/CodexAuthReader.ts b/packages/agent-account-observability/src/providers/codex/CodexAuthReader.ts
+index 24f88f0362c0b8e5e52039aabc9c4eaf86ed708b..bc3947c83bda8f9720cb111b01bbb44b7a1b7e24 100644
+--- a/packages/agent-account-observability/src/providers/codex/CodexAuthReader.ts
++++ b/packages/agent-account-observability/src/providers/codex/CodexAuthReader.ts
+@@ -120,3 +120,88 @@ function firstString(values: readonly unknown[]): string | undefined {
+   }
+   return undefined;
+ }
++
++/** Local consistency evidence only; successful native usage supplies authentication. */
++export function strictCodexSubscriptionFromAuthJson(text: string): {
++  readonly accountId: string;
++  readonly accountKeyHash: string;
++  readonly userId: string | undefined;
++} {
++  try { return parseStrictCodexSubscription(text); }
++  catch { throw new Error("codex_snapshot_identity_invalid"); }
++}
++
++function parseStrictCodexSubscription(text: string) {
++  const invalid = (): never => { throw new Error("codex_snapshot_identity_invalid"); };
++  const root = strictAuthJsonObject(text);
++  const allowed = new Set(["auth_mode", "OPENAI_API_KEY", "tokens", "last_refresh",
++    "agent_identity", "personal_access_token", "bedrock_api_key"]);
++  if (Object.keys(root).some((key) => !allowed.has(key))) invalid();
++  if (root.auth_mode != null && root.auth_mode !== "chatgpt") invalid();
++  for (const key of ["OPENAI_API_KEY", "agent_identity", "personal_access_token", "bedrock_api_key"]) {
++    if (root[key] != null) invalid();
++  }
++  const tokens = readRecord(root.tokens);
++  if (!tokens || Array.isArray(tokens)) return invalid();
++  if (Object.keys(tokens).some((key) => !["account_id", "id_token", "access_token", "refresh_token"].includes(key))) invalid();
++  const accountId = tokens.account_id;
++  if (typeof accountId !== "string" || !accountId.trim() || !/^[\x20-\x7e]+$/.test(accountId)) return invalid();
++  if (typeof root.last_refresh !== "string" || !/^\d{4}-\d\d-\d\dT/.test(root.last_refresh) || !Number.isFinite(Date.parse(root.last_refresh))) invalid();
++  const users: string[] = [];
++  for (const key of ["id_token", "access_token", "refresh_token"]) {
++    const token = tokens[key];
++    if (typeof token !== "string" || !token || /\s/.test(token)) return invalid();
++    if (key === "refresh_token") continue;
++    const parts = token.split(".");
++    if (parts.length !== 3 || parts.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))) invalid();
++    const payload = parts[1]!;
++    const decoded = Buffer.from(payload, "base64url");
++    if (decoded.toString("base64url") !== payload) invalid();
++    const claims = strictAuthJsonObject(new TextDecoder("utf-8", { fatal: true }).decode(decoded));
++    const auth = readRecord(claims["https://api.openai.com/auth"]);
++    if (!auth || Array.isArray(auth) || auth.chatgpt_account_id !== accountId) invalid();
++    // These aliases have no reviewed selection semantics. Never choose a fallback.
++    for (const record of [claims, auth!]) {
++      for (const field of Object.keys(record)) {
++        if (/account[_]?id/i.test(field) && !(record === auth && field === "chatgpt_account_id")) invalid();
++      }
++    }
++    for (const field of ["chatgpt_user_id", "user_id"]) {
++      const value = auth![field];
++      if (value !== undefined) {
++        if (typeof value !== "string" || !value.trim()) return invalid();
++        users.push(value);
++      }
++    }
++  }
++  if (new Set(users).size > 1) invalid();
++  return {
++    accountId,
++    accountKeyHash: hashAccountKey({ provider: AgentProvider.Codex, accountKey: accountId.trim() }),
++    userId: users[0],
++  };
++}
++
++/** JSON.parse alone silently accepts duplicate keys, including escaped aliases. */
++function strictAuthJsonObject(text: string): Record<string, unknown> {
++  const fail = (): never => { throw new Error("codex_snapshot_identity_invalid"); };
++  if (Buffer.byteLength(text) > 1024 * 1024) fail();
++  const keys: Array<Set<string> | null> = [];
++  const lexemes = text.match(/"(?:[^"\\]|\\.)*"|[{}\[\]:,]|[^\s{}\[\]:,]+/g) ?? [];
++  for (let i = 0; i < lexemes.length; i++) {
++    const word = lexemes[i]!;
++    if (word === "{") keys.push(new Set());
++    else if (word === "[") keys.push(null);
++    else if (word === "}" || word === "]") keys.pop();
++    else if (word.startsWith('"') && lexemes[i + 1] === ":") {
++      const key: unknown = JSON.parse(word);
++      const scope = keys.at(-1);
++      if (!scope || typeof key !== "string" || scope.has(key)) fail();
++      scope!.add(key as string);
++    }
++  }
++  let value: unknown;
++  try { value = JSON.parse(text); } catch { return fail(); }
++  if (!value || typeof value !== "object" || Array.isArray(value)) return fail();
++  return value as Record<string, unknown>;
++}
+diff --git a/packages/agent-account-observability/src/providers/codex/tests/CodexAppServerQuotaReader.test.ts b/packages/agent-account-observability/src/providers/codex/tests/CodexAppServerQuotaReader.test.ts
+index 024bc9b476ffdecbd36ea87fd60b2fdc0022b753..bfff68ce06290afbe07ed8723f2381aa0a8e53e3 100644
+--- a/packages/agent-account-observability/src/providers/codex/tests/CodexAppServerQuotaReader.test.ts
++++ b/packages/agent-account-observability/src/providers/codex/tests/CodexAppServerQuotaReader.test.ts
+@@ -238,3 +238,33 @@ function fakeFactory(
+     },
+   };
+ }
++
++// Native validation uses the actual 0.147.0 wrapper and main windows, not account.id.
++describe("strict native quota validation", () => {
++  const now = new Date("2026-09-09T00:00:00Z");
++  const main = () => ({ limitId: "codex", planType: "plus", spendControlReached: false,
++    primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: now.getTime() / 1000 + 3600 },
++    secondary: { usedPercent: 100, windowDurationMins: 10080, resetsAt: now.getTime() / 1000 + 86400 } });
++  it("accepts valid main quota, rejects missing/irrelevant/ambiguous quota and spend uncertainty", async () => {
++    const { strictCodexMainRateLimits } = await import("../CodexAppServerQuotaReaderStrict");
++    expect(strictCodexMainRateLimits({ rateLimits: main(), rateLimitsByLimitId: { codex: main() } }, now)).toEqual({ rateLimits: main() });
++    for (const input of [null, {}, { rateLimits: [] }, { rateLimits: { limitId: "codex" } },
++      { rateLimits: { ...main(), limitId: "special-model" } },
++      { rateLimits: main(), rateLimitsByLimitId: { codex: { ...main(), primary: null } } },
++      { rateLimits: { ...main(), primary: { ...main().primary, usedPercent: undefined } } },
++      { rateLimits: { ...main(), primary: { ...main().primary, usedPercent: 0.5 } } },
++      { rateLimits: { ...main(), secondary: { ...main().secondary, resetsAt: now.getTime() / 1000 } } },
++      { rateLimits: { ...main(), spendControlReached: null, planType: "enterprise" } },
++      { rateLimits: { ...main(), rateLimitReachedType: "workspace_owner_credits_depleted" } },
++    ]) expect(() => strictCodexMainRateLimits(input, now)).toThrow("codex_native_quota_invalid");
++  });
++  it("rejects null/API-key and unreviewed identity fields before quota reading", async () => {
++    const { strictCodexAccountRead } = await import("../CodexAppServerQuotaReaderStrict");
++    const valid = { requiresOpenaiAuth: true, account: { type: "chatgpt", email: null, planType: "plus" } };
++    expect(() => strictCodexAccountRead(valid)).not.toThrow();
++    for (const value of [null, { account: null }, { ...valid, requiresOpenaiAuth: false },
++      { ...valid, accountId: "B" },
++      { ...valid, account: { type: "apiKey" } }, { ...valid, account: { ...valid.account, id: "B" } },
++    ]) expect(() => strictCodexAccountRead(value)).toThrow();
++  });
++});
+diff --git a/packages/agent-account-observability/src/providers/codex/tests/CodexAuthReader.test.ts b/packages/agent-account-observability/src/providers/codex/tests/CodexAuthReader.test.ts
+index c7c4d4c242ab9ec9bd6cbb77d784dd278907540d..0985c2dbc2bba7532542ed2cb90cb5edb5602aaa 100644
+--- a/packages/agent-account-observability/src/providers/codex/tests/CodexAuthReader.test.ts
++++ b/packages/agent-account-observability/src/providers/codex/tests/CodexAuthReader.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from "vitest";
+ import { AgentProvider } from "../../../domain/enums";
+-import { identityFromAuthJson } from "../CodexAuthReader";
++import { identityFromAuthJson, strictCodexSubscriptionFromAuthJson } from "../CodexAuthReader";
+ 
+ describe("identityFromAuthJson", () => {
+   it("reads the provider account id from the nested OpenAI auth claim", () => {
+@@ -28,3 +28,50 @@ describe("identityFromAuthJson", () => {
+     expect(identity.safeIdentity).not.toContain("physical-account-a");
+   });
+ });
++
++describe("strict snapshot subscription", () => {
++  const jwt = (accountId: string, userId = "user-a") => ["e30", Buffer.from(JSON.stringify({
++    email: "same@example.invalid", sub: "unrelated-oauth-subject",
++    "https://api.openai.com/auth": { chatgpt_account_id: accountId, chatgpt_user_id: userId },
++  })).toString("base64url"), "c2ln"].join(".");
++  const fixture = (accountId = "A") => ({
++    auth_mode: "chatgpt", OPENAI_API_KEY: null, last_refresh: "2026-09-09T00:00:00Z",
++    tokens: { account_id: accountId, id_token: jwt(accountId), access_token: jwt(accountId), refresh_token: "synthetic-refresh" },
++  });
++  const read = (value: unknown) => strictCodexSubscriptionFromAuthJson(JSON.stringify(value));
++
++  it("derives A and B independently despite identical email and OAuth subject", () => {
++    expect(read(fixture()).accountKeyHash).not.toBe(read(fixture("B")).accountKeyHash);
++    expect(read(fixture("a")).accountKeyHash).not.toBe(read(fixture()).accountKeyHash);
++    expect(read(fixture(" A ")).accountKeyHash).toBe(read(fixture()).accountKeyHash);
++    expect(read(fixture(" A ")).accountId).toBe(" A ");
++  });
++
++  it("accepts same-principal rotation and optional null normalization", () => {
++    const before = fixture();
++    const after = { ...before, OPENAI_API_KEY: undefined, last_refresh: "2026-09-09T01:00:00Z",
++      tokens: { ...before.tokens, refresh_token: "synthetic-rotated" } };
++    expect(read(after)).toEqual(read(before));
++  });
++
++  it("rejects mixed principals, user namespaces, modes and missing selection", () => {
++    const base = fixture();
++    for (const candidate of [
++      { ...base, tokens: { ...base.tokens, account_id: undefined } },
++      { ...base, tokens: { ...base.tokens, access_token: jwt("B") } },
++      { ...base, tokens: { ...base.tokens, id_token: jwt("A", "user-b") } },
++      { ...base, tokens: { ...base.tokens, id_token: "e30.e30.c2ln" } },
++      { ...base, tokens: { ...base.tokens, account_id: "A\r\n" } },
++      { ...base, auth_mode: "chatgptAuthTokens" },
++      { ...base, OPENAI_API_KEY: "synthetic-key" },
++      { ...base, personal_access_token: "synthetic-pat" },
++      { ...base, account_id: "A" },
++    ]) expect(() => read(candidate)).toThrow();
++  });
++
++  it("rejects duplicate and escaped duplicate JSON fields", () => {
++    const text = JSON.stringify(fixture());
++    expect(() => strictCodexSubscriptionFromAuthJson(text.replace('"account_id":"A"', '"account_id":"B","account_id":"A"'))).toThrow();
++    expect(() => strictCodexSubscriptionFromAuthJson(text.replace('"account_id":"A"', '"account_id":"B","account_\\u0069d":"A"'))).toThrow();
++  });
++});
+diff --git a/src/provider-codex/codex-session-materializer.ts b/src/provider-codex/codex-session-materializer.ts
+index 1b588411de51ac82fbe365430251a9e1a42c900a..834c76828a3477addbe330961059902f593bb568 100644
+--- a/src/provider-codex/codex-session-materializer.ts
++++ b/src/provider-codex/codex-session-materializer.ts
+@@ -52,6 +52,14 @@ export type CodexSessionMaterializer = {
+ 
+ export class CodexEphemeralSessionMaterializer implements CodexSessionMaterializer {
+   readonly mode = "ephemeral" as const;
++  private readonly incompleteRoots = new Set<string>();
++
++  async dispose(): Promise<void> {
++    for (const root of this.incompleteRoots) {
++      await rm(root, { recursive: true, force: true });
++      this.incompleteRoots.delete(root);
++    }
++  }
+ 
+   async materialize(input: {
+     readonly session: SessionArtifact;
+@@ -65,9 +73,18 @@ export class CodexEphemeralSessionMaterializer implements CodexSessionMaterializ
+     });
+     const home = join(tempRoot, "home");
+     const codexHome = join(tempRoot, "codex-home");
+-    await mkdir(home, { recursive: true, mode: 0o700 });
+-    await mkdir(codexHome, { recursive: true, mode: 0o700 });
+-    await writeCodexJsonHomeSnapshot({ codexHome, authJson });
++    try {
++      await mkdir(home, { recursive: true, mode: 0o700 });
++      await mkdir(codexHome, { recursive: true, mode: 0o700 });
++      await writeCodexJsonHomeSnapshot({ codexHome, authJson });
++    } catch {
++      try { await rm(tempRoot, { recursive: true, force: true }); }
++      catch {
++        this.incompleteRoots.add(tempRoot);
++        throw new Error("codex_ephemeral_cleanup_failed");
++      }
++      throw new Error("codex_ephemeral_materialization_failed");
++    }
+ 
+     return {
+       home,
+diff --git a/src/worker-codex/adapters/codex-quota-snapshot-observation-catalog.ts b/src/worker-codex/adapters/codex-quota-snapshot-observation-catalog.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1427b2277c53febe117e9fedde195d2d4cb7fd60
+--- /dev/null
++++ b/src/worker-codex/adapters/codex-quota-snapshot-observation-catalog.ts
+@@ -0,0 +1,3 @@
++// Static metadata only, not model availability. One complete stock catalog entry from
++// codex be6e8eac029b183056b7e4402879f15d2c85f61b, codex-rs/models-manager/models.json.
++export const nativeQuotaStaticCatalog = {"models":[{"slug":"gpt-5.4-mini","prefer_websockets":true,"support_verbosity":true,"default_verbosity":"medium","apply_patch_tool_type":"freeform","web_search_tool_type":"text_and_image","input_modalities":["text","image"],"supports_image_detail_original":true,"truncation_policy":{"mode":"tokens","limit":10000},"supports_parallel_tool_calls":true,"tool_mode":null,"multi_agent_version":null,"use_responses_lite":false,"include_skills_usage_instructions":true,"include_plugin_usage_instructions":true,"include_apps_usage_instructions":true,"auto_review_model_override":null,"context_window":272000,"max_context_window":272000,"auto_compact_token_limit":null,"comp_hash":"2911","reasoning_summary_format":"experimental","default_reasoning_summary":"none","display_name":"GPT-5.4-Mini","description":"Small, fast, and cost-efficient model for simpler coding tasks.","default_reasoning_level":"medium","supported_reasoning_levels":[{"effort":"low","description":"Fast responses with lighter reasoning"},{"effort":"medium","description":"Balances speed and reasoning depth for everyday tasks"},{"effort":"high","description":"Greater reasoning depth for complex problems"},{"effort":"xhigh","description":"Extra high reasoning depth for complex problems"}],"shell_type":"shell_command","visibility":"hide","minimal_client_version":"0.98.0","supported_in_api":true,"availability_nux":null,"upgrade":{"model":"gpt-5.6-luna","migration_markdown":"GPT-5.4 Mini is no longer available\n\nCodex now uses GPT-5.6 Luna in place of GPT-5.4 Mini. Switch to GPT-5.6 Luna to continue.\n"},"priority":23,"model_messages":{"instructions_template":"You are Codex, a coding agent based on GPT-5. You and the user share the same workspace and collaborate to achieve the user's goals.\n\n{{ personality }}\n\n# General\nAs an expert coding agent, your primary focus is writing code, answering questions, and helping the user complete their task in the current environment. You build context by examining the codebase first without making assumptions or jumping to conclusions. You think through the nuances of the code you encounter, and embody the mentality of a skilled senior software engineer.\n\n- When searching for text or files, prefer using `rg` or `rg --files` respectively because `rg` is much faster than alternatives like `grep`. (If the `rg` command is not found, then use alternatives.)\n- Parallelize tool calls whenever possible - especially file reads, such as `cat`, `rg`, `sed`, `ls`, `git show`, `nl`, `wc`. Use `multi_tool_use.parallel` to parallelize tool calls and only this. Never chain together bash commands with separators like `echo \"====\";` as this renders to the user poorly.\n\n## Editing constraints\n\n- Default to ASCII when editing or creating files. Only introduce non-ASCII or other Unicode characters when there is a clear justification and the file already uses them.\n- Add succinct code comments that explain what is going on if code is not self-explanatory. You should not add comments like \"Assigns the value to the variable\", but a brief comment might be useful ahead of a complex code block that the user would otherwise have to spend time parsing out. Usage of these comments should be rare.\n- Always use apply_patch for manual code edits. Do not use cat or any other commands when creating or editing files. Formatting commands or bulk edits don't need to be done with apply_patch.\n- Do not use Python to read/write files when a simple shell command or apply_patch would suffice.\n- You may be in a dirty git worktree.\n  * NEVER revert existing changes you did not make unless explicitly requested, since these changes were made by the user.\n  * If asked to make a commit or code edits and there are unrelated changes to your work or changes that you didn't make in those files, don't revert those changes.\n  * If the changes are in files you've touched recently, you should read carefully and understand how you can work with the changes rather than reverting them.\n  * If the changes are in unrelated files, just ignore them and don't revert them.\n- Do not amend a commit unless explicitly requested to do so.\n- While you are working, you might notice unexpected changes that you didn't make. It's likely the user made them, or were autogenerated. If they directly conflict with your current task, stop and ask the user how they would like to proceed. Otherwise, focus on the task at hand.\n- **NEVER** use destructive commands like `git reset --hard` or `git checkout --` unless specifically requested or approved by the user.\n- You struggle using the git interactive console. **ALWAYS** prefer using non-interactive git commands.\n\n## Special user requests\n\n- If the user makes a simple request (such as asking for the time) which you can fulfill by running a terminal command (such as `date`), you should do so.\n- If the user asks for a \"review\", default to a code review mindset: prioritise identifying bugs, risks, behavioural regressions, and missing tests. Findings must be the primary focus of the response - keep summaries or overviews brief and only after enumerating the issues. Present findings first (ordered by severity with file/line references), follow with open questions or assumptions, and offer a change-summary only as a secondary detail. If no findings are discovered, state that explicitly and mention any residual risks or testing gaps.\n\n## Autonomy and persistence\nPersist until the task is fully handled end-to-end within the current turn whenever feasible: do not stop at analysis or partial fixes; carry changes through implementation, verification, and a clear explanation of outcomes unless the user explicitly pauses or redirects you.\n\nUnless the user explicitly asks for a plan, asks a question about the code, is brainstorming potential solutions, or some other intent that makes it clear that code should not be written, assume the user wants you to make code changes or run tools to solve the user's problem. In these cases, it's bad to output your proposed solution in a message, you should go ahead and actually implement the change. If you encounter challenges or blockers, you should attempt to resolve them yourself.\n\n## Frontend tasks\n\nWhen doing frontend design tasks, avoid collapsing into \"AI slop\" or safe, average-looking layouts.\nAim for interfaces that feel intentional, bold, and a bit surprising.\n- Typography: Use expressive, purposeful fonts and avoid default stacks (Inter, Roboto, Arial, system).\n- Color & Look: Choose a clear visual direction; define CSS variables; avoid purple-on-white defaults. No purple bias or dark mode bias.\n- Motion: Use a few meaningful animations (page-load, staggered reveals) instead of generic micro-motions.\n- Background: Don't rely on flat, single-color backgrounds; use gradients, shapes, or subtle patterns to build atmosphere.\n- Ensure the page loads properly on both desktop and mobile\n- For React code, prefer modern patterns including useEffectEvent, startTransition, and useDeferredValue when appropriate if used by the team. Do not add useMemo/useCallback by default unless already used; follow the repo's React Compiler guidance.\n- Overall: Avoid boilerplate layouts and interchangeable UI patterns. Vary themes, type families, and visual languages across outputs.\n\nException: If working within an existing website or design system, preserve the established patterns, structure, and visual language.\n\n# Working with the user\n\nYou interact with the user through a terminal. You have 2 ways of communicating with the users:\n- Share intermediary updates in `commentary` channel. \n- After you have completed all your work, send a message to the `final` channel.\nYou are producing plain text that will later be styled by the program you run in. Formatting should make results easy to scan, but not feel mechanical. Use judgment to decide how much structure adds value. Follow the formatting rules exactly.\n\n## Formatting rules\n\n- You may format with GitHub-flavored Markdown.\n- Structure your answer if necessary, the complexity of the answer should match the task. If the task is simple, your answer should be a one-liner. Order sections from general to specific to supporting.\n- Never use nested bullets. Keep lists flat (single level). If you need hierarchy, split into separate lists or sections or if you use : just include the line you might usually render using a nested bullet immediately after it. For numbered lists, only use the `1. 2. 3.` style markers (with a period), never `1)`.\n- Headers are optional, only use them when you think they are necessary. If you do use them, use short Title Case (1-3 words) wrapped in **\u2026**. Don't add a blank line.\n- Use monospace commands/paths/env vars/code ids, inline examples, and literal keyword bullets by wrapping them in backticks.\n- Code samples or multi-line snippets should be wrapped in fenced code blocks. Include an info string as often as possible.\n- File References: When referencing files in your response follow the below rules:\n  * Use markdown links (not inline code) for clickable file paths.\n  * Each reference should have a stand alone path. Even if it's the same file.\n  * For clickable/openable file references, the path target must be an absolute filesystem path. Labels may be short (for example, `[app.ts](/abs/path/app.ts)`).\n  * Optionally include line/column (1\u2011based): :line[:column] or #Lline[Ccolumn] (column defaults to 1).\n  * Do not use URIs like file://, vscode://, or https://.\n  * Do not provide range of lines\n- Don\u2019t use emojis or em dashes unless explicitly instructed.\n\n## Final answer instructions\n\n- Balance conciseness to not overwhelm the user with appropriate detail for the request. Do not narrate abstractly; explain what you are doing and why.\n- Do not begin responses with conversational interjections or meta commentary. Avoid openers such as acknowledgements (\u201cDone \u2014\u201d, \u201cGot it\u201d, \u201cGreat question, \u201d) or framing phrases.\n- The user does not see command execution outputs. When asked to show the output of a command (e.g. `git show`), relay the important details in your answer or summarize the key lines so the user understands the result.\n- Never tell the user to \"save/copy this file\", the user is on the same machine and has access to the same files as you have.\n- If the user asks for a code explanation, structure your answer with code references.\n- When given a simple task, just provide the outcome in a short answer without strong formatting.\n- When you make big or complex changes, state the solution first, then walk the user through what you did and why.\n- For casual chit-chat, just chat.\n- If you weren't able to do something, for example run tests, tell the user.\n- If there are natural next steps the user may want to take, suggest them at the end of your response. Do not make suggestions if there are no natural next steps. When suggesting multiple options, use numeric lists for the suggestions so the user can quickly respond with a single number.\n\n## Intermediary updates \n\n- Intermediary updates go to the `commentary` channel.\n- User updates are short updates while you are working, they are NOT final answers.\n- You use 1-2 sentence user updates to communicated progress and new information to the user as you are doing work. \n- Do not begin responses with conversational interjections or meta commentary. Avoid openers such as acknowledgements (\u201cDone \u2014\u201d, \u201cGot it\u201d, \u201cGreat question, \u201d) or framing phrases.\n- Before exploring or doing substantial work, you start with a user update acknowledging the request and explaining your first step. You should include your understanding of the user request and explain what you will do. Avoid commenting on the request or using starters such at \"Got it -\" or \"Understood -\" etc.\n- You provide user updates frequently, every 30s.\n- When exploring, e.g. searching, reading files you provide user updates as you go, explaining what context you are gathering and what you've learned. Vary your sentence structure when providing these updates to avoid sounding repetitive - in particular, don't start each sentence the same way.\n- When working for a while, keep updates informative and varied, but stay concise.\n- After you have sufficient context, and the work is substantial you provide a longer plan (this is the only user update that may be longer than 2 sentences and can contain formatting).\n- Before performing file edits of any kind, you provide updates explaining what edits you are making.\n- As you are thinking, you very frequently provide updates even if not taking any actions, informing the user of your progress. You interrupt your thinking and send multiple updates in a row if thinking for more than 100 words.\n- Tone of your updates MUST match your personality.\n","instructions_variables":{"personality_default":"","personality_friendly":"# Personality\n\nYou optimize for team morale and being a supportive teammate as much as code quality.  You are consistent, reliable, and kind. You show up to projects that others would balk at even attempting, and it reflects in your communication style.\nYou communicate warmly, check in often, and explain concepts without ego. You excel at pairing, onboarding, and unblocking others. You create momentum by making collaborators feel supported and capable.\n\n## Values\nYou are guided by these core values:\n* Empathy: Interprets empathy as meeting people where they are - adjusting explanations, pacing, and tone to maximize understanding and confidence.\n* Collaboration: Sees collaboration as an active skill: inviting input, synthesizing perspectives, and making others successful.\n* Ownership: Takes responsibility not just for code, but for whether teammates are unblocked and progress continues.\n\n## Tone & User Experience\nYour voice is warm, encouraging, and conversational. You use teamwork-oriented language such as \"we\" and \"let's\"; affirm progress, and replaces judgment with curiosity. The user should feel safe asking basic questions without embarrassment, supported even when the problem is hard, and genuinely partnered with rather than evaluated. Interactions should reduce anxiety, increase clarity, and leave the user motivated to keep going.\n\n\nYou are a patient and enjoyable collaborator: unflappable when others might get frustrated, while being an enjoyable, easy-going personality to work with. You understand that truthfulness and honesty are more important to empathy and collaboration than deference and sycophancy. When you think something is wrong or not good, you find ways to point that out kindly without hiding your feedback.\n\nYou never make the user work for you. You can ask clarifying questions only when they are substantial. Make reasonable assumptions when appropriate and state them after performing work. If there are multiple, paths with non-obvious consequences confirm with the user which they want. Avoid open-ended questions, and prefer a list of options when possible.\n\n## Escalation\nYou escalate gently and deliberately when decisions have non-obvious consequences or hidden risk. Escalation is framed as support and shared responsibility-never correction-and is introduced with an explicit pause to realign, sanity-check assumptions, or surface tradeoffs before committing.\n","personality_pragmatic":"# Personality\n\nYou are a deeply pragmatic, effective software engineer. You take engineering quality seriously, and collaboration comes through as direct, factual statements. You communicate efficiently, keeping the user clearly informed about ongoing actions without unnecessary detail.\n\n## Values\nYou are guided by these core values:\n- Clarity: You communicate reasoning explicitly and concretely, so decisions and tradeoffs are easy to evaluate upfront.\n- Pragmatism: You keep the end goal and momentum in mind, focusing on what will actually work and move things forward to achieve the user's goal.\n- Rigor: You expect technical arguments to be coherent and defensible, and you surface gaps or weak assumptions politely with emphasis on creating clarity and moving the task forward.\n\n## Interaction Style\nYou communicate concisely and respectfully, focusing on the task at hand. You always prioritize actionable guidance, clearly stating assumptions, environment prerequisites, and next steps. Unless explicitly asked, you avoid excessively verbose explanations about your work.\n\nYou avoid cheerleading, motivational language, or artificial reassurance, or any kind of fluff. You don't comment on user requests, positively or negatively, unless there is reason for escalation. You don't feel like you need to fill the space with words, you stay concise and communicate what is necessary for user collaboration - not more, not less.\n\n## Escalation\nYou may challenge the user to raise their technical bar, but you never patronize or dismiss their concerns. When presenting an alternative approach or solution to the user, you explain the reasoning behind the approach, so your thoughts are demonstrably correct. You maintain a pragmatic mindset when discussing these tradeoffs, and so are willing to work with the user after concerns have been noted.\n"},"approvals":null},"experimental_supported_tools":[],"available_in_plans":["business","edu","edu_plus","edu_pro","education","enterprise","enterprise_cbp_automation","enterprise_cbp_usage_based","finserv","free","free_workspace","go","hc","k12","plus","pro","prolite","quorum","sci","self_serve_business_usage_based","team"],"supports_search_tool":true,"default_service_tier":null,"service_tiers":[],"additional_speed_tiers":[],"supports_reasoning_summaries":true}]};
+diff --git a/src/worker-codex/adapters/codex-quota-snapshot-observation.ts b/src/worker-codex/adapters/codex-quota-snapshot-observation.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..477c02d8146bf24817bf57d1efc01bbb9380b064
+--- /dev/null
++++ b/src/worker-codex/adapters/codex-quota-snapshot-observation.ts
+@@ -0,0 +1,261 @@
++import { constants } from "node:fs";
++import { lstat, open, realpath, rm, writeFile } from "node:fs/promises";
++import { dirname, isAbsolute, join } from "node:path";
++import { isDeepStrictEqual } from "node:util";
++import {
++  AgentProvider, AuthSessionStatus, CodexAccountObserver, CodexAppServerClientFactory,
++  CodexAppServerQuotaReader, CodexQuotaValidationMode, JsonRpcLineClient,
++  strictCodexSubscriptionFromAuthJson, type JsonRpcLineClientOptions,
++} from "@vioxen/agent-account-observability";
++import { DefaultRedactor } from "@vioxen/subscription-runtime/core";
++import { sessionArtifactFromCodexAuthJson, codexAuthJsonFromArtifact } from "../../provider-codex/codex-auth-json-codec";
++import { CodexEphemeralSessionMaterializer, type CodexSessionMaterializer } from "../../provider-codex/codex-session-materializer";
++import type { CodexMaterializedSession } from "../../provider-codex/codex-json-execution-engine";
++import {
++  CodexSnapshotObservationStatus as Status, CodexSnapshotRejectionReason as Reason,
++  type CodexSnapshotObservationPort, type CodexSnapshotObservationResult,
++} from "../application/codex-account-capacity-rechecker";
++import { nativeQuotaStaticCatalog } from "./codex-quota-snapshot-observation-catalog";
++
++export type CodexQuotaSnapshotObservationOptions = {
++  readonly authJsonPath: string;
++  /** Deployment-owned absolute stock Linux ELF, mapped to reviewed Codex 0.147.0. */
++  readonly codexBinaryPath: string;
++  readonly appServerLaunchMinIntervalMs?: number;
++  readonly materializer?: CodexSessionMaterializer;
++  readonly spawnProcess?: JsonRpcLineClientOptions["spawnProcess"];
++};
++
++/** Trusted-host/UID, fresh file-only custody for one main-quota observation. */
++export class CodexQuotaSnapshotObservation implements CodexSnapshotObservationPort {
++  private static readonly failedOwners = new Set<CodexQuotaSnapshotObservation>();
++  static async disposeFailedObservations(): Promise<void> {
++    for (const owner of this.failedOwners) await owner.dispose();
++  }
++  // Retain ownership when stop/cleanup fails; never delete a live child's home.
++  private readonly unfinished = new Set<{ client: JsonRpcLineClient | undefined; session: CodexMaterializedSession }>();
++  private readonly materializer: CodexSessionMaterializer;
++  constructor(private readonly options: CodexQuotaSnapshotObservationOptions) {
++    this.materializer = options.materializer ?? new CodexEphemeralSessionMaterializer();
++  }
++
++  async dispose(): Promise<void> {
++    for (const entry of this.unfinished) {
++      await entry.client?.close();
++      if (entry.client && !entry.client.isStopped()) throw new Error("native_snapshot_stop_unconfirmed");
++      await rm(dirname(entry.session.home), { recursive: true, force: true });
++      this.unfinished.delete(entry);
++    }
++    await this.materializer.dispose?.();
++    CodexQuotaSnapshotObservation.failedOwners.delete(this);
++  }
++
++  async read(input: Parameters<CodexSnapshotObservationPort["read"]>[0]): Promise<CodexSnapshotObservationResult> {
++    if (input.demand && (input.demand.provider !== "codex" || input.demand.model || input.demand.serviceTier)) {
++      return rejected(Reason.UnsupportedDemand);
++    }
++    const timeout = Math.min(input.timeoutMs ?? 60_000, 60_000);
++    if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(input.now.getTime())) return rejected(Reason.Deadline);
++    const deadline = Date.now() + timeout;
++    let session: CodexMaterializedSession | undefined;
++    let client: JsonRpcLineClient | undefined;
++    let invalidated = false;
++    let stopFailed = false;
++    let timer: NodeJS.Timeout | undefined;
++    let result: CodexSnapshotObservationResult = rejected(Reason.Invalid);
++    try {
++      if (this.materializer.mode !== "ephemeral") throw new Error();
++      if (process.platform !== "linux" || !isAbsolute(this.options.codexBinaryPath)) throw new Error();
++      // Wrappers need separate lifecycle review; this profile admits the direct ELF only.
++      const binary = await open(this.options.codexBinaryPath, constants.O_RDONLY | constants.O_NOFOLLOW);
++      try {
++        if (!(await binary.stat()).isFile()) throw new Error();
++        const header = Buffer.alloc(4);
++        await binary.read(header, 0, 4, 0);
++        if (!header.equals(Buffer.from([127, 69, 76, 70]))) throw new Error();
++      } finally { await binary.close(); }
++      const host = await hostConfiguration();
++      const source = await regularText(this.options.authJsonPath);
++      const identity = strictCodexSubscriptionFromAuthJson(source);
++      const artifact = sessionArtifactFromCodexAuthJson(JSON.stringify(managedAuthContent(source)));
++      const compact = codexAuthJsonFromArtifact(artifact);
++      if (!isDeepStrictEqual(managedAuthContent(source), managedAuthContent(compact))) throw new Error();
++      session = await this.materializer.materialize({
++        session: artifact, redactor: new DefaultRedactor(),
++      });
++      const privateSession = session;
++      if (session.home === session.codexHome || dirname(session.home) !== dirname(session.codexHome)) throw new Error();
++      for (const path of [session.home, session.codexHome, dirname(session.home)]) {
++        const stat = await lstat(path);
++        if (!isAbsolute(path) || await realpath(path) !== path || !stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077)) throw new Error();
++      }
++      const authPath = join(session.codexHome, "auth.json");
++      const initial = await regularText(authPath, true);
++      if (!isDeepStrictEqual(JSON.parse(initial), JSON.parse(compact))) throw new Error();
++      const catalogPath = join(session.codexHome, "quota-model-catalog.json");
++      const catalog = JSON.stringify(nativeQuotaStaticCatalog);
++      const pins: Record<string, string | boolean> = {
++        cli_auth_credentials_store: "file", model_provider: "openai",
++        chatgpt_base_url: "https://chatgpt.com/backend-api/", model_catalog_json: catalogPath,
++        "analytics.enabled": false, "features.apps": false, "features.hooks": false,
++        "features.memories": false,
++        "features.shell_snapshot": false, "features.multi_agent": false,
++        "otel.exporter": "none", "otel.metrics_exporter": "none", "otel.trace_exporter": "none",
++      };
++      const overrides = Object.entries(pins).map(([key, value]) => `${key}=${JSON.stringify(value)}`);
++      const config = overrides.join("\n") + '\n';
++      const configPath = join(session.codexHome, "config.toml");
++      await writeFile(catalogPath, catalog, { mode: 0o600, flag: "wx" });
++      await writeFile(configPath, config, { mode: 0o600 });
++      const check = async () => {
++        if (Date.now() >= deadline || invalidated) throw new Error();
++        await rejectProjectConfiguration(privateSession.home);
++        if (!isDeepStrictEqual(host, await hostConfiguration()) ||
++          await regularText(configPath, true) !== config || await regularText(catalogPath, true) !== catalog) throw new Error();
++        assertRotation(initial, await regularText(authPath, true));
++      };
++      await check();
++      const launch: JsonRpcLineClientOptions = {
++        command: this.options.codexBinaryPath,
++        args: [...overrides.flatMap((value) => ["-c", value]), "app-server", "--strict-config", "--stdio"],
++        cwd: session.home,
++        env: { HOME: session.home, CODEX_HOME: session.codexHome, PATH: "/usr/bin:/bin", LANG: "C.UTF-8" },
++        startupTimeoutMs: Math.max(1, deadline - Date.now()), requestTimeoutMs: Math.max(1, deadline - Date.now()),
++        ...(this.options.spawnProcess ? { spawnProcess: this.options.spawnProcess } : {}),
++        onTransportFailure: () => { invalidated = true; },
++        onServerMessage: (message) => {
++          const params = message.params && typeof message.params === "object"
++            ? message.params as Record<string, unknown> : {};
++          if (message.id !== undefined || message.method === "account/login/completed" ||
++            (message.method === "account/updated" && params.authMode !== "chatgpt")) {
++            invalidated = true;
++            throw new Error();
++          }
++        },
++      };
++      const factory = new CodexAppServerClientFactory({ isolatedLaunch: launch,
++        appServerLaunchMinIntervalMs: this.options.appServerLaunchMinIntervalMs ?? 10_000,
++        onClientCreated: (created) => {
++          client = created;
++          if (Date.now() >= deadline) throw new Error();
++          timer = setTimeout(() => {
++            invalidated = true;
++            void created.close().catch(() => { stopFailed = true; });
++          }, Math.max(1, deadline - Date.now()));
++        },
++      });
++      const reader = new CodexAppServerQuotaReader({ clientFactory: factory,
++        validationMode: CodexQuotaValidationMode.NativeSnapshot,
++        afterInitialize: async (owned) => {
++          await check();
++          // Local preload is already fixed. Check the final cloud-inclusive projection too.
++          const configRead = record(await owned.call({ method: "config/read", params: { includeLayers: false, cwd: privateSession.home } }));
++          assertEffectiveConfig(record(configRead.config), pins);
++        },
++      });
++      const observation = await new CodexAccountObserver({ appServerReader: reader }).observe({
++        account: { provider: AgentProvider.Codex, slotId: "native-snapshot", authHome: session.codexHome }, now: input.now,
++      });
++      if (!client?.isStopped() || stopFailed) throw new Error();
++      await check();
++      if (await regularText(this.options.authJsonPath) !== source || observation.auth.status !== AuthSessionStatus.Authenticated || !observation.quota) throw new Error();
++      result = { status: Status.Bound, independentAccountKeyHash: identity.accountKeyHash,
++        observation: { ...observation, account: { provider: AgentProvider.Codex, slotId: "native-snapshot" } } };
++    } catch (error) {
++      result = rejected(error instanceof Error && error.message === "codex_ephemeral_cleanup_failed"
++        ? Reason.Cleanup : Date.now() >= deadline ? Reason.Deadline : Reason.Invalid);
++    }
++    finally {
++      if (timer) clearTimeout(timer);
++      try { await client?.close(); } catch { stopFailed = true; }
++      if (stopFailed || (client && !client.isStopped())) {
++        result = rejected(Reason.Stop);
++        if (session) this.unfinished.add({ client, session });
++      } else if (session) {
++        try {
++          await session.release();
++          if (await exists(dirname(session.home))) throw new Error();
++        } catch {
++          this.unfinished.add({ client, session });
++          result = rejected(Reason.Cleanup);
++        }
++      }
++    }
++    if (result.status === Status.Bound && (invalidated || Date.now() >= deadline)) return rejected(Reason.Deadline);
++    if (result.status === Status.Rejected && (result.reason === Reason.Stop || result.reason === Reason.Cleanup)) {
++      CodexQuotaSnapshotObservation.failedOwners.add(this);
++    }
++    return result;
++  }
++}
++
++function rejected(reason: Reason): CodexSnapshotObservationResult { return { status: Status.Rejected, reason }; }
++function record(value: unknown): Record<string, unknown> {
++  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error();
++  return value as Record<string, unknown>;
++}
++async function exists(path: string): Promise<boolean> {
++  try { await lstat(path); return true; } catch (error) {
++    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
++    throw error;
++  }
++}
++async function regularText(path: string, privateFile = false): Promise<string> {
++  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
++  try {
++    const stat = await file.stat();
++    if (!stat.isFile() || stat.size > 1024 * 1024 || (privateFile && (stat.mode & 0o077))) throw new Error();
++    const buffer = Buffer.alloc(1024 * 1024 + 1);
++    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
++    if (bytesRead > 1024 * 1024 || bytesRead !== stat.size) throw new Error();
++    return new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, bytesRead));
++  } finally { await file.close(); }
++}
++async function hostConfiguration(): Promise<readonly (string | null)[]> {
++  // Supported hosted Linux profile: absent local policy overrides. Never hide policy files.
++  const values: (string | null)[] = [];
++  for (const path of ["/etc/codex/config.toml", "/etc/codex/managed_config.toml", "/etc/codex/requirements.toml"]) {
++    if (await exists(path)) throw new Error();
++    values.push(null);
++  }
++  return values;
++}
++async function rejectProjectConfiguration(cwd: string): Promise<void> {
++  for (let path = cwd; ; path = dirname(path)) {
++    if (await exists(join(path, ".codex", "config.toml"))) throw new Error();
++    if (dirname(path) === path) return;
++  }
++}
++// Only call after strict validation has excluded all alternate credential modes.
++// Keep source bytes separately; normalize only the private codec representation.
++function managedAuthContent(text: string): Record<string, unknown> {
++  const root = record(JSON.parse(text));
++  return { ...root, auth_mode: root.auth_mode ?? "chatgpt" };
++}
++function assertRotation(initial: string, final: string): void {
++  const before = strictCodexSubscriptionFromAuthJson(initial);
++  const after = strictCodexSubscriptionFromAuthJson(final);
++  if (!isDeepStrictEqual(before, after)) throw new Error();
++  // Strict parser admits only these optionals plus tokens and last_refresh.
++  // Upstream normalizes absent/null optional fields; returned tokens may rotate.
++  const normalize = (text: string) => {
++    const root = managedAuthContent(text);
++    delete root.tokens; delete root.last_refresh;
++    return Object.fromEntries(Object.entries(root).filter(([, value]) => value !== null));
++  };
++  if (!isDeepStrictEqual(normalize(initial), normalize(final))) throw new Error();
++}
++function assertEffectiveConfig(config: Record<string, unknown>, pins: Record<string, string | boolean>): void {
++  for (const [key, expected] of Object.entries(pins)) {
++    let value: unknown = config;
++    for (const part of key.split(".")) value = record(value)[part];
++    if (value !== expected) throw new Error();
++  }
++  // be6e8 ConfigToml serializes configured providers, not runtime built-ins.
++  // Its reserved-ID validator forbids overriding openai. The built-in requires
++  // OpenAI auth; its optional organization/project headers have no env inputs.
++  if (!isDeepStrictEqual(record(config.model_providers), {})) throw new Error();
++  for (const key of ["experimental_thread_config_endpoint", "experimental_code_mode_host", "plugins", "mcp_servers"]) {
++    if (config[key] != null && !isDeepStrictEqual(config[key], {})) throw new Error();
++  }
++}
+diff --git a/src/worker-codex/application/codex-account-capacity-rechecker.ts b/src/worker-codex/application/codex-account-capacity-rechecker.ts
+index 36084bdaf98353a6297c8f222e2130ebf5795686..b2d8562d94f48d1b4329dc4c7741609e4c8ff6c1 100644
+--- a/src/worker-codex/application/codex-account-capacity-rechecker.ts
++++ b/src/worker-codex/application/codex-account-capacity-rechecker.ts
+@@ -1,179 +1,112 @@
+-import { dirname } from "node:path";
+-import {
+-  AccountAvailability,
+-  AgentProvider,
+-  CodexAccountObserver,
+-  CodexAppServerClientFactory,
+-  CodexAppServerQuotaReader,
+-  CodexAuthJsonReader,
+-} from "@vioxen/agent-account-observability";
++import { AccountAvailability, type AccountObservation } from "@vioxen/agent-account-observability";
+ import type {
+-  WorkerAccountCapacityStore,
+-  WorkerAccountCapacityRechecker,
+-  WorkerCapacitySnapshot,
++  WorkerAccountCapacityStore, WorkerAccountCapacityRechecker, WorkerCapacitySnapshot,
++  WorkerRuntimeDemand,
+ } from "@vioxen/subscription-runtime/worker-core";
+ import {
+-  WorkerAccountCapacityClaimStatus,
+-  WorkerAccountCapacityPhase,
+-  WorkerAccountCapacityRecheckMode,
+-  WorkerAccountCapacityResolutionType,
++  WorkerAccountCapacityClaimStatus, WorkerAccountCapacityPhase,
++  WorkerAccountCapacityRecheckMode, WorkerAccountCapacityResolutionType,
+ } from "@vioxen/subscription-runtime/worker-core";
+ import { codexLiveQuotaCapacitySnapshot } from "./codex-live-quota-capacity";
+-import { codexCapacityAccountIdFromIdentity } from "./codex-account-capacity-alias-store";
+ 
++export enum CodexSnapshotObservationStatus {
++  Bound = "bound",
++  Rejected = "rejected",
++}
++export enum CodexSnapshotRejectionReason {
++  Invalid = "native_snapshot_invalid",
++  Deadline = "native_snapshot_deadline",
++  Stop = "native_snapshot_stop_unconfirmed",
++  Cleanup = "native_snapshot_cleanup_failed",
++  UnsupportedDemand = "native_snapshot_unsupported_demand",
++}
++export type CodexSnapshotObservationResult = {
++  readonly status: CodexSnapshotObservationStatus.Bound;
++  readonly independentAccountKeyHash: string;
++  readonly observation: AccountObservation;
++} | {
++  readonly status: CodexSnapshotObservationStatus.Rejected;
++  readonly reason: CodexSnapshotRejectionReason;
++};
++export interface CodexSnapshotObservationPort {
++  read(input: {
++    readonly now: Date;
++    readonly timeoutMs?: number;
++    readonly demand: WorkerRuntimeDemand | null;
++  }): Promise<CodexSnapshotObservationResult>;
++}
+ export type CodexAccountCapacityRecheckerOptions = {
+-  readonly accountId: string;
+-  readonly authJsonPath: string;
+-  readonly codexBinaryPath: string;
++  readonly observation: CodexSnapshotObservationPort;
+   readonly timeoutMs?: number;
+   readonly inconclusiveCooldownMs?: number;
+-  readonly appServerLaunchMinIntervalMs?: number;
+ };
+ 
+-export class CodexAccountCapacityRechecker
+-  implements WorkerAccountCapacityRechecker
+-{
+-  private readonly observer: CodexAccountObserver;
++export class CodexAccountCapacityRechecker implements WorkerAccountCapacityRechecker {
++  constructor(private readonly options: CodexAccountCapacityRecheckerOptions) {}
+ 
+-  constructor(
+-    private readonly options: CodexAccountCapacityRecheckerOptions,
+-  ) {
+-    this.observer = new CodexAccountObserver({
+-      appServerReader: new CodexAppServerQuotaReader({
+-        clientFactory: new CodexAppServerClientFactory({
+-          codexBinaryPath: options.codexBinaryPath,
+-          ...(options.timeoutMs ? { requestTimeoutMs: options.timeoutMs } : {}),
+-          ...(options.timeoutMs ? { startupTimeoutMs: options.timeoutMs } : {}),
+-          ...(options.appServerLaunchMinIntervalMs === undefined
+-            ? {}
+-            : {
+-                appServerLaunchMinIntervalMs:
+-                  options.appServerLaunchMinIntervalMs,
+-              }),
+-        }),
+-      }),
+-      authReader: new CodexAuthJsonReader(),
+-    });
++  async recheck(input: Parameters<WorkerAccountCapacityRechecker["recheck"]>[0]): Promise<WorkerCapacitySnapshot> {
++    let reason = "quota_recheck_inconclusive";
++    const limitIds = input.previous.details?.quotaLimitIds?.split(",") ?? [];
++    const reachedTypes = input.previous.details?.quotaReachedTypes?.split(",") ?? [];
++    if (limitIds.some((id) => id !== "codex" && id !== "weekly") ||
++      reachedTypes.some((type) => type.startsWith("workspace_") || type.includes("credits") || type.includes("spend"))) {
++      return inconclusive(input, reason, this.options.inconclusiveCooldownMs ?? 60_000);
++    }
++    try {
++      const result = await this.options.observation.read({
++        now: input.now, demand: input.demand,
++        ...(this.options.timeoutMs === undefined ? {} : { timeoutMs: this.options.timeoutMs }),
++      });
++      if (result.status === CodexSnapshotObservationStatus.Bound) {
++        if (/^[a-f0-9]{64}$/.test(result.independentAccountKeyHash) &&
++          input.accountId === `codex-provider:${result.independentAccountKeyHash}`) {
++          const limited = codexLiveQuotaCapacitySnapshot(result.observation);
++          if (limited) return limited;
++          if (result.observation.decision.availability === AccountAvailability.Available) {
++            return { availability: "available", details: { accountId: input.accountId,
++              provider: "codex", capacitySource: "codex_app_server_live_quota" } };
++          }
++        } else reason = "quota_recheck_identity_changed";
++      }
++    } catch { /* Neither raw native errors nor generic Retry may weaken a future block. */ }
++    return inconclusive(input, reason, this.options.inconclusiveCooldownMs ?? 60_000);
+   }
++}
+ 
+-  async recheck(input: {
+-    readonly accountId: string;
+-    readonly now: Date;
+-  }): Promise<WorkerCapacitySnapshot> {
+-    const observation = await this.observer.observe({
+-      account: {
+-        provider: AgentProvider.Codex,
+-        slotId: input.accountId,
+-        authHome: dirname(this.options.authJsonPath),
+-        authJsonPath: this.options.authJsonPath,
+-        codexBinaryPath: this.options.codexBinaryPath,
+-      },
+-      now: input.now,
+-      ...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
+-    });
+-    const observedAccountId = codexCapacityAccountIdFromIdentity(
+-      observation.auth.identity,
+-      input.accountId,
+-    );
+-    if (
+-      input.accountId.startsWith("codex-provider:") &&
+-      (!observation.auth.identity?.accountKeyHash ||
+-        observedAccountId !== input.accountId)
+-    ) {
+-      return {
+-        availability: "cooldown",
+-        reason: "quota_recheck_identity_changed",
+-        cooldownUntil: new Date(
+-          input.now.getTime() +
+-            (this.options.inconclusiveCooldownMs ?? 60_000),
+-        ),
+-        lastLimitSignalAt: input.now,
+-        details: {
+-          accountId: input.accountId,
+-          provider: AgentProvider.Codex,
+-          capacitySource: "codex_app_server_live_quota",
+-        },
+-      };
+-    }
+-    const limited = codexLiveQuotaCapacitySnapshot(observation);
+-    if (limited) return limited;
+-    if (observation.decision.availability === AccountAvailability.Available) {
+-      return {
+-        availability: "available",
+-        details: {
+-          accountId: observedAccountId,
+-          provider: AgentProvider.Codex,
+-          capacitySource: "codex_app_server_live_quota",
+-        },
+-      };
+-    }
+-    return {
+-      availability: "cooldown",
+-      reason: "quota_recheck_inconclusive",
+-      cooldownUntil: new Date(
+-        input.now.getTime() +
+-          (this.options.inconclusiveCooldownMs ?? 60_000),
+-      ),
+-      lastLimitSignalAt: input.now,
+-      details: {
+-        accountId: observedAccountId,
+-        provider: AgentProvider.Codex,
+-        capacitySource: "codex_app_server_live_quota",
+-        observedAvailability: observation.decision.availability,
+-      },
+-    };
++function inconclusive(
++  input: Pick<Parameters<WorkerAccountCapacityRechecker["recheck"]>[0], "previous" | "now">,
++  reason: string, cooldownMs: number,
++): WorkerCapacitySnapshot {
++  if (input.previous.availability !== "available" &&
++    (input.previous.cooldownUntil?.getTime() ?? 0) > input.now.getTime()) {
++    return { ...input.previous, details: { ...input.previous.details, quotaRecheckRejection: reason } };
+   }
++  return { availability: "cooldown", reason,
++    cooldownUntil: new Date(input.now.getTime() + cooldownMs), lastLimitSignalAt: input.now };
+ }
+ 
+ export async function recheckDueCodexAccountCapacity(input: {
+   readonly store: WorkerAccountCapacityStore;
+   readonly accountId: string;
+-  readonly authJsonPath: string;
+-  readonly codexBinaryPath: string;
++  readonly rechecker: WorkerAccountCapacityRechecker;
+   readonly now: Date;
+-  readonly timeoutMs?: number;
+ }): Promise<boolean> {
+-  const state = input.store.readState({
+-    accountId: input.accountId,
+-    now: input.now,
+-  });
++  const state = input.store.readState({ accountId: input.accountId, now: input.now });
+   if (state?.phase !== WorkerAccountCapacityPhase.RecheckDue) return false;
+-  const claimed = input.store.tryClaimRecheck({
+-    state,
+-    ownerId: `codex-account-selection:${input.accountId}`,
+-    now: input.now,
+-    ttlMs: 5 * 60_000,
+-    mode: WorkerAccountCapacityRecheckMode.DueOnly,
+-  });
++  const claimed = input.store.tryClaimRecheck({ state,
++    ownerId: `codex-account-selection:${input.accountId}`, now: input.now,
++    ttlMs: 5 * 60_000, mode: WorkerAccountCapacityRecheckMode.DueOnly });
+   if (claimed.status !== WorkerAccountCapacityClaimStatus.Claimed) return false;
++  let capacity: WorkerCapacitySnapshot;
+   try {
+-    const capacity = await new CodexAccountCapacityRechecker({
+-      accountId: input.accountId,
+-      authJsonPath: input.authJsonPath,
+-      codexBinaryPath: input.codexBinaryPath,
+-      ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+-    }).recheck({ accountId: input.accountId, now: input.now });
+-    input.store.resolveRecheck({
+-      claim: claimed.claim,
+-      observedAt: new Date(),
+-      resolution: capacity.availability === "available"
+-        ? { type: WorkerAccountCapacityResolutionType.Available }
+-        : {
+-            type: WorkerAccountCapacityResolutionType.Limited,
+-            capacity,
+-          },
+-    });
+-    return true;
++    capacity = await input.rechecker.recheck({ accountId: claimed.claim.accountId,
++      demand: claimed.claim.demand, previous: claimed.claim.previous, now: input.now });
+   } catch {
+-    input.store.resolveRecheck({
+-      claim: claimed.claim,
+-      observedAt: new Date(),
+-      resolution: {
+-        type: WorkerAccountCapacityResolutionType.Retry,
+-        retryAt: new Date(Date.now() + 60_000),
+-        reason: "quota_recheck_failed",
+-      },
+-    });
+-    return false;
++    capacity = inconclusive({ previous: claimed.claim.previous, now: input.now }, "quota_recheck_failed", 60_000);
+   }
++  input.store.resolveRecheck({ claim: claimed.claim, observedAt: new Date(),
++    resolution: capacity.availability === "available"
++      ? { type: WorkerAccountCapacityResolutionType.Available }
++      : { type: WorkerAccountCapacityResolutionType.Limited, capacity } });
++  return true;
+ }
+diff --git a/src/worker-codex/codex-goal-account-status.ts b/src/worker-codex/codex-goal-account-status.ts
+index 7102990848658ccecc74b5c17158c15252c92a51..de17e25f2ef49751efeef10cbfd1cd483f966fc1 100644
+--- a/src/worker-codex/codex-goal-account-status.ts
++++ b/src/worker-codex/codex-goal-account-status.ts
+@@ -35,7 +35,8 @@ import {
+   migrateLegacyCodexAccountCapacity,
+ } from "./application/codex-account-capacity-store";
+ import { codexCapacityAccountIdFromAuthJson } from "./application/codex-account-capacity-alias-store";
+-import { recheckDueCodexAccountCapacity } from "./application/codex-account-capacity-rechecker";
++import { CodexAccountCapacityRechecker, recheckDueCodexAccountCapacity } from "./application/codex-account-capacity-rechecker";
++import { CodexQuotaSnapshotObservation } from "./adapters/codex-quota-snapshot-observation";
+ import {
+   codexAccountDisplayMetadataForSlot,
+   readCodexAccountDisplayMetadata,
+@@ -111,12 +112,14 @@ export async function listCodexGoalAccountStatuses(
+         recheckDueCodexAccountCapacity({
+           store: accountCapacityStore,
+           accountId: name,
+-          authJsonPath: join(input.authRootDir, name, "auth.json"),
+-          codexBinaryPath: input.codexBinaryPath ?? "codex",
++          rechecker: new CodexAccountCapacityRechecker({
++            observation: new CodexQuotaSnapshotObservation({
++              authJsonPath: join(input.authRootDir, name, "auth.json"),
++              codexBinaryPath: input.codexBinaryPath ?? "codex",
++            }),
++            ...(input.liveCheckTimeoutMs ? { timeoutMs: input.liveCheckTimeoutMs } : {}),
++          }),
+           now: new Date(),
+-          ...(input.liveCheckTimeoutMs
+-            ? { timeoutMs: input.liveCheckTimeoutMs }
+-            : {}),
+         }),
+       ),
+     );
+diff --git a/src/worker-codex/file-backend-codex-safe-executor.ts b/src/worker-codex/file-backend-codex-safe-executor.ts
+index 3365046608b81da3b877c73502e35c84e1f108cd..5e802e0fcc8245fc99158e317e3e13391b967d41 100644
+--- a/src/worker-codex/file-backend-codex-safe-executor.ts
++++ b/src/worker-codex/file-backend-codex-safe-executor.ts
+@@ -49,6 +49,7 @@ import {
+   type FileBackendCodexWorkerResult,
+ } from "./file-backend-codex-worker";
+ import { CodexAccountCapacityRechecker } from "./application/codex-account-capacity-rechecker";
++import { CodexQuotaSnapshotObservation } from "./adapters/codex-quota-snapshot-observation";
+ import { CodexAccountCapacityAliasStore } from "./application/codex-account-capacity-alias-store";
+ import { recordCodexAppServerRateLimitsSnapshot } from "./application/codex-live-quota-capacity";
+ 
+@@ -212,11 +213,10 @@ export class FileBackendCodexSafeExecutor {
+           const account = options.accounts[slotIndex];
+           if (!account?.codexAuthJsonPath) return undefined;
+           return new CodexAccountCapacityRechecker({
+-            accountId:
+-              account.worker.capacityAccountId ??
+-              account.worker.providerInstanceId,
+-            authJsonPath: account.codexAuthJsonPath,
+-            codexBinaryPath: account.worker.codexBinaryPath,
++            observation: new CodexQuotaSnapshotObservation({
++              authJsonPath: account.codexAuthJsonPath,
++              codexBinaryPath: account.worker.codexBinaryPath,
++            }),
+             timeoutMs: account.worker.appServerStartupTimeoutMs ?? 30_000,
+           });
+         },
+diff --git a/src/worker-codex/tests/codex-account-capacity-rechecker.test.ts b/src/worker-codex/tests/codex-account-capacity-rechecker.test.ts
+index 0de544c503c25445aa31d5ca6d055ebedc2107d1..ee0aa0a2f73197ecdd39c178b9d67dd73758b384 100644
+--- a/src/worker-codex/tests/codex-account-capacity-rechecker.test.ts
++++ b/src/worker-codex/tests/codex-account-capacity-rechecker.test.ts
+@@ -1,128 +1,146 @@
+-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
++import { mkdtemp, rm } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
++import { LocalFileWorkerAccountCapacityStore } from "../../store-local-file/worker-account-capacity/adapters/local-worker-account-capacity-store";
+ import { describe, expect, it } from "vitest";
+-import {
+-  AgentProvider,
+-  identityFromAuthJson,
+-} from "@vioxen/agent-account-observability";
+-import { CodexAccountCapacityRechecker } from "../application/codex-account-capacity-rechecker";
++import { AgentProvider, AuthSessionStatus, ObservationPolicy, quotaSnapshotFromRateLimits,
++  type AccountObservation } from "@vioxen/agent-account-observability";
++import { InMemoryWorkerAccountCapacityStore, WorkerAccountCapacityClaimStatus, WorkerAccountCapacityRecheckMode,
++  WorkerAccountCapacityResolutionType, WorkerAccountCapacityResolveStatus, WorkerAccountCapacitySignalScope,
++  type WorkerAccountCapacityStore, type WorkerCapacitySnapshot } from "@vioxen/subscription-runtime/worker-core";
++import { CodexAccountCapacityRechecker, CodexSnapshotObservationStatus as Status,
++  CodexSnapshotRejectionReason as Reason, recheckDueCodexAccountCapacity } from "../application/codex-account-capacity-rechecker";
++
++const now = new Date("2026-09-09T00:00:00Z");
++const hashA = "a".repeat(64), hashB = "b".repeat(64);
++const accountId = `codex-provider:${hashA}`;
++const future = new Date(now.getTime() + 86400_000);
++const previous: WorkerCapacitySnapshot = { availability: "quota_exhausted", reason: "quota_limited", cooldownUntil: future };
++function observation(limited = false): AccountObservation {
++  const auth = { status: AuthSessionStatus.Authenticated, checkedAt: now };
++  const quota = quotaSnapshotFromRateLimits({ now, result: { rateLimits: { limitId: "codex",
++    primary: { usedPercent: limited ? 100 : 20, windowDurationMins: 300, resetsAt: now.getTime() / 1000 + 3600 },
++    secondary: { usedPercent: limited ? 100 : 20, windowDurationMins: 10080, resetsAt: future.getTime() / 1000 },
++  } } });
++  return { account: { provider: AgentProvider.Codex, slotId: "independent" }, auth, quota,
++    checkedAt: now, evidence: [], decision: new ObservationPolicy().decide({ auth, quota }) };
++}
++function rechecker(hash = hashA, limited = false) {
++  return new CodexAccountCapacityRechecker({ observation: { read: async () => ({
++    status: Status.Bound, independentAccountKeyHash: hash, observation: observation(limited),
++  }) } });
++}
+ 
+ describe("CodexAccountCapacityRechecker", () => {
+-  it("maps app-server quota into an exact neutral capacity snapshot", async () => {
+-    const root = await mkdtemp(join(tmpdir(), "codex-capacity-rechecker-"));
+-    try {
+-      const authJsonPath = join(root, "auth", "account-a", "auth.json");
+-      await mkdir(join(root, "auth", "account-a"), { recursive: true });
+-      const authJson = {
+-        auth_mode: "chatgpt",
+-        last_refresh: new Date().toISOString(),
+-        tokens: {
+-          refresh_token: "refresh-secret",
+-          access_token: "access-secret",
+-          id_token: fakeJwt({ sub: "account-a" }),
+-          expiry: Math.floor(Date.now() / 1000) + 3600,
+-        },
+-      };
+-      await writeFile(authJsonPath, `${JSON.stringify(authJson)}\n`);
+-      const identity = identityFromAuthJson(authJson, {
+-        provider: AgentProvider.Codex,
+-        slotId: "account-a",
+-        authHome: join(root, "auth", "account-a"),
+-        authJsonPath,
+-      });
+-      const canonicalAccountId = `codex-provider:${identity.accountKeyHash}`;
+-      const resetAt = new Date(Date.now() + 2 * 60 * 60_000);
+-      const binary = join(root, "codex-limited.sh");
+-      const binaryScript = `#!/bin/sh
+-if [ "$1" = "app-server" ]; then
+-  while IFS= read -r line; do
+-    case "$line" in
+-      *'"method":"initialize"'*) echo '{"id":1,"result":{}}' ;;
+-      *'"method":"account/read"'*) echo '{"id":2,"result":{"account":{"id":"account-a"}}}' ;;
+-      *'"method":"account/rateLimits/read"'*)
+-        echo '{"id":3,"result":{"rateLimitsByLimitId":{"weekly":{"limitId":"weekly","usedPercent":100,"windowDurationMins":10080,"resetsAt":${Math.floor(resetAt.getTime() / 1000)},"rateLimitReachedType":"weekly_limit"}}}}'
+-        exit 0
+-        ;;
+-    esac
+-  done
+-fi
+-exit 1
+-`;
+-      await writeFile(binary, binaryScript);
+-      await chmod(binary, 0o700);
++  it("compares the canonical claim to independent proof and preserves future blocks", async () => {
++    expect(await rechecker(hashB).recheck({ accountId, now, previous, demand: null })).toMatchObject({
++      ...previous, details: { quotaRecheckRejection: "quota_recheck_identity_changed" },
++    });
++    expect(await rechecker("").recheck({ accountId, now, previous, demand: null })).toMatchObject(previous);
++    expect(await rechecker().recheck({ accountId: "alias-A", now, previous, demand: null })).toMatchObject(previous);
++    expect(await rechecker().recheck({ accountId, now, previous, demand: null })).toMatchObject({ availability: "available" });
++  });
+ 
+-      const result = await new CodexAccountCapacityRechecker({
+-        accountId: "account-a",
+-        authJsonPath,
+-        codexBinaryPath: binary,
+-        timeoutMs: 3000,
+-        appServerLaunchMinIntervalMs: 0,
+-      }).recheck({ accountId: canonicalAccountId, now: new Date() });
++  it("retains the later limiting reset across five-hour and seven-day windows", async () => {
++    expect(await rechecker(hashA, true).recheck({ accountId, now, previous, demand: null })).toMatchObject({
++      availability: "quota_exhausted", cooldownUntil: future,
++    });
++  });
+ 
+-      expect(result).toMatchObject({
+-        availability: "quota_exhausted",
+-        reason: "quota_limited",
+-        cooldownUntil: new Date(Math.floor(resetAt.getTime() / 1000) * 1000),
+-        details: {
+-          provider: "codex",
+-          capacitySource: "codex_app_server_live_quota",
+-          quotaWindowKinds: "seven_day",
+-        },
+-      });
+-      expect(JSON.stringify(result)).not.toContain("secret");
++  it("keeps exceptions and rejection from shortening a future block, forwards demand", async () => {
++    const demand = { provider: "codex", model: "synthetic-special-model" };
++    for (const throws of [false, true]) {
++      const checker = new CodexAccountCapacityRechecker({ observation: { read: async (input) => {
++        expect(input.demand).toEqual(demand);
++        expect(input).not.toHaveProperty("accountId");
++        if (throws) throw new Error("synthetic-secret-error");
++        return { status: Status.Rejected, reason: Reason.Invalid };
++      } } });
++      const result = await checker.recheck({ accountId, now, previous, demand });
++      expect(result.cooldownUntil).toEqual(future);
++      expect(JSON.stringify(result)).not.toContain("synthetic-secret");
++      expect((await checker.recheck({ accountId, now, demand, previous: { ...previous, cooldownUntil: now } })).cooldownUntil)
++        .toEqual(new Date(now.getTime() + 60_000));
++    }
++  });
+ 
+-      const identityChanged = await new CodexAccountCapacityRechecker({
+-        accountId: "account-a",
+-        authJsonPath,
+-        codexBinaryPath: binary,
+-        timeoutMs: 3000,
+-        appServerLaunchMinIntervalMs: 0,
+-      }).recheck({
+-        accountId: `codex-provider:${"0".repeat(64)}`,
+-        now: new Date(),
+-      });
+-      expect(identityChanged).toMatchObject({
+-        availability: "cooldown",
+-        reason: "quota_recheck_identity_changed",
+-      });
++  it("passes the claimed canonical ID, previous and demand in the due helper", async () => {
++    const base = new InMemoryWorkerAccountCapacityStore();
++    base.observe({ accountId, capacity: { ...previous, cooldownUntil: now }, observedAt: new Date(now.getTime() - 1000), retainExpiredForRecheck: true });
++    const store: WorkerAccountCapacityStore = { ...base,
++      readState: () => base.readState({ accountId, now }),
++      tryClaimRecheck: (input) => base.tryClaimRecheck(input),
++      resolveRecheck: (input) => base.resolveRecheck(input),
++      observe: (input) => base.observe(input),
++      read: (input) => base.read(input),
++      clear: (input) => base.clear(input),
++      releaseRecheck: (input) => base.releaseRecheck(input),
++    };
++    await recheckDueCodexAccountCapacity({ store, accountId: "slot-alias", now,
++      rechecker: { recheck: async (input) => {
++        expect(input.accountId).toBe(accountId);
++        expect(input.previous.reason).toBe("quota_limited");
++        expect(input.demand).toBeNull();
++        return { availability: "available" };
++      } } });
++    // The fake clock above is historical; the real resolution timestamp may expire
++    // that claim. Canonical forwarding is independent of the CAS outcome.
++  });
+ 
+-      await writeFile(authJsonPath, `${JSON.stringify({
+-        auth_mode: "chatgpt",
+-        tokens: {
+-          refresh_token: "rotated-refresh-secret",
+-          access_token: "rotated-access-secret",
+-          expiry: Math.floor(Date.now() / 1000) + 3600,
+-        },
+-      })}\n`);
+-      await writeFile(
+-        binary,
+-        binaryScript.replace(
+-          '"account":{"id":"account-a"}',
+-          '"account":{}',
+-        ),
+-      );
+-      const identityMissing = await new CodexAccountCapacityRechecker({
+-        accountId: "account-a",
+-        authJsonPath,
+-        codexBinaryPath: binary,
+-        timeoutMs: 3000,
+-        appServerLaunchMinIntervalMs: 0,
+-      }).recheck({ accountId: canonicalAccountId, now: new Date() });
+-      expect(identityMissing).toMatchObject({
+-        availability: "cooldown",
+-        reason: "quota_recheck_identity_changed",
+-      });
+-    } finally {
+-      await rm(root, { recursive: true, force: true });
+-    }
++  it("stale observation cannot resolve newer or other-account records", async () => {
++    const store = new InMemoryWorkerAccountCapacityStore();
++    store.observe({ accountId, capacity: previous, observedAt: now });
++    store.observe({ accountId: `codex-provider:${hashB}`, capacity: previous, observedAt: now });
++    const state = store.readState({ accountId, now })!;
++    const claim = store.tryClaimRecheck({ state, ownerId: "test", now, ttlMs: 60_000, mode: WorkerAccountCapacityRecheckMode.Refresh });
++    expect(claim.status).toBe(WorkerAccountCapacityClaimStatus.Claimed);
++    if (claim.status !== WorkerAccountCapacityClaimStatus.Claimed) throw new Error();
++    store.observe({ accountId, capacity: { ...previous, cooldownUntil: new Date(future.getTime() + 1000) },
++      scope: WorkerAccountCapacitySignalScope.AccountWide, observedAt: new Date(now.getTime() + 1) });
++    expect(store.resolveRecheck({ claim: claim.claim, observedAt: new Date(now.getTime() + 2),
++      resolution: { type: WorkerAccountCapacityResolutionType.Available } }).status).not.toBe(WorkerAccountCapacityResolveStatus.Applied);
++    expect(store.readState({ accountId, now })).not.toBeNull();
++    expect(store.readState({ accountId: `codex-provider:${hashB}`, now })).not.toBeNull();
++  });
++  it.each(["newer", "replacement", "recreate", "sibling"])("on-disk CAS fences a paused observation against %s state", async (change) => {
++    const rootDir = await mkdtemp(join(tmpdir(), "native-identity-cas-"));
++    const store = new LocalFileWorkerAccountCapacityStore({ rootDir });
++    try {
++      store.observe({ accountId, capacity: previous, observedAt: now });
++      const state = store.readState({ accountId, now })!;
++      const claimed = store.tryClaimRecheck({ state, now, ttlMs: 1000, ownerId: "first",
++        mode: WorkerAccountCapacityRecheckMode.Refresh });
++      if (claimed.status !== WorkerAccountCapacityClaimStatus.Claimed) throw new Error();
++      let finish!: () => void;
++      const gate = new Promise<void>((resolve) => { finish = resolve; });
++      const checker = new CodexAccountCapacityRechecker({ observation: { read: async () => {
++        await gate;
++        return { status: Status.Bound, independentAccountKeyHash: hashA, observation: observation() };
++      } } });
++      const pending = checker.recheck({ accountId: claimed.claim.accountId, now,
++        demand: claimed.claim.demand, previous: claimed.claim.previous });
++      const changedAt = new Date(now.getTime() + (change === "replacement" ? 1001 : 1));
++      if (change === "recreate") store.clear({ accountId });
++      if (change === "newer" || change === "recreate") {
++        store.observe({ accountId, observedAt: changedAt, capacity: { ...previous, cooldownUntil: new Date(future.getTime() + 1000) } });
++      }
++      if (change === "replacement") {
++        const next = store.tryClaimRecheck({ state: store.readState({ accountId, now: changedAt })!,
++          now: changedAt, ttlMs: 1000, ownerId: "replacement", mode: WorkerAccountCapacityRecheckMode.Refresh });
++        expect(next.status).toBe(WorkerAccountCapacityClaimStatus.Claimed);
++      }
++      const demand = { provider: "codex", model: "synthetic-special-model" };
++      store.observe({ accountId, demand, observedAt: changedAt, capacity: previous });
++      store.observe({ accountId: `codex-provider:${hashB}`, observedAt: changedAt, capacity: previous });
++      finish();
++      expect((await pending).availability).toBe("available");
++      const resolved = store.resolveRecheck({ claim: claimed.claim, observedAt: changedAt,
++        resolution: { type: WorkerAccountCapacityResolutionType.Available } });
++      if (change === "sibling") expect(resolved.status).toBe(WorkerAccountCapacityResolveStatus.Applied);
++      else expect(resolved.status).not.toBe(WorkerAccountCapacityResolveStatus.Applied);
++      expect(store.read({ accountId, demand, now: changedAt })).not.toBeNull();
++      expect(store.read({ accountId: `codex-provider:${hashB}`, now: changedAt })).not.toBeNull();
++    } finally { await rm(rootDir, { recursive: true, force: true }); }
+   });
+-});
+ 
+-function fakeJwt(payload: Record<string, unknown>): string {
+-  return [
+-    Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url"),
+-    Buffer.from(JSON.stringify(payload)).toString("base64url"),
+-    "",
+-  ].join(".");
+-}
++});
+diff --git a/src/worker-codex/tests/codex-quota-snapshot-observation.test.ts b/src/worker-codex/tests/codex-quota-snapshot-observation.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0458740e951c77d0a5a9e7e11787ebf786d14546
+--- /dev/null
++++ b/src/worker-codex/tests/codex-quota-snapshot-observation.test.ts
+@@ -0,0 +1,264 @@
++import { EventEmitter } from "node:events";
++import { PassThrough, Writable } from "node:stream";
++import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { dirname, join } from "node:path";
++import { describe, expect, it } from "vitest";
++import type { spawn } from "node:child_process";
++import { CodexEphemeralSessionMaterializer } from "../../provider-codex/codex-session-materializer";
++import { CodexQuotaSnapshotObservation } from "../adapters/codex-quota-snapshot-observation";
++import { CodexSnapshotObservationStatus as Status } from "../application/codex-account-capacity-rechecker";
++
++const now = new Date("2026-09-09T00:00:00Z");
++function auth(accountId = "A", rotation = "first") {
++  const jwt = ["e30", Buffer.from(JSON.stringify({
++    exp: rotation === "first" ? 2_000_000_000 : 2_000_000_001, email: "same@example.invalid",
++    "https://api.openai.com/auth": { chatgpt_account_id: accountId, chatgpt_user_id: "user-a" },
++  })).toString("base64url"), "c2ln"].join(".");
++  return { auth_mode: "chatgpt", OPENAI_API_KEY: null, last_refresh: now.toISOString(),
++    tokens: { account_id: accountId, id_token: jwt, access_token: jwt, refresh_token: rotation } };
++}
++const quota = () => ({ rateLimits: { limitId: "codex", planType: "plus", spendControlReached: false,
++  primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: now.getTime() / 1000 + 3600 },
++  secondary: { usedPercent: 30, windowDurationMins: 10080, resetsAt: now.getTime() / 1000 + 86400 } } });
++
++type Hooks = {
++  quota?: unknown;
++  account?: unknown;
++  mutate?: (home: string, source: string) => Promise<void>;
++  signal?: Record<string, unknown>;
++  stopFails?: boolean;
++  cleanupFails?: boolean;
++  profileConflict?: boolean;
++  initialAccount?: string;
++  initialMode?: "omitted" | null;
++  lateSignal?: Record<string, unknown>;
++  rpcError?: boolean;
++  hangInitialize?: boolean;
++  effectiveConfigConflict?: boolean;
++};
++async function setup(hooks: Hooks = {}) {
++  const root = await mkdtemp(join(tmpdir(), "native-quota-test-"));
++  const source = join(root, "synthetic-auth.json");
++  const sourceAuth: Record<string, unknown> = auth(hooks.initialAccount);
++  if (hooks.initialMode === "omitted") delete sourceAuth.auth_mode;
++  if (hooks.initialMode === null) sourceAuth.auth_mode = null;
++  await writeFile(source, JSON.stringify(sourceAuth, null, 2));
++  const calls: string[] = [];
++  const homes: string[] = [];
++  const fakeSpawn = ((_command: string, args: string[], options: { env: Record<string, string>; cwd: string }) => {
++    const env = options.env;
++    expect(Object.keys(env).sort()).toEqual(["CODEX_HOME", "HOME", "LANG", "PATH"]);
++    expect(options.cwd).toBe(env.HOME);
++    expect(args.slice(-3)).toEqual(["app-server", "--strict-config", "--stdio"]);
++    homes.push(env.CODEX_HOME!);
++    const config: Record<string, any> = {};
++    for (let i = 0; i < args.length - 3; i += 2) {
++      const override = args[i + 1]!;
++      const at = override.indexOf("=");
++      const path = override.slice(0, at).split(".");
++      let obj = config;
++      for (const key of path.slice(0, -1)) obj = obj[key] ??= {};
++      obj[path.at(-1)!] = JSON.parse(override.slice(at + 1));
++    }
++    // be6e8 ConfigToml rejects reserved IDs and serializes only configured
++    // providers; it never expands the built-in OpenAI provider into this map.
++    if (["openai", "ollama", "lmstudio"].some((id) => id in (config.model_providers ?? {}))) {
++      throw new Error("reserved built-in provider override");
++    }
++    config.model_providers ??= {};
++    const stdout = new PassThrough();
++    const stderr = new PassThrough();
++    const child = Object.assign(new EventEmitter(), {
++      pid: 12345, stdout, stderr, exitCode: null as number | null, signalCode: null as string | null,
++      kill(signal: string) {
++        if (!hooks.stopFails) { this.signalCode = signal; child.emit("exit", null, signal); child.emit("close", null, signal); }
++        return true;
++      },
++    });
++    const stdin = new Writable({
++      write(chunk, _encoding, callback) {
++        callback();
++        void (async () => {
++          const message = JSON.parse(String(chunk));
++          calls.push(message.method);
++          if (hooks.hangInitialize && message.method === "initialize") return;
++          let result: unknown = {};
++          if (message.method === "initialize") {
++            const fileConfig = await readFile(join(env.CODEX_HOME!, "config.toml"), "utf8");
++            expect(fileConfig.includes("model_providers.openai")).toBe(false);
++            const privateAuth = JSON.parse(await readFile(join(env.CODEX_HOME!, "auth.json"), "utf8"));
++            expect(privateAuth.auth_mode).toBe("chatgpt");
++            const catalog = JSON.parse(await readFile(config.model_catalog_json, "utf8"));
++            expect(catalog.models.length).toBeGreaterThan(0);
++          }
++          if (hooks.effectiveConfigConflict) config.model_providers.openai = { env_key: "SYNTHETIC_ALTERNATE_KEY" };
++          if (message.method === "config/read") result = { config };
++          if (message.method === "account/read") {
++            expect(message.params).toEqual({ refreshToken: false });
++            result = hooks.account === undefined ? { requiresOpenaiAuth: true, account: { type: "chatgpt", email: "same@example.invalid", planType: "plus" } } : hooks.account;
++          }
++          if (message.method === "account/rateLimits/read") {
++            if (hooks.mutate) await hooks.mutate(env.CODEX_HOME!, source);
++            if (hooks.signal) stdout.write(JSON.stringify({ id: message.id, ...hooks.signal }) + "\n");
++            result = hooks.quota === undefined ? quota() : hooks.quota;
++          }
++          stdout.write(JSON.stringify(message.method === "account/rateLimits/read" && hooks.rpcError
++            ? { id: message.id, error: { message: "synthetic-secret-rpc-error" } }
++            : { id: message.id, result }) + "\n");
++        })().catch((error) => child.emit("error", error));
++      },
++      final(callback) {
++        callback();
++        if (hooks.lateSignal) stdout.write(JSON.stringify(hooks.lateSignal) + "\n");
++        if (!hooks.stopFails) { child.signalCode = "SIGTERM"; child.emit("exit", null, "SIGTERM"); child.emit("close", null, "SIGTERM"); }
++      },
++    });
++    return Object.assign(child, { stdin });
++  }) as unknown as typeof spawn;
++  const adapter = new CodexQuotaSnapshotObservation({ authJsonPath: source,
++    codexBinaryPath: process.execPath, spawnProcess: fakeSpawn, appServerLaunchMinIntervalMs: 0,
++    materializer: { mode: "ephemeral", materialize: async (input) => {
++      const materialized = await new CodexEphemeralSessionMaterializer().materialize(input);
++      if (hooks.profileConflict) {
++        homes.push(materialized.codexHome);
++        await mkdir(join(materialized.home, ".codex"));
++        await writeFile(join(materialized.home, ".codex", "config.toml"), "model_provider='other'");
++      }
++      return { ...materialized, release: hooks.cleanupFails
++        ? async () => { throw new Error("synthetic-secret-cleanup-error"); } : materialized.release };
++    } },
++  });
++  return { adapter, source, homes, calls, async cleanup() {
++    await rm(root, { recursive: true, force: true });
++    for (const home of homes) await rm(dirname(home), { recursive: true, force: true });
++  } };
++}
++
++describe("native quota snapshot observation", () => {
++  it("binds display-only responses, compaction and same-A rotation in one isolated client", async () => {
++    const test = await setup({ mutate: async (home) => { await writeFile(join(home, "auth.json"), JSON.stringify(auth("A", "rotated"))); } });
++    try {
++      expect(await test.adapter.read({ now, demand: null })).toMatchObject({ status: Status.Bound });
++      expect(test.calls).toEqual(["initialize", "config/read", "account/read", "account/rateLimits/read"]);
++      expect(await readFile(test.source, "utf8")).toContain("first");
++      await expect(readFile(join(test.homes[0]!, "auth.json"))).rejects.toMatchObject({ code: "ENOENT" });
++    } finally { await test.cleanup(); }
++  });
++
++  it.each(["omitted", null] as const)("supports implicit managed mode %s without changing source bytes", async (initialMode) => {
++    for (const rotation of [undefined, "A", "B"] as const) {
++      const test = await setup({ initialMode, ...(rotation ? { mutate: async (home: string) => {
++        const rotated: Record<string, unknown> = auth(rotation, "rotated");
++        delete rotated.OPENAI_API_KEY;
++        rotated.auth_mode = null;
++        await writeFile(join(home, "auth.json"), JSON.stringify(rotated));
++      } } : {}) });
++      try {
++        const baseline = await readFile(test.source, "utf8");
++        expect((await test.adapter.read({ now, demand: null })).status).toBe(rotation === "B" ? Status.Rejected : Status.Bound);
++        expect(await readFile(test.source, "utf8")).toBe(baseline);
++        expect(test.calls).toEqual(["initialize", "config/read", "account/read", "account/rateLimits/read"]);
++      } finally { await test.cleanup(); }
++    }
++  });
++
++  it.each(["B", "source", "config", "missing"])("rejects final %s mutation", async (kind) => {
++    const test = await setup({ mutate: async (home, source) => {
++      if (kind === "B") await writeFile(join(home, "auth.json"), JSON.stringify(auth("B")));
++      if (kind === "source") await writeFile(source, JSON.stringify(auth("B")));
++      if (kind === "config") await writeFile(join(home, "config.toml"), "model_provider='other'");
++      if (kind === "missing") await rm(join(home, "auth.json"));
++    } });
++    try { expect(await test.adapter.read({ now, demand: null })).toMatchObject({ status: Status.Rejected }); }
++    finally { await test.cleanup(); }
++  });
++
++  it.each([null, { requiresOpenaiAuth: true, account: { type: "apiKey" } }])("rejects invalid account branch %j", async (account) => {
++    const test = await setup({ account });
++    try {
++      expect(await test.adapter.read({ now, demand: null })).toMatchObject({ status: Status.Rejected });
++      expect(test.calls).not.toContain("account/rateLimits/read");
++    } finally { await test.cleanup(); }
++  });
++
++  it("invalidates a credential server request whose ID collides with quota", async () => {
++    const test = await setup({ signal: { method: "account/chatgptAuthTokens/refresh", params: { previousAccountId: "A" } } });
++    try { expect(await test.adapter.read({ now, demand: null })).toMatchObject({ status: Status.Rejected }); }
++    finally { await test.cleanup(); }
++  });
++
++  it("retains a live child's home after an unconfirmed stop", async () => {
++    const test = await setup({ stopFails: true });
++    try {
++      expect(await test.adapter.read({ now, demand: null })).toMatchObject({ status: Status.Rejected, reason: "native_snapshot_stop_unconfirmed" });
++      expect(await readFile(join(test.homes[0]!, "auth.json"), "utf8")).toContain("first");
++    } finally { await test.cleanup(); }
++  });
++
++  it("uses different private homes for simultaneous observations", async () => {
++    const left = await setup(); const right = await setup();
++    try {
++      const result = await Promise.all([left.adapter.read({ now, demand: null }), right.adapter.read({ now, demand: null })]);
++      expect(result.map((value) => value.status)).toEqual([Status.Bound, Status.Bound]);
++      expect(left.homes[0]).not.toBe(right.homes[0]);
++    } finally { await left.cleanup(); await right.cleanup(); }
++  });
++  it.each([
++    { cleanupFails: true }, { profileConflict: true }, { effectiveConfigConflict: true }, { rpcError: true },
++    { lateSignal: { method: "account/login/completed", params: { success: true } } },
++    { lateSignal: { method: "account/updated", params: { authMode: null } } },
++  ])("rejects lifecycle/profile/visible error %j without exposing raw errors", async (hooks) => {
++    const test = await setup(hooks);
++    try {
++      const result = await test.adapter.read({ now, demand: null });
++      expect(result.status).toBe(Status.Rejected);
++      expect(JSON.stringify(result)).not.toContain("synthetic-secret");
++      if (hooks.profileConflict) expect(test.calls).toEqual([]);
++      if (hooks.effectiveConfigConflict) expect(test.calls).toEqual(["initialize", "config/read"]);
++      if (hooks.cleanupFails) {
++        expect(result).toMatchObject({ reason: "native_snapshot_cleanup_failed" });
++        await test.adapter.dispose();
++        await expect(readFile(join(test.homes[0]!, "auth.json"))).rejects.toMatchObject({ code: "ENOENT" });
++      }
++    } finally { await test.cleanup(); }
++  });
++
++  it("allows managed plan notifications and unchanged tokens with successful usage", async () => {
++    const test = await setup({ lateSignal: { method: "account/updated", params: { authMode: "chatgpt", planType: "plus" } } });
++    try { expect((await test.adapter.read({ now, demand: null })).status).toBe(Status.Bound); }
++    finally { await test.cleanup(); }
++  });
++
++  it("independently binds different selected accounts sharing one email", async () => {
++    const left = await setup(); const right = await setup({ initialAccount: "B" });
++    try {
++      const a = await left.adapter.read({ now, demand: null });
++      const b = await right.adapter.read({ now, demand: null });
++      expect(a.status).toBe(Status.Bound); expect(b.status).toBe(Status.Bound);
++      if (a.status !== Status.Bound || b.status !== Status.Bound) throw new Error();
++      expect(a.independentAccountKeyHash).not.toBe(b.independentAccountKeyHash);
++    } finally { await left.cleanup(); await right.cleanup(); }
++  });
++
++  it("rejects final source symlinks without launching a provider", async () => {
++    const test = await setup();
++    try {
++      const target = test.source + ".target";
++      await writeFile(target, JSON.stringify(auth()));
++      await rm(test.source); await symlink(target, test.source);
++      expect((await test.adapter.read({ now, demand: null })).status).toBe(Status.Rejected);
++      expect(test.calls).toEqual([]);
++    } finally { await test.cleanup(); }
++  });
++
++  it("stops a hung initialization at the whole-observation deadline", async () => {
++    const test = await setup({ hangInitialize: true });
++    try {
++      expect(await test.adapter.read({ now, demand: null, timeoutMs: 100 })).toMatchObject({ status: Status.Rejected });
++      expect(test.calls).toEqual(["initialize"]);
++      await expect(readFile(join(test.homes[0]!, "auth.json"))).rejects.toMatchObject({ code: "ENOENT" });
++    } finally { await test.cleanup(); }
++  });
++
++});

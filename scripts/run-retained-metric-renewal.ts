@@ -1,20 +1,15 @@
+import { SystemClock } from "@social-monitor/shared-kernel";
+import { retainedMetricRenewalEffects } from "./lib/retained-metric-renewal-composition";
 import { acquirePrismaPgRuntimeConnection, defaultPostgresRuntimePoolConfig, runWithTenantDatabaseAccess,
   type PrismaPgRuntimeClientConstructor } from "@social-monitor/platform-persistence";
 import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
-import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
-import { PrismaSourceEngagementProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-projection.adapter";
 import type { PrismaSourceEngagementClient } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-client";
 import { PrismaRetainedMetricInventory, type PrismaMetricInventoryClient } from "@social-monitor/ingestion/adapters/persistence/prisma-retained-metric-inventory";
-import { HttpHackerNewsClient } from "@social-monitor/ingestion/adapters/source/hacker-news/http-hacker-news-client";
-import { HttpRedditClient } from "@social-monitor/ingestion/adapters/source/reddit/http-reddit-client";
-import { RedditAppOnlyTokenProvider } from "@social-monitor/ingestion/adapters/source/reddit/app-only-reddit-token-provider";
-import { RetainedMetricFetchAdapter } from "@social-monitor/ingestion/adapters/source/retained-metric-fetch.capability";
 import { RenewRetainedMetricsUseCase, type MetricRenewalFinal } from "@social-monitor/ingestion/features/refresh-retained-metrics/renew-retained-metrics.use-case";
 import type { MetricRenewalManifest } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-renewal.contracts";
 import { metricRenewalCells } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-renewal-report";
 import { resolveMetricRenewal } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-renewal-evidence";
 import { retainedMetricRenewalGrant as grant } from "@social-monitor/ingestion/domain/policies/retained-metric-renewal-grant";
-import { sameTarget } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-admission";
 import type { MetricRefreshOperation } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-operation.contracts";
 import { metricRefreshDigest as hash } from "./lib/retained-metric-refresh-receipts";
 import { retainedMetricRenewalReceipts } from "./lib/retained-metric-renewal-receipts";
@@ -74,21 +69,7 @@ export async function runRetainedMetricRenewal(args: readonly string[], env: Nod
           process.stdout.write(`${JSON.stringify({ diagnostic: true, manifestSha: hash(existing), captureStartedAt, captureCompletedAt: clock.now().toISOString(), currentWindow, originals,
             outsideGrantSourceItemIds: currentWindow.filter((t) => !existing.targets.some((f) => f.sourceItemId === t.sourceItemId)).map((t) => t.sourceItemId) })}\n`); return;
         }
-        const projection = new PrismaSourceEngagementProjectionAdapter(connection.client, new CryptoIdGenerator(), {
-          retention: "skip", sampleGuard: async (transaction, _command, sample) => {
-            const expected = existing?.targets.find((t) => t.sourceItemId === sample.sourceItemId);
-            const guarded = new PrismaRetainedMetricInventory(transaction as unknown as PrismaMetricInventoryClient, hash);
-            if (!expected || !sameTarget(expected, await guarded.read(existing!.scope, expected.sourceItemId), hash)) throw new Error("Transactional renewal target drift");
-          },
-        });
-        let tokenProvider: RedditAppOnlyTokenProvider | undefined;
-        const token = { getAccessToken: async () => {
-          tokenProvider ??= new RedditAppOnlyTokenProvider({ clientId: env.REDDIT_APP_CLIENT_ID ?? "", clientSecret: env.REDDIT_APP_CLIENT_SECRET ?? "",
-            userAgent: env.REDDIT_APP_USER_AGENT, timeoutMs: 10_000, now: () => clock.now().getTime() });
-          return tokenProvider.getAccessToken();
-        } };
-        const fetcher = new RetainedMetricFetchAdapter(new HttpHackerNewsClient(10_000), new HttpRedditClient("https://oauth.reddit.com", 10_000), token,
-          env.REDDIT_APP_USER_AGENT ?? "social-monitor-retained-metrics/1");
+        const { projection, fetcher } = retainedMetricRenewalEffects(connection.client, existing, clock, env);
         const usecase = new RenewRetainedMetricsUseCase(inventory, fetcher, projection, scoped(prior), scoped(operation), clock, hash);
         const result = apply ? await usecase.execute(options.get("--manifest-sha")!) : await usecase.prepare(maintenance.implementation);
         const output = apply && result.ok && "results" in result.value && existing ? renewalReport(result.value, existing) :

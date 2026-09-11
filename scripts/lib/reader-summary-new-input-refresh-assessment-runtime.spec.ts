@@ -9,7 +9,7 @@ const command = (index = 0, count = 1, padding = 0): AgentRuntimeTaskCommand => 
   prompt: JSON.stringify({ candidates: Array.from({ length: count }, (_, i) => ({
     candidateId: `candidate-${index + i}`, text: "x".repeat(padding),
   })) }),
-  controls: { model: "gpt-5.6-sol", reasoningEffort: "high", interactive: false,
+  controls: { model: "gpt-5.6-sol", reasoningEffort: "low", interactive: false,
     outputSchemaName: "social_monitor_source_content_quality_review", schemaVersion: "source_content_assessment.v1" },
 });
 function wiring(mutate?: (result: AgentRuntimeTaskResult) => AgentRuntimeTaskResult) {
@@ -26,10 +26,30 @@ function wiring(mutate?: (result: AgentRuntimeTaskResult) => AgentRuntimeTaskRes
 }
 
 describe("refresh operation assessment runtime budgets and receipts", () => {
+  it("admits six bound assessment batches concurrently and keeps other work exclusive", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const runTask = jest.fn(async (request: AgentRuntimeTaskCommand) => {
+      await gate;
+      return completedRefreshModelRequest(request, { reviews: [] });
+    });
+    const runtime = guardedRefreshRuntime({ delegate: { runTask, checkHealth: jest.fn() }, manifest: refreshManifest(),
+      assertLocal: () => undefined, assertCurrent: async () => undefined, record: jest.fn() });
+    const pending = Array.from({ length: 6 }, (_, i) => runtime.runTask(command(i)));
+    for (let i = 0; i < 12; i++) await Promise.resolve();
+    expect(runTask).toHaveBeenCalledTimes(6);
+    await expect(runtime.runTask(command(6))).rejects.toThrow(/budget/u);
+    expect(() => runtime.assertUsable()).not.toThrow();
+    release();
+    await expect(Promise.all(pending)).resolves.toHaveLength(6);
+    expect(() => runtime.assertUsable()).not.toThrow();
+  });
+
   it("consumes exactly 200 candidates then blocks another batch without refunding", async () => {
     const test = wiring();
     for (let i = 0; i < 200; i += 8) await test.runtime.runTask(command(i, 8));
     await expect(test.runtime.runTask(command(200))).rejects.toThrow(/consumed/u);
+    await expect(test.runtime.runTask(command(201, 4))).rejects.toThrow(/budget/u);
     expect(test.runTask).toHaveBeenCalledTimes(25);
     expect(() => test.runtime.assertUsable()).toThrow(/reconciliation/u);
     expect(test.events).toContainEqual(expect.objectContaining({ status: "invocation_consumed",
@@ -51,7 +71,7 @@ describe("refresh operation assessment runtime budgets and receipts", () => {
   it("never resets the elapsed operation budget for a new batch", async () => {
     const test = wiring();
     await test.runtime.runTask(command());
-    test.advance(600_000);
+    test.advance(3_600_000);
     await expect(test.runtime.runTask(command(1))).rejects.toThrow(/consumed/u);
     expect(test.runTask).toHaveBeenCalledTimes(1);
   });

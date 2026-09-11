@@ -6,3 +6,4 @@ export * from "./entities/user-relevance-profile";
 export * from "./policies/ranking-policy";
 export * from "./source-content-quality";
 export * from "./source-content-safety";
+export * from "./promotion-reader-headline";

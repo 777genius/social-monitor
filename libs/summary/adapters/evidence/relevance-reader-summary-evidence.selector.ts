@@ -40,6 +40,14 @@ import {
   materializeReaderSummaryEditorialSlate,
 } from "./reader-summary-editorial-slate";
 
+import {
+  excludedPreparationIds,
+  observeReaderPromotionSnapshot,
+  observeReaderSummaryPreparation,
+  unclusteredPreparationIds,
+  type ReaderSummaryPreparationObserver,
+} from "./reader-summary-preparation-observer";
+
 /**
  * Original source text is considered through 256k UTF-16 code units. The cap
  * is applied before safety-policy sanitization to bound transient regex/string
@@ -56,6 +64,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     private readonly storyRankingMetrics: StoryRankingMetricsPort = NOOP_STORY_RANKING_METRICS,
     private readonly storyRelationVerifier?: ReaderSummaryStoryRelationVerifierPort,
     private readonly relatedTopicVerifierTimeoutMs = RELATED_TOPIC_VERIFIER_TIMEOUT_MS,
+    private readonly preparationObserver?: ReaderSummaryPreparationObserver,
   ) {
     this.clusterer = new StoryClusteringService(clock);
   }
@@ -78,13 +87,20 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       observedAtOrBefore: ingestionCutoff,
       rankingProfile: "reader_post_promotion",
       limit: expandedCandidateLimit(params.maxItems),
+      ...(this.preparationObserver === undefined ? {} : {
+        observePromotionPreparation: (preparation) => observeReaderPromotionSnapshot(
+          this.preparationObserver!, preparation, ingestionCutoff, params,
+        ),
+      }),
     });
 
     if (!ranked.ok) {
       throw ranked.error;
     }
+    const rankedInventory = ranked.value.items.map((item) =>
+      mapRankedItem(item, query.observedThrough, params));
     const expandedRankedItems = filterItemsByReaderSummaryPeriod(
-      ranked.value.items.map((item) => mapRankedItem(item, query.observedThrough)),
+      rankedInventory,
       params.period,
       params.timestampPolicy,
     );
@@ -165,7 +181,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         authoritativeClusterByEvidenceId.get(relation.leftFeedItemId) ===
           authoritativeClusterByEvidenceId.get(relation.rightFeedItemId),
     );
-    const deterministicPromotionSelection = promotionPolicySelection({
+    const prePolicySelection = {
       ...authoritativeCandidateSelection,
       approvedSameStoryRelations: graduatedRelations,
       sourceWindow: {
@@ -174,7 +190,34 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         periodEndedAt: params.period.endedAt,
         ingestionCutoff,
       },
-    }, promotionPolicyItems);
+    };
+    if (this.preparationObserver !== undefined) {
+      observeReaderSummaryPreparation(this.preparationObserver, {
+        rankingOrder: ranked.value.items.map(({ feedItemId, rank }) => ({ feedItemId, rank })),
+        rankedInventory,
+        periodExcludedIds: excludedPreparationIds(rankedInventory, expandedRankedItems),
+        defaultProviderExcludedIds: excludedPreparationIds(expandedRankedItems, rankedItems),
+        periodFiltered: expandedRankedItems,
+        defaultProviderFiltered: rankedItems,
+        candidateItems,
+        groupingInput: primaryCandidateItems,
+        initialGrouping: candidateSelection,
+        authoritativeGrouping: authoritativeCandidateSelection,
+        initialUnclusteredIds: unclusteredPreparationIds(primaryCandidateItems, candidateSelection),
+        authoritativeUnclusteredIds: unclusteredPreparationIds(primaryCandidateItems, authoritativeCandidateSelection),
+        relationCandidates: approvedRelations.candidates,
+        verifiedPairs: [...approvedRelations.pairs],
+        strictTitlePairs: [...approvedRelations.strictTitlePairs],
+        approvedRelations: approvedRelations.relations,
+        graduatedRelations,
+        policyItems: promotionPolicyItems,
+        prePolicySelection,
+        admittedSupplemental: githubTrendingEvidence,
+      });
+    }
+    const deterministicPromotionSelection = promotionPolicySelection(
+      prePolicySelection, promotionPolicyItems,
+    );
     const editorialSlate = composeReaderSummaryEditorialSlate({
       selection: deterministicPromotionSelection,
       candidates: promotionPolicyItems,

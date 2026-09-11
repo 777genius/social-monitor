@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { URL } from "node:url";
 import * as core from "@vioxen/subscription-runtime/worker-core";
 import * as routing from "../bin/codex-auth-pool-routing.mjs";
+import { createAssessmentCliLifecycle } from "../bin/assessment-cli-lifecycle.mjs";
+import { createAssessmentProgress } from "../bin/assessment-cli-progress.mjs";
+import { subscriptionRuntimeFailureDetails } from "../bin/subscription-runtime-failure-details.mjs";
 
 // Actual wrapper function and native safe executor/pool, with inert worker and
 // in-memory journal/locks/capacity. No CLI, provider, credentials or child launch.
@@ -14,7 +18,19 @@ const bridgeSource = await readFile(new URL("../bin/run-codex-subscription-runti
 const drain = async () => { for (let i = 0; i < 150; i++) await Promise.resolve(); };
 const job = (runId) => ({ runId, prompt: `Synthetic input ${runId}`, controls: {}, metadata: {} });
 
+// These extracted functions use the real lifecycle checkpoint/work methods.
+// CLI deadline configuration is outside this extraction; isolate signal listeners
+// from process and leave deadline/timer tests to the lifecycle suite.
+function lifecycleFixture() {
+  return createAssessmentCliLifecycle({ signals: new EventEmitter() });
+}
+
 async function fixture() {
+  const lifecycle = lifecycleFixture();
+  const receipts = [];
+  const progress = createAssessmentProgress({
+    write: (line) => receipts.push(line), now: () => 0, remaining: () => 60_000,
+  });
   const attempts = [];
   const pending = new Map();
   const instances = [];
@@ -57,20 +73,20 @@ async function fixture() {
   }
   const body = bridgeSource.slice(bridgeSource.indexOf("function createPooledCodexWorker("),
     bridgeSource.indexOf("async function createAuthMaterializationRoot("));
-  const dependencies = { ...routing, join, mkdir: async () => {},
+  const dependencies = { ...routing, lifecycle, progress, subscriptionRuntimeFailureDetails, join, mkdir: async () => {},
     createAuthMaterializationRoot: async () => "/synthetic/auth-materialization",
     materializeCodexAuthAccount: async () => "/synthetic/unused-auth",
     removeAuthMaterialization: async () => {},
-    subscriptionOnlyCodexEnvironment: () => ({}), pinnedCodexBinaryPath: "/synthetic/never-executed",
+    subscriptionOnlyCodexEnvironment: () => ({}), resolvePinnedCodexBinaryPath: () => "/synthetic/never-executed",
     isSourceContentAssessment: true,
-    admission: { profile: { retryMode: "never", reasoningEffort: "high" } },
+    admission: { profile: { retryMode: "never", reasoningEffort: "low" } },
     FileBackendCodexSafeExecutor: SyntheticExecutor, SubscriptionWorkerError: core.SubscriptionWorkerError,
   };
   const create = new Function(...Object.keys(dependencies), `${body}\nreturn createPooledCodexWorker;`)(...Object.values(dependencies));
   const worker = () => create({ model: "gpt-5.6-sol", input: { stateRootDir: "/synthetic/state" },
     authPool: { accounts: [{ id: "synthetic-shared-account" }] } });
   const complete = (id) => pending.get(id).resolve({ status: "completed", structuredOutput: { request: id }, warnings: [] });
-  return { worker, instances, attempts, pending, complete, journal, capacityStore };
+  return { worker, instances, attempts, pending, complete, journal, capacityStore, lifecycle, receipts };
 }
 
 test("independent wrapper invocations share one available account after observation loss without replaying A", async () => {
@@ -185,10 +201,11 @@ test("missing pool fails closed for assessment while ordinary worker selection s
     bridgeSource.indexOf("function createReaderPromotionV2CanaryWorker("));
   let directStarts = 0;
   const dependencies = {
-    admission: { profile: { provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high" } },
+    lifecycle: lifecycleFixture(),
+    admission: { profile: { provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "low" } },
     authPool: undefined, isReaderPromotionV2Canary: false,
     FileBackendCodexWorker: class { constructor() { directStarts++; } },
-    pinnedCodexBinaryPath: "/synthetic/unused", subscriptionOnlyCodexEnvironment: () => ({}),
+    resolvePinnedCodexBinaryPath: () => "/synthetic/unused", subscriptionOnlyCodexEnvironment: () => ({}),
   };
   const create = new Function(...Object.keys(dependencies), "isSourceContentAssessment",
     `${body}\nreturn createStrictCodexWorker;`);
@@ -218,4 +235,37 @@ test("native completed cache is not an input, scope or untrimmed identity admiss
     assert.equal(f.attempts.length, 1);
     assert.equal(f.attempts[0].prompt, "Synthetic input cached");
   } finally { await Promise.all(workers.map((worker) => worker.dispose())); }
+});
+
+
+test("extracted pool honors lifecycle cancellation before materialization or execution", async () => {
+  const f = await fixture();
+  const worker = f.worker();
+  f.lifecycle.cancel();
+  try {
+    await assert.rejects(worker.run(job("cancelled")), /Assessment local work cancelled/);
+    assert.equal(f.instances.length, 0);
+    assert.equal(f.attempts.length, 0);
+    assert.deepEqual(f.receipts, []);
+  } finally { await worker.dispose(); }
+});
+
+test("extracted pool preserves native failure translation and cleanup receipts", async () => {
+  const f = await fixture();
+  const worker = f.worker();
+  try {
+    const running = worker.run(job("failed"));
+    const rejected = assert.rejects(running, (error) => {
+      assert.ok(error instanceof core.SubscriptionWorkerError);
+      assert.equal(error.code, "subscription_worker_run_failed");
+      return true;
+    });
+    await drain();
+    assert.equal(f.attempts.length, 1);
+    f.pending.get("failed").reject(new Error("Synthetic observation failure"));
+    await rejected;
+    assert.equal(f.attempts.length, 1);
+    assert.ok(f.receipts.some((line) => line.includes('"phase":"account_materialization","transition":"completed"')));
+    assert.ok(f.receipts.some((line) => line.includes('"phase":"auth_cleanup","transition":"completed"')));
+  } finally { await worker.dispose(); }
 });

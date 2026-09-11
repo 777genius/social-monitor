@@ -25,16 +25,25 @@ export const parseReviews = (
   }
 
   const parsed = asRecord(JSON.parse(outputText), "quality review output");
-  if (!Array.isArray(parsed.reviews)) {
+  const compatibilityResults = parsed.reviews === undefined && Array.isArray(parsed.results) && requests !== undefined
+    ? parsed.results : undefined;
+  if (!Array.isArray(parsed.reviews) && compatibilityResults === undefined) {
     throw new Error("Quality review protocol requires a reviews array");
   }
-  const reviews = parsed.reviews;
+  const reviews = (parsed.reviews ?? compatibilityResults) as JsonValue[];
 
   return reviews.map((review) => {
-    const record = asRecord(review, "quality review item");
+    const raw = asRecord(review, "quality review item");
 
-    const candidateId = nonEmptyString(record.candidateId, "candidateId");
+    const candidateId = nonEmptyString(raw.candidateId, "candidateId");
     const request = requests?.find((request) => request.candidateId === candidateId);
+    // Two attested native completions used the earlier `results` dialect even
+    // though the canonical schema was supplied. Normalize only that complete,
+    // request-bound dialect. Its single quality/support score supplies the
+    // missing relevance score; integrity retains the deterministic assessment.
+    // No source, identity, evidence or blocker is inferred.
+    const record = compatibilityResults === undefined || request === undefined ? raw
+      : normalizeCompatiblePromotionReview(raw, request);
     if (requests !== undefined && (request === undefined ||
         ![record.confidence, record.qualityScore, record.interestRelevanceScore,
           record.engagementIntegrityScore].every((score) => typeof score === "number" &&
@@ -56,6 +65,23 @@ export const parseReviews = (
       reason: nonEmptyString(record.reason, "reason"),
     };
   });
+};
+
+const normalizeCompatiblePromotionReview = (
+  record: JsonObject, request: SourceContentQualityReviewRequest,
+): JsonObject => {
+  const decision = record.decision === "relevant" ? "promote"
+    : record.decision === "not_relevant" ? "reject" : record.decision;
+  const reason = Object.hasOwn(record, "reason") ? record.reason : record.justification;
+  const resolutions = Object.hasOwn(record, "resolvedSoftFlags") ? record.resolvedSoftFlags
+    : Object.hasOwn(record, "flagResolutions") ? record.flagResolutions : record.screeningFlagResolutions;
+  return { ...record, decision: decision ?? null,
+    interestRelevanceScore: Object.hasOwn(record, "interestRelevanceScore")
+      ? record.interestRelevanceScore ?? null : record.qualityScore ?? null,
+    engagementIntegrityScore: Object.hasOwn(record, "engagementIntegrityScore")
+      ? record.engagementIntegrityScore ?? null : request.deterministic.engagementIntegrityScore,
+    flags: Object.hasOwn(record, "flags") ? record.flags ?? null : [], reason: reason ?? null,
+    resolvedSoftFlags: resolutions ?? null };
 };
 
 const readDecision = (

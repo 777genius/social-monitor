@@ -1,3 +1,4 @@
+import { withAcceptedFixtureHeadlines } from "../../test-fixtures/accepted-reader-headline";
 import {
   type EventEnvelope,
   FixedClock,
@@ -130,7 +131,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         async select(params) {
           observedMaxEvidenceItems = params.maxItems;
           observedThrough = params.observedThrough;
-          return makeReaderEvidenceSelection();
+          return withAcceptedFixtureHeadlines(makeReaderEvidenceSelection(), { tenantId: tenant, workspaceId: workspace });
         },
       },
       model,
@@ -312,7 +313,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       new EmptyReaderSummaryPolicyRepository(),
       {
         async select() {
-          return makeReaderEvidenceSelection();
+          return withAcceptedFixtureHeadlines(makeReaderEvidenceSelection(), { tenantId: tenant, workspaceId: workspace });
         },
       },
       new CapturingReaderSummaryModel(),
@@ -594,7 +595,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       new EmptyReaderSummaryPolicyRepository(),
       {
         async select() {
-          return makeReaderEvidenceSelection();
+          return withAcceptedFixtureHeadlines(makeReaderEvidenceSelection(), { tenantId: tenant, workspaceId: workspace });
         },
       },
       new CapturingReaderSummaryModel(),

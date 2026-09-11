@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { ConfiguredInterestReaderPort } from "@social-monitor/relevance/ports";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
@@ -11,7 +12,7 @@ import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { CryptoIdGenerator, tenantId, workspaceId, type Clock } from "@social-monitor/shared-kernel";
-import type { AgentRuntimeClientPort, ReaderSummaryPublicationPort } from "@social-monitor/summary/ports";
+import type { AgentRuntimeClientPort, ReaderSummaryPublicationPort, ReaderSummaryJobRepositoryPort } from "@social-monitor/summary/ports";
 import type { FeedItemReadRepositoryPort, PromotionFeedItemSnapshotRepositoryPort } from "@social-monitor/feed/ports";
 import { createReaderSummaryDailyCapturePublicationWiring } from "./reader-summary-daily-story-relation-verifier";
 import { assertRefreshManifest, refreshScope, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
@@ -21,10 +22,15 @@ import { readRefreshJobs, readRefreshPrior, readRefreshCounts, readRefreshReconc
 import { createRefreshAdmission } from "./reader-summary-new-input-refresh-admission";
 import { withRefreshPublicationLocks, type RefreshSnapshotProtection } from "./reader-summary-new-input-refresh-publication-lock";
 import { buildRefreshModelWiring, guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
-import { createRefreshAssessmentReviewer, withRefreshAssessmentCompletion } from "./reader-summary-new-input-refresh-assessment";
+import { createRefreshAssessmentReviewer, hasRefreshSelectableEvidence,
+  withRefreshAssessmentCompletion } from "./reader-summary-new-input-refresh-assessment";
+import { RefreshPairedExport } from "./reader-summary-new-input-refresh-paired-export";
+import { refreshCaptureModelControls } from "./reader-summary-new-input-refresh-model";
 import { withRefreshSelectionAudit } from "./reader-summary-new-input-refresh-selection-audit";
+import { assertRefreshSuccessorCurrent, consumeRefreshSuccessor } from "./reader-summary-new-input-refresh-successor";
 
-export async function executeNewInputRefresh(input: {
+type RefreshExecutionInput = {
+  capturePath?: string;
   configuredInterests: ConfiguredInterestReaderPort;
   manifest: RefreshManifest; summary: PrismaSummaryConnection;
   feed: FeedItemReadRepositoryPort & PromotionFeedItemSnapshotRepositoryPort;
@@ -32,7 +38,30 @@ export async function executeNewInputRefresh(input: {
   runtime: AgentRuntimeClientPort;
   assertFences(): void; assertSource(): void; assertRuntime(): Promise<void>;
   record(event: unknown): void;
-}) {
+};
+
+export async function executeNewInputRefresh(input: RefreshExecutionInput) {
+  if (input.capturePath === undefined) return executeRefresh(input);
+  const capture = new RefreshPairedExport(input.capturePath, input.manifest, () => input.clock.now().getTime());
+  let completed = false;
+  try {
+    const result = await executeRefresh(input, capture);
+    completed = result.status === "published";
+    return result;
+  } finally {
+    // A capture failure is reported independently; never turns a consumed job
+    // into a retry or changes its publication policy.
+    try {
+      const result = await capture.finish(completed);
+      try { input.record({ status: "paired_capture", path: result.path, complete: result.complete,
+        failures: result.failures, unresolvedCandidateCount: result.unresolvedCandidateCount }); } catch { /* no retry */ }
+    } catch {
+      try { input.record({ status: "paired_capture", complete: false, failures: ["capture_finalization_failed"] }); } catch { /* no retry */ }
+    }
+  }
+}
+
+async function executeRefresh(input: RefreshExecutionInput, capture?: RefreshPairedExport) {
   const { manifest: m, summary, feed, clock } = input;
   input.assertFences(); input.assertSource();
   const countsBefore = await readRefreshCounts(summary, m.date);
@@ -48,6 +77,11 @@ export async function executeNewInputRefresh(input: {
       await readRefreshReconciliations(client, m.date), m.operation);
   const jobs = await readRefreshJobs(summary, m.date);
   const reconciled = await readRefreshReconciliations(summary, m.date);
+  if (m.successor) {
+    assertRefreshManifest(m, clock.now());
+    await assertRefreshSuccessorCurrent(summary, m, clock.now());
+    if (jobs.some((job) => job.operation === m.operation)) throw new Error("Refresh successor already consumed");
+  }
   const admissionState = reconcileRefresh(m, jobs, current, reconciled);
   if (admissionState === "published") {
     const countsAfter = await readRefreshCounts(summary, m.date);
@@ -70,9 +104,10 @@ export async function executeNewInputRefresh(input: {
   await input.assertRuntime();
   const { assessmentCandidateCount, canonicalEvidence } = await preflightRefreshSelection({ configuredInterests: input.configuredInterests, feed, date: m.date,
     observedThrough: new Date(m.observedThrough), clock });
+  const hasSelectableEvidence = hasRefreshSelectableEvidence(canonicalEvidence ?? []);
   input.record({ status: "preflight", operation: m.operation, assessmentCandidateCount,
-    plannedSummaryGenerations: assessmentCandidateCount === 0 ? 0 : 1 });
-  if (assessmentCandidateCount === 0) {
+    plannedSummaryGenerations: assessmentCandidateCount === 0 && !hasSelectableEvidence ? 0 : 1 });
+  if (assessmentCandidateCount === 0 && !hasSelectableEvidence) {
     await assertCurrent();
     const countsAfter = await readRefreshCounts(summary, m.date);
     assertRefreshEqual(countsAfter, countsBefore, "empty input counts");
@@ -95,7 +130,16 @@ export async function executeNewInputRefresh(input: {
       input.assertSource(); input.assertFences(); assertRefreshManifest(m, clock.now());
     },
   });
-  const request = await new RequestReaderSummaryUseCase(jobRepo,
+  const requestRepo: ReaderSummaryJobRepositoryPort = m.successor ? {
+    findById: (query) => jobRepo.findById(query),
+    findByIdempotencyKey: (query) => jobRepo.findByIdempotencyKey(query),
+    findRequested: (query) => jobRepo.findRequested(query),
+    claimForExecution: (command) => jobRepo.claimForExecution(command),
+    saveExecutionOutcome: (command) => jobRepo.saveExecutionOutcome(command),
+    save: (job) => consumeRefreshSuccessor({ summary, manifest: m, job, clock,
+      assertLocal: () => { input.assertSource(); input.assertFences(); } }),
+  } : jobRepo;
+  const request = await new RequestReaderSummaryUseCase(requestRepo,
     admission.queue, admission.quota, ids, clock).execute({
     tenantId: tenantId(m.tenantId), workspaceId: workspaceId(m.workspaceId), scope: { type: "workspace" },
     cadence: "daily", period, idempotencyKey: m.operation, correlationId: m.operation,
@@ -114,15 +158,31 @@ export async function executeNewInputRefresh(input: {
   });
   const runtime = guardedRefreshRuntime({ delegate: input.runtime, manifest: m, now: () => clock.now().getTime(),
     assertLocal: () => { input.assertSource(); guard.assertLocal(); },
-    assertCurrent: async () => { await input.assertRuntime(); await guard.assertCurrent(); }, record: input.record });
+    assertCurrent: async () => { await input.assertRuntime(); await guard.assertCurrent(); }, record: input.record,
+    ...(capture === undefined ? {} : { capture: capture.model, captureFailure: () => capture.fail("model_callback_failed") }) });
   const sink = { record: (attestation: unknown) => {
     try { runtime.assertUsable(); input.record({ status: "verified_attestation", attestation }); }
     catch (error) { guard.invalidate(); throw error; }
   } };
-  const assessment = createRefreshAssessmentReviewer({ env: input.env, runtime, clock, canonicalEvidence });
+  const assessment = createRefreshAssessmentReviewer({ env: input.env, runtime, clock, canonicalEvidence,
+    ...(capture === undefined ? {} : { capture: capture.assessment, captureCanonical: (value) => capture.canonicalBindings(value) }) });
+  if (capture) {
+    try {
+      capture.controls({ manifest: m, policy: policy.toSnapshot(), model: refreshCaptureModelControls(input.env),
+        canonicalEvidence, assessmentTiming: assessment.promotionTiming });
+    } catch { capture.fail("controls_capture_failed"); }
+    capture.assessmentCompletion(() => assessment.assertCaptureComplete());
+  }
+  const reservedCaptureRoot = capture?.reservedDirectory;
   const canonical = createReaderSummaryDailyCapturePublicationWiring({
+    ...(reservedCaptureRoot === undefined ? {} : { headlineDiagnosticArtifact: {
+      path: join(reservedCaptureRoot, "headline-diagnostic.json"), attemptId: request.value.readerSummaryJobId,
+    } }),
     qualityReviewer: assessment,
-    replay: null, configuredInterests: input.configuredInterests, feedItems: feed, summaryClient: summary, clock, attestationSink: sink,
+    replay: null, configuredInterests: capture?.interests(input.configuredInterests) ?? input.configuredInterests,
+    feedItems: capture?.feed(feed) ?? feed, summaryClient: summary, clock, attestationSink: sink,
+    ...(capture === undefined ? {} : { preparationObserver: capture.observer, relationCapture: capture.relations,
+      rankCommandCapture: { captured: (value) => capture.rankCommand(value), failed: () => capture.fail("rank_command_callback_failed") } }),
     summaryModelMode: "agent-runtime", env: input.env, agentRuntimeClient: runtime,
     storyRelationVerifierGuard: runtime,
   });
@@ -149,7 +209,7 @@ export async function executeNewInputRefresh(input: {
       save: async () => { throw new Error("Refresh policy mutation is prohibited"); },
     },
     withRefreshSelectionAudit({ selector: guard.selector(withRefreshAssessmentCompletion(
-      canonical.evidenceSelector, assessment, assessmentCandidateCount)), manifest: m,
+      (capture?.selector(canonical.evidenceSelector) ?? canonical.evidenceSelector), assessment, assessmentCandidateCount)), manifest: m,
       jobId: request.value.readerSummaryJobId, record: input.record, invalidate: () => guard.invalidate() }),
     model.model, publication, ids, clock,
     readerSummaryPromotionControl(new ReaderSummaryPromotionMetricsRecorder(new InMemoryMetricsRecorder())),

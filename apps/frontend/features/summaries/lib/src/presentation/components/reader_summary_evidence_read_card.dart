@@ -61,12 +61,10 @@ class _ReadCard extends StatelessWidget {
                 readerSummaryTopPostIdentity(read),
               ),
         onTap: url == null ? null : () => onOpenUrl(url),
-        child: ReaderSummarySourceText(
+        child: Text(
           read.title,
           key: ObjectKey(read),
-          maxLines: compact ? 1 : (featured ? 3 : 2),
-          overflow: TextOverflow.ellipsis,
-          disclosureEnabled: false,
+
           style:
               (featured
                       ? Theme.of(context).textTheme.titleMedium
@@ -126,6 +124,11 @@ class _ReadCard extends StatelessWidget {
                                 Expanded(child: titleLink),
                               ],
                             ),
+                    ),
+                    ReaderSummaryCapturedSource(
+                      key: ObjectKey(read),
+                      source: read.capturedSource,
+                      historicalText: read.displayHeadline == null ? read.title : null,
                     ),
                     if (featured && hasMetricBadges) ...[
                       const SizedBox(height: AppSpacing.sm),

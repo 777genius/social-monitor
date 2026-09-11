@@ -226,12 +226,39 @@ fi
 C=$PRODUCTION_FORWARD_RECOVERY_BRIDGE
 export GIT_AUTHOR_NAME=stale-test GIT_AUTHOR_EMAIL=stale@example.invalid
 export GIT_COMMITTER_NAME=$GIT_AUTHOR_NAME GIT_COMMITTER_EMAIL=$GIT_AUTHOR_EMAIL
+# The candidate must retain the sealed historical entrypoint exactly.
+assert_sealed_entrypoint() {
+  local candidate=$1 frozen_blob=$2
+  [[ -f $candidate && ! -L $candidate && $(stat -c %a "$candidate") == 644 ]] || return 1
+  [[ $(production_forward_git hash-object "$candidate") == "$frozen_blob" ]]
+}
+entrypoint_blob=$(production_forward_git rev-parse "$C:$incident_entrypoint_path")
+assert_sealed_entrypoint "$PROJECT_ROOT/$incident_entrypoint_path" "$entrypoint_blob" || \
+  fail 'current entrypoint differs from sealed recovery controller'
+for variant in wrong-byte missing symlink mode-drift; do
+  candidate=$fixture/entrypoint-$variant.sh
+  cp "$PROJECT_ROOT/$incident_entrypoint_path" "$candidate"
+  case $variant in
+    wrong-byte) printf '\n# unreviewed edit\n' >> "$candidate" ;;
+    missing) rm "$candidate" ;;
+    symlink) rm "$candidate"; ln -s "$PROJECT_ROOT/$incident_entrypoint_path" "$candidate" ;;
+    mode-drift) chmod 0755 "$candidate" ;;
+  esac
+  if assert_sealed_entrypoint "$candidate" "$entrypoint_blob"; then
+    fail "unreviewed entrypoint variant admitted: $variant"
+  fi
+done
+printf 'stale-controller-test: sealed entrypoint equality and byte/absence/symlink/mode negatives passed\n'
 # Carry both reviewed control fixes into the fixture target, retaining real C
 # ancestry. All unrelated target files remain the protected main snapshot.
 GIT_INDEX_FILE=$fixture/recovery-target.index production_forward_git read-tree "$TARGET"
 for path in ops/deploy/deploy-control-lib.sh ops/deploy/social-monitor-production-deploy.sh; do
   blob=$(production_forward_git rev-parse "$C:$path")
-  [[ $(git -C "$PROJECT_ROOT" hash-object "$PROJECT_ROOT/$path") == "$blob" ]]
+  if [[ $path == "$incident_entrypoint_path" ]]; then
+    assert_sealed_entrypoint "$PROJECT_ROOT/$path" "$blob"
+  else
+    [[ $(git -C "$PROJECT_ROOT" hash-object "$PROJECT_ROOT/$path") == "$blob" ]]
+  fi
   GIT_INDEX_FILE=$fixture/recovery-target.index production_forward_git \
     update-index --cacheinfo "100644,$blob,$path"
 done

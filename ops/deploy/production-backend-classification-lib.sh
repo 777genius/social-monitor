@@ -29,6 +29,7 @@ backend_services() {
     if changed_between "$from" "$to" \
       ops/deploy/reader-summary-publication-deploy-lib.sh ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh \
       ops/deploy/reader-summary-publication-pre-migration.sql \
+      scripts/sql/reader-summary-publication-tenant-ownership.sql \
       ops/deploy/reader-summary-publication-post-migration.sql; then
       services+=(migrate)
     fi

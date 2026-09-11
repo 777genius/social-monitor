@@ -9,6 +9,7 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_provider_logo.dart';
 
 import '../../support/summaries_test_fixtures.dart';
+import 'support/reader_summary_brief_test_app.dart';
 
 part 'reader_summary_brief_surface_test_support.dart';
 
@@ -24,23 +25,7 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark(),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: ReaderSummaryBriefSurface(
-              summary: summary,
-              citationsById: {
-                for (final citation in summary.citations) citation.id: citation,
-              },
-              isRefreshing: false,
-              onOpenUrl: (_) {},
-            ),
-          ),
-        ),
-      ),
-    );
+    await pumpReaderSummaryBrief(tester, summary);
 
     expect(find.textContaining('Fable 5'), findsWidgets);
     expect(find.textContaining('**Fable 5**'), findsNothing);
@@ -63,23 +48,7 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark(),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: ReaderSummaryBriefSurface(
-              summary: summary,
-              citationsById: {
-                for (final citation in summary.citations) citation.id: citation,
-              },
-              isRefreshing: false,
-              onOpenUrl: (_) {},
-            ),
-          ),
-        ),
-      ),
-    );
+    await pumpReaderSummaryBrief(tester, summary);
 
     expect(find.textContaining('AI-agent workflows'), findsWidgets);
     expect(find.textContaining('Main signal:'), findsOneWidget);
@@ -95,23 +64,7 @@ void main() {
     const mapper = SummaryMapper();
     final summary = mapper.readerSummaryToDomain(readerSummaryApiDto());
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark(),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: ReaderSummaryBriefSurface(
-              summary: summary,
-              citationsById: {
-                for (final citation in summary.citations) citation.id: citation,
-              },
-              isRefreshing: false,
-              onOpenUrl: (_) {},
-            ),
-          ),
-        ),
-      ),
-    );
+    await pumpReaderSummaryBrief(tester, summary);
     await tester.pump(const Duration(milliseconds: 17));
 
     final topicMap = find.byType(
@@ -246,24 +199,7 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.dark(),
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: ReaderSummaryBriefSurface(
-                summary: summary,
-                citationsById: {
-                  for (final citation in summary.citations)
-                    citation.id: citation,
-                },
-                isRefreshing: false,
-                onOpenUrl: (_) {},
-              ),
-            ),
-          ),
-        ),
-      );
+      await pumpReaderSummaryBrief(tester, summary);
 
       expect(
         find.text('255 reviewed · 80 used · 175 not selected · 9 top reads'),
@@ -374,23 +310,7 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark(),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: ReaderSummaryBriefSurface(
-              summary: summary,
-              citationsById: {
-                for (final citation in summary.citations) citation.id: citation,
-              },
-              isRefreshing: false,
-              onOpenUrl: openedUrls.add,
-            ),
-          ),
-        ),
-      ),
-    );
+    await pumpReaderSummaryBrief(tester, summary, onOpenUrl: openedUrls.add);
 
     await _hoverCitationChip(
       tester,
@@ -532,24 +452,7 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.dark(),
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: ReaderSummaryBriefSurface(
-                summary: summary,
-                citationsById: {
-                  for (final citation in summary.citations)
-                    citation.id: citation,
-                },
-                isRefreshing: false,
-                onOpenUrl: (_) {},
-              ),
-            ),
-          ),
-        ),
-      );
+      await pumpReaderSummaryBrief(tester, summary);
       await tester.pumpAndSettle();
 
       expect(find.text(longTitle), findsWidgets);

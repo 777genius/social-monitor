@@ -12,15 +12,20 @@ import {
 } from "node:path";
 
 export const approvedSubscriptionRuntimePackageVersion =
-  "0.1.0-main.41";
+  "0.1.0-main.42-sm.1";
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "3e0082642f2705c678d3f21d2f083fd2c851aaf62759a12d24eb59be30a1a38e";
+  "dea632563dce502f42e6fca28ce82d0e0438a23c5c28c23f251f828bf0cb31a0";
 
 // Repository wrapper approval, separate from the vendored package provenance.
 // Pin the local import closure too: launcher bytes alone do not bind helpers.
-// These literal pins track the source at 40c9032bb8e93ae1bd5be3b522f042b661fa5ae8;
-// changes to any member require a coordinated, reviewed admission update.
+// Changes to any member require a coordinated, reviewed admission update.
 const approvedSubscriptionRuntimeDependencies = Object.freeze({
+  "assessment-cli-progress.mjs":
+    "76e82b76acd1f8664e78980d7cc75d8485e73316fef183bb4ee97e2466bef002",
+  "assessment-cli-lifecycle.mjs":
+    "5220f2a668cf77f1d763a690dead7eb233e076e245d544870399f3d9f72423ca",
+  "pinned-codex-native-binary.mjs":
+    "77a32f1ed6f6429b11428c0501d0d5f1712cc8bd913c74027f4ad0204facfb21",
   "subscription-runtime-failure-details.mjs":
     "5c7e12660c4500a533cda147be44723019c8b223353f1e2d25c3483ff5a1484a",
   "codex-worker-cli-usage.mjs":
@@ -30,7 +35,7 @@ const approvedSubscriptionRuntimeDependencies = Object.freeze({
   "codex-auth-pool-routing.mjs":
     "5b76a13787a92852282488d5beec8ebb3bfd27f9dfbc059daa8bb521b5524c49",
   "subscription-runtime-purpose-model-policy.mjs":
-    "0c60d62aa38ed04db9643f708a780e9dc72b337d8e0709f92d89d366f5a8f355",
+    "203f73ebb8bad9d268779db902150f987a61c0cbd93518c0d70101155df626bc",
   "reader-promotion-v2-canary-contract.cjs":
     "13432d41d7999d15f22880017e73cbd943c209db62161b2a6a2bec6b0766775c",
 });

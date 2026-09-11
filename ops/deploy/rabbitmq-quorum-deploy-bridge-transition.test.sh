@@ -66,16 +66,17 @@ BRIDGE_CONTROL_PATHS=(
 
 assert_reviewed_upload_delta() {
   local bridge=$1 candidate=$2 timeout_line fallback_line scoped_timeout scoped_fallback
+  [[ -f $candidate && ! -L $candidate && $(stat -c %a "$candidate") == 644 ]] || return 1
   cmp -s "$bridge" "$candidate" && return 0
-  [[ $(sha256sum "$candidate" | awk '{print $1}') == \
-    b15e93451395568d49c2a1ef9c9ae86ace1320ef18e68ea42b2b90d9963529da ]] || return 1
+  [[ $(git -C "$PROJECT_ROOT" hash-object "$candidate") == \
+    d245faeac28a99be7c22ecec3d330698059fba12 ]] || return 1
   timeout_line='    timeout 180 tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted"'
   fallback_line='    tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted"'
   scoped_timeout="    (umask 022; ${timeout_line#    })"
   scoped_fallback="    (umask 022; ${fallback_line#    })"
   [[ $(grep -Fxc "$scoped_timeout" "$candidate") == 1 && \
      $(grep -Fxc "$scoped_fallback" "$candidate") == 1 ]] || return 1
-  # Only the two reviewed extraction lines may differ from immutable W.
+  # Retain the separately reviewed historical two-line upload delta only.
   cmp -s "$bridge" <(sed \
     -e "s|^$scoped_timeout\$|$timeout_line|" \
     -e "s|^$scoped_fallback\$|$fallback_line|" "$candidate")
@@ -98,16 +99,21 @@ assert_rolling_entrypoint_bridge() {
   bridge_file=$FIXTURE/rolling-bridge.sh
   current_file=$FIXTURE/rolling-current.sh
   git -C "$PROJECT_ROOT" cat-file blob "$bridge_blob" > "$bridge_file"
-  git -C "$PROJECT_ROOT" cat-file blob "$current_blob" > "$current_file"
+  cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" "$current_file"
+  current_blob=$(git -C "$PROJECT_ROOT" hash-object "$current_file")
+  [[ $current_blob == d245faeac28a99be7c22ecec3d330698059fba12 ]]
   # Keep W==HEAD unless the exact reviewed uploader delta is proven.
   [[ $bridge_blob == "$current_blob" ]] || assert_reviewed_upload_delta "$bridge_file" "$current_file" || {
     echo 'rolling entrypoint bridge has an unreviewed current-release delta' >&2
     exit 1
   }
   assert_reviewed_upload_delta "$bridge_file" "$bridge_file"
-  for variant in extra-edit missing-timeout missing-fallback wrong-umask; do
+  for variant in extra-edit missing-timeout missing-fallback wrong-umask missing symlink mode-drift; do
     cp "$current_file" "$FIXTURE/$variant.sh"
     case $variant in
+      missing) rm "$FIXTURE/$variant.sh" ;;
+      symlink) rm "$FIXTURE/$variant.sh"; ln -s "$current_file" "$FIXTURE/$variant.sh" ;;
+      mode-drift) chmod 0755 "$FIXTURE/$variant.sh" ;;
       extra-edit) printf '\n# unreviewed edit\n' >> "$FIXTURE/$variant.sh" ;;
       missing-timeout) sed '/(umask 022; timeout /d' "$current_file" > "$FIXTURE/$variant.sh" ;;
       missing-fallback) sed '/(umask 022; tar /d' "$current_file" > "$FIXTURE/$variant.sh" ;;
@@ -261,8 +267,10 @@ assert_current_backend_classification_asset() {
     echo 'current backend classification library mode drifted' >&2
     exit 1
   }
+  # Relative to 16c1f3c2, only the relocated scripts/sql ownership path is added
+  # to the migrate-service classification; all other bytes remain frozen.
   [[ $(sha256sum "$actual_real" | awk '{print $1}') == \
-     4895b28caf0c3c906f107a3bd74df4cd046cf77fd61a7aeae003a15203db3fff ]] || {
+     1a910a08936b2bab4ec0eda1c65be48d826d9ce4c139550a958b50570d2035b8 ]] || {
     echo 'current backend classification library digest drifted' >&2
     exit 1
   }

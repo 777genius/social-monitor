@@ -1,8 +1,11 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
+  closeSync,
+  constants,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -130,6 +133,29 @@ describe("reader-summary common date lock", () => {
     expect(result.status).toBe(76);
     expect(String(result.stderr)).toContain("cannot be a symlink");
     expect(readFileSync(global, "utf8")).toBe("sentinel");
+  });
+
+  it("writes a token through an explicitly inherited directory descriptor", () => {
+    const descriptor = openSync(
+      directory,
+      constants.O_RDONLY | constants.O_DIRECTORY,
+    );
+    try {
+      const result = spawnSync("bash", [
+        lockScript(), "--date", "2026-08-01",
+        "--date-lock-dir", join(directory, "date-locks"),
+        "--fence-dir", join(directory, "fences"),
+        "--wait-seconds", "1",
+        "--token-output", "/proc/self/fd/3/inherited.token",
+        "--", "bash", "-c", "true",
+      ], { stdio: ["ignore", "pipe", "pipe", descriptor] });
+
+      expect(result.status).toBe(0);
+      expect(readFileSync(join(directory, "inherited.token"), "utf8").trim())
+        .toBe("reader-summary-date:2026-08-01:1");
+    } finally {
+      closeSync(descriptor);
+    }
   });
 
   const startLocked = (input: {

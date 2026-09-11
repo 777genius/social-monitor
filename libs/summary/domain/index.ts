@@ -110,3 +110,12 @@ export type {
 export * from "./value-objects/summary-quality";
 export * from "./value-objects/summary-text";
 export * from "./value-objects/summary-window";
+
+export type {
+  SummaryReaderHeadline, SummaryHeadlineReference, SummaryHeadlineQualification,
+  SummaryHeadlineUnavailableReason, ReaderCapturedSource, ReaderDisplayHeadline,
+  ReaderDisplayHeadlineSeal,
+} from "./value-objects/summary-reader-headline";
+export { readerPostDisplayHeadline, capturedReaderSource, readerCapturedSourceDigest } from
+  "./services/reader-post-display-headline";
+export { readerDisplayIdentityMatches } from "./services/reader-post-display-identity";

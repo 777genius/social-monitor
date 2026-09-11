@@ -42,6 +42,7 @@ const assessmentOutput = { reviews: [{
   decision: "promote", confidence: 0.9, qualityScore: 0.9,
   interestRelevanceScore: 0.9, engagementIntegrityScore: 0.9,
   flags: [], reason: "Captured diagnostic observation",
+  readerHeadline: { status: "unavailable", reasonCode: "insufficient_support" },
   evidence: [{ field: "title", start: 0, end: assessmentRequest.title.length,
     quote: assessmentRequest.title }], resolvedSoftFlags: [],
 }] };
@@ -225,6 +226,8 @@ for (const [firstAccount, available] of [["account-b", false], ["account-a", fal
     const fixture = await createFixture(available);
     try {
       const request = agentTaskRequest(taskIdStartingWith(["account-a", "account-b"], firstAccount));
+      // Exercise schema handling after admission above the 20s cleanup reserve.
+      request.timeoutMs = 60_000;
       request.context.purpose = "social_monitor.relevance.assess_source_content.v1";
       request.task.outputSchemaName = "social_monitor_source_content_quality_review";
       request.task.controls.outputSchemaName = "social_monitor_source_content_quality_review";
@@ -233,12 +236,12 @@ for (const [firstAccount, available] of [["account-b", false], ["account-a", fal
       const execution = await execFileAsync(process.execPath, [runtimeBridgePath,
         "--provider", "codex", "--input", fixture.requestPath, "--format", "result-json",
         "--state-root", fixture.stateRoot, "--codex-binary", fixture.codexBinaryPath,
-        "--model", "gpt-5.6-sol", "--timeout-ms", "15000"], {
+        "--model", "gpt-5.6-sol", "--timeout-ms", "60000"], {
         cwd: fixture.sandboxProject, maxBuffer: 1024 * 1024,
         env: { PATH: process.env.PATH, HOME: process.env.HOME, LANG: "C.UTF-8",
           AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: fixture.poolRoot,
           AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: "current.json",
-          AGENT_RUNTIME_REASONING_EFFORT: "high",
+          AGENT_RUNTIME_REASONING_EFFORT: "low",
           SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64") },
       }).then(({ stdout }) => JSON.parse(stdout), (error) => JSON.parse(error.stdout));
       const attempts = (await readFile(fixture.attemptLogPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
@@ -266,6 +269,8 @@ for (const invalid of ["missing-name", "wrong-name", "conflicting-name", "missin
     const fixture = await createFixture();
     try {
       const request = agentTaskRequest("sandbox-invalid-schema");
+      // Exercise schema handling after admission above the 20s cleanup reserve.
+      request.timeoutMs = 60_000;
       request.context.purpose = "social_monitor.relevance.assess_source_content.v1";
       request.task.outputSchemaName = "social_monitor_source_content_quality_review";
       request.task.controls.outputSchema = promotionResponseSchema;

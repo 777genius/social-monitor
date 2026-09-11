@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readPublicationBootstrapSql } from "./lib/reader-summary-publication-bootstrap-sql";
 import { Pool, type PoolClient } from "pg";
 import { assertPostgres18CreatorAndPsqlRegression } from "./reader-summary-publication-postgres18-regression";
 const protectedOwner = "social_monitor_reader_summary_publication_owner";
@@ -144,8 +144,7 @@ export const runReaderSummaryPublicationBootstrapSql = async (
   systemRuntimeRole: string = applicationRole,
 ): Promise<void> => {
   const path = `ops/deploy/reader-summary-publication-${phase}-migration.sql`;
-  const sql = readFileSync(path, "utf8")
-    .replace(/^\\set[^\n]*\n/gm, "")
+  const sql = readPublicationBootstrapSql(path)
     .replaceAll(":'runtime_role'", quoteLiteral(applicationRole))
     .replaceAll(':"runtime_role"', quoteIdentifier(applicationRole))
     .replaceAll(":'system_runtime_role'", quoteLiteral(systemRuntimeRole))

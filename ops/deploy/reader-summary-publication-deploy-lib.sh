@@ -697,6 +697,13 @@ reader_summary_publication_run_postgres_client() (
     docker_arguments+=(
       -v "$sql:/run/social-monitor-db/publication-migration.sql:ro"
     )
+    if [[ $sql == */reader-summary-publication-pre-migration.sql ]]; then
+      local ownership_sql=${sql%/*}/../../scripts/sql/reader-summary-publication-tenant-ownership.sql
+      [[ -f $ownership_sql && ! -L $ownership_sql ]] || return 64
+      docker_arguments+=(
+        -v "$ownership_sql:/run/social-monitor-db/reader-summary-publication-tenant-ownership.sql:ro"
+      )
+    fi
   else
     [[ -z $sql ]] || return 64
   fi

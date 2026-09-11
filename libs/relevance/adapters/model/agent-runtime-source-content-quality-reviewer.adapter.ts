@@ -26,8 +26,8 @@ export class AgentRuntimeSourceContentQualityReviewerAdapter implements SourceCo
   readonly promotionTiming: { readonly batchTimeoutMs: number; readonly totalTimeoutMs: number };
 
   constructor(private readonly options: AgentRuntimeSourceContentQualityOptions) {
-    if (![options.batchTimeoutMs, options.totalTimeoutMs].every((ms) =>
-      Number.isSafeInteger(ms) && ms > 0 && ms <= 600_000)) {
+    if (!Number.isSafeInteger(options.batchTimeoutMs) || options.batchTimeoutMs <= 0 || options.batchTimeoutMs > 600_000 ||
+        !Number.isSafeInteger(options.totalTimeoutMs) || options.totalTimeoutMs <= 0 || options.totalTimeoutMs > 3_600_000) {
       throw new Error("Invalid agent runtime assessment timeout");
     }
     this.promotionTiming = Object.freeze({ batchTimeoutMs: options.batchTimeoutMs,
@@ -61,7 +61,7 @@ export class AgentRuntimeSourceContentQualityReviewerAdapter implements SourceCo
       provider: "codex" as const, providerInstanceId: this.options.providerInstanceId,
       purpose: sourceContentAssessmentPurpose,
       systemPrompt: promotionReviewInstructions, prompt, outputSchema: promotionResponseSchema,
-      controls: { interactive: false, model: "gpt-5.6-sol", reasoningEffort: "high",
+      controls: { interactive: false, model: "gpt-5.6-sol", reasoningEffort: "low",
         outputSchemaName: "social_monitor_source_content_quality_review",
         schemaVersion: "source_content_assessment.v1", maxOutputTokens: 6_000 },
       timeoutMs, metadata: { adapter: "agent-runtime-source-content-quality-reviewer" },

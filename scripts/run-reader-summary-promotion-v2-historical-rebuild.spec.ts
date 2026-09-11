@@ -1,9 +1,70 @@
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { parseHistoricalPromotionCliOptions } from
   "./run-reader-summary-promotion-v2-historical-rebuild";
 
 describe("historical Reader Promotion V2 CLI", () => {
+  it("initializes exported CLI helpers before starting the entrypoint", () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-r",
+        "ts-node/register",
+        "-r",
+        "tsconfig-paths/register",
+        resolve(
+          __dirname,
+          "run-reader-summary-promotion-v2-historical-rebuild.ts",
+        ),
+        "--prepare",
+        "--dates",
+        "2999-01-01",
+        "--artifact-output",
+        "/tmp/historical-reader-summary-entrypoint-test",
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: { ...process.env, NODE_ENV: "test" },
+        timeout: 30_000,
+      },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("closed UTC date");
+    expect(result.stderr).not.toContain(
+      "parseHistoricalPromotionCliOptions) is not a function",
+    );
+  });
+
+  it("initializes the locked preflight entrypoint before parsing its command", () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-r",
+        "ts-node/register",
+        "-r",
+        "tsconfig-paths/register",
+        resolve(__dirname, "run-reader-summary-promotion-v2-locked-date.ts"),
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: { ...process.env, NODE_ENV: "test" },
+        timeout: 30_000,
+      },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "Locked historical promotion command is required",
+    );
+    expect(result.stderr).not.toContain(
+      "historicalPromotionLockedChildCommand) is not a function",
+    );
+  });
+
   it("defaults to dry-run with explicit dates and a batch cap of two", () => {
     expect(parseHistoricalPromotionCliOptions([
       "--dates",

@@ -33,9 +33,11 @@ describe("faithful available source admission and projection", () => {
       expect(buildTopReadTitle({ storyTitle: "Atlas bypasses human approval", storySummary: "Detached model title",
         primaryEvidence: item, evidence: [support] })).toBe(text);
       const top = project([item]).topReads[0]!;
-      expect(top.title).toBe(text);
+      expect(top.title).toBe(text); // Rejected draft retains source; no concise authority.
+      expect(top.capturedSource?.body).toBe(text);
+      expect(top.displayHeadline?.status).toBe("unavailable");
       expect(isReaderFacingQualityTopRead({ ...top, providerKey: item.providerKey, signalScore: 2.2,
-        reason: "This discussion informs how operators review agent changes." }, [item])).toBe(true);
+        reason: "This discussion informs how operators review agent changes." }, [item])).toBe(false);
       expect(isReaderFacingQualityTopRead({ ...top, providerKey: item.providerKey, signalScore: 2.2,
         reason: "This discussion informs how operators review agent changes." }, [support])).toBe(false);
     },

@@ -1,3 +1,4 @@
+import { SystemClock } from "@social-monitor/shared-kernel";
 import type { SourceContentQualityReviewerPort, SourceContentQualityReviewRequest } from "../../ports";
 import { accepting, body, cutoff, fixture, query, review, run, scope } from "../../../../test/support/promotion-content-assessment";
 
@@ -12,6 +13,66 @@ describe("promotion assessment through Summary candidate and V2 (synthetic revie
       sourceItemId: "source-context", sourceBindingId: `binding-${provider}`, availability: "body_present" });
     expect(result.ranking.orderedCandidateIds).toEqual(["context"]);
     expect(result.candidates[0]!.evidenceQualityScore).toBe(0.8);
+  });
+
+  it("reviews eight candidates in one ordered batch and retains second-batch popularity", async () => {
+    const ids = Array.from({ length: 8 }, (_, i) => `candidate-${i}`);
+    let active = 0;
+    let peak = 0;
+    const reviewBatch = jest.fn(async (requests: readonly SourceContentQualityReviewRequest[]) => {
+      peak = Math.max(peak, ++active);
+      await Promise.resolve();
+      active--;
+      return requests.map((request) => review(request));
+    });
+    const items = ids.map((id, i) => fixture(id, "reddit", {
+      providerMetadata: { kind: "reddit_post", score: i === 7 ? 900 : 90, upvoteRatio: 0.95 },
+    })).reverse();
+    const result = await run(items, { reviewBatch });
+    expect(reviewBatch).toHaveBeenCalledTimes(1);
+    expect(reviewBatch.mock.calls.map(([requests]) => requests.map((r) => r.candidateId)))
+      .toEqual([ids]);
+    expect(peak).toBe(1);
+    expect(result.items.map((item) => item.feedItemId).sort()).toEqual(ids);
+    for (const item of result.items) expect(item.contentQuality).toMatchObject({
+      qualityScore: 0.8, decision: "promote", needsLlmReview: false,
+    });
+    expect(result.candidates.map((candidate) => candidate.candidateId).sort()).toEqual(ids);
+    expect(result.candidates.every((candidate) => candidate.evidenceQualityScore === 0.8)).toBe(true);
+    expect([...result.ranking.orderedCandidateIds].sort()).toEqual(ids);
+    expect(result.ranking.orderedCandidateIds[0]).toBe("candidate-7");
+    const [high, low] = result.ranking.ranked;
+    expect(high!.components.total).toBeGreaterThan(low!.components.total);
+    expect(high!.components.relevance).toBe(low!.components.relevance);
+    expect(high!.components.evidenceQuality).toBe(low!.components.evidenceQuality);
+  });
+
+  it("finishes the 81-candidate historical universe in two bounded pool waves", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(cutoff);
+    let active = 0;
+    let peak = 0;
+    let calls = 0;
+    try {
+      const reviewer = {
+        promotionTiming: { batchTimeoutMs: 600_000, totalTimeoutMs: 600_000, batchConcurrency: 6 },
+        reviewBatch: async (requests: readonly SourceContentQualityReviewRequest[]) => {
+          calls++;
+          peak = Math.max(peak, ++active);
+          await new Promise((resolve) => setTimeout(resolve, 225_711));
+          active--;
+          return requests.map((request) => review(request));
+        },
+      } as SourceContentQualityReviewerPort;
+      const pending = run(Array.from({ length: 81 }, (_, i) => fixture(`throughput-${String(i).padStart(2, "0")}`)),
+        reviewer, { clock: new SystemClock(), execution: { deadlineAtMs: cutoff.getTime() + 600_000 } });
+      await jest.advanceTimersByTimeAsync(451_423);
+      const result = await pending;
+      expect(calls).toBe(11);
+      expect(peak).toBe(6);
+      expect(result.ranking.orderedCandidateIds).toHaveLength(81);
+      expect(result.items.every((item) => !item.contentQuality.needsLlmReview)).toBe(true);
+    } finally { jest.useRealTimers(); }
   });
 
   it("reviews clean lists alongside product experience and preserves popularity competition", async () => {

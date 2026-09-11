@@ -72,6 +72,8 @@ import { readerSummaryProductionHistoryScope } from "./lib/reader-summary-daily-
 import { productionHistoryCollection } from "./lib/reader-summary-production-history-collection";
 import { type YesterdaySocialProviderReadiness } from "./lib/yesterday-social-collection-quality";
 import { readProductionDayScope } from "./lib/reader-summary-production-day-scope";
+import { bindInheritedDirectoryPath } from
+  "./lib/reader-summary-inherited-directory-path";
 import {
   probeProductionRuntimeLiveIdentity,
   runtimeLiveIdentityProofRequired,
@@ -82,9 +84,9 @@ type StepReport = ProductionDayStepReport;
 
 loadDotenvIfPresent(".env");
 
-const reportDirectory = resolve(
+const reportDirectory = bindInheritedDirectoryPath(resolve(
   process.env.READER_SUMMARY_PRODUCTION_DAY_REPORT_DIR ?? "ops/evals",
-);
+));
 const outputPath = join(
   reportDirectory,
   "reader-summary-production-day-run.v1.json",
@@ -220,7 +222,9 @@ async function main(): Promise<void> {
             : []),
           ...(allowHistorical ? [] : ["--wait-for-x-readiness"]),
         ]);
-  mkdirSync(runtimeArtifactDirectory, { recursive: true });
+  if (!existsSync(runtimeArtifactDirectory)) {
+    mkdirSync(runtimeArtifactDirectory, { recursive: true });
+  }
   isolateCaptureArtifacts();
   const isolatedQuality = historicalPromotionQualityOutput({
     enabled: executionRequest.mode === "historical-regeneration" &&
@@ -599,7 +603,7 @@ function initializeProductionDayRuntime(): void {
   topicLabeler = resolveTopicLabeler();
   periodStartedAt = `${collectionDate}T00:00:00.000Z`;
   periodEndedAt = nextDate(collectionDate);
-  runtimeArtifactDirectory = resolve(
+  runtimeArtifactDirectory = bindInheritedDirectoryPath(resolve(
     process.env.READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR ??
       join(
         tmpdir(),
@@ -607,7 +611,7 @@ function initializeProductionDayRuntime(): void {
         "reader-summary-production-day",
         collectionDate,
       ),
-  );
+  ));
   evidencePath = join(
     runtimeArtifactDirectory,
     `durable-reader-summary-${collectionDate}.v1.json`,
@@ -983,18 +987,14 @@ function validateExistingReport(): void {
           expectedDate: report.requestedDate,
         });
   const valid = violations.length === 0 && noRawSecretFragments(report);
-
   if (!valid) {
     throw new Error(`${outputPath} failed validation`);
   }
-
   printProductionDayStats(report as ProductionDayReport);
 }
-
 function readJsonIfExists<TValue>(path: string): TValue | null {
   if (!existsSync(path)) {
     return null;
   }
-
   return JSON.parse(readFileSync(path, "utf8")) as TValue;
 }

@@ -3,6 +3,8 @@ import type {
   SourceContentQualityReview,
   SourceContentQualityVerdict,
 } from "../domain";
+import type { PromotionEvidenceReference } from "../domain/promotion-reader-headline";
+export type { PromotionEvidenceReference } from "../domain/promotion-reader-headline";
 
 export type SourceContentQualityReviewRequest = SourceContentQualityInput & {
   readonly candidateId: string;
@@ -16,7 +18,11 @@ export type SourceContentQualityReviewResult = SourceContentQualityReview & {
 };
 
 export interface SourceContentQualityReviewerPort {
-  readonly promotionTiming?: { readonly batchTimeoutMs: number; readonly totalTimeoutMs: number };
+  readonly promotionTiming?: {
+    readonly batchTimeoutMs: number;
+    readonly totalTimeoutMs: number;
+    readonly batchConcurrency?: number;
+  };
   reviewBatch(
     requests: readonly SourceContentQualityReviewRequest[],
     options?: { readonly signal: AbortSignal; readonly timeoutMs?: number; readonly deadlineAtMs?: number },
@@ -44,14 +50,17 @@ export type PromotionReviewContext = Readonly<{
   trustedIntent: string;
   availability: "title_only" | "body_present" | "truncated";
 }>;
-export type PromotionEvidenceReference = Readonly<{
-  field: "title" | "bodyPreview";
-  start: number;
-  end: number;
-  quote: string;
-}>;
 export type PromotionReviewAssessment = Readonly<{
   binding: PromotionReviewContext;
+  // Only adapters authenticate this digest against the frozen request. Missing
+  // legacy metadata cannot authorize display text, but retains quality behavior.
+  headlineInput?: Readonly<{
+    request: SourceContentQualityReviewRequest;
+    reviewedInputDigest: string;
+    title: string;
+    body: string;
+  }>;
+  readerHeadline?: unknown;
   evidence: readonly PromotionEvidenceReference[];
   resolvedSoftFlags: readonly Readonly<{
     flag: "rumor_only";

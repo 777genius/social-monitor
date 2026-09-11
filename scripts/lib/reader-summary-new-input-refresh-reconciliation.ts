@@ -6,7 +6,8 @@ import { refreshBytesHash, refreshHash, refreshKeyPrefix, refreshScope } from
 
 /** Operator-reviewed statement that one consumed new-input-refresh attempt is
  * accounted for. It asserts consumption, never success: the original job row is
- * never written to, and provider usage stays explicitly unknown. */
+ * never written to. Provider usage is preserved when the reviewed provider
+ * response reports it, and otherwise stays explicitly unknown. */
 export type RefreshReconciliationEvidence = Readonly<{
   format: "reader-summary-new-input-refresh-reconciliation-v1";
   tenantId: string; workspaceId: string; date: string;
@@ -15,14 +16,20 @@ export type RefreshReconciliationEvidence = Readonly<{
   invocation: Readonly<{
     requestId: string; purpose: string; requestSha256: string;
     attemptSha256: string; consumedAt: string; returnedAt: string;
-    outcome: string; providerUsageReported: false;
+    outcome: string; providerUsageReported: boolean;
+    usage?: Readonly<{ inputTokens: number; outputTokens: number; totalTokens: number }>;
   }>;
 }>;
 
 export const refreshReconciliationAccounting = Object.freeze({
   summaryGenerations: 0, publications: 0, artifacts: 0,
-  providerInvocations: 1, providerUsage: "unknown",
+  providerInvocations: 1, providerUsage: "unknown" as const,
 });
+export const refreshReconciliationAccountingFor = (evidence: RefreshReconciliationEvidence) =>
+  evidence.invocation.providerUsageReported
+    ? Object.freeze({ ...refreshReconciliationAccounting, providerUsage: "reported" as const,
+      usage: evidence.invocation.usage! })
+    : refreshReconciliationAccounting;
 
 const uuid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u;
 const sha256 = /^[0-9a-f]{64}$/u;
@@ -54,9 +61,12 @@ export function assertRefreshReconciliationEvidence(
       !isoInstant(invocation.consumedAt) || !isoInstant(invocation.returnedAt) ||
       Date.parse(invocation.returnedAt) < Date.parse(invocation.consumedAt) ||
       typeof invocation.outcome !== "string" || invocation.outcome.trim().length === 0 ||
-      // A reported-usage invocation is not this failure mode and must not be
-      // laundered through the reconciliation path.
-      invocation.providerUsageReported !== false) {
+      typeof invocation.providerUsageReported !== "boolean" ||
+      (invocation.providerUsageReported
+        ? invocation.usage === undefined || ![invocation.usage.inputTokens, invocation.usage.outputTokens,
+          invocation.usage.totalTokens].every((count) => Number.isSafeInteger(count) && count >= 0) ||
+          invocation.usage.totalTokens !== invocation.usage.inputTokens + invocation.usage.outputTokens
+        : invocation.usage !== undefined)) {
     throw new Error("Refresh reconciliation invocation identity is invalid");
   }
 }
@@ -119,7 +129,7 @@ const insertReconciliation = (client: WriteClient, input: {
       encode(sha256(convert_to(to_jsonb(j)::text, 'UTF8')), 'hex'),
       ${e.manifestSha256}, ${input.evidenceSha256}, ${e.reason},
       ${JSON.stringify(e.invocation)}::jsonb,
-      ${JSON.stringify(refreshReconciliationAccounting)}::jsonb,
+      ${JSON.stringify(refreshReconciliationAccountingFor(e))}::jsonb,
       ${input.now}::timestamptz
     from reader_summary_jobs j
     where j.id = ${e.jobId}::uuid
@@ -164,7 +174,7 @@ export type RefreshReconciliationReceipt = Readonly<{
   status: "reconciled" | "already_reconciled";
   reconciliationId: string; jobId: string; operation: string;
   jobSha256: string; evidenceSha256: string; reconciledAt: string;
-  accounting: typeof refreshReconciliationAccounting;
+  accounting: ReturnType<typeof refreshReconciliationAccountingFor>;
 }>;
 
 /** Idempotent: an exact replay returns the committed record; anything that
@@ -174,6 +184,7 @@ export async function reconcileConsumedRefreshJob(input: {
   evidenceSha256: string; now: Date; ids: IdGenerator;
 }): Promise<RefreshReconciliationReceipt> {
   const { client, evidence, evidenceSha256 } = input;
+  const accounting = refreshReconciliationAccountingFor(evidence);
   const inserted = await insertReconciliation(client,
     { id: input.ids.generate(), evidence, evidenceSha256, now: input.now });
   const rows = await selectReconciliation(client, evidence.jobId);
@@ -188,11 +199,11 @@ export async function reconcileConsumedRefreshJob(input: {
       row.manifestSha256 !== evidence.manifestSha256 ||
       row.evidenceSha256 !== evidenceSha256 || row.reason !== evidence.reason ||
       refreshHash(row.invocation) !== refreshHash(evidence.invocation) ||
-      refreshHash(row.accounting) !== refreshHash(refreshReconciliationAccounting)) {
+      refreshHash(row.accounting) !== refreshHash(accounting)) {
     throw new Error("Refresh reconciliation conflicts with the committed record for this job");
   }
   return { status: inserted.length === 1 ? "reconciled" : "already_reconciled",
     reconciliationId: row.id, jobId: row.readerSummaryJobId, operation: row.operation,
     jobSha256: row.jobSha256, evidenceSha256: row.evidenceSha256,
-    reconciledAt: row.reconciledAt.toISOString(), accounting: refreshReconciliationAccounting };
+    reconciledAt: row.reconciledAt.toISOString(), accounting };
 }

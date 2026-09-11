@@ -6,13 +6,13 @@ import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "@social-mo
 
 export { sourceContentAssessmentPurpose };
 export const refreshAssessmentLimits = Object.freeze({ ...PROMOTION_ASSESSMENT_BOUNDS,
-  totalTimeoutMs: 600_000, batchTimeoutMs: 600_000 });
+  totalTimeoutMs: 3_600_000, batchTimeoutMs: 600_000 });
 
 // Per consumed operation, not per selection or adapter instance. Request IDs
 // alone cannot prevent a second assessment of the same captured candidate.
 export function refreshAssessmentBudget(now: () => number) {
   let deadline: number | undefined;
-  let batchDeadline: number | undefined;
+  const batchDeadlines = new Map<string, number>();
   let attempts = 0;
   let bytes = 0;
   const candidates = new Set<string>();
@@ -31,15 +31,18 @@ export function refreshAssessmentBudget(now: () => number) {
           command.timeoutMs! > bounds.batchTimeoutMs || now() + command.timeoutMs! > deadline) {
         throw new Error("Refresh assessment budget exhausted or duplicate candidate");
       }
-      batchDeadline = now() + command.timeoutMs!;
+      batchDeadlines.set(command.requestId, now() + command.timeoutMs!);
       ids.forEach((id) => candidates.add(id as string));
       bytes += size;
       attempts++;
       return { assessmentAttempts: attempts, assessmentCandidates: candidates.size,
         assessmentBytes: bytes, assessmentDeadlineAtMs: deadline };
     },
-    assertTimely() {
-      if ((deadline !== undefined && now() >= deadline) || (batchDeadline !== undefined && now() >= batchDeadline)) throw new Error("Refresh assessment deadline exhausted");
+    assertTimely(command: AgentRuntimeTaskCommand) {
+      const batchDeadline = batchDeadlines.get(command.requestId);
+      if ((deadline !== undefined && now() >= deadline) || batchDeadline === undefined || now() >= batchDeadline) {
+        throw new Error("Refresh assessment deadline exhausted");
+      }
     },
   };
 }

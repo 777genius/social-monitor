@@ -89,6 +89,7 @@ describe("assessment completed receipts and caller abandonment", () => {
       expect(result.ranking.orderedCandidateIds).toHaveLength(8);
     } finally { jest.useRealTimers(); }
   });
+  // Completion at the 600-second deadline is late: all 25 or 8 timely batches of eight.
   it.each([[20_000, 200], [70_000, 64]])("accounts for all 200 candidates at %i ms per batch", async (latency, admitted) => {
     jest.useFakeTimers();
     jest.setSystemTime(cutoff);

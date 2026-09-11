@@ -1,11 +1,9 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
-import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_url_action_contract.dart';
 
 import '../../support/summaries_test_fixtures.dart';
+import 'support/reader_summary_brief_test_app.dart';
 
 void main() {
   testWidgets('exposes and activates every Markdown brief URL contract', (
@@ -19,20 +17,11 @@ void main() {
     );
     final identity = readerSummaryUrlIdentity(url);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark(),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: ReaderSummaryBriefSurface(
-              summary: summary,
-              citationsById: const {},
-              isRefreshing: false,
-              onOpenUrl: openedUrls.add,
-            ),
-          ),
-        ),
-      ),
+    await pumpReaderSummaryBrief(
+      tester,
+      summary,
+      citationsById: const {},
+      onOpenUrl: openedUrls.add,
     );
     await tester.pumpAndSettle();
 

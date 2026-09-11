@@ -31,6 +31,9 @@ import { resolvePromotionInterests } from "./resolve-promotion-interests";
 
 import { assessPromotionContent } from "./promotion-content-assessment";
 import { canCompeteForPromotionAssessment } from "./promotion-assessment-eligibility";
+import { unavailablePromotionHeadline, type PromotionReaderHeadline } from "../../domain/promotion-reader-headline";
+
+import { observePromotionSnapshotPreparation } from "./promotion-snapshot-preparation";
 
 const PROMOTION_SOURCE_TEXT_SAFETY_CAP = 256_000;
 
@@ -133,6 +136,7 @@ export const rankPromotionSnapshot = async (params: {
       providerMetadata,
     });
     const projectedItem = {
+      readerHeadline: unavailablePromotionHeadline("not_assessed") as PromotionReaderHeadline,
       feedItemId: item.id,
       sourceItemId: item.sourceItemId,
       sourceBindingId: item.sourceBindingId,
@@ -201,9 +205,11 @@ export const rankPromotionSnapshot = async (params: {
   });
   const assessed = await assessPromotionContent({ requests: reviewRequests,
     execution: command.promotionAssessmentExecution,
+    observeHeadlineDiagnostic: command.observeHeadlineDiagnostic,
     reviewer: params.qualityReviewer, policy: params.qualityPolicy, clock: params.clock });
   for (const [index, item] of projected.entries()) {
-    const quality = assessed.get(item.feedItemId);
+    const quality = assessed.verdicts.get(item.feedItemId);
+    item.readerHeadline = assessed.readerHeadlines.get(item.feedItemId) ?? unavailablePromotionHeadline("not_assessed");
     if (quality !== undefined) item.contentQuality = presentSourceContentQuality(quality);
     item.score = Math.min(0.85,
       feedPromotionMetricStrength(snapshot.candidates[index]!.canonical.metrics) / 10,
@@ -260,6 +266,13 @@ export const rankPromotionSnapshot = async (params: {
       contentQuality: presentSourceContentQuality(quality),
     } satisfies RankedFeedItemView;
   });
+  if (command.observePromotionPreparation !== undefined) {
+    observePromotionSnapshotPreparation(command.observePromotionPreparation, {
+      primary: projected,
+      supplemental,
+      requestedCandidateIds: reviewRequests.map((request) => request.candidateId),
+    });
+  }
   const items = [...projected, ...supplemental]
     .sort((left, right) => right.score - left.score ||
       right.publishedAt.localeCompare(left.publishedAt) ||

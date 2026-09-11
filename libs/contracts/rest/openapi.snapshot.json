@@ -3327,6 +3327,37 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryCapturedSourceDto": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "captureAvailability": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "type": "string"
+          },
+          "reviewAvailability": {
+            "enum": [
+              "body_present",
+              "title_only",
+              "unavailable"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "captureAvailability",
+          "reviewAvailability"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryCitationViewDto": {
         "properties": {
           "canonicalUrl": {
@@ -3600,6 +3631,74 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryDisplayHeadlineDto": {
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/ReaderSummaryHeadlineBindingDto"
+          },
+          "confidence": {
+            "maximum": 1,
+            "minimum": 0.8,
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "claim",
+              "subject_label"
+            ],
+            "type": "string"
+          },
+          "qualifications": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryHeadlineQualificationDto"
+            },
+            "type": "array"
+          },
+          "reasonCode": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "unavailable"
+            ],
+            "type": "string"
+          },
+          "support": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryHeadlineReferenceDto"
+            },
+            "type": "array"
+          },
+          "text": {
+            "maxLength": 119,
+            "minLength": 1,
+            "type": "string"
+          },
+          "wholeInput": {
+            "$ref": "#/components/schemas/ReaderSummaryHeadlineWholeInputDto"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryDisplayHeadlineSealDto": {
+        "properties": {
+          "capturedSourceDigest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "headline": {
+            "$ref": "#/components/schemas/ReaderSummaryDisplayHeadlineDto"
+          }
+        },
+        "required": [
+          "headline"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryFreshnessDto": {
         "properties": {
           "checkedAt": {
@@ -3637,6 +3736,131 @@
         "required": [
           "status",
           "checkedAt"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryHeadlineBindingDto": {
+        "properties": {
+          "availability": {
+            "enum": [
+              "title_only",
+              "body_present"
+            ],
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string"
+          },
+          "interestId": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "reviewedInputDigest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "trustedIntent": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidateId",
+          "providerKey",
+          "tenantId",
+          "workspaceId",
+          "interestId",
+          "sourceBindingId",
+          "sourceItemId",
+          "trustedIntent",
+          "availability",
+          "reviewedInputDigest"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryHeadlineQualificationDto": {
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryHeadlineReferenceDto"
+            },
+            "type": "array"
+          },
+          "phrase": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "phrase",
+          "evidence"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryHeadlineReferenceDto": {
+        "properties": {
+          "end": {
+            "minimum": 1,
+            "type": "number"
+          },
+          "field": {
+            "enum": [
+              "title",
+              "bodyPreview"
+            ],
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "start": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "field",
+          "start",
+          "end",
+          "quote"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryHeadlineWholeInputDto": {
+        "properties": {
+          "bodyLength": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "qualificationJudgment": {
+            "enum": [
+              "none",
+              "preserved",
+              "subject_only"
+            ],
+            "type": "string"
+          },
+          "titleLength": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "titleLength",
+          "bodyLength",
+          "qualificationJudgment"
         ],
         "type": "object"
       },
@@ -4082,6 +4306,9 @@
               "reader_post_promotion_digest.sha256.v2"
             ],
             "type": "string"
+          },
+          "displayHeadline": {
+            "$ref": "#/components/schemas/ReaderSummaryDisplayHeadlineSealDto"
           },
           "evidenceLineage": {
             "$ref": "#/components/schemas/ReaderSummaryPromotionEvidenceLineageDto"
@@ -4793,6 +5020,9 @@
           "canonicalUrl": {
             "type": "string"
           },
+          "capturedSource": {
+            "$ref": "#/components/schemas/ReaderSummaryCapturedSourceDto"
+          },
           "citationIds": {
             "items": {
               "type": "string"
@@ -4807,6 +5037,9 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "displayHeadline": {
+            "$ref": "#/components/schemas/ReaderSummaryDisplayHeadlineDto"
           },
           "matchedInterestIds": {
             "items": {
@@ -6131,13 +6364,19 @@
             "type": "boolean"
           },
           "artifact": {
-            "allOf": [
+            "nullable": true,
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/ReaderSummaryWeeklyProjectionArtifactDto"
+              },
+              {
+                "enum": [
+                  null
+                ],
+                "nullable": true,
+                "type": "object"
               }
-            ],
-            "nullable": true,
-            "type": "object"
+            ]
           },
           "blockingReasons": {
             "items": {

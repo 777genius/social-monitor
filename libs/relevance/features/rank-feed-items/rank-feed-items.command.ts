@@ -1,4 +1,7 @@
+import type { PromotionHeadlineDiagnosticObserver } from "./promotion-headline-diagnostic";
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
+
+import type { PromotionSnapshotPreparationObserver } from "./promotion-snapshot-preparation";
 
 export type RankFeedItemsCommand = {
   readonly tenantId: TenantId;
@@ -13,5 +16,7 @@ export type RankFeedItemsCommand = {
   readonly publishedAtOrAfter?: Date;
   readonly publishedBefore?: Date;
   readonly promotionAssessmentExecution?: { readonly deadlineAtMs: number; readonly signal?: AbortSignal };
+  readonly observeHeadlineDiagnostic?: PromotionHeadlineDiagnosticObserver;
+  readonly observePromotionPreparation?: PromotionSnapshotPreparationObserver;
   readonly rankingProfile?: "reader_post_promotion";
 };

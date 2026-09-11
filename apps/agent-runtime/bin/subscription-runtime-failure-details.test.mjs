@@ -20,9 +20,10 @@ const { assessmentRequest } = require("../src/source-content-assessment-runtime.
 
 // Exercise the installed CLI's actual catch/factory/serialization with an inert
 // worker. No pool, auth, provider process or runtime service is created.
+// Leave work time above the 20s assessment cleanup reserve for classification.
 async function serializeFailure(result) {
   const sandbox = await mkdtemp(join(tmpdir(), "classification-boundary-"));
-  const request = { ...assessmentRequest(), timeoutMs: 5_000 };
+  const request = { ...assessmentRequest(), timeoutMs: 60_000 };
   const canonical = admitSubscriptionRuntimeRequest(request).canonicalRequest;
   const output = [];
   let calls = 0;
@@ -175,7 +176,7 @@ for (const key of ["capacityReason", "safeExecutorStatus"]) {
             retryable: false, details,
           },
         }),
-        exitCode: 1, request: { ...assessmentRequest(), timeoutMs: 5_000 },
+        exitCode: 1, request: { ...assessmentRequest(), timeoutMs: 60_000 },
       };
       const parsed = parseSubscriptionRuntimeCliResult(serialized.stdout);
       assert.deepEqual(parsed.failure.details, expected);

@@ -1,3 +1,4 @@
+import { withAcceptedFixtureHeadlines } from "../../test-fixtures/accepted-reader-headline";
 import {
   FixedClock,
   tenantId,
@@ -48,6 +49,27 @@ import {
 } from "./reader-summary-promotion-control";
 
 describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
+  it("saves the selected source and returns quality_rejected when the batch has no headline", async () => {
+    const scenario = await arrangePromotionControlScenario("reader-job-unavailable-headline");
+    const result = await executePromotionControlScenario({ ...scenario,
+      assessHeadlines: false,
+      selectEvidence: async () => {
+        const evidence = makeReaderEvidenceSelection();
+        return { ...evidence, selectedEvidence: evidence.selectedEvidence.map((item) => ({
+          ...item, sourceText: item.bodyPreview,
+        })) };
+      },
+      promotionControl: readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
+    });
+    expect(result).toMatchObject({ ok: true, value: { status: "quality_rejected" } });
+    expect(scenario.artifacts.decisions()[0]).toMatchObject({ status: "rejected",
+      reasonCodes: expect.arrayContaining(["editorial_quality"]) });
+    const card = scenario.artifacts.all()[0]!.toSnapshot().content!.topReads[0]!;
+    expect(card.promotionCandidateId).toBe("feed-1");
+    expect(card.displayHeadline).toEqual({ status: "unavailable", reasonCode: "not_assessed" });
+    expect(card.capturedSource?.body).toBe(makeReaderEvidenceSelection().selectedEvidence[0]!.bodyPreview);
+  });
+
   it.each([true, false])(
     "publishes an enabled daily job with a valid Trends appendix (primary=%s)",
     async (withPrimary) => {
@@ -431,6 +453,7 @@ const executePromotionControlScenario = async (
     readonly topicMapBuilder?: BuildReaderSummaryTopicMapUseCase;
     readonly githubProjectionReader?: ReaderSummaryGitHubProjectionReaderPort;
     readonly publicationPolicy?: ReaderSummaryPublicationPolicy;
+    readonly assessHeadlines?: boolean;
   },
 ) =>
   new ExecuteReaderSummaryJobUseCase(
@@ -438,8 +461,12 @@ const executePromotionControlScenario = async (
     scenario.artifacts,
     new PromotionControlPolicyRepository(),
     {
-      select:
-        scenario.selectEvidence ?? (async () => makeReaderEvidenceSelection()),
+      select: async () => {
+        const evidence = await (scenario.selectEvidence ?? (async () => makeReaderEvidenceSelection()))();
+        return scenario.assessHeadlines === false ? evidence : withAcceptedFixtureHeadlines(
+          evidence, { tenantId: scenario.tenant, workspaceId: scenario.workspace },
+        );
+      },
     },
     scenario.model,
     new PromotionControlPublication(

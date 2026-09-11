@@ -47,18 +47,6 @@ const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
 const datasetManifestSha256Env =
   "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256";
 
-if (require.main === module) {
-  loadDotenvIfPresent(".env");
-  void main().catch((error) => {
-    console.error(
-      error instanceof Error
-        ? error.message
-        : "Historical promotion locked preflight failed",
-    );
-    process.exitCode = 1;
-  });
-}
-
 export const runHistoricalPromotionLockedPreflight = async (input: {
   readonly revalidate: () => Promise<void>;
   readonly runProductionDay: () => number | null;
@@ -274,7 +262,11 @@ async function main(): Promise<void> {
       runProductionDay: () => spawnSync(command[0]!, command.slice(1), {
         cwd: process.cwd(),
         env: process.env,
-        stdio: "inherit",
+        stdio: [
+          "inherit", "inherit", "inherit",
+          "ignore", "ignore", "ignore", "ignore", "ignore", "ignore",
+          9, 10, 11,
+        ],
       }).status,
     });
   } finally {
@@ -292,3 +284,15 @@ const requiredEnv = (name: string): string => {
   }
   return value;
 };
+
+if (require.main === module) {
+  loadDotenvIfPresent(".env");
+  void main().catch((error) => {
+    console.error(
+      error instanceof Error
+        ? error.message
+        : "Historical promotion locked preflight failed",
+    );
+    process.exitCode = 1;
+  });
+}

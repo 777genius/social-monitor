@@ -14,18 +14,24 @@ import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/g
 import { requiredHistoricalPromotionSystemDatabaseUrl, assertHistoricalPromotionSystemRole } from "./lib/reader-summary-promotion-v2-system-database";
 import { refreshScope, refreshDates, refreshOperation, refreshBytesHash,
   assertRefreshManifest, type RefreshManifest } from "./lib/reader-summary-new-input-refresh-manifest";
-import { refreshSourceSha256, readReviewedRefresh, assertRefreshFences, readRefreshFenceAuthority } from "./lib/reader-summary-new-input-refresh-files";
+import { refreshSourceSha256, readReviewedRefresh, readReviewedRefreshSuccessor, assertRefreshFences, readRefreshFenceAuthority } from "./lib/reader-summary-new-input-refresh-files";
 import { captureRefreshAuthority, preflightRefreshSelection, assertRefreshHasNewInput, refreshPeriod } from "./lib/reader-summary-new-input-refresh-capture";
 import { readRefreshJobs, readRefreshPrior, readRefreshReconciliations } from "./lib/reader-summary-new-input-refresh-postgres";
 import { refreshGenerationSha256 } from "./lib/reader-summary-new-input-refresh-model";
 import { assertRefreshEqual, refreshLiveJobs } from "./lib/reader-summary-new-input-refresh-guard";
 import { executeNewInputRefresh } from "./lib/reader-summary-new-input-refresh-execution";
 import { resolveReaderSummaryServingAuthority } from "./lib/reader-summary-serving-authority";
+import { assertRefreshSuccessorCurrent } from "./lib/reader-summary-new-input-refresh-successor";
 
 export function parseRefreshCommand(argv: readonly string[]) {
   if (argv.length === 1 && argv[0] === "--source-sha256") return { mode: "source" } as const;
-  if (argv.length === 4 && argv[0] === "--apply" && argv[2] === "--sha256" && /^[0-9a-f]{64}$/u.test(argv[3]!)) {
-    return { mode: "apply", path: argv[1]!, sha256: argv[3]! } as const;
+  if ((argv.length === 4 || (argv.length === 6 && argv[4] === "--capture-path" && argv[5]?.startsWith("/"))) && argv[0] === "--apply" && argv[2] === "--sha256" && /^[0-9a-f]{64}$/u.test(argv[3]!)) {
+    return { mode: "apply", path: argv[1]!, sha256: argv[3]!,
+      ...(argv.length === 6 ? { capturePath: argv[5]! } : {}) } as const;
+  }
+  if (argv.length === 7 && argv[0] === "--prepare" && argv[1] === "--date" && refreshDates.includes(argv[2]!) &&
+      argv[3] === "--successor" && argv[4]!.length > 0 && argv[5] === "--sha256" && /^[0-9a-f]{64}$/u.test(argv[6]!)) {
+    return { mode: "prepare", dates: [argv[2]!], successor: { path: argv[4]!, sha256: argv[6]! } } as const;
   }
   if (argv.length === 0 || (argv.length === 1 && argv[0] === "--prepare")) {
     return { mode: "prepare", dates: refreshDates } as const;
@@ -33,7 +39,7 @@ export function parseRefreshCommand(argv: readonly string[]) {
   if (argv.length === 3 && argv[0] === "--prepare" && argv[1] === "--date" && refreshDates.includes(argv[2]!)) {
     return { mode: "prepare", dates: [argv[2]!] } as const;
   }
-  throw new Error("Use --prepare [--date ACCEPTED_DATE], --apply MANIFEST --sha256 HASH, or --source-sha256");
+  throw new Error("Use --prepare [--date ACCEPTED_DATE [--successor GRANT --sha256 HASH]], --apply MANIFEST --sha256 HASH [--capture-path ABSOLUTE_DIRECTORY], or --source-sha256");
 }
 async function main(): Promise<void> {
   const command = parseRefreshCommand(process.argv.slice(2));
@@ -66,6 +72,8 @@ async function main(): Promise<void> {
     await runWithTenantDatabaseAccess(refreshScope, async () => {
       await assertHistoricalPromotionSystemRole(summary);
       if (command.mode === "prepare") {
+        const successor = command.successor !== undefined
+          ? readReviewedRefreshSuccessor(command.successor.path, command.successor.sha256) : undefined;
         for (const date of command.dates) {
           const reconciled = await readRefreshReconciliations(summary, date);
           if (refreshLiveJobs(await readRefreshJobs(summary, date), reconciled, "").length > 0) {
@@ -82,6 +90,7 @@ async function main(): Promise<void> {
           const period = refreshPeriod(date);
           const value: Omit<RefreshManifest, "operation"> = {
             format: "reader-summary-seven-day-new-input-v1", ...refreshScope, date,
+            ...(successor === undefined ? {} : { successor }),
             startedAt: period.startedAt.toISOString(), endedAt: period.endedAt.toISOString(), timezone: "UTC",
             observedThrough: observedThrough.toISOString(), preparedAt: clock.now().toISOString(),
             prior, authority, sourceSha256, deployedSourceSha256, generationSha256,
@@ -89,6 +98,12 @@ async function main(): Promise<void> {
           };
           const manifest: RefreshManifest = { ...value, operation: refreshOperation(value) };
           assertRefreshManifest(manifest, clock.now());
+          if (successor !== undefined) {
+            await assertRefreshSuccessorCurrent(summary, manifest, clock.now());
+            if ((await readRefreshJobs(summary, date)).some((job) => job.operation === manifest.operation)) {
+              throw new Error("Refresh successor already consumed");
+            }
+          }
           // Identical prior/input authority reproduces a reconciled operation.
           // That is the already-consumed identity, not a fresh attempt.
           if (reconciled.some((record) => record.operation === manifest.operation)) {
@@ -127,7 +142,7 @@ async function main(): Promise<void> {
       };
       try {
         const receipt = await executeNewInputRefresh({ configuredInterests, manifest, summary, feed, clock, env: process.env,
-          runtime, assertFences, assertSource, record,
+          runtime, assertFences, assertSource, record, capturePath: command.capturePath,
           assertRuntime: async () => {
             const serving = await resolveReaderSummaryServingAuthority({ summaryModelMode: "agent-runtime",
               topicLabelerMode: "agent-runtime", env: process.env, agentRuntimeClient: runtime,

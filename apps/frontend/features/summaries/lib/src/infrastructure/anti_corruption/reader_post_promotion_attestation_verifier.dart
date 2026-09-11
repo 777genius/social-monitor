@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 import '../api/summary_api_dto.dart';
+import 'reader_display_headline_verifier.dart';
 
 part 'reader_post_promotion_attestation_schema.dart';
 part 'reader_post_promotion_attestation_semantics.dart';
@@ -46,6 +47,14 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
   String? slateDigestInput,
   String? slateDigest,
   ReaderPostPromotionEvidenceLineageApiDto? evidenceLineage,
+  Object? displayHeadline,
+  Object? capturedSource,
+  Object? displayHeadlineSeal,
+  String? cardTitle,
+  String? tenantId,
+  String? workspaceId,
+  String? sourceItemId,
+  String? sourceCandidateId,
   String? cardProviderKey,
   String? cardStoryClusterId,
   DateTime? cardPublishedAt,
@@ -86,6 +95,12 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
   if (decoded is! Map<String, Object?>) return null;
   if (!_validCanonicalBody(decoded, isV2: isV2)) return null;
   if (!_validPromotionSemantics(decoded)) return null;
+  if (!verifyReaderDisplayHeadline(payload: decoded, headline: displayHeadline,
+      source: capturedSource, outerSeal: displayHeadlineSeal, title: cardTitle,
+      providerKey: cardProviderKey, tenantId: tenantId, workspaceId: workspaceId,
+      sourceItemId: sourceItemId, sourceCandidateId: sourceCandidateId)) {
+    return null;
+  }
   final payloadCitationIds = decoded['citationIds'];
   if (payloadCitationIds is! List<Object?> ||
       payloadCitationIds.any((value) => value is! String) ||
@@ -299,7 +314,7 @@ bool _validCanonicalBody(Map<String, Object?> body, {required bool isV2}) {
   if (!_exactKeys(body, {
         ..._bodyRequiredKeys,
         if (isV2) ..._bodyV2RequiredKeys,
-      }, _bodyOptionalKeys) ||
+      }, {..._bodyOptionalKeys, if (isV2) 'displayHeadline'}) ||
       !_isoDate(body['periodStartedAt']) ||
       !_isoDate(body['periodEndedAt']) ||
       !_isoDate(body['ingestionCutoff']) ||

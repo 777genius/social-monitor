@@ -8,12 +8,13 @@ import { PromotionControlArtifactRepository, PromotionControlTrendingModel, Prom
   promotionControlEmptyTopicMapBuilder } from "./execute-reader-summary-job-promotion-control.spec-support";
 import { readerSummaryPromotionControl, NOOP_READER_SUMMARY_PROMOTION_METRICS } from "./reader-summary-promotion-control";
 import { makeReaderEvidenceSelection, withReaderPromotionEditorialSlate, githubEvidence } from "../../test-fixtures/execute-reader-summary-job-promotion-fixtures";
+import { acceptedFixtureReaderHeadline } from "../../test-fixtures/accepted-reader-headline";
 import type { ReaderSummaryNewInputRefreshAuthority } from "../../application/contracts/reader-summary-new-input-refresh-authority";
 
 const scope = { tenantId: tenantId("00000000-0000-7000-8000-000000006101"), workspaceId: workspaceId("00000000-0000-7000-8000-000000006102") };
 const cutoff = new Date("2026-09-05T21:59:00.000Z");
 const now = new Date("2026-09-05T22:10:00.000Z");
-async function scenario(admitted = true, empty = false) {
+async function scenario(admitted = true, empty = false, headline: "accepted" | "missing" | "wrong_candidate" | "changed_source" = "accepted") {
   const jobs = new FakeReaderSummaryJobRepository();
   const old = ReaderSummaryJob.request({ ...scope, id: "prior-job", scope: { type: "workspace" },
     period: { cadence: "daily", startedAt: new Date("2026-09-03T00:00:00Z"), endedAt: new Date("2026-09-04T00:00:00Z"),
@@ -38,7 +39,13 @@ async function scenario(admitted = true, empty = false) {
   const select = jest.fn(async (_query: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0]) => {
     void _query;
     const evidence = shift(makeReaderEvidenceSelection());
-    const item = evidence.selectedEvidence[0]!;
+    const original = evidence.selectedEvidence[0]!;
+    // This synthetic preview is the complete captured input, not a truncated provider body.
+    const assessed = acceptedFixtureReaderHeadline({ ...original, sourceText: original.bodyPreview }, scope);
+    const item = headline === "missing" ? original
+      : headline === "wrong_candidate" ? { ...assessed, readerHeadline: acceptedFixtureReaderHeadline({ ...assessed, feedItemId: "other-candidate" }, scope).readerHeadline }
+      : headline === "changed_source" ? { ...assessed, sourceText: `${assessed.sourceText} Correction: report withdrawn.` }
+      : assessed;
     return withReaderPromotionEditorialSlate({ ...evidence,
       sourceWindow: { ...evidence.sourceWindow, ingestionCutoff: cutoff,
         selectedFeedItemIds: empty ? [] : [item.feedItemId], storyClusterIds: empty ? [] : [evidence.clusters[0]!.id] },
@@ -79,6 +86,17 @@ describe("canonical execution admission for historical new inputs", () => {
     expect(JSON.stringify(await s.jobs.findById({ ...scope, readerSummaryJobId: "prior-job" }))).toBe(s.oldBefore);
     expect(s.model.generatedEvidenceIds()).toHaveLength(1);
   });
+  it.each(["missing", "wrong_candidate", "changed_source"] as const)(
+    "rejects historical new inputs with %s headline evidence", async (headline) => {
+      const s = await scenario(true, false, headline);
+      expect(s.result).toMatchObject({ ok: true, value: { status: "quality_rejected" } });
+      const decision = s.artifacts.decisions()[0];
+      if (decision?.status !== "rejected") throw new Error("Expected a rejected publication decision");
+      expect(decision.findings).toContainEqual({ code: "editorial_quality",
+        reason: "Selected reader headline is unavailable or its source identity is invalid." });
+      expect(JSON.stringify(await s.jobs.findById({ ...scope, readerSummaryJobId: "prior-job" }))).toBe(s.oldBefore);
+    },
+  );
   it("empty current input produces truthful NO_SIGNAL without a model", async () => {
     const s = await scenario(true, true);
     expect(s.result).toMatchObject({ ok: true, value: { status: "no_signal" } });

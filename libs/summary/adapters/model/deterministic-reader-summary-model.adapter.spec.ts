@@ -12,6 +12,7 @@ import type {
   ReaderSummaryModelInput,
 } from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
+import { acceptedDeterministicFixtureHeadline } from "./deterministic-reader-summary-model.spec-support";
 import {
   composeReaderSummaryEditorialSlate,
   materializeReaderSummaryEditorialSlate,
@@ -180,8 +181,14 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
       new Set([plannedLead.clusterId]),
     );
     expect(attempt.draft.content?.topReads[0]).toMatchObject({
-      title: sourceTitle,
+      title: sourceTitle.replace(/\n\n/gu, " "),
       promotionCandidateId: "feed-10",
+      displayHeadline: { status: "accepted" },
+      capturedSource: {
+        title: sourceTitle,
+        body: "Useful source evidence for a workspace summary.",
+        captureAvailability: "available",
+      },
     });
     expect(input.evidence.selectedEvidence).toContainEqual(
       expect.objectContaining({
@@ -378,7 +385,7 @@ const readerSummaryEvidence = (
       storyClusterIds: clusters.map((cluster) => cluster.id),
     },
     clusters,
-    selectedEvidence,
+    selectedEvidence: selectedEvidence.map(acceptedDeterministicFixtureHeadline),
   };
   const editorialSlate = composeReaderSummaryEditorialSlate({ selection });
   return materializeReaderSummaryEditorialSlate({

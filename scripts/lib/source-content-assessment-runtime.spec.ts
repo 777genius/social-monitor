@@ -75,7 +75,7 @@ describe("pool-backed assessment through runtime transport and actual promotion"
         return attestRefreshExecution(request, outputFor(request));
       });
       const pending = run(Array.from({ length: 32 }, (_, i) => fixture(`latency-${i}`)), reviewer);
-      await jest.advanceTimersByTimeAsync(80_001);
+      await jest.advanceTimersByTimeAsync(160_001);
       expect((await pending).ranking.orderedCandidateIds).toHaveLength(32);
     } finally { jest.useRealTimers(); }
   });

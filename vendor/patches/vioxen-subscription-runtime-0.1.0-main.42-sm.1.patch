@@ -1,0 +1,136 @@
+--- a/packages/agent-account-observability/src/infrastructure/JsonRpcLineClient.ts
++++ b/packages/agent-account-observability/src/infrastructure/JsonRpcLineClient.ts
+@@ -108,6 +108,8 @@
+   call(input: {
+     readonly method: string;
+     readonly params?: unknown;
++    /** Explicit unit-parameter request; default object serialization is unchanged. */
++    readonly omitParams?: true;
+     readonly timeoutMs?: number;
+   }): Promise<unknown> {
+     if (!this.child) throw new Error("json_rpc_process_not_started");
+@@ -132,7 +134,7 @@
+           `${JSON.stringify({
+             id,
+             method: input.method,
+-            params: input.params ?? {},
++            ...(input.omitParams ? {} : { params: input.params ?? {} }),
+           })}\n`,
+           (error) => {
+             if (error) this.rejectPending(id, error);
+--- a/packages/agent-account-observability/src/providers/codex/codexTypes.ts
++++ b/packages/agent-account-observability/src/providers/codex/codexTypes.ts
+@@ -10,6 +10,8 @@
+   call(input: {
+     readonly method: string;
+     readonly params?: unknown;
++    /** Explicit unit-parameter request; default object serialization is unchanged. */
++    readonly omitParams?: true;
+     readonly timeoutMs?: number;
+   }): Promise<unknown>;
+   close?(): Promise<void>;
+--- a/packages/agent-account-observability/src/providers/codex/CodexAppServerQuotaReader.ts
++++ b/packages/agent-account-observability/src/providers/codex/CodexAppServerQuotaReader.ts
+@@ -82,7 +82,7 @@
+       });
+       const rateLimitsResult = await client.call({
+         method: "account/rateLimits/read",
+-        params: {},
++        omitParams: true,
+         ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+       });
+       const quota = quotaSnapshotFromRateLimits({
+--- /dev/null
++++ b/packages/agent-account-observability/src/infrastructure/tests/JsonRpcQuotaWire.test.ts
+@@ -0,0 +1,91 @@
++import type { spawn } from "node:child_process";
++import { EventEmitter } from "node:events";
++import { PassThrough, Writable } from "node:stream";
++import { describe, expect, it } from "vitest";
++import { AgentProvider } from "../../domain/enums";
++import { CodexAppServerQuotaReader, CodexQuotaValidationMode } from "../../providers/codex/CodexAppServerQuotaReader";
++import { JsonRpcLineClient } from "../JsonRpcLineClient";
++
++const now = new Date("2026-09-09T00:00:00Z");
++const quotaMethod = "account/rateLimits/read";
++const configParams = { includeLayers: false };
++function fixture() {
++  const messages: Record<string, unknown>[] = [];
++  const stdout = new PassThrough();
++  const stderr = new PassThrough();
++  const child = Object.assign(new EventEmitter(), {
++    pid: 12345, stdout, stderr, exitCode: null, signalCode: null as string | null,
++    kill() {
++      this.signalCode = "SIGTERM";
++      this.emit("exit", null, "SIGTERM");
++      this.emit("close", null, "SIGTERM");
++      return true;
++    },
++  });
++  const stdin = new Writable({
++    write(chunk, _encoding, callback) {
++      const message = JSON.parse(String(chunk));
++      messages.push(message);
++      // Codex 0.147 be6e8eac common.rs:1077: Option<()> accepts absent/null,
++      // rejects objects before quota dispatch. Inspect serialized bytes here.
++      const invalid = message.method === quotaMethod && message.params != null;
++      const result = message.method === "account/read"
++        ? { requiresOpenaiAuth: true, account: { type: "chatgpt", email: null, planType: "plus" } }
++        : message.method === quotaMethod ? { rateLimits: {
++          limitId: "codex", planType: "plus", spendControlReached: false,
++          primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: now.getTime() / 1000 + 3600 },
++          secondary: { usedPercent: 30, windowDurationMins: 10080, resetsAt: now.getTime() / 1000 + 86400 },
++        } } : {};
++      callback();
++      queueMicrotask(() => stdout.write(JSON.stringify(invalid
++        ? { id: message.id, error: { code: -32600, message: "synthetic_invalid_unit_params" } }
++        : { id: message.id, result }) + "\n"));
++    },
++    final(callback) { callback(); child.kill(); },
++  });
++  Object.assign(child, { stdin });
++  const client = new JsonRpcLineClient({ command: "synthetic-never-spawned", args: [], cwd: "/tmp", env: {},
++    spawnProcess: (() => child) as unknown as typeof spawn,
++  });
++  return { client, messages };
++}
++
++describe("native quota wire contract", () => {
++  it("omits unit params once through the actual reader and preserves object methods", async () => {
++    const { client, messages } = fixture();
++    const reader = new CodexAppServerQuotaReader({
++      validationMode: CodexQuotaValidationMode.NativeSnapshot,
++      clientFactory: { open: async () => { await client.start(); return client; } },
++      afterInitialize: async (rpc) => { await rpc.call({ method: "config/read", params: configParams }); },
++    });
++    const result = await reader.readAuthAndQuota({
++      account: { provider: AgentProvider.Codex, slotId: "synthetic", authHome: "/tmp/unused" }, now,
++    });
++    expect(result.quota?.windows).toHaveLength(2);
++    expect(messages.map((m) => m.method)).toEqual(["initialize", "config/read", "account/read", quotaMethod]);
++    expect(messages[0]?.params).toEqual({
++      clientInfo: { name: "agent-account-observability", title: "Agent account observability", version: "0.1.0" },
++      capabilities: { experimentalApi: true, requestAttestation: false },
++    });
++    expect(messages[1]?.params).toEqual(configParams);
++    expect(messages[2]?.params).toEqual({ refreshToken: false });
++    expect(Object.hasOwn(messages[3]!, "params")).toBe(false);
++    expect(client.isStopped()).toBe(true);
++  });
++
++  it("does not globally rewrite empty objects or implicitly omit default params", async () => {
++    const { client, messages } = fixture();
++    await client.start();
++    try {
++      await client.call({ method: "config/read", params: {} });
++      expect(messages.at(-1)?.params).toEqual({});
++      // Caller-only removal is deliberately insufficient: opt-in is required.
++      await expect(client.call({ method: quotaMethod })).rejects.toThrow("synthetic_invalid_unit_params");
++      expect(messages.at(-1)?.params).toEqual({});
++      await expect(client.call({ method: quotaMethod, params: {} })).rejects.toThrow("synthetic_invalid_unit_params");
++      expect(messages.at(-1)?.params).toEqual({});
++      expect(messages.filter((m) => m.method === quotaMethod)).toHaveLength(2);
++    } finally { await client.close(); }
++    expect(client.isStopped()).toBe(true);
++  });
++});

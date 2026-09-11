@@ -1,3 +1,5 @@
+import type { ReaderDisplayHeadlineSeal } from "../value-objects/summary-reader-headline";
+
 import { READER_PROMOTION_PROVIDER_ALIASES } from
   "@social-monitor/shared-kernel";
 import type { ReaderSummaryEditorialScoreComponents } from
@@ -229,6 +231,8 @@ export type ReaderPostPromotionAttestationV2 = Omit<
   readonly slateDigestInput: string;
   readonly slateDigest: string;
   readonly evidenceLineage: ReaderPostPromotionEvidenceLineage;
+  /** Missing only on immutable historical source presentations. */
+  readonly displayHeadline?: ReaderDisplayHeadlineSeal;
 };
 
 export type ReaderPostPromotionAttestation =

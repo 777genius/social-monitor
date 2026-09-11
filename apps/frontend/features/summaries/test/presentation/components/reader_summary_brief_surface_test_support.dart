@@ -20,23 +20,7 @@ void _registerInlineCitationSourceTest() {
       ),
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark(),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: ReaderSummaryBriefSurface(
-              summary: summary,
-              citationsById: {
-                for (final citation in summary.citations) citation.id: citation,
-              },
-              isRefreshing: false,
-              onOpenUrl: openedUrls.add,
-            ),
-          ),
-        ),
-      ),
-    );
+    await pumpReaderSummaryBrief(tester, summary, onOpenUrl: openedUrls.add);
 
     expect(
       find.byKey(
