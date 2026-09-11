@@ -72,10 +72,29 @@ test("runJob parses the HCL through /v1/jobs/parse and sends EnforceIndex/JobMod
   assert.deepEqual(result, { evalId: "eval-1", deploymentId: "deploy-1", jobModifyIndex: 8, warnings: "" });
 });
 
-test("a non-2xx response raises NomadApiError with the status and parsed body", async () => {
+test("a non-2xx response from /v1/jobs/parse raises NomadApiError with the status and parsed body", async () => {
   const fetchImpl = fakeFetch([
-    async () => jsonResponse(409, { Error: "index mismatch" }),
+    async () => jsonResponse(400, { Error: "invalid HCL" }),
   ]);
+  const client = createNomadClient({ fetchImpl });
+  await assert.rejects(
+    () => client.runJob("social-monitor", "sm-api", "job \"sm-api\" {}", { checkIndex: 1 }),
+    (error) => {
+      assert.ok(error instanceof NomadApiError);
+      assert.equal(error.status, 400);
+      assert.equal(error.body.Error, "invalid HCL");
+      return true;
+    },
+  );
+});
+
+test("a 409 from the register endpoint itself (stale plan) raises NomadApiError after a successful parse", async () => {
+  const fetchImpl = expectParseThenRequest((url, init) => {
+    assert.match(url, /\/v1\/job\/sm-api\?namespace=social-monitor$/);
+    const body = JSON.parse(init.body);
+    assert.equal(body.EnforceIndex, true);
+    assert.equal(body.JobModifyIndex, 1);
+  }, jsonResponse(409, { Error: "index mismatch" }));
   const client = createNomadClient({ fetchImpl });
   await assert.rejects(
     () => client.runJob("social-monitor", "sm-api", "job \"sm-api\" {}", { checkIndex: 1 }),

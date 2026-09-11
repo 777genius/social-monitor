@@ -166,15 +166,20 @@ export function createNginxAdapter({
    * @returns {Promise<boolean>} whether the rollback reload itself succeeded
    */
   async function rollbackActiveConfig(previousContent) {
-    if (previousContent !== null) {
-      writeAtomic(activePath, previousContent, 0o644);
-    } else {
-      rmSync(activePath, { force: true });
-    }
     try {
+      if (previousContent !== null) {
+        writeAtomic(activePath, previousContent, 0o644);
+      } else {
+        rmSync(activePath, { force: true });
+      }
       await reload();
       return true;
     } catch {
+      // Whatever caused the original failure (disk full, permissions) can
+      // just as easily break this rollback attempt too - report it the
+      // same as a reload-only failure (a plain `false`) rather than letting
+      // an unrelated fs exception escape and replace the caller's own
+      // NginxReloadError with a less informative one.
       return false;
     }
   }
