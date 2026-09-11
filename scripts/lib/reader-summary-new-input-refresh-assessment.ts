@@ -82,7 +82,10 @@ export function createRefreshAssessmentReviewer(input: {
     throw new Error("Refresh assessment is incomplete; original operation requires reconciliation");
   };
   return {
-    promotionTiming: reviewer.promotionTiming,
+    // Six workers put the evidenced eleven 8-item batches into two waves
+    // (about 452s at 225.7s each), with the existing 600s operation deadline.
+    promotionTiming: Object.freeze({ batchTimeoutMs: reviewer.promotionTiming!.batchTimeoutMs,
+      totalTimeoutMs: reviewer.promotionTiming!.totalTimeoutMs, batchConcurrency: 6 }),
     assertCaptureComplete: () => {
       if ((input.capture || input.captureCanonical) && (captureFailures > 0 || terminalBatches !== batches)) {
         throw new Error("Refresh assessment capture is incomplete");

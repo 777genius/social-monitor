@@ -240,10 +240,16 @@ export class RefreshPairedExport {
         this.append("models.jsonl", { ...event, assessmentBatch: context.assessmentBatch, relationId: context.relationId });
         return;
       }
-      const assessmentBatch = [...this.activeAssessmentBatches][0];
       const relationId = [...this.pendingRelations].at(-1);
       const assessmentPurpose = event.command.purpose === sourceContentAssessmentPurpose;
-      if ((assessmentPurpose && (assessmentBatch === undefined || this.activeAssessmentBatches.size !== 1)) ||
+      const matchingAssessmentBatches = assessmentPurpose ? [...this.activeAssessmentBatches].filter((batch) => {
+        const attempt = this.assessments.find((entry) => entry.phase === "attempt" && entry.batch === batch);
+        if (!attempt) return false;
+        const requests = JSON.parse(attempt.requestsJson) as SourceContentQualityReviewRequest[];
+        return event.command.prompt === JSON.stringify({ candidates: requests.map(promotionWireCandidate) });
+      }) : [];
+      const assessmentBatch = matchingAssessmentBatches[0];
+      if ((assessmentPurpose && matchingAssessmentBatches.length !== 1) ||
           (!assessmentPurpose && relationId === undefined)) throw new Error("Unbound model request");
       if (!assessmentPurpose) {
         const query = this.relationQueries.get(relationId!);

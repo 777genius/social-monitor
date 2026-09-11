@@ -15,10 +15,12 @@ const observed = (review: Wire, second = false): Wire => ({
   ...(second ? { justification: "Synthetic", screeningFlagResolutions: [] }
     : { reason: "Synthetic", flagResolutions: [] }),
 });
+const compatible = {
+  "observed batch one": (o: { reviews: Wire[] }) => ({ results: o.reviews.map((r) => observed(r)) }),
+  "observed batch two": (o: { reviews: Wire[] }) => ({ results: o.reviews.map((r) => observed(r, true)) }),
+  "results alias only": (o: { reviews: Wire[] }) => ({ results: o.reviews }),
+} as const;
 const mutations: Record<string, (output: { reviews: Wire[] }) => Wire> = {
-  "observed batch one": (o) => ({ results: o.reviews.map((r) => observed(r)) }),
-  "observed batch two": (o) => ({ results: o.reviews.map((r) => observed(r, true)) }),
-  "results alias only": (o) => ({ results: o.reviews }),
   "relevant decision": (o) => ({ reviews: o.reviews.map((r) => ({ ...r, decision: "relevant" })) }),
   "not_relevant decision": (o) => ({ reviews: o.reviews.map((r) => ({ ...r, decision: "not_relevant" })) }),
 };
@@ -40,6 +42,22 @@ describe("assessment schema consumer protocol", () => {
       expect(() => parseReviews(JSON.stringify(output))).toThrow("protocol requires a reviews array");
     });
 
+  it.each(Object.entries(compatible))(
+    "accepts a nonempty completed %s response with exact request binding", async (_name, mutate) => {
+    let calls = 0;
+    const adapter = new AgentRuntimeSourceContentQualityReviewerAdapter({
+      clock: new FixedClock(cutoff), ids: { generate: () => `sandbox-compatible-${++calls}` },
+      batchTimeoutMs: 300_000, totalTimeoutMs: 600_000,
+      client: refreshTestRuntimeClient(async (request) =>
+        attestRefreshExecution(request, mutate(outputFor(request)))),
+    });
+    const result = await run([fixture("protocol")], adapter);
+    expect(calls).toBe(1);
+    expect(result.items[0]!.contentQuality).toMatchObject({ qualityScore: 0.8,
+      needsLlmReview: false, eligibleForSummary: true });
+    expect(result.ranking.orderedCandidateIds).toEqual(["protocol"]);
+  });
+
   it.each(Object.keys(mutations))("rejects %s through attested structured output and keeps candidates pending", async (name) => {
     const failures: string[] = [];
     let calls = 0;
@@ -60,15 +78,12 @@ describe("assessment schema consumer protocol", () => {
     expect(calls).toBe(1);
     expect(failures).toHaveLength(1);
     expect(failures[0]).not.toContain("runtime completion");
-    if (name.includes("observed") || name === "results alias only") {
-      expect(failures[0]).toBe("Quality review protocol requires a reviews array");
-    }
     expect(result.ranking.orderedCandidateIds).toHaveLength(0);
     expect(result.items[0]!.contentQuality).toMatchObject({ qualityScore: 0,
       needsLlmReview: true, eligibleForTopRead: false });
   });
 
-  it.each([true, false])("preserves valid siblings=%s when the third batch times out without retry", async (valid) => {
+  it.each([true, false])("preserves canonical=%s compatible siblings when the third batch times out without retry", async (canonical) => {
     jest.useFakeTimers();
     jest.setSystemTime(cutoff);
     let calls = 0;
@@ -80,8 +95,8 @@ describe("assessment schema consumer protocol", () => {
           calls++;
           if (calls === 3) return new Promise(() => {});
           const output = outputFor(request);
-          return attestRefreshExecution(request, valid ? output
-            : mutations[calls === 1 ? "observed batch one" : "observed batch two"]!(output));
+          return attestRefreshExecution(request, canonical ? output
+            : compatible[calls === 1 ? "observed batch one" : "observed batch two"](output));
         }),
       });
       const pending = run(Array.from({ length: 24 }, (_, i) => fixture(`wire-${String(i).padStart(2, "0")}`)),
@@ -89,11 +104,11 @@ describe("assessment schema consumer protocol", () => {
       await jest.advanceTimersByTimeAsync(300_001);
       const result = await pending;
       expect(calls).toBe(3);
-      expect(result.ranking.orderedCandidateIds).toHaveLength(valid ? 16 : 0);
-      expect(result.items.filter((item) => item.contentQuality.needsLlmReview)).toHaveLength(valid ? 8 : 24);
+      expect(result.ranking.orderedCandidateIds).toHaveLength(16);
+      expect(result.items.filter((item) => item.contentQuality.needsLlmReview)).toHaveLength(8);
       await jest.advanceTimersByTimeAsync(300_000);
       expect(calls).toBe(3);
-      expect(result.ranking.orderedCandidateIds).toHaveLength(valid ? 16 : 0);
+      expect(result.ranking.orderedCandidateIds).toHaveLength(16);
     } finally { jest.useRealTimers(); }
   });
 });
