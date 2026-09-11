@@ -8,6 +8,7 @@ final class TopRead {
   const TopRead({
     this.displayHeadline,
     this.capturedSource,
+    this.summary,
     this.storyClusterId,
     this.cardKind = ReaderSummaryCardKind.unsupported,
     this.relationId,
@@ -32,6 +33,7 @@ final class TopRead {
 
   final ReaderDisplayHeadline? displayHeadline;
   final ReaderCapturedSource? capturedSource;
+  final String? summary;
   final String? storyClusterId;
   final ReaderSummaryCardKind cardKind;
   final String? relationId;

@@ -181,13 +181,20 @@ final class ReaderSummaryContentRestMapper {
         dto.promotionAttestation,
         displayHeadline: displayJson(dto.toJson()['displayHeadline']),
         capturedSource: displayJson(dto.toJson()['capturedSource']),
+        displaySummary: dto.summary,
         cardTitle: dto.title,
         tenantId: binding.tenantId,
         workspaceId: binding.workspaceId,
-        sourceCandidateId: binding.feedItemIdsByCitation[
-          dto.promotionAttestation?.evidenceLineage?.leadCitationId],
-        sourceItemId: binding.sourceItemIdsByCitation[
-          dto.promotionAttestation?.evidenceLineage?.leadCitationId],
+        sourceCandidateId:
+            binding.feedItemIdsByCitation[dto
+                .promotionAttestation
+                ?.evidenceLineage
+                ?.leadCitationId],
+        sourceItemId:
+            binding.sourceItemIdsByCitation[dto
+                .promotionAttestation
+                ?.evidenceLineage
+                ?.leadCitationId],
         cardProviderKey: dto.providerKey,
         cardStoryClusterId: storyClusterMarker.value,
         cardPublishedAt: dto.publishedAt,
@@ -200,6 +207,10 @@ final class ReaderSummaryContentRestMapper {
       ),
       displayHeadline: displayJson(dto.toJson()['displayHeadline']),
       capturedSource: displayJson(dto.toJson()['capturedSource']),
+      summary: switch (dto.summary?.trim()) {
+        final String value when value.isNotEmpty => value,
+        _ => null,
+      },
       title: dto.title,
       providerKey: dto.providerKey,
       providerName: dto.providerName,
@@ -339,6 +350,7 @@ final class ReaderSummaryContentRestMapper {
     return value.toDouble();
   }
 }
+
 const _canonicalReaderCardKinds = {
   'curated_top_read',
   'additional_notable_story',

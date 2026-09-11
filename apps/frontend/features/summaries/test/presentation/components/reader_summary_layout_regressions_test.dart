@@ -12,6 +12,7 @@ import 'package:social_monitor_summaries/src/presentation/components/workspace_s
 
 import '../../support/mixed_source_summaries_test_fixtures.dart';
 import '../../support/summaries_test_fixtures.dart';
+import '../../support/top_posts_test_fixtures.dart';
 
 void main() {
   testWidgets('lays top post preview beside the full text body on desktop', (
@@ -55,7 +56,7 @@ void main() {
     final reasonTopLeft = tester.getTopLeft(
       find.descendant(
         of: inlineFinder,
-        matching: find.text('The original source includes a real post image'),
+        matching: find.text('Summary unavailable.'),
       ),
     );
     expect(imageTopLeft.dx, lessThan(titleTopLeft.dx));
@@ -87,7 +88,7 @@ void main() {
     final reasonBottom = tester.getBottomLeft(
       find.descendant(
         of: stackedFinder,
-        matching: find.text('The original source includes a real post image'),
+        matching: find.text('Summary unavailable.'),
       ),
     );
     final imageTop = tester.getTopLeft(
@@ -167,9 +168,7 @@ void main() {
     );
   });
 
-  testWidgets('shows up to six lines of a top post description', (
-    tester,
-  ) async {
+  testWidgets('shows up to four lines of a top post summary', (tester) async {
     tester.view.physicalSize = const Size(1280, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -179,29 +178,16 @@ void main() {
 
     const description =
         'The release introduces a work agent that can continue multi-step projects across connected apps and files. It matters because the workflow moves beyond isolated coding tasks into longer operational work. Teams may be able to delegate research, document updates and follow-up actions without rebuilding context for every step. Access scope and real-world reliability still need careful evaluation.';
-    final summary = const SummaryMapper().readerSummaryToDomain(
-      readerSummaryApiDto(
-        content: readerSummaryContentApiDto(
-          topReads: const [
-            TopReadApiDto(
-              storyClusterId: 'story:work-agent',
-              cardKind: 'curated_top_read',
-              title: 'A work agent for longer operational projects',
-              providerKey: 'x-twitter',
-              reason: description,
-              matchedInterestIds: ['ai-developer-tools'],
-              signalScore: 3.2,
-              citationIds: ['long-description-citation'],
-            ),
-          ],
+    final summary = topPostsSummaryFixture(
+      topReads: [
+        topPostFixture(
+          title: 'A work agent for longer operational projects',
+          summary: description,
+          storyClusterId: 'story:work-agent',
+          cardKind: ReaderSummaryCardKind.curatedTopRead,
+          providerKey: 'x-twitter',
         ),
-        citations: [
-          summaryCitationApiDto(
-            id: 'long-description-citation',
-            providerKey: 'x-twitter',
-          ),
-        ],
-      ),
+      ],
     );
 
     await tester.pumpWidget(_TestApp(summary: summary));
@@ -217,11 +203,8 @@ void main() {
                 false),
       ),
     );
-    expect(
-      descriptionText.data,
-      description.substring(0, description.length - 1),
-    );
-    expect(descriptionText.maxLines, 6);
+    expect(descriptionText.data, description);
+    expect(descriptionText.maxLines, 4);
   });
 
   testWidgets('lays provider coverage out across the expanded summary width', (
@@ -288,7 +271,8 @@ ReaderSummary _summaryWithPreview() {
             cardKind: 'curated_top_read',
             title: 'X post with launch screenshot',
             providerKey: 'x-twitter',
-            reason: 'The original source includes a real post image.',
+            summary: 'The original source includes a real post image.',
+            reason: 'Selected by the reader promotion policy.',
             matchedInterestIds: ['ai-developer-tools'],
             signalScore: 3.2,
             confidence: TopReadConfidenceApiDto(

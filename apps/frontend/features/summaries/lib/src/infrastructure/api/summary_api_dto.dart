@@ -89,6 +89,7 @@ final class TopReadApiDto {
   const TopReadApiDto({
     this.displayHeadline,
     this.capturedSource,
+    this.summary,
     this.storyClusterId,
     this.cardKind,
     this.relationId,
@@ -121,6 +122,7 @@ final class TopReadApiDto {
 
   final Object? displayHeadline;
   final Object? capturedSource;
+  final String? summary;
   final String? storyClusterId;
   final String? cardKind;
   final String? relationId;

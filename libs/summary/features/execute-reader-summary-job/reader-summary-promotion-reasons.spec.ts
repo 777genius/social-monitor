@@ -47,15 +47,17 @@ describe("promotion reader explanations", () => {
     const selection = { ...evidence, editorialSlate: slate ? evidence.editorialSlate : undefined };
     const before = structuredClone(selection);
     const result = buildReaderSummaryDraftWithPromotionContent(selection, draft);
-    expect(result.content.topReads[0]?.reason).toBe(substantive);
+    expect(result.content.topReads[0]?.summary).toBe(substantive);
+    expect(result.content.topReads[0]?.reason).not.toBe(substantive);
     expect(result.content.topReads[0]?.whyImportant[0]).toBe(substantive);
     expect(result.topStories).toEqual(draft.topStories);
     expect(selection).toEqual(before);
     const withoutModel = buildReaderSummaryDraftWithPromotionContent(selection, { ...draft, topStories: [] });
     const cards = (content: typeof result.content) => [
       ...content.topReads, ...(content.selectedPosts ?? []),
-    ].map(({ reason, whyImportant, ...card }) => {
+    ].map(({ reason, summary, whyImportant, ...card }) => {
       void reason;
+      void summary;
       void whyImportant;
       return card;
     });
@@ -64,7 +66,7 @@ describe("promotion reader explanations", () => {
     if (!slate) {
       expect(result.content.selectedPosts).toHaveLength(1);
       expect(result.content.selectedPosts?.[0]?.reason).toBe(
-        "Selected with 1 cited source in this summary window.",
+        "Selected by the reader promotion policy.",
       );
     }
   });
@@ -85,9 +87,7 @@ describe("promotion reader explanations", () => {
     const result = buildReaderSummaryDraftWithPromotionContent(evidence, {
       ...draft, topStories: [authoredStory({ ...draft.topStories[0]!, ...override })],
     });
-    expect(result.content.topReads[0]?.reason).toBe(
-      "Selected with 1 cited source in this summary window.",
-    );
+    expect(result.content.topReads[0]?.summary).toBeUndefined();
     expect(result.content.topReads[0]?.whyImportant).toEqual([
       "Selected with 1 cited source in this summary window.",
     ]);
@@ -102,6 +102,7 @@ describe("promotion reader explanations", () => {
           ? "Recorded Hacker News points: 25." : "Recorded Reddit score: 50."],
       })),
     }, { ...draft, topStories: [] });
-    expect(result.content.selectedPosts?.[0]?.reason).toBe("Recorded Hacker News points: 25.");
+    expect(result.content.selectedPosts?.[0]?.summary).toBeUndefined();
+    expect(result.content.selectedPosts?.[0]?.reason).toBe("Selected by the reader promotion policy.");
   });
 });

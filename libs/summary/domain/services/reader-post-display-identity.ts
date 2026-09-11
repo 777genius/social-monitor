@@ -28,12 +28,14 @@ export const validCapturedReaderSource = (value: unknown): value is ReaderCaptur
 
 /** Integrity check only. Callers must retain existing trusted producer checks. */
 export const readerDisplayIdentityMatches = (
-  card: Pick<TopRead, "title" | "providerKey" | "promotionCandidateId" | "capturedSource" | "displayHeadline">,
+  card: Pick<TopRead, "title" | "summary" | "providerKey" | "promotionCandidateId" | "capturedSource" | "displayHeadline">,
   seal: ReaderDisplayHeadlineSeal | undefined,
   scope?: Readonly<{ tenantId: string; workspaceId: string }>,
+  sealedSummary?: string,
 ): boolean => {
   if (seal === undefined || !validCapturedReaderSource(card.capturedSource) ||
-      canonicalPromotionPayload(seal.headline) !== canonicalPromotionPayload(card.displayHeadline)) return false;
+      canonicalPromotionPayload(seal.headline) !== canonicalPromotionPayload(card.displayHeadline) ||
+      sealedSummary !== card.summary) return false;
   if (isUnavailableDisplayHeadline(seal.headline)) {
     return Object.keys(seal).length === 1;
   }
@@ -55,7 +57,9 @@ export const assertReaderDisplayIdentity = (
     ? attestation.displayHeadline : undefined;
   // Historical payloads retain source presentation, with no new display authority.
   if (seal === undefined && card.displayHeadline === undefined && card.capturedSource === undefined) return;
-  if (!readerDisplayIdentityMatches(card, seal, scope)) {
+  const sealedSummary = attestation.schemaVersion === "reader_post_promotion_attestation.v2"
+    ? attestation.displaySummary : undefined;
+  if (!readerDisplayIdentityMatches(card, seal, scope, sealedSummary)) {
     throw new Error("Reader promotion display identity is invalid");
   }
 };

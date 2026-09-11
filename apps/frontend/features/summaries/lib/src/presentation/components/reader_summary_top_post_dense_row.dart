@@ -13,9 +13,13 @@ Widget _denseTopPostRow(
   double width,
   Widget rating,
   Widget menu,
-  _TopPostSupportSignal supportSignal,
-) {
-  final textTheme = Theme.of(context).textTheme;
+  _TopPostSupportSignal supportSignal, {
+  required bool showOriginal,
+  required bool showOriginalControl,
+  required bool originalExpanded,
+  required ValueChanged<bool> onOriginalChanged,
+  required ValueChanged<bool> onOriginalExpandedChanged,
+}) {
   final showMetric = width >= 680 && metrics.isNotEmpty;
   final showChip =
       width >= 520 || item.cardKind == ReaderSummaryCardKind.relatedTopic;
@@ -32,15 +36,13 @@ Widget _denseTopPostRow(
       _TopPostProviderTile(providerKey: item.providerKey),
       const SizedBox(width: AppSpacing.sm + 4),
       Expanded(
-        child: Text(
-          item.title,
-          key: ObjectKey(item),
-          style: textTheme.bodyMedium?.copyWith(
-            fontWeight: isGitHubTrendingBreakout(item)
-                ? FontWeight.w900
-                : FontWeight.w700,
-            letterSpacing: 0,
-          ),
+        child: _TopPostTextBody(
+          item: item,
+          showOriginal: showOriginal,
+          showOriginalControl: showOriginalControl,
+          originalExpanded: originalExpanded,
+          onOriginalChanged: onOriginalChanged,
+          onOriginalExpandedChanged: onOriginalExpandedChanged,
         ),
       ),
       if (showMetric && primaryMetric != null) ...[

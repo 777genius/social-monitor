@@ -44,6 +44,7 @@ _$ReaderSummaryPromotionAttestationDtoFromJson(
       : ReaderSummaryDisplayHeadlineSealDto.fromJson(
           json['displayHeadline'] as Map<String, dynamic>,
         ),
+  displaySummary: json['displaySummary'] as String?,
   evidenceLineage: json['evidenceLineage'] == null
       ? null
       : ReaderSummaryPromotionEvidenceLineageDto.fromJson(
@@ -76,6 +77,7 @@ Map<String, dynamic> _$ReaderSummaryPromotionAttestationDtoToJson(
   'digest': instance.digest,
   'digestVersion': instance.digestVersion,
   'displayHeadline': instance.displayHeadline,
+  'displaySummary': instance.displaySummary,
   'evidenceLineage': instance.evidenceLineage,
   'placement': instance.placement,
   'policyVersion': instance.policyVersion,

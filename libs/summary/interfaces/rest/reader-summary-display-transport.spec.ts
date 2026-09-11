@@ -31,16 +31,19 @@ describe("grounded headline REST transport", () => {
       ? view.content.topReads[0]!.title : "never unavailable");
     expect(card.capturedSource!.body).toContain("Final correction: simulation only.");
     expect(card.displayHeadline).toEqual(view.content.topReads[0]!.displayHeadline);
+    expect(card.summary).toEqual(view.content.topReads[0]!.summary);
     expect(card.promotionAttestation!.displayHeadline!.headline).toEqual(card.displayHeadline);
+    expect(card.promotionAttestation!.displaySummary).toEqual(card.summary);
   });
 
-  it.each(["title", "source", "missing", "unavailable", "scope", "citation", "seal"])(
+  it.each(["title", "summary", "source", "missing", "unavailable", "scope", "citation", "seal"])(
     "rejects %s tampering without silently dropping the card", (mutation) => {
       const view = fixture();
       const card = view.content.topReads[0]!;
       const attestation = view.promotionAttestations[0]!;
       const changed = structuredClone(view);
       if (mutation === "title") Object.assign(changed.content.topReads[0]!, { title: "Fabricated title" });
+      if (mutation === "summary") Object.assign(changed.content.topReads[0]!, { summary: "Fabricated summary" });
       if (mutation === "source") Object.assign(changed.content.topReads[0]!, {
         capturedSource: { ...card.capturedSource!, body: `${card.capturedSource!.body} Changed tail` },
       });

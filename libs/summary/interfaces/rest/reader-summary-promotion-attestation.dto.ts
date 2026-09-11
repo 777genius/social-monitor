@@ -71,6 +71,9 @@ export class ReaderSummaryPromotionAttestationDto {
   @ApiPropertyOptional({ type: () => ReaderSummaryDisplayHeadlineSealDto })
   declare readonly displayHeadline?: ReaderSummaryDisplayHeadlineSealDto;
 
+  @ApiPropertyOptional({ minLength: 1, maxLength: 300 })
+  declare readonly displaySummary?: string;
+
   @ApiProperty({
     enum: [
       READER_POST_PROMOTION_ATTESTATION_SCHEMA_V1,

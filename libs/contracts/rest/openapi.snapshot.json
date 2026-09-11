@@ -4310,6 +4310,11 @@
           "displayHeadline": {
             "$ref": "#/components/schemas/ReaderSummaryDisplayHeadlineSealDto"
           },
+          "displaySummary": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
           "evidenceLineage": {
             "$ref": "#/components/schemas/ReaderSummaryPromotionEvidenceLineageDto"
           },
@@ -5087,6 +5092,11 @@
           },
           "signalScore": {
             "type": "number"
+          },
+          "summary": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
           },
           "title": {
             "type": "string"

@@ -10,6 +10,7 @@ ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
   generated.ReaderSummaryPromotionAttestationDto? dto, {
   Object? displayHeadline,
   Object? capturedSource,
+  String? displaySummary,
   String? cardTitle,
   String? tenantId,
   String? workspaceId,
@@ -86,6 +87,8 @@ ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
     displayHeadline: displayHeadline,
     capturedSource: capturedSource,
     displayHeadlineSeal: displayJson(dto.toJson()['displayHeadline']),
+    displaySummary: displaySummary,
+    displaySummarySeal: dto.displaySummary,
     cardTitle: cardTitle,
     tenantId: tenantId,
     workspaceId: workspaceId,
@@ -99,13 +102,16 @@ ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
 }
 
 // Generated optional fields serialize null; absence is preserved for sealed JSON.
-Object? displayJson(Object? value) => _withoutNulls(jsonDecode(jsonEncode(value)));
+Object? displayJson(Object? value) =>
+    _withoutNulls(jsonDecode(jsonEncode(value)));
 
 Object? _withoutNulls(Object? value) {
   if (value is List<Object?>) return value.map(_withoutNulls).toList();
   if (value is Map<String, Object?>) {
-    return {for (final entry in value.entries)
-      if (entry.value != null) entry.key: _withoutNulls(entry.value)};
+    return {
+      for (final entry in value.entries)
+        if (entry.value != null) entry.key: _withoutNulls(entry.value),
+    };
   }
   return value;
 }

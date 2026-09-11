@@ -67,6 +67,7 @@ ReaderSummaryReaderItemDto _$ReaderSummaryReaderItemDtoFromJson(
   publishedAt: json['publishedAt'] == null
       ? null
       : DateTime.parse(json['publishedAt'] as String),
+  summary: json['summary'] as String?,
 );
 
 Map<String, dynamic> _$ReaderSummaryReaderItemDtoToJson(
@@ -89,6 +90,7 @@ Map<String, dynamic> _$ReaderSummaryReaderItemDtoToJson(
   'publishedAt': instance.publishedAt?.toIso8601String(),
   'reason': instance.reason,
   'signalScore': instance.signalScore,
+  'summary': instance.summary,
   'title': instance.title,
   'whyImportant': instance.whyImportant,
   'whyNow': instance.whyNow,

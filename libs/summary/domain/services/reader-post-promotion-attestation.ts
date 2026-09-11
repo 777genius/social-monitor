@@ -19,6 +19,11 @@ import {
 
 import type { ReaderDisplayHeadlineSeal } from "../value-objects/summary-reader-headline";
 
+export type ReaderPostDisplaySeal = Readonly<{
+  headline: ReaderDisplayHeadlineSeal;
+  summary?: string;
+}>;
+
 export type ReaderPostPromotionAttestationBinding = {
   readonly artifactId: string;
   readonly sourceWindow: SummarySourceWindow;
@@ -28,7 +33,7 @@ export type ReaderPostPromotionAttestationBinding = {
 export const buildReaderPostPromotionAttestations = (
   selection: ReturnType<typeof selectReaderPostPromotions>,
   binding: ReaderPostPromotionAttestationBinding,
-  displayByCandidate: ReadonlyMap<string, ReaderDisplayHeadlineSeal>,
+  displayByCandidate: ReadonlyMap<string, ReaderPostDisplaySeal>,
 ): readonly ReaderPostPromotionAttestationV2[] => {
   const artifactId = binding.artifactId.trim();
   const sourceWindowId = binding.sourceWindow.windowId.trim();
@@ -76,12 +81,13 @@ export const buildReaderPostPromotionAttestations = (
           : "promote_additional")) {
       throw new Error("Selected promotion decision is inconsistent");
     }
-    const displayHeadline = displayByCandidate.get(input.candidateId);
-    if (displayHeadline === undefined) {
+    const display = displayByCandidate.get(input.candidateId);
+    if (display === undefined) {
       throw new Error("Selected promotion display identity is missing");
     }
     const body = {
-      displayHeadline,
+      displayHeadline: display.headline,
+      ...(display.summary === undefined ? {} : { displaySummary: display.summary }),
       schemaVersion: READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION,
       policyVersion: READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
       digestVersion: READER_POST_PROMOTION_DIGEST_VERSION,

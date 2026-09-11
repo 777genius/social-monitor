@@ -56,6 +56,9 @@ export class ReaderSummaryReaderItemDto {
   @ApiProperty()
   declare readonly title: string;
 
+  @ApiPropertyOptional({ minLength: 1, maxLength: 300 })
+  declare readonly summary?: string;
+
   @ApiProperty()
   declare readonly providerKey: string;
 

@@ -49,23 +49,9 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text(source), findsOneWidget);
-        if (editorial != null) expect(find.text(editorial), findsWidgets);
-        final capturedSource =
-            find.widgetWithText(AppButton, 'Captured source').first;
-        await tester.scrollUntilVisible(
-          capturedSource.hitTestable(),
-          200,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.pumpAndSettle();
-        expect(capturedSource.hitTestable(), findsOneWidget);
-        await tester.tap(capturedSource);
-        await tester.pumpAndSettle();
-        expect(find.widgetWithText(SelectableText, source), findsOneWidget);
-        expect(
-          tester.widget<SelectableText>(find.byType(SelectableText)).data,
-          endsWith('production writes require explicit operator approval.'),
-        );
+        if (editorial != null) expect(find.text(editorial), findsNothing);
+        expect(find.text('Captured source'), findsNothing);
+        expect(find.text('Original'), findsNothing);
         expect(tester.takeException(), isNull);
       });
     }

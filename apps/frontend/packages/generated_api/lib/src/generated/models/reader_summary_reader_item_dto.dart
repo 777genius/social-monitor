@@ -37,6 +37,7 @@ class ReaderSummaryReaderItemDto {
     this.previewMedia,
     this.promotionAttestation,
     this.publishedAt,
+    this.summary,
   });
 
   factory ReaderSummaryReaderItemDto.fromJson(Map<String, Object?> json) =>
@@ -60,6 +61,7 @@ class ReaderSummaryReaderItemDto {
   final DateTime? publishedAt;
   final String reason;
   final num signalScore;
+  final String? summary;
   final String title;
   final List<String> whyImportant;
   final String whyNow;

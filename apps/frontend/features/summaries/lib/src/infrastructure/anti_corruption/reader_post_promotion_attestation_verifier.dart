@@ -50,6 +50,8 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
   Object? displayHeadline,
   Object? capturedSource,
   Object? displayHeadlineSeal,
+  String? displaySummary,
+  String? displaySummarySeal,
   String? cardTitle,
   String? tenantId,
   String? workspaceId,
@@ -95,10 +97,25 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
   if (decoded is! Map<String, Object?>) return null;
   if (!_validCanonicalBody(decoded, isV2: isV2)) return null;
   if (!_validPromotionSemantics(decoded)) return null;
-  if (!verifyReaderDisplayHeadline(payload: decoded, headline: displayHeadline,
-      source: capturedSource, outerSeal: displayHeadlineSeal, title: cardTitle,
-      providerKey: cardProviderKey, tenantId: tenantId, workspaceId: workspaceId,
-      sourceItemId: sourceItemId, sourceCandidateId: sourceCandidateId)) {
+  if (!verifyReaderDisplayHeadline(
+    payload: decoded,
+    headline: displayHeadline,
+    source: capturedSource,
+    outerSeal: displayHeadlineSeal,
+    title: cardTitle,
+    providerKey: cardProviderKey,
+    tenantId: tenantId,
+    workspaceId: workspaceId,
+    sourceItemId: sourceItemId,
+    sourceCandidateId: sourceCandidateId,
+  )) {
+    return null;
+  }
+  if (decoded['displaySummary'] != displaySummarySeal ||
+      displaySummary != displaySummarySeal ||
+      (displaySummarySeal != null &&
+          (displaySummarySeal.trim().isEmpty ||
+              displaySummarySeal.length > 300))) {
     return null;
   }
   final payloadCitationIds = decoded['citationIds'];
@@ -311,10 +328,15 @@ const _bodyV2RequiredKeys = <String>{
 };
 
 bool _validCanonicalBody(Map<String, Object?> body, {required bool isV2}) {
-  if (!_exactKeys(body, {
-        ..._bodyRequiredKeys,
-        if (isV2) ..._bodyV2RequiredKeys,
-      }, {..._bodyOptionalKeys, if (isV2) 'displayHeadline'}) ||
+  if (!_exactKeys(
+        body,
+        {..._bodyRequiredKeys, if (isV2) ..._bodyV2RequiredKeys},
+        {
+          ..._bodyOptionalKeys,
+          if (isV2) 'displayHeadline',
+          if (isV2) 'displaySummary',
+        },
+      ) ||
       !_isoDate(body['periodStartedAt']) ||
       !_isoDate(body['periodEndedAt']) ||
       !_isoDate(body['ingestionCutoff']) ||
@@ -364,16 +386,13 @@ bool _validCanonicalBody(Map<String, Object?> body, {required bool isV2}) {
     body['citationId']! as String,
     ...supports.map((fact) => fact['citationId']! as String),
   }.toList()..sort();
-  if (citations == null ||
-      !_sameOrderedStrings(citations, expectedCitations) ||
-      body['providerCount'] !=
+  return citations != null &&
+      _sameOrderedStrings(citations, expectedCitations) &&
+      body['providerCount'] ==
           <String>{
             _providerFamily(body['provider']! as String)!,
             ...supports.map(
               (fact) => _providerFamily(fact['provider']! as String)!,
             ),
-          }.length) {
-    return false;
-  }
-  return true;
+          }.length;
 }

@@ -33,6 +33,7 @@ class ReaderSummaryPromotionAttestationDto {
     required this.sourceWindowId,
     this.candidateDigestInput,
     this.displayHeadline,
+    this.displaySummary,
     this.evidenceLineage,
     this.reasonCodes,
     this.scoreComponents,
@@ -57,6 +58,7 @@ class ReaderSummaryPromotionAttestationDto {
   final ReaderSummaryPromotionAttestationDtoDigestVersionDigestVersion
   digestVersion;
   final ReaderSummaryDisplayHeadlineSealDto? displayHeadline;
+  final String? displaySummary;
   final ReaderSummaryPromotionEvidenceLineageDto? evidenceLineage;
   final ReaderSummaryPromotionAttestationDtoPlacementPlacement placement;
   final ReaderSummaryPromotionAttestationDtoPolicyVersionPolicyVersion

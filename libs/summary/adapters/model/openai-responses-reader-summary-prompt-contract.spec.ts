@@ -60,7 +60,7 @@ describe("OpenAI reader summary prompt contract", () => {
     } as ReaderSummaryModelInput);
 
     expect(instructions).toContain(
-      "each topStories summary 420-650 characters",
+      "each topStories summary 140-300 characters",
     );
     expect(instructions).toContain(
       "Keep source validation out of topStories summary prose",
@@ -92,13 +92,13 @@ describe("OpenAI reader summary prompt contract", () => {
     );
   });
 
-  it("allows eight slate stories and descriptions up to 720 characters", () => {
+  it("allows eight slate stories with compact card summaries", () => {
     expect(openAiReaderSummaryJsonSchema.properties.topStories.maxItems).toBe(
       8,
     );
     expect(openAiReaderSummaryJsonSchema.$defs.topStory).toMatchObject({
       properties: {
-        summary: { maxLength: 720 },
+        summary: { maxLength: 300 },
       },
     });
   });
