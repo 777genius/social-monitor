@@ -39,6 +39,28 @@ export const SOURCE_CONTENT_QUALITY_REVIEWER = Symbol(
   "SOURCE_CONTENT_QUALITY_REVIEWER",
 );
 
+// Fixed, whitelisted classification for a `reviewBatch` failure. Adapters
+// throw `SourceContentAssessmentStageError` so callers (refresh telemetry,
+// journals) can distinguish failure causes by `.stage` alone. Consumers must
+// never read `.message`: it can echo schema/shape context, and must never be
+// persisted — no exception text, payload, title/body, prompt or credential
+// ever belongs in a stage code.
+export type SourceContentAssessmentFailureStage =
+  | "runtime_status"
+  | "parse_schema"
+  | "binding"
+  | "verdict"
+  | "deadline"
+  | "aborted"
+  | "unknown";
+
+export class SourceContentAssessmentStageError extends Error {
+  constructor(readonly stage: SourceContentAssessmentFailureStage, message: string) {
+    super(message);
+    this.name = "SourceContentAssessmentStageError";
+  }
+}
+
 // A per-invocation frozen binding. Adapters must authenticate the wire response
 // against this exact request before returning its context object as the binding.
 export type PromotionReviewContext = Readonly<{

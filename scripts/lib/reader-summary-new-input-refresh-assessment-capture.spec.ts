@@ -80,8 +80,20 @@ describe("synthetic assessment capture from the existing reviewer invocation", (
       ? { reviews: [] } : selectorOutput(command) });
     await expect(test.selectComplete()).rejects.toThrow(/reconciliation/u);
     expect(events.map((event) => event.phase)).toEqual(["attempt", "failed"]);
-    expect(events[1]).toMatchObject({ consumed: true, failure: "validation_or_runtime_failure" });
+    // An empty reviews array parses without error; the mismatch against the
+    // requested candidate count is a coverage/binding failure, not a
+    // parse/schema one.
+    expect(events[1]).toMatchObject({ consumed: true, failure: "binding" });
     expect(events[1]!.reviewsJson).toBeUndefined();
     expect(test.commands).toHaveLength(1);
+  });
+
+  it("classifies a schema-invalid review body as a parse/schema failure, not a generic one", async () => {
+    const events = captureEvents();
+    const test = await selectorWiring({ output: (command) => command.purpose === sourceContentAssessmentPurpose
+      ? { reviews: "not-an-array" } : selectorOutput(command) });
+    await expect(test.selectComplete()).rejects.toThrow(/reconciliation/u);
+    expect(events.map((event) => event.phase)).toEqual(["attempt", "failed"]);
+    expect(events[1]).toMatchObject({ consumed: true, failure: "parse_schema" });
   });
 });
