@@ -20,9 +20,10 @@ export const buildInstructions = (): string =>
 export const parseReviews = (
   outputText: string | undefined,
   requests?: readonly SourceContentQualityReviewRequest[],
+  options?: { readonly trustAttestedRequestBinding?: boolean },
 ): readonly SourceContentQualityReviewResult[] => {
   try {
-    return parseReviewsUnclassified(outputText, requests);
+    return parseReviewsUnclassified(outputText, requests, options);
   } catch (error) {
     // Any exception reaching here (JSON.parse syntax errors, shape checks,
     // the score/decision/flag validation below) is a parse/schema-contract
@@ -37,6 +38,7 @@ export const parseReviews = (
 const parseReviewsUnclassified = (
   outputText: string | undefined,
   requests?: readonly SourceContentQualityReviewRequest[],
+  options?: { readonly trustAttestedRequestBinding?: boolean },
 ): readonly SourceContentQualityReviewResult[] => {
   if (outputText === undefined) {
     throw new Error("OpenAI source content quality reviewer returned no text");
@@ -80,7 +82,7 @@ const parseReviewsUnclassified = (
     }
     let assessment: ReturnType<typeof bindPromotionAssessment> | undefined;
     if (request !== undefined) {
-      try { assessment = bindPromotionAssessment(record, request); }
+      try { assessment = bindPromotionAssessment(record, request, options); }
       catch (error) {
         // The only distinct failure class inside this map body: the model's
         // own bindingId/evidence/resolvedSoftFlags echo did not match this

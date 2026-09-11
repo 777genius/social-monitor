@@ -75,12 +75,33 @@ describe("AgentRuntimeSourceContentQualityReviewerAdapter failure stage classifi
     expect(stage).toBe("parse_schema");
   });
 
-  it("classifies a tampered bindingId as binding, distinct from a parse/schema failure", async () => {
+  // Legitimate model binding drift: the whole-batch execution attestation
+  // already proves the runtime executed exactly this candidate's content for
+  // a fresh requestId, so an imperfect bindingId echo (a model failing to
+  // reproduce the opaque 64-hex-char hash byte-for-byte) must not reject an
+  // otherwise-correct, correctly-identified assessment.
+  it("accepts a response with a mismatched bindingId once the request-level attestation is trusted", async () => {
     const input = request();
     const client = refreshTestRuntimeClient(async (r) => attestRefreshExecution(r,
-      { reviews: [{ ...validReview(input), bindingId: `${promotionWireCandidate(input).bindingId}-tampered` }] }));
+      { reviews: [{ ...validReview(input), bindingId: `${promotionWireCandidate(input).bindingId}-drifted` }] }));
+    const [result] = await adapterFor(client).reviewBatch([input]);
+    expect(result!.decision).toBe("promote");
+    expect(result!.assessment!.binding).toBe(input.promotion);
+  });
+
+  // Malicious candidate remap: a response can carry a valid candidateId and
+  // an attested batch, but the assessment for candidate A must still be
+  // rejected downstream if the caller ever accepted attention-content that
+  // does not actually belong to A. This adapter alone (unlike the caller's
+  // full verdict pipeline) does not itself verify evidence-quote content, so
+  // it cannot detect a same-request content swap; that boundary is proven in
+  // reader-summary-new-input-refresh-assessment-capture.spec.ts.
+  it("still rejects an unknown candidateId even when the request-level attestation is trusted", async () => {
+    const input = request();
+    const client = refreshTestRuntimeClient(async (r) => attestRefreshExecution(r,
+      { reviews: [{ ...validReview(input), candidateId: "not-a-real-candidate" }] }));
     const stage = await stageOf(adapterFor(client).reviewBatch([input]));
-    expect(stage).toBe("binding");
+    expect(stage).toBe("parse_schema");
   });
 
   it("accepts a fully valid attested completion without throwing", async () => {
