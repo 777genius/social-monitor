@@ -88,14 +88,32 @@ test("main() forwards SIGTERM to the child and then actually terminates itself, 
     const envPath = join(dir, "api.env");
     writeFileSync(envPath, "PORT=3000\n");
     const childScript = join(dir, "sleep.mjs");
-    writeFileSync(childScript, "setInterval(() => {}, 1000);\n");
+    // No SIGTERM handler here on purpose: the child must actually be
+    // terminated by the signal itself (reported to the entrypoint as
+    // `(code=null, signal="SIGTERM")`), not catch it and exit with a code -
+    // that is the exact branch this test exercises.
+    writeFileSync(childScript, "console.log('child-ready');\nsetInterval(() => {}, 1000);\n");
 
     const proc = spawn(process.execPath, [entrypointPath, process.execPath, childScript], {
       env: { ...process.env, SOCIAL_MONITOR_API_ENV_FILE: envPath },
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "ignore"],
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // Wait for the grandchild's own readiness marker instead of a fixed
+    // delay: a magic-number sleep here would be flaky under CI load (spawn
+    // and the SIGTERM-listener registration racing an arbitrary timeout).
+    await new Promise((resolve, reject) => {
+      let buffered = "";
+      const onData = (chunk) => {
+        buffered += chunk.toString();
+        if (buffered.includes("child-ready")) {
+          proc.stdout.off("data", onData);
+          resolve();
+        }
+      };
+      proc.stdout.on("data", onData);
+      proc.once("exit", (code, signal) => reject(new Error(`entrypoint exited early (code=${code}, signal=${signal}) before the child became ready`)));
+    });
     proc.kill("SIGTERM");
 
     const exited = await new Promise((resolve) => {

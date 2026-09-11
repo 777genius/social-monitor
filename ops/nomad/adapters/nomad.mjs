@@ -102,16 +102,29 @@ export function createNomadClient({
     return { allocId, address, port };
   }
 
+  /**
+   * Nomad's job register/plan endpoints require a JSON-encoded Job object
+   * in the `Job` field - never raw HCL text (confirmed against the Nomad
+   * HTTP API docs). `/v1/jobs/parse` is the only supported way to turn this
+   * repo's `.nomad.hcl` source into that shape; skipping this step would
+   * make every real planJob/runJob call fail against an actual Nomad agent
+   * despite passing against the fake fetchImpl this test suite uses.
+   */
+  async function parseJobSpec(jobHcl) {
+    return request("POST", "/v1/jobs/parse", { JobHCL: jobHcl, Canonicalize: true });
+  }
+
   return Object.freeze({
     /**
      * Read-only plan. Never mutates the job; a `jobModifyIndex` mismatch on
      * the later `runJob` call means a stale plan (plan section 7).
      */
     async planJob(namespace, jobId, jobHcl) {
+      const parsedJob = await parseJobSpec(jobHcl);
       const result = await request(
         "POST",
         `/v1/job/${encodeURIComponent(jobId)}/plan?namespace=${encodeURIComponent(namespace)}`,
-        { Job: jobHcl, Diff: true },
+        { Job: parsedJob, Diff: true },
       );
       return { jobModifyIndex: result?.JobModifyIndex ?? null, warnings: result?.Warnings ?? "" };
     },
@@ -123,8 +136,9 @@ export function createNomadClient({
      * section 7). Returns submission identifiers only - not health.
      */
     async runJob(namespace, jobId, jobHcl, { checkIndex } = {}) {
+      const parsedJob = await parseJobSpec(jobHcl);
       const result = await request("POST", `/v1/job/${encodeURIComponent(jobId)}?namespace=${encodeURIComponent(namespace)}`, {
-        Job: jobHcl,
+        Job: parsedJob,
         EnforceIndex: checkIndex !== undefined && checkIndex !== null,
         JobModifyIndex: checkIndex ?? undefined,
       });
@@ -224,15 +238,10 @@ export function createNomadClient({
         } catch (error) {
           lastDescription = error instanceof Error ? error.message : String(error);
         }
-        if (lastStatus === "running" || lastStatus === "successful") {
-          return createHealthResult({
-            status: "healthy",
-            checkedAt: now(),
-            reason: lastDescription,
-            observedAllocation: deploymentId,
-          });
-        }
         if (lastStatus === "failed" || lastStatus === "cancelled") {
+          // A definitive negative signal is trusted regardless of timing -
+          // there is no "late failure" ambiguity the way there is for
+          // "late success" below.
           return createHealthResult({
             status: "unhealthy",
             checkedAt: now(),
@@ -241,10 +250,23 @@ export function createNomadClient({
           });
         }
         if (Date.now() >= deadline) {
+          // Checked before accepting "running"/"successful" below on
+          // purpose: a status that only turned healthy after this
+          // deployment's own timeout budget already elapsed must not be
+          // treated as an on-time healthy result - runRelease has already
+          // moved on to whatever "unknown" implies for it (fail closed).
           return createHealthResult({
             status: "unknown",
             checkedAt: now(),
             reason: `timed out waiting for deployment status (last=${lastStatus})`,
+            observedAllocation: deploymentId,
+          });
+        }
+        if (lastStatus === "running" || lastStatus === "successful") {
+          return createHealthResult({
+            status: "healthy",
+            checkedAt: now(),
+            reason: lastDescription,
             observedAllocation: deploymentId,
           });
         }

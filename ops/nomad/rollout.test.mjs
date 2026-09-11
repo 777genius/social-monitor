@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -430,6 +430,50 @@ test("nginx adapter serializes concurrent switch() calls across the shared lock 
   });
 });
 
+test("restore() applies a known-good config and records its endpoint (not the unsupported RollbackReceipt shape)", async () => {
+  await withTempIncludeDir(async (dir) => {
+    const trafficSwitch = createTrafficSwitchOverTempDir(dir);
+    const knownGoodEndpoint = { namespace: ALLOWED_NAMESPACE, jobId: ALLOWED_JOB, address: "172.20.0.30", port: 3000 };
+    const knownGoodConfig = "# Managed by ops/nomad/adapters/nginx.mjs. Do not edit by hand.\nupstream social_monitor_api_nomad {\n  server 172.20.0.30:3000;\n}\n";
+
+    const result = await trafficSwitch.restore({ configPreimage: knownGoodConfig, currentEndpoint: knownGoodEndpoint });
+
+    assert.deepEqual(result, { restored: true });
+    assert.equal(readFileSync(join(dir, "api-upstream.conf"), "utf8"), knownGoodConfig);
+    const route = await trafficSwitch.inspect();
+    assert.deepEqual(route.currentEndpoint, knownGoodEndpoint);
+  });
+});
+
+test("restore() rolls back to whatever was active before, when the restore itself fails validation", async () => {
+  await withTempIncludeDir(async (dir) => {
+    let shouldFailValidate = false;
+    const trafficSwitch = createTrafficSwitchOverTempDir(dir, {
+      validate: async () => {
+        if (shouldFailValidate) {
+          throw new Error("nginx -t: [emerg] bad restore target");
+        }
+      },
+    });
+    await trafficSwitch.switch(null, { namespace: ALLOWED_NAMESPACE, jobId: ALLOWED_JOB, address: "172.20.0.20", port: 3000 });
+    const contentBefore = readFileSync(join(dir, "api-upstream.conf"), "utf8");
+
+    shouldFailValidate = true;
+    await assert.rejects(
+      () => trafficSwitch.restore({ configPreimage: "upstream broken {}\n", currentEndpoint: null }),
+      /bad restore target/,
+    );
+
+    assert.equal(
+      readFileSync(join(dir, "api-upstream.conf"), "utf8"),
+      contentBefore,
+      "a failed restore must roll the active config back to what was there before the attempt",
+    );
+    const route = await trafficSwitch.inspect();
+    assert.equal(route.currentEndpoint.address, "172.20.0.20", "state must still reflect the pre-restore route, not the failed one");
+  });
+});
+
 test("a first-ever publish that fails validation leaves no candidate file behind (nothing to restore to)", async () => {
   await withTempIncludeDir(async (dir) => {
     const trafficSwitch = createTrafficSwitchOverTempDir(dir, {
@@ -444,6 +488,46 @@ test("a first-ever publish that fails validation leaves no candidate file behind
     );
 
     assert.equal(existsSync(join(dir, "api-upstream.conf")), false, "an invalid, never-validated candidate must not be left on disk");
+  });
+});
+
+test("switch() rolls the live config back if persisting the new state fails after a successful reload", async () => {
+  await withTempIncludeDir(async (dir) => {
+    let reloadCallCount = 0;
+    const trafficSwitch = createTrafficSwitchOverTempDir(dir, {
+      reload: async () => {
+        reloadCallCount += 1;
+        if (reloadCallCount === 2) {
+          // Sabotage the state write that runRelease is about to attempt,
+          // *after* this reload (the one for the second switch()) has
+          // already succeeded: renaming a file onto an existing directory
+          // always fails (EISDIR/ENOTEMPTY), standing in for disk-full or
+          // permission failures without needing real disk exhaustion.
+          // activePath is untouched, so the rollback write below and this
+          // same reload() (called a third time, during that rollback) both
+          // still succeed normally.
+          rmSync(join(dir, "api-upstream.state.json"), { force: true });
+          mkdirSync(join(dir, "api-upstream.state.json"));
+        }
+      },
+    });
+    await trafficSwitch.switch(null, { namespace: ALLOWED_NAMESPACE, jobId: ALLOWED_JOB, address: "172.20.0.21", port: 3000 });
+    const contentBefore = readFileSync(join(dir, "api-upstream.conf"), "utf8");
+
+    await assert.rejects(
+      () =>
+        trafficSwitch.switch(
+          { namespace: ALLOWED_NAMESPACE, jobId: ALLOWED_JOB, address: "172.20.0.21", port: 3000 },
+          { namespace: ALLOWED_NAMESPACE, jobId: ALLOWED_JOB, address: "172.20.0.22", port: 3000 },
+        ),
+      /failed to persist switch state/,
+    );
+
+    assert.equal(
+      readFileSync(join(dir, "api-upstream.conf"), "utf8"),
+      contentBefore,
+      "nginx must be rolled back to the previous route when its own state bookkeeping cannot be persisted, not left serving an unrecorded route",
+    );
   });
 });
 

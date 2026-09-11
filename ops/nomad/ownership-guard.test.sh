@@ -54,11 +54,19 @@ done
 hash -r
 PATH="$safe_path" command -v node >/dev/null 2>&1 && fail_test 'test setup bug: node is still reachable after PATH scrubbing'
 set +e
-PATH="$safe_path" SOCIAL_MONITOR_DEPLOY_STATE="$STATE" bash "$GUARD" filter api \
+# $BASH (this interpreter's own absolute path), not a bare `bash` that
+# would itself need to resolve through the just-scrubbed $safe_path - if
+# bash's own directory were ever removed by that scrub, a bare `bash` here
+# would fail with "command not found" (also non-zero) and the assertion
+# below would pass for the wrong reason, without ownership-guard.sh having
+# run at all.
+PATH="$safe_path" SOCIAL_MONITOR_DEPLOY_STATE="$STATE" "$BASH" "$GUARD" filter api \
   <<< $'api\ningestion-worker' >"$STATE/missing-node-stdout" 2>"$STATE/missing-node-stderr"
 status=$?
 set -e
 [[ $status -ne 0 ]] || fail_test 'a missing node must refuse (fail closed), not silently pass services through'
+grep -q 'could not determine the API owner' "$STATE/missing-node-stderr" || \
+  fail_test 'the refusal must come from ownership-guard.sh itself, not an unrelated failure'
 
 # A service name containing a regex metacharacter is matched literally, not
 # as a pattern (grep -Fx, not -x): a stray "." must not make this match more

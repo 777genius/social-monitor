@@ -154,6 +154,31 @@ export function createNginxAdapter({
   const lockPath = join(includeDir, LOCK_DIR_NAME);
   const withLock = () => acquireLock(lockPath, { timeoutMs: lockTimeoutMs, pollIntervalMs: lockPollIntervalMs });
 
+  /**
+   * Restores activePath to whatever it held before the failed attempt
+   * (or removes it, on a first-ever publish with nothing to go back to),
+   * then tries once to bring nginx's own runtime state back in line with
+   * that file via reload(). Shared by every failure branch below
+   * (validate, reload, and state-persistence failures in both switch() and
+   * restore()) so "roll the config back and report whether nginx actually
+   * picked it up" is one reviewable behavior, not three copies of it.
+   * @param {string|null} previousContent
+   * @returns {Promise<boolean>} whether the rollback reload itself succeeded
+   */
+  async function rollbackActiveConfig(previousContent) {
+    if (previousContent !== null) {
+      writeAtomic(activePath, previousContent, 0o644);
+    } else {
+      rmSync(activePath, { force: true });
+    }
+    try {
+      await reload();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function assertAllowedEndpoint(endpoint) {
     if (!endpoint || typeof endpoint !== "object") {
       throw new EndpointNotAllowedError("nginx adapter: endpoint must be an object");
@@ -204,57 +229,40 @@ export function createNginxAdapter({
         try {
           await validate(activePath);
         } catch (error) {
-          if (previousContent !== null) {
-            writeAtomic(activePath, previousContent, 0o644);
-          } else {
-            // First-ever publish: there is no previous route to restore to.
-            // Remove the invalid candidate instead of leaving it behind -
-            // the include directory must never hold content nginx never
-            // actually validated.
-            rmSync(activePath, { force: true });
-          }
+          const restored = await rollbackActiveConfig(previousContent);
           throw new NginxReloadError(`nginx adapter: config validation failed, kept previous route: ${error.message}`, {
-            restored: true,
+            restored,
           });
         }
 
         try {
           await reload();
         } catch (error) {
-          if (previousContent !== null) {
-            writeAtomic(activePath, previousContent, 0o644);
-            let restored = true;
-            try {
-              await reload();
-            } catch {
-              restored = false;
-            }
-            throw new NginxReloadError(`nginx adapter: reload failed after switch, restored previous route: ${error.message}`, {
-              restored,
-            });
-          }
-          // First-ever publish and reload failed: remove the unreloaded
-          // candidate so the include directory matches "nothing configured"
-          // (what nginx actually has loaded), then try to bring nginx's own
-          // state back in line with that by reloading once more.
-          rmSync(activePath, { force: true });
-          let restored = true;
-          try {
-            await reload();
-          } catch {
-            restored = false;
-          }
+          const restored = await rollbackActiveConfig(previousContent);
+          throw new NginxReloadError(`nginx adapter: reload failed after switch, restored previous route: ${error.message}`, {
+            restored,
+          });
+        }
+
+        try {
+          writeAtomic(
+            statePath,
+            JSON.stringify({ currentEndpoint: endpoint, configPreimage: rendered }, null, 2),
+            0o644,
+          );
+        } catch (error) {
+          // nginx has already reloaded to serve `endpoint`, but recording
+          // that durably just failed (disk full, permissions): leaving this
+          // half-applied - config live, bookkeeping stale - would let the
+          // next switch()'s CAS check trust the wrong "current" value. Roll
+          // the live config back too so both agree again, rather than
+          // leaving a call that "half-succeeded" behind.
+          const restored = await rollbackActiveConfig(previousContent);
           throw new NginxReloadError(
-            `nginx adapter: reload failed on first publish, removed unreloaded candidate: ${error.message}`,
+            `nginx adapter: failed to persist switch state, rolled config back: ${error.message}`,
             { restored },
           );
         }
-
-        writeAtomic(
-          statePath,
-          JSON.stringify({ currentEndpoint: endpoint, configPreimage: rendered }, null, 2),
-          0o644,
-        );
         return { switched: true, previousEndpoint: state.currentEndpoint ?? null, configPreimage: rendered };
       } finally {
         releaseLock(lockPath);
@@ -288,14 +296,35 @@ export function createNginxAdapter({
       }
       await withLock();
       try {
+        const previousContent = existsSync(activePath) ? readFileSync(activePath, "utf8") : null;
         writeAtomic(activePath, token.configPreimage, 0o644);
-        await validate(activePath);
-        await reload();
-        writeAtomic(
-          statePath,
-          JSON.stringify({ currentEndpoint: token.currentEndpoint ?? null, configPreimage: token.configPreimage }, null, 2),
-          0o644,
-        );
+        try {
+          await validate(activePath);
+          await reload();
+        } catch (error) {
+          // An explicit rollback that itself fails must not leave the
+          // active config in an unreviewed, unreloaded state - restore
+          // whatever was actually running before this call, same as
+          // switch()'s own failure handling.
+          const restored = await rollbackActiveConfig(previousContent);
+          throw new NginxReloadError(`nginx adapter: restore failed, rolled back to the prior config: ${error.message}`, {
+            restored,
+          });
+        }
+
+        try {
+          writeAtomic(
+            statePath,
+            JSON.stringify({ currentEndpoint: token.currentEndpoint ?? null, configPreimage: token.configPreimage }, null, 2),
+            0o644,
+          );
+        } catch (error) {
+          const restored = await rollbackActiveConfig(previousContent);
+          throw new NginxReloadError(
+            `nginx adapter: failed to persist restore state, rolled config back: ${error.message}`,
+            { restored },
+          );
+        }
         return { restored: true };
       } finally {
         releaseLock(lockPath);

@@ -27,29 +27,46 @@ function fakeFetch(handlers) {
   return fn;
 }
 
-test("planJob maps Nomad's plan response to jobModifyIndex/warnings", async () => {
-  const fetchImpl = fakeFetch([
+const FAKE_PARSED_JOB = Object.freeze({ ID: "sm-api", Name: "sm-api" });
+
+function expectParseThenRequest(assertSecondCall, secondResponse) {
+  return fakeFetch([
     async (url, init) => {
-      assert.match(url, /\/v1\/job\/sm-api\/plan\?namespace=social-monitor$/);
+      assert.match(url, /\/v1\/jobs\/parse$/);
       assert.equal(init.method, "POST");
-      return jsonResponse(200, { JobModifyIndex: 7, Warnings: "" });
+      const body = JSON.parse(init.body);
+      assert.equal(body.JobHCL, "job \"sm-api\" {}");
+      assert.equal(body.Canonicalize, true);
+      return jsonResponse(200, FAKE_PARSED_JOB);
+    },
+    async (url, init) => {
+      assertSecondCall(url, init);
+      return secondResponse;
     },
   ]);
+}
+
+test("planJob parses the HCL through /v1/jobs/parse before submitting it as the JSON Job field", async () => {
+  const fetchImpl = expectParseThenRequest((url, init) => {
+    assert.match(url, /\/v1\/job\/sm-api\/plan\?namespace=social-monitor$/);
+    assert.equal(init.method, "POST");
+    const body = JSON.parse(init.body);
+    assert.deepEqual(body.Job, FAKE_PARSED_JOB, "the plan endpoint must receive the parsed JSON job, not the raw HCL string");
+    assert.equal(body.Diff, true);
+  }, jsonResponse(200, { JobModifyIndex: 7, Warnings: "" }));
   const client = createNomadClient({ fetchImpl });
   const result = await client.planJob("social-monitor", "sm-api", "job \"sm-api\" {}");
   assert.deepEqual(result, { jobModifyIndex: 7, warnings: "" });
 });
 
-test("runJob sends EnforceIndex/JobModifyIndex from the supplied checkIndex", async () => {
-  const fetchImpl = fakeFetch([
-    async (url, init) => {
-      assert.match(url, /\/v1\/job\/sm-api\?namespace=social-monitor$/);
-      const body = JSON.parse(init.body);
-      assert.equal(body.EnforceIndex, true);
-      assert.equal(body.JobModifyIndex, 7);
-      return jsonResponse(200, { EvalID: "eval-1", DeploymentID: "deploy-1", JobModifyIndex: 8 });
-    },
-  ]);
+test("runJob parses the HCL through /v1/jobs/parse and sends EnforceIndex/JobModifyIndex from the supplied checkIndex", async () => {
+  const fetchImpl = expectParseThenRequest((url, init) => {
+    assert.match(url, /\/v1\/job\/sm-api\?namespace=social-monitor$/);
+    const body = JSON.parse(init.body);
+    assert.deepEqual(body.Job, FAKE_PARSED_JOB, "the register endpoint must receive the parsed JSON job, not the raw HCL string");
+    assert.equal(body.EnforceIndex, true);
+    assert.equal(body.JobModifyIndex, 7);
+  }, jsonResponse(200, { EvalID: "eval-1", DeploymentID: "deploy-1", JobModifyIndex: 8 }));
   const client = createNomadClient({ fetchImpl });
   const result = await client.runJob("social-monitor", "sm-api", "job \"sm-api\" {}", { checkIndex: 7 });
   assert.deepEqual(result, { evalId: "eval-1", deploymentId: "deploy-1", jobModifyIndex: 8, warnings: "" });
@@ -171,6 +188,34 @@ test("waitForHealthy keeps polling a 'running' deployment until the canary's own
   const health = await client.waitForHealthy("deploy-1", { intervalMs: 10, timeoutMs: 1000 });
   assert.equal(health.status, "healthy");
   assert.deepEqual(sleeps, [10]);
+});
+
+test("waitForHealthy does not report healthy for a 'running' status observed after its own deadline already elapsed", async () => {
+  const fetchImpl = fakeFetch([
+    async () =>
+      jsonResponse(200, {
+        Status: "running",
+        StatusDescription: "canary healthy, but arrived late",
+        TaskGroups: { api: { DesiredCanaries: 1, HealthyAllocs: 1 } },
+      }),
+  ]);
+  let now = 0;
+  const originalNow = Date.now;
+  // The deadline is computed once at entry (now=0, timeoutMs=10 -> deadline
+  // 10), then time "passes" during the request itself so it is already
+  // past that deadline by the time the response comes back.
+  Date.now = () => {
+    const value = now;
+    now = 20;
+    return value;
+  };
+  try {
+    const client = createNomadClient({ fetchImpl });
+    const health = await client.waitForHealthy("deploy-1", { intervalMs: 10, timeoutMs: 10 });
+    assert.equal(health.status, "unknown", "a late-arriving success must not be trusted as an on-time healthy result");
+  } finally {
+    Date.now = originalNow;
+  }
 });
 
 test("waitForHealthy reports unknown (not a crash) once the timeout elapses without a terminal status", async () => {
