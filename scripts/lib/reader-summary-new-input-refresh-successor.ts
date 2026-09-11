@@ -4,7 +4,7 @@ import type { PrismaSummaryConnection } from "@social-monitor/summary/adapters/p
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import { assertRefreshManifest, refreshBytesHash, refreshHash,
   type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
-import { refreshReconciliationAccounting, assertRefreshReconciliationEvidence,
+import { refreshReconciliationAccountingFor, assertRefreshReconciliationEvidence,
   type RefreshReconciliationEvidence } from "./reader-summary-new-input-refresh-reconciliation";
 import { captureRefreshDatabaseAuthority } from "./reader-summary-new-input-refresh-capture";
 import { lockRefreshAuthority, readRefreshJobs, readRefreshPrior, readRefreshReconciliations } from
@@ -49,11 +49,13 @@ export async function assertRefreshSuccessorCurrent(client: Client, m: RefreshMa
       and r.tenant_id = ${m.tenantId}::uuid and r.workspace_id = ${m.workspaceId}::uuid
   `;
   const row = rows[0];
-  if (rows.length !== 1 || row?.valid !== true ||
-      refreshHash(row.accounting) !== refreshHash(refreshReconciliationAccounting)) {
+  if (rows.length !== 1 || row?.valid !== true) {
     throw new Error("Refresh successor original/reconciliation is missing, changed or not an unpublished failure");
   }
   assertRefreshReconciliationEvidence(row.evidence, [m.date]);
+  if (refreshHash(row.accounting) !== refreshHash(refreshReconciliationAccountingFor(row.evidence))) {
+    throw new Error("Refresh successor original/reconciliation is missing, changed or not an unpublished failure");
+  }
   if (row.evidence.invocation.outcome !== "failed" ||
       row.evidence.invocation.purpose !== "social_monitor.relevance.assess_source_content.v1") {
     throw new Error("Refresh successor requires a known failed assessment, never unknown completion");
