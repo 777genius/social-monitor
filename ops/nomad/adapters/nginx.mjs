@@ -82,9 +82,21 @@ function releaseLock(lockPath) {
   rmSync(lockPath, { recursive: true, force: true });
 }
 
+const IPV4_OCTET_PATTERN = /^\d{1,3}$/u;
+
 function ipToInt(ip) {
-  const parts = ip.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part) || part < 0 || part > 255)) {
+  const rawParts = ip.split(".");
+  // `Number("5\n")` and `Number(" 5")` both trim whitespace per the
+  // ToNumber spec and parse as 5, so building on Number() directly here
+  // would let a stray newline/space embedded in an octet slip through this
+  // CIDR check - the one thing standing between an attacker-influenced
+  // endpoint and becoming a literal line in the rendered nginx upstream
+  // config below. Require every octet to be nothing but ASCII digits first.
+  if (rawParts.length !== 4 || rawParts.some((part) => !IPV4_OCTET_PATTERN.test(part))) {
+    return null;
+  }
+  const parts = rawParts.map(Number);
+  if (parts.some((part) => part > 255)) {
     return null;
   }
   return parts.reduce((acc, part) => acc * 256 + part, 0);

@@ -377,6 +377,18 @@ test("isAddressInCidr rejects malformed input instead of throwing", async () => 
   assert.equal(isAddressInCidr("172.21.0.5", "172.20.0.0/16"), false);
 });
 
+test("isAddressInCidr rejects whitespace hidden inside an octet, not just non-numeric garbage", async () => {
+  const { isAddressInCidr } = await import("./adapters/nginx.mjs");
+  // Number("5\n") === 5 and Number(" 5") === 5 (ToNumber trims whitespace),
+  // so a naive Number(part) per octet would accept these and let a stray
+  // newline/space reach the rendered nginx upstream config verbatim.
+  assert.equal(isAddressInCidr("172.20.0.5\n", "172.20.0.0/16"), false);
+  assert.equal(isAddressInCidr("172.20.0.5\r\n", "172.20.0.0/16"), false);
+  assert.equal(isAddressInCidr("172.20. 0.5", "172.20.0.0/16"), false);
+  assert.equal(isAddressInCidr(" 172.20.0.5", "172.20.0.0/16"), false);
+  assert.equal(isAddressInCidr("172.20.0.5", "172.20.0.0/16"), true, "a genuinely clean address must still pass");
+});
+
 test("nginx adapter rejects a concurrent-modification switch (stale expectedPrevious)", async () => {
   await withTempIncludeDir(async (dir) => {
     const trafficSwitch = createTrafficSwitchOverTempDir(dir);
