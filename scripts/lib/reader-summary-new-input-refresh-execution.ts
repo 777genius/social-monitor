@@ -104,7 +104,7 @@ async function executeRefresh(input: RefreshExecutionInput, capture?: RefreshPai
   await input.assertRuntime();
   const { assessmentCandidateCount, canonicalEvidence } = await preflightRefreshSelection({ configuredInterests: input.configuredInterests, feed, date: m.date,
     observedThrough: new Date(m.observedThrough), clock });
-  const hasSelectableEvidence = hasRefreshSelectableEvidence(canonicalEvidence);
+  const hasSelectableEvidence = hasRefreshSelectableEvidence(canonicalEvidence ?? []);
   input.record({ status: "preflight", operation: m.operation, assessmentCandidateCount,
     plannedSummaryGenerations: assessmentCandidateCount === 0 && !hasSelectableEvidence ? 0 : 1 });
   if (assessmentCandidateCount === 0 && !hasSelectableEvidence) {
