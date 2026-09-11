@@ -54,7 +54,7 @@ describe("successor original and reconciliation SQL", () => {
   });
   it("accepts exact provider-reported usage preserved by reconciliation", async () => {
     const usage = { inputTokens: 90_824, outputTokens: 6_325, totalTokens: 97_149 };
-    const invocation = { ...e.invocation, providerUsageReported: true, usage };
+    const invocation = { ...e.invocation, outcome: "completed", providerUsageReported: true, usage };
     await db.query("update reader_summary_new_input_refresh_reconciliations set invocation=$1::jsonb, accounting=$2::jsonb",
       [JSON.stringify(invocation), JSON.stringify(refreshReconciliationAccountingFor({ ...e, invocation }))]);
     await expect(assertRefreshSuccessorCurrent(client, m, refreshNow)).resolves.toBeUndefined();
