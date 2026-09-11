@@ -105,7 +105,7 @@ export function createRefreshAssessmentReviewer(input: {
     try { input.capture(event()); } catch { captureFailures++; }
   };
   const fail = (stage: SourceContentAssessmentFailureStage): never => {
-    input.runtime.invalidateAdapter("source_content_assessment");
+    input.runtime.invalidateAdapter("source_content_assessment", stage);
     throw new SourceContentAssessmentStageError(stage,
       "Refresh assessment is incomplete; original operation requires reconciliation");
   };
