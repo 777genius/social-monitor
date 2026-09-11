@@ -19,7 +19,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
 export const API_OWNERS = Object.freeze(["compose", "nomad"]);
 export const DEFAULT_API_OWNER = "compose";
@@ -123,7 +123,3 @@ if (isMainModule) {
     process.exitCode = 1;
   }
 }
-
-// Re-exported so a caller can locate this file's own directory without
-// hardcoding a relative path (used by ownership-guard.sh's self-location).
-export const SELF_PATH = fileURLToPath(import.meta.url);

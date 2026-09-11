@@ -13,7 +13,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
 import { createDeployTarget, createReleaseManifest, createRollbackReceipt } from "./contracts.mjs";
 
@@ -292,5 +292,3 @@ if (isMainModule) {
     },
   );
 }
-
-export const SELF_PATH = fileURLToPath(import.meta.url);

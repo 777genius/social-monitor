@@ -264,7 +264,3 @@ export function createRollbackReceipt({
     outcome,
   });
 }
-
-export const GIT_SHA_FORMAT = GIT_SHA_PATTERN;
-export const IMAGE_DIGEST_FORMAT = IMAGE_DIGEST_PATTERN;
-export const IMAGE_TAG_FORMAT = IMAGE_TAG_PATTERN;
