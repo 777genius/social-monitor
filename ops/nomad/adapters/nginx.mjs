@@ -111,10 +111,17 @@ function ipToInt(ip) {
  */
 export function isAddressInCidr(address, cidr) {
   const [rangeIp, prefixRaw] = cidr.split("/");
-  const prefix = Number(prefixRaw);
   const addressInt = ipToInt(address);
   const rangeInt = ipToInt(rangeIp);
-  if (addressInt === null || rangeInt === null || Number.isNaN(prefix) || prefix < 0 || prefix > 32) {
+  // Same ToNumber whitespace-trimming pitfall as the octets above
+  // (Number("16\n") === 16): `cidr` is caller-supplied trusted config
+  // today, not attacker input, but this function's only job is exact
+  // membership arithmetic, so it must not depend on that being true forever.
+  if (addressInt === null || rangeInt === null || prefixRaw === undefined || !IPV4_OCTET_PATTERN.test(prefixRaw)) {
+    return false;
+  }
+  const prefix = Number(prefixRaw);
+  if (prefix > 32) {
     return false;
   }
   const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;

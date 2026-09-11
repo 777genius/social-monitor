@@ -389,6 +389,13 @@ test("isAddressInCidr rejects whitespace hidden inside an octet, not just non-nu
   assert.equal(isAddressInCidr("172.20.0.5", "172.20.0.0/16"), true, "a genuinely clean address must still pass");
 });
 
+test("isAddressInCidr rejects whitespace hidden inside the prefix length, same class of bug as the octets", async () => {
+  const { isAddressInCidr } = await import("./adapters/nginx.mjs");
+  assert.equal(isAddressInCidr("172.20.0.5", "172.20.0.0/16\n"), false);
+  assert.equal(isAddressInCidr("172.20.0.5", "172.20.0.0/ 16"), false);
+  assert.equal(isAddressInCidr("172.20.0.5", "172.20.0.0/16"), true, "a genuinely clean prefix must still pass");
+});
+
 test("nginx adapter rejects a concurrent-modification switch (stale expectedPrevious)", async () => {
   await withTempIncludeDir(async (dir) => {
     const trafficSwitch = createTrafficSwitchOverTempDir(dir);
