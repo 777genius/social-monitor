@@ -22,6 +22,7 @@ COPY prisma ./prisma
 COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/
 COPY apps ./apps
 COPY libs ./libs
+COPY ops/nomad/api-env-entrypoint.mjs ./ops/nomad/api-env-entrypoint.mjs
 
 ARG PRISMA_GENERATE_DATABASE_URL=postgresql://social_monitor:social_monitor_local_password@localhost:5432/social_monitor
 RUN DATABASE_URL="${PRISMA_GENERATE_DATABASE_URL}" npm run prisma:generate && npm run build
@@ -29,7 +30,7 @@ RUN DATABASE_URL="${PRISMA_GENERATE_DATABASE_URL}" npm run prisma:generate && np
 # Host checkouts may use umask 077. Keep public image assets root-owned and
 # readable by node, preserving executable tools and directory traversal.
 RUN chmod -R u=rwX,go=rX \
-  apps libs prisma scripts vendor dist \
+  apps libs prisma scripts vendor dist ops \
   tsconfig.json tsconfig.build.json prisma.config.ts
 
 ARG SOCIAL_MONITOR_RELEASE_SHA
@@ -41,6 +42,11 @@ EXPOSE 3000
 ENV NODE_ENV=production
 ENV SERVICE=api
 ENV PATH="/app/node_modules/.bin:${PATH}"
+ENV SOCIAL_MONITOR_API_ENV_FILE=/run/social-monitor/api.env
 USER node
 
+# The entrypoint reads SOCIAL_MONITOR_API_ENV_FILE (a read-only named host
+# volume mount, plan section 6) without eval/shell sourcing, then execs the
+# real API process. See ops/nomad/api-env-entrypoint.mjs.
+ENTRYPOINT ["node", "ops/nomad/api-env-entrypoint.mjs"]
 CMD ["node", "dist/apps/api-gateway/src/main.js"]
