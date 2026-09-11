@@ -143,13 +143,14 @@ production today, even though every test above is green:
    would then trust that stale claim. Not reachable today (`--apply` doesn't
    exist), but real crash-atomicity here needs a proper write-ahead
    sequence, not just the mutex this PR adds.
-10. **The canary health-count check in `adapters/nomad.mjs`'s
-    `waitForHealthy`** (`TaskGroups[groupName].DesiredCanaries`/
-    `HealthyAllocs`) is written from the Nomad HTTP API documentation and
-    tested only against fakes - it has not been verified against a real
-    Nomad agent's actual deployment response during an in-flight canary.
-    Confirm this exact field behavior against a real cluster before relying
-    on it to gate traffic.
+10. **Two `adapters/nomad.mjs` request/response shapes are written from
+    Nomad's HTTP API documentation, not verified against a real agent:**
+    the canary health-count check in `waitForHealthy`
+    (`TaskGroups[groupName].DesiredCanaries`/`HealthyAllocs`), and
+    `parseJobSpec`'s use of `POST /v1/jobs/parse` (`JobHCL`/`Canonicalize`
+    request fields, JSON job object response) that `planJob`/`runJob` now
+    depend on. Both are tested only against fakes. Confirm both against a
+    real cluster before relying on either.
 
 None of the above are things a future PR can silently work around by
 editing a hash constant, a signature file, or an `allowed_signers` entry -
