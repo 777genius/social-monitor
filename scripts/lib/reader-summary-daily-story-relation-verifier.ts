@@ -8,6 +8,7 @@ import type { ReaderSummaryPreparationObserver } from "@social-monitor/summary/a
 import { StoryRankingMetricsRecorder } from "@social-monitor/summary/adapters/metrics/story-ranking-metrics.recorder";
 import { PrismaReaderSummaryGitHubProjectionReader } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-github-projection.reader";
 import { createSourceContentAssessmentReviewer } from "@social-monitor/relevance/interfaces/rest/source-content-assessment-provider-tokens";
+import type { SourceContentAssessmentFailureStage } from "@social-monitor/relevance/ports";
 import {
   AgentRuntimeReaderSummaryStoryRelationVerifier,
   resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions,
@@ -146,7 +147,8 @@ type StoryRelationCompositionInput = {
   readonly relationCapture?: ReaderSummaryDailyRelationCapture;
   readonly storyRelationVerifierGuard?: {
     assertUsable(): void;
-    invalidateAdapter(taskRole: "story_relation" | "related_topic_relation"): void;
+    invalidateAdapter(taskRole: "story_relation" | "related_topic_relation",
+      stage: SourceContentAssessmentFailureStage): void;
   };
 };
 
@@ -189,8 +191,10 @@ const buildReaderSummaryDailyStoryRelationVerifier = (
         // Refresh authority must be poisoned before selector fallback catches
         // adapter exceptions. Accepted decisions retain their normal reconciliation.
         observe(() => capture?.failed(query));
+        // No finer-grained stage classification exists for relation
+        // verification failures; "unknown" is the honest, whitelisted value.
         guard?.invalidateAdapter(query.verificationLane === "related_topic"
-          ? "related_topic_relation" : "story_relation");
+          ? "related_topic_relation" : "story_relation", "unknown");
         throw error;
       }
     },
