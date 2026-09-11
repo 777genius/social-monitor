@@ -1,7 +1,8 @@
 import type * as PGliteModule from "@electric-sql/pglite";
 import { assertRefreshSuccessorCurrent } from "./reader-summary-new-input-refresh-successor";
 import { refreshOperation } from "./reader-summary-new-input-refresh-manifest";
-import { refreshReconciliationAccounting } from "./reader-summary-new-input-refresh-reconciliation";
+import { refreshReconciliationAccounting, refreshReconciliationAccountingFor } from
+  "./reader-summary-new-input-refresh-reconciliation";
 import { refreshNow } from "./reader-summary-new-input-refresh.spec-support";
 import { successorManifest, successorEvidence } from "./reader-summary-new-input-refresh-successor.spec-support";
 
@@ -50,6 +51,13 @@ describe("successor original and reconciliation SQL", () => {
     await expect(assertRefreshSuccessorCurrent(client, m, refreshNow)).resolves.toBeUndefined();
     expect((await db.query<{ accounting: unknown }>("select accounting from reader_summary_new_input_refresh_reconciliations")).rows[0]!.accounting)
       .toEqual(refreshReconciliationAccounting);
+  });
+  it("accepts exact provider-reported usage preserved by reconciliation", async () => {
+    const usage = { inputTokens: 90_824, outputTokens: 6_325, totalTokens: 97_149 };
+    const invocation = { ...e.invocation, providerUsageReported: true, usage };
+    await db.query("update reader_summary_new_input_refresh_reconciliations set invocation=$1::jsonb, accounting=$2::jsonb",
+      [JSON.stringify(invocation), JSON.stringify(refreshReconciliationAccountingFor({ ...e, invocation }))]);
+    await expect(assertRefreshSuccessorCurrent(client, m, refreshNow)).resolves.toBeUndefined();
   });
   it.each([
     "update reader_summary_jobs set status='RUNNING'",
