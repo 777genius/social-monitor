@@ -51,7 +51,7 @@ const readerPostPromotionModelStory = (
   },
   maxSummaryLength?: number,
 ): TopReadCandidate | undefined => {
-  const { selected, lead } = params;
+  const { selected } = params;
   return params.stories.find(
     (candidate) =>
       candidate.readerReasonProvenance?.kind === "model" &&
