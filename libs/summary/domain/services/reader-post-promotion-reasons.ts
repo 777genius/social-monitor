@@ -15,7 +15,7 @@ export const buildReaderPostPromotionReasons = (params: {
   readonly lead: SummaryEvidenceItem;
   readonly stories: readonly TopReadCandidate[];
 }): readonly string[] => {
-  const { selected, lead } = params;
+  const { selected } = params;
   // Model prose may describe only this lead and its admitted support. Retain
   // the complete summary, including qualifications; never salvage a claim by
   // dropping its out-of-scope citation or clipping its limiting sentence.
