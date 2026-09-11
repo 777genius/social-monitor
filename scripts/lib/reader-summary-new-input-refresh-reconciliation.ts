@@ -6,7 +6,8 @@ import { refreshBytesHash, refreshHash, refreshKeyPrefix, refreshScope } from
 
 /** Operator-reviewed statement that one consumed new-input-refresh attempt is
  * accounted for. It asserts consumption, never success: the original job row is
- * never written to, and provider usage stays explicitly unknown. */
+ * never written to. Provider usage is preserved when the reviewed provider
+ * response reports it, and otherwise stays explicitly unknown. */
 export type RefreshReconciliationEvidence = Readonly<{
   format: "reader-summary-new-input-refresh-reconciliation-v1";
   tenantId: string; workspaceId: string; date: string;
