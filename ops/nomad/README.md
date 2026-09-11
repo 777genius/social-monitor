@@ -180,8 +180,15 @@ runs any of these steps automatically.
 2. **Install.** Through a separately reviewed admin channel (not this
    repo's CI, not the restricted deploy account): install the pinned Nomad
    binary/systemd units/ACL/mTLS from `host/nomad.hcl` and `host/acl.hcl`,
-   with the dormant nginx adapter in place. The existing Compose API keeps
-   serving traffic throughout this step.
+   with the dormant nginx adapter in place. **Also materialize the API's
+   secret env file** at the exact path `api.nomad.hcl`'s `api-secrets`
+   volume mounts (`social-monitor-api-secrets` host volume ->
+   `.../api.env.d/api.env`), owned/readable by the container's runtime
+   user, and confirm `api-env-entrypoint.mjs` can actually read it - `job
+   run` alone does not create this file, and neither `bootstrap.sh` nor
+   `release.mjs` implement `--apply` yet, so nothing in this repo's code
+   does this for you. The existing Compose API keeps serving traffic
+   throughout this step.
 3. **First candidate.** Under the existing deploy/admission locks, start
    `sm-api` on Nomad. Verify native health checks, the exact image digest,
    DB/RAM surge headroom, and direct candidate reachability - all before
