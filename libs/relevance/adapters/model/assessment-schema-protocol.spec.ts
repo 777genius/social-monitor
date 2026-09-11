@@ -18,11 +18,22 @@ const observed = (review: Wire, second = false): Wire => ({
 const compatible = {
   "observed batch one": (o: { reviews: Wire[] }) => ({ results: o.reviews.map((r) => observed(r)) }),
   "observed batch two": (o: { reviews: Wire[] }) => ({ results: o.reviews.map((r) => observed(r, true)) }),
+  // The same two dialects under the schema-compliant `reviews` envelope instead
+  // of the legacy `results` envelope. Normalization must key
+  // off the item shape, not the outer key.
+  "observed batch one under reviews envelope": (o: { reviews: Wire[] }) => ({ reviews: o.reviews.map((r) => observed(r)) }),
+  "observed batch two under reviews envelope": (o: { reviews: Wire[] }) => ({ reviews: o.reviews.map((r) => observed(r, true)) }),
   "results alias only": (o: { reviews: Wire[] }) => ({ results: o.reviews }),
 } as const;
 const mutations: Record<string, (output: { reviews: Wire[] }) => Wire> = {
+  // A single tampered field on an otherwise-complete canonical item is not a
+  // legacy dialect and must stay rejected, not reinterpreted.
   "relevant decision": (o) => ({ reviews: o.reviews.map((r) => ({ ...r, decision: "relevant" })) }),
   "not_relevant decision": (o) => ({ reviews: o.reviews.map((r) => ({ ...r, decision: "not_relevant" })) }),
+  // A genuine legacy-shaped item with a tampered binding must still be
+  // rejected: item-dialect normalization cannot weaken the binding check.
+  "legacy dialect with tampered binding": (o) => ({ reviews: o.reviews.map((r) =>
+    observed({ ...r, bindingId: `${String(r.bindingId)}-tampered` })) }),
 };
 for (const field of ["confidence", "qualityScore", "interestRelevanceScore", "engagementIntegrityScore", "flags", "reason", "resolvedSoftFlags"]) {
   mutations[`missing ${field}`] = (o) => ({ reviews: o.reviews.map((r) => {
