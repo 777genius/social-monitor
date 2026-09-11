@@ -29,7 +29,7 @@ const COMPOSE_FALLBACK_MARKER = "compose-fallback";
  *   port?: number,
  *   healthTimeoutMs?: number,
  * }} params
- * @returns {Promise<{outcome: "promoted"|"failed"|"rolled-back", receipt: object, health: object}>}
+ * @returns {Promise<{outcome: "promoted"|"failed"|"rolled-back"|"promotion-ambiguous", receipt: object, health: object}>}
  */
 export async function runRelease({
   nomad,
@@ -149,7 +149,31 @@ export async function runRelease({
     };
   }
 
-  await nomad.promoteDeployment(run.deploymentId);
+  try {
+    await nomad.promoteDeployment(run.deploymentId);
+  } catch (error) {
+    // Traffic has already been cut over to the candidate by the nginx
+    // adapter above, but Nomad still considers the deployment an
+    // unpromoted canary: this is a genuinely ambiguous state, not a clean
+    // failure or a rollback. Do not claim "promoted" (Nomad disagrees) and
+    // do not claim "rolled-back" (traffic did not move back - retrying
+    // the nginx switch here would fight whatever caused promoteDeployment
+    // to fail). promoteDeployment is idempotent on the Nomad side, so a
+    // human or a retry can safely call it again once Nomad is reachable.
+    return {
+      outcome: "promotion-ambiguous",
+      health,
+      receipt: createRollbackReceipt({
+        previousReleaseId: manifest.previousReleaseId,
+        newReleaseId: manifest.sourceSha,
+        jobId: target.jobId,
+        deploymentId: run.deploymentId ?? "unknown",
+        configPreimage: switchResult.configPreimage,
+        outcome: "unknown",
+      }),
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 
   return {
     outcome: "promoted",

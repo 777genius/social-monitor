@@ -70,6 +70,7 @@ function createFakeNomad({
   candidateEndpoint,
   stableEndpoint,
   onPromote = () => {},
+  promoteDeploymentError = null,
 } = {}) {
   const calls = { planJob: 0, runJob: 0, waitForHealthy: 0, promoteDeployment: 0 };
   return {
@@ -101,6 +102,9 @@ function createFakeNomad({
     },
     async promoteDeployment(deploymentId) {
       calls.promoteDeployment += 1;
+      if (promoteDeploymentError) {
+        throw promoteDeploymentError;
+      }
       onPromote(deploymentId);
       return { promoted: true };
     },
@@ -123,6 +127,28 @@ test("happy path: healthy candidate switches traffic and promotes", async () => 
     const route = await trafficSwitch.inspect();
     assert.equal(route.currentEndpoint.address, "172.20.0.5");
     assert.match(readFileSync(join(dir, "api-upstream.conf"), "utf8"), /172\.20\.0\.5:3000/);
+  });
+});
+
+test("promoteDeployment failing after a successful traffic switch is reported as ambiguous, not silently promoted or rolled back", async () => {
+  await withTempIncludeDir(async (dir) => {
+    const trafficSwitch = createTrafficSwitchOverTempDir(dir);
+    const nomad = createFakeNomad({
+      candidateEndpoint: { allocId: "alloc-7", address: "172.20.0.8", port: 3000 },
+      promoteDeploymentError: new Error("nomad unreachable: connect ECONNREFUSED"),
+    });
+
+    const result = await runRelease({ nomad, trafficSwitch, manifest: manifest(), target: target(), jobHcl: JOB_HCL });
+
+    assert.equal(result.outcome, "promotion-ambiguous");
+    assert.equal(result.receipt.outcome, "unknown");
+    assert.match(result.error, /ECONNREFUSED/);
+
+    // Traffic already moved: the candidate is what nginx actually serves,
+    // even though Nomad never confirmed the promotion. Silently reverting
+    // it here would be just as wrong as claiming success.
+    const route = await trafficSwitch.inspect();
+    assert.equal(route.currentEndpoint.address, "172.20.0.8");
   });
 });
 

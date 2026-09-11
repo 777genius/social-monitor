@@ -38,6 +38,15 @@ safe_path=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vFx "$node_dir" | paste -s
 actual=$(PATH="$safe_path" SOCIAL_MONITOR_DEPLOY_STATE="$STATE" bash "$GUARD" filter api <<< $'api\ningestion-worker')
 [[ $actual == $'api\ningestion-worker' ]] || fail_test 'a missing node must fail open, not drop services'
 
+# A service name containing a regex metacharacter is matched literally, not
+# as a pattern (grep -Fx, not -x): a stray "." must not make this match more
+# or fewer lines than the exact literal service name would.
+SOCIAL_MONITOR_DEPLOY_STATE="$STATE" node "$SCRIPT_DIR/ownership.mjs" set-owner nomad
+actual=$(SOCIAL_MONITOR_DEPLOY_STATE="$STATE" bash "$GUARD" filter 'x.collector' <<< $'x.collector\nxacollector\napi')
+expected=$'xacollector\napi'
+[[ $actual == "$expected" ]] || fail_test 'a regex metacharacter in the service name must be matched literally'
+SOCIAL_MONITOR_DEPLOY_STATE="$STATE" node "$SCRIPT_DIR/ownership.mjs" set-owner compose
+
 # Missing arguments are rejected with the documented usage exit code.
 set +e
 bash "$GUARD" filter >/dev/null 2>&1

@@ -77,6 +77,12 @@ job "sm-api" {
       env {
         NODE_ENV = "production"
         SERVICE  = "api"
+        # Overrides the image's baked-in default (ops/nomad/api.Dockerfile),
+        # which points at a local-testing path that does not exist inside
+        # this task: the actual secret lives inside the read-only volume
+        # mounted above, materialized by the host bootstrap as
+        # <api-secrets volume>/api.env (plan section 6).
+        SOCIAL_MONITOR_API_ENV_FILE = "/var/run/social-monitor/secrets/nomad/api.env.d/api.env"
       }
 
       # address_mode = "driver" resolves the container's own IP on the

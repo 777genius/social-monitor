@@ -125,6 +125,14 @@ production today, even though every test above is green:
    the live host. The plan's own preflight (release evidence: host
    identity, image IDs, DB occupancy, current release markers) has to run
    on the real VPS before any of this touches it.
+8. **The owner marker itself has no fencing token, TTL, or compare-and-swap**
+   (`ops/nomad/ownership.mjs`). A read-decide-act sequence (read the marker,
+   then act on it) is not fenced against a concurrent writer. This is safe
+   today only because nothing automated ever writes `nomad` (gap 1 above is
+   what would actually let a legacy Compose path and a Nomad release step
+   on each other) and because `release.mjs --apply` does not exist yet (gap
+   3). Add real fencing before either of those two gaps closes, not after -
+   a marker file is not a lock.
 
 None of the above are things a future PR can silently work around by
 editing a hash constant, a signature file, or an `allowed_signers` entry -

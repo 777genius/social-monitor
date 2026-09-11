@@ -10,6 +10,11 @@
  * `ops/deploy/social-monitor-production-deploy.sh` (`$CONTROL/deploy-state`):
  * `<deployState>/nomad/api-owner`. Absence of the marker means `compose`,
  * since production never wrote one before this PR existed.
+ *
+ * NOT a lock: this file has no fencing token, TTL, or compare-and-swap, so a
+ * read-decide-act sequence across two callers is not fenced against a
+ * concurrent writer. See ops/nomad/README.md gap 8 for why that is still
+ * safe today and what has to land before it stops being safe.
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync } from "node:fs";

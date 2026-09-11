@@ -27,7 +27,7 @@ main() {
     owner=compose
   fi
   if [[ $owner == nomad ]]; then
-    grep -vx "$service" || true
+    grep -vFx "$service" || true
   else
     cat
   fi
