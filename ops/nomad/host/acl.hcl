@@ -24,8 +24,12 @@ namespace "social-monitor" {
     "read-job",
     "list-jobs",
     "read-logs",
-    "dispatch-job",
   ]
+  # No "dispatch-job": sm-api is not (and is not planned to become) a
+  # parameterized job. Granting it now would let this token dispatch any
+  # future parameterized job in this namespace without a deliberate policy
+  # review at the time that job is actually added - least privilege means
+  # adding this back only when a real dispatch consumer exists.
 }
 
 agent {

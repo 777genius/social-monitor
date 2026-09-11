@@ -162,7 +162,7 @@ export async function runRelease({
         newReleaseId: manifest.sourceSha,
         jobId: target.jobId,
         deploymentId: run.deploymentId ?? "unknown",
-        configPreimage: previousRoute.configPreimage ?? rollbackTarget,
+        configPreimage: previousRoute?.configPreimage ?? rollbackTarget,
         outcome: "rolled-back",
       }),
       error: error instanceof Error ? error.message : String(error),

@@ -134,6 +134,22 @@ production today, even though every test above is green:
    on each other) and because `release.mjs --apply` does not exist yet (gap
    3). Add real fencing before either of those two gaps closes, not after -
    a marker file is not a lock.
+9. **`adapters/nginx.mjs`'s `switch()` is not crash-atomic across its own two
+   durable writes.** The cross-process lock (gap 8's sibling concern) closes
+   the multi-process race, but a hard crash/SIGKILL/power loss between
+   `reload()` succeeding and the following `writeAtomic(statePath, ...)`
+   would leave nginx actually serving the new endpoint while `inspect()`/the
+   state file still claims the old one - the next `switch()`'s CAS check
+   would then trust that stale claim. Not reachable today (`--apply` doesn't
+   exist), but real crash-atomicity here needs a proper write-ahead
+   sequence, not just the mutex this PR adds.
+10. **The canary health-count check in `adapters/nomad.mjs`'s
+    `waitForHealthy`** (`TaskGroups[groupName].DesiredCanaries`/
+    `HealthyAllocs`) is written from the Nomad HTTP API documentation and
+    tested only against fakes - it has not been verified against a real
+    Nomad agent's actual deployment response during an in-flight canary.
+    Confirm this exact field behavior against a real cluster before relying
+    on it to gate traffic.
 
 None of the above are things a future PR can silently work around by
 editing a hash constant, a signature file, or an `allowed_signers` entry -

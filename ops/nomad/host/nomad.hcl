@@ -68,7 +68,11 @@ plugin "docker" {
     # and no host PID/IPC sharing: the API task only needs its own network
     # namespace on the existing project Docker network (plan section 4).
     allow_privileged        = false
-    allow_caps              = ["CHOWN", "SETUID", "SETGID"]
+    # Empty, not a default capability set: api.Dockerfile already switches to
+    # `USER node` at build time and the entrypoint never chowns or changes
+    # UID/GID at runtime, so CHOWN/SETUID/SETGID have no real consumer here -
+    # granting them would only widen what a compromised container could do.
+    allow_caps              = []
     volumes {
       enabled = true
     }

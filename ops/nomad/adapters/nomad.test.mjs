@@ -116,6 +116,20 @@ test("getCandidateEndpoint returns null while no canary allocation is running ye
   assert.equal(await client.getCandidateEndpoint("social-monitor", "sm-api"), null);
 });
 
+test("waitForHealthy stamps checkedAt from the injected clock, not a hidden new Date()", async () => {
+  const fetchImpl = fakeFetch([
+    async () =>
+      jsonResponse(200, {
+        Status: "successful",
+        StatusDescription: "",
+      }),
+  ]);
+  const fixedNow = new Date("2026-01-01T00:00:00.000Z");
+  const client = createNomadClient({ fetchImpl, now: () => fixedNow });
+  const health = await client.waitForHealthy("deploy-1", { intervalMs: 10, timeoutMs: 1000 });
+  assert.equal(health.checkedAt, fixedNow.toISOString());
+});
+
 test("waitForHealthy polls until a terminal deployment status, sleeping between attempts", async () => {
   const statuses = ["pending", "running"];
   const fetchImpl = fakeFetch([

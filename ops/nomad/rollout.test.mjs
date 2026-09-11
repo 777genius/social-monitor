@@ -73,6 +73,7 @@ function createFakeNomad({
   stableEndpoint,
   onPromote = () => {},
   promoteDeploymentError = null,
+  getStableEndpointError = null,
 } = {}) {
   const calls = { planJob: 0, runJob: 0, waitForHealthy: 0, promoteDeployment: 0 };
   return {
@@ -100,6 +101,9 @@ function createFakeNomad({
       return candidateEndpoint ?? null;
     },
     async getStableEndpoint() {
+      if (getStableEndpointError) {
+        throw getStableEndpointError;
+      }
       return stableEndpoint ?? null;
     },
     async promoteDeployment(deploymentId) {
@@ -232,6 +236,35 @@ test("nginx reload failure after a healthy candidate: route restored, no promoti
   });
 });
 
+test("a trafficSwitch.inspect() that resolves to undefined (not a throw) still yields a clean rolled-back outcome, not a crash", async () => {
+  const trafficSwitch = createTrafficSwitch({
+    async inspect() {
+      return undefined; // malformed adapter: resolves, but with garbage
+    },
+    async switch() {
+      throw new Error("nginx -t: [emerg] invalid directive");
+    },
+    async restore() {
+      throw new Error("must not be called");
+    },
+  });
+  const nomad = createFakeNomad({
+    candidateEndpoint: { allocId: "alloc-10", address: "172.20.0.15", port: 3000 },
+  });
+
+  const result = await runRelease({
+    nomad,
+    trafficSwitch,
+    manifest: manifest({ previousReleaseId: null }),
+    target: target(),
+    jobHcl: JOB_HCL,
+  });
+
+  assert.equal(result.outcome, "rolled-back");
+  assert.equal(result.receipt.outcome, "rolled-back");
+  assert.equal(result.receipt.configPreimage, COMPOSE_FALLBACK_MARKER, "must fall back to the rollback target, not crash on previousRoute.configPreimage");
+});
+
 test("reconcile tick repoints nginx after the stable allocation IP changes", async () => {
   await withTempIncludeDir(async (dir) => {
     const trafficSwitch = createTrafficSwitchOverTempDir(dir);
@@ -258,6 +291,38 @@ test("reconcile tick refuses an endpoint outside the trusted subnet", async () =
     const route = await trafficSwitch.inspect();
     assert.equal(route.currentEndpoint.address, "172.20.0.9", "an untrusted endpoint must never become the route");
   });
+});
+
+test("reconcile tick keeps its documented never-throws contract when nomad.getStableEndpoint fails", async () => {
+  await withTempIncludeDir(async (dir) => {
+    const trafficSwitch = createTrafficSwitchOverTempDir(dir);
+    const nomad = createFakeNomad({ getStableEndpointError: new Error("nomad unreachable: ECONNREFUSED") });
+
+    const outcome = await reconcileTick({ nomad, trafficSwitch, target: target() });
+
+    assert.equal(outcome.changed, false);
+    assert.match(outcome.reason, /ECONNREFUSED/);
+  });
+});
+
+test("reconcile tick keeps its documented never-throws contract when trafficSwitch.inspect fails", async () => {
+  const trafficSwitch = createTrafficSwitch({
+    async inspect() {
+      throw new Error("state file is corrupt");
+    },
+    async switch() {
+      throw new Error("must not be called");
+    },
+    async restore() {
+      throw new Error("must not be called");
+    },
+  });
+  const nomad = createFakeNomad({ stableEndpoint: { allocId: "alloc-11", address: "172.20.0.16", port: 3000 } });
+
+  const outcome = await reconcileTick({ nomad, trafficSwitch, target: target() });
+
+  assert.equal(outcome.changed, false);
+  assert.match(outcome.reason, /state file is corrupt/);
 });
 
 test("reconcile tick is a no-op once nginx already points at the reported stable endpoint", async () => {

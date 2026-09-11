@@ -33,7 +33,7 @@ function defaultSleep(ms) {
 }
 
 /**
- * @param {{baseUrl?: string, token?: string|null, fetchImpl?: typeof fetch, sleep?: (ms: number) => Promise<void>}} [options]
+ * @param {{baseUrl?: string, token?: string|null, fetchImpl?: typeof fetch, sleep?: (ms: number) => Promise<void>, requestTimeoutMs?: number, now?: () => Date}} [options]
  */
 export function createNomadClient({
   baseUrl = DEFAULT_BASE_URL,
@@ -41,6 +41,7 @@ export function createNomadClient({
   fetchImpl = fetch,
   sleep = defaultSleep,
   requestTimeoutMs = 10_000,
+  now = () => new Date(),
 } = {}) {
   async function request(method, path, body) {
     const headers = { "content-type": "application/json" };
@@ -226,7 +227,7 @@ export function createNomadClient({
         if (lastStatus === "running" || lastStatus === "successful") {
           return createHealthResult({
             status: "healthy",
-            checkedAt: new Date(),
+            checkedAt: now(),
             reason: lastDescription,
             observedAllocation: deploymentId,
           });
@@ -234,7 +235,7 @@ export function createNomadClient({
         if (lastStatus === "failed" || lastStatus === "cancelled") {
           return createHealthResult({
             status: "unhealthy",
-            checkedAt: new Date(),
+            checkedAt: now(),
             reason: lastDescription || lastStatus,
             observedAllocation: deploymentId,
           });
@@ -242,7 +243,7 @@ export function createNomadClient({
         if (Date.now() >= deadline) {
           return createHealthResult({
             status: "unknown",
-            checkedAt: new Date(),
+            checkedAt: now(),
             reason: `timed out waiting for deployment status (last=${lastStatus})`,
             observedAllocation: deploymentId,
           });

@@ -22,12 +22,31 @@ import { pathToFileURL } from "node:url";
  * @returns {Promise<{changed: boolean, endpoint?: object, reason: string}>}
  */
 export async function reconcileTick({ nomad, trafficSwitch, target, port = 3000 }) {
-  const stable = await nomad.getStableEndpoint(target.namespace, target.jobId, { port });
+  let stable;
+  try {
+    stable = await nomad.getStableEndpoint(target.namespace, target.jobId, { port });
+  } catch (error) {
+    // The JSDoc above promises a result, never a rejection: runReconcileLoop
+    // also catches around this call as defense-in-depth, but reconcileTick
+    // itself must keep its own contract regardless of that outer safety net.
+    return {
+      changed: false,
+      reason: `nomad.getStableEndpoint failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
   if (!stable) {
     return { changed: false, reason: "no healthy stable allocation reported by nomad" };
   }
 
-  const current = await trafficSwitch.inspect();
+  let current;
+  try {
+    current = await trafficSwitch.inspect();
+  } catch (error) {
+    return {
+      changed: false,
+      reason: `trafficSwitch.inspect failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
   const desiredEndpoint = {
     namespace: target.namespace,
     jobId: target.jobId,
