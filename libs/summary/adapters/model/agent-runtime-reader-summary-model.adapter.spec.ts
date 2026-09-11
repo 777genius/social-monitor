@@ -19,6 +19,38 @@ import type { VerifiedReaderSummaryExecutionAttestation } from "./reader-summary
 import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
 
 describe("AgentRuntimeReaderSummaryModelAdapter", () => {
+  it("renders the canonical narrative when the duplicate executive summary is empty", async () => {
+    const providerDraft = validReaderProviderDraft();
+    providerDraft.executiveSummary = "";
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: providerDraft,
+      warnings: [],
+    });
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
+      client,
+      agentProvider: "codex",
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "agent-runtime",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 16_000,
+        maxEstimatedCostUsd: 1,
+      },
+      { remainingTokens: 40_000, remainingCostUsd: 1 },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(attempt.draft.executiveSummary).toContain(
+      "Developers are comparing agent runtime reliability",
+    );
+    expect(client.commands).toHaveLength(1);
+  });
+
   it("uses the strict production Codex model and effort by default", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",

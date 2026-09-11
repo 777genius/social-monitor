@@ -1,4 +1,5 @@
 import { OpenAiSourceContentQualityReviewerAdapter } from "./openai-source-content-quality-reviewer.adapter";
+import { bindPromotionAssessment, promotionReviewInstructions, promotionWireCandidate } from "./promotion-review-wire";
 import { SourceContentQualityPolicy } from "../../domain";
 import { assessedPromotionVerdict } from "../../features/rank-feed-items/promotion-assessment-verdict";
 import type { SourceContentQualityReviewRequest } from "../../ports";
@@ -20,6 +21,11 @@ const response = (reviews: unknown) => new Response(JSON.stringify({ status: "co
 ] }] }), { status: 200 });
 
 describe("existing review adapter promotion wire contract", () => {
+  it("states the 0-1 fraction scale for every numeric score field the parser bounds", () => {
+    expect(promotionReviewInstructions).toContain(
+      "confidence, qualityScore, interestRelevanceScore and engagementIntegrityScore are each a fraction from 0 to 1 inclusive");
+  });
+
   it.each(["hacker-news", "reddit", "x-twitter"])("separates trusted intent, binds %s text and omits popularity", async (provider) => {
     const input = request(provider);
     const adapter = new OpenAiSourceContentQualityReviewerAdapter({ apiKey: "synthetic-test-key", fetchFn: async (_url, init) => {
@@ -39,6 +45,22 @@ describe("existing review adapter promotion wire contract", () => {
     const [review] = await adapter.reviewBatch([input]);
     expect(review!.assessment!.binding).toBe(input.promotion);
     expect(assessedPromotionVerdict(input, review, new SourceContentQualityPolicy()).qualityScore).toBe(0.7);
+  });
+
+  describe("bindPromotionAssessment trustAttestedRequestBinding opt-in", () => {
+    const input = request("reddit");
+    const raw = { bindingId: `${promotionWireCandidate(input).bindingId}-drifted`,
+      evidence: [{ field: "title", start: 0, end: input.title.length, quote: input.title }],
+      resolvedSoftFlags: [] };
+
+    it("still rejects a mismatched bindingId by default (unattested callers, e.g. the OpenAI adapter)", () => {
+      expect(() => bindPromotionAssessment(raw, input)).toThrow("Invalid promotion assessment binding");
+    });
+
+    it("accepts a mismatched bindingId only when the caller explicitly trusts request attestation", () => {
+      const assessment = bindPromotionAssessment(raw, input, { trustAttestedRequestBinding: true });
+      expect(assessment.binding).toBe(input.promotion);
+    });
   });
 
   it("rejects reuse after text or scope changes and honors cancellation", async () => {

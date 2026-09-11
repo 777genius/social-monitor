@@ -1,6 +1,7 @@
 import type { JsonObject, JsonValue } from "@social-monitor/shared-kernel";
 import type { SourceContentQualityDecision, SourceContentQualityFlag } from "../../domain";
 import type { SourceContentQualityReviewRequest, SourceContentQualityReviewResult } from "../../ports";
+import { SourceContentAssessmentStageError } from "../../ports";
 import { bindPromotionAssessment, promotionReviewSchemaProperties } from "./promotion-review-wire";
 
 export const buildInstructions = (): string =>
@@ -19,6 +20,25 @@ export const buildInstructions = (): string =>
 export const parseReviews = (
   outputText: string | undefined,
   requests?: readonly SourceContentQualityReviewRequest[],
+  options?: { readonly trustAttestedRequestBinding?: boolean },
+): readonly SourceContentQualityReviewResult[] => {
+  try {
+    return parseReviewsUnclassified(outputText, requests, options);
+  } catch (error) {
+    // Any exception reaching here (JSON.parse syntax errors, shape checks,
+    // the score/decision/flag validation below) is a parse/schema-contract
+    // failure by definition, except a binding failure already tagged inside
+    // the loop, which is rethrown unchanged.
+    if (error instanceof SourceContentAssessmentStageError) throw error;
+    throw new SourceContentAssessmentStageError("parse_schema",
+      error instanceof Error ? error.message : "Invalid quality review output");
+  }
+};
+
+const parseReviewsUnclassified = (
+  outputText: string | undefined,
+  requests?: readonly SourceContentQualityReviewRequest[],
+  options?: { readonly trustAttestedRequestBinding?: boolean },
 ): readonly SourceContentQualityReviewResult[] => {
   if (outputText === undefined) {
     throw new Error("OpenAI source content quality reviewer returned no text");
@@ -37,12 +57,19 @@ export const parseReviews = (
 
     const candidateId = nonEmptyString(raw.candidateId, "candidateId");
     const request = requests?.find((request) => request.candidateId === candidateId);
-    // Two attested native completions used the earlier `results` dialect even
-    // though the canonical schema was supplied. Normalize only that complete,
-    // request-bound dialect. Its single quality/support score supplies the
-    // missing relevance score; integrity retains the deterministic assessment.
-    // No source, identity, evidence or blocker is inferred.
-    const record = compatibilityResults === undefined || request === undefined ? raw
+    // Two attested native completions used an earlier item dialect even though
+    // the canonical schema was supplied under a `results` outer envelope. The
+    // same item dialect can also arrive under the schema-compliant `reviews`
+    // envelope, so detection is
+    // item-level and envelope-independent: only the exact documented legacy
+    // markers (relevant/not_relevant plus a missing score/flags field or a
+    // documented alias key) trigger normalization, so a merely incomplete
+    // canonical item or a single tampered field is never silently reinterpreted.
+    // Its single quality/support score supplies the missing relevance score;
+    // integrity retains the deterministic assessment. No source, identity,
+    // evidence or blocker is inferred, and binding/evidence checks below run
+    // unchanged against the normalized record.
+    const record = request === undefined || !isLegacyPromotionReviewItem(raw) ? raw
       : normalizeCompatiblePromotionReview(raw, request);
     if (requests !== undefined && (request === undefined ||
         ![record.confidence, record.qualityScore, record.interestRelevanceScore,
@@ -53,9 +80,20 @@ export const parseReviews = (
           typeof flag !== "string" || !allowedFlags.has(flag as SourceContentQualityFlag)))) {
       throw new Error("Invalid promotion review result");
     }
+    let assessment: ReturnType<typeof bindPromotionAssessment> | undefined;
+    if (request !== undefined) {
+      try { assessment = bindPromotionAssessment(record, request, options); }
+      catch (error) {
+        // The only distinct failure class inside this map body: the model's
+        // own bindingId/evidence/resolvedSoftFlags echo did not match this
+        // exact request, as opposed to a schema/shape/enum mismatch above.
+        throw new SourceContentAssessmentStageError("binding",
+          error instanceof Error ? error.message : "Invalid promotion assessment binding");
+      }
+    }
     return {
       candidateId,
-      ...(request === undefined ? {} : { assessment: bindPromotionAssessment(record, request) }),
+      ...(assessment === undefined ? {} : { assessment }),
       decision: readDecision(record.decision),
       confidence: clampNumber(record.confidence, 0, 1),
       qualityScore: optionalScore(record.qualityScore),
@@ -66,6 +104,23 @@ export const parseReviews = (
     };
   });
 };
+
+const hasLegacyAliasKey = (record: JsonObject): boolean =>
+  (!Object.hasOwn(record, "reason") && Object.hasOwn(record, "justification")) ||
+  (!Object.hasOwn(record, "resolvedSoftFlags") &&
+    (Object.hasOwn(record, "flagResolutions") || Object.hasOwn(record, "screeningFlagResolutions")));
+
+// The legacy `relevant`/`not_relevant` decision never appears in a canonical
+// response (the schema enum only allows promote/keep/downrank/reject/needs_context),
+// so it is an unambiguous dialect signal on its own. It is still not sufficient
+// alone: a tampered but otherwise-complete canonical item (every newer field
+// present, no alias keys) must keep being rejected, not reinterpreted. Only the
+// combination with a missing newer field or a documented alias key marks a
+// genuine legacy-shaped item.
+const isLegacyPromotionReviewItem = (record: JsonObject): boolean =>
+  (record.decision === "relevant" || record.decision === "not_relevant") &&
+  (!Object.hasOwn(record, "interestRelevanceScore") || !Object.hasOwn(record, "engagementIntegrityScore") ||
+    !Object.hasOwn(record, "flags") || hasLegacyAliasKey(record));
 
 const normalizeCompatiblePromotionReview = (
   record: JsonObject, request: SourceContentQualityReviewRequest,
@@ -151,7 +206,11 @@ export const asOptionalRecord = (value: unknown): JsonObject | undefined =>
     ? (value as JsonObject)
     : undefined;
 
-const allowedFlags = new Set<SourceContentQualityFlag>([
+// Single source of truth for the review-flag vocabulary. The schema enum and
+// the parser's semantic check must stay in lockstep: a flag value that the
+// schema lets the model emit but the parser rejects turns an otherwise valid,
+// attested completion into a hard adapter failure.
+export const sourceContentQualityFlagValues = [
   "crypto_promo",
   "engagement_bait",
   "generic_question",
@@ -173,7 +232,9 @@ const allowedFlags = new Set<SourceContentQualityFlag>([
   "llm_needs_context",
   "llm_promoted",
   "llm_rejected",
-]);
+] as const satisfies readonly SourceContentQualityFlag[];
+
+const allowedFlags = new Set<SourceContentQualityFlag>(sourceContentQualityFlagValues);
 
 export const responseSchema = {
   type: "object",
@@ -207,7 +268,7 @@ export const responseSchema = {
           engagementIntegrityScore: { type: "number", minimum: 0, maximum: 1 },
           flags: {
             type: "array",
-            items: { type: "string" },
+            items: { type: "string", enum: sourceContentQualityFlagValues },
           },
           reason: { type: "string", minLength: 1 },
         },

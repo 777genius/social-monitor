@@ -15,6 +15,7 @@ import { BuildReaderSummaryTopicMapUseCase } from
 import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand, AgentRuntimeTaskResult, ReaderSummaryModelPort } from "@social-monitor/summary/ports";
 import { verifyAndRecordReaderSummaryExecution, type ReaderSummaryAttestedTaskRole, type VerifiedReaderSummaryExecutionAttestationSink } from
   "@social-monitor/summary/adapters/model/reader-summary-execution-attestation";
+import type { SourceContentAssessmentFailureStage } from "@social-monitor/relevance/ports";
 import { refreshHash, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
 import { assertRefreshEqual } from "./reader-summary-new-input-refresh-guard";
 
@@ -35,7 +36,11 @@ export function refreshGenerationSha256(env: NodeJS.ProcessEnv): string {
 }
 export type GuardedRefreshRuntime = AgentRuntimeClientPort & {
   assertUsable(): void;
-  invalidateAdapter(taskRole: ReaderSummaryAttestedTaskRole | "source_content_assessment"): void;
+  // stage is a fixed, whitelisted classification only (never a message or
+  // payload) so the mandatory requires_reconciliation journal entry below
+  // carries it even when no optional capture/journal is wired up.
+  invalidateAdapter(taskRole: ReaderSummaryAttestedTaskRole | "source_content_assessment",
+    stage: SourceContentAssessmentFailureStage): void;
 };
 
 export function buildRefreshModelWiring(env: NodeJS.ProcessEnv, client: GuardedRefreshRuntime,
@@ -59,7 +64,9 @@ export function buildRefreshModelWiring(env: NodeJS.ProcessEnv, client: GuardedR
       client.assertUsable();
       return result;
     } catch (error) {
-      client.invalidateAdapter(taskRole);
+      // Generation/labeling/relation adapters have no finer-grained stage
+      // classification; "unknown" is the honest, fail-closed whitelisted value.
+      client.invalidateAdapter(taskRole, "unknown");
       throw error;
     }
   };
@@ -70,7 +77,7 @@ export function buildRefreshModelWiring(env: NodeJS.ProcessEnv, client: GuardedR
       generate: (...args) => validated("summary", () => model.generate(...args)),
       validateRawProviderResponse: (attempt) => {
         const result = model.validateRawProviderResponse(attempt);
-        if (!result.ok) client.invalidateAdapter("summary");
+        if (!result.ok) client.invalidateAdapter("summary", "unknown");
         return result;
       },
       classifyError: (error) => model.classifyError(error),
@@ -130,10 +137,13 @@ export function guardedRefreshRuntime(input: {
     purpose === sourceContentAssessmentPurpose ? "low" : "high";
   return {
     assertUsable,
-    invalidateAdapter: (taskRole) => {
+    invalidateAdapter: (taskRole, stage) => {
       if (ambiguous) return;
       ambiguous = true; // Recording failure must not restore authority either.
-      input.record({ status: "requires_reconciliation", phase: "adapter_validation", taskRole,
+      // failureStage is a fixed whitelisted code only - never a message,
+      // payload, title/body, prompt or credential - and lands in this
+      // mandatory (non-optional) record, unlike the optional paired capture.
+      input.record({ status: "requires_reconciliation", phase: "adapter_validation", taskRole, failureStage: stage,
         operation: input.manifest.operation, observedThrough: input.manifest.observedThrough });
     },
     checkHealth: async (service) => {

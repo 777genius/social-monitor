@@ -5,9 +5,10 @@ import type { ReaderSummaryStoryRelationVerifierInput, AgentRuntimeTaskResult } 
 import { completedRefreshModelRequest, refreshModelCommand } from "./reader-summary-new-input-refresh-model.spec-support";
 import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { pairedFixture } from "./reader-summary-new-input-refresh-paired-export.spec-support";
+import { pairedFixture, syntheticOutput } from "./reader-summary-new-input-refresh-paired-export.spec-support";
 import { RefreshPairedExport } from "./reader-summary-new-input-refresh-paired-export";
 import { refreshManifest, refreshNow } from "./reader-summary-new-input-refresh.spec-support";
+import { sourceContentAssessmentPurpose } from "./reader-summary-new-input-refresh-assessment-runtime";
 
 const parents: string[] = [];
 const setup = (options: Parameters<typeof pairedFixture>[0] = {}) => {
@@ -55,6 +56,31 @@ describe("synthetic bounded refresh paired export", () => {
     expect(result.unresolvedCandidateCount).toBe(1);
     expect(json(on.path, "complete.json").experimentComplete).toBe(false);
     for (const name of readdirSync(on.path)) expect(statSync(join(on.path, name)).mode & 0o777).toBe(0o600);
+  });
+
+  // The paired-export validator replays the exact live agent-runtime parse
+  // for determinism verification. It must trust the same already-attested
+  // request binding the live parse did, so a legitimate drifted bindingId
+  // (a model failing to echo the opaque hash byte-for-byte) that the live
+  // path accepted does not make this replay throw instead of comparing
+  // output - live-accept must not diverge from capture-fail.
+  it("accepts a live response with a drifted bindingId without diverging live-accept from capture-fail", async () => {
+    const fixture = setup({ response: (command) => {
+      if (command.purpose !== sourceContentAssessmentPurpose) return syntheticOutput(command);
+      const { candidates } = JSON.parse(command.prompt) as { candidates: { candidateId: string; bindingId: string;
+        untrustedSource: { bodyPreview: string } }[] };
+      return { reviews: candidates.map((c) => ({ candidateId: c.candidateId, bindingId: `${c.bindingId}-drifted`,
+        decision: c.candidateId === "reject" ? "reject" : c.candidateId === "abstain" ? "needs_context" : "promote",
+        confidence: 0.96, qualityScore: 0.85, interestRelevanceScore: 0.95, engagementIntegrityScore: 0.95,
+        flags: [], reason: "Synthetic concrete parser result", resolvedSoftFlags: [],
+        evidence: [{ field: "bodyPreview", start: 0, end: c.untrustedSource.bodyPreview.length,
+          quote: c.untrustedSource.bodyPreview }] })) };
+    } });
+    await fixture.select();
+    const result = await fixture.capture!.finish(true);
+    expect(result.failures).toEqual([]);
+    const tape = readFileSync(join(fixture.path, "models.jsonl"), "utf8");
+    expect(tape).toContain('"envelope_verified"');
   });
 
   it("binds real rejected relation requests, validated responses and attestation bytes", async () => {

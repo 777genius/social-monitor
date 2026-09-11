@@ -68,8 +68,18 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
     expect(() => fixture.runtime.assertUsable()).toThrow(/reconciliation/u);
   });
 
-  it.each(["missing", "one missing", "wrong binding", "wrong quote", "duplicate"])(
-    "keeps %s assessment pending and prevents publication and subsequent spend", async (kind) => {
+  it.each([
+    ["missing", "binding"], ["one missing", "binding"],
+    ["wrong quote", "verdict"], ["duplicate", "binding"],
+  ] as const)(
+    // "wrong binding" (a drifted bindingId echo) is deliberately not in this
+    // table anymore: the agent-runtime adapter now trusts the already-
+    // attested request binding over that echo, so it is accepted, not
+    // rejected - see "accepts a legitimate response ... bindingId echo is
+    // imperfect" in agent-runtime-source-content-quality-reviewer.adapter.spec.ts
+    // and the "legacy dialect with drifted bindingId" case in
+    // assessment-schema-protocol.spec.ts.
+    "keeps %s assessment pending, prevents publication/subsequent spend, and journals failureStage=%s", async (kind, expectedStage) => {
       const test = await selectorWiring({ output: (command) => {
         const output = selectorOutput(command);
         if (command.purpose !== purpose) return output;
@@ -77,7 +87,6 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
         switch (kind) {
           case "missing": return { reviews: [] };
           case "one missing": return { reviews: reviews.slice(1) };
-          case "wrong binding": reviews[0]!.bindingId = "wrong"; break;
           case "wrong quote": reviews[0]!.evidence = [{ field: "title", start: 0, end: 5, quote: "wrong" }]; break;
           case "duplicate": return { reviews: [reviews[0], reviews[0]] };
         }
@@ -87,6 +96,10 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
       await expect(test.selectComplete()).rejects.toThrow(/reconciliation/u);
       expect(() => test.assessment.assertComplete(2)).toThrow(/reconciliation/u);
       expect(test.commands.map((c) => c.purpose)).toEqual([purpose]);
+      // The mandatory (non-optional) journal record - not the optional paired
+      // capture - must carry the precise, whitelisted failure stage.
+      expect(test.events).toContainEqual(expect.objectContaining({ status: "requires_reconciliation",
+        phase: "adapter_validation", taskRole: "source_content_assessment", failureStage: expectedStage }));
       const publication = publicationProbe(test.runtime);
       await expect(publication.attempt()).rejects.toThrow(/reconciliation/u);
       expect(publication.publish).not.toHaveBeenCalled();

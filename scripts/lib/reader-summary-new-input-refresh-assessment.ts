@@ -4,7 +4,10 @@ import type { ReaderSummaryEvidenceSelectorPort } from "@social-monitor/summary/
 import type { Clock } from "@social-monitor/shared-kernel";
 import { readerPromotionProviderFamily } from "@social-monitor/shared-kernel";
 import { SourceContentQualityPolicy } from "@social-monitor/relevance/domain";
-import type { SourceContentQualityReviewerPort, SourceContentQualityReviewRequest } from "@social-monitor/relevance/ports";
+import type {
+  SourceContentAssessmentFailureStage, SourceContentQualityReviewerPort, SourceContentQualityReviewRequest,
+} from "@social-monitor/relevance/ports";
+import { SourceContentAssessmentStageError } from "@social-monitor/relevance/ports";
 import { assessedPromotionVerdict } from "@social-monitor/relevance/features/rank-feed-items/promotion-assessment-verdict";
 import { PROMOTION_ASSESSMENT_BOUNDS } from "@social-monitor/relevance/features/rank-feed-items/promotion-content-assessment";
 import { createSourceContentAssessmentReviewer } from "@social-monitor/relevance/interfaces/rest/source-content-assessment-provider-tokens";
@@ -32,11 +35,29 @@ export type RefreshAssessmentCaptureEvent = Readonly<{
   options?: { timeoutMs?: number; deadlineAtMs?: number; aborted: boolean };
   reviewsJson?: string;
   verdictsJson?: string;
-  failure?: "deadline" | "aborted" | "validation_or_runtime_failure";
+  // A fixed, whitelisted stage code only. Never enrich this with the causing
+  // error's `.message`, payload, title/body, prompt or credential material.
+  failure?: SourceContentAssessmentFailureStage;
 }>;
 
 export function hasRefreshSelectableEvidence(items: readonly SummaryEvidenceItem[]): boolean {
   return items.some((item) => isPersistedSelectableEvidence(item));
+}
+
+// A caught error's own stage is the most specific, definitive signal of what
+// actually failed (binding, verdict, parse/schema, runtime status) and must
+// win even when the deadline/abort state happens to also be true by the time
+// the catch runs - otherwise an incidental deadline crossing during a slow
+// batch would mask a genuine binding/verdict failure behind "deadline". Live
+// abort/deadline state is the documented fallback only for an error that
+// never went through our own classification (a truly unknown exception).
+export function classifyAssessmentReviewBatchFailure(input: {
+  error: unknown; aborted: boolean; deadlineExceeded: boolean;
+}): SourceContentAssessmentFailureStage {
+  if (input.error instanceof SourceContentAssessmentStageError) return input.error.stage;
+  if (input.aborted) return "aborted";
+  if (input.deadlineExceeded) return "deadline";
+  return "unknown";
 }
 
 // This caller only authorizes the existing subscription pool. A direct provider
@@ -83,9 +104,10 @@ export function createRefreshAssessmentReviewer(input: {
     if (!input.capture) return;
     try { input.capture(event()); } catch { captureFailures++; }
   };
-  const fail = (): never => {
-    input.runtime.invalidateAdapter("source_content_assessment");
-    throw new Error("Refresh assessment is incomplete; original operation requires reconciliation");
+  const fail = (stage: SourceContentAssessmentFailureStage): never => {
+    input.runtime.invalidateAdapter("source_content_assessment", stage);
+    throw new SourceContentAssessmentStageError(stage,
+      "Refresh assessment is incomplete; original operation requires reconciliation");
   };
   return {
     // Six workers put the evidenced eleven 8-item batches into two waves
@@ -102,19 +124,19 @@ export function createRefreshAssessmentReviewer(input: {
       // Historical refresh must assess the complete captured universe. Partial
       // UUID-ordered coverage would bias selection toward whichever batches ran first.
       const required = Math.min(expected, PROMOTION_ASSESSMENT_BOUNDS.candidates);
-      if (!Number.isSafeInteger(expected) || expected < 0 || required !== completed || completed !== seen.size) fail();
+      if (!Number.isSafeInteger(expected) || expected < 0 || required !== completed || completed !== seen.size) fail("binding");
       if (selection === undefined) return;
       // An empty bounded/uncertain result cannot support exhaustive no-signal.
       if (selection.selectedEvidence.length === 0 && (completed < expected || abstained > 0)) {
         throw new Error("Refresh assessment remains pending; cannot publish exhaustive no-signal");
       }
       for (const item of selection.selectedEvidence) {
-        if (!sourceTextBindings.has(sourceTextBinding(item))) fail();
+        if (!sourceTextBindings.has(sourceTextBinding(item))) fail("binding");
         const quality = item.contentQuality;
         if (!quality?.eligibleForSummary || quality.needsLlmReview ||
             !["promote", "keep", "downrank"].includes(quality.decision) ||
             quality.reason.startsWith("promotion_assessment_pending:") ||
-            quality.reason.startsWith("promotion_assessment_not_requested:")) return fail();
+            quality.reason.startsWith("promotion_assessment_not_requested:")) return fail("binding");
         // An attempted social identity cannot acquire an exemption by relabeling.
         const recorded = seen.has(item.feedItemId) || [...seen.values()].some((request) =>
           request.promotion?.sourceItemId === item.sourceItemId &&
@@ -123,7 +145,7 @@ export function createRefreshAssessmentReviewer(input: {
         if (!recorded && persistedAssessmentBindings.has(exemptionBinding(item))) continue;
         const canonicalExemption = !recorded && exemptBindings.has(exemptionBinding(item));
         if (canonicalExemption) {
-          if (quality.reason.startsWith("promotion_assessment:")) fail();
+          if (quality.reason.startsWith("promotion_assessment:")) fail("binding");
           continue;
         }
         const assessed = eligible.get(item.feedItemId);
@@ -134,7 +156,7 @@ export function createRefreshAssessmentReviewer(input: {
             request.promotion?.sourceItemId !== item.sourceItemId ||
             request.promotion?.sourceBindingId !== item.sourceBindingId ||
             assessed?.verdict.reason !== quality.reason ||
-            assessed?.verdict.decision !== quality.decision) fail();
+            assessed?.verdict.decision !== quality.decision) fail("binding");
       }
     },
     reviewBatch: async (requests, options) => {
@@ -152,18 +174,22 @@ export function createRefreshAssessmentReviewer(input: {
         const now = input.clock.now().getTime();
         deadline ??= now + reviewer.promotionTiming!.totalTimeoutMs;
         const size = Buffer.byteLength(JSON.stringify(requests), "utf8");
-        if (now >= deadline || options?.signal.aborted ||
-            requests.some((request) => seen.has(request.candidateId)) ||
+        // Deadline/abort is always the most informative classification when it
+        // applies, regardless of which coverage check would otherwise trigger.
+        if (now >= deadline) fail("deadline");
+        if (options?.signal.aborted) fail("aborted");
+        if (requests.some((request) => seen.has(request.candidateId)) ||
             seen.size + requests.length > PROMOTION_ASSESSMENT_BOUNDS.candidates ||
             size > PROMOTION_ASSESSMENT_BOUNDS.batchBytes ||
-            bytes + size > PROMOTION_ASSESSMENT_BOUNDS.totalBytes) fail();
+            bytes + size > PROMOTION_ASSESSMENT_BOUNDS.totalBytes) fail("binding");
         requests.forEach((request) => seen.set(request.candidateId, request));
         consumed = true;
         bytes += size; // Consumed before awaiting. Nothing refunds an attempt.
         const reviews = await reviewer.reviewBatch(requests, options);
-        if (input.clock.now().getTime() >= deadline || options?.signal.aborted ||
-            reviews.length !== requests.length || new Set(reviews.map((r) => r.candidateId)).size !== reviews.length ||
-            requests.some((request) => !reviews.some((review) => review.candidateId === request.candidateId))) fail();
+        if (input.clock.now().getTime() >= deadline) fail("deadline");
+        if (options?.signal.aborted) fail("aborted");
+        if (reviews.length !== requests.length || new Set(reviews.map((r) => r.candidateId)).size !== reviews.length ||
+            requests.some((request) => !reviews.some((review) => review.candidateId === request.candidateId))) fail("binding");
         const verdicts: { candidateId: string; verdict: ReturnType<typeof assessedPromotionVerdict> }[] = [];
         for (const request of requests) {
           const verdict = assessedPromotionVerdict(request,
@@ -174,7 +200,7 @@ export function createRefreshAssessmentReviewer(input: {
             // validation. All other pending outcomes remain authority failures.
             if (verdict.reason !== "promotion_assessment_pending:needs_context" &&
                 verdict.reason !== "promotion_assessment_pending:low_confidence" &&
-                verdict.reason !== "promotion_assessment_pending:invalid_assessment") fail();
+                verdict.reason !== "promotion_assessment_pending:invalid_assessment") fail("verdict");
             abstained++;
           } else if (verdict.eligibleForSummary) eligible.set(request.candidateId, { request, verdict });
         }
@@ -184,12 +210,13 @@ export function createRefreshAssessmentReviewer(input: {
         capture(() => ({ ...event("completed"), reviewsJson: JSON.stringify(reviews),
           verdictsJson: JSON.stringify(verdicts) }));
         return reviews;
-      } catch {
+      } catch (error) {
         terminalBatches++;
-        capture(() => ({ ...event("failed"), failure: options?.signal.aborted ? "aborted"
-          : deadline !== undefined && input.clock.now().getTime() >= deadline ? "deadline"
-            : "validation_or_runtime_failure" }));
-        return fail();
+        const stage = classifyAssessmentReviewBatchFailure({ error,
+          aborted: options?.signal.aborted ?? false,
+          deadlineExceeded: deadline !== undefined && input.clock.now().getTime() >= deadline });
+        capture(() => ({ ...event("failed"), failure: stage }));
+        return fail(stage);
       }
     },
   };
