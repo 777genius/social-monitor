@@ -44,6 +44,22 @@ export function hasRefreshSelectableEvidence(items: readonly SummaryEvidenceItem
   return items.some((item) => isPersistedSelectableEvidence(item));
 }
 
+// A caught error's own stage is the most specific, definitive signal of what
+// actually failed (binding, verdict, parse/schema, runtime status) and must
+// win even when the deadline/abort state happens to also be true by the time
+// the catch runs - otherwise an incidental deadline crossing during a slow
+// batch would mask a genuine binding/verdict failure behind "deadline". Live
+// abort/deadline state is the documented fallback only for an error that
+// never went through our own classification (a truly unknown exception).
+export function classifyAssessmentReviewBatchFailure(input: {
+  error: unknown; aborted: boolean; deadlineExceeded: boolean;
+}): SourceContentAssessmentFailureStage {
+  if (input.error instanceof SourceContentAssessmentStageError) return input.error.stage;
+  if (input.aborted) return "aborted";
+  if (input.deadlineExceeded) return "deadline";
+  return "unknown";
+}
+
 // This caller only authorizes the existing subscription pool. A direct provider
 // override cannot bypass its invocation journal, installation or date authority.
 export function createRefreshAssessmentReviewer(input: {
@@ -196,12 +212,9 @@ export function createRefreshAssessmentReviewer(input: {
         return reviews;
       } catch (error) {
         terminalBatches++;
-        // Deadline/abort classification is derived from state, not the caught
-        // error, so it stays correct even when the underlying exception is a
-        // generic timeout/cancellation type rather than our own stage error.
-        const stage: SourceContentAssessmentFailureStage = options?.signal.aborted ? "aborted"
-          : deadline !== undefined && input.clock.now().getTime() >= deadline ? "deadline"
-            : error instanceof SourceContentAssessmentStageError ? error.stage : "unknown";
+        const stage = classifyAssessmentReviewBatchFailure({ error,
+          aborted: options?.signal.aborted ?? false,
+          deadlineExceeded: deadline !== undefined && input.clock.now().getTime() >= deadline });
         capture(() => ({ ...event("failed"), failure: stage }));
         return fail(stage);
       }
