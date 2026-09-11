@@ -22,7 +22,8 @@ import { readRefreshJobs, readRefreshPrior, readRefreshCounts, readRefreshReconc
 import { createRefreshAdmission } from "./reader-summary-new-input-refresh-admission";
 import { withRefreshPublicationLocks, type RefreshSnapshotProtection } from "./reader-summary-new-input-refresh-publication-lock";
 import { buildRefreshModelWiring, guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
-import { createRefreshAssessmentReviewer, withRefreshAssessmentCompletion } from "./reader-summary-new-input-refresh-assessment";
+import { createRefreshAssessmentReviewer, hasRefreshSelectableEvidence,
+  withRefreshAssessmentCompletion } from "./reader-summary-new-input-refresh-assessment";
 import { RefreshPairedExport } from "./reader-summary-new-input-refresh-paired-export";
 import { refreshCaptureModelControls } from "./reader-summary-new-input-refresh-model";
 import { withRefreshSelectionAudit } from "./reader-summary-new-input-refresh-selection-audit";
@@ -103,9 +104,10 @@ async function executeRefresh(input: RefreshExecutionInput, capture?: RefreshPai
   await input.assertRuntime();
   const { assessmentCandidateCount, canonicalEvidence } = await preflightRefreshSelection({ configuredInterests: input.configuredInterests, feed, date: m.date,
     observedThrough: new Date(m.observedThrough), clock });
+  const hasSelectableEvidence = hasRefreshSelectableEvidence(canonicalEvidence ?? []);
   input.record({ status: "preflight", operation: m.operation, assessmentCandidateCount,
-    plannedSummaryGenerations: assessmentCandidateCount === 0 ? 0 : 1 });
-  if (assessmentCandidateCount === 0) {
+    plannedSummaryGenerations: assessmentCandidateCount === 0 && !hasSelectableEvidence ? 0 : 1 });
+  if (assessmentCandidateCount === 0 && !hasSelectableEvidence) {
     await assertCurrent();
     const countsAfter = await readRefreshCounts(summary, m.date);
     assertRefreshEqual(countsAfter, countsBefore, "empty input counts");

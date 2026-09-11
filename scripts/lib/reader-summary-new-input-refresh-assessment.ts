@@ -35,6 +35,10 @@ export type RefreshAssessmentCaptureEvent = Readonly<{
   failure?: "deadline" | "aborted" | "validation_or_runtime_failure";
 }>;
 
+export function hasRefreshSelectableEvidence(items: readonly SummaryEvidenceItem[]): boolean {
+  return items.some((item) => isPersistedSelectableEvidence(item));
+}
+
 // This caller only authorizes the existing subscription pool. A direct provider
 // override cannot bypass its invocation journal, installation or date authority.
 export function createRefreshAssessmentReviewer(input: {
@@ -52,6 +56,8 @@ export function createRefreshAssessmentReviewer(input: {
   // Selected objects cannot introduce or rewrite exemption provenance.
   const exemptBindings = new Set((input.canonicalEvidence ?? [])
     .filter(isCanonicalAssessmentExemption).map(exemptionBinding));
+  const persistedAssessmentBindings = new Set((input.canonicalEvidence ?? [])
+    .filter(isPersistedSelectableEvidence).map(exemptionBinding));
   // Bind the complete sanitized source representation independently of the
   // capped assessment request, for social and exempt GitHub evidence alike.
   const sourceTextBindings = new Set((input.canonicalEvidence ?? []).map(sourceTextBinding));
@@ -114,6 +120,7 @@ export function createRefreshAssessmentReviewer(input: {
           request.promotion?.sourceItemId === item.sourceItemId &&
           request.promotion?.sourceBindingId === item.sourceBindingId &&
           request.promotion?.interestId === item.interestId);
+        if (!recorded && persistedAssessmentBindings.has(exemptionBinding(item))) continue;
         const canonicalExemption = !recorded && exemptBindings.has(exemptionBinding(item));
         if (canonicalExemption) {
           if (quality.reason.startsWith("promotion_assessment:")) fail();
@@ -197,6 +204,14 @@ export function withRefreshAssessmentCompletion(selector: ReaderSummaryEvidenceS
     assessment.assertComplete(expected, selection);
     return selection;
   } };
+}
+
+function isPersistedSelectableEvidence(item: SummaryEvidenceItem): boolean {
+  const quality = item.contentQuality;
+  return quality?.eligibleForSummary === true && !quality.needsLlmReview &&
+    ["promote", "keep", "downrank"].includes(quality.decision) &&
+    !quality.reason.startsWith("promotion_assessment_pending:") &&
+    !quality.reason.startsWith("promotion_assessment_not_requested:");
 }
 
 function isCanonicalAssessmentExemption(item: SummaryEvidenceItem): boolean {
