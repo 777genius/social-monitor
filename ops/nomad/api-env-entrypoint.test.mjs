@@ -26,8 +26,8 @@ test("parseEnvFile preserves an empty value", () => {
 });
 
 test("parseEnvFile preserves embedded equals signs in the value", () => {
-  const env = parseEnvFile("DATABASE_URL=postgres://user:pass@host/db?sslmode=verify-full\n");
-  assert.equal(env.DATABASE_URL, "postgres://user:pass@host/db?sslmode=verify-full");
+  const env = parseEnvFile("DATABASE_URL=postgres://user:password@host/db?sslmode=verify-full\n");
+  assert.equal(env.DATABASE_URL, "postgres://user:password@host/db?sslmode=verify-full");
 });
 
 test("parseEnvFile rejects a line with no separator", () => {
