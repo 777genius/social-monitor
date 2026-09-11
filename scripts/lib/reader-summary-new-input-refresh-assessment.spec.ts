@@ -3,7 +3,7 @@ import { FeedItem } from "@social-monitor/feed/domain";
 import { activeReaderSummaryPurposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { FixedClock } from "@social-monitor/shared-kernel";
 import { sourceContentAssessmentPurpose as purpose } from "./reader-summary-new-input-refresh-assessment-runtime";
-import { createRefreshAssessmentReviewer } from "./reader-summary-new-input-refresh-assessment";
+import { createRefreshAssessmentReviewer, hasRefreshSelectableEvidence } from "./reader-summary-new-input-refresh-assessment";
 import type { guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 import { selectorOutput, selectorWiring } from "./reader-summary-new-input-refresh-selector-composition.spec-support";
 import { publicationProbe } from "./reader-summary-new-input-refresh-model-composition.spec-support";
@@ -37,6 +37,27 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
     await test.select();
     expect(test.commands.filter((c) => c.purpose === purpose)).toHaveLength(1);
     expect(() => test.runtime.assertUsable()).toThrow(/reconciliation/u);
+  });
+
+  it("reuses exact persisted selectable assessments without another assessment call", async () => {
+    const test = await selectorWiring();
+    const selection = await test.selectComplete();
+    const assessmentCalls = test.commands.filter((command) => command.purpose === purpose).length;
+    const persisted = createRefreshAssessmentReviewer({ env: {}, runtime: test.runtime,
+      clock: new FixedClock(refreshNow), canonicalEvidence: selection.selectedEvidence });
+
+    expect(hasRefreshSelectableEvidence(selection.selectedEvidence)).toBe(true);
+    expect(() => persisted.assertComplete(0, selection)).not.toThrow();
+    expect(test.commands.filter((command) => command.purpose === purpose)).toHaveLength(assessmentCalls);
+
+    const first = selection.selectedEvidence[0]!;
+    const forged = { ...selection, selectedEvidence: [{ ...first,
+      contentQuality: { ...first.contentQuality!, qualityScore: first.contentQuality!.qualityScore + 0.01 } },
+      ...selection.selectedEvidence.slice(1)] };
+    expect(() => persisted.assertComplete(0, forged)).toThrow(/reconciliation/u);
+    expect(hasRefreshSelectableEvidence(selection.selectedEvidence.map((item) => ({ ...item,
+      contentQuality: { ...item.contentQuality!, eligibleForSummary: false,
+        reason: "promotion_assessment_not_requested:hard_gate" } })))).toBe(false);
   });
 
   it("rejects nonempty partial coverage within the configured candidate cap", async () => {
