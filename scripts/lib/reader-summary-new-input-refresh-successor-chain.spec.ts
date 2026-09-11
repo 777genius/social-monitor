@@ -75,8 +75,15 @@ describe("bounded two-stage successor recovery: SQL-verified chain", () => {
     await expect(assertRefreshSuccessorCurrent(client, chain.second, refreshNow)).rejects.toThrow(/story-relation/);
   });
 
-  it("rejects the chain when the root hop purpose is not the source-content assessment", async () => {
+  it("accepts the chain when the root hop is also a terminal story-relation verification failure", async () => {
     const invocation = { ...rootEvidence.invocation, purpose: "social_monitor.reader_summary.verify_story_relations.v2" };
+    await db.query("update reader_summary_new_input_refresh_reconciliations set invocation=$1::jsonb, accounting=$2::jsonb where reader_summary_job_id=$3",
+      [JSON.stringify(invocation), JSON.stringify(refreshReconciliationAccountingFor({ ...rootEvidence, invocation })), chainedRootJobId]);
+    await expect(assertRefreshSuccessorCurrent(client, chain.second, refreshNow)).resolves.toBeUndefined();
+  });
+
+  it("rejects the chain when the root hop purpose is neither the source-content assessment nor story-relation verification", async () => {
+    const invocation = { ...rootEvidence.invocation, purpose: "social_monitor.relevance.assess_other_signal.v1" };
     await db.query("update reader_summary_new_input_refresh_reconciliations set invocation=$1::jsonb, accounting=$2::jsonb where reader_summary_job_id=$3",
       [JSON.stringify(invocation), JSON.stringify(refreshReconciliationAccountingFor({ ...rootEvidence, invocation })), chainedRootJobId]);
     await expect(assertRefreshSuccessorCurrent(client, chain.second, refreshNow)).rejects.toThrow(/source-content assessment/);

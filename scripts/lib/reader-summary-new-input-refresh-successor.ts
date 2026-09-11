@@ -70,8 +70,9 @@ async function readRefreshSuccessorHopEvidence(client: Client, hop: RefreshSucce
 /** Verify the committed reconciliation and the exact unchanged FAILED row.
  * Unknown provider usage remains unknown; a grant supplies no usage estimate.
  * A bounded two-stage chain additionally requires the exact production
- * recovery order: the root failed the source-content assessment and only its
- * immediate (already-resumed) successor failed the story-relation
+ * recovery order: the immediate (already-resumed) successor must have failed
+ * the story-relation verification, and the root it resumed must itself have
+ * failed either the source-content assessment or the story-relation
  * verification. Any other purpose pairing, and any depth or identity issue
  * already rejected by `assertRefreshSuccessorGrant`, keeps the chain closed. */
 export async function assertRefreshSuccessorCurrent(client: Client, m: RefreshManifest, now: Date) {
@@ -100,9 +101,9 @@ export async function assertRefreshSuccessorCurrent(client: Client, m: RefreshMa
     reconciliationId: rootGrant.reconciliationId, originalJobId: rootGrant.originalJobId,
     expectedOperation: root.operation, expectedManifestJson: rootGrant.originalManifestJson,
   });
-  if (!knownTerminalAssessment(rootEvidence.invocation) ||
-      rootEvidence.invocation.purpose !== sourceContentAssessmentPurpose) {
-    throw new Error("Refresh successor chain root requires a known terminal source-content assessment outcome");
+  if (!knownTerminalAssessment(rootEvidence.invocation) || !resumablePurposes.has(rootEvidence.invocation.purpose)) {
+    throw new Error(
+      "Refresh successor chain root requires a known terminal source-content assessment or story-relation verification outcome");
   }
 }
 
