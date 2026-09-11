@@ -2,6 +2,8 @@ import { artifact, dailyEvidenceSelection } from
   "../../domain/policies/reader-summary-publication-policy-test-fixtures";
 import { buildReaderSummaryDraftWithPromotionContent } from
   "./reader-summary-promotion-content";
+import { buildReaderSummaryPromotionArtifactFields } from
+  "./reader-summary-promotion-artifact-fields";
 import type { TopReadCandidate } from "../../domain/entities/top-read";
 
 const placeholder = "Authoritative promotion snapshot candidate";
@@ -42,6 +44,23 @@ const fixture = () => {
 };
 
 describe("promotion reader explanations", () => {
+  it("seals the same model summary that is rendered in the promotion card", () => {
+    const { evidence, draft } = fixture();
+    const renderedDraft = buildReaderSummaryDraftWithPromotionContent(evidence, draft);
+    const fields = buildReaderSummaryPromotionArtifactFields({
+      artifactId: "reader-summary-display-seal",
+      modelEvidence: evidence,
+      draft: renderedDraft,
+    });
+
+    expect(renderedDraft.content.topReads[0]?.summary).toBe(substantive);
+    const attestation = fields.promotionAttestations?.[0];
+    if (attestation === undefined || !("displaySummary" in attestation)) {
+      throw new Error("Expected a V2 promotion attestation with a display summary");
+    }
+    expect(attestation.displaySummary).toBe(substantive);
+  });
+
   it.each([true, false])("preserves complete model prose through authoritative assembly (slate=%s)", (slate) => {
     const { evidence, draft } = fixture();
     const selection = { ...evidence, editorialSlate: slate ? evidence.editorialSlate : undefined };
