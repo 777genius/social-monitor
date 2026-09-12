@@ -1,3 +1,4 @@
+import { reconciliationFixture } from "./reader-summary-refresh-reconciliation.spec-support";
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import { FeedItem } from "@social-monitor/feed/domain";
 import { activeReaderSummaryPurposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
@@ -283,13 +284,15 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
 
   it.each(["sanitized", "truncated"])("accepts legitimate canonical %s text binding", async (kind) => {
     const publish = FeedItem.publish.bind(FeedItem);
-    jest.spyOn(FeedItem, "publish").mockImplementation((input) => publish({ ...input,
+    jest.spyOn(FeedItem, "publish").mockImplementation((input) => publish(input.id.startsWith("synthetic-extra-") ? input : { ...input,
       title: kind === "sanitized" ? `  ${input.title}  ` : input.title,
       bodyPreview: kind === "sanitized" ? `${input.bodyPreview}\n token=synthetic-redaction-fixture`
         : `${input.bodyPreview} `.repeat(160),
     }));
-    const test = await selectorWiring();
-    const selection = await test.selectComplete();
+    const test = kind === "truncated" ? await reconciliationFixture() : await selectorWiring();
+    const selection = kind === "truncated"
+      ? await (test as Awaited<ReturnType<typeof reconciliationFixture>>).reconciliationSelection()
+      : await test.selectComplete();
     expect(selection.selectedEvidence.length).toBeGreaterThan(0);
     if (kind === "sanitized") expect(selection.selectedEvidence.every((item) =>
       !item.bodyPreview?.includes("synthetic-redaction-fixture"))).toBe(true);
@@ -322,16 +325,16 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
                 repository: { fullName: "synthetic/compiler-tools", totalStars: 20_000, forksCount: 500 },
                 trending: { rank: 1, starsGained: 2_000, window: "daily" } },
         }));
-      const test = await selectorWiring();
-      expect(test.preflight.assessmentCandidateCount).toBe(1);
-      const selection = await test.selectComplete();
+      const test = await reconciliationFixture();
+      expect(test.preflight.assessmentCandidateCount).toBe(2);
+      const selection = await test.reconciliationSelection();
       const github = selection.selectedEvidence.find((item) => item.feedItemId === "synthetic-github")!;
       expect(github).toBeDefined();
       expect(github.contentQuality!.reason).not.toMatch(/^promotion_assessment/u);
       const calls = test.commands.filter((command) => command.purpose === purpose);
       expect(calls).toHaveLength(1);
-      expect(JSON.parse(calls[0]!.prompt).candidates.map((item: { candidateId: string }) => item.candidateId))
-        .toEqual(["synthetic-x"]);
+      expect(JSON.parse(calls[0]!.prompt).candidates.map((item: { candidateId: string }) => item.candidateId).sort())
+        .toEqual(["synthetic-extra-0", "synthetic-x"]);
       const publication = publicationProbe(test.runtime, selection);
       await publication.attempt();
       expect(publication.publish).toHaveBeenCalledTimes(1);
@@ -356,7 +359,7 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
         feedItemId: identity === "feed" ? social.feedItemId : "never-reviewed", sourceItemId: social.sourceItemId,
         sourceBindingId: social.sourceBindingId, interestId: social.interestId,
       };
-      expect(() => test.assessment.assertComplete(1, { ...selection, selectedEvidence: [changed] }))
+      expect(() => test.assessment.assertComplete(2, { ...selection, selectedEvidence: [changed] }))
         .toThrow(/reconciliation/u);
       expect(() => test.runtime.assertUsable()).toThrow(/reconciliation/u);
     });

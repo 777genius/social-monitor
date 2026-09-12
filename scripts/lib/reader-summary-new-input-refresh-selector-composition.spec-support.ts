@@ -1,3 +1,4 @@
+import { fixtureHeadline } from "../../test/support/promotion-content-assessment";
 import type { ConfiguredInterestScope } from "@social-monitor/relevance/ports";
 import { createRefreshAssessmentReviewer, withRefreshAssessmentCompletion } from "./reader-summary-new-input-refresh-assessment";
 import { sourceContentAssessmentPurpose } from "./reader-summary-new-input-refresh-assessment-runtime";
@@ -22,6 +23,7 @@ export async function selectorWiring(input: {
   guardAdapter?: boolean;
   sameStory?: boolean;
   extraCandidates?: number;
+  displayReadyLead?: boolean;
   assertSource?: () => void;
   onAttestation?: (value: VerifiedReaderSummaryExecutionAttestation) => void | Promise<void>;
   onEvent?: (value: SelectorEvent) => void;
@@ -49,7 +51,7 @@ export async function selectorWiring(input: {
     runtime.assertUsable();
     await input.onAttestation?.(value);
   }) };
-  const feed = selectorFeed(input.sameStory, input.extraCandidates);
+  const feed = selectorFeed(input.sameStory, input.extraCandidates, input.displayReadyLead);
   const configuredInterests = { readCurrent: async (scope: ConfiguredInterestScope) =>
     ({ kind: "available" as const, interest: { ...scope, query: "AI developer tools" } }) };
   const clock = new FixedClock(refreshNow);
@@ -66,7 +68,7 @@ export async function selectorWiring(input: {
   });
   const selector = guard.selector(canonical.evidenceSelector);
   const query = { tenantId: tenantId(manifest.tenantId), workspaceId: workspaceId(manifest.workspaceId),
-    scope: { type: "workspace" as const }, period, maxItems: 2, observedThrough: new Date(manifest.observedThrough) };
+    scope: { type: "workspace" as const }, period, maxItems: input.displayReadyLead ? 3 : 2, observedThrough: new Date(manifest.observedThrough) };
   return { runtime, guard, commands, events, sink, preflight, assessment, model: buildRefreshModelWiring({}, runtime, sink),
     selectComplete: () => guard.selector(withRefreshAssessmentCompletion(
       canonical.evidenceSelector, assessment, preflight.assessmentCandidateCount)).select(query),
@@ -85,7 +87,7 @@ export function selectorOutput(command: AgentRuntimeTaskCommand, sameStory = fal
     confidenceScore: 0.99, rationale: "Synthetic independent evidence" })) };
 }
 
-function selectorFeed(sameStory = false, extraCandidates = 0) {
+function selectorFeed(sameStory = false, extraCandidates = 0, displayReadyLead = false) {
   const m = refreshManifest();
   const feed = new InMemoryFeedItemReadRepository();
   for (const [id, providerKey, title, bodyPreview, providerMetadata] of [
@@ -108,11 +110,12 @@ function selectorFeed(sameStory = false, extraCandidates = 0) {
       providerMetadata: { ...providerMetadata, interestQuerySnapshot: { query: "TypeScript, developer tools" } },
     }));
   }
-  for (let i = 0; i < extraCandidates; i++) {
+  for (let i = 0; i < extraCandidates + (displayReadyLead ? 1 : 0); i++) {
     feed.upsert(FeedItem.publish({ id: `synthetic-extra-${i}`, tenantId: tenantId(m.tenantId),
       workspaceId: workspaceId(m.workspaceId), interestId: "interest-ai", sourceItemId: `extra-source-${i}`,
       sourceBindingId: "extra-binding", providerKey: "hacker-news", canonicalUrl: `https://example.test/extra/${i}`,
-      title: "TypeScript compiler release improves AI coding agents",
+      title: displayReadyLead ? "Quartz debugger adds memory inspection for isolated sandboxes"
+        : "TypeScript compiler release improves AI coding agents",
       bodyPreview: "The TypeScript compiler release improves AI coding agents with a documented sandbox interface.",
       publishedAt: new Date("2026-09-03T08:00:00Z"), observedAt: new Date("2026-09-03T08:01:00Z"),
       providerMetadata: { kind: "hacker_news_story", points: 500, comments: 10 },
@@ -149,6 +152,6 @@ export function refreshSelectorAssessmentOutput(command: AgentRuntimeTaskCommand
       decision: "promote", confidence: 0.96, qualityScore: 0.94,
       interestRelevanceScore: 0.95, engagementIntegrityScore: 0.95,
       flags: [], reason: "Captured compiler details concern the configured developer tools intent",
-      evidence: [{ field: "bodyPreview", start: 0, end: quote.length, quote }], resolvedSoftFlags: [] };
+      evidence: [{ field: "bodyPreview", start: 0, end: quote.length, quote }], resolvedSoftFlags: [], readerHeadline: fixtureHeadline(candidate.untrustedSource) };
   }) };
 }

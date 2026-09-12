@@ -1,3 +1,4 @@
+import { fixtureHeadline } from "../../test/support/promotion-content-assessment";
 import type * as NodeFs from "node:fs";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier, resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions } from
   "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
@@ -68,11 +69,11 @@ describe("synthetic bounded refresh paired export", () => {
     const fixture = setup({ response: (command) => {
       if (command.purpose !== sourceContentAssessmentPurpose) return syntheticOutput(command);
       const { candidates } = JSON.parse(command.prompt) as { candidates: { candidateId: string; bindingId: string;
-        untrustedSource: { bodyPreview: string } }[] };
+        untrustedSource: { title: string; bodyPreview: string } }[] };
       return { reviews: candidates.map((c) => ({ candidateId: c.candidateId, bindingId: `${c.bindingId}-drifted`,
         decision: c.candidateId === "reject" ? "reject" : c.candidateId === "abstain" ? "needs_context" : "promote",
         confidence: 0.96, qualityScore: 0.85, interestRelevanceScore: 0.95, engagementIntegrityScore: 0.95,
-        flags: [], reason: "Synthetic concrete parser result", resolvedSoftFlags: [],
+        flags: [], reason: "Synthetic concrete parser result", resolvedSoftFlags: [], readerHeadline: fixtureHeadline(c.untrustedSource),
         evidence: [{ field: "bodyPreview", start: 0, end: c.untrustedSource.bodyPreview.length,
           quote: c.untrustedSource.bodyPreview }] })) };
     } });

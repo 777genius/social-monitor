@@ -11,7 +11,7 @@ import { context, feedItem, nativeMetadata, now, scope, v2Candidate } from "@soc
 import { SyntheticPublicationAssessmentReviewer } from
   "@social-monitor/summary/test-fixtures/synthetic-publication-assessment.spec-support";
 
-const bread = feedItem({ title: "Local bakers share their best bread recipes with neighbors",
+const bread = feedItem({ bodyPreview: "Local bakers share their best bread recipes with neighbors", title: "Local bakers share their best bread recipes with neighbors",
   providerMetadata: { ...nativeMetadata, ...context,
     query: "best", searchQuery: "best", topic: "best", topics: ["best"],
     interestQuerySnapshot: { ...context.interestQuerySnapshot, query: "best" },
@@ -33,16 +33,16 @@ const repository = (items: readonly FeedItem[], supplemental: readonly FeedItem[
   }),
 });
 // Only these explicit synthetic headline/intent pairs have positive judgments.
-// No unseen recipe/article body is invented, and unrelated intent stays pending.
+// The synthetic capture repeats the title; unrelated intent stays pending.
 const breadHeadlineReviewer = () => new SyntheticPublicationAssessmentReviewer(
   ["best", "bread recipes"].map((trustedIntent) => ({
     candidateId: "synthetic-feed", providerKey: "hacker-news",
     title: "Local bakers share their best bread recipes with neighbors",
-    bodyPreview: "", evidenceField: "title",
+    bodyPreview: "Local bakers share their best bread recipes with neighbors", evidenceField: "title",
     scope: {
       tenantId: scope.tenantId, workspaceId: scope.workspaceId,
       interestId: "synthetic-interest", sourceBindingId: "synthetic-binding",
-      sourceItemId: "synthetic-source", trustedIntent, availability: "title_only",
+      sourceItemId: "synthetic-source", trustedIntent, availability: "body_present",
     },
   })),
 );
