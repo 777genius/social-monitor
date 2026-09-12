@@ -109,6 +109,10 @@ export const rankPromotionSnapshot = async (params: {
   const sourceContentById = new Map(snapshot.sourceContent.map((content) =>
     [content.feedItemId, content] as const));
   const reviewRequests: SourceContentQualityReviewRequest[] = [];
+  const assessmentPriorityByCandidateId = new Map<string, {
+    readonly providerFamily: string;
+    readonly engagementSalience: number;
+  }>();
   const projected = snapshot.candidates.map((candidate) => {
     const item = candidate.item.toSnapshot();
     const sourceContent = sourceContentById.get(item.id);
@@ -196,6 +200,10 @@ export const rankPromotionSnapshot = async (params: {
               ? "truncated" : body.trim() ? "body_present" : "title_only",
           }),
         }));
+        assessmentPriorityByCandidateId.set(item.id, {
+          providerFamily: candidate.canonical.providerFamily,
+          engagementSalience: feedPromotionMetricStrength(candidate.canonical.metrics),
+        });
       }
       projectedItem.contentQuality = { ...quality, qualityScore: 0,
         eligibleForSummary: false, eligibleForTopRead: false, needsLlmReview: false,
@@ -204,6 +212,7 @@ export const rankPromotionSnapshot = async (params: {
     return projectedItem;
   });
   const assessed = await assessPromotionContent({ requests: reviewRequests,
+    priorityByCandidateId: assessmentPriorityByCandidateId,
     execution: command.promotionAssessmentExecution,
     observeHeadlineDiagnostic: command.observeHeadlineDiagnostic,
     reviewer: params.qualityReviewer, policy: params.qualityPolicy, clock: params.clock });

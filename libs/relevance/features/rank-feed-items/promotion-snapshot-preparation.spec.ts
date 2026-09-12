@@ -66,7 +66,7 @@ describe("promotion preparation observation", () => {
     expect(actual.value.items[0]!.feedItemId).toBe("z");
     expect(actual.value.items.map((item) => item.rank)).toEqual([1, 2, 3, 4, 5]);
     expect(observed.reviewBatch).toHaveBeenCalledTimes(1);
-    expect(observed.reviewBatch.mock.calls[0]![0].map((request) => request.candidateId)).toEqual(["a", "z"]);
+    expect(observed.reviewBatch.mock.calls[0]![0].map((request) => request.candidateId)).toEqual(["z", "a"]);
     expect(observed.feedItems.readPromotionSnapshot).toHaveBeenCalledTimes(1);
     expect(observed.feedItems.list).not.toHaveBeenCalled();
   });
