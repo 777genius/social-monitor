@@ -13,6 +13,7 @@ import {
 } from "./relevance-reader-summary-evidence.selector";
 import { authoritativeReaderSummaryProviderMetadata } from
   "../../test-fixtures/reader-summary-authoritative-provider-metadata.fixture";
+import { withDisplayReadyRanking } from "./reader-summary-display-ready-ranking.spec-support";
 
 describe("RelevanceReaderSummaryEvidenceSelector adaptive source content", () => {
   it("uses source text already sealed by the authoritative ranking snapshot", async () => {
@@ -70,7 +71,10 @@ describe("RelevanceReaderSummaryEvidenceSelector adaptive source content", () =>
         ok({
           generatedAt: "2026-07-09T09:00:00.000Z",
           profileApplied: false,
-          items: [rankedItem],
+          items: withDisplayReadyRanking([rankedItem], {
+            tenantId: "tenant-adaptive-source",
+            workspaceId: "workspace-adaptive-source",
+          }),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
