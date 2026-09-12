@@ -9,15 +9,13 @@ type ReaderSummaryScope = Readonly<{
 }>;
 
 /**
- * Keep invalid display evidence out of an otherwise publishable slate. If the
- * whole batch is unavailable, preserve it so the publication gate reports the
- * outage instead of silently turning a real-news day into NO_SIGNAL.
+ * Exclude invalid display evidence before editorial selection. A wholly
+ * unavailable batch leaves the slate empty for honest NO_SIGNAL behavior.
  */
 export const displayReadyPromotionCandidates = (
   candidates: readonly SummaryEvidenceItem[],
   scope: ReaderSummaryScope,
 ): readonly SummaryEvidenceItem[] => {
-  const ready = candidates.filter((candidate) =>
+  return candidates.filter((candidate) =>
     readerPostDisplayHeadline(candidate, scope).status === "accepted");
-  return ready.length === 0 ? candidates : ready;
 };
