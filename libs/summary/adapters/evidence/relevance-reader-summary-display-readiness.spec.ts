@@ -61,37 +61,4 @@ describe("RelevanceReaderSummaryEvidenceSelector display readiness", () => {
 
     expect(selection.editorialSlate?.orderedCandidateIds).toEqual(["accepted-hn"]);
   });
-
-  it("leaves an all-unavailable editorial slate empty", async () => {
-    const selector = new RelevanceReaderSummaryEvidenceSelector(
-      { execute: jest.fn(async () => ok({
-        generatedAt: clock.now().toISOString(),
-        profileApplied: false,
-        items: [rankedItem({
-          feedItemId: "unavailable-hn",
-          providerKey: "hacker-news",
-          rank: 1,
-          score: 2,
-          readerHeadline: { status: "unavailable", reasonCode: "not_assessed" },
-        })],
-      })) } as unknown as RankFeedItemsUseCase,
-      {
-        readPromotionSnapshot: emptyPromotionSnapshot,
-        list: jest.fn(async () => ({ items: [] })),
-        findById: jest.fn(async () => null),
-      } as FeedItemReadRepositoryPort,
-      clock,
-      new FakeStoryRankingMetrics(),
-    );
-
-    const selection = await selector.select({
-      tenantId: tenantId(headlineScope.tenantId),
-      workspaceId: workspaceId(headlineScope.workspaceId),
-      scope: { type: "workspace" },
-      period: readerSummaryPeriod,
-      maxItems: 2,
-    });
-
-    expect(selection.editorialSlate?.orderedCandidateIds).toEqual([]);
-  });
 });

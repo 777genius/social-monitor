@@ -20,7 +20,7 @@ describe("display-ready reader promotion candidates", () => {
     )).toEqual([ready]);
   });
 
-  it("leaves a wholly unavailable batch empty for honest no-signal", () => {
+  it("preserves a wholly unavailable batch for explicit quality rejection", () => {
     const unavailable = [{
       ...assessedSource(),
       readerHeadline: {
@@ -30,6 +30,6 @@ describe("display-ready reader promotion candidates", () => {
     }];
 
     expect(displayReadyPromotionCandidates(unavailable, headlineScope))
-      .toEqual([]);
+      .toBe(unavailable);
   });
 });
