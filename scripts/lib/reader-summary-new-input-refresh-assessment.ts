@@ -41,7 +41,7 @@ export type RefreshAssessmentCaptureEvent = Readonly<{
 }>;
 
 export function hasRefreshSelectableEvidence(items: readonly SummaryEvidenceItem[]): boolean {
-  return items.some((item) => isPersistedSelectableEvidence(item));
+  return items.some((item) => !isGitHubTrendingEvidence(item) && isPersistedSelectableEvidence(item));
 }
 
 // A caught error's own stage is the most specific, definitive signal of what

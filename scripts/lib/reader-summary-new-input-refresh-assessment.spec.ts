@@ -9,6 +9,30 @@ import type { guardedRefreshRuntime } from "./reader-summary-new-input-refresh-m
 import { selectorOutput, selectorWiring } from "./reader-summary-new-input-refresh-selector-composition.spec-support";
 import { publicationProbe } from "./reader-summary-new-input-refresh-model-composition.spec-support";
 import { refreshNow } from "./reader-summary-new-input-refresh.spec-support";
+import { xEvidence } from "@social-monitor/summary/adapters/evidence/reader-summary-editorial-slate.spec-support";
+
+describe("refresh preflight persisted primary evidence", () => {
+  const source = xEvidence("synthetic-primary", 0);
+  const primary = { ...source, contentQuality: { ...source.contentQuality!,
+    decision: "promote", reason: "promotion_assessment:promote" } };
+  const supplemental = { ...primary, feedItemId: "synthetic-trending", providerKey: "github-trending-page",
+    promotionFacts: { ...primary.promotionFacts!, contentKind: "github_trending" as const } };
+  const hardGated = { ...primary, contentQuality: { ...primary.contentQuality!,
+    eligibleForSummary: false, needsLlmReview: false, decision: "reject",
+    reason: "promotion_assessment_not_requested:hard_gate" } };
+
+  it("rejects persisted selectable supplemental-only evidence", () => {
+    expect(supplemental.contentQuality).toMatchObject({ eligibleForSummary: true, needsLlmReview: false });
+    expect(hasRefreshSelectableEvidence([supplemental])).toBe(false);
+    expect(hasRefreshSelectableEvidence([...Array.from({ length: 430 }, () => hardGated),
+      ...Array.from({ length: 50 }, () => supplemental)])).toBe(false);
+    expect(hasRefreshSelectableEvidence([])).toBe(false);
+  });
+
+  it.each(["primary", "mixed"])("admits %s persisted selectable evidence", (kind) => {
+    expect(hasRefreshSelectableEvidence(kind === "primary" ? [primary] : [supplemental, primary])).toBe(true);
+  });
+});
 
 afterEach(() => jest.restoreAllMocks());
 
