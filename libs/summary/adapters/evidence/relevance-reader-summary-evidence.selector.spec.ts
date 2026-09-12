@@ -1,3 +1,4 @@
+import { withDisplayReadyRanking } from "./reader-summary-display-ready-ranking.spec-support";
 import { FeedItem } from "@social-monitor/feed/domain";
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import type { RankFeedItemsCommand } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.command";
@@ -37,10 +38,10 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       },
     });
     const selector = new RelevanceReaderSummaryEvidenceSelector(
-      { execute: jest.fn(async () => ok({
+      { execute: jest.fn(async (command: RankFeedItemsCommand) => ok({
         generatedAt: systemClock.now().toISOString(),
         profileApplied: false,
-        items: [item],
+        items: withDisplayReadyRanking([item], command),
       })) } as unknown as RankFeedItemsUseCase,
       {
         readPromotionSnapshot: emptyPromotionSnapshot,
@@ -132,7 +133,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
             blockedProviderCount: 0,
             signals: ["provider:reddit", "keyword:agent"],
           },
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
@@ -243,7 +244,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
@@ -304,10 +305,10 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         }));
       const metrics = new FakeStoryRankingMetrics();
       const selector = new RelevanceReaderSummaryEvidenceSelector(
-        { execute: jest.fn(async () => ok({
+        { execute: jest.fn(async (command: RankFeedItemsCommand) => ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: [primary, ...supplemental],
+          items: withDisplayReadyRanking([primary, ...supplemental], command),
         })) } as unknown as RankFeedItemsUseCase,
         {
           readPromotionSnapshot: emptyPromotionSnapshot,
@@ -384,7 +385,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
@@ -443,7 +444,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
@@ -480,15 +481,15 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
 
   it("does not refill ranked evidence from provider repository lanes", async () => {
     const rankFeedItems = {
-      execute: jest.fn(async () => ok({
+      execute: jest.fn(async (command: RankFeedItemsCommand) => ok({
         generatedAt: clock.now().toISOString(),
         profileApplied: false,
-        items: [rankedItem({
+        items: withDisplayReadyRanking([rankedItem({
           feedItemId: "ranked-hn-only",
           providerKey: "hacker-news",
           rank: 1,
           score: 3,
-        })],
+        })], command),
       })),
     } as unknown as RankFeedItemsUseCase;
     const feedItems: FeedItemReadRepositoryPort = {
@@ -549,7 +550,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
@@ -649,10 +650,10 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     ];
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       {
-        execute: jest.fn(async () => ok({
+        execute: jest.fn(async (command: RankFeedItemsCommand) => ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems,
+          items: withDisplayReadyRanking(rankedItems, command),
         })),
       } as unknown as RankFeedItemsUseCase,
       {
@@ -701,7 +702,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: true,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
@@ -806,7 +807,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
@@ -872,7 +873,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
@@ -959,7 +960,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;

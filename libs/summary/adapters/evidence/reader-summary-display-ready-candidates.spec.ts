@@ -20,7 +20,7 @@ describe("display-ready reader promotion candidates", () => {
     )).toEqual([ready]);
   });
 
-  it("preserves a wholly unavailable batch for explicit quality rejection", () => {
+  it("rejects a wholly unavailable selected batch before generation", () => {
     const unavailable = [{
       ...assessedSource(),
       readerHeadline: {
@@ -29,7 +29,10 @@ describe("display-ready reader promotion candidates", () => {
       },
     }];
 
-    expect(displayReadyPromotionCandidates(unavailable, headlineScope))
-      .toBe(unavailable);
+    expect(() => displayReadyPromotionCandidates(unavailable, headlineScope))
+      .toThrow("Reader summary selected headlines unavailable");
+  });
+  it("preserves genuine absence of selected signal", () => {
+    expect(displayReadyPromotionCandidates([], headlineScope)).toEqual([]);
   });
 });
