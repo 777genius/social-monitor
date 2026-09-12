@@ -221,6 +221,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     const editorialSlate = composeReaderSummaryEditorialSlate({
       selection: deterministicPromotionSelection,
       candidates: promotionPolicyItems,
+      displayScope: params,
     });
     const deterministicFinalSelection = materializeReaderSummaryEditorialSlate({
       selection: deterministicPromotionSelection,

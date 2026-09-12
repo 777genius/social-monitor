@@ -15,7 +15,7 @@ describe("fresh publication promotion assessment composition", () => {
       ? jest.spyOn(OpenAiSourceContentQualityReviewerAdapter.prototype, "reviewBatch").mockImplementation(accepting.reviewBatch)
       : jest.spyOn(AgentRuntimeSourceContentQualityReviewerAdapter.prototype, "reviewBatch");
     const execute = jest.fn(async (request: Parameters<typeof attestRefreshExecution>[0]) =>
-      attestRefreshExecution(request, outputFor(request)));
+      attestRefreshExecution(request, outputFor(request, true)));
     const client = refreshTestRuntimeClient(execute);
     const item = fixture("composition", "reddit", { publishedAt: new Date(cutoff.getTime() - 1000) });
     const canonical = classifyFeedPromotionEligibility(item.toSnapshot());

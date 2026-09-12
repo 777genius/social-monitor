@@ -1,3 +1,4 @@
+import { fixtureHeadline } from "../../test/support/promotion-content-assessment";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -87,11 +88,11 @@ export function pairedFixture(options: { capture?: boolean; path?: string; suppl
 export function syntheticOutput(command: AgentRuntimeTaskCommand, relationCase = false): Record<string, unknown> {
   if (command.purpose === sourceContentAssessmentPurpose) {
     const { candidates } = JSON.parse(command.prompt) as { candidates: { candidateId: string; bindingId: string;
-      untrustedSource: { bodyPreview: string } }[] };
+      untrustedSource: { title: string; bodyPreview: string } }[] };
     return { reviews: candidates.map((c) => ({ candidateId: c.candidateId, bindingId: c.bindingId,
       decision: c.candidateId === "reject" && !relationCase ? "reject" : c.candidateId === "abstain" ? "needs_context" : "promote",
       confidence: 0.96, qualityScore: 0.85, interestRelevanceScore: 0.95, engagementIntegrityScore: 0.95,
-      flags: [], reason: "Synthetic concrete parser result", resolvedSoftFlags: [],
+      flags: [], reason: "Synthetic concrete parser result", resolvedSoftFlags: [], readerHeadline: fixtureHeadline(c.untrustedSource),
       evidence: [{ field: "bodyPreview", start: 0, end: c.untrustedSource.bodyPreview.length, quote: c.untrustedSource.bodyPreview }] })) };
   }
   const { pairs } = JSON.parse(command.prompt) as { pairs: { leftFeedItemId: string; rightFeedItemId: string }[] };

@@ -1,3 +1,4 @@
+import { bindPromotionAssessment, promotionWireCandidate } from "@social-monitor/relevance/adapters/model/promotion-review-wire";
 import { classifyFeedPromotionEligibility, FeedItem, rankReaderPromotionV2 } from "@social-monitor/feed/domain";
 import { FixedClock, tenantId, workspaceId, type Clock, type JsonObject } from "@social-monitor/shared-kernel";
 import { mapRankedItem } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence-support";
@@ -67,4 +68,16 @@ export const run = async (items: readonly FeedItem[], reviewer?: SourceContentQu
   const candidates = result.value.items.map((item) => readerSummaryPromotionV2Candidate(mapRankedItem(item, cutoff), selection)!);
   return { items: result.value.items, candidates, ranking: rankReaderPromotionV2(candidates) };
 };
-export const accepting: SourceContentQualityReviewerPort = { reviewBatch: async (requests) => requests.map((r) => review(r)) };
+// Positive plumbing fixtures attest the exact reviewed title and complete body.
+export const fixtureHeadline = (source: { title: string; bodyPreview?: string }) => ({
+  status: "available", kind: "claim", text: source.title, confidence: 0.95,
+  support: [{ field: "title", start: 0, end: source.title.length, quote: source.title }],
+  qualifications: [], wholeInput: { titleLength: source.title.length,
+    bodyLength: (source.bodyPreview ?? "").length, qualificationJudgment: "none" },
+});
+export const accepting: SourceContentQualityReviewerPort = { reviewBatch: async (requests) => requests.map((r) => {
+  const result = review(r);
+  return { ...result, assessment: bindPromotionAssessment({ bindingId: promotionWireCandidate(r).bindingId,
+    evidence: result.assessment!.evidence as unknown as JsonObject[], resolvedSoftFlags: [],
+    readerHeadline: fixtureHeadline(r) }, r) };
+}) };
