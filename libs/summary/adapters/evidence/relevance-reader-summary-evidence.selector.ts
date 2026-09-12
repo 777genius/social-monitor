@@ -32,6 +32,9 @@ import {
   readerSummaryPeriodQuery,
 } from "./relevance-reader-summary-evidence-support";
 import {
+  displayReadyPromotionCandidates,
+} from "./reader-summary-display-ready-candidates";
+import {
   promotionPolicySelection,
   promotionSupportCandidates,
 } from "./relevance-reader-summary-promotion-candidates";
@@ -104,8 +107,11 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       params.period,
       params.timestampPolicy,
     );
-    const promotionCandidates = expandedRankedItems.filter((item) =>
-      item.promotionFacts !== undefined && !isGitHubTrendingEvidence(item));
+    const promotionCandidates = displayReadyPromotionCandidates(
+      expandedRankedItems.filter((item) =>
+        item.promotionFacts !== undefined && !isGitHubTrendingEvidence(item)),
+      params,
+    );
     const promotionCandidateIds = new Set(
       promotionCandidates.map((item) => item.feedItemId),
     );
