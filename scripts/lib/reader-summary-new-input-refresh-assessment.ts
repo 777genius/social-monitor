@@ -1,5 +1,5 @@
 import type { SummaryEvidenceItem, SummaryEvidenceSelection } from "@social-monitor/summary/domain";
-import { isGitHubTrendingEvidence } from "@social-monitor/summary/domain";
+import { isGitHubTrendingEvidence, primaryReaderSummaryEvidence } from "@social-monitor/summary/domain";
 import type { ReaderSummaryEvidenceSelectorPort } from "@social-monitor/summary/ports";
 import type { Clock } from "@social-monitor/shared-kernel";
 import { readerPromotionProviderFamily } from "@social-monitor/shared-kernel";
@@ -82,6 +82,11 @@ export function createRefreshAssessmentReviewer(input: {
   // Bind the complete sanitized source representation independently of the
   // capped assessment request, for social and exempt GitHub evidence alike.
   const sourceTextBindings = new Set((input.canonicalEvidence ?? []).map(sourceTextBinding));
+  // Trending display rows are appended outside the primary editorial slate.
+  // Their canonical quality need not be promotion-eligible, but cannot change.
+  const supplementalBindings = new Set((input.canonicalEvidence ?? [])
+    .filter((item) => isGitHubTrendingEvidence(item) && item.promotionFacts?.contentKind === "github_trending")
+    .map(supplementalBinding));
   const policy = new SourceContentQualityPolicy();
   const seen = new Map<string, SourceContentQualityReviewRequest>();
   const eligible = new Map<string, { request: SourceContentQualityReviewRequest;
@@ -127,21 +132,30 @@ export function createRefreshAssessmentReviewer(input: {
       if (!Number.isSafeInteger(expected) || expected < 0 || required !== completed || completed !== seen.size) fail("binding");
       if (selection === undefined) return;
       // An empty bounded/uncertain result cannot support exhaustive no-signal.
-      if (selection.selectedEvidence.length === 0 && (completed < expected || abstained > 0)) {
+      if (primaryReaderSummaryEvidence(selection).selectedEvidence.length === 0 && (completed < expected || abstained > 0)) {
         throw new Error("Refresh assessment remains pending; cannot publish exhaustive no-signal");
       }
       for (const item of selection.selectedEvidence) {
         if (!sourceTextBindings.has(sourceTextBinding(item))) fail("binding");
-        const quality = item.contentQuality;
-        if (!quality?.eligibleForSummary || quality.needsLlmReview ||
-            !["promote", "keep", "downrank"].includes(quality.decision) ||
-            quality.reason.startsWith("promotion_assessment_pending:") ||
-            quality.reason.startsWith("promotion_assessment_not_requested:")) return fail("binding");
         // An attempted social identity cannot acquire an exemption by relabeling.
         const recorded = seen.has(item.feedItemId) || [...seen.values()].some((request) =>
           request.promotion?.sourceItemId === item.sourceItemId &&
           request.promotion?.sourceBindingId === item.sourceBindingId &&
           request.promotion?.interestId === item.interestId);
+        if (!recorded && isGitHubTrendingEvidence(item)) {
+          // A changed supplemental row must not fall through to a weaker exemption.
+          if (!supplementalBindings.has(supplementalBinding(item))) fail("binding");
+          const slate = selection.editorialSlate;
+          if (!slate || [...slate.top, ...slate.additional].some((entry) => entry.candidateId === item.feedItemId) ||
+              selection.clusters.some((cluster) => cluster.representativeFeedItemId === item.feedItemId ||
+                cluster.duplicateFeedItemIds.includes(item.feedItemId))) fail("binding");
+          continue;
+        }
+        const quality = item.contentQuality;
+        if (!quality?.eligibleForSummary || quality.needsLlmReview ||
+            !["promote", "keep", "downrank"].includes(quality.decision) ||
+            quality.reason.startsWith("promotion_assessment_pending:") ||
+            quality.reason.startsWith("promotion_assessment_not_requested:")) return fail("binding");
         if (!recorded && persistedAssessmentBindings.has(exemptionBinding(item))) continue;
         const canonicalExemption = !recorded && exemptBindings.has(exemptionBinding(item));
         if (canonicalExemption) {
@@ -257,6 +271,16 @@ function exemptionBinding(item: SummaryEvidenceItem): string {
   return JSON.stringify([item.feedItemId, item.sourceItemId, item.sourceBindingId,
     item.interestId, item.providerKey, item.canonicalUrl, item.title, item.bodyPreview,
     item.promotionFacts, item.contentQuality]);
+}
+
+// Snapshot every remaining evidence field used by supplemental display or lineage.
+// Serialize at construction so later canonical-object mutations cannot rewrite authority.
+function supplementalBinding(item: SummaryEvidenceItem): string {
+  return JSON.stringify([exemptionBinding(item), item.providerMetricLabels,
+    item.providerName, item.readerActionKind, item.score, item.whyImportant,
+    item.publishedAt, item.observedAt, item.previewMedia, item.matchedRules,
+    item.authorHandle, item.sourceOriginUrl, item.conversationContext,
+    item.storyKeyHint, item.providerMetricSummary, item.readerHeadline]);
 }
 
 function sourceTextBinding(item: SummaryEvidenceItem): string {
