@@ -170,6 +170,36 @@ describe("Reader Summary Promotion V2 historical runner", () => {
     expect(scenario.rebuild).not.toHaveBeenCalled();
   });
 
+  it("records a verified no-op when a stronger source survives a stale lower-authority rebuild", async () => {
+    const scenario = harness();
+    scenario.durableState = {
+      state: "stale-source-preserved",
+      jobId: "00000000-0000-4000-8000-000000000311",
+      activePublicationId: output().previousPublicationId,
+      previousPublicationId: output().previousPublicationId,
+      reason:
+        "stronger_active_publication_preserved_after_lower_authority_stale",
+    };
+
+    const [receipt] = await scenario.run({ resume: true });
+
+    expect(receipt).toMatchObject({
+      status: "noop",
+      reason:
+        "stronger_active_publication_preserved_after_lower_authority_stale",
+      retrySafety: "not-applicable",
+      outputIdentity: null,
+      pointerSwitch: {
+        attempted: true,
+        switched: false,
+        previousPublicationId: output().previousPublicationId,
+        activePublicationId: output().previousPublicationId,
+      },
+    });
+    expect(scenario.rebuild).not.toHaveBeenCalled();
+    expect(scenario.verifyCompleted).not.toHaveBeenCalled();
+  });
+
   it("records interruption before pointer switch without fabricating success", async () => {
     const scenario = harness();
     scenario.mutationOutcome = {

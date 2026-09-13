@@ -47,6 +47,7 @@ export type HistoricalPromotionDurableState = Readonly<{
     | "requested"
     | "in-flight"
     | "failed"
+    | "stale-source-preserved"
     | "quality-rejected"
     | "complete-active"
     | "complete-detached"
@@ -380,6 +381,32 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
           "requires-durable-reconciliation",
         );
       }
+    }
+    if (durableState.state === "stale-source-preserved") {
+      if (!await this.authorityStillMatches(
+        date,
+        bundle!.timestampPolicy,
+        classification.authorityInspectionDigest,
+      )) {
+        return pendingReceipt(
+          base,
+          "authority_observation_drifted_before_preserved_source_noop",
+          "safe-before-paid-operation",
+        );
+      }
+      return {
+        ...base,
+        status: "noop",
+        reason: "stronger_active_publication_preserved_after_lower_authority_stale",
+        retrySafety: "not-applicable",
+        pointerSwitch: {
+          authority: "PrismaReaderSummaryPublication.publish_reader_summary",
+          attempted: true,
+          switched: false,
+          previousPublicationId: durableState.previousPublicationId ?? null,
+          activePublicationId: durableState.activePublicationId ?? null,
+        },
+      };
     }
     if (durableState.state === "complete-detached" ||
         durableState.state === "ambiguous") {
