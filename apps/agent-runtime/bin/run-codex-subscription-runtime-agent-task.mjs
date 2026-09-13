@@ -253,6 +253,18 @@ function sourceContentAssessmentOutputSchemas(task) {
 function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
   let executor;
   let disposed = false;
+  let providerEffectPossible = false;
+  const assessmentObservability = {
+    ...progress,
+    emit(event) {
+      // Latch before provider work, including session refresh. Missing events
+      // alone never authorize fallback: require the typed admission error below.
+      if (event?.name === "session.read.started" || event?.name?.startsWith("provider.")) {
+        providerEffectPossible = true;
+      }
+      progress?.emit(event);
+    },
+  };
 
   return {
     async start() {},
@@ -338,23 +350,37 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
               retryOnCapacity: false, retryOnAccountUnavailable: false,
               retryOnReconnectRequired: false, retryUnknownCleanWorkspace: false,
             } : {}),
+            ...(isSourceContentAssessment ? { continuationMode: "disabled" } : {}),
           },
           accounts,
           // Assessment never consumes native startup guidance or continuation.
           ...(isSourceContentAssessment ? {
-            observability: progress, shutdownTimeoutMs: 1_000,
+            observability: assessmentObservability, shutdownTimeoutMs: 1_000,
             controlInbox: { consumeForContinuation: async () => undefined },
           } : {}),
         });
         lifecycle.checkpoint();
         progress?.mark("executor_run", "started");
-        const result = await executor.run({
+        const runInput = {
           ...job,
           taskId,
           originalPrompt: job.prompt,
           effectMode: "read_only",
           maxAccountCycles: 1,
-        });
+        };
+        let result = await executor.run(runInput);
+        // Keep the same executor, task journal and round-robin cursor. Grant
+        // exactly one more admission attempt only after proven pre-provider
+        // rejection; the executor itself must never retry a provider failure.
+        for (let attempt = 1; isSourceContentAssessment && attempt < accounts.length; attempt++) {
+          if (providerEffectPossible || !isPreProviderCapacityFailure(result, attempt)) break;
+          lifecycle.checkpoint();
+          if (disposed || job.abortSignal?.aborted) break;
+          result = await executor.run({
+            ...runInput,
+            safeExecutionPolicy: { maxAttempts: attempt + 1 },
+          });
+        }
         progress?.mark("executor_run", "completed");
         if (result.status === "completed") {
           return result.result;
@@ -384,6 +410,27 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
       await executor?.dispose();
     },
   };
+}
+
+function isPreProviderCapacityFailure(result, attemptCount) {
+  if (result.status !== "waiting_capacity" ||
+      !["capacity_unavailable", "account_unavailable"].includes(result.reason) ||
+      result.attempts?.length !== attemptCount) return false;
+  if (!result.attempts.every((attempt) =>
+    attempt.status === "blocked" &&
+    ["capacity_unavailable", "account_unavailable"].includes(attempt.failureReason) &&
+    attempt.workspaceDirtyBefore === false && attempt.workspaceDirtyAfter === false &&
+    attempt.changedFiles?.length === 0 && attempt.usage === undefined &&
+    attempt.lastOutputSummary === undefined)) return false;
+  let error = result.error;
+  // Only unwrap the pool's immediate slot wrapper, never a provider cause chain.
+  if (error instanceof SubscriptionWorkerError &&
+      error.code === "subscription_worker_pool_slot_failed" && error.usage === undefined) {
+    error = error.cause;
+  }
+  return error instanceof SubscriptionWorkerError && error.cause === undefined &&
+    error.usage === undefined &&
+    ["subscription_worker_account_unavailable", "subscription_worker_pool_capacity_unavailable"].includes(error.code);
 }
 
 async function createAuthMaterializationRoot(stateRootDir, taskId) {
