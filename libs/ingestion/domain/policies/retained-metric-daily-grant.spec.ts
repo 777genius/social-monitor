@@ -1,6 +1,6 @@
 import { retainedMetricDailyAuthorities, retainedMetricDailyGrant } from "./retained-metric-daily-grant";
 
-it("supersedes only the spent August 30 authority with one fixed operation and fresh evidence path", () => {
+it("preserves the August 30 superseding authority with one fixed operation and fresh evidence path", () => {
   const grant = retainedMetricDailyGrant("2026-08-30")!;
   expect(grant).toEqual({
     date: "2026-08-30",
@@ -19,22 +19,22 @@ it("supersedes only the spent August 30 authority with one fixed operation and f
   expect(retainedMetricDailyAuthorities.some((a) => String(a.operationId) === "036aa064-a511-5e4a-a4b0-72c14b0e9844")).toBe(false);
 });
 
-it("preserves all six other daily authorities exactly", () => {
+it("pins four fresh single-use authorities and preserves September 3 and 4 exactly", () => {
   expect(retainedMetricDailyAuthorities.filter((a) => a.date !== "2026-08-30")).toEqual([
   {
     "date": "2026-08-31",
-    "operationId": "b8f0c1b6-8fc1-5a75-b9ba-751b58e58ee6",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-08-31"
+    "operationId": "9a4ae7f7-a980-4bc8-84ab-dae3a554979b",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260913-2026-08-31"
   },
   {
     "date": "2026-09-01",
-    "operationId": "7b851fad-99fc-534d-b83b-b11752892569",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-09-01"
+    "operationId": "1ce8c0b0-e6eb-4398-8154-7f70b98e666a",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260913-2026-09-01"
   },
   {
     "date": "2026-09-02",
-    "operationId": "f1f6e28f-5098-537a-a579-7772005dca93",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-09-02"
+    "operationId": "c778513e-5f8f-40fb-a0fb-d3d04ebbcf0d",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260913-2026-09-02"
   },
   {
     "date": "2026-09-03",
@@ -48,8 +48,8 @@ it("preserves all six other daily authorities exactly", () => {
   },
   {
     "date": "2026-09-05",
-    "operationId": "98a0c5da-4e3b-5c8f-956b-8c982d6fd7ce",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-09-05"
+    "operationId": "28a3a18f-f88a-4545-b964-b0058e42452e",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260913-2026-09-05"
   }
 ]);
   expect(retainedMetricDailyAuthorities).toHaveLength(7);
