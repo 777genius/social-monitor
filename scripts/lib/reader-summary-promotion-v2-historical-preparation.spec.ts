@@ -192,7 +192,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
   });
 
   it.each([
-    ["valid-v2", "active_publication_already_valid_v2"],
+    ["valid-v2", "active_publication_already_uses_current_ranking_policy"],
     ["valid-no-signal", "active_publication_is_explicit_no_signal"],
   ] as const)("returns a verified no-op before capture for %s", async (
     tupleKind,
@@ -207,6 +207,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
         readActiveSource: async () => ({
           ...await dependencies.preparation.readActiveSource(),
           tupleKind,
+          rankingPolicyVersion: "story_ranking_v11",
         }),
         captureDataset,
       },
@@ -221,6 +222,39 @@ describe("historical Promotion V2 active-publication preparation", () => {
       authoritativeInputDigest: null,
     });
     expect(captureDataset).not.toHaveBeenCalled();
+  });
+
+  it("prepares an otherwise valid V2 publication built by an older ranking policy", async () => {
+    const dependencies = preparationDependencies();
+    const captureDataset = jest.fn(dependencies.preparation.captureDataset);
+    const preparation = new ReaderSummaryPromotionV2HistoricalPreparation({
+      authority: dependencies.authority,
+      preparation: {
+        ...dependencies.preparation,
+        readActiveSource: async () => ({
+          ...await dependencies.preparation.readActiveSource(),
+          tupleKind: "valid-v2",
+          rankingPolicyVersion: "reader_promotion_policy.v2",
+        }),
+        captureDataset,
+      },
+      clock: () => now,
+    });
+
+    const [outcome] = await preparation.prepare({
+      dates: [date], batchSize: 1, timestampPolicy: "observed_at",
+    });
+
+    expect(outcome).toMatchObject({
+      status: "prepared",
+      reason: "active_publication_and_canonical_dataset_captured",
+      sourcePublication: {
+        tupleKind: "valid-v2",
+        rankingPolicyVersion: "reader_promotion_policy.v2",
+      },
+    });
+    expect(outcome?.authoritativeInputDigest).toMatch(/^[0-9a-f]{64}$/u);
+    expect(captureDataset).toHaveBeenCalledTimes(1);
   });
 
   it("fails an unknown active version before creating a rebuild identity", async () => {
@@ -279,6 +313,7 @@ const preparationDependencies = () => ({
       reportSha256: "a".repeat(64),
       proofSha256: "b".repeat(64),
       tupleKind: "strict-v1" as const,
+      rankingPolicyVersion: "story_ranking_v10",
     }),
     readGenerationAuthority: async () =>
       historicalPromotionGenerationAuthority({

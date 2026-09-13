@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import { currentReaderSummaryPromptRelease } from
   "@social-monitor/summary/adapters/model/openai-responses-reader-summary-prompt";
+import { STORY_RANKING_POLICY_V1 } from
+  "@social-monitor/summary/domain/policies/story-ranking-policy";
 
 import type { HistoricalPromotionGenerationAuthority } from
   "./reader-summary-promotion-v2-historical-input";
@@ -99,7 +101,7 @@ export const historicalPromotionGenerationAuthority = (input: {
       input.env.READER_SUMMARY_EVAL_DATASET_VERSION,
       "reader_summary.eval.mvp.v1",
     ),
-    rankingPolicyVersion: "story_ranking_v10",
+    rankingPolicyVersion: STORY_RANKING_POLICY_V1.version,
     promotionPolicyVersion: "reader_post_promotion.v2",
     maxEvidenceItems: 120,
     maxGeneratedStories: 15,
