@@ -17,6 +17,7 @@ const noSignal = {
 const expected = {
   kind: "valid-no-signal" as const,
   noSignal: true,
+  rankingPolicyVersion: "story_ranking_v10",
   orderedLanes: { top: [], additional: [] },
   citationCount: 0,
 };

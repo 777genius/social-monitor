@@ -298,14 +298,17 @@ async function main(): Promise<void> {
     const baseReaderSummaryPolicies = new PrismaReaderSummaryPolicyRepository(
       summaryConnection,
     );
-    const promotionPolicyGuard = promotionRebuild === undefined
+    const promotionGenerationAuthority = promotionRebuild === undefined
+      ? null
+      : parseHistoricalPromotionGenerationAuthority(
+            readEnv(historicalPromotionGenerationAuthorityJsonEnv),
+            readEnv(historicalPromotionGenerationAuthoritySha256Env),
+          );
+    const promotionPolicyGuard = promotionGenerationAuthority === null
       ? null
       : new HistoricalPromotionPolicyGuard(
           baseReaderSummaryPolicies,
-          parseHistoricalPromotionGenerationAuthority(
-            readEnv(historicalPromotionGenerationAuthorityJsonEnv),
-            readEnv(historicalPromotionGenerationAuthoritySha256Env),
-          ).policy,
+          promotionGenerationAuthority.policy,
         );
     const readerSummaryPolicies = promotionPolicyGuard ??
       baseReaderSummaryPolicies;
@@ -407,10 +410,11 @@ async function main(): Promise<void> {
           );
     const evidenceSelector = promotionPolicyGuard === null
       ? baseEvidenceSelector
-      : new HistoricalPromotionPolicyGuardedEvidenceSelector(
-          baseEvidenceSelector,
-          promotionPolicyGuard,
-        );
+        : new HistoricalPromotionPolicyGuardedEvidenceSelector(
+            baseEvidenceSelector,
+            promotionPolicyGuard,
+            promotionGenerationAuthority!.execution.rankingPolicyVersion,
+          );
     const durablePublication = new PrismaReaderSummaryPublication(
       summaryConnection,
       datasetGuard === null

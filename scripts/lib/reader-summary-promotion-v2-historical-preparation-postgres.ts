@@ -102,6 +102,9 @@ export class PostgresHistoricalPromotionPreparationReader
       reportSha256: requiredSha256(row.reportSha256),
       proofSha256: requiredSha256(row.proofSha256),
       tupleKind: tuple.kind,
+      rankingPolicyVersion: requiredRankingPolicyVersion(
+        tuple.rankingPolicyVersion,
+      ),
     };
   }
 
@@ -166,6 +169,14 @@ const requiredSha256 = (value: string): string => {
   const normalized = value.trim();
   if (!/^[0-9a-f]{64}$/u.test(normalized)) {
     throw new Error("Historical preparation publication proof is invalid");
+  }
+  return normalized;
+};
+
+const requiredRankingPolicyVersion = (value: string | undefined): string => {
+  const normalized = value?.trim();
+  if (normalized === undefined || normalized.length === 0) {
+    throw new Error("Historical preparation ranking policy version is missing");
   }
   return normalized;
 };

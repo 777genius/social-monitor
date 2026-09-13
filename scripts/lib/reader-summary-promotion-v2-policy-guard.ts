@@ -60,6 +60,7 @@ implements ReaderSummaryEvidenceSelectorPort {
   constructor(
     private readonly delegate: ReaderSummaryEvidenceSelectorPort,
     private readonly policies: HistoricalPromotionPolicyGuard,
+    private readonly rankingPolicyVersion: string,
   ) {}
 
   async select(
@@ -70,6 +71,10 @@ implements ReaderSummaryEvidenceSelectorPort {
       workspaceId: query.workspaceId,
       scope: query.scope,
     });
-    return this.delegate.select(query);
+    const selection = await this.delegate.select(query);
+    return {
+      ...selection,
+      rankingPolicyVersion: this.rankingPolicyVersion,
+    };
   }
 }
