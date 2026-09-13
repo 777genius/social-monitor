@@ -1,7 +1,7 @@
 import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { IdGenerator } from "@social-monitor/shared-kernel";
-import { refreshBytesHash, refreshDates, refreshHash, refreshKeyPrefix, refreshScope } from
+import { assertRefreshManifest, type RefreshManifest, refreshBytesHash, refreshDates, refreshHash, refreshKeyPrefix, refreshScope } from
   "./reader-summary-new-input-refresh-manifest";
 
 /** Operator-reviewed statement that one consumed new-input-refresh attempt is
@@ -40,8 +40,23 @@ export type RefreshPreProviderReconciliationEvidence = RefreshReconciliationIden
     }>[];
   }>;
 }>;
+/** Journal-only proof is limited to assessment failures at current authority.
+ * attemptSha256 binds the exact timestamped journal row, not a capture event. */
+export type RefreshCurrentAuthorityReconciliationEvidence = RefreshReconciliationIdentity & Readonly<{
+  reason: "consumed_job_without_provider_invocation";
+  invocation: Readonly<{
+    evidenceKind: "journal_current_authority";
+    journalPath: string; manifestPath: string; journalSha256: string;
+    invocationConsumedCount: 0; delegatedInvocationCount: 0; providerUsageReported: false;
+    attempts: readonly Readonly<{
+      requestId: string; purpose: string; requestSha256: string;
+      attemptSha256: string; failedAt: string;
+      delegated: false; preDelegationFailureStage: "current_authority";
+    }>[];
+  }>;
+}>;
 export type RefreshReconciliationEvidence =
-  RefreshProviderReconciliationEvidence | RefreshPreProviderReconciliationEvidence;
+  RefreshProviderReconciliationEvidence | RefreshPreProviderReconciliationEvidence | RefreshCurrentAuthorityReconciliationEvidence;
 
 export const refreshReconciliationAccounting = Object.freeze({
   summaryGenerations: 0, publications: 0, artifacts: 0,
@@ -86,8 +101,12 @@ export function assertRefreshReconciliationEvidence(
       "manifestSha256", "reason", "invocation"])) {
       throw new Error("Refresh reconciliation pre-provider identity is invalid");
     }
-    assertPreProviderInvocation(evidence.invocation);
-    assertPreProviderArtifacts(evidence);
+    if (evidence.invocation && "evidenceKind" in evidence.invocation) {
+      assertCurrentAuthorityArtifacts(evidence as RefreshCurrentAuthorityReconciliationEvidence);
+      return;
+    }
+    assertPreProviderInvocation(evidence.invocation as RefreshPreProviderReconciliationEvidence["invocation"]);
+    assertPreProviderArtifacts(evidence as RefreshPreProviderReconciliationEvidence);
     return;
   }
   const invocation = evidence.invocation;
@@ -283,6 +302,115 @@ function assertPreProviderArtifacts(e: RefreshPreProviderReconciliationEvidence)
   if (failures.size !== requests.size || v.attempts.some((attempt) =>
     Date.parse(attempt.startedAt) < Date.parse(String(consumed[0]!.at)) ||
     Date.parse(attempt.failedAt) > Date.parse(String(stopped[0]!.at)))) invalid();
+}
+
+function assertCurrentAuthorityArtifacts(e: RefreshCurrentAuthorityReconciliationEvidence): void {
+  const invalid = (): never => { throw new Error("Refresh reconciliation current-authority journal integrity is invalid"); };
+  const object = (value: unknown): Record<string, unknown> => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return invalid();
+    return value as Record<string, unknown>;
+  };
+  const exact = (value: object, keys: readonly string[]) =>
+    onlyKeys(value, keys) && Object.keys(value).length === keys.length;
+  const immutable = (path: string, hash: string) => {
+    if (typeof path !== "string" || !path.startsWith("/") || !sha256.test(hash)) return invalid();
+    const absolute = resolve(path), stat = lstatSync(absolute);
+    if (realpathSync(absolute) !== absolute || !stat.isFile() || stat.nlink !== 1 ||
+        (stat.mode & 0o222) !== 0) return invalid();
+    const bytes = readFileSync(absolute);
+    if (refreshBytesHash(bytes) !== hash) return invalid();
+    return bytes.toString("utf8");
+  };
+  const hasProviderEvidence = (value: unknown): boolean => {
+    if (!value || typeof value !== "object") return false;
+    return Object.entries(value).some(([key, child]) =>
+      ["tokens", "usage", "attestation", "inputTokens", "outputTokens", "totalTokens"].includes(key) ||
+      (key === "delegated" && child !== false) || hasProviderEvidence(child));
+  };
+  const v = e.invocation;
+  if (!exact(v, ["evidenceKind", "journalPath", "manifestPath", "journalSha256",
+    "invocationConsumedCount", "delegatedInvocationCount", "providerUsageReported", "attempts"]) ||
+      v.evidenceKind !== "journal_current_authority" || v.invocationConsumedCount !== 0 ||
+      v.delegatedInvocationCount !== 0 || v.providerUsageReported !== false ||
+      !Array.isArray(v.attempts) || v.attempts.length === 0 || v.attempts.length > 6) invalid();
+  const manifest = object(JSON.parse(immutable(v.manifestPath, e.manifestSha256)));
+  if (manifest.format !== "reader-summary-seven-day-new-input-v1" || manifest.operation !== e.operation ||
+      manifest.date !== e.date || manifest.tenantId !== e.tenantId || manifest.workspaceId !== e.workspaceId ||
+      !isoInstant(manifest.observedThrough)) invalid();
+  const text = immutable(v.journalPath, v.journalSha256);
+  if (!text.endsWith("\n")) invalid();
+  const rows = text.slice(0, -1).split("\n").map((line) => {
+    const row = object(JSON.parse(line));
+    // The runtime writes JSON.stringify rows. Require those exact bytes so
+    // duplicate members or ambiguous JSON encodings cannot hide evidence.
+    if (JSON.stringify(row) !== line) invalid();
+    return row;
+  });
+  const attempts = new Map<string, typeof v.attempts[number]>();
+  for (const attempt of v.attempts) {
+    if (!exact(object(attempt), ["requestId", "purpose", "requestSha256", "attemptSha256", "failedAt",
+      "delegated", "preDelegationFailureStage"]) || !nonempty(attempt.requestId) ||
+        attempts.has(attempt.requestId) ||
+        attempt.purpose !== "social_monitor.relevance.assess_source_content.v1" ||
+        !sha256.test(attempt.requestSha256) || !sha256.test(attempt.attemptSha256) ||
+        !isoInstant(attempt.failedAt) || attempt.delegated !== false ||
+        attempt.preDelegationFailureStage !== "current_authority") invalid();
+    attempts.set(attempt.requestId, attempt);
+  }
+  // Require the complete lifecycle, with no extra events anywhere in this
+  // reviewed tape. Historical/mixed tapes are deliberately not this variant.
+  const statuses = ["before", "admission", "preflight", "operation_consumed",
+    ...v.attempts.map(() => "requires_reconciliation"), "stopped_requires_reconciliation"];
+  if (rows.length !== statuses.length) invalid();
+  let previousAt = -Infinity;
+  const seen = new Set<string>();
+  rows.forEach((row, index) => {
+    const event = object(row.event);
+    if (hasProviderEvidence(event) || !exact(row, ["at", "event"]) || !isoInstant(row.at) || Date.parse(String(row.at)) < previousAt ||
+        event.operation !== e.operation || event.status !== statuses[index]) invalid();
+    previousAt = Date.parse(String(row.at));
+    const keys: Record<string, readonly string[]> = {
+      before: ["observedThrough", "prior", "countsBefore"], admission: ["admissionState", "reconciled"],
+      preflight: ["assessmentCandidateCount", "plannedSummaryGenerations"], operation_consumed: ["jobId"],
+      requires_reconciliation: ["requestId", "purpose", "requestSha256", "observedThrough", "model",
+        "reasoningEffort", "delegated", "preDelegationFailureStage"],
+      stopped_requires_reconciliation: ["manifestSha256"],
+    };
+    if (!exact(event, ["status", "operation", ...keys[String(event.status)]!])) invalid();
+    if (event.status === "before" && (event.observedThrough !== manifest.observedThrough ||
+        refreshHash(event.prior) !== refreshHash(manifest.prior))) invalid();
+    if (event.status === "before") {
+      const counts = object(event.countsBefore);
+      if (!exact(counts, ["jobs", "publications", "outbox", "artifacts"]) ||
+          Object.values(counts).some((count) => !Number.isSafeInteger(count) || Number(count) < 0)) invalid();
+    }
+    if (event.status === "admission" && (!["unconsumed", "reconciled"].includes(String(event.admissionState)) ||
+        !Array.isArray(event.reconciled))) invalid();
+    if (event.status === "admission") {
+      for (const value of event.reconciled as unknown[]) {
+        const item = object(value);
+        if (!exact(item, ["reconciliationId", "jobId", "operation"]) ||
+            !uuid.test(String(item.reconciliationId)) || !uuid.test(String(item.jobId)) ||
+            item.jobId === e.jobId || typeof item.operation !== "string" ||
+            !item.operation.startsWith(refreshKeyPrefix(e.date)) || item.operation === e.operation ||
+            !sha256.test(item.operation.slice(refreshKeyPrefix(e.date).length))) invalid();
+      }
+    }
+    if (event.status === "preflight" && (!Number.isSafeInteger(event.assessmentCandidateCount) ||
+        Number(event.assessmentCandidateCount) < attempts.size || event.plannedSummaryGenerations !== 1)) invalid();
+    if (event.status === "operation_consumed" && event.jobId !== e.jobId) invalid();
+    if (event.status === "stopped_requires_reconciliation" && event.manifestSha256 !== e.manifestSha256) invalid();
+    if (event.status === "requires_reconciliation") {
+      const attempt = attempts.get(String(event.requestId));
+      if (!attempt || seen.has(String(event.requestId)) || event.purpose !== attempt.purpose ||
+          event.requestSha256 !== attempt.requestSha256 || row.at !== attempt.failedAt ||
+          refreshHash(row) !== attempt.attemptSha256 || event.observedThrough !== manifest.observedThrough ||
+          event.model !== "gpt-5.6-sol" || event.reasoningEffort !== "low" || event.delegated !== false ||
+          event.preDelegationFailureStage !== "current_authority") invalid();
+      seen.add(String(event.requestId));
+    }
+  });
+  assertRefreshManifest(manifest as unknown as RefreshManifest, new Date(previousAt), false);
 }
 
 export function readReviewedRefreshReconciliation(
