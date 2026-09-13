@@ -30,6 +30,8 @@ import {
   historicalPromotionGenerationAuthority,
   type HistoricalPromotionPolicySnapshot,
 } from "./reader-summary-promotion-v2-historical-generation-authority";
+import { isHistoricalPromotionStaleSourcePreserved } from
+  "./reader-summary-promotion-v2-historical-stale-source";
 
 type AuthorityRow = Readonly<{
   feedItemId: string;
@@ -68,12 +70,16 @@ type PublicationRow = HistoricalPromotionArtifactRecord & Readonly<{
   artifactPayload: unknown;
   citations: unknown;
   qualitySignals: unknown;
+  requestedAt: Date | string;
+  modelAuthority: number;
 }>;
 
 type JobRow = Readonly<{
   jobId: string;
   status: string;
   artifactId: string | null;
+  failureReason: string | null;
+  requestedAt: Date | string;
 }>;
 type PolicyRow = HistoricalPromotionPolicySnapshot;
 
@@ -253,6 +259,19 @@ export class PostgresHistoricalPromotionAdapter
         };
       }
       if (job.status === "FAILED") {
+        if (bundle !== undefined &&
+            isHistoricalPromotionStaleSourcePreserved({
+              sourcePublicationId: bundle.sourcePublicationId,
+              active,
+              job,
+            })) {
+          return {
+            ...common,
+            state: "stale-source-preserved",
+            reason:
+              "stronger_active_publication_preserved_after_lower_authority_stale",
+          };
+        }
         return {
           ...common,
           state: "failed",
@@ -731,6 +750,8 @@ const activePublicationQuery = `
     ,artifact.headline
     ,artifact.summary_text as "summaryText"
     ,artifact.created_at as "createdAt"
+    ,publication.requested_at as "requestedAt"
+    ,publication.model_authority as "modelAuthority"
   from reader_summary_publication_slots slot
   join reader_summary_publications publication
     on publication.id = slot.current_publication_id
@@ -748,7 +769,8 @@ const activePublicationQuery = `
 
 const jobsByRebuildIdentityQuery = `
   select job.id::text as "jobId", job.status::text as "status",
-    job.reader_summary_artifact_id::text as "artifactId"
+    job.reader_summary_artifact_id::text as "artifactId",
+    job.failure_reason as "failureReason", job.requested_at as "requestedAt"
   from reader_summary_jobs job
   where job.tenant_id = $1::uuid
     and job.workspace_id = $2::uuid

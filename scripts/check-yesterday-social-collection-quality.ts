@@ -25,6 +25,7 @@ import { productionCollectionThresholds } from "./lib/production-collection-qual
 import {
   assertCollectionQualityMatchesRegenerationManifest,
   collectionQualityCountForTimestampPolicy,
+  historicalRegenerationXLaneTopologySatisfied,
   collectionQualityRowsForTimestampPolicy,
   resolveCollectionQualityRegenerationFreshness,
   type CollectionQualityRegenerationFreshnessEvidence,
@@ -449,7 +450,10 @@ async function tryBuildReport(): Promise<Report | undefined> {
         xCollectorLedger.returnedTweetCount >= 500,
       xCollectorHasTopAndLatest: xCollectorLedger.hasTopAndLatest,
       xCollectorHasStrictAndDiscoveryLanes:
-        xCollectorLedger.hasStrictAndDiscoveryLanes,
+        historicalRegenerationXLaneTopologySatisfied({
+          liveTopologyObserved: xCollectorLedger.hasStrictAndDiscoveryLanes,
+          freshness: regenerationFreshness,
+        }),
       xCollectorDistinctQueryHashesAtLeast4:
         xCollectorLedger.distinctQueryHashCount >= 4,
       xAccountPoolStateAvailable:

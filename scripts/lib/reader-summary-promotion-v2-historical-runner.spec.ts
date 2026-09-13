@@ -170,6 +170,52 @@ describe("Reader Summary Promotion V2 historical runner", () => {
     expect(scenario.rebuild).not.toHaveBeenCalled();
   });
 
+  it("records a verified no-op when a stronger source survives a stale lower-authority rebuild", async () => {
+    const scenario = harness();
+    scenario.durableState = {
+      state: "stale-source-preserved",
+      jobId: "00000000-0000-4000-8000-000000000311",
+      activePublicationId: output().previousPublicationId,
+      previousPublicationId: output().previousPublicationId,
+      reason:
+        "stronger_active_publication_preserved_after_lower_authority_stale",
+    };
+
+    const [receipt] = await scenario.run({ resume: true });
+
+    expect(receipt).toMatchObject({
+      status: "noop",
+      reason:
+        "stronger_active_publication_preserved_after_lower_authority_stale",
+      retrySafety: "not-applicable",
+      outputIdentity: null,
+      pointerSwitch: {
+        attempted: true,
+        switched: false,
+        previousPublicationId: output().previousPublicationId,
+        activePublicationId: output().previousPublicationId,
+      },
+    });
+    const [replayed] = await scenario.run({ resume: true });
+
+    expect(replayed).toEqual(receipt);
+    expect(scenario.reconcile).toHaveBeenCalledTimes(2);
+    expect(scenario.inspectAuthority).toHaveBeenCalledTimes(4);
+    expect(scenario.rebuild).not.toHaveBeenCalled();
+    expect(scenario.verifyCompleted).not.toHaveBeenCalled();
+
+    scenario.inspectAuthority
+      .mockResolvedValueOnce(inspection("2026-08-01"))
+      .mockResolvedValueOnce(changedInspection("2026-08-01"));
+    const [drifted] = await scenario.run({ resume: true });
+    expect(drifted).toMatchObject({
+      status: "pending",
+      reason: "authority_observation_drifted_before_preserved_source_noop",
+    });
+    expect(scenario.rebuild).not.toHaveBeenCalled();
+    expect(scenario.verifyCompleted).not.toHaveBeenCalled();
+  });
+
   it("records interruption before pointer switch without fabricating success", async () => {
     const scenario = harness();
     scenario.mutationOutcome = {

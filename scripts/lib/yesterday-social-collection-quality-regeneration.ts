@@ -166,6 +166,13 @@ export function collectionQualityCountForTimestampPolicy(params: {
     : params.publishedCount;
 }
 
+export function historicalRegenerationXLaneTopologySatisfied(params: {
+  readonly liveTopologyObserved: boolean;
+  readonly freshness: CollectionQualityRegenerationFreshness | null;
+}): boolean {
+  return params.liveTopologyObserved || params.freshness !== null;
+}
+
 function requiredOption(argv: readonly string[], name: string): string {
   const indexes = argv.flatMap((value, index) =>
     value === name ? [index] : [],
