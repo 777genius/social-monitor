@@ -371,9 +371,10 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
         let result = await executor.run(runInput);
         // Keep the same executor, task journal and round-robin cursor. Grant
         // exactly one more admission attempt only after proven pre-provider
-        // rejection; the executor itself must never retry a provider failure.
+        // account_unavailable rejection; retryMode "never" still forbids replay.
+        // Generic capacity failures cannot authorize another admission.
         for (let attempt = 1; isSourceContentAssessment && attempt < accounts.length; attempt++) {
-          if (providerEffectPossible || !isPreProviderCapacityFailure(result, attempt)) break;
+          if (providerEffectPossible || !isPreProviderAccountUnavailable(result, attempt, accounts)) break;
           lifecycle.checkpoint();
           if (disposed || job.abortSignal?.aborted) break;
           result = await executor.run({
@@ -412,16 +413,27 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
   };
 }
 
-function isPreProviderCapacityFailure(result, attemptCount) {
+function isPreProviderAccountUnavailable(result, attemptCount, accounts) {
   if (result.status !== "waiting_capacity" ||
-      !["capacity_unavailable", "account_unavailable"].includes(result.reason) ||
+      result.reason !== "account_unavailable" ||
       result.attempts?.length !== attemptCount) return false;
   if (!result.attempts.every((attempt) =>
     attempt.status === "blocked" &&
-    ["capacity_unavailable", "account_unavailable"].includes(attempt.failureReason) &&
+    attempt.failureReason === "account_unavailable" &&
     attempt.workspaceDirtyBefore === false && attempt.workspaceDirtyAfter === false &&
     attempt.changedFiles?.length === 0 && attempt.usage === undefined &&
     attempt.lastOutputSummary === undefined)) return false;
+  // The pool serializes away the auth rejection cause. Accept only the
+  // confirmed native auth-rejection journal signature, scoped to this account.
+  if (isPreProviderSessionRejection(result.attempts.at(-1), accounts[attemptCount - 1])) {
+    const wrapper = result.error;
+    const cause = wrapper?.cause;
+    return wrapper?.code === "subscription_worker_pool_slot_failed" &&
+      wrapper.usage === undefined &&
+      (cause === undefined ||
+        (cause?.code === "subscription_worker_account_unavailable" &&
+          cause.usage === undefined && cause.cause === undefined));
+  }
   let error = result.error;
   // Only unwrap the pool's immediate slot wrapper, never a provider cause chain.
   if (error instanceof SubscriptionWorkerError &&
@@ -437,6 +449,15 @@ function isPreProviderCapacityFailure(result, attemptCount) {
     error.code === "subscription_worker_account_unavailable" &&
     error.details?.availability === "disabled" &&
     error.details?.reason === "account_unavailable";
+}
+
+function isPreProviderSessionRejection(attempt, account) {
+  const details = attempt.failureDetails;
+  return details?.reason === "provider_session_invalid" &&
+    details.accountId === account?.worker.capacityAccountId &&
+    typeof details.accountId === "string" &&
+    details.subscriptionWorkerCode === "subscription_worker_pool_slot_failed" &&
+    (details.exitCode === "1" || details.exitCode === 1);
 }
 
 async function createAuthMaterializationRoot(stateRootDir, taskId) {
