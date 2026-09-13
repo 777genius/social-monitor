@@ -14,6 +14,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+
 jobs:
   backend_unit_coverage:
     name: Backend coverage shard ${{ matrix.shard }}/4
@@ -64,4 +67,3 @@ jobs:
           files: ./coverage/shard-${{ matrix.shard }}/lcov.info
           flags: backend-unit
           name: backend-unit-shard-${{ matrix.shard }}
-
