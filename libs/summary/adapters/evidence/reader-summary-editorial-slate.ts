@@ -51,7 +51,29 @@ export const composeReaderSummaryEditorialSlate = (params: {
     ranked: ranking.ranked,
     semanticStoryIdByEvidenceId,
   });
-  const topQualifiedRepresentatives = representatives.filter(
+  const representativeItems = representatives.map(
+    (candidate) => itemById.get(candidate.candidateId)!,
+  );
+  const displayReadyRepresentativeIds = new Set(
+    (params.displayScope === undefined
+      ? representativeItems
+      : displayReadyPromotionCandidates(
+          representativeItems,
+          params.displayScope,
+        )).map((item) => item.feedItemId),
+  );
+  const displayReadyRepresentatives = representatives.filter((candidate) =>
+    displayReadyRepresentativeIds.has(candidate.candidateId));
+  const displayExclusions = representatives
+    .filter(
+      (candidate) => !displayReadyRepresentativeIds.has(candidate.candidateId),
+    )
+    .map((candidate) => ({
+      candidateId: candidate.candidateId,
+      canonicalIdentity: candidate.canonicalIdentity,
+      reasonCodes: ["display_headline_unavailable"],
+    }));
+  const topQualifiedRepresentatives = displayReadyRepresentatives.filter(
     (candidate) => candidate.topQualified,
   );
   const activeProviderCount = new Set(
@@ -80,26 +102,11 @@ export const composeReaderSummaryEditorialSlate = (params: {
     topIds.add(candidate.candidateId);
     topProviderCounts.set(candidate.provider, providerCount + 1);
   }
-  const additional = representatives
+  const additional = displayReadyRepresentatives
     .filter((candidate) => !topIds.has(candidate.candidateId))
     .slice(0, additionalLimit);
-  // Eligibility, semantic representatives, capacity and placement remain authoritative.
-  // Readiness may remove selected leads, but cannot backfill or rerank the slate.
   const selected = [...top, ...additional];
-  const readyIds = new Set((params.displayScope === undefined
-    ? selected.map((candidate) => itemById.get(candidate.candidateId)!)
-    : displayReadyPromotionCandidates(
-        selected.map((candidate) => itemById.get(candidate.candidateId)!),
-        params.displayScope,
-      )).map((item) => item.feedItemId));
-  const displayExclusions = selected
-    .filter((candidate) => !readyIds.has(candidate.candidateId))
-    .map((candidate) => ({
-      candidateId: candidate.candidateId,
-      canonicalIdentity: candidate.canonicalIdentity,
-      reasonCodes: ["display_headline_unavailable"],
-    }));
-  const topEntries = top.filter((candidate) => readyIds.has(candidate.candidateId)).map((candidate, index) => slateEntry({
+  const topEntries = top.map((candidate, index) => slateEntry({
     candidate,
     placement: "top",
     slot: index + 1,
@@ -111,7 +118,7 @@ export const composeReaderSummaryEditorialSlate = (params: {
       ...(activeProviderCount > 1 ? ["provider_cap_enforced"] : []),
     ],
   }));
-  const additionalEntries = additional.filter((candidate) => readyIds.has(candidate.candidateId)).map((candidate, index) => slateEntry({
+  const additionalEntries = additional.map((candidate, index) => slateEntry({
     candidate,
     placement: "additional",
     slot: index + 1,
@@ -131,7 +138,7 @@ export const composeReaderSummaryEditorialSlate = (params: {
   const selectedIds = new Set(
     selected.map((entry) => entry.candidateId),
   );
-  const capacityExclusions = representatives
+  const capacityExclusions = displayReadyRepresentatives
     .filter((candidate) => !selectedIds.has(candidate.candidateId))
     .map((candidate) => ({
       candidateId: candidate.candidateId,
