@@ -128,6 +128,14 @@ export function guardedRefreshRuntime(input: {
   let generated = false;
   let exclusiveInFlight = false;
   const assessmentInFlight = new Set<string>();
+  let currentCheck: Promise<void> | undefined;
+  const assertCurrent = (): Promise<void> => {
+    currentCheck ??= Promise.resolve().then(() => input.assertCurrent()).catch((error: unknown) => {
+      ambiguous = true;
+      throw error;
+    }).finally(() => { currentCheck = undefined; });
+    return currentCheck;
+  };
   const assertUsable = () => {
     if (ambiguous) throw new Error("Refresh invocation budget requires reconciliation");
     try { input.assertLocal(); } catch (error) { ambiguous = true; throw error; }
@@ -241,7 +249,7 @@ export function guardedRefreshRuntime(input: {
           metadata: command.metadata ?? {},
         }).canonicalRequest);
         preDelegationFailureStage = "current_authority";
-        await input.assertCurrent();
+        await assertCurrent();
         preDelegationFailureStage = "local";
         assertUsable();
         preDelegationFailureStage = "journal_consumption";
