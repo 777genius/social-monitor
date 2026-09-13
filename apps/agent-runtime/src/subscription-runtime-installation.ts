@@ -14,7 +14,7 @@ import {
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.42-sm.1";
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "196a4ed97db314445e1b7bd97cb8cc5f4156f70cd5f8501041510ae83cb4f545";
+  "babddc722c2a1f4798366171eef578b65adb6b86ece77298a2b3f93aa6e0e6f4";
 
 // Repository wrapper approval, separate from the vendored package provenance.
 // Pin the local import closure too: launcher bytes alone do not bind helpers.
