@@ -7,6 +7,7 @@ import { headlineRequest, headlineReview, subjectProposal } from "../../../../te
 import { promotionWireCandidate } from "./promotion-review-wire";
 import { parseReviews, promotionResponseSchema } from "./source-content-quality-review-wire";
 import { AgentRuntimeSourceContentQualityReviewerAdapter } from "./agent-runtime-source-content-quality-reviewer.adapter";
+import { promotionReaderHeadlineInstructions } from "./promotion-reader-headline-wire";
 import { attestRefreshExecution, refreshTestRuntimeClient } from "../../../../scripts/lib/reader-summary-new-input-refresh-model.spec-support";
 
 const fixture = (quoteLength: number, supportCount: number, qualificationCount: number, char = "x") => {
@@ -19,6 +20,15 @@ const fixture = (quoteLength: number, supportCount: number, qualificationCount: 
       qualificationJudgment: qualificationCount ? "preserved" : "none" } };
   return { request, proposal };
 };
+
+it("reserves enough batch output for complete display-ready headline annotations", () => {
+  expect(promotionReaderHeadlineInstructions).toContain(
+    "budget of 2400 output tokens",
+  );
+  expect(promotionReaderHeadlineInstructions).toContain(
+    "floor(2400 / candidate count)",
+  );
+});
 
 it.each([
   [1, 4, 1, true], // exactly eight serialized occurrences

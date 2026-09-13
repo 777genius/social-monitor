@@ -57,6 +57,25 @@ describe("RelevanceReaderSummaryEvidenceSelector display readiness", () => {
       candidateId: "unavailable-hn", reasonCodes: ["display_headline_unavailable"],
     }));
   });
+
+  it("accepts a fully reviewed title-only candidate", async () => {
+    const titleOnlyBase = rankedItem({
+      feedItemId: "accepted-title-only",
+      providerKey: "hacker-news",
+      rank: 1,
+      score: 3,
+      sourceText: "",
+    });
+    const mapped = mapRankedItem(titleOnlyBase, clock.now(), headlineScope);
+    const selection = await selectorFor([{
+      ...titleOnlyBase,
+      readerHeadline: withAssessment(mapped, titleOnlyBase.title).readerHeadline,
+    }]).select(query);
+
+    expect(selection.editorialSlate?.orderedCandidateIds).toEqual([
+      "accepted-title-only",
+    ]);
+  });
 });
 
 function selectorFor(rankedItems: readonly RankedFeedItemView[]) {

@@ -149,11 +149,9 @@ export const rankPromotionSnapshot = async (params: {
       canonicalUrl: safety.sanitizedCanonicalUrl ?? item.canonicalUrl,
       title: safety.sanitizedTitle,
       bodyPreview: safety.sanitizedBodyPreview,
-      ...(safety.sanitizedBodyPreview === undefined ? {} : {
-        sourceText: safety.sanitizedBodyPreview.slice(
-          0, PROMOTION_SOURCE_TEXT_SAFETY_CAP,
-        ),
-      }),
+      sourceText: (safety.sanitizedBodyPreview ?? "").slice(
+        0, PROMOTION_SOURCE_TEXT_SAFETY_CAP,
+      ),
       providerMetadata,
       authorHandle: item.authorHandle,
       publishedAt: item.publishedAt.toISOString(),
