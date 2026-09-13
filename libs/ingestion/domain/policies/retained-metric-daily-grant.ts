@@ -1,12 +1,14 @@
 // Seven reviewed single-use incident authorities for the final E2E refresh.
 // Prior September 9 evidence remains immutable at its original paths.
+// August 30 supersedes its spent September 10 authority once; retain that
+// evidence at its original path. The other six authorities remain unchanged.
 import { retainedMetricRenewalGrant } from "./retained-metric-renewal-grant";
 
 export const retainedMetricDailyAuthorities = [
   {
     "date": "2026-08-30",
-    "operationId": "036aa064-a511-5e4a-a4b0-72c14b0e9844",
-    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260910-2026-08-30"
+    "operationId": "ea16e8e6-21fa-5106-9e1c-2a2c50544186",
+    "evidencePath": "seven-day-6101-6102/retained-metrics-daily-20260913-2026-08-30"
   },
   {
     "date": "2026-08-31",
