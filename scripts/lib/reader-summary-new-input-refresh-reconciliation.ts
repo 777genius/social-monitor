@@ -243,12 +243,21 @@ function assertPreProviderArtifacts(e: RefreshPreProviderReconciliationEvidence)
   const journal = lines(immutable(v.journalPath, v.journalSha256));
   for (const row of journal) {
     const event = object(row.event);
+    let requestId = event.requestId;
+    if (event.status === "verified_attestation") {
+      // Only the runtime's canonical envelope identifies an attestation. Never
+      // fall back to a top-level ID or search arbitrary nested payloads.
+      requestId = object(object(event.attestation).attestation).requestId;
+      if (!nonempty(requestId) ||
+          ("requestId" in event && event.requestId !== requestId) ||
+          event.delegated === true || "tokens" in event || "usage" in event) invalid();
+    }
     // An event for one of these requests cannot escape validation by claiming
     // another operation. Unscoped provider evidence needs a distinct request ID
     // to be unrelated historical evidence; missing IDs still cannot prove zero.
-    if (((requests.has(String(event.requestId)) || rejected.has(String(event.requestId))) &&
+    if (((requests.has(String(requestId)) || rejected.has(String(requestId))) &&
           event.operation !== e.operation) ||
-        (event.operation === undefined && !nonempty(event.requestId) && (event.status === "invocation_consumed" ||
+        (event.operation === undefined && !nonempty(requestId) && (event.status === "invocation_consumed" ||
           event.status === "invocation_returned" || event.status === "verified_attestation" ||
           event.delegated === true || "tokens" in event || "usage" in event))) invalid();
   }
