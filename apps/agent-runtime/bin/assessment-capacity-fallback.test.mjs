@@ -161,7 +161,7 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
       budgets.push(job.safeExecutionPolicy?.maxAttempts ?? 1);
       const value = await super.run(job);
       if (value.status !== "completed") {
-        mutateResult?.(value);
+        mutateResult?.(value, admissions);
         if (abortAfterFailure) abort.abort();
       }
       return value;
@@ -217,6 +217,7 @@ test("all unavailable accounts are bounded to one admission each", async () => {
 });
 
 for (const [name, mutateResult] of [
+  ["generic capacity classification", (r) => { r.reason = "capacity_unavailable"; r.attempts[0].failureReason = "capacity_unavailable"; }],
   ["missing capacity provenance", (r) => { r.error.cause.details = undefined; }],
   ["unknown capacity reason", (r) => { r.error.cause.details.reason = "future_unknown"; }],
   ["inconclusive disabled capacity", (r) => { r.error.cause.details.reason = "quota_recheck_inconclusive"; }],
@@ -252,3 +253,56 @@ for (const reason of ["native_snapshot_stop_unconfirmed", "native_snapshot_clean
     assert.equal(h.task.attempts.length, 1);
   });
 }
+
+function sessionRejection(result, admissions) {
+  result.error = { code: "subscription_worker_pool_slot_failed" };
+  result.attempts.at(-1).failureDetails = {
+    reason: "provider_session_invalid", accountId: admissions.at(-1),
+    subscriptionWorkerCode: "subscription_worker_pool_slot_failed", exitCode: "1",
+  };
+}
+
+for (const [name, mutate, safe] of [
+  ["literal production auth rejection", () => {}, true],
+  ["numeric exit compatibility", (a) => { a.failureDetails.exitCode = 1; }, true],
+  ["other serialized exit", (a) => { a.failureDetails.exitCode = "01"; }],
+  ["missing reason", (a) => { delete a.failureDetails.reason; }],
+  ["unknown reason", (a) => { a.failureDetails.reason = "unknown_error"; }],
+  ["wrong account", (a) => { a.failureDetails.accountId = "not-configured"; }],
+  ["missing exit", (a) => { delete a.failureDetails.exitCode; }],
+  ["wrong code", (a) => { a.failureDetails.subscriptionWorkerCode = "unknown"; }],
+  ["usage", (a) => { a.usage = { totalTokens: 0 }; }],
+  ["output", (a) => { a.lastOutputSummary = ""; }],
+  ["dirty before", (a) => { a.workspaceDirtyBefore = true; }],
+  ["dirty after", (a) => { a.workspaceDirtyAfter = true; }],
+  ["changed files", (a) => { a.changedFiles = ["synthetic"]; }],
+]) test(`serialized session rejection: ${name}`, async () => {
+  const h = await launch({ mutateResult(result, admissions) {
+    sessionRejection(result, admissions);
+    mutate(result.attempts.at(-1));
+  } });
+  assert.equal(h.failure === undefined, safe === true);
+  assert.deepEqual(h.budgets, safe ? [1, 2] : [1]);
+  assert.equal(h.providerCalls.length, safe ? 1 : 0);
+});
+
+for (const [name, contradict] of [
+  ["outer usage", (error) => { error.usage = { totalTokens: 0 }; }],
+  ["immediate cause usage", (error) => {
+    error.cause = { code: "subscription_worker_account_unavailable", usage: { totalTokens: 0 } };
+  }],
+  ["outer provider/task failure", (error) => { error.code = "subscription_worker_run_failed"; }],
+  ["immediate provider/task failure", (error) => {
+    error.cause = { code: "subscription_worker_run_failed" };
+  }],
+  ["unknown outer reason", (error) => { error.code = "future_unknown"; }],
+  ["unknown cause reason", (error) => { error.cause = { code: "future_unknown" }; }],
+]) test(`serialized session rejection rejects contradictory ${name}`, async () => {
+  const h = await launch({ mutateResult(result, admissions) {
+    sessionRejection(result, admissions);
+    contradict(result.error);
+  } });
+  assert.ok(h.failure);
+  assert.deepEqual(h.budgets, [1]);
+  assert.equal(h.providerCalls.length, 0);
+});

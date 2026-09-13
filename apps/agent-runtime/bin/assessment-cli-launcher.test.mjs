@@ -19,7 +19,7 @@ after(async () => { await fixture?.close(); });
 
 // Execute the unmodified launcher source with only explicit fake filesystem/auth/executor imports.
 // Its injected legacy function is the pinned actual entrypoint with fake IO and worker factory.
-async function launch(t, { hold, neverStop = false, failedTask = false, parentLog = false, accountFailure = false } = {}) {
+async function launch(t, { hold, neverStop = false, failedTask = false, parentLog = false, accountFailure = false, admissionFailure } = {}) {
   const sources = new Map();
   for (const name of ["run-codex-subscription-runtime-agent-task.mjs", "assessment-cli-lifecycle.mjs", "assessment-cli-progress.mjs"]) {
     sources.set(name, await readFile(new URL(name, import.meta.url), "utf8"));
@@ -47,10 +47,35 @@ async function launch(t, { hold, neverStop = false, failedTask = false, parentLo
     stderr: { write: (line) => { receive(Buffer.from(line)); parentChild.stderr.emit("data", Buffer.from(line)); return false; } },
   });
   const pause = async (phase) => { events.push(phase); if (hold === phase) await gate.promise; };
+  class SubscriptionWorkerError extends Error {
+    constructor(code, message, options = {}) {
+      super(message, options); this.code = code; this.details = options.details;
+    }
+  }
+  const jobs = [], triedAccounts = [];
   class FakeExecutor {
     constructor(value) { options = value; events.push("executor-created"); }
     async run(job) {
-      runCount++; options.observability.emit({ name: "provider.task.started", metadata: { prompt: "synthetic-private-content" } });
+      runCount++;
+      jobs.push(job); triedAccounts.push(options.accounts[runCount - 1].worker.capacityAccountId);
+      if (admissionFailure && runCount === 1) {
+        if (admissionFailure.endsWith("provider-started")) options.observability.emit({ name: "provider.task.started" });
+        return { status: "waiting_capacity", reason: "account_unavailable",
+          attempts: [{ status: "blocked", failureReason: "account_unavailable",
+            workspaceDirtyBefore: false, workspaceDirtyAfter: false, changedFiles: [],
+            ...(admissionFailure.startsWith("session") ? {
+              failureDetails: { reason: "provider_session_invalid", accountId: triedAccounts[0],
+                subscriptionWorkerCode: "subscription_worker_pool_slot_failed", exitCode: "1" },
+            } : {}),
+          }],
+          ...(admissionFailure.startsWith("session") ? { error: { code: "subscription_worker_pool_slot_failed" } } : admissionFailure === "ambiguous" ? {} : {
+            error: new SubscriptionWorkerError("subscription_worker_account_unavailable", "Synthetic disabled account", {
+              details: { availability: "disabled", reason: "account_unavailable" },
+            }),
+          }),
+        };
+      }
+      options.observability.emit({ name: "provider.task.started", metadata: { prompt: "synthetic-private-content" } });
       job.abortSignal.addEventListener("abort", () => { aborts++; events.push("aborted"); });
       await turn.promise;
       options.observability.emit({ name: "provider.task.completed", metadata: { status: failedTask ? "failed" : "completed" } });
@@ -76,12 +101,13 @@ async function launch(t, { hold, neverStop = false, failedTask = false, parentLo
     ["./pinned-codex-native-binary.mjs", { resolvePinnedCodexBinaryPath: () => "/synthetic/not-executable" }],
     ["./codex-auth-pool-manifest.mjs", { loadCodexAuthPoolFromEnv: async () => {
       await pause("account-setup"); return { accounts: [{ id: "synthetic-account", authJsonPath: "/synthetic/account" },
+        ...(admissionFailure ? [{ id: "synthetic-second", authJsonPath: "/synthetic/second" }] : []),
         ...(accountFailure ? [{ id: "synthetic-failed", authJsonPath: "/synthetic/fail" }] : [])] };
     } }],
     ["@vioxen/subscription-runtime/worker-codex", { FileBackendCodexSafeExecutor: FakeExecutor,
       FileBackendCodexWorker: class { constructor() { throw new Error("Real/default worker forbidden"); } },
       NodeProcessRunner: class { constructor() { throw new Error("Native runner forbidden"); } } }],
-    ["@vioxen/subscription-runtime/worker-core", { SubscriptionWorkerError: class extends Error {} }],
+    ["@vioxen/subscription-runtime/worker-core", { SubscriptionWorkerError }],
     ["../../../node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js", {
       runSubscriptionAgentTaskCli: (argv, _io, factory) => {
         io.readStdin = async () => input;
@@ -130,7 +156,7 @@ async function launch(t, { hold, neverStop = false, failedTask = false, parentLo
     await waitFor(predicate);
     assert.ok(predicate(), JSON.stringify({ events, stderr: io.stderr }));
   };
-  return { clock, records, events, gate, turn, stop, result, until, io, fakeProcess,
+  return { clock, records, events, gate, turn, stop, result, until, io, fakeProcess, jobs, triedAccounts,
     logs, parentResult, get options() { return options; }, get aborts() { return aborts; }, get runCount() { return runCount; },
     get disposeCount() { return disposeCount; }, get returned() { return returned; } };
 }
@@ -202,3 +228,27 @@ test("parallel account setup rejection does not hide another outstanding materia
   h.gate.resolve(); await h.clock.tickAsync(0);
   assert.equal(h.events.includes("executor-created"), false);
 });
+
+for (const admissionFailure of ["pre-provider", "session", "ambiguous", "provider-started", "session-provider-started"]) {
+  test(`launcher ${admissionFailure} account failure only falls back with pre-provider proof`, async (t) => {
+    const h = await launch(t, { admissionFailure });
+    const safe = ["pre-provider", "session"].includes(admissionFailure);
+    await h.until(() => safe ? h.runCount === 2 : h.events.includes("auth-removal"));
+    assert.equal(h.options.safeExecutionPolicy.maxAttempts, 1);
+    assert.equal(h.options.safeExecutionPolicy.retryOnAccountUnavailable, false);
+    assert.equal(h.options.safeExecutionPolicy.continuationMode, "disabled");
+    assert.equal(h.options.effectMode, "read_only");
+    assert.equal(h.options.maxAccountCycles, 1);
+    if (safe) {
+      assert.notEqual(h.triedAccounts[0], h.triedAccounts[1]);
+      assert.equal(h.jobs[1].taskId, h.jobs[0].taskId);
+      assert.equal(h.jobs[1].prompt, h.jobs[0].prompt);
+      assert.equal(h.jobs[1].safeExecutionPolicy.maxAttempts, 2);
+      h.turn.resolve();
+    }
+    await h.clock.tickAsync(11_000);
+    assert.equal(await h.result, safe ? 0 : 1);
+    assert.equal(h.runCount, safe ? 2 : 1);
+    assert.equal(h.disposeCount, 1);
+  });
+}
