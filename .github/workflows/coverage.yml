@@ -1,0 +1,69 @@
+name: Code coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+
+jobs:
+  backend_unit_coverage:
+    name: Backend coverage shard ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - name: Check out the tested commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Generate the pinned Prisma client
+        run: npm run prisma:generate
+
+      - name: Collect backend unit coverage
+        run: >-
+          node scripts/run-with-timeout.mjs
+          --timeout-ms 2700000
+          --node-options --max-old-space-size=4096
+          -- ./node_modules/.bin/jest
+          --config jest.config.ts
+          --runInBand
+          --shard=${{ matrix.shard }}/4
+          --coverage
+          --coverageDirectory=coverage/shard-${{ matrix.shard }}
+          --coverageReporters=lcovonly
+          --coverageReporters=json-summary
+          --coverageReporters=text-summary
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
+        with:
+          use_oidc: true
+          fail_ci_if_error: true
+          disable_search: true
+          files: ./coverage/shard-${{ matrix.shard }}/lcov.info
+          flags: backend-unit
+          name: backend-unit-shard-${{ matrix.shard }}
