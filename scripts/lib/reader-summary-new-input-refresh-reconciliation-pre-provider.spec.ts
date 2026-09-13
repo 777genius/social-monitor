@@ -165,14 +165,55 @@ it("rejects an invocation that claims a different operation for a captured reque
   expect(() => validate(e)).toThrow();
 });
 
-it("accepts an unrelated historical unscoped attestation in the immutable daily journal", () => {
-  const e = fixture(({ journal }) => journal.unshift({ at: "2026-09-06T23:00:00.000Z",
-    event: { status: "verified_attestation", operation: undefined,
-      requestId: "synthetic-historical", attestation: {} } }));
-  expect(e.invocation.attempts).toHaveLength(6);
-  expect(e.invocation.attempts.map((attempt) => attempt.requestId)).not.toContain("synthetic-historical");
-  expect(() => validate(e)).not.toThrow();
+const historicalRequestId = "reader-summary-story-relations:00000000-0000-7000-8000-000000006101:" +
+  "00000000-0000-7000-8000-000000006102:workspace:2026-09-11T13:38:37.654Z";
+const historicalAttestation = { attestation: { requestId: historicalRequestId } };
+
+it.each([undefined, historicalRequestId])(
+  "accepts unrelated canonical nested attestation with top-level ID %j", (requestId) => {
+    const e = fixture(({ journal }) => journal.unshift({ at: "2026-09-06T23:00:00.000Z",
+      event: { status: "verified_attestation", requestId, attestation: historicalAttestation } }));
+    expect(e.invocation.attempts).toHaveLength(6);
+    expect(() => validate(e)).not.toThrow();
+    expect(refreshReconciliationAccountingFor(e).providerInvocations).toBe(0);
+  });
+
+it.each([
+  undefined, null, [], {}, { requestId: historicalRequestId }, { attestation: null },
+  { attestation: [] }, { attestation: {} }, { attestation: { requestId: "" } },
+  { attestation: { requestId: "  " } }, { attestation: { requestId: 123 } },
+  { attestation: { attestation: { requestId: historicalRequestId } } },
+])("rejects malformed canonical attestation identity %j", (attestation) => {
+  for (const requestId of [undefined, historicalRequestId]) {
+    const e = fixture(({ journal }) => journal.push({ event: {
+      status: "verified_attestation", requestId, attestation } }));
+    expect(() => validate(e)).toThrow(/integrity is invalid/);
+  }
 });
+
+it.each(["synthetic-0", "different-historical", "", null, 123])(
+  "rejects top-level/nested attestation disagreement %j", (requestId) => {
+    const e = fixture(({ journal }) => journal.push({ event: {
+      status: "verified_attestation", requestId, attestation: historicalAttestation } }));
+    expect(() => validate(e)).toThrow(/integrity is invalid/);
+  });
+
+it.each([undefined, "different-operation", reconciliationOperation])(
+  "rejects nested started request identity under operation %j", (operation) => {
+    for (let index = 0; index < 6; index++) {
+      const e = fixture(({ journal }) => journal.push({ event: {
+        status: "verified_attestation", operation,
+        attestation: { attestation: { requestId: `synthetic-${index}` } } } }));
+      expect(() => validate(e)).toThrow(/integrity is invalid/);
+    }
+  });
+
+it.each([{ delegated: true }, { tokens: 0 }, { usage: {} }, { operation: reconciliationOperation }])(
+  "rejects unrelated canonical attestation with provider evidence %j", (extra) => {
+    const e = fixture(({ journal }) => journal.push({ at: "2026-09-07T00:00:01.000Z", event: {
+      status: "verified_attestation", attestation: historicalAttestation, ...extra } }));
+    expect(() => validate(e)).toThrow(/integrity is invalid/);
+  });
 
 it.each([
   { status: "invocation_consumed" }, { status: "invocation_returned" },
@@ -197,7 +238,9 @@ it.each([
 });
 
 it.each([
-  undefined, { status: "invocation_consumed" }, { status: "invocation_returned" },
+  undefined, { status: "verified_attestation", requestId: undefined,
+    attestation: { attestation: { requestId: "synthetic-rejected" } } },
+  { status: "invocation_consumed" }, { status: "invocation_returned" },
   { status: "verified_attestation", attestation: {} }, { delegated: true },
   { tokens: 0 }, { usage: {} },
 ])("guards rejected captured request evidence %j", (providerEvidence) => {
@@ -208,9 +251,9 @@ it.each([
         kind: "invocation_rejected", delegated: false,
         command: { ...command, requestId: "synthetic-rejected" } } });
       journal.unshift({ at: "2026-09-06T23:00:00.000Z", event: {
-        status: "verified_attestation", requestId: "synthetic-historical", attestation: {} } });
+        status: "verified_attestation", attestation: historicalAttestation } });
       if (providerEvidence) journal.push({ at: "2026-09-07T00:00:02.500Z", event: {
-        ...providerEvidence, operation, requestId: "synthetic-rejected" } });
+        operation, requestId: "synthetic-rejected", ...providerEvidence } });
     });
     const path = join(e.invocation.capturePath, "incomplete.json");
     const capture = JSON.parse(readFileSync(path, "utf8"));
