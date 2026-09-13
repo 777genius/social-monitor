@@ -1,17 +1,20 @@
-import { lstatSync, readFileSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { join, resolve } from "node:path";
 import type { IdGenerator } from "@social-monitor/shared-kernel";
-import { refreshBytesHash, refreshHash, refreshKeyPrefix, refreshScope } from
+import { refreshBytesHash, refreshDates, refreshHash, refreshKeyPrefix, refreshScope } from
   "./reader-summary-new-input-refresh-manifest";
 
 /** Operator-reviewed statement that one consumed new-input-refresh attempt is
  * accounted for. It asserts consumption, never success: the original job row is
  * never written to. Provider usage is preserved when the reviewed provider
  * response reports it, and otherwise stays explicitly unknown. */
-export type RefreshReconciliationEvidence = Readonly<{
+type RefreshReconciliationIdentity = Readonly<{
   format: "reader-summary-new-input-refresh-reconciliation-v1";
   tenantId: string; workspaceId: string; date: string;
   jobId: string; operation: string; manifestSha256: string;
+}>;
+
+export type RefreshProviderReconciliationEvidence = RefreshReconciliationIdentity & Readonly<{
   reason: "consumed_provider_invocation_without_summary";
   invocation: Readonly<{
     requestId: string; purpose: string; requestSha256: string;
@@ -21,12 +24,34 @@ export type RefreshReconciliationEvidence = Readonly<{
   }>;
 }>;
 
+/** Reviewed whole-job capture and journal digests attest zero delegation, not
+ * merely failure of one batch. Attempts identify every started failed request.
+ * No provider result or consumption timestamp is asserted by this variant. */
+export type RefreshPreProviderReconciliationEvidence = RefreshReconciliationIdentity & Readonly<{
+  reason: "consumed_job_without_provider_invocation";
+  invocation: Readonly<{
+    capturePath: string; journalPath: string; manifestPath: string;
+    captureSha256: string; journalSha256: string;
+    invocationConsumedCount: 0; delegatedInvocationCount: 0;
+    providerUsageReported: false;
+    attempts: readonly Readonly<{
+      requestId: string; purpose: string; requestSha256: string; attemptSha256: string;
+      startedAt: string; failedAt: string; outcome: "invocation_failed"; delegated: false;
+    }>[];
+  }>;
+}>;
+export type RefreshReconciliationEvidence =
+  RefreshProviderReconciliationEvidence | RefreshPreProviderReconciliationEvidence;
+
 export const refreshReconciliationAccounting = Object.freeze({
   summaryGenerations: 0, publications: 0, artifacts: 0,
   providerInvocations: 1, providerUsage: "unknown" as const,
 });
 export const refreshReconciliationAccountingFor = (evidence: RefreshReconciliationEvidence) =>
-  evidence.invocation.providerUsageReported
+  evidence.reason === "consumed_job_without_provider_invocation"
+    ? Object.freeze({ summaryGenerations: 0, publications: 0, artifacts: 0,
+      providerInvocations: 0, providerUsage: "none" as const })
+    : evidence.invocation.providerUsageReported
     ? Object.freeze({ ...refreshReconciliationAccounting, providerUsage: "reported" as const,
       usage: evidence.invocation.usage! })
     : refreshReconciliationAccounting;
@@ -42,19 +67,33 @@ const isoInstant = (value: unknown): value is string => {
 export function assertRefreshReconciliationEvidence(
   evidence: RefreshReconciliationEvidence, dates: readonly string[],
 ): void {
-  const invocation = evidence?.invocation;
   if (evidence?.format !== "reader-summary-new-input-refresh-reconciliation-v1" ||
       evidence.tenantId !== refreshScope.tenantId ||
       evidence.workspaceId !== refreshScope.workspaceId ||
+      typeof evidence.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(evidence.date) ||
+      !isoInstant(`${evidence.date}T00:00:00.000Z`) ||
       !dates.includes(evidence.date) || !uuid.test(evidence.jobId) ||
       typeof evidence.operation !== "string" ||
       !evidence.operation.startsWith(refreshKeyPrefix(evidence.date)) ||
       !sha256.test(evidence.operation.slice(refreshKeyPrefix(evidence.date).length)) ||
       !sha256.test(evidence.manifestSha256) ||
-      evidence.reason !== "consumed_provider_invocation_without_summary") {
+      (evidence.reason !== "consumed_provider_invocation_without_summary" &&
+        evidence.reason !== "consumed_job_without_provider_invocation")) {
     throw new Error("Refresh reconciliation evidence identity is invalid");
   }
+  if (evidence.reason === "consumed_job_without_provider_invocation") {
+    if (!onlyKeys(evidence, ["format", "tenantId", "workspaceId", "date", "jobId", "operation",
+      "manifestSha256", "reason", "invocation"])) {
+      throw new Error("Refresh reconciliation pre-provider identity is invalid");
+    }
+    assertPreProviderInvocation(evidence.invocation);
+    assertPreProviderArtifacts(evidence);
+    return;
+  }
+  const invocation = evidence.invocation;
   if (typeof invocation !== "object" || invocation === null ||
+      !onlyKeys(invocation, ["requestId", "purpose", "requestSha256", "attemptSha256",
+        "consumedAt", "returnedAt", "outcome", "providerUsageReported", "usage"]) ||
       typeof invocation.requestId !== "string" || invocation.requestId.trim().length === 0 ||
       typeof invocation.purpose !== "string" || invocation.purpose.trim().length === 0 ||
       !sha256.test(invocation.requestSha256) || !sha256.test(invocation.attemptSha256) ||
@@ -63,12 +102,176 @@ export function assertRefreshReconciliationEvidence(
       typeof invocation.outcome !== "string" || invocation.outcome.trim().length === 0 ||
       typeof invocation.providerUsageReported !== "boolean" ||
       (invocation.providerUsageReported
-        ? invocation.usage === undefined || ![invocation.usage.inputTokens, invocation.usage.outputTokens,
+        ? (typeof invocation.usage !== "object" || invocation.usage === null) || ![invocation.usage.inputTokens, invocation.usage.outputTokens,
           invocation.usage.totalTokens].every((count) => Number.isSafeInteger(count) && count >= 0) ||
           invocation.usage.totalTokens !== invocation.usage.inputTokens + invocation.usage.outputTokens
         : invocation.usage !== undefined)) {
     throw new Error("Refresh reconciliation invocation identity is invalid");
   }
+}
+
+const onlyKeys = (value: object, keys: readonly string[]) =>
+  !Array.isArray(value) && Object.keys(value).every((key) => keys.includes(key));
+const nonempty = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+function assertPreProviderInvocation(value: RefreshPreProviderReconciliationEvidence["invocation"]): void {
+  if (typeof value !== "object" || value === null ||
+      !onlyKeys(value, ["capturePath", "journalPath", "manifestPath", "captureSha256", "journalSha256", "invocationConsumedCount",
+        "delegatedInvocationCount", "providerUsageReported", "attempts"]) ||
+      ![value.capturePath, value.journalPath, value.manifestPath].every((path) =>
+        typeof path === "string" && path.startsWith("/")) ||
+      !sha256.test(value.captureSha256) || !sha256.test(value.journalSha256) ||
+      value.invocationConsumedCount !== 0 || value.delegatedInvocationCount !== 0 ||
+      value.providerUsageReported !== false || !Array.isArray(value.attempts) ||
+      value.attempts.length === 0) {
+    throw new Error("Refresh reconciliation pre-provider identity is invalid");
+  }
+  const requests = new Set<string>();
+  for (const attempt of value.attempts) {
+    if (typeof attempt !== "object" || attempt === null ||
+        !onlyKeys(attempt, ["requestId", "purpose", "requestSha256", "attemptSha256",
+          "startedAt", "failedAt", "outcome", "delegated"]) ||
+        !nonempty(attempt.requestId) || !nonempty(attempt.purpose) || requests.has(attempt.requestId) ||
+        !sha256.test(attempt.requestSha256) || !sha256.test(attempt.attemptSha256) ||
+        !isoInstant(attempt.startedAt) || !isoInstant(attempt.failedAt) ||
+        Date.parse(attempt.failedAt) < Date.parse(attempt.startedAt) ||
+        attempt.outcome !== "invocation_failed" || attempt.delegated !== false) {
+      throw new Error("Refresh reconciliation pre-provider attempt identity is invalid");
+    }
+    requests.add(attempt.requestId);
+  }
+}
+// These are immutable reviewed copies, never live runtime paths. Hash the full
+// capture inventory and journal, then derive every zero-delegation claim from
+// their contents. An incomplete workflow is allowed; an incomplete tape is not.
+function assertPreProviderArtifacts(e: RefreshPreProviderReconciliationEvidence): void {
+  const invalid = (): never => { throw new Error("Refresh reconciliation pre-provider capture/journal integrity is invalid"); };
+  const object = (value: unknown): Record<string, unknown> => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return invalid();
+    return value as Record<string, unknown>;
+  };
+  const array = (value: unknown): unknown[] => Array.isArray(value) ? value : invalid();
+  const immutable = (path: string, hash?: string): Buffer => {
+    const absolute = resolve(path), stat = lstatSync(absolute);
+    if (realpathSync(absolute) !== absolute || !stat.isFile() || stat.nlink !== 1 ||
+        (stat.mode & 0o222) !== 0) return invalid();
+    const bytes = readFileSync(absolute);
+    if (hash !== undefined && refreshBytesHash(bytes) !== hash) return invalid();
+    return bytes;
+  };
+  const parse = (bytes: Buffer) => object(JSON.parse(bytes.toString("utf8")));
+  const lines = (bytes: Buffer) => {
+    const text = bytes.toString("utf8");
+    if (!text.endsWith("\n")) return invalid();
+    return text.slice(0, -1).split("\n").map((line) => object(JSON.parse(line)));
+  };
+  const v = e.invocation;
+  const manifest = parse(immutable(v.manifestPath, e.manifestSha256));
+  if (manifest.format !== "reader-summary-seven-day-new-input-v1" ||
+      manifest.operation !== e.operation || manifest.date !== e.date ||
+      manifest.tenantId !== e.tenantId || manifest.workspaceId !== e.workspaceId) invalid();
+  const directory = resolve(v.capturePath);
+  if (realpathSync(directory) !== directory || !lstatSync(directory).isDirectory()) invalid();
+  const capture = parse(immutable(join(directory, "incomplete.json"), v.captureSha256));
+  const scope = object(capture.scope);
+  if (capture.format !== "reader-refresh-paired-capture.v1" || capture.complete !== false ||
+      scope.tenantId !== e.tenantId || scope.workspaceId !== e.workspaceId ||
+      scope.operation !== e.operation || scope.observedThrough !== manifest.observedThrough) invalid();
+  const permittedFailures = ["refresh_incomplete", "selection_failed", "missing_producer_callback",
+    "assessment_coverage_failed", "assessment_closure_incomplete", "assessment_closure_missing",
+    "missing_canonical-bindings.json"];
+  if (array(capture.failures).some((failure) => !permittedFailures.includes(String(failure)))) invalid();
+  const files = new Map<string, Buffer>();
+  for (const item of array(capture.files)) {
+    const file = object(item);
+    if (typeof file.name !== "string" || !/^[a-z][a-z0-9-]*\.jsonl?$/u.test(file.name) ||
+        file.name === "incomplete.json" || file.name === "complete.json" || files.has(file.name) ||
+        typeof file.sha256 !== "string" || !sha256.test(file.sha256)) invalid();
+    const name = file.name as string;
+    const bytes = immutable(join(directory, name), file.sha256 as string);
+    if (bytes.length !== file.bytes) invalid();
+    files.set(name, bytes);
+  }
+  if (refreshHash(readdirSync(directory).sort()) !==
+      refreshHash([...files.keys(), "incomplete.json"].sort())) invalid();
+  const required = (name: string) => files.get(name) ?? invalid();
+  const controls = parse(required("controls.json"));
+  if (refreshHash(controls.manifest) !== refreshHash(manifest)) invalid();
+  const started = parse(required("started.json"));
+  if (started.format !== capture.format || refreshHash(started.scope) !== refreshHash(scope)) invalid();
+  const models = lines(required("models.jsonl"));
+  const requests = new Map<string, { row: Record<string, unknown>; failed?: Record<string, unknown> }>();
+  const rejected = new Set<string>();
+  let sequence = 0;
+  for (const row of models) {
+    if (!Number.isSafeInteger(row.sequence) || Number(row.sequence) <= sequence ||
+        !Number.isSafeInteger(row.atMs)) invalid();
+    sequence = Number(row.sequence);
+    const event = object(row.event);
+    if (event.kind === "invocation_started" || event.kind === "invocation_rejected") {
+      const command = object(event.command), id = command.requestId;
+      if (!nonempty(id) || command.tenantId !== e.tenantId || command.workspaceId !== e.workspaceId ||
+          requests.has(String(id)) || rejected.has(String(id))) invalid();
+      if (event.kind === "invocation_rejected") {
+        if (event.delegated !== false) invalid();
+        rejected.add(String(id));
+      } else requests.set(String(id), { row });
+    } else if (event.kind === "invocation_failed") {
+      const request = requests.get(String(event.requestId));
+      if (!request || request.failed || event.delegated !== false ||
+          Number(row.atMs) < Number(request.row.atMs)) invalid();
+      request!.failed = row;
+    } else invalid(); // returned, envelope, abort or unknown means zero is unproven
+  }
+  if (requests.size !== v.attempts.length ||
+      object(capture.observationCounts).modelRequests !== requests.size + rejected.size) invalid();
+  for (const attempt of v.attempts) {
+    const request = requests.get(attempt.requestId);
+    if (!request?.failed) invalid();
+    const start = request!.row, failed = request!.failed!;
+    const command = object(object(start.event).command);
+    // The journal hashes the original command; JSON capture drops an own
+    // providerInstanceId: undefined. Reconstruct only that known lost property,
+    // without changing historical hashes or normalizing other command fields.
+    const requestMatches = refreshHash(command) === attempt.requestSha256 ||
+      (!Object.prototype.hasOwnProperty.call(command, "providerInstanceId") &&
+        refreshHash({ ...command, providerInstanceId: undefined }) === attempt.requestSha256);
+    if (command.purpose !== attempt.purpose || !requestMatches ||
+        refreshHash({ started: start, failed }) !== attempt.attemptSha256 ||
+        new Date(Number(start.atMs)).toISOString() !== attempt.startedAt ||
+        new Date(Number(failed.atMs)).toISOString() !== attempt.failedAt) invalid();
+  }
+  const journal = lines(immutable(v.journalPath, v.journalSha256));
+  for (const row of journal) {
+    const event = object(row.event);
+    // An event for one of these requests cannot escape validation by claiming
+    // another operation. Unscoped provider evidence cannot prove zero either.
+    if ((requests.has(String(event.requestId)) && event.operation !== e.operation) ||
+        (event.operation === undefined && (event.status === "invocation_consumed" ||
+          event.status === "invocation_returned" || event.status === "verified_attestation" ||
+          event.delegated === true || "tokens" in event || "usage" in event))) invalid();
+  }
+  const current = journal.filter((row) => object(row.event).operation === e.operation);
+  const consumed = current.filter((row) => object(row.event).status === "operation_consumed");
+  const stopped = current.filter((row) => object(row.event).status === "stopped_requires_reconciliation");
+  if (consumed.length !== 1 || object(consumed[0]!.event).jobId !== e.jobId || stopped.length !== 1 ||
+      object(stopped[0]!.event).manifestSha256 !== e.manifestSha256) invalid();
+  const failures = new Set<string>();
+  const permitted = ["before", "admission", "preflight", "operation_consumed", "requires_reconciliation",
+    "stopped_requires_reconciliation"];
+  for (const row of current) {
+    const event = object(row.event);
+    if (!isoInstant(row.at) || !permitted.includes(String(event.status)) ||
+        event.delegated === true || "tokens" in event || "usage" in event || "attestation" in event) invalid();
+    if (event.status === "requires_reconciliation") {
+      const attempt = v.attempts.find((item) => item.requestId === event.requestId);
+      if (!attempt || failures.has(attempt.requestId) || event.requestSha256 !== attempt.requestSha256 ||
+          event.purpose !== attempt.purpose || Date.parse(String(row.at)) < Date.parse(attempt.failedAt)) invalid();
+      failures.add(attempt!.requestId);
+    }
+  }
+  if (failures.size !== requests.size || v.attempts.some((attempt) =>
+    Date.parse(attempt.startedAt) < Date.parse(String(consumed[0]!.at)) ||
+    Date.parse(attempt.failedAt) > Date.parse(String(stopped[0]!.at)))) invalid();
 }
 
 export function readReviewedRefreshReconciliation(
@@ -184,6 +387,7 @@ export async function reconcileConsumedRefreshJob(input: {
   evidenceSha256: string; now: Date; ids: IdGenerator;
 }): Promise<RefreshReconciliationReceipt> {
   const { client, evidence, evidenceSha256 } = input;
+  assertRefreshReconciliationEvidence(evidence, refreshDates);
   const accounting = refreshReconciliationAccountingFor(evidence);
   const inserted = await insertReconciliation(client,
     { id: input.ids.generate(), evidence, evidenceSha256, now: input.now });

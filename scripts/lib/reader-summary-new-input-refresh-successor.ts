@@ -5,7 +5,7 @@ import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters
 import { assertRefreshManifest, refreshBytesHash, refreshHash,
   type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
 import { refreshReconciliationAccountingFor, assertRefreshReconciliationEvidence,
-  type RefreshReconciliationEvidence } from "./reader-summary-new-input-refresh-reconciliation";
+  type RefreshReconciliationEvidence, type RefreshProviderReconciliationEvidence } from "./reader-summary-new-input-refresh-reconciliation";
 import { captureRefreshDatabaseAuthority } from "./reader-summary-new-input-refresh-capture";
 import { lockRefreshAuthority, readRefreshJobs, readRefreshPrior, readRefreshReconciliations } from
   "./reader-summary-new-input-refresh-postgres";
@@ -17,8 +17,10 @@ type Client = Pick<PrismaReaderSummaryClient, "$queryRaw">;
 const sourceContentAssessmentPurpose = "social_monitor.relevance.assess_source_content.v1";
 const storyRelationVerificationPurpose = "social_monitor.reader_summary.verify_story_relations.v2";
 const resumablePurposes = new Set([sourceContentAssessmentPurpose, storyRelationVerificationPurpose]);
-const knownTerminalAssessment = (invocation: RefreshReconciliationEvidence["invocation"]) =>
-  invocation.outcome === "failed" || (invocation.outcome === "completed" && invocation.providerUsageReported);
+const knownTerminalAssessment = (invocation: RefreshReconciliationEvidence["invocation"]):
+  invocation is RefreshProviderReconciliationEvidence["invocation"] =>
+  "outcome" in invocation && (invocation.outcome === "failed" ||
+    (invocation.outcome === "completed" && invocation.providerUsageReported));
 
 type RefreshSuccessorHop = Readonly<{
   tenantId: string; workspaceId: string; date: string; startedAt: string; endedAt: string;

@@ -1,4 +1,4 @@
-import { refreshScope } from "./reader-summary-new-input-refresh-manifest";
+import { refreshKeyPrefix, refreshScope } from "./reader-summary-new-input-refresh-manifest";
 import { assertRefreshReconciliationEvidence, reconcileConsumedRefreshJob,
   refreshReconciliationAccounting } from "./reader-summary-new-input-refresh-reconciliation";
 import { assertRefreshReconciliationCountersEvidence, importRefreshReconciliationCounters } from
@@ -18,6 +18,22 @@ const apply = (database: FakeReconciliationDatabase, override = {}, sha = eviden
     evidenceSha256: sha, now, ids });
 
 describe("new-input refresh consumed-job reconciliation", () => {
+  it.each(["2026-02-29", "2026-04-31", "2026-13-01", "2026-00-01", "2026-09-00",
+    "2026-9-01", "2026-09-01T00:00:00.000Z", " 2026-09-01", "0000-00-00"])(
+    "rejects noncanonical date %s even when explicitly allowed, before database access", async (date) => {
+      const evidence = reconciliationEvidence({ date, operation: refreshKeyPrefix(date) + "a".repeat(64) });
+      expect(() => assertRefreshReconciliationEvidence(evidence, [date])).toThrow(/identity is invalid/u);
+      const query = jest.fn();
+      await expect(reconcileConsumedRefreshJob({ client: { $queryRaw: query }, evidence,
+        evidenceSha256, now, ids })).rejects.toThrow(/identity is invalid/u);
+      expect(query).not.toHaveBeenCalled();
+    });
+
+  it.each(["2024-02-29", "2026-04-30"])("accepts canonical calendar date %s", (date) => {
+    const evidence = reconciliationEvidence({ date, operation: refreshKeyPrefix(date) + "a".repeat(64) });
+    expect(() => assertRefreshReconciliationEvidence(evidence, [date])).not.toThrow();
+  });
+
   it("records the consumed attempt as accounted for, never as completed", async () => {
     const database = new FakeReconciliationDatabase([{ ...consumed }]);
     const receipt = await apply(database);

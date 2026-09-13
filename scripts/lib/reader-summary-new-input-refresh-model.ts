@@ -18,6 +18,7 @@ import { verifyAndRecordReaderSummaryExecution, type ReaderSummaryAttestedTaskRo
 import type { SourceContentAssessmentFailureStage } from "@social-monitor/relevance/ports";
 import { refreshHash, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
 import { assertRefreshEqual } from "./reader-summary-new-input-refresh-guard";
+import { RefreshRuntimeAssertionFailure, type RefreshPreDelegationFailureStage } from "./reader-summary-new-input-refresh-runtime-assertion";
 
 const noInvocation: AgentRuntimeClientPort = {
   runTask: async () => { throw new Error("Preparation cannot invoke a model"); },
@@ -102,7 +103,8 @@ export type RefreshModelCaptureEvent =
   | { readonly kind: "invocation_started"; readonly command: AgentRuntimeTaskCommand }
   | { readonly kind: "invocation_returned"; readonly requestId: string; readonly status: AgentRuntimeTaskResult["status"] }
   | { readonly kind: "invocation_aborted"; readonly requestId: string }
-  | { readonly kind: "invocation_failed"; readonly requestId: string; readonly delegated: boolean }
+  | { readonly kind: "invocation_failed"; readonly requestId: string; readonly delegated: boolean;
+      readonly preDelegationFailureStage?: RefreshPreDelegationFailureStage }
   | { readonly kind: "envelope_verified"; readonly command: AgentRuntimeTaskCommand;
       readonly result: Pick<AgentRuntimeTaskResult, "status" | "structuredOutput" | "usage" | "durationMs" | "executionAttestation"> };
 
@@ -181,6 +183,7 @@ export function guardedRefreshRuntime(input: {
       if (isAssessment) assessmentInFlight.add(command.requestId);
       else exclusiveInFlight = true;
       let delegated = false;
+      let preDelegationFailureStage: RefreshPreDelegationFailureStage = "local";
       let returnedResult: AgentRuntimeTaskResult | undefined;
       let canonicalRequestSha256: string | undefined;
       let notConsumedReason: "deadline" | "aborted" | "authority_or_runtime_rejected" = "authority_or_runtime_rejected";
@@ -222,11 +225,13 @@ export function guardedRefreshRuntime(input: {
       try {
         if (capturedCommand) capture({ kind: "invocation_started", command: capturedCommand });
         assertUsable();
+        preDelegationFailureStage = "assessment_budget";
         const assessmentUsage = command.purpose === sourceContentAssessmentPurpose ? assessment.consume(command) : {};
         // Match GrpcAgentRuntimeClient JSON serialization and the service's
         // optional-string normalization, then use the executor's real admission
         // contract for profile defaults/controls. Hash before any awaited work;
         // the journal's refreshHash(command) is not the canonical runtime request.
+        preDelegationFailureStage = "request_admission";
         canonicalRequestSha256 = canonicalJsonSha256(admitSubscriptionRuntimeRequest({
           ...command,
           providerInstanceId: command.providerInstanceId?.trim() || undefined,
@@ -235,9 +240,13 @@ export function guardedRefreshRuntime(input: {
           controlsJson: JSON.stringify(command.controls),
           metadata: command.metadata ?? {},
         }).canonicalRequest);
+        preDelegationFailureStage = "current_authority";
         await input.assertCurrent();
+        preDelegationFailureStage = "local";
         assertUsable();
+        preDelegationFailureStage = "journal_consumption";
         input.record({ ...identity, ...assessmentUsage, status: "invocation_consumed" });
+        preDelegationFailureStage = "local";
         assertUsable(); // fsync/recording can itself cross the cutoff.
 
         if (command.purpose === sourceContentAssessmentPurpose) {
@@ -284,7 +293,7 @@ export function guardedRefreshRuntime(input: {
           result: { status: result.status, structuredOutput: result.structuredOutput, usage: result.usage,
             durationMs: result.durationMs, executionAttestation: result.executionAttestation } });
         return result;
-      } catch {
+      } catch (error) {
         ambiguous = true;
         // A paid response can be independently valid while admission for
         // selection has expired. Retain only verified semantic bytes, without
@@ -301,8 +310,10 @@ export function guardedRefreshRuntime(input: {
                 executionAttestation: returnedResult.executionAttestation } });
           } catch { /* Unvalidated diagnostics never enter the private tape. */ }
         }
-        capture({ kind: "invocation_failed", requestId: command.requestId, delegated });
-        input.record({ ...identity, status: "requires_reconciliation" });
+        const failure = delegated ? {} : { preDelegationFailureStage:
+          error instanceof RefreshRuntimeAssertionFailure ? error.stage : preDelegationFailureStage };
+        capture({ kind: "invocation_failed", requestId: command.requestId, delegated, ...failure });
+        input.record({ ...identity, status: "requires_reconciliation", delegated, ...failure });
         throw new Error("Refresh invocation failed or is ambiguous; original operation remains consumed");
       } finally {
         removeAbortCapture?.();
