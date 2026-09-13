@@ -8,6 +8,10 @@ import { buildReaderSummaryDayDatasetManifest } from
   "./reader-summary-day-dataset-manifest";
 import { historicalPromotionRebuildIdentity } from
   "./reader-summary-promotion-v2-historical-classification";
+import {
+  isHistoricalPromotionRebuildSourceTuple,
+  type HistoricalPromotionArtifactVerification,
+} from "./reader-summary-promotion-v2-historical-artifact";
 import { readerSummaryProductionDayScope } from
   "./reader-summary-production-day-scope";
 import { resolveProductionDayExecutionRequest } from
@@ -33,6 +37,44 @@ const date = "2026-08-01";
 const now = new Date("2026-08-31T12:00:00.000Z");
 
 describe("historical Promotion V2 active-publication preparation", () => {
+  it("admits strict V1 and stale V2 sources only", () => {
+    const tuple = (
+      kind: HistoricalPromotionArtifactVerification["kind"],
+      rankingPolicyVersion: string,
+    ): HistoricalPromotionArtifactVerification => ({
+      kind,
+      rankingPolicyVersion,
+      noSignal: kind === "valid-no-signal",
+      orderedLanes: { top: [], additional: [] },
+      citationCount: 0,
+    });
+
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("strict-v1", "story_ranking_v10"),
+      "story_ranking_v11",
+    )).toBe(true);
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("valid-v2", "story_ranking_v10"),
+      "story_ranking_v11",
+    )).toBe(true);
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("valid-v2", "reader_promotion_policy.v2"),
+      "story_ranking_v11",
+    )).toBe(true);
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("valid-v2", "story_ranking_v11"),
+      "story_ranking_v11",
+    )).toBe(false);
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("valid-no-signal", "story_ranking_v10"),
+      "story_ranking_v11",
+    )).toBe(false);
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("valid-v2", "story_ranking_v12"),
+      "story_ranking_v11",
+    )).toBe(false);
+  });
+
   let directory: string;
 
   beforeEach(() => {

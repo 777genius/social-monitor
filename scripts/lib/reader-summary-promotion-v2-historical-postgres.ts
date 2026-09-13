@@ -20,6 +20,7 @@ import type {
   HistoricalPromotionVerifiedOutput,
 } from "./reader-summary-promotion-v2-historical-runner";
 import {
+  isHistoricalPromotionRebuildSourceTuple,
   isHistoricalPromotionTargetTuple,
   verifyHistoricalPromotionArtifact,
   type HistoricalPromotionArtifactRecord,
@@ -216,11 +217,11 @@ export class PostgresHistoricalPromotionAdapter
       }
       if (bundle !== undefined && active !== null &&
           active.publicationId === bundle.sourcePublicationId &&
-          publicationTupleKind(active) !== "strict-v1") {
+          !isRebuildableSourcePublication(active, bundle)) {
         return {
           state: "ambiguous",
           activePublicationId: active.publicationId,
-          reason: "active_source_publication_tuple_is_not_strict_v1",
+          reason: "active_source_publication_tuple_is_not_rebuildable",
         };
       }
       if (jobs.rows.length === 0) {
@@ -852,13 +853,17 @@ const isValidV2Publication = (row: PublicationRow): boolean => {
   }
 };
 
-const publicationTupleKind = (
+const isRebuildableSourcePublication = (
   row: PublicationRow,
-): "strict-v1" | "valid-v2" | "valid-no-signal" | "unknown" => {
+  bundle: HistoricalPromotionEvidenceBundle,
+): boolean => {
   try {
-    return verifyHistoricalPromotionArtifact(row).kind;
+    return isHistoricalPromotionRebuildSourceTuple(
+      verifyHistoricalPromotionArtifact(row),
+      bundle.canonicalInput.generationAuthority.execution.rankingPolicyVersion,
+    );
   } catch {
-    return "unknown";
+    return false;
   }
 };
 
