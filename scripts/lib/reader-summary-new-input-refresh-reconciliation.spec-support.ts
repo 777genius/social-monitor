@@ -1,5 +1,5 @@
 import { refreshScope } from "./reader-summary-new-input-refresh-manifest";
-import type { RefreshReconciliationEvidence } from "./reader-summary-new-input-refresh-reconciliation";
+import type { RefreshProviderReconciliationEvidence } from "./reader-summary-new-input-refresh-reconciliation";
 
 export const reconciliationDate = "2026-09-03";
 export const reconciliationJobId = "1767fd5c-2fe5-4fef-84e0-22c380932e81";
@@ -7,8 +7,8 @@ export const reconciliationOperation =
   `new-input-refresh:v1:${reconciliationDate}:${"b".repeat(64)}`;
 
 export const reconciliationEvidence = (
-  override: Partial<RefreshReconciliationEvidence> = {},
-): RefreshReconciliationEvidence => ({
+  override: Partial<RefreshProviderReconciliationEvidence> = {},
+): RefreshProviderReconciliationEvidence => ({
   format: "reader-summary-new-input-refresh-reconciliation-v1",
   ...refreshScope, date: reconciliationDate, jobId: reconciliationJobId,
   operation: reconciliationOperation, manifestSha256: "3".repeat(64),

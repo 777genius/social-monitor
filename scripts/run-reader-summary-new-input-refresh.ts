@@ -23,6 +23,8 @@ import { executeNewInputRefresh } from "./lib/reader-summary-new-input-refresh-e
 import { resolveReaderSummaryServingAuthority } from "./lib/reader-summary-serving-authority";
 import { assertRefreshSuccessorCurrent } from "./lib/reader-summary-new-input-refresh-successor";
 
+import { RefreshRuntimeAssertionFailure, singleFlightRefreshRuntimeAssertion } from "./lib/reader-summary-new-input-refresh-runtime-assertion";
+
 export function parseRefreshCommand(argv: readonly string[]) {
   if (argv.length === 1 && argv[0] === "--source-sha256") return { mode: "source" } as const;
   if ((argv.length === 4 || (argv.length === 6 && argv[4] === "--capture-path" && argv[5]?.startsWith("/"))) && argv[0] === "--apply" && argv[2] === "--sha256" && /^[0-9a-f]{64}$/u.test(argv[3]!)) {
@@ -143,12 +145,23 @@ async function main(): Promise<void> {
       try {
         const receipt = await executeNewInputRefresh({ configuredInterests, manifest, summary, feed, clock, env: process.env,
           runtime, assertFences, assertSource, record, capturePath: command.capturePath,
-          assertRuntime: async () => {
+          assertRuntime: singleFlightRefreshRuntimeAssertion(async () => {
             const serving = await resolveReaderSummaryServingAuthority({ summaryModelMode: "agent-runtime",
-              topicLabelerMode: "agent-runtime", env: process.env, agentRuntimeClient: runtime,
-              checkedAt: clock.now().toISOString() });
-            assertRefreshEqual(serving.runtime, manifest.runtime, "deployed runtime");
-          },
+              topicLabelerMode: "agent-runtime", env: process.env,
+              agentRuntimeClient: { checkHealth: async (service) => {
+                try {
+                  const health = await runtime.checkHealth(service);
+                  if (health.status !== "serving") throw new RefreshRuntimeAssertionFailure("runtime_health");
+                  return health;
+                } catch { throw new RefreshRuntimeAssertionFailure("runtime_health"); }
+              } },
+              checkedAt: clock.now().toISOString() }).catch((error: unknown) => {
+                if (error instanceof RefreshRuntimeAssertionFailure) throw error;
+                throw new RefreshRuntimeAssertionFailure("runtime_mismatch");
+              });
+            try { assertRefreshEqual(serving.runtime, manifest.runtime, "deployed runtime"); }
+            catch { throw new RefreshRuntimeAssertionFailure("runtime_mismatch"); }
+          }),
         });
         record({ ...receipt, operation: manifest.operation, manifestSha256: command.sha256,
           observedThrough: manifest.observedThrough });
