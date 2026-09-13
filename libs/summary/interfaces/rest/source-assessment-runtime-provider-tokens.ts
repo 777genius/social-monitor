@@ -19,7 +19,8 @@ export const createSourceAssessmentRuntime = (input: {
   });
   const summary = resolveAgentRuntimeReaderSummaryModelOptions(input.env, client);
   const relation = resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(input.env, client);
-  const totalTimeoutMs = Math.min(summary.timeoutMs ?? 600_000, 600_000);
+  // The operation spans multiple batches; retain the adapter's separate limits.
+  const totalTimeoutMs = Math.min(summary.timeoutMs ?? 600_000, 3_600_000);
   return { client, providerInstanceId: summary.providerInstanceId,
-    totalTimeoutMs, batchTimeoutMs: Math.min(relation.timeoutMs ?? 300_000, totalTimeoutMs) };
+    totalTimeoutMs, batchTimeoutMs: Math.min(relation.timeoutMs ?? 300_000, totalTimeoutMs, 600_000) };
 };
