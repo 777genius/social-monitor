@@ -108,6 +108,7 @@ describe("promotion assessment through Summary candidate and V2 (synthetic revie
     const result = await run(items, reviewer);
     expect(result.ranking.orderedCandidateIds).toEqual(["self-contained"]);
     expect(result.candidates.find((c) => c.candidateId === "self-contained")!.evidenceQualityScore).toBe(0.7);
+    expect(result.items.every((item) => item.sourceText === "")).toBe(true);
     for (const item of result.items.filter((i) => i.feedItemId.startsWith("ambiguous"))) {
       expect(item.contentQuality).toMatchObject({ qualityScore: 0, needsLlmReview: true,
         reason: "promotion_assessment_pending:needs_context" });
