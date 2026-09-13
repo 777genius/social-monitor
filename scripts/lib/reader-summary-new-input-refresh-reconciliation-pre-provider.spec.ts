@@ -217,7 +217,7 @@ it.each([
     capture.observationCounts.modelRequests = 7;
     const bytes = Buffer.from(JSON.stringify(capture) + "\n");
     chmodSync(path, 0o600); writeFileSync(path, bytes); chmodSync(path, 0o400);
-    e.invocation.captureSha256 = refreshBytesHash(bytes);
+    Object.assign(e.invocation, { captureSha256: refreshBytesHash(bytes) });
     if (providerEvidence) expect(() => validate(e)).toThrow(/integrity is invalid/);
     else expect(() => validate(e)).not.toThrow();
   }
