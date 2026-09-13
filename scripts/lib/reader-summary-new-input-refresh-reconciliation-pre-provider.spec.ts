@@ -5,7 +5,7 @@ import { assertRefreshReconciliationEvidence, reconcileConsumedRefreshJob, refre
 import { FakeReconciliationDatabase, reconciliationDate, reconciliationEvidence, reconciliationJobId,
   reconciliationOperation } from "./reader-summary-new-input-refresh-reconciliation.spec-support";
 import { preProviderFixture } from "./reader-summary-new-input-refresh-reconciliation-pre-provider.spec-support";
-import { refreshHash, refreshKeyPrefix } from "./reader-summary-new-input-refresh-manifest";
+import { refreshBytesHash, refreshHash, refreshKeyPrefix } from "./reader-summary-new-input-refresh-manifest";
 
 const roots: string[] = [];
 const fixture = (change?: Parameters<typeof preProviderFixture>[0]) => {
@@ -165,7 +165,65 @@ it("rejects an invocation that claims a different operation for a captured reque
   expect(() => validate(e)).toThrow();
 });
 
-it("rejects unscoped provider evidence", () => {
+it("accepts an unrelated historical unscoped attestation in the immutable daily journal", () => {
+  const e = fixture(({ journal }) => journal.unshift({ at: "2026-09-06T23:00:00.000Z",
+    event: { status: "verified_attestation", operation: undefined,
+      requestId: "synthetic-historical", attestation: {} } }));
+  expect(e.invocation.attempts).toHaveLength(6);
+  expect(e.invocation.attempts.map((attempt) => attempt.requestId)).not.toContain("synthetic-historical");
+  expect(() => validate(e)).not.toThrow();
+});
+
+it.each([
+  { status: "invocation_consumed" }, { status: "invocation_returned" },
+  { status: "verified_attestation", attestation: {} }, { delegated: true },
+  { tokens: 0 }, { usage: {} },
+])("rejects unscoped current-request provider evidence %j", (providerEvidence) => {
+  for (let index = 0; index < 6; index++) {
+    const e = fixture(({ journal }) => journal.push({ at: "2026-09-07T00:00:01.000Z",
+      event: { ...providerEvidence, requestId: `synthetic-${index}` } }));
+    expect(() => validate(e)).toThrow(/integrity is invalid/);
+  }
+});
+
+it.each([
+  { status: "invocation_consumed" }, { status: "invocation_returned" },
+  { status: "verified_attestation", attestation: {} }, { delegated: true },
+  { tokens: 0 }, { usage: {} },
+])("rejects current-operation provider evidence with an unrelated request ID %j", (providerEvidence) => {
+  const e = fixture(({ journal }) => journal.push({ at: "2026-09-07T00:00:01.000Z",
+    event: { ...providerEvidence, operation: reconciliationOperation, requestId: "synthetic-historical" } }));
+  expect(() => validate(e)).toThrow(/integrity is invalid/);
+});
+
+it.each([
+  undefined, { status: "invocation_consumed" }, { status: "invocation_returned" },
+  { status: "verified_attestation", attestation: {} }, { delegated: true },
+  { tokens: 0 }, { usage: {} },
+])("guards rejected captured request evidence %j", (providerEvidence) => {
+  for (const operation of [undefined, "different-operation", reconciliationOperation]) {
+    const e = fixture(({ models, journal }) => {
+      const { command } = models[0]!.event as { command: Record<string, unknown> };
+      models.push({ sequence: 13, atMs: 1788739202500, event: {
+        kind: "invocation_rejected", delegated: false,
+        command: { ...command, requestId: "synthetic-rejected" } } });
+      journal.unshift({ at: "2026-09-06T23:00:00.000Z", event: {
+        status: "verified_attestation", requestId: "synthetic-historical", attestation: {} } });
+      if (providerEvidence) journal.push({ at: "2026-09-07T00:00:02.500Z", event: {
+        ...providerEvidence, operation, requestId: "synthetic-rejected" } });
+    });
+    const path = join(e.invocation.capturePath, "incomplete.json");
+    const capture = JSON.parse(readFileSync(path, "utf8"));
+    capture.observationCounts.modelRequests = 7;
+    const bytes = Buffer.from(JSON.stringify(capture) + "\n");
+    chmodSync(path, 0o600); writeFileSync(path, bytes); chmodSync(path, 0o400);
+    e.invocation.captureSha256 = refreshBytesHash(bytes);
+    if (providerEvidence) expect(() => validate(e)).toThrow(/integrity is invalid/);
+    else expect(() => validate(e)).not.toThrow();
+  }
+});
+
+it("rejects unscoped provider evidence without a request ID", () => {
   const e = fixture(({ journal }) => journal.push({ at: "2026-09-07T00:00:01.000Z",
     event: { status: "verified_attestation", attestation: {} } }));
   expect(() => validate(e)).toThrow();
