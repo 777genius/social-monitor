@@ -190,7 +190,11 @@ describe("Reader Promotion V2 editorial slate", () => {
         reasonCode: "unresolved_qualifications" as const,
       },
     }));
-    const lower = xEvidence("display-ready-lower", 100);
+    const lowerBase = xEvidence("display-ready-lower", 100);
+    const lower = {
+      ...lowerBase,
+      sourceText: lowerBase.bodyPreview,
+    };
     const ready = withAssessment(lower, lower.title);
     const items = [...unavailable, ready];
 
