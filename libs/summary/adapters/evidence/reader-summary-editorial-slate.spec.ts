@@ -13,6 +13,7 @@ import {
 
 import { compose, selection, xEvidence, redditEvidence, hackerNewsEvidence, storyCluster } from
   "./reader-summary-editorial-slate.spec-support";
+import { headlineScope, withAssessment } from "./reader-headline.spec-support";
 
 describe("Reader Promotion V2 editorial slate", () => {
   describe.each(["full", "truncated"])("contextual negation with %s X titles", (kind) => {
@@ -179,6 +180,37 @@ describe("Reader Promotion V2 editorial slate", () => {
     expect(slate.top.every((entry) =>
       entry.candidateId !== "x-9",
     )).toBe(true);
+  });
+
+  it("backfills a display-ready candidate after unavailable editorial capacity", () => {
+    const unavailable = Array.from({ length: 16 }, (_, index) => ({
+      ...xEvidence(`unavailable-${index + 1}`, 10_000 - index),
+      readerHeadline: {
+        status: "unavailable" as const,
+        reasonCode: "unresolved_qualifications" as const,
+      },
+    }));
+    const lower = xEvidence("display-ready-lower", 100);
+    const ready = withAssessment(lower, lower.title);
+    const items = [...unavailable, ready];
+
+    const slate = composeReaderSummaryEditorialSlate({
+      selection: selection(
+        items,
+        items.map((item) => storyCluster(item.feedItemId, [item])),
+      ),
+      candidates: items,
+      displayScope: headlineScope,
+    });
+
+    expect(slate.top.map((entry) => entry.candidateId)).toEqual([
+      "display-ready-lower",
+    ]);
+    expect(
+      slate.excluded.filter((entry) =>
+        entry.reasonCodes.includes("display_headline_unavailable"),
+      ),
+    ).toHaveLength(16);
   });
 
   it("rejects a viral irrelevant candidate instead of filling a slot", () => {
