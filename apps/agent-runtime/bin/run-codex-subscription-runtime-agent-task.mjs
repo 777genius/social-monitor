@@ -428,9 +428,15 @@ function isPreProviderCapacityFailure(result, attemptCount) {
       error.code === "subscription_worker_pool_slot_failed" && error.usage === undefined) {
     error = error.cause;
   }
+  // The account wrapper erases quota-probe causes. A typed error alone is
+  // therefore insufficient: only an explicit disabled-account preflight is
+  // harmless. Cooldowns, quota rechecks and aggregate pool summaries cannot
+  // prove that a native probe stopped and cleaned up without effects.
   return error instanceof SubscriptionWorkerError && error.cause === undefined &&
     error.usage === undefined &&
-    ["subscription_worker_account_unavailable", "subscription_worker_pool_capacity_unavailable"].includes(error.code);
+    error.code === "subscription_worker_account_unavailable" &&
+    error.details?.availability === "disabled" &&
+    error.details?.reason === "account_unavailable";
 }
 
 async function createAuthMaterializationRoot(stateRootDir, taskId) {

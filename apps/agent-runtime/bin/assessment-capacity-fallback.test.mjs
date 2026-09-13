@@ -10,7 +10,7 @@ import { createContext, SourceTextModule, SyntheticModule } from "node:vm";
 import test, { before, after } from "node:test";
 import { request, completed } from "./assessment-cli-test-support.mjs";
 
-let root, core, executorSource;
+let root, core, executorSource, recheckerSource;
 before(async () => {
   root = await mkdtemp(path.join(tmpdir(), "assessment-capacity-fallback-"));
   const archive = path.resolve("vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.1.tgz");
@@ -19,31 +19,45 @@ before(async () => {
   execFileSync("tar", ["-xzf", archive, "-C", root], { stdio: "pipe" });
   const load = (name) => import(pathToFileURL(path.join(root, "package/dist/worker-core", name)));
   core = Object.assign({}, ...await Promise.all([
-    "errors.js", "worker-pool.js", "account-capacity/application/account-capacity-aware-worker.js",
+    "errors.js", "worker-pool.js", "account-capacity/domain/index.js", "account-capacity/application/account-capacity-aware-worker.js",
     "safe-execution/application/safe-execution-runner.js", "safe-execution/domain/safe-execution-policy.js",
     "safe-execution/adapters/in-memory-attempt-journal.js", "safe-execution/adapters/in-memory-workspace-lock-store.js",
   ].map(load)));
   core.WorkerControlService = class { constructor() { throw new Error("Control service forbidden"); } };
+  recheckerSource = await readFile(path.join(root, "package/dist/worker-codex/application/codex-account-capacity-rechecker.js"), "utf8");
   executorSource = await readFile(path.join(root, "package/dist/worker-codex/file-backend-codex-safe-executor.js"), "utf8");
 });
 after(async () => { if (root) await rm(root, { recursive: true, force: true }); });
 
 // Actual launcher, pinned safe executor, journal, safe runner, pool and capacity
-// wrapper. Only filesystem, account store and provider/CLI boundaries are fake.
+// wrapper and quota rechecker. Filesystem, account store, native observation
+// and provider/CLI boundaries are fake; no native process can launch.
 async function launch({ failures = ["preflight", "success"], mutateResult, abortAfterFailure = false } = {}) {
   const providerCalls = [], admissions = [], jobs = [], budgets = [], records = [];
-  const blocked = new Set();
+  const blocked = new Set(), capacities = new Map(), rechecks = [];
+  let pendingMode;
   let selectedFirst, result, failure, disposed = 0, input = JSON.stringify(request);
   const abort = new AbortController();
   const store = {
-    read({ accountId }) { return blocked.has(accountId) ? { availability: "disabled", reason: "account_unavailable" } : null; },
+    read({ accountId }) { return capacities.get(accountId) ?? (blocked.has(accountId) ? { availability: "disabled", reason: "account_unavailable" } : null); },
     readState({ accountId }) {
+      if (capacities.has(accountId)) return null;
       const index = admissions.length;
       admissions.push(accountId);
       selectedFirst ??= accountId;
       if (failures[index] === "preflight") blocked.add(accountId);
+      if (failures[index]?.startsWith("native_snapshot_")) {
+        pendingMode = failures[index];
+        return { accountId, phase: core.WorkerAccountCapacityPhase.RecheckDue,
+          capacity: { availability: "cooldown", reason: "quota_limited" } };
+      }
       return null;
     },
+    tryClaimRecheck({ state }) {
+      return { status: core.WorkerAccountCapacityClaimStatus.Claimed,
+        claim: { accountId: state.accountId, previous: state.capacity } };
+    },
+    resolveRecheck({ claim, resolution }) { capacities.set(claim.accountId, resolution.capacity); },
     observe() { return null; },
   };
   const journal = new core.InMemoryAttemptJournal();
@@ -93,8 +107,11 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
     ["../worker-local/safe-execution/index.js", { DefaultWorkspaceSnapshotter: Snapshotter,
       NodeSafeExecutionRuntime: Runtime, NodeSafeExecutionWorkspaceAccess: WorkspaceAccess }],
     ["./file-backend-codex-worker.js", { FileBackendCodexWorker: FakeWorker }],
-    ["./application/codex-account-capacity-rechecker.js", { CodexAccountCapacityRechecker: class {} }],
-    ["./adapters/codex-quota-snapshot-observation.js", { CodexQuotaSnapshotObservation: class {} }],
+    ["@vioxen/agent-account-observability", { AccountAvailability: { Available: "available" } }],
+    ["./adapters/codex-quota-snapshot-observation.js", { CodexQuotaSnapshotObservation: class {
+      async read() { rechecks.push(pendingMode); return { status: "rejected", reason: pendingMode }; }
+    } }],
+    ["./codex-live-quota-capacity.js", { codexLiveQuotaCapacitySnapshot: () => { throw new Error("Unexpected bound snapshot"); } }],
     ["./application/codex-account-capacity-alias-store.js", { CodexAccountCapacityAliasStore: class { constructor({ store }) { return store; } } }],
     ["./application/codex-live-quota-capacity.js", { recordCodexAppServerRateLimitsSnapshot: () => { throw new Error("Unexpected quota write"); } }],
     ["./pinned-codex-native-binary.mjs", { resolvePinnedCodexBinaryPath: () => "/synthetic/forbidden" }],
@@ -124,8 +141,8 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
   async function load(specifier) {
     if (modules.has(specifier)) return modules.get(specifier);
     let module;
-    if (specifier === "executor" || ["./run-codex-subscription-runtime-agent-task.mjs", "./assessment-cli-lifecycle.mjs", "./assessment-cli-progress.mjs"].includes(specifier)) {
-      const source = specifier === "executor" ? executorSource : await readFile(new URL(specifier, import.meta.url), "utf8");
+    if (specifier === "./application/codex-account-capacity-rechecker.js" || specifier === "executor" || ["./run-codex-subscription-runtime-agent-task.mjs", "./assessment-cli-lifecycle.mjs", "./assessment-cli-progress.mjs"].includes(specifier)) {
+      const source = specifier === "./application/codex-account-capacity-rechecker.js" ? recheckerSource : specifier === "executor" ? executorSource : await readFile(new URL(specifier, import.meta.url), "utf8");
       module = new SourceTextModule(source, { context, importModuleDynamically: async (name) => {
         const loaded = await load(name); if (loaded.status === "linked") await loaded.evaluate(); return loaded;
       } });
@@ -155,7 +172,7 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
     NodeProcessRunner: class { constructor() { throw new Error("Native processes forbidden"); } },
   });
   const launcher = await load("./run-codex-subscription-runtime-agent-task.mjs"); await launcher.evaluate();
-  return { result, failure, providerCalls, admissions, jobs, budgets, disposed, selectedFirst, records,
+  return { result, failure, rechecks, capacities, providerCalls, admissions, jobs, budgets, disposed, selectedFirst, records,
     task: await journal.readTask({ taskId: request.runId }) };
 }
 
@@ -200,6 +217,9 @@ test("all unavailable accounts are bounded to one admission each", async () => {
 });
 
 for (const [name, mutateResult] of [
+  ["missing capacity provenance", (r) => { r.error.cause.details = undefined; }],
+  ["unknown capacity reason", (r) => { r.error.cause.details.reason = "future_unknown"; }],
+  ["inconclusive disabled capacity", (r) => { r.error.cause.details.reason = "quota_recheck_inconclusive"; }],
   ["missing typed admission evidence", (r) => { r.error = undefined; }],
   ["usage on admission error", (r) => { r.error.cause.usage = { totalTokens: 0 }; }],
   ["uncertain workspace", (r) => { r.attempts[0].workspaceDirtyAfter = true; }],
@@ -218,3 +238,17 @@ test("cancellation prevents capacity fallback", async () => {
   assert.equal(h.providerCalls.length, 0);
   assert.deepEqual(h.budgets, [1]);
 });
+
+for (const reason of ["native_snapshot_stop_unconfirmed", "native_snapshot_cleanup_failed",
+  "native_snapshot_deadline", "native_snapshot_invalid", "native_snapshot_unsupported_demand"]) {
+  test(`actual quota rechecker ${reason} blocks account fallback`, async () => {
+    const h = await launch({ failures: [reason, "success"] });
+    assert.ok(h.failure);
+    assert.deepEqual(h.rechecks, [reason]);
+    assert.equal([...h.capacities.values()][0].reason, "quota_recheck_inconclusive");
+    assert.equal(h.admissions.length, 1);
+    assert.equal(h.providerCalls.length, 0);
+    assert.deepEqual(h.budgets, [1]);
+    assert.equal(h.task.attempts.length, 1);
+  });
+}
