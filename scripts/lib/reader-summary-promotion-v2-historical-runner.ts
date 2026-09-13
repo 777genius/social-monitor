@@ -306,7 +306,11 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
     const prior = await this.dependencies.receipts.load(date);
     if (
       prior?.identity?.rebuildIdentity === rebuildIdentity &&
-      (prior.status === "completed" || prior.status === "noop")
+      (prior.status === "completed" || prior.status === "noop") &&
+      !(prior.status === "noop" &&
+        prior.reason ===
+          "stronger_active_publication_preserved_after_lower_authority_stale" &&
+        durableState.state === "stale-source-preserved")
     ) {
       if (durableState.state !== "complete-active") {
         return pendingReceipt(
