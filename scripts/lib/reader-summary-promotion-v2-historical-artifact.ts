@@ -117,6 +117,28 @@ export const isHistoricalPromotionTargetTuple = (
   value: HistoricalPromotionArtifactVerification,
 ): boolean => value.kind === "valid-v2" || value.kind === "valid-no-signal";
 
+export const isHistoricalPromotionRebuildSourceTuple = (
+  value: HistoricalPromotionArtifactVerification,
+  targetRankingPolicyVersion: string,
+): boolean => value.kind === "strict-v1" ||
+  (value.kind === "valid-v2" && isOlderRankingPolicy(
+    value.rankingPolicyVersion,
+    targetRankingPolicyVersion,
+  ));
+
+const isOlderRankingPolicy = (source: string, target: string): boolean => {
+  const targetOrdinal = rankingPolicyOrdinal(target);
+  if (targetOrdinal === null) return false;
+  if (source === "reader_promotion_policy.v2") return true;
+  const sourceOrdinal = rankingPolicyOrdinal(source);
+  return sourceOrdinal !== null && sourceOrdinal < targetOrdinal;
+};
+
+const rankingPolicyOrdinal = (value: string): number | null => {
+  const match = /^story_ranking_v([1-9][0-9]*)$/u.exec(value);
+  return match === null ? null : Number(match[1]);
+};
+
 const orderedLanes = (
   snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
   attestations: NonNullable<
