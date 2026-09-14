@@ -57,8 +57,7 @@ import { printProductionDayStats } from
   "./lib/reader-summary-production-day-console";
 import { productionDayPromotionRebuildEnvironment } from
   "./lib/reader-summary-production-day-promotion-rebuild";
-import { historicalPromotionQualityOutput } from
-  "./lib/reader-summary-promotion-v2-quality-output";
+import { historicalCleanDayCollectionPath, historicalPromotionQualityOutput } from "./lib/reader-summary-promotion-v2-quality-output";
 import {
   resolveProductionDayProviderReadiness,
   type ProductionDayDatabaseQualityReport,
@@ -125,7 +124,6 @@ void main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-
 async function main(): Promise<void> {
   if (artifactOnly) {
     validateExistingReport();
@@ -234,6 +232,8 @@ async function main(): Promise<void> {
   const isolatedQuality = historicalPromotionQualityOutput({
     enabled: executionRequest.mode === "historical-regeneration" &&
       executionRequest.promotionRebuild !== undefined, reportDirectory,
+    cleanDayCollectionPath: historicalCleanDayCollectionPath(
+      executionRequest, historicalCollection?.path),
   });
   let collectionQualityStep = runNpm("collection-quality", [
     "run",

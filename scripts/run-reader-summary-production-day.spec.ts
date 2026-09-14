@@ -30,6 +30,16 @@ describe("production-day execution request", () => {
       "Production history collection scope is not 6101/6102",
     );
   });
+
+  it("binds preserved regeneration quality to its immutable collection", () => {
+    const source = readFileSync(
+      join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
+      "utf8",
+    );
+    expect(source).toContain("historicalCleanDayCollectionPath(");
+    expect(source).toContain("executionRequest, historicalCollection?.path");
+  });
+
   it("leaves migrations exclusively in the release pipeline", () => {
     const runner = readFileSync(
       join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
