@@ -1,17 +1,18 @@
-import { assertRefreshManifest, refreshOperation } from "./reader-summary-new-input-refresh-manifest";
+import { assertRefreshManifest, refreshDefaultDates, refreshOperation } from "./reader-summary-new-input-refresh-manifest";
 import { parseRefreshCommand } from "../run-reader-summary-new-input-refresh";
 import { refreshManifest, refreshNow } from "./reader-summary-new-input-refresh.spec-support";
 import { reconcileRefresh } from "./reader-summary-new-input-refresh-guard";
 
 describe("bounded new-input refresh authority", () => {
-  it("admits a real newer observation for a terminal NO_SIGNAL on the fixed seven dates", () => {
+  it("keeps the original seven-date default while admitting an explicit recent recovery date", () => {
     expect(() => assertRefreshManifest(refreshManifest(), refreshNow)).not.toThrow();
-    expect(parseRefreshCommand([])).toMatchObject({ mode: "prepare", dates: expect.any(Array) });
+    expect(parseRefreshCommand([])).toEqual({ mode: "prepare", dates: refreshDefaultDates });
     expect(parseRefreshCommand(["--prepare", "--date", "2026-09-03"])).toEqual({ mode: "prepare", dates: ["2026-09-03"] });
+    expect(parseRefreshCommand(["--prepare", "--date", "2026-09-12"])).toEqual({ mode: "prepare", dates: ["2026-09-12"] });
     expect(() => assertRefreshManifest(refreshManifest(), new Date("2026-09-06T00:00:00Z"), false)).not.toThrow();
   });
   it.each([
-    { tenantId: "other" }, { workspaceId: "other" }, { date: "2026-08-29" }, { date: "2026-09-06" },
+    { tenantId: "other" }, { workspaceId: "other" }, { date: "2026-08-29" }, { date: "2026-09-14" },
     { timezone: "Europe/Kyiv" }, { startedAt: "2026-09-02T00:00:00.000Z" },
     { model: "gpt-5.5" }, { reasoningEffort: "xhigh" }, { sourceSha256: "b".repeat(64) },
     { observedThrough: "2026-09-06T00:00:00.000Z" }, { observedThrough: "2026-09-03T00:00:00.000Z" },
@@ -41,7 +42,7 @@ describe("bounded new-input refresh authority", () => {
     expect(refreshOperation({ ...m, authority: { ...m.authority, engagementSha256: "b".repeat(64) } })).not.toBe(m.operation);
     expect(refreshOperation({ ...m, prior: { ...m.prior, proofSha256: "b".repeat(64) } })).not.toBe(m.operation);
   });
-  it.each([["--date", "2026-09-03"], ["--prepare", "--date", "2026-09-06"], ["--output", "/tmp/new"],
+  it.each([["--date", "2026-09-03"], ["--prepare", "--date", "2026-09-14"], ["--output", "/tmp/new"],
     ["--apply", "file"], ["--prepare", "--dates", "2026-08-30..2026-09-10"]])("rejects broad flags %j", (...args) => {
     expect(() => parseRefreshCommand(args)).toThrow();
   });

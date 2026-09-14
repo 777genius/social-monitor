@@ -12,7 +12,7 @@ import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/pers
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import { requiredHistoricalPromotionSystemDatabaseUrl, assertHistoricalPromotionSystemRole } from "./lib/reader-summary-promotion-v2-system-database";
-import { refreshScope, refreshDates, refreshOperation, refreshBytesHash,
+import { refreshScope, refreshDates, refreshDefaultDates, refreshOperation, refreshBytesHash,
   assertRefreshManifest, type RefreshManifest } from "./lib/reader-summary-new-input-refresh-manifest";
 import { refreshSourceSha256, readReviewedRefresh, readReviewedRefreshSuccessor, assertRefreshFences, readRefreshFenceAuthority } from "./lib/reader-summary-new-input-refresh-files";
 import { captureRefreshAuthority, preflightRefreshSelection, assertRefreshHasNewInput, refreshPeriod } from "./lib/reader-summary-new-input-refresh-capture";
@@ -36,7 +36,7 @@ export function parseRefreshCommand(argv: readonly string[]) {
     return { mode: "prepare", dates: [argv[2]!], successor: { path: argv[4]!, sha256: argv[6]! } } as const;
   }
   if (argv.length === 0 || (argv.length === 1 && argv[0] === "--prepare")) {
-    return { mode: "prepare", dates: refreshDates } as const;
+    return { mode: "prepare", dates: refreshDefaultDates } as const;
   }
   if (argv.length === 3 && argv[0] === "--prepare" && argv[1] === "--date" && refreshDates.includes(argv[2]!)) {
     return { mode: "prepare", dates: [argv[2]!] } as const;
