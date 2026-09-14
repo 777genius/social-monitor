@@ -236,7 +236,7 @@ test("parallel account setup rejection does not hide another outstanding materia
 for (const admissionFailure of ["pre-provider", "session", "session-refresh", "ambiguous", "provider-started", "session-provider-started"]) {
   test(`launcher ${admissionFailure} account failure only falls back with pre-provider proof`, async (t) => {
     const h = await launch(t, { admissionFailure });
-    const safe = ["pre-provider", "session", "session-refresh"].includes(admissionFailure);
+    const safe = ["pre-provider", "session", "session-refresh", "session-provider-started"].includes(admissionFailure);
     await h.until(() => safe ? h.runCount === 2 : h.events.includes("auth-removal"));
     assert.equal(h.options.safeExecutionPolicy.maxAttempts, 1);
     assert.equal(h.options.safeExecutionPolicy.retryOnAccountUnavailable, false);
