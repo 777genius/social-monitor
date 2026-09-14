@@ -19,6 +19,11 @@ type AssessmentCompletion = {
   assertCaptureComplete(): void;
 };
 
+export const refreshAssessmentScheduling = Object.freeze({
+  batchConcurrency: 3,
+  totalTimeoutMs: 900_000,
+});
+
 export type RefreshAssessmentCanonicalCapture = Readonly<{
   canonicalEvidenceJson: string;
   exemptBindingsJson: string;
@@ -115,10 +120,13 @@ export function createRefreshAssessmentReviewer(input: {
       "Refresh assessment is incomplete; original operation requires reconciliation");
   };
   return {
-    // Six workers put the evidenced eleven 8-item batches into two waves
-    // (about 452s at 225.7s each), with the existing 600s operation deadline.
+    // Keep healthy slots available for runtime fallback when configured pool
+    // entries are leased, cooling down or require re-authentication. Four
+    // bounded waves still fit inside the extended refresh-only deadline.
     promotionTiming: Object.freeze({ batchTimeoutMs: reviewer.promotionTiming!.batchTimeoutMs,
-      totalTimeoutMs: reviewer.promotionTiming!.totalTimeoutMs, batchConcurrency: 6 }),
+      totalTimeoutMs: Math.max(reviewer.promotionTiming!.totalTimeoutMs,
+        refreshAssessmentScheduling.totalTimeoutMs),
+      batchConcurrency: refreshAssessmentScheduling.batchConcurrency }),
     assertCaptureComplete: () => {
       if ((input.capture || input.captureCanonical) && (captureFailures > 0 || terminalBatches !== batches)) {
         throw new Error("Refresh assessment capture is incomplete");
