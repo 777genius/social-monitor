@@ -386,6 +386,11 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
           if (providerTaskEffectPossible && !isPreProviderSessionRejection(
             result.attempts.at(-1), accounts[attempt - 1],
           )) break;
+          // The exact rejection above proves that this attempt never crossed
+          // the provider boundary. Reset the per-attempt signal before the
+          // next admission so an unrelated disabled-account preflight can
+          // still advance to another healthy account.
+          providerTaskEffectPossible = false;
           lifecycle.checkpoint();
           if (disposed || job.abortSignal?.aborted) break;
           result = await executor.run({

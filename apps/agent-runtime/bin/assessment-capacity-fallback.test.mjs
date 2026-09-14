@@ -298,6 +298,21 @@ test("native pre-WebSocket session rejection falls back after coarse provider-st
   assert.deepEqual(h.providerCalls, h.admissions);
 });
 
+test("session rejection does not poison a later disabled-account preflight", async () => {
+  const h = await launch({ failures: ["consumed-admission", "preflight", "success"],
+    mutateResult(result, admissions) {
+      if (result.attempts.length === 1) {
+        sessionRejection(result, admissions);
+        delete result.error;
+      }
+    } });
+  assert.equal(h.failure, undefined);
+  assert.equal(h.result.status, "completed");
+  assert.deepEqual(h.budgets, [1, 2, 3]);
+  assert.equal(h.admissions.length, 3);
+  assert.deepEqual(h.providerCalls, [h.admissions[0], h.admissions[2]]);
+});
+
 test("effectful session rejection cannot fall back after the provider task starts", async () => {
   const h = await launch({ failures: ["consumed-admission", "success"],
     mutateResult(result, admissions) {
