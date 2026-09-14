@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "sourceRepository": "https://github.com/vioxen/subscription-runtime.git",
+  "baseCommit": "42ea16961987f8a626a5219b030a5029f28bcdfd",
+  "sourceCommit": null,
+  "sourceCommitIsLocallyReviewed": false,
+  "upstreamPublicationClaimed": false,
+  "upstreamPackageVersion": "0.1.0-main.40",
+  "packageVersion": "0.1.0-main.42-sm.2",
+  "packageVersionIsLocal": true,
+  "packagingProfile": "thin-bundle-agent-account-observability-v1",
+  "sha256": "cb657dd811ee6ee0915215ee47f7f366375ce8aaff0c9faaa584716e3f8417c7",
+  "launcherSha256": "50ea49b618cb3273421fe8f39b571194cb3250270477efb20298eea927e6c533",
+  "approvedArchiveSha256": "d67569a97ee0b91d8ce7d989532c44ec58673190101cc5f481730e2f1af4aac3",
+  "nonManifestFiles": 3723,
+  "nonManifestInventorySha256": "30de6c1fd552bbff33c9a7de766d08460b91ce59fffc8df423af928172485555",
+  "inventoryFormat": "Sorted archive file path + NUL + lowercase SHA256 + LF, excluding package/package.json",
+  "repackChange": "Local sm.2 preserves rejected quota snapshot reasons for guarded pre-provider admission fallback. Relative to immutable sm.1 only the capacity rechecker JavaScript, its source and declaration maps and package version change. No upstream publication claimed.",
+  "baseSource": {
+    "path": "vendor/vioxen-subscription-runtime-0.1.0-main.42.base-source.tgz",
+    "sha256": "5b7f2077596443d0a3a55c9e0e06a14c50607b81dff7a6cd7d6f251c365f25f8"
+  },
+  "reviewedSourcePatch": {
+    "path": "vendor/patches/vioxen-subscription-runtime-0.1.0-main.42.patch",
+    "sha256": "21871af36cf17a78eb8eb398d79124accafdb0e8f363c7b86cf27566fddf1e0b"
+  },
+  "review": {
+    "parentSourceReview": {
+      "path": "../sm-native-identity-review-r1-20260909/.cache/handoff/native-identity-corrected-review.md",
+      "sha256": "e761d02adb2d954b602d830038197493ba592d36c910bdcfdb212b5711ed403a",
+      "verdict": "APPROVE source/package; live quota and executable compatibility unproven"
+    },
+    "currentFixReview": "Pending independent review; tested local checkpoint only"
+  },
+  "reviewedSourceFiles": 1462,
+  "reviewedSourceInventorySha256": "aeae4a92a86aa5e87e656a4066071eabded7827a07ee09f0da7ca9b1bf89d189",
+  "reviewedParentSourceCommit": "22db9bbca1c2315e93211887a7738a6b40f21167",
+  "parentArchive": {
+    "path": "vendor/vioxen-subscription-runtime-0.1.0-main.42.tgz",
+    "sha256": "338499bc01bc08958d53bcad6fdf0da9ab4dbc542705b947eed8eb59afdc49ae"
+  },
+  "quotaWirePatch": {
+    "path": "vendor/patches/vioxen-subscription-runtime-0.1.0-main.42-sm.1.patch",
+    "sha256": "5871ba357210509ef492a4372fab3968e6b213cfa45f601a9393cea7bb863927"
+  },
+  "changedPackageFiles": {
+    "package/dist/worker-codex/application/codex-account-capacity-rechecker.d.ts.map": {
+      "before": "06088c1409ba327bce60fb92c165d03c44e6c8ad65b7cda796ab973cae88af18",
+      "after": "5f8159431a032cbd8ce8c1f7d3a7baa5235c40ef6af20aa7cd2059a989de29e0"
+    },
+    "package/dist/worker-codex/application/codex-account-capacity-rechecker.js": {
+      "before": "64e88f32b45035ed53c352c99605d049774f0ad89b545dbd17c6b1747c1dc90a",
+      "after": "59b089dff64c20a2bf897f3125b757fe110ce957af67f01dfdb7a3a2d7b84af7"
+    },
+    "package/dist/worker-codex/application/codex-account-capacity-rechecker.js.map": {
+      "before": "e6091eabfb5cd040e3a6f3bf8f724a1bb9a33f5bbdd40693919fea9ddbef4546",
+      "after": "cbbecf6162c73754bc9690a9dcb180a1bfc7603099c22cd32c092b39743a2b24"
+    },
+    "package/node_modules/@vioxen/agent-account-observability/dist/infrastructure/JsonRpcLineClient.d.ts": {
+      "before": "bc4f5a39dbaca5141298da513aa52517b9713f00de4d9c3f42693b10bf20c149",
+      "after": "95e038a108261f2acadb2d73b9976824f3cdd3d3ff04515606de2fcbce09e894"
+    },
+    "package/node_modules/@vioxen/agent-account-observability/dist/infrastructure/JsonRpcLineClient.d.ts.map": {
+      "before": "373c4d518d735dcc24967b777d54981fd5d8758f001a0d716cc4c303ff1a1d17",
+      "after": "84baf4f068a8e1300fbf5cf6aa7816fdf62c2aa2ca2b0b729e88aa389db4039e"
+    },
+    "package/node_modules/@vioxen/agent-account-observability/dist/infrastructure/JsonRpcLineClient.js": {
+      "before": "3c24d6f1c3e3e894bcf8e454e354394a746427d479026b51586703100f581105",
+      "after": "4fb9c1700efe3c354c57a4b82d3d190ba72b265408e52b5f08ae32c48216432d"
+    },
+    "package/node_modules/@vioxen/agent-account-observability/dist/infrastructure/JsonRpcLineClient.js.map": {
+      "before": "0589971a16664082303bb43f608a3c10d21edd5ae5cbce273f5aabb1e991b25a",
+      "after": "78052065851d53c66bcd90c960f8e3f0766ce77d5cfd67f14469bf1031f934c7"
+    },
+    "package/node_modules/@vioxen/agent-account-observability/dist/providers/codex/CodexAppServerQuotaReader.js": {
+      "before": "6225031c2159d0b22823ed8a432a7bb7c47f1f92bb40194bb25e5ec54f1004fd",
+      "after": "c40a9b90dc3c1e81307427316f83c80f8a7ce942c44c03f61243608e428de2b2"
+    },
+    "package/node_modules/@vioxen/agent-account-observability/dist/providers/codex/CodexAppServerQuotaReader.js.map": {
+      "before": "707bbdbeeab338b2773da02fa5076307af63f9f5b363a8c074901888511f754d",
+      "after": "e3e50eb74b8e3c3dcba4d951ba4cf3e016fa39de8a72a82a82386489f8cb515a"
+    },
+    "package/node_modules/@vioxen/agent-account-observability/dist/providers/codex/codexTypes.d.ts": {
+      "before": "d2de0b31426024b7123585189908241a3e856902ebb37fc468ad71b778dc45e2",
+      "after": "36e10ecca145688a7408618bbd25c672db9984db5eca28fad665e81e82c13c39"
+    },
+    "package/node_modules/@vioxen/agent-account-observability/dist/providers/codex/codexTypes.d.ts.map": {
+      "before": "78ab8ddcbf8df520264e3a7b7f915112426e376bfc5b01bee7635cdaea5f7e6c",
+      "after": "12d89c66a45fc674ef4386254712522ee8c9fad2d89aa8fbc9b0f934579e231d"
+    },
+    "package/package.json": {
+      "before": "fca0b3a749c074218d1b0aaef0c8aeb3ece75dad7d2854508c904cfc30048728",
+      "after": "b783fdbbdefa5dcb863ec45710daab0a31707179227bde6d7168628d1bc590bd"
+    }
+  },
+  "fixedSourceFiles": 1463,
+  "fixedSourceInventorySha256": "eb7428d3b254f9220e5f9e8b6a8a8d7fa7aa44c90293734dbff327f5172d2fec",
+  "build": {
+    "script": "scripts/rebuild-vioxen-subscription-runtime-quota-wire.mjs",
+    "node": "v24.18.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.8",
+    "nodeTypes": "22.20.0",
+    "profile": "Reconstruct base + reviewed patch + sm.1 wire patch + sm.2 capacity reason patch; link reconstructed workspace package; npm run build with supplied offline toolchain; overlay compiled outputs onto main.42; version-only manifest edit; sorted tar with fixed metadata.",
+    "scriptSha256": "b29efd2d2992fc823b9339a6d02266188a7c0f34a4475beb31ec24fdec013307"
+  },
+  "reviewedParentSourceCommitIsLocallyReviewed": true,
+  "approvedArchiveScope": "Historical parent source approval only; local sm.1 and sm.2 patches do not claim upstream or independent approval.",
+  "capacityReasonPatch": {
+    "path": "vendor/patches/vioxen-subscription-runtime-0.1.0-main.42-sm.2.patch",
+    "sha256": "5b183d0a9d614c9575b27c9f2ea6b730208967382e273ce696be2208aa19c9c7"
+  }
+}

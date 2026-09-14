@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,7 +29,13 @@ assert.equal(hash(await readFile(parentArchive)), parent.sha256);
 run('tar', ['-xzf', join(repo, parent.baseSource.path), '-C', source]);
 run('git', ['apply', join(repo, parent.reviewedSourcePatch.path)]);
 run('git', ['apply', join(repo, 'vendor/patches/vioxen-subscription-runtime-0.1.0-main.42-sm.1.patch')]);
+run('git', ['apply', join(repo, 'vendor/patches/vioxen-subscription-runtime-0.1.0-main.42-sm.2.patch')]);
 await cp(resolve(toolchain), join(source, 'node_modules'), { recursive: true });
+// Resolve the workspace dependency to this reconstruction's reviewed source.
+const observabilityLink = join(source, 'node_modules/@vioxen/agent-account-observability');
+await mkdir(dirname(observabilityLink), { recursive: true });
+await rm(observabilityLink, { recursive: true, force: true });
+await symlink('../../packages/agent-account-observability', observabilityLink);
 for (const [name, version] of Object.entries({ typescript: '6.0.3', vitest: '4.1.8', '@types/node': '22.20.0' })) {
   assert.equal(JSON.parse(await readFile(join(source, 'node_modules', name, 'package.json'))).version, version);
 }
@@ -42,7 +48,7 @@ await cp(join(source, 'packages/agent-account-observability/dist'),
   join(packageRoot, 'node_modules/@vioxen/agent-account-observability/dist'), { recursive: true });
 const manifestPath = join(packageRoot, 'package.json');
 const manifest = JSON.parse(await readFile(manifestPath));
-manifest.version = '0.1.0-main.42-sm.1';
+manifest.version = '0.1.0-main.42-sm.2';
 await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 async function files(dir, prefix = '') {
   const result = [];
