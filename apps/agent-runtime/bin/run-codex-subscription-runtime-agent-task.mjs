@@ -382,7 +382,10 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
           if (disposed || job.abortSignal?.aborted) break;
           result = await executor.run({
             ...runInput,
-            safeExecutionPolicy: { maxAttempts: attempt + 1 },
+            safeExecutionPolicy: {
+              maxAttempts: attempt + 1,
+              retryOnAccountUnavailable: true,
+            },
           });
         }
         progress?.mark("executor_run", "completed");
@@ -430,6 +433,11 @@ function isPreProviderAccountUnavailable(result, attemptCount, accounts) {
   // confirmed native auth-rejection journal signature, scoped to this account.
   if (isPreProviderSessionRejection(result.attempts.at(-1), accounts[attemptCount - 1])) {
     const wrapper = result.error;
+    // The local-file executor persists the exact attempt evidence but does not
+    // guarantee that its outer in-memory error wrapper survives readback.
+    // Absence is acceptable here; any present wrapper must remain the narrow
+    // account-unavailable shape below.
+    if (wrapper === undefined) return true;
     const cause = wrapper?.cause;
     return wrapper?.code === "subscription_worker_pool_slot_failed" &&
       wrapper.usage === undefined &&

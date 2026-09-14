@@ -272,6 +272,19 @@ test("typed session rejection after disposable auth refresh falls back to anothe
   assert.deepEqual(h.providerCalls, h.admissions);
 });
 
+test("persisted session rejection without an outer error falls back to another account", async () => {
+  const h = await launch({ failures: ["refresh-admission", "success"],
+    mutateResult(result, admissions) {
+      sessionRejection(result, admissions);
+      delete result.error;
+    } });
+  assert.equal(h.failure, undefined);
+  assert.equal(h.result.status, "completed");
+  assert.deepEqual(h.budgets, [1, 2]);
+  assert.equal(h.admissions.length, 2);
+  assert.deepEqual(h.providerCalls, h.admissions);
+});
+
 test("typed session rejection cannot fall back after the provider task starts", async () => {
   const h = await launch({ failures: ["consumed-admission", "success"],
     mutateResult: sessionRejection });

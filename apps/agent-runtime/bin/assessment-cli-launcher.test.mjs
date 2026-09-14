@@ -248,6 +248,7 @@ for (const admissionFailure of ["pre-provider", "session", "session-refresh", "a
       assert.equal(h.jobs[1].taskId, h.jobs[0].taskId);
       assert.equal(h.jobs[1].prompt, h.jobs[0].prompt);
       assert.equal(h.jobs[1].safeExecutionPolicy.maxAttempts, 2);
+      assert.equal(h.jobs[1].safeExecutionPolicy.retryOnAccountUnavailable, true);
       h.turn.resolve();
     }
     await h.clock.tickAsync(11_000);
