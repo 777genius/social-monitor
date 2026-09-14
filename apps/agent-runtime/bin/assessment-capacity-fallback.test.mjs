@@ -262,6 +262,25 @@ function sessionRejection(result, admissions) {
   };
 }
 
+test("typed session rejection after disposable auth refresh falls back to another account", async () => {
+  const h = await launch({ failures: ["refresh-admission", "success"],
+    mutateResult: sessionRejection });
+  assert.equal(h.failure, undefined);
+  assert.equal(h.result.status, "completed");
+  assert.deepEqual(h.budgets, [1, 2]);
+  assert.equal(h.admissions.length, 2);
+  assert.deepEqual(h.providerCalls, h.admissions);
+});
+
+test("typed session rejection cannot fall back after the provider task starts", async () => {
+  const h = await launch({ failures: ["consumed-admission", "success"],
+    mutateResult: sessionRejection });
+  assert.ok(h.failure);
+  assert.deepEqual(h.budgets, [1]);
+  assert.equal(h.admissions.length, 1);
+  assert.equal(h.providerCalls.length, 1);
+});
+
 for (const [name, mutate, safe] of [
   ["literal production auth rejection", () => {}, true],
   ["numeric exit compatibility", (a) => { a.failureDetails.exitCode = 1; }, true],

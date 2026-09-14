@@ -253,14 +253,17 @@ function sourceContentAssessmentOutputSchemas(task) {
 function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
   let executor;
   let disposed = false;
-  let providerEffectPossible = false;
+  let providerTaskEffectPossible = false;
   const assessmentObservability = {
     ...progress,
     emit(event) {
-      // Latch before provider work, including session refresh. Missing events
-      // alone never authorize fallback: require the typed admission error below.
-      if (event?.name === "session.read.started" || event?.name?.startsWith("provider.")) {
-        providerEffectPossible = true;
+      // Session reads and auth refreshes happen against a disposable per-account
+      // auth materialization before the model task starts. A typed
+      // provider_session_invalid result can therefore move to another account
+      // after those phases. Once the provider task itself starts, fallback is
+      // forbidden even if a later wrapper misclassifies the failure.
+      if (event?.name === "provider.task.started") {
+        providerTaskEffectPossible = true;
       }
       progress?.emit(event);
     },
@@ -374,7 +377,7 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
         // account_unavailable rejection; retryMode "never" still forbids replay.
         // Generic capacity failures cannot authorize another admission.
         for (let attempt = 1; isSourceContentAssessment && attempt < accounts.length; attempt++) {
-          if (providerEffectPossible || !isPreProviderAccountUnavailable(result, attempt, accounts)) break;
+          if (providerTaskEffectPossible || !isPreProviderAccountUnavailable(result, attempt, accounts)) break;
           lifecycle.checkpoint();
           if (disposed || job.abortSignal?.aborted) break;
           result = await executor.run({

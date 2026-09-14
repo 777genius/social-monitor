@@ -59,6 +59,10 @@ async function launch(t, { hold, neverStop = false, failedTask = false, parentLo
       runCount++;
       jobs.push(job); triedAccounts.push(options.accounts[runCount - 1].worker.capacityAccountId);
       if (admissionFailure && runCount === 1) {
+        if (admissionFailure === "session-refresh") {
+          options.observability.emit({ name: "session.read.started" });
+          options.observability.emit({ name: "provider.refresh.started" });
+        }
         if (admissionFailure.endsWith("provider-started")) options.observability.emit({ name: "provider.task.started" });
         return { status: "waiting_capacity", reason: "account_unavailable",
           attempts: [{ status: "blocked", failureReason: "account_unavailable",
@@ -229,10 +233,10 @@ test("parallel account setup rejection does not hide another outstanding materia
   assert.equal(h.events.includes("executor-created"), false);
 });
 
-for (const admissionFailure of ["pre-provider", "session", "ambiguous", "provider-started", "session-provider-started"]) {
+for (const admissionFailure of ["pre-provider", "session", "session-refresh", "ambiguous", "provider-started", "session-provider-started"]) {
   test(`launcher ${admissionFailure} account failure only falls back with pre-provider proof`, async (t) => {
     const h = await launch(t, { admissionFailure });
-    const safe = ["pre-provider", "session"].includes(admissionFailure);
+    const safe = ["pre-provider", "session", "session-refresh"].includes(admissionFailure);
     await h.until(() => safe ? h.runCount === 2 : h.events.includes("auth-removal"));
     assert.equal(h.options.safeExecutionPolicy.maxAttempts, 1);
     assert.equal(h.options.safeExecutionPolicy.retryOnAccountUnavailable, false);
