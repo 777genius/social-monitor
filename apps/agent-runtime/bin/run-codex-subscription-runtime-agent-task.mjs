@@ -377,7 +377,20 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
         // account_unavailable rejection; retryMode "never" still forbids replay.
         // Generic capacity failures cannot authorize another admission.
         for (let attempt = 1; isSourceContentAssessment && attempt < accounts.length; attempt++) {
-          if (providerTaskEffectPossible || !isPreProviderAccountUnavailable(result, attempt, accounts)) break;
+          if (!isPreProviderAccountUnavailable(result, attempt, accounts)) break;
+          // The native worker emits provider.task.started before opening its
+          // responses WebSocket. A typed provider_session_invalid rejection
+          // therefore proves that no provider task was admitted even when the
+          // coarse lifecycle signal was already observed. All other failures
+          // remain blocked once that signal has fired.
+          if (providerTaskEffectPossible && !isPreProviderSessionRejection(
+            result.attempts.at(-1), accounts[attempt - 1],
+          )) break;
+          // The exact rejection above proves that this attempt never crossed
+          // the provider boundary. Reset the per-attempt signal before the
+          // next admission so an unrelated disabled-account preflight can
+          // still advance to another healthy account.
+          providerTaskEffectPossible = false;
           lifecycle.checkpoint();
           if (disposed || job.abortSignal?.aborted) break;
           result = await executor.run({
