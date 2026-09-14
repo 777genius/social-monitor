@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { refreshDates, refreshScope } from "./reader-summary-new-input-refresh-manifest";
+import { refreshDates, refreshDefaultDates, refreshScope } from "./reader-summary-new-input-refresh-manifest";
 import { readPublicationBootstrapSql } from "./reader-summary-publication-bootstrap-sql";
 
 const migrationPath = "prisma/migrations/20260909120000_reader_summary_refresh_lock_capabilities/migration.sql";
@@ -42,7 +42,7 @@ describe("fixed successor lock SQL contract", () => {
     expect(body).toContain(`target_tenant_id <> '${refreshScope.tenantId}'::uuid`);
     expect(body).toContain(`target_workspace_id <> '${refreshScope.workspaceId}'::uuid`);
     expect([...body.matchAll(/DATE '(\d{4}-\d{2}-\d{2})'/g)].map((match) => match[1]))
-      .toEqual(refreshDates);
+      .toEqual(refreshDefaultDates);
     expect(body).toContain("target_date NOT IN (");
     for (const scope of ["tenant", "workspace"]) {
       expect(body).toContain(`pg_catalog.current_setting('social_monitor.${scope}_id', true)\n` +
@@ -70,6 +70,49 @@ describe("fixed successor lock SQL contract", () => {
     expect(sql).toContain("acl.is_grantable");
     expect(sql).toContain("routine.proowner <> capability.owner_name::pg_catalog.regrole");
     expect(sql).not.toMatch(/GRANT social_monitor_\w+ TO|CASCADE|ALTER TABLE|DROP TABLE/);
+  });
+});
+
+describe("recent-date successor lock SQL contract", () => {
+  const extension = readFileSync(
+    "prisma/migrations/20260914143000_reader_summary_refresh_recent_dates/migration.sql",
+    "utf8",
+  );
+
+  it.each([
+    ["publication_ledgers",
+      "public.reader_summary_publications, public.reader_summary_publication_slots"],
+    ["reconciliation", "public.reader_summary_new_input_refresh_reconciliations"],
+  ])("extends %s without widening scope or write authority", (name, relations) => {
+    const functionName = `public.lock_reader_summary_refresh_${name}`;
+    const start = extension.indexOf(`CREATE OR REPLACE FUNCTION ${functionName}(`);
+    const end = extension.indexOf("RESET ROLE;", start);
+    expect(start).toBeGreaterThan(-1);
+    const definition = extension.slice(start, end);
+    const body = definition.split("AS $function$\n")[1]!.split("$function$;")[0]!;
+    expect(body).not.toMatch(/\b(?:EXECUTE|INSERT|UPDATE|DELETE|TRUNCATE|EXCEPTION WHEN|STRICT)\b/);
+    expect(body.match(/LOCK TABLE .+ IN SHARE MODE NOWAIT;/g)).toEqual([
+      `LOCK TABLE ${relations} IN SHARE MODE NOWAIT;`,
+    ]);
+    expect([...body.matchAll(/DATE '(\d{4}-\d{2}-\d{2})'/g)].map((match) => match[1]))
+      .toEqual(refreshDates);
+    expect(body).toContain(`target_tenant_id <> '${refreshScope.tenantId}'::uuid`);
+    expect(body).toContain(`target_workspace_id <> '${refreshScope.workspaceId}'::uuid`);
+    expect(body).toContain("NOT IN ('', 'false')");
+    expect(body).toContain("'social_monitor_reader_summary_publication_runtime', 'USAGE'");
+    expect(definition).toContain("LANGUAGE plpgsql SECURITY DEFINER VOLATILE PARALLEL UNSAFE");
+    expect(definition).toContain("SET search_path = pg_catalog");
+  });
+
+  it("preserves fixed ownership and execute-only grants", () => {
+    expect(extension.match(/GRANT CREATE ON SCHEMA public/g)).toHaveLength(1);
+    expect(extension.match(/REVOKE CREATE ON SCHEMA public/g)).toHaveLength(1);
+    expect(extension).toContain("SET LOCAL ROLE social_monitor_reader_summary_publication_owner;");
+    expect(extension).toContain("SET LOCAL ROLE social_monitor_public_schema_owner;");
+    expect(extension.match(/REVOKE ALL ON FUNCTION/g)).toHaveLength(2);
+    expect(extension.match(/GRANT EXECUTE ON FUNCTION/g)).toHaveLength(2);
+    expect(extension).not.toMatch(/ALTER TABLE|DROP TABLE|GRANT .* ON TABLE|WITH GRANT OPTION/);
+    expect(extension.trimEnd()).toMatch(/COMMIT;$/);
   });
 });
 
