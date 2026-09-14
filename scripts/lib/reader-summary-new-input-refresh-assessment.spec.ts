@@ -75,7 +75,7 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
       clock: { now: () => new Date(refreshNow.getTime() + elapsedMs) },
       capture: (event) => assessmentPhases.push(event.phase) });
     expect(assessment.promotionTiming).toMatchObject(refreshAssessmentScheduling);
-    expect(assessment.promotionTiming!.batchConcurrency).toBeLessThan(6);
+    expect(assessment.promotionTiming!.batchConcurrency).toBe(1);
     expect(assessment.promotionTiming!.totalTimeoutMs).toBe(3_600_000);
     for (const candidateId of ["synthetic-extra-0", "synthetic-extra-1", "synthetic-extra-2"]) {
       await expect(assessment.reviewBatch([request(candidateId)])).resolves.toHaveLength(1);
