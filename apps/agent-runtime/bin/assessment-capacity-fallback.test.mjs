@@ -285,6 +285,25 @@ test("persisted session rejection without an outer error falls back to another a
   assert.deepEqual(h.providerCalls, h.admissions);
 });
 
+test("real pool and worker session rejection chain falls back to another account", async () => {
+  const h = await launch({ failures: ["consumed-admission", "success"],
+    mutateResult(result, admissions) {
+      sessionRejection(result, admissions);
+      result.error.cause = {
+        code: "subscription_worker_run_failed",
+        details: {
+          reason: "provider_session_invalid",
+          accountId: admissions.at(-1),
+        },
+        cause: { exitCode: 1 },
+      };
+    } });
+  assert.equal(h.failure, undefined);
+  assert.equal(h.result.status, "completed");
+  assert.deepEqual(h.budgets, [1, 2]);
+  assert.deepEqual(h.providerCalls, h.admissions);
+});
+
 test("native pre-WebSocket session rejection falls back after coarse provider-started signal", async () => {
   const h = await launch({ failures: ["consumed-admission", "success"],
     mutateResult(result, admissions) {
@@ -357,6 +376,19 @@ for (const [name, contradict] of [
   ["outer provider/task failure", (error) => { error.code = "subscription_worker_run_failed"; }],
   ["immediate provider/task failure", (error) => {
     error.cause = { code: "subscription_worker_run_failed" };
+  }],
+  ["session failure for another account", (error) => {
+    error.cause = {
+      code: "subscription_worker_run_failed",
+      details: { reason: "provider_session_invalid", accountId: "another-account" },
+    };
+  }],
+  ["session failure with usage", (error) => {
+    error.cause = {
+      code: "subscription_worker_run_failed",
+      usage: { totalTokens: 0 },
+      details: { reason: "provider_session_invalid", accountId: "synthetic-0" },
+    };
   }],
   ["unknown outer reason", (error) => { error.code = "future_unknown"; }],
   ["unknown cause reason", (error) => { error.cause = { code: "future_unknown" }; }],

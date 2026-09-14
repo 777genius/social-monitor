@@ -450,13 +450,9 @@ function isPreProviderAccountUnavailable(result, attemptCount, accounts) {
     // guarantee that its outer in-memory error wrapper survives readback.
     // Absence is acceptable here; any present wrapper must remain the narrow
     // account-unavailable shape below.
-    if (wrapper === undefined) return true;
-    const cause = wrapper?.cause;
-    return wrapper?.code === "subscription_worker_pool_slot_failed" &&
-      wrapper.usage === undefined &&
-      (cause === undefined ||
-        (cause?.code === "subscription_worker_account_unavailable" &&
-          cause.usage === undefined && cause.cause === undefined));
+    return isConsistentProviderSessionRejectionError(
+      wrapper, accounts[attemptCount - 1]?.worker.capacityAccountId,
+    );
   }
   let error = result.error;
   // Only unwrap the pool's immediate slot wrapper, never a provider cause chain.
@@ -473,6 +469,25 @@ function isPreProviderAccountUnavailable(result, attemptCount, accounts) {
     error.code === "subscription_worker_account_unavailable" &&
     error.details?.availability === "disabled" &&
     error.details?.reason === "account_unavailable";
+}
+
+function isConsistentProviderSessionRejectionError(error, accountId) {
+  if (error === undefined) return true;
+  if (error?.code !== "subscription_worker_pool_slot_failed" ||
+      error.usage !== undefined) return false;
+  const cause = error.cause;
+  if (cause === undefined) return true;
+  if (cause?.usage !== undefined) return false;
+  if (cause?.code === "subscription_worker_account_unavailable") {
+    return cause.cause === undefined;
+  }
+  // The real file-backed worker wraps the native process rejection once
+  // before the pool adds its slot wrapper. Require the same exact session
+  // classification and account identity already persisted in the journal;
+  // a generic provider/task failure remains insufficient.
+  return cause?.code === "subscription_worker_run_failed" &&
+    cause.details?.reason === "provider_session_invalid" &&
+    cause.details?.accountId === accountId;
 }
 
 function isPreProviderSessionRejection(attempt, account) {
