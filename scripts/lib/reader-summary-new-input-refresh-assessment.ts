@@ -20,7 +20,11 @@ type AssessmentCompletion = {
 };
 
 export const refreshAssessmentScheduling = Object.freeze({
-  batchConcurrency: 3,
+  // Serial waves leave the rest of the pool available when a slot becomes
+  // unavailable only after its native session starts. Parallel waves can
+  // otherwise lease every apparently healthy slot before capacity propagates,
+  // leaving the runtime with nowhere to perform its bounded fallback.
+  batchConcurrency: 1,
   totalTimeoutMs: 3_600_000,
 });
 
