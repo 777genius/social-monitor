@@ -9,7 +9,7 @@ describe("explicit one-time successor manifest", () => {
       .toEqual({ mode: "prepare", dates: ["2026-09-03"], successor: { path: "grant.json", sha256: "a".repeat(64) } });
     for (const args of [["--prepare", "--successor", "grant.json"],
       ["--prepare", "--date", "2026-09-03", "--successor", "grant.json"],
-      ["--prepare", "--date", "2026-09-06", "--successor", "grant.json", "--sha256", "a".repeat(64)]]) {
+      ["--prepare", "--date", "2026-09-14", "--successor", "grant.json", "--sha256", "a".repeat(64)]]) {
       expect(() => parseRefreshCommand(args)).toThrow();
     }
   });
