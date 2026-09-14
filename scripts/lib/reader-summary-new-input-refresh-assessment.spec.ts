@@ -43,18 +43,26 @@ afterEach(() => jest.restoreAllMocks());
 describe("historical unpaid preflight to guarded pool assessment to canonical selection", () => {
   it("reserves runtime capacity for fallback without shortening the refresh deadline", async () => {
     let elapsedMs = 0;
+    const assessmentPhases: string[] = [];
     jest.spyOn(FixedClock.prototype, "now").mockImplementation(
       () => new Date(refreshNow.getTime() + elapsedMs),
     );
-    const test = await selectorWiring({ output: (command) => {
-      const output = selectorOutput(command);
-      if (command.purpose === purpose) elapsedMs = 700_000;
-      return output;
-    } });
+    const test = await selectorWiring({
+      output: (command) => {
+        const output = selectorOutput(command);
+        if (command.purpose === purpose) elapsedMs = 700_000;
+        return output;
+      },
+      onAssessmentCapture: (event) => {
+        assessmentPhases.push(event.phase);
+        if (event.phase === "completed") elapsedMs = 0;
+      },
+    });
     expect(test.assessment.promotionTiming).toMatchObject(refreshAssessmentScheduling);
     expect(test.assessment.promotionTiming!.batchConcurrency).toBeLessThan(6);
     expect(test.assessment.promotionTiming!.totalTimeoutMs).toBe(3_600_000);
     await expect(test.selectComplete()).resolves.toBeDefined();
+    expect(assessmentPhases).toEqual(["attempt", "completed"]);
   });
 
   it("finds unassessed social input, spends once and binds selected evidence to intent", async () => {
