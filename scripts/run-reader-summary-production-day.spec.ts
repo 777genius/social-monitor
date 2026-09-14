@@ -36,12 +36,8 @@ describe("production-day execution request", () => {
       join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
       "utf8",
     );
-    expect(source).toContain(
-      "executionRequest.sourceEvidence.collectionArtifactPath",
-    );
-    expect(source).toContain(
-      'executionRequest.sourceEvidence.kind ===\n          "preserved-production-day-report"',
-    );
+    expect(source).toContain("historicalCleanDayCollectionPath(");
+    expect(source).toContain("executionRequest, historicalCollection?.path");
   });
 
   it("leaves migrations exclusively in the release pipeline", () => {

@@ -1,5 +1,17 @@
 import { join } from "node:path";
 
+import type { ProductionDayExecutionRequest } from
+  "./reader-summary-production-day-reuse-provenance";
+
+export const historicalCleanDayCollectionPath = (
+  request: ProductionDayExecutionRequest,
+  historicalCollectionPath?: string,
+): string | undefined =>
+  request.mode === "historical-regeneration" &&
+    request.sourceEvidence.kind === "preserved-production-day-report"
+    ? request.sourceEvidence.collectionArtifactPath
+    : historicalCollectionPath;
+
 export const historicalPromotionQualityOutput = (input: {
   readonly enabled: boolean;
   readonly reportDirectory: string;

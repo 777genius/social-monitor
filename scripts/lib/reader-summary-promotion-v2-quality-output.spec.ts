@@ -1,4 +1,7 @@
-import { historicalPromotionQualityOutput } from
+import {
+  historicalCleanDayCollectionPath,
+  historicalPromotionQualityOutput,
+} from
   "./reader-summary-promotion-v2-quality-output";
 
 describe("historical Promotion V2 date quality output", () => {
@@ -41,5 +44,39 @@ describe("historical Promotion V2 date quality output", () => {
       "--collection-path",
       "/production-history/reader-summary-clean-real-day-collection.2026-09-09.v1.json",
     ]);
+  });
+
+  it("prefers preserved regeneration evidence over the history default", () => {
+    expect(historicalCleanDayCollectionPath({
+      mode: "historical-regeneration",
+      sourceEvidence: {
+        kind: "preserved-production-day-report",
+        sourceReportPath: "/history/report.json",
+        sourceReportSha256: "a".repeat(64),
+        collectionArtifactPath: "/preserved/collection.json",
+        collectionArtifactSha256: "b".repeat(64),
+        collectionQualityReportPath: "/history/quality.json",
+        collectionQualityReportSha256: "c".repeat(64),
+      },
+      datasetManifestPath: "/history/manifest.json",
+      datasetManifestSha256: "d".repeat(64),
+      timestampPolicy: "published_at",
+      allowHistoricalGitHubOmission: false,
+    }, "/history/default-collection.json")).toBe(
+      "/preserved/collection.json",
+    );
+  });
+
+  it("keeps the history default for active publication authority", () => {
+    expect(historicalCleanDayCollectionPath({
+      mode: "historical-regeneration",
+      sourceEvidence: { kind: "active-database-publication" },
+      datasetManifestPath: "/history/manifest.json",
+      datasetManifestSha256: "d".repeat(64),
+      timestampPolicy: "published_at",
+      allowHistoricalGitHubOmission: false,
+    }, "/history/default-collection.json")).toBe(
+      "/history/default-collection.json",
+    );
   });
 });
