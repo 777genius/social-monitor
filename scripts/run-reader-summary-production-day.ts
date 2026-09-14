@@ -233,7 +233,12 @@ async function main(): Promise<void> {
   const isolatedQuality = historicalPromotionQualityOutput({
     enabled: executionRequest.mode === "historical-regeneration" &&
       executionRequest.promotionRebuild !== undefined, reportDirectory,
-    cleanDayCollectionPath: historicalCollection?.path,
+    cleanDayCollectionPath:
+      executionRequest.mode === "historical-regeneration" &&
+        executionRequest.sourceEvidence.kind ===
+          "preserved-production-day-report"
+        ? executionRequest.sourceEvidence.collectionArtifactPath
+        : historicalCollection?.path,
   });
   let collectionQualityStep = runNpm("collection-quality", [
     "run",
