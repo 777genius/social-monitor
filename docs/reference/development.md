@@ -141,4 +141,3 @@ The architecture memory and frontend playbooks are intentionally detailed. They 
 ## Responsible Use
 
 Use this project only with data sources you are allowed to access and monitor. Social and web monitoring can affect privacy, safety, and platform policy compliance. Before using it in production, review source terms, data retention, user consent, legal basis, data minimization, credential handling, and internal access controls.
-
