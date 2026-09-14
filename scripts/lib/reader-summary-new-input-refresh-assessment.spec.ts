@@ -12,8 +12,12 @@ import {
 import type { guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 import { selectorOutput, selectorWiring } from "./reader-summary-new-input-refresh-selector-composition.spec-support";
 import { publicationProbe } from "./reader-summary-new-input-refresh-model-composition.spec-support";
-import { refreshNow } from "./reader-summary-new-input-refresh.spec-support";
+import { refreshManifest, refreshNow } from "./reader-summary-new-input-refresh.spec-support";
 import { xEvidence } from "@social-monitor/summary/adapters/evidence/reader-summary-editorial-slate.spec-support";
+import { SourceContentQualityPolicy } from "@social-monitor/relevance/domain";
+import type { SourceContentQualityReviewRequest } from "@social-monitor/relevance/ports";
+import { completedRefreshModelRequest } from "./reader-summary-new-input-refresh-model.spec-support";
+import type { GuardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 
 describe("refresh preflight persisted primary evidence", () => {
   const source = xEvidence("synthetic-primary", 0);
@@ -43,18 +47,42 @@ afterEach(() => jest.restoreAllMocks());
 describe("historical unpaid preflight to guarded pool assessment to canonical selection", () => {
   it("reserves runtime capacity for fallback without shortening the refresh deadline", async () => {
     let elapsedMs = 0;
-    jest.spyOn(FixedClock.prototype, "now").mockImplementation(
-      () => new Date(refreshNow.getTime() + elapsedMs),
-    );
-    const test = await selectorWiring({ output: (command) => {
-      const output = selectorOutput(command);
-      if (command.purpose === purpose) elapsedMs = 700_000;
-      return output;
-    } });
-    expect(test.assessment.promotionTiming).toMatchObject(refreshAssessmentScheduling);
-    expect(test.assessment.promotionTiming!.batchConcurrency).toBeLessThan(6);
-    expect(test.assessment.promotionTiming!.totalTimeoutMs).toBe(3_600_000);
-    await expect(test.selectComplete()).resolves.toBeDefined();
+    const assessmentPhases: string[] = [];
+    const manifest = refreshManifest();
+    const request = (candidateId: string): SourceContentQualityReviewRequest => ({
+      candidateId,
+      providerKey: "hacker-news",
+      title: "TypeScript compiler release improves AI coding agents",
+      bodyPreview: "The TypeScript compiler release improves AI coding agents with a documented sandbox interface.",
+      deterministic: new SourceContentQualityPolicy().evaluate({ providerKey: "hacker-news",
+        title: "TypeScript compiler release improves AI coding agents",
+        providerMetadata: { query: "AI developer tools" } }),
+      promotion: { tenantId: manifest.tenantId, workspaceId: manifest.workspaceId,
+        interestId: "interest-ai", sourceItemId: `source-${candidateId}`,
+        sourceBindingId: `binding-${candidateId}`, trustedIntent: "AI developer tools",
+        availability: "body_present" },
+    });
+    const runtime = {
+      checkHealth: jest.fn(),
+      assertUsable: jest.fn(),
+      invalidateAdapter: jest.fn(),
+      runTask: jest.fn(async (command) => {
+        elapsedMs += 250_000;
+        return completedRefreshModelRequest(command, selectorOutput(command));
+      }),
+    } as GuardedRefreshRuntime;
+    const assessment = createRefreshAssessmentReviewer({ env: {}, runtime,
+      clock: { now: () => new Date(refreshNow.getTime() + elapsedMs) },
+      capture: (event) => assessmentPhases.push(event.phase) });
+    expect(assessment.promotionTiming).toMatchObject(refreshAssessmentScheduling);
+    expect(assessment.promotionTiming!.batchConcurrency).toBeLessThan(6);
+    expect(assessment.promotionTiming!.totalTimeoutMs).toBe(3_600_000);
+    for (const candidateId of ["synthetic-extra-0", "synthetic-extra-1", "synthetic-extra-2"]) {
+      await expect(assessment.reviewBatch([request(candidateId)])).resolves.toHaveLength(1);
+    }
+    expect(assessmentPhases).toEqual([
+      "attempt", "completed", "attempt", "completed", "attempt", "completed",
+    ]);
   });
 
   it("finds unassessed social input, spends once and binds selected evidence to intent", async () => {
