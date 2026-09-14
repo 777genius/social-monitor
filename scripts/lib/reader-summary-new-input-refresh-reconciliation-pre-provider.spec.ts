@@ -272,7 +272,7 @@ it("rejects unscoped provider evidence without a request ID", () => {
   expect(() => validate(e)).toThrow();
 });
 
-it.each(["2026-08-29", "2026-09-06"])("rejects valid calendar date %s outside canonical refreshDates before SQL", async (date) => {
+it.each(["2026-08-29", "2026-09-14"])("rejects valid calendar date %s outside canonical refreshDates before SQL", async (date) => {
   const client = { $queryRaw: jest.fn() };
   for (const original of [reconciliationEvidence(), fixture()]) {
     const evidence = { ...original, date, operation: refreshKeyPrefix(date) + "a".repeat(64) };
