@@ -26,6 +26,10 @@ import {
 } from "./reader-summary-production-day-provenance";
 import type { HistoricalRegenerationSourceProvenance } from "./reader-summary-production-day-regeneration";
 import { productionDayModelExecutionReport } from "./reader-summary-production-day-model-telemetry";
+import {
+  productionDayStrictControls,
+  validProductionDayHistoricalControlModel,
+} from "./reader-summary-production-day-historical-controls";
 import type { YesterdaySocialProviderReadiness } from "./yesterday-social-collection-quality";
 import {
   buildHistoricalRegenerationProvenance,
@@ -169,6 +173,7 @@ export function buildProductionDayReport(params: {
   readonly liveCaptureExecution: ProductionDayCaptureExecution | null;
   readonly allowDegraded: boolean;
   readonly allowHistorical: boolean;
+  readonly boundedHistoricalRecovery?: boolean;
   readonly failure: {
     readonly code: "collection_quality_failed";
     readonly safeMessage: string;
@@ -306,8 +311,9 @@ export function buildProductionDayReport(params: {
       liveCaptureBound &&
       regenerationDatasetGuardValid &&
       regenerationCollectionQualityValid,
-    strictLiveProductionControls:
-      writesProductionData && !params.allowDegraded && !params.allowHistorical,
+    strictLiveProductionControls: productionDayStrictControls({
+      writesProductionData, ...params,
+    }),
     subscriptionRuntimeProvenanceVerified:
       writesProductionData && evidenceBound && runtimeProvenanceValid,
     topicLabelerProvenanceVerified:
@@ -343,6 +349,7 @@ export function buildProductionDayReport(params: {
       writesProductionData,
       allowDegraded: params.allowDegraded,
       allowHistorical: params.allowHistorical,
+      boundedHistoricalRecovery: params.boundedHistoricalRecovery === true,
       rawProviderPayloadPersistedInReport: false as const,
       rawPostTextPersistedInReport: false as const,
     },
@@ -786,12 +793,10 @@ function normalizedXAccount(account: ProductionDayXAccount) {
     targetWindowAttribution,
   };
 }
-
 function shortFingerprint(value: string): string {
   // Fingerprints are report-safe scope correlation identifiers, not identities.
   return createHash("sha256").update(value).digest("hex").slice(0, 12);
 }
-
 function validSubscriptionRuntimeModel(
   value: unknown,
   binding: DurableEvidenceBinding,
@@ -816,12 +821,11 @@ function validSubscriptionRuntimeModel(
     runtimeModelIdentityMatches(value, binding.runtimeProvenance) &&
     value.writesProductionData === true &&
     value.allowDegraded === false &&
-    value.allowHistorical === false &&
+    validProductionDayHistoricalControlModel(value, mode) &&
     value.rawProviderPayloadPersistedInReport === false &&
     value.rawPostTextPersistedInReport === false
   );
 }
-
 function runtimeModelIdentityMatches(
   value: Record<string, unknown>,
   provenance: ProductionDayRuntimeProvenance,

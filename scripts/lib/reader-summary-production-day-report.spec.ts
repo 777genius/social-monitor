@@ -39,6 +39,31 @@ describe("production-day report", () => {
     ).toEqual([]);
   });
 
+  it("accepts a bounded historical live recovery only with every real step", () => {
+    const artifact = evidenceFixture();
+    const report = buildReport(
+      passedSteps(),
+      artifact,
+      undefined,
+      null,
+      completeProviderReadiness(),
+      true,
+    );
+
+    expect(report.model).toMatchObject({
+      allowHistorical: true,
+      boundedHistoricalRecovery: true,
+    });
+    expect(report.qualityGates.cleanDayE2eExecutedAndPassed).toBe(true);
+    expect(report.qualityGates.strictLiveProductionControls).toBe(true);
+    expect(report.blockingPassed).toBe(true);
+    expect(validateLiveProductionDayReport({
+      report,
+      binding: artifact.binding,
+      expectedDate: collectionDate,
+    })).toEqual([]);
+  });
+
   it("passes a fresh summary regenerated from hash-bound collection evidence", () => {
     const artifact = evidenceFixture(true);
     const manifest = regenerationManifest();
@@ -607,6 +632,7 @@ function buildReport(
   >[0]["historicalRegenerationProvenance"] = null,
   providerReadiness: YesterdaySocialProviderReadiness =
     completeProviderReadiness(),
+  boundedHistoricalRecovery = false,
 ) {
   const resolvedCollectionQuality: ProductionDayCollectionQuality =
     collectionQuality ?? {
@@ -670,7 +696,8 @@ function buildReport(
     evidenceBinding: artifact.binding,
     liveCaptureExecution: artifact.binding.captureExecution,
     allowDegraded: false,
-    allowHistorical: false,
+    allowHistorical: boundedHistoricalRecovery,
+    boundedHistoricalRecovery,
     failure: null,
   });
 }
