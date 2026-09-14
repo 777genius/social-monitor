@@ -64,7 +64,11 @@ import {
   type ProductionDayDatabaseQualityReport,
   type ProductionDayProviderReadiness,
 } from "./lib/reader-summary-production-day-provider-readiness";
-import { productionDayQualityDateArgs } from "./lib/reader-summary-production-day-quality-date";
+import {
+  productionDayQualityDateArgs,
+  resolveBoundedHistoricalRecovery,
+  shouldRunCleanDayE2e,
+} from "./lib/reader-summary-production-day-quality-date";
 import { resolveProductionDayCollectionDate } from "./lib/reader-summary-production-day-date";
 import { collectionQualityRegenerationFreshnessArgs } from "./lib/yesterday-social-collection-quality-regeneration";
 import type { CleanRealDayCollectionReport } from "./lib/clean-real-day-collection-report";
@@ -99,6 +103,7 @@ let skipLiveCollection: boolean;
 let allowDegraded: boolean;
 let allowHistorical: boolean;
 let allowHistoricalProviderCollection: boolean;
+let boundedHistoricalRecovery: boolean;
 let qualityDateArgs: readonly string[];
 let collectionDate: string;
 let summaryModel: ReturnType<typeof resolveSummaryModel>;
@@ -535,7 +540,11 @@ async function main(): Promise<void> {
         "artifact-quality failed; no current-date artifact was written",
       ),
     );
-  } else if (shouldRunCleanDayE2e()) {
+  } else if (shouldRunCleanDayE2e({
+    reuseExistingArtifacts, executionMode: executionRequest.mode,
+    skipLiveCollection, allowHistorical, boundedHistoricalRecovery,
+    collectionDate,
+  })) {
     steps.push(
       runNpm("clean-day-e2e", [
         "run",
@@ -592,13 +601,21 @@ function initializeProductionDayRuntime(): void {
   skipLiveCollection = executionRequest.mode !== "live-production";
   allowDegraded = process.argv.includes("--allow-degraded");
   allowHistorical = process.argv.includes("--allow-historical");
+  collectionDate = resolveProductionDayCollectionDate(process.argv.slice(2));
+  boundedHistoricalRecovery = resolveBoundedHistoricalRecovery({
+    requested: process.argv.includes("--bounded-historical-recovery"),
+    executionMode: executionRequest.mode,
+    allowHistorical,
+    update,
+    collectionDate,
+    expectedDate: process.env.READER_SUMMARY_DAILY_RUN_EXPECTED_DATE,
+  });
   allowHistoricalProviderCollection =
     allowHistorical && executionRequest.mode === "live-production";
   qualityDateArgs = productionDayQualityDateArgs({
     executionMode: executionRequest.mode,
     allowHistorical,
   });
-  collectionDate = resolveProductionDayCollectionDate(process.argv.slice(2));
   summaryModel = resolveSummaryModel();
   topicLabeler = resolveTopicLabeler();
   periodStartedAt = `${collectionDate}T00:00:00.000Z`;
@@ -819,27 +836,9 @@ async function readActualRuntimeHealth(): Promise<ProductionDayRuntimeHealth> {
     checkedAt,
   };
 }
-
-function shouldRunCleanDayE2e(): boolean {
-  if (
-    reuseExistingArtifacts ||
-    executionRequest.mode === "historical-regeneration"
-  ) {
-    return true;
-  }
-  if (skipLiveCollection) {
-    return false;
-  }
-  if (!allowHistorical) {
-    return true;
-  }
-  return collectionDate >= new Date().toISOString().slice(0, 10);
-}
-
 function existingSummaryArtifactStep(): StepReport {
   const artifactExists =
     existsSync(evidencePath) && existsSync(frontendFixturePath);
-
   return {
     id: "durable-reader-summary",
     command: "reuse persisted durable reader summary artifact",
@@ -848,7 +847,6 @@ function existingSummaryArtifactStep(): StepReport {
     exitCode: artifactExists ? null : 1,
   };
 }
-
 function buildReport(params: {
   readonly startedAt: Date;
   readonly completedAt: Date;
@@ -888,6 +886,7 @@ function buildReport(params: {
     liveCaptureExecution,
     allowDegraded,
     allowHistorical,
+    boundedHistoricalRecovery,
     failure: params.failure,
   });
 }
