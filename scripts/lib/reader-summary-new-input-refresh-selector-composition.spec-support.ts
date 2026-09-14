@@ -1,10 +1,6 @@
 import { fixtureHeadline } from "../../test/support/promotion-content-assessment";
 import type { ConfiguredInterestScope } from "@social-monitor/relevance/ports";
-import {
-  createRefreshAssessmentReviewer,
-  type RefreshAssessmentCaptureEvent,
-  withRefreshAssessmentCompletion,
-} from "./reader-summary-new-input-refresh-assessment";
+import { createRefreshAssessmentReviewer, withRefreshAssessmentCompletion } from "./reader-summary-new-input-refresh-assessment";
 import { sourceContentAssessmentPurpose } from "./reader-summary-new-input-refresh-assessment-runtime";
 import { InMemoryFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
 import { FeedItem } from "@social-monitor/feed/domain";
@@ -31,7 +27,6 @@ export async function selectorWiring(input: {
   assertSource?: () => void;
   onAttestation?: (value: VerifiedReaderSummaryExecutionAttestation) => void | Promise<void>;
   onEvent?: (value: SelectorEvent) => void;
-  onAssessmentCapture?: (value: RefreshAssessmentCaptureEvent) => void;
 } = {}) {
   const manifest = refreshManifest();
   const period = refreshPeriod(manifest.date);
@@ -63,7 +58,7 @@ export async function selectorWiring(input: {
   const preflight = await preflightRefreshSelection({ configuredInterests, feed, date: manifest.date,
     observedThrough: new Date(manifest.observedThrough), clock });
   const assessment = createRefreshAssessmentReviewer({ env: {}, runtime, clock,
-    canonicalEvidence: preflight.canonicalEvidence, capture: input.onAssessmentCapture });
+    canonicalEvidence: preflight.canonicalEvidence });
   const canonical = createReaderSummaryDailyCapturePublicationWiring({
     configuredInterests, qualityReviewer: assessment,
     replay: null, feedItems: feed, summaryClient: {} as never,
