@@ -29,4 +29,17 @@ describe("historical Promotion V2 date quality output", () => {
     expect(output.args("quality.json")).toEqual([]);
     expect(output.cleanDayArgs).toEqual([]);
   });
+
+  it("binds historical maintenance to its immutable dated collection", () => {
+    const output = historicalPromotionQualityOutput({
+      enabled: false,
+      reportDirectory: "/ignored",
+      cleanDayCollectionPath:
+        "/production-history/reader-summary-clean-real-day-collection.2026-09-09.v1.json",
+    });
+    expect(output.cleanDayArgs).toEqual([
+      "--collection-path",
+      "/production-history/reader-summary-clean-real-day-collection.2026-09-09.v1.json",
+    ]);
+  });
 });

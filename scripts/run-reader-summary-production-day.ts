@@ -125,7 +125,6 @@ void main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-
 async function main(): Promise<void> {
   if (artifactOnly) {
     validateExistingReport();
@@ -234,6 +233,7 @@ async function main(): Promise<void> {
   const isolatedQuality = historicalPromotionQualityOutput({
     enabled: executionRequest.mode === "historical-regeneration" &&
       executionRequest.promotionRebuild !== undefined, reportDirectory,
+    cleanDayCollectionPath: historicalCollection?.path,
   });
   let collectionQualityStep = runNpm("collection-quality", [
     "run",

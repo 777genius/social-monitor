@@ -307,7 +307,7 @@ const allowDegraded = process.argv.includes("--allow-degraded");
 const allowHistorical = process.argv.includes("--allow-historical");
 const outputPath = readOption("--output-path") ??
   "ops/evals/reader-summary-clean-real-day-e2e-report.v1.json";
-const collectionPath =
+const collectionPath = readOption("--collection-path") ??
   "ops/evals/reader-summary-clean-real-day-collection.v1.json";
 const aggregateCollectionQualityPath = readOption(
   "--collection-quality-path",
