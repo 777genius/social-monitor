@@ -4,7 +4,11 @@ import { FeedItem } from "@social-monitor/feed/domain";
 import { activeReaderSummaryPurposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { FixedClock } from "@social-monitor/shared-kernel";
 import { sourceContentAssessmentPurpose as purpose } from "./reader-summary-new-input-refresh-assessment-runtime";
-import { createRefreshAssessmentReviewer, hasRefreshSelectableEvidence } from "./reader-summary-new-input-refresh-assessment";
+import {
+  createRefreshAssessmentReviewer,
+  hasRefreshSelectableEvidence,
+  refreshAssessmentScheduling,
+} from "./reader-summary-new-input-refresh-assessment";
 import type { guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 import { selectorOutput, selectorWiring } from "./reader-summary-new-input-refresh-selector-composition.spec-support";
 import { publicationProbe } from "./reader-summary-new-input-refresh-model-composition.spec-support";
@@ -37,6 +41,22 @@ describe("refresh preflight persisted primary evidence", () => {
 afterEach(() => jest.restoreAllMocks());
 
 describe("historical unpaid preflight to guarded pool assessment to canonical selection", () => {
+  it("reserves runtime capacity for fallback without shortening the refresh deadline", async () => {
+    let elapsedMs = 0;
+    jest.spyOn(FixedClock.prototype, "now").mockImplementation(
+      () => new Date(refreshNow.getTime() + elapsedMs),
+    );
+    const test = await selectorWiring({ output: (command) => {
+      const output = selectorOutput(command);
+      if (command.purpose === purpose) elapsedMs = 700_000;
+      return output;
+    } });
+    expect(test.assessment.promotionTiming).toMatchObject(refreshAssessmentScheduling);
+    expect(test.assessment.promotionTiming!.batchConcurrency).toBeLessThan(6);
+    expect(test.assessment.promotionTiming!.totalTimeoutMs).toBe(3_600_000);
+    await expect(test.selectComplete()).resolves.toBeDefined();
+  });
+
   it("finds unassessed social input, spends once and binds selected evidence to intent", async () => {
     const test = await selectorWiring();
     expect(test.preflight.assessmentCandidateCount).toBe(2);

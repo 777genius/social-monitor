@@ -19,6 +19,11 @@ type AssessmentCompletion = {
   assertCaptureComplete(): void;
 };
 
+export const refreshAssessmentScheduling = Object.freeze({
+  batchConcurrency: 3,
+  totalTimeoutMs: 3_600_000,
+});
+
 export type RefreshAssessmentCanonicalCapture = Readonly<{
   canonicalEvidenceJson: string;
   exemptBindingsJson: string;
@@ -73,6 +78,14 @@ export function createRefreshAssessmentReviewer(input: {
   }
   const reviewer = createSourceContentAssessmentReviewer({ env: input.env,
     summaryModelMode: "agent-runtime", client: input.runtime, clock: input.clock });
+  const promotionTiming = Object.freeze({
+    batchTimeoutMs: reviewer.promotionTiming!.batchTimeoutMs,
+    totalTimeoutMs: Math.max(
+      reviewer.promotionTiming!.totalTimeoutMs,
+      refreshAssessmentScheduling.totalTimeoutMs,
+    ),
+    batchConcurrency: refreshAssessmentScheduling.batchConcurrency,
+  });
   // Capture immutable bindings from unpaid canonical ranking, before selection.
   // Selected objects cannot introduce or rewrite exemption provenance.
   const exemptBindings = new Set((input.canonicalEvidence ?? [])
@@ -115,10 +128,11 @@ export function createRefreshAssessmentReviewer(input: {
       "Refresh assessment is incomplete; original operation requires reconciliation");
   };
   return {
-    // Six workers put the evidenced eleven 8-item batches into two waves
-    // (about 452s at 225.7s each), with the existing 600s operation deadline.
-    promotionTiming: Object.freeze({ batchTimeoutMs: reviewer.promotionTiming!.batchTimeoutMs,
-      totalTimeoutMs: reviewer.promotionTiming!.totalTimeoutMs, batchConcurrency: 6 }),
+    // Keep healthy slots available for runtime fallback when configured pool
+    // entries are leased, cooling down or require re-authentication. The
+    // refresh-only deadline covers every bounded wave at the maximum captured
+    // candidate count instead of timing out a valid later wave.
+    promotionTiming,
     assertCaptureComplete: () => {
       if ((input.capture || input.captureCanonical) && (captureFailures > 0 || terminalBatches !== batches)) {
         throw new Error("Refresh assessment capture is incomplete");
@@ -186,7 +200,7 @@ export function createRefreshAssessmentReviewer(input: {
       try {
         input.runtime.assertUsable();
         const now = input.clock.now().getTime();
-        deadline ??= now + reviewer.promotionTiming!.totalTimeoutMs;
+        deadline ??= now + promotionTiming.totalTimeoutMs;
         const size = Buffer.byteLength(JSON.stringify(requests), "utf8");
         // Deadline/abort is always the most informative classification when it
         // applies, regardless of which coverage check would otherwise trigger.
