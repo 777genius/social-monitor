@@ -53,13 +53,13 @@ describe("subscription runtime installation admission", () => {
     expect(rootManifest.dependencies["@vioxen/subscription-runtime"]).toBe(
       `file:vendor/vioxen-subscription-runtime-${approvedSubscriptionRuntimePackageVersion}.tgz`,
     );
-    installationRoot = await mkdtemp(join(tmpdir(), "runtime-main42-sm1-installation-"));
+    installationRoot = await mkdtemp(join(tmpdir(), "runtime-main42-sm2-installation-"));
     const modules = join(installationRoot, "node_modules");
     const packageRoot = join(modules, "@vioxen/subscription-runtime");
     await mkdir(packageRoot, { recursive: true });
-    const archive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.1.tgz");
+    const archive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.2.tgz");
     expect(createHash("sha256").update(await readFile(archive)).digest("hex")).toBe(
-      "66a8bdf6ae680bd3548fc92df140fb9df2202c829f946b9122393090faf9e31e",
+      "cb657dd811ee6ee0915215ee47f7f366375ce8aaff0c9faaa584716e3f8417c7",
     );
     await promisify(execFile)("tar", [
       "-xzf", archive, "-C", packageRoot, "--strip-components=1",
@@ -75,7 +75,7 @@ describe("subscription runtime installation admission", () => {
       await symlink(join(providedModules, "@vioxen", name), join(modules, "@vioxen", name));
     }
     expect(JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"))).toMatchObject({
-      name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.1",
+      name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.2",
     });
   }, 15_000);
 
@@ -102,7 +102,7 @@ describe("subscription runtime installation admission", () => {
     }
   });
 
-  it("admits the exact repository launcher and vendored main.42-sm.1 in a sandbox", async () => {
+  it("admits the exact repository launcher and vendored main.42-sm.2 in a sandbox", async () => {
     const command = join(await copyInstallation(), launcherName);
 
     await expect(
@@ -244,7 +244,7 @@ describe("subscription runtime installation admission", () => {
 
   it.each([
     { name: "@vioxen/subscription-runtime", version: "0.1.0-main.42" },
-    { name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.2" },
+    { name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.1" },
     { name: "@vioxen/subscription-runtime", version: "0.0.0-unapproved" },
     { name: "unapproved-runtime", version: approvedSubscriptionRuntimePackageVersion },
   ])("rejects an unapproved package manifest %j", async (manifest) => {

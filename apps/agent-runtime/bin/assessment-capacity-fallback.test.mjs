@@ -13,9 +13,10 @@ import { request, completed } from "./assessment-cli-test-support.mjs";
 let root, core, executorSource, recheckerSource;
 before(async () => {
   root = await mkdtemp(path.join(tmpdir(), "assessment-capacity-fallback-"));
-  const archive = path.resolve("vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.1.tgz");
+  const archive = path.resolve("vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.2.tgz");
+  const provenance = JSON.parse(await readFile(archive.replace(/\.tgz$/u, ".provenance.json")));
   assert.equal(crypto.createHash("sha256").update(await readFile(archive)).digest("hex"),
-    "66a8bdf6ae680bd3548fc92df140fb9df2202c829f946b9122393090faf9e31e");
+    provenance.sha256);
   execFileSync("tar", ["-xzf", archive, "-C", root], { stdio: "pipe" });
   const load = (name) => import(pathToFileURL(path.join(root, "package/dist/worker-core", name)));
   core = Object.assign({}, ...await Promise.all([
@@ -32,10 +33,10 @@ after(async () => { if (root) await rm(root, { recursive: true, force: true }); 
 // Actual launcher, pinned safe executor, journal, safe runner, pool and capacity
 // wrapper and quota rechecker. Filesystem, account store, native observation
 // and provider/CLI boundaries are fake; no native process can launch.
-async function launch({ failures = ["preflight", "success"], mutateResult, abortAfterFailure = false } = {}) {
+async function launch({ failures = ["preflight", "success"], mutateResult, abortAfterFailure = false, probeEvent } = {}) {
   const providerCalls = [], admissions = [], jobs = [], budgets = [], records = [];
   const blocked = new Set(), capacities = new Map(), rechecks = [];
-  let pendingMode;
+  let pendingMode, observability;
   let selectedFirst, result, failure, disposed = 0, input = JSON.stringify(request);
   const abort = new AbortController();
   const store = {
@@ -46,7 +47,7 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
       admissions.push(accountId);
       selectedFirst ??= accountId;
       if (failures[index] === "preflight") blocked.add(accountId);
-      if (failures[index]?.startsWith("native_snapshot_")) {
+      if (failures[index]?.startsWith("native_snapshot_") || ["quota_recheck_inconclusive", "probe-throws"].includes(failures[index])) {
         pendingMode = failures[index];
         return { accountId, phase: core.WorkerAccountCapacityPhase.RecheckDue,
           capacity: { availability: "cooldown", reason: "quota_limited" } };
@@ -62,7 +63,7 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
   };
   const journal = new core.InMemoryAttemptJournal();
   class FakeWorker {
-    constructor(options) { this.options = options; this.workerId = options.workerId; this.state = "idle"; }
+    constructor(options) { this.options = options; observability = options.observability; this.workerId = options.workerId; this.state = "idle"; }
     async start() {}
     async seedCodexAuthJsonFile() {}
     capacity() { return { availability: "available", details: { accountId: this.options.capacityAccountId } }; }
@@ -109,7 +110,12 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
     ["./file-backend-codex-worker.js", { FileBackendCodexWorker: FakeWorker }],
     ["@vioxen/agent-account-observability", { AccountAvailability: { Available: "available" } }],
     ["./adapters/codex-quota-snapshot-observation.js", { CodexQuotaSnapshotObservation: class {
-      async read() { rechecks.push(pendingMode); return { status: "rejected", reason: pendingMode }; }
+      async read() {
+        rechecks.push(pendingMode);
+        if (probeEvent) observability.emit({ name: probeEvent });
+        if (pendingMode === "probe-throws") throw new Error("Synthetic probe failure");
+        return { status: "rejected", reason: pendingMode };
+      }
     } }],
     ["./codex-live-quota-capacity.js", { codexLiveQuotaCapacitySnapshot: () => { throw new Error("Unexpected bound snapshot"); } }],
     ["./application/codex-account-capacity-alias-store.js", { CodexAccountCapacityAliasStore: class { constructor({ store }) { return store; } } }],
@@ -241,16 +247,51 @@ test("cancellation prevents capacity fallback", async () => {
 });
 
 for (const reason of ["native_snapshot_stop_unconfirmed", "native_snapshot_cleanup_failed",
-  "native_snapshot_deadline", "native_snapshot_invalid", "native_snapshot_unsupported_demand"]) {
+  "quota_recheck_inconclusive", "native_snapshot_unsupported_demand", "native_snapshot_future_unknown", "probe-throws"]) {
   test(`actual quota rechecker ${reason} blocks account fallback`, async () => {
     const h = await launch({ failures: [reason, "success"] });
     assert.ok(h.failure);
     assert.deepEqual(h.rechecks, [reason]);
-    assert.equal([...h.capacities.values()][0].reason, "quota_recheck_inconclusive");
+    assert.equal([...h.capacities.values()][0].reason, reason === "probe-throws" ? "quota_recheck_inconclusive" : reason);
     assert.equal(h.admissions.length, 1);
     assert.equal(h.providerCalls.length, 0);
     assert.deepEqual(h.budgets, [1]);
     assert.equal(h.task.attempts.length, 1);
+  });
+}
+
+for (const reason of ["native_snapshot_invalid", "native_snapshot_deadline"]) {
+  test(`${reason} rejects provider task started during admission`, async () => {
+    const h = await launch({ failures: [reason, "success"], probeEvent: "provider.task.started" });
+    assert.ok(h.failure);
+    assert.deepEqual(h.budgets, [1]);
+    assert.equal(h.providerCalls.length, 0);
+  });
+  test(`actual quota rechecker ${reason} permits guarded admission`, async () => {
+    const h = await launch({ failures: [reason, "success"] });
+    assert.equal(h.failure, undefined);
+    assert.equal(h.result.status, "completed");
+    assert.equal([...h.capacities.values()][0].reason, reason);
+    assert.deepEqual(h.providerCalls, [h.admissions[1]]);
+    assert.deepEqual(h.budgets, [1, 2]);
+  });
+  for (const [name, mutateResult] of [
+    ["wrong account", (r) => { r.error.cause.details.accountId = "another-account"; }],
+    ["missing account", (r) => { delete r.error.cause.details.accountId; }],
+    ["generic outer error", (r) => { r.error.code = "subscription_worker_run_failed"; }],
+    ["nested provider cause", (r) => { r.error.cause.cause = new Error("provider failure"); }],
+    ["outer usage", (r) => { r.error.usage = { totalTokens: 0 }; }],
+    ["inner usage", (r) => { r.error.cause.usage = { totalTokens: 0 }; }],
+    ["journal usage", (r) => { r.attempts[0].usage = { totalTokens: 0 }; }],
+    ["output", (r) => { r.attempts[0].lastOutputSummary = ""; }],
+    ["dirty before", (r) => { r.attempts[0].workspaceDirtyBefore = true; }],
+    ["dirty after", (r) => { r.attempts[0].workspaceDirtyAfter = true; }],
+    ["changed files", (r) => { r.attempts[0].changedFiles = ["synthetic"]; }],
+  ]) test(`${reason} rejects ${name} in actual pool error chain`, async () => {
+    const h = await launch({ failures: [reason, "success"], mutateResult });
+    assert.ok(h.failure);
+    assert.deepEqual(h.budgets, [1]);
+    assert.equal(h.providerCalls.length, 0);
   });
 }
 

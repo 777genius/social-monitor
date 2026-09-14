@@ -460,10 +460,15 @@ function isPreProviderAccountUnavailable(result, attemptCount, accounts) {
       error.code === "subscription_worker_pool_slot_failed" && error.usage === undefined) {
     error = error.cause;
   }
-  // The account wrapper erases quota-probe causes. A typed error alone is
-  // therefore insufficient: only an explicit disabled-account preflight is
-  // harmless. Cooldowns, quota rechecks and aggregate pool summaries cannot
-  // prove that a native probe stopped and cleaned up without effects.
+  // Only these exact native snapshot reasons prove stop and cleanup completed.
+  // Keep account identity and the immediate typed admission wrapper mandatory.
+  if (error instanceof SubscriptionWorkerError && error.cause === undefined &&
+      error.usage === undefined && error.code === "subscription_worker_account_unavailable" &&
+      error.details?.availability === "cooldown" &&
+      typeof error.details.accountId === "string" &&
+      error.details.accountId === accounts[attemptCount - 1]?.worker.capacityAccountId &&
+      ["native_snapshot_invalid", "native_snapshot_deadline"].includes(error.details.reason)) return true;
+  // Explicit disabled-account preflight remains independently harmless.
   return error instanceof SubscriptionWorkerError && error.cause === undefined &&
     error.usage === undefined &&
     error.code === "subscription_worker_account_unavailable" &&

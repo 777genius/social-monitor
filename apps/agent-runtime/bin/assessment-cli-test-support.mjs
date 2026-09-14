@@ -23,9 +23,9 @@ export const request = { protocolVersion: 1, runId: "synthetic-assessment",
 // Import the pinned legacy entrypoint, never the prepared main.41 installation or a real worker factory.
 export async function legacyFixture() {
   const root = await mkdtemp(join(tmpdir(), "assessment-deadline-legacy-"));
-  const archive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.1.tgz");
+  const archive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.2.tgz");
   assert.equal(createHash("sha256").update(await readFile(archive)).digest("hex"),
-    "66a8bdf6ae680bd3548fc92df140fb9df2202c829f946b9122393090faf9e31e");
+    "cb657dd811ee6ee0915215ee47f7f366375ce8aaff0c9faaa584716e3f8417c7");
   try {
     execFileSync("tar", ["-xzf", archive, "-C", root], { timeout: 10_000, stdio: "pipe" });
     const packageRoot = join(root, "package");

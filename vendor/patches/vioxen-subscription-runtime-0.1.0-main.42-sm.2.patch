@@ -1,0 +1,12 @@
+diff --git a/src/worker-codex/application/codex-account-capacity-rechecker.ts b/src/worker-codex/application/codex-account-capacity-rechecker.ts
+--- a/src/worker-codex/application/codex-account-capacity-rechecker.ts
++++ b/src/worker-codex/application/codex-account-capacity-rechecker.ts
+@@ -69,6 +69,8 @@ export class CodexAccountCapacityRechecker implements WorkerAccountCapacityRecheck
+           }
+         } else reason = "quota_recheck_identity_changed";
+       }
++      if (result.status === CodexSnapshotObservationStatus.Rejected) reason = result.reason;
++
+     } catch { /* Neither raw native errors nor generic Retry may weaken a future block. */ }
+     return inconclusive(input, reason, this.options.inconclusiveCooldownMs ?? 60_000);
+   }

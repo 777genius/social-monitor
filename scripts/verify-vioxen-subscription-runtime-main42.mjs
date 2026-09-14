@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const wireFix = process.argv.includes("--quota-wire-fix");
 assert.ok(process.argv.slice(2).every((arg) => arg === "--quota-wire-fix"), "Unknown verifier option");
-const version = wireFix ? "0.1.0-main.42-sm.1" : "0.1.0-main.42";
+const version = wireFix ? "0.1.0-main.42-sm.2" : "0.1.0-main.42";
 const artifactPath = join(
   projectRoot,
   `vendor/vioxen-subscription-runtime-${version}.tgz`,
@@ -168,6 +168,10 @@ try {
     assert.equal(sha256(await readFile(join(projectRoot, provenance.quotaWirePatch.path))), provenance.quotaWirePatch.sha256);
     const appliedFix = spawnSync("git", ["apply", join(projectRoot, provenance.quotaWirePatch.path)], { cwd: sourceRoot, encoding: "utf8" });
     assert.equal(appliedFix.status, 0, appliedFix.stderr);
+    assert.equal(sha256(await readFile(join(projectRoot, provenance.capacityReasonPatch.path))), provenance.capacityReasonPatch.sha256);
+    const appliedReason = spawnSync("git", ["apply", join(projectRoot, provenance.capacityReasonPatch.path)], { cwd: sourceRoot, encoding: "utf8" });
+    assert.equal(appliedReason.status, 0, appliedReason.stderr);
+    assert.equal(sha256(await readFile(join(projectRoot, provenance.build.script))), provenance.build.scriptSha256);
     const fixedInventory = (await fileInventory(sourceRoot, "source")).map(([path, hash]) => [path.slice(7), hash]);
     assert.equal(fixedInventory.length, provenance.fixedSourceFiles);
     assert.equal(inventoryHash(fixedInventory), provenance.fixedSourceInventorySha256);
@@ -185,10 +189,24 @@ try {
     assert.deepEqual(changed, provenance.changedPackageFiles);
     const stems = ["infrastructure/JsonRpcLineClient", "providers/codex/CodexAppServerQuotaReader", "providers/codex/codexTypes"];
     for (const path of Object.keys(changed)) {
-      assert.ok(path === "package/package.json" || stems.some((stem) =>
+      assert.ok(path === "package/package.json" ||
+        [".js", ".js.map", ".d.ts.map"].some((ext) => path === `package/dist/worker-codex/application/codex-account-capacity-rechecker${ext}`) || stems.some((stem) =>
         [".js", ".js.map", ".d.ts", ".d.ts.map"].some((ext) => path ===
           `package/node_modules/@vioxen/agent-account-observability/dist/${stem}${ext}`)), path);
     }
+    const sm1Root = join(tempRoot, "immutable-sm1");
+    await mkdir(sm1Root);
+    const sm1Archive = join(projectRoot, "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.1.tgz");
+    assert.equal(sha256(await readFile(sm1Archive)), "66a8bdf6ae680bd3548fc92df140fb9df2202c829f946b9122393090faf9e31e");
+    run("tar", ["-xzf", sm1Archive, "-C", sm1Root]);
+    const sm1Inventory = await fileInventory(join(sm1Root, "package"), "package");
+    assert.deepEqual(inventory.map(([path]) => path), sm1Inventory.map(([path]) => path));
+    assert.deepEqual(sm1Inventory.filter(([path, hash]) => current.get(path) !== hash).map(([path]) => path), [
+      "package/dist/worker-codex/application/codex-account-capacity-rechecker.d.ts.map",
+      "package/dist/worker-codex/application/codex-account-capacity-rechecker.js",
+      "package/dist/worker-codex/application/codex-account-capacity-rechecker.js.map",
+      "package/package.json",
+    ]);
   }
   const hostManifest = JSON.parse(await readFile(join(projectRoot, "package.json"), "utf8"));
   const lock = JSON.parse(await readFile(join(projectRoot, "package-lock.json"), "utf8"));
