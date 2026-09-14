@@ -21,7 +21,7 @@ type AssessmentCompletion = {
 
 export const refreshAssessmentScheduling = Object.freeze({
   batchConcurrency: 3,
-  totalTimeoutMs: 900_000,
+  totalTimeoutMs: 3_600_000,
 });
 
 export type RefreshAssessmentCanonicalCapture = Readonly<{
@@ -121,8 +121,9 @@ export function createRefreshAssessmentReviewer(input: {
   };
   return {
     // Keep healthy slots available for runtime fallback when configured pool
-    // entries are leased, cooling down or require re-authentication. Four
-    // bounded waves still fit inside the extended refresh-only deadline.
+    // entries are leased, cooling down or require re-authentication. The
+    // refresh-only deadline covers every bounded wave at the maximum captured
+    // candidate count instead of timing out a valid later wave.
     promotionTiming: Object.freeze({ batchTimeoutMs: reviewer.promotionTiming!.batchTimeoutMs,
       totalTimeoutMs: Math.max(reviewer.promotionTiming!.totalTimeoutMs,
         refreshAssessmentScheduling.totalTimeoutMs),

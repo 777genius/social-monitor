@@ -4,8 +4,11 @@ import { FeedItem } from "@social-monitor/feed/domain";
 import { activeReaderSummaryPurposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { FixedClock } from "@social-monitor/shared-kernel";
 import { sourceContentAssessmentPurpose as purpose } from "./reader-summary-new-input-refresh-assessment-runtime";
-import { createRefreshAssessmentReviewer, hasRefreshSelectableEvidence,
-  refreshAssessmentScheduling } from "./reader-summary-new-input-refresh-assessment";
+import {
+  createRefreshAssessmentReviewer,
+  hasRefreshSelectableEvidence,
+  refreshAssessmentScheduling,
+} from "./reader-summary-new-input-refresh-assessment";
 import type { guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 import { selectorOutput, selectorWiring } from "./reader-summary-new-input-refresh-selector-composition.spec-support";
 import { publicationProbe } from "./reader-summary-new-input-refresh-model-composition.spec-support";
@@ -42,7 +45,7 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
     const test = await selectorWiring();
     expect(test.assessment.promotionTiming).toMatchObject(refreshAssessmentScheduling);
     expect(test.assessment.promotionTiming!.batchConcurrency).toBeLessThan(6);
-    expect(test.assessment.promotionTiming!.totalTimeoutMs).toBeGreaterThanOrEqual(900_000);
+    expect(test.assessment.promotionTiming!.totalTimeoutMs).toBe(3_600_000);
   });
 
   it("finds unassessed social input, spends once and binds selected evidence to intent", async () => {
