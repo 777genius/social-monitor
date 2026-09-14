@@ -145,7 +145,7 @@ Optional connected-mode defines:
 --dart-define=SOCIAL_MONITOR_WORKSPACE_ROLE=admin
 --dart-define=SOCIAL_MONITOR_USER_LABEL="MVP Operator"
 --dart-define=SOCIAL_MONITOR_CORRELATION_ID=frontend-generated-api-session
---dart-define=SOCIAL_MONITOR_API_BEARER_TOKEN=<your-token>
+--dart-define=SOCIAL_MONITOR_API_BEARER_TOKEN=YOUR_TOKEN
 ```
 
 The default `.env.example` CORS origin is `http://localhost:53217`, so keep `--web-port=53217` unless you update backend CORS config.
