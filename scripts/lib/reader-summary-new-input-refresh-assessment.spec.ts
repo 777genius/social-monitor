@@ -12,7 +12,7 @@ import {
 import type { guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 import { selectorOutput, selectorWiring } from "./reader-summary-new-input-refresh-selector-composition.spec-support";
 import { publicationProbe } from "./reader-summary-new-input-refresh-model-composition.spec-support";
-import { refreshNow } from "./reader-summary-new-input-refresh.spec-support";
+import { refreshManifest, refreshNow } from "./reader-summary-new-input-refresh.spec-support";
 import { xEvidence } from "@social-monitor/summary/adapters/evidence/reader-summary-editorial-slate.spec-support";
 import { SourceContentQualityPolicy } from "@social-monitor/relevance/domain";
 import type { SourceContentQualityReviewRequest } from "@social-monitor/relevance/ports";
