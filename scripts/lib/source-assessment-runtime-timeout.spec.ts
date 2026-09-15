@@ -7,25 +7,40 @@ import { outputFor } from "./source-content-assessment-runtime.spec-support";
 
 describe("source assessment configured operation timeout", () => {
   it.each([
-    [undefined, undefined, undefined, 600_000, 300_000],
-    ["1200000", "1200000", undefined, 1_200_000, 600_000],
-    ["3600000", "3600000", undefined, 3_600_000, 600_000],
-    ["7200000", "7200000", undefined, 3_600_000, 600_000],
-    ["120000", "300000", undefined, 120_000, 120_000],
-    ["1200000", "90000", undefined, 1_200_000, 90_000],
-    [undefined, undefined, "1200000", 1_200_000, 600_000],
-    ["900000", "120000", "1800000", 900_000, 120_000],
-  ])("resolves summary=%s relation=%s fallback=%s", (summary, relation, fallback, total, batch) => {
-    const client = refreshTestRuntimeClient(async () => { throw new Error("No runtime call expected"); });
-    const runtime = createSourceAssessmentRuntime({ client, clock: new SystemClock(), env: {
-      AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: summary,
-      AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_TIMEOUT_MS: relation,
-      AGENT_RUNTIME_TIMEOUT_MS: fallback,
-      AGENT_RUNTIME_PROVIDER_INSTANCE_ID: "synthetic-existing-pool",
-    } });
-    expect(runtime).toEqual({ client, providerInstanceId: "synthetic-existing-pool",
-      totalTimeoutMs: total, batchTimeoutMs: batch });
-  });
+    [undefined, undefined, undefined, undefined, 600_000, 300_000],
+    ["1200000", "1200000", undefined, undefined, 1_200_000, 600_000],
+    ["900000", "600000", undefined, "3600000", 3_600_000, 600_000],
+    ["900000", "600000", undefined, "7200000", 3_600_000, 600_000],
+    ["120000", "300000", undefined, undefined, 120_000, 120_000],
+    ["1200000", "90000", undefined, undefined, 1_200_000, 90_000],
+    [undefined, undefined, "1200000", undefined, 1_200_000, 600_000],
+    ["900000", "120000", "1800000", undefined, 900_000, 120_000],
+  ])(
+    "resolves summary=%s relation=%s fallback=%s assessment=%s",
+    (summary, relation, fallback, assessment, total, batch) => {
+      const client = refreshTestRuntimeClient(async () => {
+        throw new Error("No runtime call expected");
+      });
+      const runtime = createSourceAssessmentRuntime({
+        client,
+        clock: new SystemClock(),
+        env: {
+          AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: summary,
+          AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_TIMEOUT_MS:
+            relation,
+          AGENT_RUNTIME_TIMEOUT_MS: fallback,
+          AGENT_RUNTIME_SOURCE_CONTENT_ASSESSMENT_TOTAL_TIMEOUT_MS: assessment,
+          AGENT_RUNTIME_PROVIDER_INSTANCE_ID: "synthetic-existing-pool",
+        },
+      });
+      expect(runtime).toEqual({
+        client,
+        providerInstanceId: "synthetic-existing-pool",
+        totalTimeoutMs: total,
+        batchTimeoutMs: batch,
+      });
+    },
+  );
 
   it("completes all 200 candidates beyond 600 seconds within the configured 1200 seconds", async () => {
     jest.useFakeTimers();
