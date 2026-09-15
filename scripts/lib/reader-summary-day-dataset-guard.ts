@@ -47,7 +47,7 @@ export class ReaderSummaryDayDatasetGuard {
   async assertCurrentForPublicationTransaction(
     client: PrismaReaderSummaryClient,
   ): Promise<void> {
-    await lockManifestDatasetTables(client);
+    await lockManifestDatasetTables(client, this.expected.retainedEngagementAuthority !== undefined);
     await this.assertCurrentWithClient(client, "before_publication", true);
   }
 
@@ -86,6 +86,9 @@ export class ReaderSummaryDayDatasetGuard {
       endedAt: new Date(this.expected.period.endedAt),
       generatedAt: now,
       timestampPolicy: this.expected.policy.timestampPolicy,
+      ...(this.expected.retainedEngagementAuthority === undefined ? {} : {
+        retainedAuthorityBoundThrough: new Date(this.expected.retainedEngagementAuthority.boundThrough),
+      }),
     });
     if (!manifestsMatch(this.expected, actual)) {
       throw new Error(`Reader summary dataset changed at ${phase}`);
@@ -97,6 +100,14 @@ export class ReaderSummaryDayDatasetGuard {
 
   evidence() {
     return {
+      ...(this.expected.retainedEngagementAuthority === undefined ? {} : {
+        retainedEngagementAuthority: {
+          mode: this.expected.retainedEngagementAuthority.mode,
+          projection: this.expected.retainedEngagementAuthority.projection,
+          boundThrough: this.expected.retainedEngagementAuthority.boundThrough,
+          bindingsSha256: this.expected.retainedEngagementAuthority.bindingsSha256,
+        },
+      }),
       manifestFormat: this.expected.format,
       manifestFileSha256: this.manifestFileSha256,
       manifestGeneratedAt: this.expected.generatedAt,
@@ -108,6 +119,10 @@ export class ReaderSummaryDayDatasetGuard {
         this.expected.dataset.githubEligibilityRowCount,
       completedPhases: [...this.completedPhases],
     };
+  }
+
+  retainedEngagementAuthority() {
+    return this.expected.retainedEngagementAuthority;
   }
 
   timestampPolicy(): ReaderSummaryTimestampPolicy {
@@ -124,6 +139,7 @@ type LockCapableReaderSummaryClient = PrismaReaderSummaryClient & {
 
 async function lockManifestDatasetTables(
   client: PrismaReaderSummaryClient,
+  retainedAuthority: boolean,
 ): Promise<void> {
   if (!("$executeRaw" in client) || typeof client.$executeRaw !== "function") {
     throw new Error(
@@ -131,6 +147,17 @@ async function lockManifestDatasetTables(
     );
   }
   const lockClient = client as LockCapableReaderSummaryClient;
+  if (retainedAuthority) {
+    // Follow projection's snapshot -> source -> feed direction. NOWAIT on the
+    // complete set aborts on any conflict instead of waiting with partial locks.
+    await lockClient.$executeRaw`
+      lock table source_item_engagement_snapshots, source_item_engagement_observations,
+        source_items, feed_items,
+        source_bindings, interests, source_catalog_entries
+      in share mode nowait
+    `;
+    return;
+  }
   await lockClient.$executeRaw`
     lock table
       feed_items,
@@ -146,6 +173,7 @@ export class DatasetGuardedReaderSummaryEvidenceSelector implements ReaderSummar
   constructor(
     private readonly delegate: ReaderSummaryEvidenceSelectorPort,
     private readonly guard: ReaderSummaryDayDatasetGuard,
+    private readonly authorizedHistoricalRebuild = false,
   ) {}
 
   async select(
@@ -161,9 +189,15 @@ export class DatasetGuardedReaderSummaryEvidenceSelector implements ReaderSummar
       );
     }
     await this.guard.assertCurrent("before_evidence_selection");
+    if (params.retainedEngagementAuthority !== undefined) {
+      throw new Error("Historical retained authority must originate in the dataset guard");
+    }
+    const authority = this.authorizedHistoricalRebuild
+      ? this.guard.retainedEngagementAuthority() : undefined;
     const selection = await this.delegate.select({
       ...params,
       timestampPolicy,
+      ...(authority === undefined ? {} : { retainedEngagementAuthority: authority }),
     });
     await this.guard.assertCurrent("after_evidence_selection");
     return selection;

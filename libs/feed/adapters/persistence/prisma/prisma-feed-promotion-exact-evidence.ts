@@ -1,8 +1,12 @@
+import { exactRetainedPromotionTimestamp } from "../../../domain/value-objects/retained-promotion-authority";
+import { retainedPromotionAuthorityProjectionSql, retainedPromotionAuthoritySha256 } from "./retained-promotion-authority-projection";
 import { feedPromotionMetricAuthority } from "../../../domain";
 
 import type { PrismaFeedClient } from "./prisma-feed-client";
 
 export type PrismaFeedPromotionExactEvidence = {
+  readonly retainedAuthoritySha256?: string;
+  readonly retainedAuthorityObservedAt?: string;
   readonly publishedAt: string;
   readonly observedAt: string;
   readonly observedThrough: boolean;
@@ -25,16 +29,18 @@ type ExactMetricAuthorityRow = {
 };
 
 type ExactEvidenceRow = PrismaFeedPromotionExactEvidence &
-  ExactMetricAuthorityRow & { readonly id: string };
+  ExactMetricAuthorityRow & { readonly id: string; readonly retainedProjection?: string };
 
 export const exactPromotionPageEvidence = async (
   transaction: PrismaFeedClient,
   ids: readonly string[],
   cutoff: Date,
+  retainAuthorityProjection = false,
 ): Promise<ReadonlyMap<string, PrismaFeedPromotionExactEvidence>> => {
   if (ids.length === 0) return new Map();
   const rows = await transaction.$queryRawUnsafe!<readonly ExactEvidenceRow[]>(
     `SELECT feed.id::text AS id,
+            ${retainAuthorityProjection ? `${retainedPromotionAuthorityProjectionSql} AS "retainedProjection",` : ""}
             feed.source_item_id::text AS "sourceItemId",
             source.body,
             to_char(feed.published_at AT TIME ZONE 'UTC',
@@ -182,6 +188,11 @@ export const exactPromotionPageEvidence = async (
   return new Map(rows.map((row) => [row.id, {
     ...row,
     metricAuthority: durableMetricAuthority(row),
+    ...(row.retainedProjection === undefined ? {} : {
+      retainedAuthoritySha256: retainedPromotionAuthoritySha256(row.retainedProjection),
+      retainedAuthorityObservedAt: retainedAuthorityOrderValid(row)
+        ? exactRetainedPromotionTimestamp(row.engagementObservedAt!) : undefined,
+    }),
   }] as const));
 };
 
@@ -224,4 +235,15 @@ const parsedDate = (value: string | null): Date | undefined => {
   if (value === null) return undefined;
   const result = new Date(value);
   return Number.isFinite(result.getTime()) ? result : undefined;
+};
+
+// The existing live resolver projects dates to milliseconds. Historical authority
+// additionally rejects a retained observation/change after its exact bound cutoff.
+const retainedAuthorityOrderValid = (row: ExactMetricAuthorityRow): boolean => {
+  const observed = row.engagementObservedAt;
+  const changed = row.engagementChangedAt;
+  const latest = row.latestObservationAt;
+  if (observed === null || changed === null || latest === null) return false;
+  return exactRetainedPromotionTimestamp(changed) <= exactRetainedPromotionTimestamp(observed) &&
+    exactRetainedPromotionTimestamp(latest) <= exactRetainedPromotionTimestamp(observed);
 };

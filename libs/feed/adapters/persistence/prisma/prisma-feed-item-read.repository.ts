@@ -217,6 +217,7 @@ const scanPromotionSnapshot = async (
       transaction,
       selectedRecords.map((record) => record.id),
       query.observedThrough,
+      query.retainedAuthorityProjection === true,
     );
     for (const record of records) {
       const item = feedItemFromPrisma(record);
@@ -242,6 +243,10 @@ const scanPromotionSnapshot = async (
       }
       if (!canonical.eligible) continue;
       candidates.push({
+        ...(exact.retainedAuthoritySha256 === undefined ? {} : {
+          retainedAuthoritySha256: exact.retainedAuthoritySha256,
+          retainedAuthorityObservedAt: exact.retainedAuthorityObservedAt,
+        }),
         item,
         canonical,
         ...(exact.metricAuthority === undefined

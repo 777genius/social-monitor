@@ -407,6 +407,7 @@ async function main(): Promise<void> {
         : new DatasetGuardedReaderSummaryEvidenceSelector(
             omissionAwareEvidenceSelector,
             datasetGuard,
+            promotionRebuild !== undefined,
           );
     const evidenceSelector = promotionPolicyGuard === null
       ? baseEvidenceSelector

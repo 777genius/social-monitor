@@ -22,6 +22,14 @@ export type SummaryEvidenceContentQuality = {
   readonly reason: string;
 };
 
+export type SummaryEvidenceRetainedEngagementAuthority = {
+  readonly mode: "retained-current-authority";
+  readonly projection: "feed-engagement-snapshot-and-last-two-observations-v1";
+  readonly boundThrough: string;
+  readonly authoritySha256: string;
+  readonly cutoffAt: string;
+};
+
 export type SummaryEvidencePromotionMetrics =
   | {
       readonly provider: "x";
@@ -59,6 +67,7 @@ export type SummaryEvidencePromotionFacts = {
     | "unknown";
   readonly canonicalIdentity: string;
   readonly checkedAt?: Date;
+  readonly retainedEngagementAuthority?: SummaryEvidenceRetainedEngagementAuthority;
   readonly engagementAuthority?: {
     readonly observedAt: Date;
     readonly regressionState:

@@ -1,3 +1,4 @@
+import type { RetainedPromotionCandidateAuthority } from "@social-monitor/feed/domain/value-objects/retained-promotion-authority";
 import {
   classifyFeedPromotionEligibility,
   type FeedPromotionCanonicalMetrics,
@@ -24,6 +25,7 @@ export const readerPostPromotionFacts = (params: {
   readonly exactPublishedAt?: string;
   readonly exactObservedAt?: string;
   readonly canonicalPromotion?: FeedPromotionEligibility;
+  readonly retainedEngagementAuthority?: RetainedPromotionCandidateAuthority;
   readonly engagementAuthority?: {
     readonly observedAt: string;
     readonly regressionState: FeedPromotionMetricRegressionState;
@@ -46,6 +48,9 @@ export const readerPostPromotionFacts = (params: {
     params.engagementAuthority,
   );
   return {
+    ...(params.retainedEngagementAuthority === undefined ? {} : {
+      retainedEngagementAuthority: { ...params.retainedEngagementAuthority },
+    }),
     contentKind: eligibility.eligible
       ? eligibility.contentKind
       : eligibility.reason === "appendix_only" ||

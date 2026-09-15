@@ -266,6 +266,21 @@ describe("historical Promotion V2 active-publication preparation", () => {
     expect(captureDataset).not.toHaveBeenCalled();
   });
 
+  it.each(["published_at", "observed_at"] as const)("explicitly authorizes retained capture only for published_at rebuilds: %s", async (timestampPolicy) => {
+    const dependencies = preparationDependencies();
+    const captureDataset = jest.fn(dependencies.preparation.captureDataset);
+    const preparation = new ReaderSummaryPromotionV2HistoricalPreparation({
+      ...dependencies,
+      authority: { inspect: async () => ({ ...inspection(), rows: inspection().rows.map((row) => ({ ...row, dayEndMetricProof: null })) }) },
+      preparation: { ...dependencies.preparation, captureDataset },
+      clock: () => now,
+    });
+    await preparation.prepare({ dates: [date], batchSize: 1, timestampPolicy });
+    expect(captureDataset).toHaveBeenCalledWith(expect.objectContaining({
+      retainedCurrentAuthority: timestampPolicy === "published_at", timestampPolicy,
+    }));
+  });
+
   it("prepares an otherwise valid V2 publication built by an older ranking policy", async () => {
     const dependencies = preparationDependencies();
     const captureDataset = jest.fn(dependencies.preparation.captureDataset);

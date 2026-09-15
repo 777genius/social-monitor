@@ -30,6 +30,7 @@ import type { ConfiguredInterestReaderPort, SourceContentQualityReviewerPort, So
 import { resolvePromotionInterests } from "./resolve-promotion-interests";
 
 import { assessPromotionContent } from "./promotion-content-assessment";
+import { bindRetainedPromotionCandidateAuthority } from "./retained-promotion-candidate-authority";
 import { canCompeteForPromotionAssessment } from "./promotion-assessment-eligibility";
 import { unavailablePromotionHeadline, type PromotionReaderHeadline } from "../../domain/promotion-reader-headline";
 
@@ -57,6 +58,9 @@ export const rankPromotionSnapshot = async (params: {
       command.publishedBefore !== undefined
     ? "published_at" as const
     : "observed_at" as const;
+  if (command.retainedEngagementAuthority !== undefined && timestampPolicy !== "published_at") {
+    return err(new DomainError("validation.failed", "Retained historical authority requires published_at"));
+  }
   const windowStartedAt = timestampPolicy === "published_at"
     ? command.publishedAtOrAfter
     : command.observedAtOrAfter;
@@ -72,6 +76,7 @@ export const rankPromotionSnapshot = async (params: {
   let snapshot;
   try {
     snapshot = await params.feedItems.readPromotionSnapshot({
+      ...(command.retainedEngagementAuthority === undefined ? {} : { retainedAuthorityProjection: true as const }),
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       interestId: normalizeOptional(command.interestId),
@@ -140,6 +145,11 @@ export const rankPromotionSnapshot = async (params: {
       providerMetadata,
     });
     const projectedItem = {
+      ...(command.retainedEngagementAuthority === undefined ||
+          candidate.canonical.metrics.kind === "github_repository" ? {} : {
+        retainedEngagementAuthority: bindRetainedPromotionCandidateAuthority(
+          command.retainedEngagementAuthority, candidate),
+      }),
       readerHeadline: unavailablePromotionHeadline("not_assessed") as PromotionReaderHeadline,
       feedItemId: item.id,
       sourceItemId: item.sourceItemId,

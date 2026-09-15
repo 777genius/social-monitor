@@ -138,6 +138,7 @@ export class PostgresHistoricalPromotionPreparationReader
   }
 
   captureDataset(input: {
+    retainedCurrentAuthority?: boolean;
     date: string;
     generatedAt: Date;
     timestampPolicy: "published_at" | "observed_at";
@@ -146,6 +147,9 @@ export class PostgresHistoricalPromotionPreparationReader
     const endedAt = new Date(startedAt);
     endedAt.setUTCDate(endedAt.getUTCDate() + 1);
     return captureReaderSummaryDayDatasetManifest({
+      ...(input.retainedCurrentAuthority === true ? {
+        retainedAuthorityBoundThrough: input.generatedAt,
+      } : {}),
       client: this.client,
       tenantId: this.scope.tenantId,
       workspaceId: this.scope.workspaceId,

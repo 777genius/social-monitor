@@ -1,3 +1,4 @@
+import { retainedPromotionCutoff, exactRetainedPromotionTimestamp as exactTimestamp } from "@social-monitor/feed/domain/value-objects/retained-promotion-authority";
 import {
   classifyFeedPromotionEligibility, evaluateReaderPromotionV2,
   type ReaderPromotionV2ObservedMetrics,
@@ -11,6 +12,17 @@ import type { RankedFeedItemView } from "./rank-feed-items.result";
 export const canCompeteForPromotionAssessment = (
   item: RankedFeedItemView, cutoff: string,
 ): boolean => {
+  let engagementCutoff = cutoff;
+  if (item.retainedEngagementAuthority !== undefined) {
+    const retainedCutoff = retainedPromotionCutoff(item.retainedEngagementAuthority,
+      item.engagementAuthority?.observedAt, cutoff);
+    const published = item.exactPublishedAt ?? exactTimestamp(item.publishedAt);
+    const observed = item.exactObservedAt ?? exactTimestamp(item.observedAt);
+    if (retainedCutoff === undefined || published > observed ||
+        published > exactTimestamp(item.retainedEngagementAuthority.cutoffAt) ||
+        observed > exactTimestamp(item.retainedEngagementAuthority.boundThrough)) return false;
+    engagementCutoff = retainedCutoff;
+  }
   const flags = item.contentQuality.flags;
   if (hasHardBlocker(flags as readonly SourceContentQualityFlag[]) || flags.some((flag) =>
     ["engagement_bait", "generic_question", "prediction_market_rumor",
@@ -32,7 +44,7 @@ export const canCompeteForPromotionAssessment = (
   return evaluateReaderPromotionV2({
     candidateId: item.feedItemId, canonicalIdentity: item.canonicalUrl,
     provider: metrics.provider, contentKind: canonical.contentKind,
-    publishedAt: item.publishedAt, engagementCutoffAt: cutoff,
+    publishedAt: item.publishedAt, engagementCutoffAt: engagementCutoff,
     admission: { relevanceFloorMet: true, qualityFloorMet: true, integrityFloorMet: true,
       safetyFloorMet: item.safety.status !== "blocked",
       freshnessFloorMet: published <= observed && observed <= Date.parse(cutoff) },

@@ -108,6 +108,7 @@ export const mapRankedItem = (
     exactObservedAt: item.exactObservedAt,
     canonicalPromotion,
     engagementAuthority: item.engagementAuthority,
+    retainedEngagementAuthority: item.retainedEngagementAuthority,
   }),
   readerActionKind: readerActionKindForProvider(item.providerKey),
   ...providerMetricFacts({

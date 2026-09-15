@@ -41,6 +41,7 @@ export interface HistoricalPromotionPreparationReader {
     date: string,
   ): Promise<HistoricalPromotionActiveSourcePublication | null>;
   captureDataset(input: {
+    retainedCurrentAuthority?: boolean;
     date: string;
     generatedAt: Date;
     timestampPolicy: "published_at" | "observed_at";
@@ -154,6 +155,8 @@ export class ReaderSummaryPromotionV2HistoricalPreparation {
     try {
       [datasetManifest, generationAuthority] = await Promise.all([
         this.dependencies.preparation.captureDataset({
+          retainedCurrentAuthority: timestampPolicy === "published_at" &&
+            classification.kind === "rebuildable-from-authoritative-input",
           date,
           generatedAt,
           timestampPolicy,

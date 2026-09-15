@@ -263,6 +263,9 @@ const admittedContentQuality = (
 const admittedPromotionFacts = (
   facts: SummaryEvidencePromotionFacts,
 ): SummaryEvidencePromotionFacts => ({
+  ...(facts.retainedEngagementAuthority === undefined ? {} : {
+    retainedEngagementAuthority: { ...facts.retainedEngagementAuthority },
+  }),
   contentKind: facts.contentKind,
   canonicalIdentity: facts.canonicalIdentity,
   checkedAt: facts.checkedAt === undefined

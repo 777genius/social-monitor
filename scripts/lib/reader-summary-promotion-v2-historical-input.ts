@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { assertRetainedEngagementAuthority } from "./reader-summary-retained-engagement-authority";
 
 import type { ReaderSummaryDayDatasetManifest } from
   "./reader-summary-day-dataset-manifest";
@@ -59,6 +60,7 @@ export type HistoricalPromotionGenerationAuthority = Readonly<{
 }>;
 
 export type HistoricalPromotionCanonicalInputEnvelope = Readonly<{
+  retainedEngagementAuthority?: Omit<NonNullable<ReaderSummaryDayDatasetManifest["retainedEngagementAuthority"]>, "bindings">;
   schemaVersion: 2;
   format: "reader-summary-promotion-v2-canonical-input-v2";
   date: string;
@@ -98,9 +100,24 @@ export const buildHistoricalPromotionCanonicalInput = (input: {
   authoritativeInputDigest: string;
 }> => {
   assertDateMatchesManifest(input.date, input.datasetManifest);
+  if (input.datasetManifest.retainedEngagementAuthority !== undefined) {
+    assertRetainedEngagementAuthority(input.datasetManifest.retainedEngagementAuthority);
+    if (input.datasetManifest.policy.timestampPolicy !== "published_at" ||
+        input.datasetManifest.retainedEngagementAuthority.boundThrough !== input.datasetManifest.generatedAt) {
+      throw new Error("Historical retained authority cutoff must match published_at capture");
+    }
+  }
   requiredSha256(input.datasetManifestSha256);
   const githubPolicy = githubPolicyFor(input);
   const envelope: HistoricalPromotionCanonicalInputEnvelope = {
+    ...(input.datasetManifest.retainedEngagementAuthority === undefined ? {} : {
+      retainedEngagementAuthority: {
+        mode: input.datasetManifest.retainedEngagementAuthority.mode,
+        projection: input.datasetManifest.retainedEngagementAuthority.projection,
+        boundThrough: input.datasetManifest.retainedEngagementAuthority.boundThrough,
+        bindingsSha256: input.datasetManifest.retainedEngagementAuthority.bindingsSha256,
+      },
+    }),
     schemaVersion: 2,
     format: "reader-summary-promotion-v2-canonical-input-v2",
     date: input.date,
