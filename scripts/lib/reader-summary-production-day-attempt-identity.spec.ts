@@ -69,7 +69,7 @@ const authorityHashFields = [
 describe("reader summary production-day attempt identity", () => {
   it("binds retries to the current persisted artifact policy", () => {
     expect(readerSummaryProductionDayArtifactPolicyVersion).toBe(
-      "reader_summary.artifact_policy.v9",
+      "reader_summary.artifact_policy.v10",
     );
   });
 
