@@ -1,3 +1,4 @@
+import type { RetainedPromotionCandidateAuthority } from "@social-monitor/feed/domain/value-objects/retained-promotion-authority";
 import type { JsonObject } from '@social-monitor/shared-kernel';
 import type { FeedPromotionMetricRegressionState } from
   '@social-monitor/feed/domain';
@@ -37,6 +38,7 @@ export type RankedFeedItemView = {
   readonly observedAt: string;
   readonly exactPublishedAt?: string;
   readonly exactObservedAt?: string;
+  readonly retainedEngagementAuthority?: RetainedPromotionCandidateAuthority;
   readonly engagementAuthority?: {
     readonly observedAt: string;
     readonly regressionState: FeedPromotionMetricRegressionState;

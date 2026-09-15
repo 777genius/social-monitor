@@ -1,3 +1,4 @@
+import type { RetainedPromotionAuthority } from "@social-monitor/feed/domain/value-objects/retained-promotion-authority";
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import type {
@@ -16,6 +17,7 @@ export interface ReaderSummaryEvidenceSelectorPort {
     readonly subscriptionId?: string;
     readonly maxItems: number;
     readonly observedThrough?: Date;
+    readonly retainedEngagementAuthority?: RetainedPromotionAuthority;
     readonly timestampPolicy?: ReaderSummaryTimestampPolicy;
   }): Promise<SummaryEvidenceSelection>;
 }
