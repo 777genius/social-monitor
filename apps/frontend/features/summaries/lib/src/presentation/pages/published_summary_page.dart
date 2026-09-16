@@ -131,6 +131,7 @@ class _PublishedSummaryArticle extends StatelessWidget {
             onCalendarDateSelected: (date) =>
                 unawaited(store.selectCalendarDate(date)),
             isGenerating: false,
+            isLoading: isRefreshing,
             exportSummary: summary,
             showRefreshSchedule: store.isViewingLatestDailySummary,
             onRefreshDue: () => unawaited(store.refreshIfNewer()),

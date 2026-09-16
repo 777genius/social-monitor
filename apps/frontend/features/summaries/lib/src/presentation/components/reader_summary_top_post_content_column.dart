@@ -2,6 +2,7 @@ part of 'reader_summary_brief_surface.dart';
 
 const _topPostDescriptionMaxLines = 4;
 const _topPostInlinePreviewMinWidth = 480.0;
+const _topPostOriginalControlWidth = 88.0;
 
 class _TopPostContentColumn extends StatelessWidget {
   const _TopPostContentColumn({
@@ -117,10 +118,15 @@ class _TopPostTextBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Stack(
+          clipBehavior: Clip.none,
           children: [
-            Expanded(
+            Padding(
+              padding: EdgeInsets.only(
+                right: showOriginalControl && item.capturedSource != null
+                    ? _topPostOriginalControlWidth
+                    : 0,
+              ),
               child: Text(
                 _topPostDisplayHeadline(item),
                 key: ObjectKey(item),
@@ -135,13 +141,15 @@ class _TopPostTextBody extends StatelessWidget {
                 ),
               ),
             ),
-            if (showOriginalControl && item.capturedSource != null) ...[
-              const SizedBox(width: AppSpacing.sm),
-              _TopPostOriginalSwitch(
-                value: false,
-                onChanged: onOriginalChanged,
+            if (showOriginalControl && item.capturedSource != null)
+              Positioned(
+                top: -4,
+                right: 0,
+                child: _TopPostOriginalSwitch(
+                  value: false,
+                  onChanged: onOriginalChanged,
+                ),
               ),
-            ],
           ],
         ),
         const SizedBox(height: AppSpacing.xs),
