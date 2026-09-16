@@ -30,7 +30,9 @@ import {
 export const historicalMutationNeedsQualityReconciliation = (
   childExitCode: number | null,
   durableState: string,
-): boolean => durableState === "complete-active" && childExitCode !== 0;
+  qualityValidation: "passed" | "failed" | "unavailable",
+): boolean => durableState === "complete-active" && childExitCode !== 0 &&
+  qualityValidation === "failed";
 import { READER_SUMMARY_PRODUCTION_RUNTIME_POLICY } from
   "./reader-summary-production-runtime-policy";
 
@@ -99,6 +101,7 @@ export class ProductionDayHistoricalPromotionMutation
     const command = lockedPreflightCommand(
       historicalPromotionProductionDayCommand(input),
     );
+    const childStartedAt = Date.now();
     let status: number | null;
     let fenceToken: string;
     let underLockFailure: HistoricalPromotionUnderLockReason | null;
@@ -225,8 +228,20 @@ export class ProductionDayHistoricalPromotionMutation
       input.rebuildIdentity,
       input.bundle,
     );
+    const qualityValidation = historicalProductionDayQualityValidation(
+      join(
+        reportDirectory.canonicalPath,
+        `reader-summary-production-day-run.${input.date}.v1.json`,
+      ),
+      input.date,
+      childStartedAt,
+    );
     if (state.state === "complete-active") {
-      if (historicalMutationNeedsQualityReconciliation(status, state.state)) {
+      if (historicalMutationNeedsQualityReconciliation(
+        status,
+        state.state,
+        qualityValidation,
+      )) {
         return {
           status: "pending",
           fenceToken,
@@ -426,4 +441,30 @@ const readUnderLockFailure = (
     throw new Error("Historical promotion under-lock marker is invalid");
   }
   return value.reason;
+};
+
+const historicalProductionDayQualityValidation = (
+  path: string,
+  date: string,
+  childStartedAt: number,
+): "passed" | "failed" | "unavailable" => {
+  try {
+    const report = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (typeof report !== "object" || report === null ||
+        !("requestedDate" in report) || report.requestedDate !== date ||
+        !("collectionDate" in report) || report.collectionDate !== date ||
+        !("failure" in report) || report.failure !== null ||
+        !("blockingPassed" in report) ||
+        typeof report.blockingPassed !== "boolean" ||
+        !("run" in report) || typeof report.run !== "object" ||
+        report.run === null || !("startedAt" in report.run) ||
+        typeof report.run.startedAt !== "string" ||
+        !Number.isFinite(Date.parse(report.run.startedAt)) ||
+        Date.parse(report.run.startedAt) < childStartedAt) {
+      return "unavailable";
+    }
+    return report.blockingPassed ? "passed" : "failed";
+  } catch {
+    return "unavailable";
+  }
 };

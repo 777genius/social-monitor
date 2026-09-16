@@ -97,6 +97,49 @@ describe("Reader Summary Promotion V2 historical runner", () => {
     expect(scenario.verifyCompleted).not.toHaveBeenCalled();
   });
 
+  it("does not revalidate a quality failure receipt from another identity", async () => {
+    const scenario = harness();
+    scenario.mutationOutcome = {
+      status: "pending",
+      fenceToken: "reader-summary-date:2026-08-01:2",
+      reason: "production_day_quality_gates_failed_after_pointer_switch",
+      retrySafety: "requires-durable-reconciliation",
+      pointerSwitchAttempted: true,
+    };
+    await scenario.run({ resume: true });
+    scenario.durableState = {
+      state: "complete-active",
+      jobId: output().jobId,
+      artifactId: output().artifactId,
+      publicationId: output().publicationId,
+      activePublicationId: output().publicationId,
+      previousPublicationId: output().previousPublicationId,
+    };
+    const original = scenario.options.evidence.get("2026-08-01")!;
+    const canonicalInput = {
+      ...original.canonicalInput,
+      sourcePublication: {
+        ...original.canonicalInput.sourcePublication,
+        proofSha256: "f".repeat(64),
+      },
+    };
+
+    const [completed] = await scenario.run({
+      resume: true,
+      evidence: new Map([["2026-08-01", {
+        ...original,
+        canonicalInput,
+        authoritativeInputDigest:
+          historicalPromotionCanonicalInputDigest(canonicalInput),
+        sourcePublicationProofSha256: "f".repeat(64),
+      }]]),
+    });
+
+    expect(completed?.status).toBe("noop");
+    expect(scenario.rebuild).toHaveBeenCalledTimes(1);
+    expect(scenario.verifyCompleted).toHaveBeenCalledTimes(1);
+  });
+
   it("makes a duplicate identical complete identity a verified no-op", async () => {
     const scenario = harness();
     const [completed] = await scenario.run({ resume: true });

@@ -25,15 +25,13 @@ export const historicalCleanDayCollectionPath = (
   const fileName =
     `reader-summary-clean-real-day-collection.${activePublicationDate}.v1.json`;
   const productionHistoryDirectory =
-    activePublicationDirectories?.productionHistoryDirectory ??
-    process.env.READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR;
+    activePublicationDirectories?.productionHistoryDirectory;
   const candidates = [
     productionHistoryDirectory === undefined
       ? undefined
       : join(productionHistoryDirectory, fileName),
     join(
       activePublicationDirectories?.rollingArtifactRoot ??
-        process.env.ROLLING_ARTIFACT_ROOT ??
         "/var/lib/social-monitor/artifacts/rolling-summary",
       "collections",
       fileName,

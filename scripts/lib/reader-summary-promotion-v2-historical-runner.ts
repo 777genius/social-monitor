@@ -306,6 +306,7 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
     const prior = await this.dependencies.receipts.load(date);
     const requiresProductionDayQualityRevalidation =
       prior?.status === "pending" &&
+      prior.identity?.rebuildIdentity === rebuildIdentity &&
       prior.reason ===
         "production_day_quality_gates_failed_after_pointer_switch";
     if (

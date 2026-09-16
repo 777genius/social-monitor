@@ -6,12 +6,29 @@ describe("Promotion V2 historical production-day boundary", () => {
     expect(historicalMutationNeedsQualityReconciliation(
       1,
       "complete-active",
+      "failed",
     )).toBe(true);
     expect(historicalMutationNeedsQualityReconciliation(
       0,
       "complete-active",
+      "failed",
     )).toBe(false);
-    expect(historicalMutationNeedsQualityReconciliation(1, "failed"))
+    expect(historicalMutationNeedsQualityReconciliation(
+      124,
+      "complete-active",
+      "unavailable",
+    )).toBe(false);
+    expect(historicalMutationNeedsQualityReconciliation(
+      null,
+      "complete-active",
+      "unavailable",
+    )).toBe(false);
+    expect(historicalMutationNeedsQualityReconciliation(
+      1,
+      "complete-active",
+      "passed",
+    )).toBe(false);
+    expect(historicalMutationNeedsQualityReconciliation(1, "failed", "failed"))
       .toBe(false);
   });
 });

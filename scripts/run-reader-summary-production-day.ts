@@ -119,7 +119,6 @@ let nextRuntimeIdentityPath: string;
 let datedOutputPath: string;
 let terminalOutcomePath: string;
 let liveCaptureExecution: ProductionDayCaptureExecution | null = null;
-
 void main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
@@ -129,7 +128,6 @@ async function main(): Promise<void> {
     validateExistingReport();
     return;
   }
-
   const startedAt = new Date();
   const steps: StepReport[] = [];
   initializeProductionDayRuntime();
@@ -234,7 +232,11 @@ async function main(): Promise<void> {
     enabled: executionRequest.mode === "historical-regeneration" &&
       executionRequest.promotionRebuild !== undefined, reportDirectory,
     cleanDayCollectionPath: historicalCleanDayCollectionPath(
-      executionRequest, historicalCollection?.path, collectionDate),
+      executionRequest, historicalCollection?.path, collectionDate, {
+        productionHistoryDirectory:
+          process.env.READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR,
+        rollingArtifactRoot: process.env.ROLLING_ARTIFACT_ROOT,
+      }),
   });
   let collectionQualityStep = runNpm("collection-quality", [
     "run",
@@ -579,7 +581,6 @@ async function main(): Promise<void> {
     historicalRegenerationProvenance:
       historicalRegeneration?.provenance ?? null,
   });
-
   if (
     executionRequest.mode === "historical-reuse" &&
     report.qualityGates.historicalReuseEvaluationPassed
@@ -593,7 +594,6 @@ async function main(): Promise<void> {
     throw new Error("Reader summary production day run gates failed");
   }
 }
-
 function initializeProductionDayRuntime(): void {
   executionRequest = resolveProductionDayExecutionRequest(
     process.argv.slice(2),
