@@ -44,6 +44,31 @@ const fixture = () => {
 };
 
 describe("promotion reader explanations", () => {
+  it("repairs a projected-away single-story lead from its admitted model story", () => {
+    const { evidence, draft } = fixture();
+    const story = draft.topStories[0]!;
+    const result = buildReaderSummaryDraftWithPromotionContent(evidence, {
+      ...draft,
+      content: {
+        ...draft.content!,
+        narrativeSections: [],
+      },
+    });
+
+    expect(
+      (result.content.narrativeSections ?? []).filter(
+        (section) => section.kind === "lead",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        id: "narrative-promotion-lead",
+        text: substantive,
+        citationIds: story.citationIds,
+        storyClusterId: story.storyClusterId,
+      }),
+    ]);
+  });
+
   it("seals the same model summary that is rendered in the promotion card", () => {
     const { evidence, draft } = fixture();
     const renderedDraft = buildReaderSummaryDraftWithPromotionContent(evidence, draft);
