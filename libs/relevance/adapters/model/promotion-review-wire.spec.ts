@@ -49,7 +49,8 @@ describe("existing review adapter promotion wire contract", () => {
 
   describe("bindPromotionAssessment trustAttestedRequestBinding opt-in", () => {
     const input = request("reddit");
-    const raw = { bindingId: `${promotionWireCandidate(input).bindingId}-drifted`,
+    const bindingId = promotionWireCandidate(input).bindingId;
+    const raw = { bindingId: `${bindingId.slice(0, -1)}${bindingId.endsWith("0") ? "1" : "0"}`,
       evidence: [{ field: "title", start: 0, end: input.title.length, quote: input.title }],
       resolvedSoftFlags: [] };
 
