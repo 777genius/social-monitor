@@ -38,6 +38,7 @@ describe("production-day execution request", () => {
     );
     expect(source).toContain("historicalCleanDayCollectionPath(");
     expect(source).toContain("executionRequest, historicalCollection?.path");
+    expect(source).toContain("historicalCollection?.path, collectionDate");
   });
 
   it("leaves migrations exclusively in the release pipeline", () => {

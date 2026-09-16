@@ -98,8 +98,7 @@ describe("historical Promotion V2 date quality output", () => {
         datasetManifestSha256: "d".repeat(64),
         timestampPolicy: "published_at",
         allowHistoricalGitHubOmission: false,
-      }, undefined, {
-        collectionDate: "2026-09-09",
+      }, undefined, "2026-09-09", {
         rollingArtifactRoot: rollingRoot,
       })).toBe(collectionPath);
     } finally {
@@ -115,8 +114,7 @@ describe("historical Promotion V2 date quality output", () => {
       datasetManifestSha256: "d".repeat(64),
       timestampPolicy: "published_at",
       allowHistoricalGitHubOmission: false,
-    }, undefined, {
-      collectionDate: "2026-09-09",
+    }, undefined, "2026-09-09", {
       productionHistoryDirectory: "/production-history",
       rollingArtifactRoot: "/rolling",
     })).toBe(

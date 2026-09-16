@@ -7,8 +7,8 @@ import type { ProductionDayExecutionRequest } from
 export const historicalCleanDayCollectionPath = (
   request: ProductionDayExecutionRequest,
   historicalCollectionPath?: string,
-  activePublicationSearch?: Readonly<{
-    collectionDate: string;
+  activePublicationDate?: string,
+  activePublicationDirectories?: Readonly<{
     productionHistoryDirectory?: string;
     rollingArtifactRoot?: string;
   }>,
@@ -20,16 +20,20 @@ export const historicalCleanDayCollectionPath = (
     return request.sourceEvidence.collectionArtifactPath;
   }
   if (historicalCollectionPath !== undefined) return historicalCollectionPath;
-  if (activePublicationSearch === undefined) return undefined;
+  if (activePublicationDate === undefined) return undefined;
 
   const fileName =
-    `reader-summary-clean-real-day-collection.${activePublicationSearch.collectionDate}.v1.json`;
+    `reader-summary-clean-real-day-collection.${activePublicationDate}.v1.json`;
+  const productionHistoryDirectory =
+    activePublicationDirectories?.productionHistoryDirectory ??
+    process.env.READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR;
   const candidates = [
-    activePublicationSearch.productionHistoryDirectory === undefined
+    productionHistoryDirectory === undefined
       ? undefined
-      : join(activePublicationSearch.productionHistoryDirectory, fileName),
+      : join(productionHistoryDirectory, fileName),
     join(
-      activePublicationSearch.rollingArtifactRoot ??
+      activePublicationDirectories?.rollingArtifactRoot ??
+        process.env.ROLLING_ARTIFACT_ROOT ??
         "/var/lib/social-monitor/artifacts/rolling-summary",
       "collections",
       fileName,
