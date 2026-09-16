@@ -106,6 +106,23 @@ describe("historical Promotion V2 date quality output", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("fails closed on a dated path instead of falling back to a fixture", () => {
+    expect(historicalCleanDayCollectionPath({
+      mode: "historical-regeneration",
+      sourceEvidence: { kind: "active-database-publication" },
+      datasetManifestPath: "/history/manifest.json",
+      datasetManifestSha256: "d".repeat(64),
+      timestampPolicy: "published_at",
+      allowHistoricalGitHubOmission: false,
+    }, undefined, {
+      collectionDate: "2026-09-09",
+      productionHistoryDirectory: "/production-history",
+      rollingArtifactRoot: "/rolling",
+    })).toBe(
+      "/production-history/reader-summary-clean-real-day-collection.2026-09-09.v1.json",
+    );
+  });
 });
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

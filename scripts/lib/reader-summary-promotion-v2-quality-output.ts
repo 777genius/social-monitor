@@ -36,7 +36,7 @@ export const historicalCleanDayCollectionPath = (
     ),
   ].filter((value): value is string => value !== undefined);
 
-  return candidates.find((path) => existsSync(path));
+  return candidates.find((path) => existsSync(path)) ?? candidates[0];
 };
 
 export const historicalPromotionQualityOutput = (input: {
