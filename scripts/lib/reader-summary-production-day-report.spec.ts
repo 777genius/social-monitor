@@ -1,3 +1,4 @@
+import { datasetManifestLifetimePolicy } from "./reader-summary-day-dataset-guard";
 import {
   requiredProductionDayStepIds,
   type ProductionDayStepReport,
@@ -95,7 +96,7 @@ describe("production-day report", () => {
       freshnessOverride: {
         mode: "historical_regeneration_current_snapshot" as const,
         generalAllowHistorical: false as const,
-        maxManifestAgeSeconds: 1800 as const,
+        lifetimePolicy: datasetManifestLifetimePolicy,
       },
     };
     const report = buildReport(
@@ -128,6 +129,50 @@ describe("production-day report", () => {
         expectedDate: collectionDate,
       }),
     ).toEqual([]);
+
+    // Reports must describe the policy actually enforced by the guard, and
+    // prove fresh admission plus a bounded elapsed operation. Old receipts fail.
+    const provenance = report.provenance as unknown as Record<string, unknown>;
+    const guard = provenance.datasetGuardEvidence as Record<string, unknown>;
+    const override = provenance.freshnessOverride as Record<string, unknown>;
+    expect(validateLiveProductionDayReport({
+      report: { ...report, provenance: { ...provenance,
+        datasetGuardEvidence: { ...guard,
+          admittedAt: new Date(Date.parse(manifest.generatedAt) + 1800_000).toISOString(),
+          validatedAt: new Date(Date.parse(manifest.generatedAt) + 1800_000 + 11760_000).toISOString(),
+        },
+      } },
+      binding: artifact.binding,
+      expectedDate: collectionDate,
+    })).toEqual([]);
+    const invalidProvenances = [
+      { ...provenance, freshnessOverride: { ...override,
+        lifetimePolicy: undefined, maxManifestAgeSeconds: 1800 } },
+      { ...provenance, freshnessOverride: { ...override,
+        maxManifestAgeSeconds: 1800 } },
+      ...[undefined, { ...datasetManifestLifetimePolicy, maxOperationAgeSeconds: 1800 },
+        { ...datasetManifestLifetimePolicy, maxAdmissionAgeSeconds: 11760 },
+        { ...datasetManifestLifetimePolicy, maxOperationAgeSeconds: 11761 },
+        { ...datasetManifestLifetimePolicy, mode: "unbounded" }].flatMap((lifetimePolicy) => [
+        { ...provenance, freshnessOverride: { ...override, lifetimePolicy } },
+        { ...provenance, datasetGuardEvidence: { ...guard, lifetimePolicy } },
+      ]),
+      ...[
+        { admittedAt: undefined },
+        { validatedAt: "invalid" },
+        { admittedAt: new Date(Date.parse(manifest.generatedAt) - 1).toISOString() },
+        { admittedAt: new Date(Date.parse(manifest.generatedAt) + 1800_001).toISOString() },
+        { validatedAt: new Date(Date.parse(manifest.generatedAt) - 1).toISOString() },
+        { validatedAt: new Date(Date.parse(manifest.generatedAt) + 11760_001).toISOString() },
+      ].map((invalid) => ({ ...provenance, datasetGuardEvidence: { ...guard, ...invalid } })),
+    ];
+    for (const invalid of invalidProvenances) {
+      expect(validateLiveProductionDayReport({
+        report: { ...report, provenance: invalid },
+        binding: artifact.binding,
+        expectedDate: collectionDate,
+      }).length).toBeGreaterThan(0);
+    }
 
     const mixedQuality = buildReport(
       passedSteps(),
@@ -822,6 +867,9 @@ function regenerationManifest() {
 function datasetGuardEvidence() {
   const manifest = regenerationManifest();
   return {
+    lifetimePolicy: datasetManifestLifetimePolicy,
+    admittedAt: manifest.generatedAt,
+    validatedAt: manifest.generatedAt,
     manifestFormat: manifest.artifactFormat,
     manifestFileSha256: manifest.sha256,
     manifestGeneratedAt: manifest.generatedAt,

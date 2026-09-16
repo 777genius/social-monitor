@@ -6,7 +6,7 @@ import {
   type ProductionDayUtcPeriod,
 } from "./reader-summary-production-day-provenance";
 import type { HistoricalRegenerationSourceProvenance } from "./reader-summary-production-day-regeneration";
-import { completeDatasetGuardPhases } from "./reader-summary-day-dataset-guard";
+import { completeDatasetGuardPhases, datasetManifestLifetimePolicy } from "./reader-summary-day-dataset-guard";
 
 type DurableEvidenceWithProvenance = {
   readonly provenance?: unknown;
@@ -70,7 +70,8 @@ export function validHistoricalRegenerationProvenance(params: {
     params.value.freshnessOverride.mode ===
       "historical_regeneration_current_snapshot" &&
     params.value.freshnessOverride.generalAllowHistorical === false &&
-    params.value.freshnessOverride.maxManifestAgeSeconds === 1800 &&
+    params.value.freshnessOverride.maxManifestAgeSeconds === undefined &&
+    validLifetimePolicy(params.value.freshnessOverride.lifetimePolicy) &&
     validHistoricalGitHubPolicy(
       params.value.githubPolicy,
       params.value.regenerationInputManifest,
@@ -154,6 +155,7 @@ function datasetGuardMatchesManifest(
 ): boolean {
   return (
     isRecord(guard) &&
+    validGuardLifetime(guard) &&
     guard.manifestFormat === manifest.artifactFormat &&
     guard.manifestFileSha256 === manifest.sha256 &&
     guard.manifestGeneratedAt === manifest.generatedAt &&
@@ -206,4 +208,26 @@ function hashBoundArtifactMatches(
     typeof value.sha256 === "string" &&
     /^[0-9a-f]{64}$/u.test(value.sha256)
   );
+}
+
+function validLifetimePolicy(value: unknown): boolean {
+  return isRecord(value) &&
+    Object.keys(value).length === Object.keys(datasetManifestLifetimePolicy).length &&
+    Object.entries(datasetManifestLifetimePolicy).every(
+      ([key, expected]) => value[key] === expected,
+    );
+}
+
+function validGuardLifetime(guard: Record<string, unknown>): boolean {
+  if (!validLifetimePolicy(guard.lifetimePolicy) ||
+      typeof guard.manifestGeneratedAt !== "string" ||
+      typeof guard.admittedAt !== "string" ||
+      typeof guard.validatedAt !== "string") return false;
+  const generated = Date.parse(guard.manifestGeneratedAt);
+  const admitted = Date.parse(guard.admittedAt);
+  const validated = Date.parse(guard.validatedAt);
+  return [generated, admitted, validated].every(Number.isFinite) &&
+    generated <= admitted && admitted <= validated &&
+    admitted - generated <= datasetManifestLifetimePolicy.maxAdmissionAgeSeconds * 1000 &&
+    validated - admitted <= datasetManifestLifetimePolicy.maxOperationAgeSeconds * 1000;
 }

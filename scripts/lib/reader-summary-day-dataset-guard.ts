@@ -15,6 +15,16 @@ import {
   type ReaderSummaryDayDatasetManifest,
 } from "./reader-summary-day-dataset-manifest";
 
+// Fresh admission remains 30 minutes. Once admitted, the same guard may run
+// for the existing historical subprocess ceiling (196 minutes), covering the
+// 3600-second serial assessment budget plus bounded generation and publication.
+// A new process/guard must pass fresh admission again; this is not a lease.
+export const datasetManifestLifetimePolicy = Object.freeze({
+  mode: "fresh_admission_bounded_operation_v1",
+  maxAdmissionAgeSeconds: 1800,
+  maxOperationAgeSeconds: 11760,
+} as const);
+
 export type DatasetGuardPhase =
   | "before_evidence_selection"
   | "after_evidence_selection"
@@ -28,6 +38,8 @@ export const completeDatasetGuardPhases: readonly DatasetGuardPhase[] = [
 
 export class ReaderSummaryDayDatasetGuard {
   private readonly completedPhases: DatasetGuardPhase[] = [];
+  private admittedAtMs: number | undefined;
+  private validatedAtMs: number | undefined;
 
   constructor(
     private readonly client: Pick<PrismaSummaryClient, "$queryRaw">,
@@ -70,14 +82,7 @@ export class ReaderSummaryDayDatasetGuard {
       );
     }
     const now = this.clock();
-    const manifestGeneratedAt = new Date(this.expected.generatedAt);
-    if (
-      !Number.isFinite(manifestGeneratedAt.getTime()) ||
-      manifestGeneratedAt.getTime() > now.getTime() ||
-      now.getTime() - manifestGeneratedAt.getTime() > 30 * 60 * 1_000
-    ) {
-      throw new Error(`Reader summary dataset manifest is stale at ${phase}`);
-    }
+    this.assertLifetime(now.getTime(), phase);
     const actual = await captureReaderSummaryDayDatasetManifest({
       client,
       tenantId: this.expected.scope.tenantId,
@@ -93,8 +98,35 @@ export class ReaderSummaryDayDatasetGuard {
     if (!manifestsMatch(this.expected, actual)) {
       throw new Error(`Reader summary dataset changed at ${phase}`);
     }
+    const validatedAtMs = this.clock().getTime();
+    this.assertLifetime(validatedAtMs, phase, now.getTime());
+    if (validatedAtMs < now.getTime()) {
+      throw new Error(`Reader summary dataset clock moved backwards at ${phase}`);
+    }
+    this.admittedAtMs ??= now.getTime();
+    this.validatedAtMs = validatedAtMs;
     if (phase !== "before_mutation" && !isPublicationRetry) {
       this.completedPhases.push(phase);
+    }
+  }
+
+  private assertLifetime(
+    nowMs: number,
+    phase: string,
+    initialAdmissionMs = nowMs,
+  ): void {
+    const generatedAtMs = new Date(this.expected.generatedAt).getTime();
+    const admissionMs = this.admittedAtMs ?? initialAdmissionMs;
+    if (
+      !Number.isFinite(nowMs) || !Number.isFinite(generatedAtMs) ||
+      generatedAtMs > admissionMs ||
+      admissionMs - generatedAtMs >
+        datasetManifestLifetimePolicy.maxAdmissionAgeSeconds * 1000 ||
+      nowMs < (this.validatedAtMs ?? admissionMs) ||
+      nowMs - admissionMs >
+        datasetManifestLifetimePolicy.maxOperationAgeSeconds * 1000
+    ) {
+      throw new Error(`Reader summary dataset manifest is stale at ${phase}`);
     }
   }
 
@@ -108,6 +140,11 @@ export class ReaderSummaryDayDatasetGuard {
           bindingsSha256: this.expected.retainedEngagementAuthority.bindingsSha256,
         },
       }),
+      lifetimePolicy: datasetManifestLifetimePolicy,
+      admittedAt: this.admittedAtMs === undefined
+        ? null : new Date(this.admittedAtMs).toISOString(),
+      validatedAt: this.validatedAtMs === undefined
+        ? null : new Date(this.validatedAtMs).toISOString(),
       manifestFormat: this.expected.format,
       manifestFileSha256: this.manifestFileSha256,
       manifestGeneratedAt: this.expected.generatedAt,
@@ -225,7 +262,7 @@ export function readReaderSummaryDayDatasetManifest(params: {
   }
   const value = parseReaderSummaryDayDatasetManifest(bytes);
   const generatedAt = new Date(value.generatedAt);
-  const maxAgeMs = params.maxAgeMs ?? 30 * 60 * 1_000;
+  const maxAgeMs = params.maxAgeMs ?? datasetManifestLifetimePolicy.maxAdmissionAgeSeconds * 1000;
   if (
     value.scope.tenantId !== params.tenantId ||
     value.scope.workspaceId !== params.workspaceId ||
@@ -233,6 +270,7 @@ export function readReaderSummaryDayDatasetManifest(params: {
     value.period.endedAt !== params.endedAt.toISOString() ||
     value.policy.timestampPolicy !==
       (params.expectedTimestampPolicy ?? "published_at") ||
+    !Number.isFinite(params.now.getTime()) ||
     !Number.isFinite(generatedAt.getTime()) ||
     generatedAt.getTime() > params.now.getTime() ||
     params.now.getTime() - generatedAt.getTime() > maxAgeMs
