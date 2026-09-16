@@ -147,7 +147,7 @@ export function refreshSelectorAssessmentOutput(command: AgentRuntimeTaskCommand
         !candidate.untrustedSource.bodyPreview.includes("AI coding agents")) {
       throw new Error("Unexpected synthetic assessment evidence");
     }
-    const quote = candidate.untrustedSource.bodyPreview;
+    const quote = candidate.untrustedSource.bodyPreview.slice(0, 256);
     return { candidateId: candidate.candidateId, bindingId: candidate.bindingId,
       decision: "promote", confidence: 0.96, qualityScore: 0.94,
       interestRelevanceScore: 0.95, engagementIntegrityScore: 0.95,
