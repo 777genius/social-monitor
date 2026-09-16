@@ -32,6 +32,8 @@ import { historicalPromotionProductionDayCommand } from
   "./reader-summary-promotion-v2-historical-subprocess";
 import { historicalPromotionGenerationAuthority } from
   "./reader-summary-promotion-v2-historical-generation-authority";
+import { READER_SUMMARY_PRODUCTION_RUNTIME_POLICY } from
+  "./reader-summary-production-runtime-policy";
 
 const date = "2026-08-01";
 const now = new Date("2026-08-31T12:00:00.000Z");
@@ -125,6 +127,12 @@ describe("historical Promotion V2 active-publication preparation", () => {
       bundle,
     };
     const command = historicalPromotionProductionDayCommand(rebuildInput);
+    expect(command.slice(0, 4)).toEqual([
+      process.execPath,
+      expect.stringContaining("run-with-timeout.mjs"),
+      "--timeout-ms",
+      String(READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.orchestrationTimeoutMs),
+    ]);
     expect(command).toEqual(expect.arrayContaining([
       "--inherit-fd",
       "9",

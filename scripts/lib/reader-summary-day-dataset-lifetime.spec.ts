@@ -2,13 +2,16 @@ import {
   DatasetGuardedReaderSummaryEvidenceSelector,
   ReaderSummaryDayDatasetGuard,
   completeDatasetGuardPhases,
+  createReaderSummaryDayDatasetAdmission,
+  datasetManifestAdmissionEnvironment,
   datasetManifestLifetimePolicy,
+  readReaderSummaryDayDatasetAdmission,
 } from "./reader-summary-day-dataset-guard";
 import { captureReaderSummaryDayDatasetManifest } from "./reader-summary-day-dataset-manifest";
 
 const generatedAt = new Date("2026-09-16T00:00:00.000Z");
 const admissionAgeMs = 1800_000;
-const operationMs = 11760_000;
+const operationMs = datasetManifestLifetimePolicy.maxOperationAgeSeconds * 1000;
 
 async function fixture(retained = false) {
   let now = generatedAt.getTime() + admissionAgeMs;
@@ -57,7 +60,9 @@ it.each([false, true])("survives 15 serial batches, generation and locked public
   expect(test.guard.evidence()).toMatchObject({
     lifetimePolicy: datasetManifestLifetimePolicy,
     admittedAt: "2026-09-16T00:30:00.000Z",
-    validatedAt: "2026-09-16T03:46:00.000Z",
+    validatedAt: new Date(
+      generatedAt.getTime() + admissionAgeMs + operationMs,
+    ).toISOString(),
     completedPhases: completeDatasetGuardPhases,
   });
   // A transaction retry must retain the original deadline.
@@ -84,6 +89,50 @@ it("does not carry admission across a new guard or reset it at a later phase", a
   test.advance(operationMs - 3600_000 + 1);
   await expect(test.guard.assertCurrent("after_evidence_selection")).rejects.toThrow("stale");
   await expect(test.guard.assertCurrentBeforeMutation()).rejects.toThrow("stale");
+});
+
+it("carries one hash-bound admission across process boundaries without renewing it", async () => {
+  const test = await fixture();
+  const admission = createReaderSummaryDayDatasetAdmission({
+    manifest: test.manifest,
+    manifestFileSha256: "f".repeat(64),
+    admittedAt: new Date(generatedAt.getTime() + admissionAgeMs),
+  });
+  const restored = readReaderSummaryDayDatasetAdmission(
+    datasetManifestAdmissionEnvironment(admission),
+  );
+  test.advance(3600_000);
+  const guard = new ReaderSummaryDayDatasetGuard(
+    test.client as never,
+    test.manifest,
+    "f".repeat(64),
+    () => new Date(generatedAt.getTime() + admissionAgeMs + 3600_000),
+    restored,
+  );
+  await guard.assertCurrentBeforeMutation();
+  expect(guard.evidence().admittedAt).toBe(admission.admittedAt);
+});
+
+it("rejects tampered and expired cross-process admissions", async () => {
+  const test = await fixture();
+  const admission = createReaderSummaryDayDatasetAdmission({
+    manifest: test.manifest,
+    manifestFileSha256: "f".repeat(64),
+    admittedAt: new Date(generatedAt.getTime() + admissionAgeMs),
+  });
+  const environment = datasetManifestAdmissionEnvironment(admission);
+  expect(() => readReaderSummaryDayDatasetAdmission({
+    ...environment,
+    DURABLE_READER_SUMMARY_DATASET_ADMISSION_JSON:
+      `${environment.DURABLE_READER_SUMMARY_DATASET_ADMISSION_JSON} `,
+  })).toThrow("hash does not match");
+  expect(() => new ReaderSummaryDayDatasetGuard(
+    test.client as never,
+    test.manifest,
+    "f".repeat(64),
+    () => new Date(Date.parse(admission.deadlineAt) + 1),
+    admission,
+  )).toThrow("invalid or expired");
 });
 
 it("rejects backward clock movement after admission", async () => {

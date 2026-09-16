@@ -26,6 +26,8 @@ import {
   type SecureDirectoryHandle,
 } from
   "./reader-summary-promotion-v2-secure-directory";
+import { READER_SUMMARY_PRODUCTION_RUNTIME_POLICY } from
+  "./reader-summary-production-runtime-policy";
 
 export class ProductionDayHistoricalPromotionMutation
   implements HistoricalPromotionMutation {
@@ -273,7 +275,7 @@ export const historicalPromotionProductionDayCommand = (
   process.execPath,
   resolve(process.cwd(), "scripts/run-with-timeout.mjs"),
   "--timeout-ms",
-  "11760000",
+  String(READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.orchestrationTimeoutMs),
   "--node-options",
   "--max-old-space-size=1024",
   "--inherit-fd",
@@ -341,7 +343,7 @@ const lockedPreflightCommand = (
   process.execPath,
   resolve(process.cwd(), "scripts/run-with-timeout.mjs"),
   "--timeout-ms",
-  "11760000",
+  String(READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.lockedOperationTimeoutMs),
   "--node-options",
   "--max-old-space-size=1024",
   "--inherit-fd",

@@ -71,6 +71,7 @@ import {
 import {
   DatasetGuardedReaderSummaryEvidenceSelector,
   ReaderSummaryDayDatasetGuard,
+  readReaderSummaryDayDatasetAdmission,
   readReaderSummaryDayDatasetManifest,
 } from "./lib/reader-summary-day-dataset-guard";
 import { assertImmutableRecoveryInputs } from "./lib/reader-summary-recovery-files";
@@ -660,6 +661,7 @@ function buildDatasetGuard(params: {
   readonly now: Date;
   readonly timestampPolicy: ReaderSummaryTimestampPolicy;
 }): ReaderSummaryDayDatasetGuard {
+  const admission = readReaderSummaryDayDatasetAdmission(process.env);
   const manifestPath = requiredEnv(datasetManifestPathEnv);
   assertImmutableRecoveryInputs({
     recoveryRoot: requiredEnv(datasetRecoveryRootEnv),
@@ -675,12 +677,14 @@ function buildDatasetGuard(params: {
     endedAt: params.periodEndedAt,
     now: params.now,
     expectedTimestampPolicy: params.timestampPolicy,
+    ...(admission === undefined ? {} : { admission }),
   });
   return new ReaderSummaryDayDatasetGuard(
     params.client,
     manifest,
     fileSha256,
     () => params.clock.now(),
+    admission,
   );
 }
 

@@ -29,6 +29,11 @@ describe("reader summary production runtime policy", () => {
     ).toBeGreaterThanOrEqual(
       readerSummaryProductionMinimumOrchestrationTimeoutMs(),
     );
+    expect(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.lockedOperationTimeoutMs,
+    ).toBeGreaterThan(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.orchestrationTimeoutMs,
+    );
   });
 
   it("keeps the npm process timeout aligned with the runtime policy", () => {

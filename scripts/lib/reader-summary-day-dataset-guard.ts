@@ -16,14 +16,91 @@ import {
 } from "./reader-summary-day-dataset-manifest";
 
 // Fresh admission remains 30 minutes. Once admitted, the same guard may run
-// for the existing historical subprocess ceiling (196 minutes), covering the
-// 3600-second serial assessment budget plus bounded generation and publication.
-// A new process/guard must pass fresh admission again; this is not a lease.
+// for the fixed historical subprocess ceiling, covering the serial assessment,
+// generation, publication and bounded outer-process overhead. Child processes
+// inherit the same hash-bound admission and cannot renew its deadline.
 export const datasetManifestLifetimePolicy = Object.freeze({
   mode: "fresh_admission_bounded_operation_v1",
   maxAdmissionAgeSeconds: 1800,
-  maxOperationAgeSeconds: 11760,
+  maxOperationAgeSeconds: 16260,
 } as const);
+
+export const datasetManifestAdmissionJsonEnv =
+  "DURABLE_READER_SUMMARY_DATASET_ADMISSION_JSON";
+export const datasetManifestAdmissionSha256Env =
+  "DURABLE_READER_SUMMARY_DATASET_ADMISSION_SHA256";
+
+export type ReaderSummaryDayDatasetAdmission = Readonly<{
+  format: "reader-summary-day-dataset-admission-v1";
+  manifestFileSha256: string;
+  tenantId: string;
+  workspaceId: string;
+  periodStartedAt: string;
+  periodEndedAt: string;
+  timestampPolicy: ReaderSummaryTimestampPolicy;
+  admittedAt: string;
+  deadlineAt: string;
+}>;
+
+export function createReaderSummaryDayDatasetAdmission(params: {
+  readonly manifest: ReaderSummaryDayDatasetManifest;
+  readonly manifestFileSha256: string;
+  readonly admittedAt: Date;
+}): ReaderSummaryDayDatasetAdmission {
+  const admittedAtMs = params.admittedAt.getTime();
+  const generatedAtMs = new Date(params.manifest.generatedAt).getTime();
+  if (!Number.isFinite(admittedAtMs) || !Number.isFinite(generatedAtMs) ||
+      generatedAtMs > admittedAtMs || admittedAtMs - generatedAtMs >
+        datasetManifestLifetimePolicy.maxAdmissionAgeSeconds * 1000) {
+    throw new Error("Dataset manifest cannot be admitted outside the freshness window");
+  }
+  return {
+    format: "reader-summary-day-dataset-admission-v1",
+    manifestFileSha256: params.manifestFileSha256,
+    tenantId: params.manifest.scope.tenantId,
+    workspaceId: params.manifest.scope.workspaceId,
+    periodStartedAt: params.manifest.period.startedAt,
+    periodEndedAt: params.manifest.period.endedAt,
+    timestampPolicy: params.manifest.policy.timestampPolicy,
+    admittedAt: params.admittedAt.toISOString(),
+    deadlineAt: new Date(
+      admittedAtMs + datasetManifestLifetimePolicy.maxOperationAgeSeconds * 1000,
+    ).toISOString(),
+  };
+}
+
+export function datasetManifestAdmissionEnvironment(
+  admission: ReaderSummaryDayDatasetAdmission,
+): Readonly<Record<string, string>> {
+  const json = JSON.stringify(admission);
+  return {
+    [datasetManifestAdmissionJsonEnv]: json,
+    [datasetManifestAdmissionSha256Env]: createHash("sha256").update(json).digest("hex"),
+  };
+}
+
+export function readReaderSummaryDayDatasetAdmission(
+  env: Readonly<Record<string, string | undefined>>,
+): ReaderSummaryDayDatasetAdmission | undefined {
+  const json = env[datasetManifestAdmissionJsonEnv];
+  const expectedSha256 = env[datasetManifestAdmissionSha256Env];
+  if (json === undefined && expectedSha256 === undefined) return undefined;
+  if (json === undefined || expectedSha256 === undefined ||
+      createHash("sha256").update(json).digest("hex") !== expectedSha256) {
+    throw new Error("Dataset manifest admission envelope hash does not match");
+  }
+  const value = JSON.parse(json) as ReaderSummaryDayDatasetAdmission;
+  if (value.format !== "reader-summary-day-dataset-admission-v1" ||
+      !/^[0-9a-f]{64}$/u.test(value.manifestFileSha256) ||
+      ![value.tenantId, value.workspaceId, value.periodStartedAt,
+        value.periodEndedAt, value.admittedAt, value.deadlineAt]
+        .every((item) => typeof item === "string") ||
+      (value.timestampPolicy !== "published_at" &&
+        value.timestampPolicy !== "observed_at")) {
+    throw new Error("Dataset manifest admission envelope is invalid");
+  }
+  return value;
+}
 
 export type DatasetGuardPhase =
   | "before_evidence_selection"
@@ -46,7 +123,13 @@ export class ReaderSummaryDayDatasetGuard {
     private readonly expected: ReaderSummaryDayDatasetManifest,
     private readonly manifestFileSha256: string,
     private readonly clock: () => Date,
-  ) {}
+    admission?: ReaderSummaryDayDatasetAdmission,
+  ) {
+    if (admission !== undefined) {
+      assertAdmissionBinding(admission, expected, manifestFileSha256, clock());
+      this.admittedAtMs = Date.parse(admission.admittedAt);
+    }
+  }
 
   async assertCurrent(phase: DatasetGuardPhase): Promise<void> {
     await this.assertCurrentWithClient(this.client, phase);
@@ -251,6 +334,7 @@ export function readReaderSummaryDayDatasetManifest(params: {
   readonly now: Date;
   readonly expectedTimestampPolicy?: ReaderSummaryTimestampPolicy;
   readonly maxAgeMs?: number;
+  readonly admission?: ReaderSummaryDayDatasetAdmission;
 }): {
   readonly manifest: ReaderSummaryDayDatasetManifest;
   readonly fileSha256: string;
@@ -262,6 +346,9 @@ export function readReaderSummaryDayDatasetManifest(params: {
   }
   const value = parseReaderSummaryDayDatasetManifest(bytes);
   const generatedAt = new Date(value.generatedAt);
+  if (params.admission !== undefined) {
+    assertAdmissionBinding(params.admission, value, fileSha256, params.now);
+  }
   const maxAgeMs = params.maxAgeMs ?? datasetManifestLifetimePolicy.maxAdmissionAgeSeconds * 1000;
   if (
     value.scope.tenantId !== params.tenantId ||
@@ -273,9 +360,36 @@ export function readReaderSummaryDayDatasetManifest(params: {
     !Number.isFinite(params.now.getTime()) ||
     !Number.isFinite(generatedAt.getTime()) ||
     generatedAt.getTime() > params.now.getTime() ||
-    params.now.getTime() - generatedAt.getTime() > maxAgeMs
+    (params.admission === undefined &&
+      params.now.getTime() - generatedAt.getTime() > maxAgeMs)
   ) {
     throw new Error("Dataset manifest scope, period or freshness is invalid");
   }
   return { manifest: value, fileSha256 };
+}
+
+function assertAdmissionBinding(
+  admission: ReaderSummaryDayDatasetAdmission,
+  manifest: ReaderSummaryDayDatasetManifest,
+  manifestFileSha256: string,
+  now: Date,
+): void {
+  const admittedAtMs = Date.parse(admission.admittedAt);
+  const deadlineAtMs = Date.parse(admission.deadlineAt);
+  const generatedAtMs = Date.parse(manifest.generatedAt);
+  if (admission.manifestFileSha256 !== manifestFileSha256 ||
+      admission.tenantId !== manifest.scope.tenantId ||
+      admission.workspaceId !== manifest.scope.workspaceId ||
+      admission.periodStartedAt !== manifest.period.startedAt ||
+      admission.periodEndedAt !== manifest.period.endedAt ||
+      admission.timestampPolicy !== manifest.policy.timestampPolicy ||
+      ![admittedAtMs, deadlineAtMs, generatedAtMs, now.getTime()].every(Number.isFinite) ||
+      admittedAtMs < generatedAtMs ||
+      admittedAtMs - generatedAtMs >
+        datasetManifestLifetimePolicy.maxAdmissionAgeSeconds * 1000 ||
+      deadlineAtMs !== admittedAtMs +
+        datasetManifestLifetimePolicy.maxOperationAgeSeconds * 1000 ||
+      now.getTime() < admittedAtMs || now.getTime() > deadlineAtMs) {
+    throw new Error("Dataset manifest admission envelope binding is invalid or expired");
+  }
 }

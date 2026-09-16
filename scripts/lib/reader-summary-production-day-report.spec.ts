@@ -139,19 +139,29 @@ describe("production-day report", () => {
       report: { ...report, provenance: { ...provenance,
         datasetGuardEvidence: { ...guard,
           admittedAt: new Date(Date.parse(manifest.generatedAt) + 1800_000).toISOString(),
-          validatedAt: new Date(Date.parse(manifest.generatedAt) + 1800_000 + 11760_000).toISOString(),
+          validatedAt: new Date(Date.parse(manifest.generatedAt) + 1800_000 +
+            datasetManifestLifetimePolicy.maxOperationAgeSeconds * 1000).toISOString(),
         },
       } },
       binding: artifact.binding,
       expectedDate: collectionDate,
     })).toEqual([]);
+    const legacyGuard = { ...guard };
+    delete legacyGuard.lifetimePolicy;
+    delete legacyGuard.admittedAt;
+    delete legacyGuard.validatedAt;
+    expect(validateLiveProductionDayReport({
+      report: { ...report, provenance: { ...provenance,
+        freshnessOverride: { ...override, lifetimePolicy: undefined,
+          maxManifestAgeSeconds: 1800 },
+        datasetGuardEvidence: legacyGuard,
+      } },
+      binding: artifact.binding,
+      expectedDate: collectionDate,
+    })).toEqual([]);
     const invalidProvenances = [
-      { ...provenance, freshnessOverride: { ...override,
-        lifetimePolicy: undefined, maxManifestAgeSeconds: 1800 } },
-      { ...provenance, freshnessOverride: { ...override,
-        maxManifestAgeSeconds: 1800 } },
       ...[undefined, { ...datasetManifestLifetimePolicy, maxOperationAgeSeconds: 1800 },
-        { ...datasetManifestLifetimePolicy, maxAdmissionAgeSeconds: 11760 },
+        { ...datasetManifestLifetimePolicy, maxAdmissionAgeSeconds: 16260 },
         { ...datasetManifestLifetimePolicy, maxOperationAgeSeconds: 11761 },
         { ...datasetManifestLifetimePolicy, mode: "unbounded" }].flatMap((lifetimePolicy) => [
         { ...provenance, freshnessOverride: { ...override, lifetimePolicy } },
@@ -163,7 +173,8 @@ describe("production-day report", () => {
         { admittedAt: new Date(Date.parse(manifest.generatedAt) - 1).toISOString() },
         { admittedAt: new Date(Date.parse(manifest.generatedAt) + 1800_001).toISOString() },
         { validatedAt: new Date(Date.parse(manifest.generatedAt) - 1).toISOString() },
-        { validatedAt: new Date(Date.parse(manifest.generatedAt) + 11760_001).toISOString() },
+        { validatedAt: new Date(Date.parse(manifest.generatedAt) +
+          datasetManifestLifetimePolicy.maxOperationAgeSeconds * 1000 + 1).toISOString() },
       ].map((invalid) => ({ ...provenance, datasetGuardEvidence: { ...guard, ...invalid } })),
     ];
     for (const invalid of invalidProvenances) {

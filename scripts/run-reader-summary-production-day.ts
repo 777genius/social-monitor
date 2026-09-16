@@ -162,6 +162,7 @@ async function main(): Promise<void> {
     executionRequest.mode === "historical-regeneration"
       ? loadHistoricalRegeneration({
           request: executionRequest,
+          environment: process.env,
           collectionDate,
           githubOmissionReason:
             process.env
