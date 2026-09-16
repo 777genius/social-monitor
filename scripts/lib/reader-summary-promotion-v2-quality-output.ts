@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import type { ProductionDayExecutionRequest } from
@@ -6,11 +7,37 @@ import type { ProductionDayExecutionRequest } from
 export const historicalCleanDayCollectionPath = (
   request: ProductionDayExecutionRequest,
   historicalCollectionPath?: string,
-): string | undefined =>
-  request.mode === "historical-regeneration" &&
-    request.sourceEvidence.kind === "preserved-production-day-report"
-    ? request.sourceEvidence.collectionArtifactPath
-    : historicalCollectionPath;
+  activePublicationSearch?: Readonly<{
+    collectionDate: string;
+    productionHistoryDirectory?: string;
+    rollingArtifactRoot?: string;
+  }>,
+): string | undefined => {
+  if (request.mode !== "historical-regeneration") {
+    return historicalCollectionPath;
+  }
+  if (request.sourceEvidence.kind === "preserved-production-day-report") {
+    return request.sourceEvidence.collectionArtifactPath;
+  }
+  if (historicalCollectionPath !== undefined) return historicalCollectionPath;
+  if (activePublicationSearch === undefined) return undefined;
+
+  const fileName =
+    `reader-summary-clean-real-day-collection.${activePublicationSearch.collectionDate}.v1.json`;
+  const candidates = [
+    activePublicationSearch.productionHistoryDirectory === undefined
+      ? undefined
+      : join(activePublicationSearch.productionHistoryDirectory, fileName),
+    join(
+      activePublicationSearch.rollingArtifactRoot ??
+        "/var/lib/social-monitor/artifacts/rolling-summary",
+      "collections",
+      fileName,
+    ),
+  ].filter((value): value is string => value !== undefined);
+
+  return candidates.find((path) => existsSync(path));
+};
 
 export const historicalPromotionQualityOutput = (input: {
   readonly enabled: boolean;

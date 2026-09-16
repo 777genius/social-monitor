@@ -68,6 +68,35 @@ describe("Reader Summary Promotion V2 historical runner", () => {
     expect(scenario.rebuild).toHaveBeenCalledTimes(2);
   });
 
+  it("revalidates production-day quality after a pointer switched failure", async () => {
+    const scenario = harness();
+    scenario.mutationOutcome = {
+      status: "pending",
+      fenceToken: "reader-summary-date:2026-08-01:2",
+      reason: "production_day_quality_gates_failed_after_pointer_switch",
+      retrySafety: "requires-durable-reconciliation",
+      pointerSwitchAttempted: true,
+    };
+    const [pending] = await scenario.run({ resume: true });
+    expect(pending?.status).toBe("pending");
+
+    scenario.durableState = {
+      state: "complete-active",
+      jobId: output().jobId,
+      artifactId: output().artifactId,
+      publicationId: output().publicationId,
+      activePublicationId: output().publicationId,
+      previousPublicationId: output().previousPublicationId,
+    };
+    scenario.mutationOutcome = completedOutcome();
+
+    const [completed] = await scenario.run({ resume: true });
+
+    expect(completed?.status).toBe("completed");
+    expect(scenario.rebuild).toHaveBeenCalledTimes(2);
+    expect(scenario.verifyCompleted).not.toHaveBeenCalled();
+  });
+
   it("makes a duplicate identical complete identity a verified no-op", async () => {
     const scenario = harness();
     const [completed] = await scenario.run({ resume: true });

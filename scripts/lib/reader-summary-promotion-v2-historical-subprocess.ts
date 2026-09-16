@@ -26,6 +26,11 @@ import {
   type SecureDirectoryHandle,
 } from
   "./reader-summary-promotion-v2-secure-directory";
+
+export const historicalMutationNeedsQualityReconciliation = (
+  childExitCode: number | null,
+  durableState: string,
+): boolean => durableState === "complete-active" && childExitCode !== 0;
 import { READER_SUMMARY_PRODUCTION_RUNTIME_POLICY } from
   "./reader-summary-production-runtime-policy";
 
@@ -221,6 +226,15 @@ export class ProductionDayHistoricalPromotionMutation
       input.bundle,
     );
     if (state.state === "complete-active") {
+      if (historicalMutationNeedsQualityReconciliation(status, state.state)) {
+        return {
+          status: "pending",
+          fenceToken,
+          reason: "production_day_quality_gates_failed_after_pointer_switch",
+          retrySafety: "requires-durable-reconciliation",
+          pointerSwitchAttempted: true,
+        };
+      }
       try {
         return {
           status: "completed",

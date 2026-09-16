@@ -79,4 +79,34 @@ describe("historical Promotion V2 date quality output", () => {
       "/history/default-collection.json",
     );
   });
+
+  it("finds an exact rolling collection for active publication recovery", () => {
+    const directory = mkdtempSync(join(tmpdir(), "ranking-collection-"));
+    const rollingRoot = join(directory, "rolling");
+    const collectionDirectory = join(rollingRoot, "collections");
+    const collectionPath = join(
+      collectionDirectory,
+      "reader-summary-clean-real-day-collection.2026-09-09.v1.json",
+    );
+    mkdirSync(collectionDirectory, { recursive: true });
+    writeFileSync(collectionPath, "{}\n");
+    try {
+      expect(historicalCleanDayCollectionPath({
+        mode: "historical-regeneration",
+        sourceEvidence: { kind: "active-database-publication" },
+        datasetManifestPath: "/history/manifest.json",
+        datasetManifestSha256: "d".repeat(64),
+        timestampPolicy: "published_at",
+        allowHistoricalGitHubOmission: false,
+      }, undefined, {
+        collectionDate: "2026-09-09",
+        rollingArtifactRoot: rollingRoot,
+      })).toBe(collectionPath);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";

@@ -234,7 +234,15 @@ async function main(): Promise<void> {
     enabled: executionRequest.mode === "historical-regeneration" &&
       executionRequest.promotionRebuild !== undefined, reportDirectory,
     cleanDayCollectionPath: historicalCleanDayCollectionPath(
-      executionRequest, historicalCollection?.path),
+      executionRequest,
+      historicalCollection?.path,
+      {
+        collectionDate,
+        productionHistoryDirectory:
+          process.env.READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR,
+        rollingArtifactRoot: process.env.ROLLING_ARTIFACT_ROOT,
+      },
+    ),
   });
   let collectionQualityStep = runNpm("collection-quality", [
     "run",

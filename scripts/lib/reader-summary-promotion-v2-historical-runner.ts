@@ -304,6 +304,10 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
     }
 
     const prior = await this.dependencies.receipts.load(date);
+    const requiresProductionDayQualityRevalidation =
+      prior?.status === "pending" &&
+      prior.reason ===
+        "production_day_quality_gates_failed_after_pointer_switch";
     if (
       prior?.identity?.rebuildIdentity === rebuildIdentity &&
       (prior.status === "completed" || prior.status === "noop") &&
@@ -353,7 +357,10 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
     if (prior?.status === "pending" && !options.resume) {
       return pendingReceipt(base, "resume_required", prior.retrySafety);
     }
-    if (durableState.state === "complete-active") {
+    if (
+      durableState.state === "complete-active" &&
+      !requiresProductionDayQualityRevalidation
+    ) {
       if (!await this.authorityStillMatches(
         date,
         bundle!.timestampPolicy,
