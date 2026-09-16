@@ -82,8 +82,10 @@ describe("AgentRuntimeSourceContentQualityReviewerAdapter failure stage classifi
   // otherwise-correct, correctly-identified assessment.
   it("accepts a response with a mismatched bindingId once the request-level attestation is trusted", async () => {
     const input = request();
+    const bindingId = promotionWireCandidate(input).bindingId;
+    const driftedBindingId = `${bindingId.slice(0, -1)}${bindingId.endsWith("0") ? "1" : "0"}`;
     const client = refreshTestRuntimeClient(async (r) => attestRefreshExecution(r,
-      { reviews: [{ ...validReview(input), bindingId: `${promotionWireCandidate(input).bindingId}-drifted` }] }));
+      { reviews: [{ ...validReview(input), bindingId: driftedBindingId }] }));
     const [result] = await adapterFor(client).reviewBatch([input]);
     expect(result!.decision).toBe("promote");
     expect(result!.assessment!.binding).toBe(input.promotion);
