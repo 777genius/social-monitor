@@ -94,16 +94,18 @@ it("never accepts incomplete JSON to recover quality", () => {
   expect(() => parseReviews('{"reviews":[')).toThrow();
 });
 
-it("caps headline quotes in the real schema without capping legacy quality quotes", () => {
+it("caps both headline and quality quotes so one valid batch cannot overflow the runtime", () => {
   const validate = new Ajv().compile(promotionResponseSchema);
   for (const length of [256, 257]) {
     const { request, proposal } = fixture(length, 1, 0);
     const { assessment, ...quality } = headlineReview(request, proposal);
-    const evidence = [{ field: "bodyPreview", start: 0, end: 2100, quote: request.bodyPreview }];
+    const evidence = [{ field: "bodyPreview", start: 0, end: 256, quote: request.bodyPreview!.slice(0, 256) }];
     const output = { reviews: [{ ...quality, bindingId: promotionWireCandidate(request).bindingId,
       evidence, resolvedSoftFlags: assessment.resolvedSoftFlags, readerHeadline: proposal }] };
     expect(validate(output)).toBe(length === 256);
     expect(validate({ reviews: [{ ...output.reviews[0],
       readerHeadline: { status: "unavailable", reasonCode: "unresolved_qualifications" } }] })).toBe(true);
+    expect(validate({ reviews: [{ ...output.reviews[0], evidence: [{ ...evidence[0], end: 257,
+      quote: request.bodyPreview!.slice(0, 257) }] }] })).toBe(false);
   }
 });

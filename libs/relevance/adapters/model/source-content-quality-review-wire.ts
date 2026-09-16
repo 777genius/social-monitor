@@ -3,6 +3,8 @@ import type { SourceContentQualityDecision, SourceContentQualityFlag } from "../
 import type { SourceContentQualityReviewRequest, SourceContentQualityReviewResult } from "../../ports";
 import { SourceContentAssessmentStageError } from "../../ports";
 import { bindPromotionAssessment, promotionReviewSchemaProperties } from "./promotion-review-wire";
+import { promotionReviewOutputBounds } from "./promotion-review-output-bounds";
+export { promotionReviewOutputBounds } from "./promotion-review-output-bounds";
 
 export const buildInstructions = (): string =>
   [
@@ -51,11 +53,17 @@ const parseReviewsUnclassified = (
     throw new Error("Quality review protocol requires a reviews array");
   }
   const reviews = (parsed.reviews ?? compatibilityResults) as JsonValue[];
+  const reviewLimit = requests?.some((request) => request.promotion !== undefined)
+    ? promotionReviewOutputBounds.promotionReviews
+    : promotionReviewOutputBounds.ordinaryReviews;
+  if (reviews.length > reviewLimit) {
+    throw new Error("Quality review output exceeds the batch bound");
+  }
 
   return reviews.map((review) => {
     const raw = asRecord(review, "quality review item");
 
-    const candidateId = nonEmptyString(raw.candidateId, "candidateId");
+    const candidateId = boundedString(raw.candidateId, "candidateId", promotionReviewOutputBounds.candidateId);
     const request = requests?.find((request) => request.candidateId === candidateId);
     // Two attested native completions used an earlier item dialect even though
     // the canonical schema was supplied under a `results` outer envelope. The
@@ -76,7 +84,8 @@ const parseReviewsUnclassified = (
           record.engagementIntegrityScore].every((score) => typeof score === "number" &&
             Number.isFinite(score) && score >= 0 && score <= 1) ||
         !["promote", "keep", "downrank", "reject", "needs_context"].includes(String(record.decision)) ||
-        !Array.isArray(record.flags) || record.flags.some((flag) =>
+        !Array.isArray(record.flags) || record.flags.length > sourceContentQualityFlagValues.length ||
+        record.flags.some((flag) =>
           typeof flag !== "string" || !allowedFlags.has(flag as SourceContentQualityFlag)))) {
       throw new Error("Invalid promotion review result");
     }
@@ -100,7 +109,7 @@ const parseReviewsUnclassified = (
       interestRelevanceScore: optionalScore(record.interestRelevanceScore),
       engagementIntegrityScore: optionalScore(record.engagementIntegrityScore),
       flags: readFlags(record.flags),
-      reason: nonEmptyString(record.reason, "reason"),
+      reason: boundedString(record.reason, "reason", promotionReviewOutputBounds.reason),
     };
   });
 };
@@ -191,6 +200,12 @@ const nonEmptyString = (
   throw new Error(`OpenAI quality review output missing ${field}`);
 };
 
+const boundedString = (value: JsonValue | undefined, field: string, maxLength: number): string => {
+  const normalized = nonEmptyString(value, field);
+  if (normalized.length > maxLength) throw new Error(`OpenAI quality review output exceeds ${field} bound`);
+  return normalized;
+};
+
 export const asRecord = (value: unknown, label: string): JsonObject => {
   const record = asOptionalRecord(value);
 
@@ -243,6 +258,7 @@ export const responseSchema = {
   properties: {
     reviews: {
       type: "array",
+      maxItems: promotionReviewOutputBounds.ordinaryReviews,
       items: {
         type: "object",
         additionalProperties: false,
@@ -257,7 +273,7 @@ export const responseSchema = {
           "reason",
         ],
         properties: {
-          candidateId: { type: "string", minLength: 1 },
+          candidateId: { type: "string", minLength: 1, maxLength: promotionReviewOutputBounds.candidateId },
           decision: {
             type: "string",
             enum: ["promote", "keep", "downrank", "reject", "needs_context"],
@@ -268,9 +284,10 @@ export const responseSchema = {
           engagementIntegrityScore: { type: "number", minimum: 0, maximum: 1 },
           flags: {
             type: "array",
+            maxItems: sourceContentQualityFlagValues.length,
             items: { type: "string", enum: sourceContentQualityFlagValues },
           },
-          reason: { type: "string", minLength: 1 },
+          reason: { type: "string", minLength: 1, maxLength: promotionReviewOutputBounds.reason },
         },
       },
     },
@@ -285,5 +302,5 @@ export const promotionResponseSchema = {
       ...Object.keys(promotionReviewSchemaProperties)],
     properties: { ...responseSchema.properties.reviews.items.properties,
       ...promotionReviewSchemaProperties },
-  } } },
+  }, maxItems: promotionReviewOutputBounds.promotionReviews } },
 };

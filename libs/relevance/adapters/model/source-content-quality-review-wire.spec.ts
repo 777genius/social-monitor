@@ -3,6 +3,7 @@ import type { SourceContentQualityReviewRequest } from "../../ports";
 import { promotionWireCandidate } from "./promotion-review-wire";
 import {
   parseReviews,
+  promotionReviewOutputBounds,
   promotionResponseSchema,
   responseSchema,
   sourceContentQualityFlagValues,
@@ -51,6 +52,23 @@ describe("source content quality review wire contract", () => {
     const input = request();
     expect(() => parseReviews(JSON.stringify({ reviews: [review(input, { qualityScore: 8 })] }),
       [input])).toThrow("Invalid promotion review result");
+  });
+
+  it.each([
+    ["reason", { reason: "x".repeat(promotionReviewOutputBounds.reason + 1) }],
+    ["evidence quote", { evidence: [{ field: "title", start: 0, end: 1,
+      quote: "x".repeat(promotionReviewOutputBounds.evidenceQuote + 1) }] }],
+    ["binding", { bindingId: "x".repeat(promotionReviewOutputBounds.bindingId + 1) }],
+  ])("rejects oversized %s fields even if a provider bypasses the schema", (_field, overrides) => {
+    const input = request();
+    expect(() => parseReviews(JSON.stringify({ reviews: [review(input, overrides)] }), [input])).toThrow();
+  });
+
+  it("rejects more reviews than one admitted batch", () => {
+    const input = request();
+    expect(() => parseReviews(JSON.stringify({ reviews: Array.from(
+      { length: promotionReviewOutputBounds.promotionReviews + 1 }, () => review(input),
+    ) }), [input])).toThrow("batch bound");
   });
 
   describe("legacy item dialect normalization (envelope-independent)", () => {
