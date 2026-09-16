@@ -396,7 +396,7 @@ void main() {
       size: const Size(1280, 820),
       autoload: false,
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(find.text('AI summary'), findsNothing);
     expect(find.text('Executive summary'), findsNothing);
