@@ -28,8 +28,11 @@ const compatible = {
   // runtime executed exactly this candidate's content for a fresh request,
   // so an imperfect bindingId echo must not reject an otherwise-correct,
   // correctly-identified legacy-shaped assessment either.
-  "legacy dialect with drifted bindingId": (o: { reviews: Wire[] }) => ({ reviews: o.reviews.map((r) =>
-    observed({ ...r, bindingId: `${String(r.bindingId)}-drifted` })) }),
+  "legacy dialect with drifted bindingId": (o: { reviews: Wire[] }) => ({ reviews: o.reviews.map((r) => {
+    const bindingId = String(r.bindingId);
+    return observed({ ...r,
+      bindingId: `${bindingId.slice(0, -1)}${bindingId.endsWith("0") ? "1" : "0"}` });
+  }) }),
 } as const;
 const mutations: Record<string, (output: { reviews: Wire[] }) => Wire> = {
   // A single tampered field on an otherwise-complete canonical item is not a
