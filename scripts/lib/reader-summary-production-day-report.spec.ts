@@ -161,7 +161,7 @@ describe("production-day report", () => {
     })).toEqual([]);
     const invalidProvenances = [
       ...[undefined, { ...datasetManifestLifetimePolicy, maxOperationAgeSeconds: 1800 },
-        { ...datasetManifestLifetimePolicy, maxAdmissionAgeSeconds: 16260 },
+        { ...datasetManifestLifetimePolicy, maxAdmissionAgeSeconds: 11760 },
         { ...datasetManifestLifetimePolicy, maxOperationAgeSeconds: 11761 },
         { ...datasetManifestLifetimePolicy, mode: "unbounded" }].flatMap((lifetimePolicy) => [
         { ...provenance, freshnessOverride: { ...override, lifetimePolicy } },

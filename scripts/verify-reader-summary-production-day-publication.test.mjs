@@ -372,7 +372,7 @@ test("accepts bounded-lifetime historical regeneration evidence", () => {
     report.provenance.freshnessOverride.lifetimePolicy = {
       mode: "fresh_admission_bounded_operation_v1",
       maxAdmissionAgeSeconds: 1800,
-      maxOperationAgeSeconds: 16260,
+      maxOperationAgeSeconds: 11760,
     };
     report.model.liveCollection = false;
     report.model.reusedCollection = true;
@@ -864,7 +864,7 @@ function datasetGuardEvidence() {
     lifetimePolicy: {
       mode: "fresh_admission_bounded_operation_v1",
       maxAdmissionAgeSeconds: 1800,
-      maxOperationAgeSeconds: 16260,
+      maxOperationAgeSeconds: 11760,
     },
     admittedAt: "2026-07-16T01:00:00.000Z",
     validatedAt: "2026-07-16T01:01:00.000Z",

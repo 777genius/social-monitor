@@ -275,7 +275,7 @@ export const historicalPromotionProductionDayCommand = (
   process.execPath,
   resolve(process.cwd(), "scripts/run-with-timeout.mjs"),
   "--timeout-ms",
-  String(READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.orchestrationTimeoutMs),
+  String(READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.historicalRecoveryTimeoutMs),
   "--node-options",
   "--max-old-space-size=1024",
   "--inherit-fd",

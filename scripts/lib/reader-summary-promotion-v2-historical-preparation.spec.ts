@@ -131,7 +131,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
       process.execPath,
       expect.stringContaining("run-with-timeout.mjs"),
       "--timeout-ms",
-      String(READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.orchestrationTimeoutMs),
+      String(READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.historicalRecoveryTimeoutMs),
     ]);
     expect(command).toEqual(expect.arrayContaining([
       "--inherit-fd",

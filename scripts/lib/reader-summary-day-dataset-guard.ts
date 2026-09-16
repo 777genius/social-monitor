@@ -22,7 +22,7 @@ import {
 export const datasetManifestLifetimePolicy = Object.freeze({
   mode: "fresh_admission_bounded_operation_v1",
   maxAdmissionAgeSeconds: 1800,
-  maxOperationAgeSeconds: 16260,
+  maxOperationAgeSeconds: 11760,
 } as const);
 
 export const datasetManifestAdmissionJsonEnv =

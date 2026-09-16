@@ -31,8 +31,14 @@ describe("reader summary production runtime policy", () => {
     );
     expect(
       READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.lockedOperationTimeoutMs,
-    ).toBeGreaterThan(
-      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.orchestrationTimeoutMs,
+    ).toBe(11_760_000);
+    expect(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.historicalRecoveryTimeoutMs,
+    ).toBe(READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.lockedOperationTimeoutMs);
+    expect(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.captureTimeoutMs,
+    ).toBeLessThan(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.historicalRecoveryTimeoutMs,
     );
   });
 

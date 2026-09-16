@@ -79,7 +79,7 @@ describe("historical production-day regeneration", () => {
         lifetimePolicy: {
           mode: "fresh_admission_bounded_operation_v1",
           maxAdmissionAgeSeconds: 1800,
-          maxOperationAgeSeconds: 16260,
+          maxOperationAgeSeconds: 11760,
         },
       },
       githubPolicy: {

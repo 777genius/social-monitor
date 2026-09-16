@@ -772,7 +772,9 @@ function datasetGuardMatchesManifest(guard, manifest, allowLegacyLifetime = fals
     return false;
   }
   return (
-    (allowLegacyLifetime || validDatasetGuardLifetime(guard)) &&
+    (validDatasetGuardLifetime(guard) ||
+      (allowLegacyLifetime && guard.lifetimePolicy === undefined &&
+        guard.admittedAt === undefined && guard.validatedAt === undefined)) &&
     guard.manifestFormat === manifest.artifactFormat &&
     guard.manifestFileSha256 === manifest.sha256 &&
     guard.manifestGeneratedAt === manifest.generatedAt &&
@@ -792,7 +794,7 @@ function datasetGuardMatchesManifest(guard, manifest, allowLegacyLifetime = fals
 function validDatasetLifetimePolicy(value) {
   return value?.mode === "fresh_admission_bounded_operation_v1" &&
     value.maxAdmissionAgeSeconds === 1800 &&
-    value.maxOperationAgeSeconds === 16260;
+    value.maxOperationAgeSeconds === 11760;
 }
 
 function validDatasetGuardLifetime(guard) {
@@ -803,7 +805,7 @@ function validDatasetGuardLifetime(guard) {
   return [generatedAt, admittedAt, validatedAt].every(Number.isFinite) &&
     generatedAt <= admittedAt && admittedAt <= validatedAt &&
     admittedAt - generatedAt <= 1_800_000 &&
-    validatedAt - admittedAt <= 16_260_000;
+    validatedAt - admittedAt <= 11_760_000;
 }
 
 function buildProof({

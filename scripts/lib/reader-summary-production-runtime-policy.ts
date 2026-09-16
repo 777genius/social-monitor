@@ -14,7 +14,8 @@ export const READER_SUMMARY_PRODUCTION_RUNTIME_POLICY = {
   collectionExecutionGraceMs: 600_000,
   orchestrationGraceMs: 300_000,
   orchestrationTimeoutMs: 15_660_000,
-  lockedOperationTimeoutMs: 16_260_000,
+  historicalRecoveryTimeoutMs: 11_760_000,
+  lockedOperationTimeoutMs: 11_760_000,
 } as const;
 
 export const readerSummaryProductionMinimumCaptureTimeoutMs = (): number =>
