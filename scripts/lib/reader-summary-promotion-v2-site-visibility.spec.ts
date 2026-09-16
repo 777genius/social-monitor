@@ -1,5 +1,7 @@
 import { HttpHistoricalPromotionApiVisibilityVerifier } from
   "./reader-summary-promotion-v2-historical-postgres";
+import { publicPromotionAttestationMatches } from
+  "./reader-summary-promotion-v2-public-attestation";
 
 const artifactId = "00000000-0000-4000-8000-000000000101";
 const noSignal = {
@@ -68,6 +70,99 @@ describe("historical Promotion V2 site visibility", () => {
         siteFacingContractVerified: true,
       });
   });
+
+  it("compares the public DTO projection with the durable V2 attestation", async () => {
+    const durable = durableV2Attestation();
+    const projected = publicV2Attestation();
+    expect(publicPromotionAttestationMatches(projected, durable)).toBe(true);
+    const completed = {
+      readerSummaryId: artifactId,
+      readerBrief: {
+        topReads: [{ promotionAttestation: projected }],
+        selectedPosts: [],
+      },
+      qualityFlags: [],
+      lineage: {},
+    };
+    mockFetch({ items: [completed] }, "site route", completed);
+
+    await expect(configuredVerifier().verify({
+      ...verificationInput(),
+      expected: {
+        ...expected,
+        kind: "valid-v2",
+        noSignal: false,
+        orderedLanes: { top: [durable], additional: [] },
+        citationCount: 1,
+      },
+    })).resolves.toEqual({
+      siteReaderRouteHttp200Verified: true,
+      siteFacingContractVerified: true,
+    });
+
+    jest.restoreAllMocks();
+    const forged = { ...projected, digest: "f".repeat(64) };
+    mockFetch({
+      items: [{
+        ...completed,
+        readerBrief: {
+          topReads: [{ promotionAttestation: forged }],
+          selectedPosts: [],
+        },
+      }],
+    });
+    await expect(configuredVerifier().verify({
+      ...verificationInput(),
+      expected: {
+        ...expected,
+        kind: "valid-v2",
+        noSignal: false,
+        orderedLanes: { top: [durable], additional: [] },
+        citationCount: 1,
+      },
+    })).rejects.toThrow("ordered V2 tuple is inconsistent");
+  });
+});
+
+const durableV2Attestation = () => ({
+  ...publicV2Attestation(),
+  canonicalDedupeOutcome: "retained",
+  capOutcome: "selected",
+  citationId: "c1",
+  citationValid: true,
+  confidence: 0.9,
+  contentKind: "original_post",
+  metricsState: "observed",
+});
+
+const publicV2Attestation = () => ({
+  schemaVersion: "reader_post_promotion_attestation.v2",
+  policyVersion: "reader_post_promotion.v2",
+  digestVersion: "reader_post_promotion_digest.sha256.v2",
+  digest: "a".repeat(64),
+  canonicalPayload: "{\"candidateId\":\"candidate-1\"}",
+  artifactId,
+  sourceWindowId: "window-1",
+  slot: 1,
+  candidateId: "candidate-1",
+  canonicalIdentity: "url:https://example.test/post",
+  placement: "top",
+  decision: "promote_top",
+  citationIds: ["c1"],
+  storyClusterId: "story-1",
+  scoreComponents: { total: 0.9 },
+  reasonCodes: ["reader_promotion_v2_admitted"],
+  candidateDigestInput: "candidate-digest-input",
+  slateEntryDigestInput: "slate-entry-digest-input",
+  slateDigestInput: "slate-digest-input",
+  slateDigest: "b".repeat(64),
+  evidenceLineage: {
+    leadCandidateId: "candidate-1",
+    leadCitationId: "c1",
+    supportCandidateIds: [],
+    supportCitationIds: [],
+    citationIds: ["c1"],
+  },
 });
 
 const configuredVerifier = () =>

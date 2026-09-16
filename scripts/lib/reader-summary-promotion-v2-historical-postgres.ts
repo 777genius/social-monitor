@@ -30,6 +30,8 @@ import {
   historicalPromotionGenerationAuthority,
   type HistoricalPromotionPolicySnapshot,
 } from "./reader-summary-promotion-v2-historical-generation-authority";
+import { assertHistoricalPromotionPublicArtifact } from
+  "./reader-summary-promotion-v2-public-attestation";
 import { isHistoricalPromotionStaleSourcePreserved } from
   "./reader-summary-promotion-v2-historical-stale-source";
 
@@ -486,7 +488,7 @@ export class HttpHistoricalPromotionApiVisibilityVerifier
     if (!isRecord(item)) {
       throw new Error("Historical promotion API does not expose active artifact");
     }
-    assertApiOrderedLanes(item, input.expected);
+    assertHistoricalPromotionPublicArtifact(item, input.expected, "API");
     const site = await fetch(this.input.siteUrl, {
       signal: AbortSignal.timeout(15_000),
     });
@@ -513,7 +515,11 @@ export class HttpHistoricalPromotionApiVisibilityVerifier
         contractBody.readerSummaryId !== input.artifactId) {
       throw new Error("Historical promotion site contract is invalid");
     }
-    assertApiOrderedLanes(contractBody, input.expected);
+    assertHistoricalPromotionPublicArtifact(
+      contractBody,
+      input.expected,
+      "site contract",
+    );
     return {
       siteReaderRouteHttp200Verified: true,
       siteFacingContractVerified: true,
@@ -930,31 +936,6 @@ const requiredValue = (value: string | undefined, label: string): string => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const assertApiOrderedLanes = (
-  item: Record<string, unknown>,
-  expected: HistoricalPromotionArtifactVerification,
-): void => {
-  const brief = isRecord(item.readerBrief) ? item.readerBrief : item;
-  const top = apiLane(brief.topReads);
-  const additional = apiLane(brief.selectedPosts);
-  if (JSON.stringify(top) !== JSON.stringify(expected.orderedLanes.top) ||
-      JSON.stringify(additional) !==
-        JSON.stringify(expected.orderedLanes.additional)) {
-    throw new Error("Historical promotion API ordered V2 tuple is inconsistent");
-  }
-  if (expected.noSignal &&
-      (!Array.isArray(item.qualityFlags) ||
-        !item.qualityFlags.includes("no_signal") ||
-        !isRecord(item.lineage) ||
-        item.lineage.promptVersion !== "reader_summary.promotion_no_signal.v1" ||
-        item.lineage.modelVersion !== "not_invoked" ||
-        item.lineage.providerVersion !== "deterministic" ||
-        item.lineage.rulesVersion !== "reader_promotion_policy.v2" ||
-        item.lineage.evalDatasetVersion !== "reader_promotion_policy.v2")) {
-    throw new Error("Historical promotion API V2 NO_SIGNAL lineage is missing");
-  }
-};
-
 const qualityArtifactHashes = (
   artifactOutput: string,
   date: string,
@@ -980,16 +961,4 @@ const qualityArtifactHashes = (
     name,
     createHash("sha256").update(readFileSync(join(directory, name))).digest("hex"),
   ]));
-};
-
-const apiLane = (value: unknown): readonly unknown[] => {
-  if (!Array.isArray(value)) {
-    throw new Error("Historical promotion API reader lane is missing");
-  }
-  return value.map((card) => {
-    if (!isRecord(card) || !isRecord(card.promotionAttestation)) {
-      throw new Error("Historical promotion API card tuple is missing");
-    }
-    return card.promotionAttestation;
-  });
 };
