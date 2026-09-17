@@ -42,7 +42,7 @@ const readerPostPromotionModelStory = (params: {
   readonly lead: SummaryEvidenceItem;
   readonly stories: readonly TopReadCandidate[];
 }): TopReadCandidate | undefined => {
-  const { selected, lead } = params;
+  const { selected } = params;
   return params.stories.find(
     (candidate) =>
       candidate.readerReasonProvenance?.kind === "model" &&
