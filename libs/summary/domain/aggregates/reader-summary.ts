@@ -86,6 +86,9 @@ export class ReaderSummary {
     const primarySelectedEvidence = (input.selectedEvidence ?? []).filter(
       (item) => !isSupplementalTrendEvidence(item),
     );
+    if (primarySelectedEvidence.length === 0) {
+      return ReaderSummary.create(buildNoSignalReaderSummary(input));
+    }
     const promotion = buildReaderPostPromotionProjection({
       evidence: primarySelectedEvidence,
       clusters: input.storyClusters,

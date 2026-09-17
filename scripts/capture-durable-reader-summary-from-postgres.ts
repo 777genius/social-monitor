@@ -989,7 +989,7 @@ const sha256Bytes = (value: Buffer): string =>
   createHash("sha256").update(value).digest("hex");
 
 void main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? (error.stack || error.message) : String(error);
   console.error(`Durable reader summary capture failed: ${message}`);
   process.exitCode = 1;
 });
