@@ -216,15 +216,18 @@ async function main(): Promise<void> {
 
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
 
+  if (update) {
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, serialized);
+    console.log(`Updated ${outputPath}`);
+  }
+
   if (!report.blockingPassed) {
     console.error(serialized);
     throw new Error("Reader summary source quality trace gates failed");
   }
 
   if (update) {
-    mkdirSync(dirname(outputPath), { recursive: true });
-    writeFileSync(outputPath, serialized);
-    console.log(`Updated ${outputPath}`);
     return;
   }
 
