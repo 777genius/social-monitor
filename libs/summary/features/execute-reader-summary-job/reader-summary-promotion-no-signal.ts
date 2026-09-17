@@ -32,7 +32,7 @@ export const buildPromotionNoSignalArtifact = (params: {
     storyClusters: params.evidence.clusters,
     sourceWindow: params.evidence.sourceWindow,
     selectedEvidence: [],
-    editorialSlate: params.evidence.editorialSlate,
+    editorialSlate: undefined,
     qualityFlags: ["no_signal"],
     noSignalReason,
   });
