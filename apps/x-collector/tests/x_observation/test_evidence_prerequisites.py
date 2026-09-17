@@ -11,6 +11,12 @@ from x_collector.x_observation.failures import ObservationFailure
 
 
 class EvidencePrerequisitesTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.evidence_parent = Path('.cache/handoff')
+        cls.evidence_parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        cls.evidence_parent.chmod(0o700)
+
     def test_json_ambiguity_and_allocation_bounds(self):
         self.assertEqual(parse_json(b'{"a":[0,false,null]}'), {"a": [0, False, None]})
         for raw in [b'{"a":1,"a":2}', b'NaN', b'\xff', b'[' * 33 + b']' * 33, b'[01]', b'{} trailing']:
@@ -34,7 +40,7 @@ class EvidencePrerequisitesTest(unittest.TestCase):
         self.assertEqual(failure.semantic(), dict(code='JOURNAL_FAILURE', stage='HOME', effects='NONE', retryable=False, sequence=0))
 
     def test_read_only_exact_bytes_and_inode_replacement(self):
-        with tempfile.TemporaryDirectory(prefix='sm-e3-evidence-', dir='.cache/handoff') as folder:
+        with tempfile.TemporaryDirectory(prefix='sm-e3-evidence-', dir=self.evidence_parent) as folder:
             root = Path(folder)
             record = root / 'record.json'
             record.write_bytes(b'{ "value": 0 }\n')
@@ -58,7 +64,7 @@ class EvidencePrerequisitesTest(unittest.TestCase):
                         reader.read('record')
 
     def test_rejects_untrusted_names_modes_links_and_nonregular_files(self):
-        with tempfile.TemporaryDirectory(prefix='sm-e3-evidence-', dir='.cache/handoff') as folder:
+        with tempfile.TemporaryDirectory(prefix='sm-e3-evidence-', dir=self.evidence_parent) as folder:
             root = Path(folder)
             with self.assertRaisesRegex(ObservationFailure, 'INVALID_GRANT'):
                 EvidenceReader(root, os.getuid(), {'bad': '../escape'})

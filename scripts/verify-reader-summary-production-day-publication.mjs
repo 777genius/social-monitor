@@ -701,17 +701,26 @@ function validateLiveProvenance(
     provenance.mode === "live-production" && provenance.sourceReport === null;
   const regenerationSourceAuthority =
     validHistoricalRegenerationSourceAuthority(provenance);
+  const legacyFreshness =
+    provenance.freshnessOverride?.maxManifestAgeSeconds === 1800 &&
+    provenance.freshnessOverride?.lifetimePolicy === undefined;
+  const currentFreshness =
+    provenance.freshnessOverride?.maxManifestAgeSeconds === undefined &&
+    validDatasetLifetimePolicy(
+      provenance.freshnessOverride?.lifetimePolicy,
+    );
   const regenerationProvenance =
     provenance.mode === "historical-regeneration" &&
     regenerationSourceAuthority &&
     datasetGuardMatchesManifest(
       provenance.datasetGuardEvidence,
       provenance.regenerationInputManifest,
+      legacyFreshness,
     ) &&
     provenance.freshnessOverride?.mode ===
       "historical_regeneration_current_snapshot" &&
     provenance.freshnessOverride?.generalAllowHistorical === false &&
-    provenance.freshnessOverride?.maxManifestAgeSeconds === 1800 &&
+    (legacyFreshness || currentFreshness) &&
     stableJson(provenance.datasetGuardEvidence) ===
       stableJson(evidenceDatasetGuard) &&
     historicalGithubPolicyMatches(
@@ -753,7 +762,7 @@ function validateDatasetGuardEvidence(guard) {
   }
 }
 
-function datasetGuardMatchesManifest(guard, manifest) {
+function datasetGuardMatchesManifest(guard, manifest, allowLegacyLifetime = false) {
   if (
     guard === null ||
     typeof guard !== "object" ||
@@ -763,6 +772,9 @@ function datasetGuardMatchesManifest(guard, manifest) {
     return false;
   }
   return (
+    (validDatasetGuardLifetime(guard) ||
+      (allowLegacyLifetime && guard.lifetimePolicy === undefined &&
+        guard.admittedAt === undefined && guard.validatedAt === undefined)) &&
     guard.manifestFormat === manifest.artifactFormat &&
     guard.manifestFileSha256 === manifest.sha256 &&
     guard.manifestGeneratedAt === manifest.generatedAt &&
@@ -777,6 +789,23 @@ function datasetGuardMatchesManifest(guard, manifest) {
         "before_publication",
       ])
   );
+}
+
+function validDatasetLifetimePolicy(value) {
+  return value?.mode === "fresh_admission_bounded_operation_v1" &&
+    value.maxAdmissionAgeSeconds === 1800 &&
+    value.maxOperationAgeSeconds === 11760;
+}
+
+function validDatasetGuardLifetime(guard) {
+  if (!validDatasetLifetimePolicy(guard?.lifetimePolicy)) return false;
+  const generatedAt = Date.parse(guard.manifestGeneratedAt);
+  const admittedAt = Date.parse(guard.admittedAt);
+  const validatedAt = Date.parse(guard.validatedAt);
+  return [generatedAt, admittedAt, validatedAt].every(Number.isFinite) &&
+    generatedAt <= admittedAt && admittedAt <= validatedAt &&
+    admittedAt - generatedAt <= 1_800_000 &&
+    validatedAt - admittedAt <= 11_760_000;
 }
 
 function buildProof({

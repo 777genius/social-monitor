@@ -68,6 +68,78 @@ describe("Reader Summary Promotion V2 historical runner", () => {
     expect(scenario.rebuild).toHaveBeenCalledTimes(2);
   });
 
+  it("revalidates production-day quality after a pointer switched failure", async () => {
+    const scenario = harness();
+    scenario.mutationOutcome = {
+      status: "pending",
+      fenceToken: "reader-summary-date:2026-08-01:2",
+      reason: "production_day_quality_gates_failed_after_pointer_switch",
+      retrySafety: "requires-durable-reconciliation",
+      pointerSwitchAttempted: true,
+    };
+    const [pending] = await scenario.run({ resume: true });
+    expect(pending?.status).toBe("pending");
+
+    scenario.durableState = {
+      state: "complete-active",
+      jobId: output().jobId,
+      artifactId: output().artifactId,
+      publicationId: output().publicationId,
+      activePublicationId: output().publicationId,
+      previousPublicationId: output().previousPublicationId,
+    };
+    scenario.mutationOutcome = completedOutcome();
+
+    const [completed] = await scenario.run({ resume: true });
+
+    expect(completed?.status).toBe("completed");
+    expect(scenario.rebuild).toHaveBeenCalledTimes(2);
+    expect(scenario.verifyCompleted).not.toHaveBeenCalled();
+  });
+
+  it("does not revalidate a quality failure receipt from another identity", async () => {
+    const scenario = harness();
+    scenario.mutationOutcome = {
+      status: "pending",
+      fenceToken: "reader-summary-date:2026-08-01:2",
+      reason: "production_day_quality_gates_failed_after_pointer_switch",
+      retrySafety: "requires-durable-reconciliation",
+      pointerSwitchAttempted: true,
+    };
+    await scenario.run({ resume: true });
+    scenario.durableState = {
+      state: "complete-active",
+      jobId: output().jobId,
+      artifactId: output().artifactId,
+      publicationId: output().publicationId,
+      activePublicationId: output().publicationId,
+      previousPublicationId: output().previousPublicationId,
+    };
+    const original = scenario.options.evidence.get("2026-08-01")!;
+    const canonicalInput = {
+      ...original.canonicalInput,
+      sourcePublication: {
+        ...original.canonicalInput.sourcePublication,
+        proofSha256: "f".repeat(64),
+      },
+    };
+
+    const [completed] = await scenario.run({
+      resume: true,
+      evidence: new Map([["2026-08-01", {
+        ...original,
+        canonicalInput,
+        authoritativeInputDigest:
+          historicalPromotionCanonicalInputDigest(canonicalInput),
+        sourcePublicationProofSha256: "f".repeat(64),
+      }]]),
+    });
+
+    expect(completed?.status).toBe("noop");
+    expect(scenario.rebuild).toHaveBeenCalledTimes(1);
+    expect(scenario.verifyCompleted).toHaveBeenCalledTimes(1);
+  });
+
   it("makes a duplicate identical complete identity a verified no-op", async () => {
     const scenario = harness();
     const [completed] = await scenario.run({ resume: true });
@@ -168,6 +240,52 @@ describe("Reader Summary Promotion V2 historical runner", () => {
       },
     });
     expect(scenario.rebuild).not.toHaveBeenCalled();
+  });
+
+  it("records a verified no-op when a stronger source survives a stale lower-authority rebuild", async () => {
+    const scenario = harness();
+    scenario.durableState = {
+      state: "stale-source-preserved",
+      jobId: "00000000-0000-4000-8000-000000000311",
+      activePublicationId: output().previousPublicationId,
+      previousPublicationId: output().previousPublicationId,
+      reason:
+        "stronger_active_publication_preserved_after_lower_authority_stale",
+    };
+
+    const [receipt] = await scenario.run({ resume: true });
+
+    expect(receipt).toMatchObject({
+      status: "noop",
+      reason:
+        "stronger_active_publication_preserved_after_lower_authority_stale",
+      retrySafety: "not-applicable",
+      outputIdentity: null,
+      pointerSwitch: {
+        attempted: true,
+        switched: false,
+        previousPublicationId: output().previousPublicationId,
+        activePublicationId: output().previousPublicationId,
+      },
+    });
+    const [replayed] = await scenario.run({ resume: true });
+
+    expect(replayed).toEqual(receipt);
+    expect(scenario.reconcile).toHaveBeenCalledTimes(2);
+    expect(scenario.inspectAuthority).toHaveBeenCalledTimes(4);
+    expect(scenario.rebuild).not.toHaveBeenCalled();
+    expect(scenario.verifyCompleted).not.toHaveBeenCalled();
+
+    scenario.inspectAuthority
+      .mockResolvedValueOnce(inspection("2026-08-01"))
+      .mockResolvedValueOnce(changedInspection("2026-08-01"));
+    const [drifted] = await scenario.run({ resume: true });
+    expect(drifted).toMatchObject({
+      status: "pending",
+      reason: "authority_observation_drifted_before_preserved_source_noop",
+    });
+    expect(scenario.rebuild).not.toHaveBeenCalled();
+    expect(scenario.verifyCompleted).not.toHaveBeenCalled();
   });
 
   it("records interruption before pointer switch without fabricating success", async () => {

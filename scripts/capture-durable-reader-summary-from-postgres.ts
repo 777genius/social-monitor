@@ -71,6 +71,7 @@ import {
 import {
   DatasetGuardedReaderSummaryEvidenceSelector,
   ReaderSummaryDayDatasetGuard,
+  readReaderSummaryDayDatasetAdmission,
   readReaderSummaryDayDatasetManifest,
 } from "./lib/reader-summary-day-dataset-guard";
 import { assertImmutableRecoveryInputs } from "./lib/reader-summary-recovery-files";
@@ -298,14 +299,17 @@ async function main(): Promise<void> {
     const baseReaderSummaryPolicies = new PrismaReaderSummaryPolicyRepository(
       summaryConnection,
     );
-    const promotionPolicyGuard = promotionRebuild === undefined
+    const promotionGenerationAuthority = promotionRebuild === undefined
+      ? null
+      : parseHistoricalPromotionGenerationAuthority(
+            readEnv(historicalPromotionGenerationAuthorityJsonEnv),
+            readEnv(historicalPromotionGenerationAuthoritySha256Env),
+          );
+    const promotionPolicyGuard = promotionGenerationAuthority === null
       ? null
       : new HistoricalPromotionPolicyGuard(
           baseReaderSummaryPolicies,
-          parseHistoricalPromotionGenerationAuthority(
-            readEnv(historicalPromotionGenerationAuthorityJsonEnv),
-            readEnv(historicalPromotionGenerationAuthoritySha256Env),
-          ).policy,
+          promotionGenerationAuthority.policy,
         );
     const readerSummaryPolicies = promotionPolicyGuard ??
       baseReaderSummaryPolicies;
@@ -404,13 +408,15 @@ async function main(): Promise<void> {
         : new DatasetGuardedReaderSummaryEvidenceSelector(
             omissionAwareEvidenceSelector,
             datasetGuard,
+            promotionRebuild !== undefined,
           );
     const evidenceSelector = promotionPolicyGuard === null
       ? baseEvidenceSelector
-      : new HistoricalPromotionPolicyGuardedEvidenceSelector(
-          baseEvidenceSelector,
-          promotionPolicyGuard,
-        );
+        : new HistoricalPromotionPolicyGuardedEvidenceSelector(
+            baseEvidenceSelector,
+            promotionPolicyGuard,
+            promotionGenerationAuthority!.execution.rankingPolicyVersion,
+          );
     const durablePublication = new PrismaReaderSummaryPublication(
       summaryConnection,
       datasetGuard === null
@@ -655,6 +661,7 @@ function buildDatasetGuard(params: {
   readonly now: Date;
   readonly timestampPolicy: ReaderSummaryTimestampPolicy;
 }): ReaderSummaryDayDatasetGuard {
+  const admission = readReaderSummaryDayDatasetAdmission(process.env);
   const manifestPath = requiredEnv(datasetManifestPathEnv);
   assertImmutableRecoveryInputs({
     recoveryRoot: requiredEnv(datasetRecoveryRootEnv),
@@ -670,12 +677,14 @@ function buildDatasetGuard(params: {
     endedAt: params.periodEndedAt,
     now: params.now,
     expectedTimestampPolicy: params.timestampPolicy,
+    ...(admission === undefined ? {} : { admission }),
   });
   return new ReaderSummaryDayDatasetGuard(
     params.client,
     manifest,
     fileSha256,
     () => params.clock.now(),
+    admission,
   );
 }
 

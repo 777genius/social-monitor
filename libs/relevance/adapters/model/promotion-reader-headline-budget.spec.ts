@@ -7,6 +7,7 @@ import { headlineRequest, headlineReview, subjectProposal } from "../../../../te
 import { promotionWireCandidate } from "./promotion-review-wire";
 import { parseReviews, promotionResponseSchema } from "./source-content-quality-review-wire";
 import { AgentRuntimeSourceContentQualityReviewerAdapter } from "./agent-runtime-source-content-quality-reviewer.adapter";
+import { promotionReaderHeadlineInstructions } from "./promotion-reader-headline-wire";
 import { attestRefreshExecution, refreshTestRuntimeClient } from "../../../../scripts/lib/reader-summary-new-input-refresh-model.spec-support";
 
 const fixture = (quoteLength: number, supportCount: number, qualificationCount: number, char = "x") => {
@@ -19,6 +20,15 @@ const fixture = (quoteLength: number, supportCount: number, qualificationCount: 
       qualificationJudgment: qualificationCount ? "preserved" : "none" } };
   return { request, proposal };
 };
+
+it("reserves enough batch output for complete display-ready headline annotations", () => {
+  expect(promotionReaderHeadlineInstructions).toContain(
+    "budget of 2400 output tokens",
+  );
+  expect(promotionReaderHeadlineInstructions).toContain(
+    "floor(2400 / candidate count)",
+  );
+});
 
 it.each([
   [1, 4, 1, true], // exactly eight serialized occurrences
@@ -84,16 +94,18 @@ it("never accepts incomplete JSON to recover quality", () => {
   expect(() => parseReviews('{"reviews":[')).toThrow();
 });
 
-it("caps headline quotes in the real schema without capping legacy quality quotes", () => {
+it("caps both headline and quality quotes so one valid batch cannot overflow the runtime", () => {
   const validate = new Ajv().compile(promotionResponseSchema);
   for (const length of [256, 257]) {
     const { request, proposal } = fixture(length, 1, 0);
     const { assessment, ...quality } = headlineReview(request, proposal);
-    const evidence = [{ field: "bodyPreview", start: 0, end: 2100, quote: request.bodyPreview }];
+    const evidence = [{ field: "bodyPreview", start: 0, end: 256, quote: request.bodyPreview!.slice(0, 256) }];
     const output = { reviews: [{ ...quality, bindingId: promotionWireCandidate(request).bindingId,
       evidence, resolvedSoftFlags: assessment.resolvedSoftFlags, readerHeadline: proposal }] };
     expect(validate(output)).toBe(length === 256);
     expect(validate({ reviews: [{ ...output.reviews[0],
       readerHeadline: { status: "unavailable", reasonCode: "unresolved_qualifications" } }] })).toBe(true);
+    expect(validate({ reviews: [{ ...output.reviews[0], evidence: [{ ...evidence[0], end: 257,
+      quote: request.bodyPreview!.slice(0, 257) }] }] })).toBe(false);
   }
 });

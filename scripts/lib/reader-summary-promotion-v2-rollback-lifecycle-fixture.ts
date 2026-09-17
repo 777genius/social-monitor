@@ -194,6 +194,7 @@ export const preparePromotionRollbackLifecycleFixture = async (
       promptVersion: row.prompt_version,
       rulesVersion: "reader-summary.rules.pg-gate.v1",
       evalDatasetVersion: "reader-summary.eval.pg-gate.v1",
+      rankingPolicyVersion: "story_ranking_v10",
     },
     usage: { inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0 },
     promotionAttestations: attestations,

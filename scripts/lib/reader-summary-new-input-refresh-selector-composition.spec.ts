@@ -30,8 +30,10 @@ describe("refresh canonical selector adapter exceptions", () => {
     expect(test.events.filter((event) => event.status === "completed")).toHaveLength(3);
     expect(test.sink.record.mock.calls.map(([value]) => value.taskRole)).toEqual(["story_relation"]);
     expect(() => test.runtime.assertUsable()).toThrow(/reconciliation/u);
+    // Relation verification has no finer-grained stage classification; the
+    // mandatory journal record still carries the fixed, whitelisted fallback.
     expect(test.events).toContainEqual(expect.objectContaining({ status: "requires_reconciliation",
-      phase: "adapter_validation", taskRole: "related_topic_relation" }));
+      phase: "adapter_validation", taskRole: "related_topic_relation", failureStage: "unknown" }));
     await expectPermanentlyPoisoned(test);
   });
 
@@ -48,7 +50,7 @@ describe("refresh canonical selector adapter exceptions", () => {
     expect(test.commands.map((command) => command.purpose)).toEqual([assessmentPurpose, purposes.storyRelations]);
     expect(test.sink.record).not.toHaveBeenCalled();
     expect(test.events).toContainEqual(expect.objectContaining({ status: "requires_reconciliation",
-      phase: "adapter_validation", taskRole: "story_relation" }));
+      phase: "adapter_validation", taskRole: "story_relation", failureStage: "unknown" }));
     await expectPermanentlyPoisoned(test);
   });
 

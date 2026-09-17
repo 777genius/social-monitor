@@ -261,7 +261,9 @@ export class ExecuteReaderSummaryJobUseCase {
       }
       return publicationResult;
     } catch (error) {
-      const failure = this.readerSummaryModel.classifyError(error);
+      const availabilityError = error instanceof DomainError &&
+        error.code === "external.dependency_unavailable" ? error : undefined;
+      const failure = availabilityError ?? this.readerSummaryModel.classifyError(error);
       const durableJob = await this.readerSummaryJobs.findById({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
@@ -291,9 +293,10 @@ export class ExecuteReaderSummaryJobUseCase {
         return readerSummaryExecutionClaimLost();
       }
 
+      if (availabilityError !== undefined) return err(availabilityError);
       return err(
         new DomainError("external.dependency_unavailable", failure.message, {
-          kind: failure.kind,
+          kind: "kind" in failure ? failure.kind : "unknown",
         }),
       );
     }

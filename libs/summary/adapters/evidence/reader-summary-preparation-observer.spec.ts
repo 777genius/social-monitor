@@ -4,7 +4,7 @@ import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-fe
 import { preparationValue } from "@social-monitor/relevance/features/rank-feed-items/promotion-snapshot-preparation";
 import type { SourceContentQualityReviewRequest } from "@social-monitor/relevance/ports";
 import { FixedClock, ok } from "@social-monitor/shared-kernel";
-import { fixture, review, cutoff, scope, query } from "../../../../test/support/promotion-content-assessment";
+import { fixture, accepting, cutoff, scope, query } from "../../../../test/support/promotion-content-assessment";
 import { StoryClusteringService } from "../../domain";
 import type { ReaderSummaryEvidenceSelectorPort, ReaderSummaryStoryRelationVerifierInput } from "../../ports";
 import { RelevanceReaderSummaryEvidenceSelector } from "./relevance-reader-summary-evidence.selector";
@@ -50,7 +50,7 @@ const setup = () => {
     })),
   };
   const reviewBatch = jest.fn(async (requests: readonly SourceContentQualityReviewRequest[]) =>
-    requests.map((request) => review(request)));
+    accepting.reviewBatch(requests));
   const ranker = new RankFeedItemsUseCase(feedItems, { findByUser: async () => {
     throw new Error("Unexpected profile");
   } } as never, new FixedClock(cutoff), undefined, undefined, undefined, { reviewBatch }, undefined,

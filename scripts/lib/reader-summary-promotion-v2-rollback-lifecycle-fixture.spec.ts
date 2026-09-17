@@ -210,6 +210,7 @@ const noSignalArtifact = (): ReaderSummaryArtifact => {
       providerVersion: "deterministic",
       rulesVersion: "reader_promotion_policy.v2",
       evalDatasetVersion: "reader_promotion_policy.v2",
+      rankingPolicyVersion: "story_ranking_v10",
     },
     usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
     promotionAttestations: [],

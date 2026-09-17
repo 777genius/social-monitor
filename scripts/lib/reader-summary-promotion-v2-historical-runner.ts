@@ -47,6 +47,7 @@ export type HistoricalPromotionDurableState = Readonly<{
     | "requested"
     | "in-flight"
     | "failed"
+    | "stale-source-preserved"
     | "quality-rejected"
     | "complete-active"
     | "complete-detached"
@@ -303,9 +304,18 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
     }
 
     const prior = await this.dependencies.receipts.load(date);
+    const requiresProductionDayQualityRevalidation =
+      prior?.status === "pending" &&
+      prior.identity?.rebuildIdentity === rebuildIdentity &&
+      prior.reason ===
+        "production_day_quality_gates_failed_after_pointer_switch";
     if (
       prior?.identity?.rebuildIdentity === rebuildIdentity &&
-      (prior.status === "completed" || prior.status === "noop")
+      (prior.status === "completed" || prior.status === "noop") &&
+      !(prior.status === "noop" &&
+        prior.reason ===
+          "stronger_active_publication_preserved_after_lower_authority_stale" &&
+        durableState.state === "stale-source-preserved")
     ) {
       if (durableState.state !== "complete-active") {
         return pendingReceipt(
@@ -348,7 +358,10 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
     if (prior?.status === "pending" && !options.resume) {
       return pendingReceipt(base, "resume_required", prior.retrySafety);
     }
-    if (durableState.state === "complete-active") {
+    if (
+      durableState.state === "complete-active" &&
+      !requiresProductionDayQualityRevalidation
+    ) {
       if (!await this.authorityStillMatches(
         date,
         bundle!.timestampPolicy,
@@ -380,6 +393,32 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
           "requires-durable-reconciliation",
         );
       }
+    }
+    if (durableState.state === "stale-source-preserved") {
+      if (!await this.authorityStillMatches(
+        date,
+        bundle!.timestampPolicy,
+        classification.authorityInspectionDigest,
+      )) {
+        return pendingReceipt(
+          base,
+          "authority_observation_drifted_before_preserved_source_noop",
+          "safe-before-paid-operation",
+        );
+      }
+      return {
+        ...base,
+        status: "noop",
+        reason: "stronger_active_publication_preserved_after_lower_authority_stale",
+        retrySafety: "not-applicable",
+        pointerSwitch: {
+          authority: "PrismaReaderSummaryPublication.publish_reader_summary",
+          attempted: true,
+          switched: false,
+          previousPublicationId: durableState.previousPublicationId ?? null,
+          activePublicationId: durableState.activePublicationId ?? null,
+        },
+      };
     }
     if (durableState.state === "complete-detached" ||
         durableState.state === "ambiguous") {

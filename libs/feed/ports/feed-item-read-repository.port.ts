@@ -51,6 +51,7 @@ export type FindLatestFeedItemSignalQuery = Omit<
 >;
 
 export type ReadPromotionFeedItemSnapshotQuery = {
+  readonly retainedAuthorityProjection?: true;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly interestId?: string;
@@ -61,6 +62,8 @@ export type ReadPromotionFeedItemSnapshotQuery = {
 };
 
 export type PromotionFeedItemCandidate = {
+  readonly retainedAuthoritySha256?: string;
+  readonly retainedAuthorityObservedAt?: string;
   readonly item: FeedItem;
   readonly canonical: Extract<FeedPromotionEligibility, { eligible: true }>;
   readonly metricAuthority?: FeedPromotionMetricAuthority;

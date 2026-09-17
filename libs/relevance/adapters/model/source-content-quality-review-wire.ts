@@ -3,6 +3,8 @@ import type { SourceContentQualityDecision, SourceContentQualityFlag } from "../
 import type { SourceContentQualityReviewRequest, SourceContentQualityReviewResult } from "../../ports";
 import { SourceContentAssessmentStageError } from "../../ports";
 import { bindPromotionAssessment, promotionReviewSchemaProperties } from "./promotion-review-wire";
+import { promotionReviewOutputBounds } from "./promotion-review-output-bounds";
+export { promotionReviewOutputBounds } from "./promotion-review-output-bounds";
 
 export const buildInstructions = (): string =>
   [
@@ -20,9 +22,10 @@ export const buildInstructions = (): string =>
 export const parseReviews = (
   outputText: string | undefined,
   requests?: readonly SourceContentQualityReviewRequest[],
+  options?: { readonly trustAttestedRequestBinding?: boolean },
 ): readonly SourceContentQualityReviewResult[] => {
   try {
-    return parseReviewsUnclassified(outputText, requests);
+    return parseReviewsUnclassified(outputText, requests, options);
   } catch (error) {
     // Any exception reaching here (JSON.parse syntax errors, shape checks,
     // the score/decision/flag validation below) is a parse/schema-contract
@@ -37,6 +40,7 @@ export const parseReviews = (
 const parseReviewsUnclassified = (
   outputText: string | undefined,
   requests?: readonly SourceContentQualityReviewRequest[],
+  options?: { readonly trustAttestedRequestBinding?: boolean },
 ): readonly SourceContentQualityReviewResult[] => {
   if (outputText === undefined) {
     throw new Error("OpenAI source content quality reviewer returned no text");
@@ -49,31 +53,45 @@ const parseReviewsUnclassified = (
     throw new Error("Quality review protocol requires a reviews array");
   }
   const reviews = (parsed.reviews ?? compatibilityResults) as JsonValue[];
+  const reviewLimit = requests?.some((request) => request.promotion !== undefined)
+    ? promotionReviewOutputBounds.promotionReviews
+    : promotionReviewOutputBounds.ordinaryReviews;
+  if (reviews.length > reviewLimit) {
+    throw new Error("Quality review output exceeds the batch bound");
+  }
 
   return reviews.map((review) => {
     const raw = asRecord(review, "quality review item");
 
-    const candidateId = nonEmptyString(raw.candidateId, "candidateId");
+    const candidateId = boundedString(raw.candidateId, "candidateId", promotionReviewOutputBounds.candidateId);
     const request = requests?.find((request) => request.candidateId === candidateId);
-    // Two attested native completions used the earlier `results` dialect even
-    // though the canonical schema was supplied. Normalize only that complete,
-    // request-bound dialect. Its single quality/support score supplies the
-    // missing relevance score; integrity retains the deterministic assessment.
-    // No source, identity, evidence or blocker is inferred.
-    const record = compatibilityResults === undefined || request === undefined ? raw
+    // Two attested native completions used an earlier item dialect even though
+    // the canonical schema was supplied under a `results` outer envelope. The
+    // same item dialect can also arrive under the schema-compliant `reviews`
+    // envelope, so detection is
+    // item-level and envelope-independent: only the exact documented legacy
+    // markers (relevant/not_relevant plus a missing score/flags field or a
+    // documented alias key) trigger normalization, so a merely incomplete
+    // canonical item or a single tampered field is never silently reinterpreted.
+    // Its single quality/support score supplies the missing relevance score;
+    // integrity retains the deterministic assessment. No source, identity,
+    // evidence or blocker is inferred, and binding/evidence checks below run
+    // unchanged against the normalized record.
+    const record = request === undefined || !isLegacyPromotionReviewItem(raw) ? raw
       : normalizeCompatiblePromotionReview(raw, request);
     if (requests !== undefined && (request === undefined ||
         ![record.confidence, record.qualityScore, record.interestRelevanceScore,
           record.engagementIntegrityScore].every((score) => typeof score === "number" &&
             Number.isFinite(score) && score >= 0 && score <= 1) ||
         !["promote", "keep", "downrank", "reject", "needs_context"].includes(String(record.decision)) ||
-        !Array.isArray(record.flags) || record.flags.some((flag) =>
+        !Array.isArray(record.flags) || record.flags.length > sourceContentQualityFlagValues.length ||
+        record.flags.some((flag) =>
           typeof flag !== "string" || !allowedFlags.has(flag as SourceContentQualityFlag)))) {
       throw new Error("Invalid promotion review result");
     }
     let assessment: ReturnType<typeof bindPromotionAssessment> | undefined;
     if (request !== undefined) {
-      try { assessment = bindPromotionAssessment(record, request); }
+      try { assessment = bindPromotionAssessment(record, request, options); }
       catch (error) {
         // The only distinct failure class inside this map body: the model's
         // own bindingId/evidence/resolvedSoftFlags echo did not match this
@@ -91,10 +109,27 @@ const parseReviewsUnclassified = (
       interestRelevanceScore: optionalScore(record.interestRelevanceScore),
       engagementIntegrityScore: optionalScore(record.engagementIntegrityScore),
       flags: readFlags(record.flags),
-      reason: nonEmptyString(record.reason, "reason"),
+      reason: boundedString(record.reason, "reason", promotionReviewOutputBounds.reason),
     };
   });
 };
+
+const hasLegacyAliasKey = (record: JsonObject): boolean =>
+  (!Object.hasOwn(record, "reason") && Object.hasOwn(record, "justification")) ||
+  (!Object.hasOwn(record, "resolvedSoftFlags") &&
+    (Object.hasOwn(record, "flagResolutions") || Object.hasOwn(record, "screeningFlagResolutions")));
+
+// The legacy `relevant`/`not_relevant` decision never appears in a canonical
+// response (the schema enum only allows promote/keep/downrank/reject/needs_context),
+// so it is an unambiguous dialect signal on its own. It is still not sufficient
+// alone: a tampered but otherwise-complete canonical item (every newer field
+// present, no alias keys) must keep being rejected, not reinterpreted. Only the
+// combination with a missing newer field or a documented alias key marks a
+// genuine legacy-shaped item.
+const isLegacyPromotionReviewItem = (record: JsonObject): boolean =>
+  (record.decision === "relevant" || record.decision === "not_relevant") &&
+  (!Object.hasOwn(record, "interestRelevanceScore") || !Object.hasOwn(record, "engagementIntegrityScore") ||
+    !Object.hasOwn(record, "flags") || hasLegacyAliasKey(record));
 
 const normalizeCompatiblePromotionReview = (
   record: JsonObject, request: SourceContentQualityReviewRequest,
@@ -165,6 +200,12 @@ const nonEmptyString = (
   throw new Error(`OpenAI quality review output missing ${field}`);
 };
 
+const boundedString = (value: JsonValue | undefined, field: string, maxLength: number): string => {
+  const normalized = nonEmptyString(value, field);
+  if (normalized.length > maxLength) throw new Error(`OpenAI quality review output exceeds ${field} bound`);
+  return normalized;
+};
+
 export const asRecord = (value: unknown, label: string): JsonObject => {
   const record = asOptionalRecord(value);
 
@@ -180,7 +221,11 @@ export const asOptionalRecord = (value: unknown): JsonObject | undefined =>
     ? (value as JsonObject)
     : undefined;
 
-const allowedFlags = new Set<SourceContentQualityFlag>([
+// Single source of truth for the review-flag vocabulary. The schema enum and
+// the parser's semantic check must stay in lockstep: a flag value that the
+// schema lets the model emit but the parser rejects turns an otherwise valid,
+// attested completion into a hard adapter failure.
+export const sourceContentQualityFlagValues = [
   "crypto_promo",
   "engagement_bait",
   "generic_question",
@@ -202,7 +247,9 @@ const allowedFlags = new Set<SourceContentQualityFlag>([
   "llm_needs_context",
   "llm_promoted",
   "llm_rejected",
-]);
+] as const satisfies readonly SourceContentQualityFlag[];
+
+const allowedFlags = new Set<SourceContentQualityFlag>(sourceContentQualityFlagValues);
 
 export const responseSchema = {
   type: "object",
@@ -211,6 +258,7 @@ export const responseSchema = {
   properties: {
     reviews: {
       type: "array",
+      maxItems: promotionReviewOutputBounds.ordinaryReviews,
       items: {
         type: "object",
         additionalProperties: false,
@@ -225,7 +273,7 @@ export const responseSchema = {
           "reason",
         ],
         properties: {
-          candidateId: { type: "string", minLength: 1 },
+          candidateId: { type: "string", minLength: 1, maxLength: promotionReviewOutputBounds.candidateId },
           decision: {
             type: "string",
             enum: ["promote", "keep", "downrank", "reject", "needs_context"],
@@ -236,9 +284,10 @@ export const responseSchema = {
           engagementIntegrityScore: { type: "number", minimum: 0, maximum: 1 },
           flags: {
             type: "array",
-            items: { type: "string" },
+            maxItems: sourceContentQualityFlagValues.length,
+            items: { type: "string", enum: sourceContentQualityFlagValues },
           },
-          reason: { type: "string", minLength: 1 },
+          reason: { type: "string", minLength: 1, maxLength: promotionReviewOutputBounds.reason },
         },
       },
     },
@@ -253,5 +302,5 @@ export const promotionResponseSchema = {
       ...Object.keys(promotionReviewSchemaProperties)],
     properties: { ...responseSchema.properties.reviews.items.properties,
       ...promotionReviewSchemaProperties },
-  } } },
+  }, maxItems: promotionReviewOutputBounds.promotionReviews } },
 };

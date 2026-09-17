@@ -1,3 +1,4 @@
+import { retainedPromotionCutoff, exactRetainedPromotionTimestamp } from "@social-monitor/feed/domain/value-objects/retained-promotion-authority";
 import {
   evaluateReaderPromotionV2,
 } from "@social-monitor/feed/domain";
@@ -33,7 +34,7 @@ export const readerSummaryPromotionV2Candidate = (
     provider,
     contentKind: admittedContentKind(facts.contentKind, provider),
     publishedAt: canonicalTimestamp(item.publishedAt),
-    engagementCutoffAt: canonicalTimestamp(promotionCutoff(selection)),
+    engagementCutoffAt: candidateEngagementCutoff(item, selection),
     admission: {
       relevanceFloorMet: quality?.eligibleForSummary === true,
       qualityFloorMet: quality?.eligibleForTopRead === true &&
@@ -43,7 +44,9 @@ export const readerSummaryPromotionV2Candidate = (
         hasReaderFacingPromotionSource(item),
       integrityFloorMet: quality?.engagementIntegrityScore !== undefined,
       safetyFloorMet: facts.safetyValid,
-      freshnessFloorMet: validFreshness(item, selection),
+      freshnessFloorMet: validFreshness(item, selection) &&
+        (facts.retainedEngagementAuthority === undefined ||
+          validRetainedFreshness(item)),
     },
     engagement: promotionEngagement(item, provider),
     relevanceScore: quality?.interestRelevanceScore ?? Number.NaN,
@@ -157,6 +160,27 @@ const validFreshness = (
     provenance.ingestionCutoff.getTime() === cutoff.getTime() &&
     item.publishedAt.getTime() <= item.observedAt.getTime() &&
     item.observedAt.getTime() <= cutoff.getTime();
+};
+
+const validRetainedFreshness = (item: SummaryEvidenceItem): boolean => {
+  const facts = item.promotionFacts!;
+  const provenance = facts.freshnessProvenance;
+  if (provenance?.status !== "observed") return false;
+  const published = provenance.exactPublishedAt ?? exactRetainedPromotionTimestamp(canonicalTimestamp(item.publishedAt));
+  const observed = provenance.exactObservedAt ?? exactRetainedPromotionTimestamp(canonicalTimestamp(item.observedAt));
+  return published <= observed &&
+    published <= exactRetainedPromotionTimestamp(facts.retainedEngagementAuthority!.cutoffAt) &&
+    observed <= exactRetainedPromotionTimestamp(facts.retainedEngagementAuthority!.boundThrough);
+};
+
+const candidateEngagementCutoff = (
+  item: SummaryEvidenceItem, selection: SummaryEvidenceSelection,
+): string => {
+  const cutoff = canonicalTimestamp(promotionCutoff(selection));
+  const retained = item.promotionFacts?.retainedEngagementAuthority;
+  return retained === undefined ? cutoff : retainedPromotionCutoff(retained,
+    item.promotionFacts?.engagementAuthority === undefined ? undefined
+      : canonicalTimestamp(item.promotionFacts.engagementAuthority.observedAt), cutoff) ?? "";
 };
 
 const promotionCutoff = (

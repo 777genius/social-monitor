@@ -6,6 +6,8 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
+import { STORY_RANKING_POLICY_V1 } from
+  "@social-monitor/summary/domain/policies/story-ranking-policy";
 import type { ReaderSummaryDayDatasetManifest } from
   "./reader-summary-day-dataset-manifest";
 import {
@@ -31,6 +33,7 @@ export type HistoricalPromotionActiveSourcePublication = Readonly<{
   reportSha256: string;
   proofSha256: string;
   tupleKind: "strict-v1" | "valid-v2" | "valid-no-signal";
+  rankingPolicyVersion: string;
 }>;
 
 export interface HistoricalPromotionPreparationReader {
@@ -38,6 +41,7 @@ export interface HistoricalPromotionPreparationReader {
     date: string,
   ): Promise<HistoricalPromotionActiveSourcePublication | null>;
   captureDataset(input: {
+    retainedCurrentAuthority?: boolean;
     date: string;
     generatedAt: Date;
     timestampPolicy: "published_at" | "observed_at";
@@ -108,13 +112,15 @@ export class ReaderSummaryPromotionV2HistoricalPreparation {
         "active_daily_publication_or_proof_missing",
       );
     }
-    if (sourcePublication.tupleKind === "valid-v2" ||
+    if ((sourcePublication.tupleKind === "valid-v2" &&
+          sourcePublication.rankingPolicyVersion ===
+            STORY_RANKING_POLICY_V1.version) ||
         sourcePublication.tupleKind === "valid-no-signal") {
       return {
         date,
         status: "verified-noop",
         reason: sourcePublication.tupleKind === "valid-v2"
-          ? "active_publication_already_valid_v2"
+          ? "active_publication_already_uses_current_ranking_policy"
           : "active_publication_is_explicit_no_signal",
         classificationKind: "not-required",
         sourcePublication,
@@ -149,6 +155,8 @@ export class ReaderSummaryPromotionV2HistoricalPreparation {
     try {
       [datasetManifest, generationAuthority] = await Promise.all([
         this.dependencies.preparation.captureDataset({
+          retainedCurrentAuthority: timestampPolicy === "published_at" &&
+            classification.kind === "rebuildable-from-authoritative-input",
           date,
           generatedAt,
           timestampPolicy,

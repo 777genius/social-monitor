@@ -1,6 +1,8 @@
 import { ReaderSummaryPolicy } from "@social-monitor/summary/domain";
 import type { ReaderSummaryPolicyRepositoryPort } from
   "@social-monitor/summary/ports";
+import { makeUnmaterializedReaderEvidenceSelection } from
+  "@social-monitor/summary/test-fixtures/execute-reader-summary-job-promotion-fixtures";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
@@ -131,6 +133,7 @@ describe("HistoricalPromotionPolicyGuard", () => {
         repository(policy("analytical")),
         expected,
       ),
+      "story_ranking_v11",
     );
 
     await expect(selector.select({
@@ -148,6 +151,35 @@ describe("HistoricalPromotionPolicyGuard", () => {
       maxItems: 120,
     })).rejects.toThrow("Prepared historical promotion policy changed");
     expect(delegate.select).not.toHaveBeenCalled();
+  });
+
+  it("stamps the prepared ranking policy onto rebuilt evidence", async () => {
+    const original = makeUnmaterializedReaderEvidenceSelection();
+    const selector = new HistoricalPromotionPolicyGuardedEvidenceSelector(
+      { select: jest.fn(async () => original) },
+      new HistoricalPromotionPolicyGuard(
+        repository(policy("concise")),
+        expected,
+      ),
+      "story_ranking_v11",
+    );
+
+    await expect(selector.select({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope,
+      period: {
+        cadence: "daily",
+        startedAt: new Date("2026-08-01T00:00:00.000Z"),
+        endedAt: new Date("2026-08-02T00:00:00.000Z"),
+        timezone: "UTC",
+        periodKey:
+          "daily:2026-08-01T00:00:00.000Z:2026-08-02T00:00:00.000Z:UTC",
+      },
+      maxItems: 120,
+    })).resolves.toMatchObject({
+      rankingPolicyVersion: "story_ranking_v11",
+    });
   });
 });
 

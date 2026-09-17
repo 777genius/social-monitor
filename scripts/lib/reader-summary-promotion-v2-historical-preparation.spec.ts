@@ -8,6 +8,10 @@ import { buildReaderSummaryDayDatasetManifest } from
   "./reader-summary-day-dataset-manifest";
 import { historicalPromotionRebuildIdentity } from
   "./reader-summary-promotion-v2-historical-classification";
+import {
+  isHistoricalPromotionRebuildSourceTuple,
+  type HistoricalPromotionArtifactVerification,
+} from "./reader-summary-promotion-v2-historical-artifact";
 import { readerSummaryProductionDayScope } from
   "./reader-summary-production-day-scope";
 import { resolveProductionDayExecutionRequest } from
@@ -28,11 +32,51 @@ import { historicalPromotionProductionDayCommand } from
   "./reader-summary-promotion-v2-historical-subprocess";
 import { historicalPromotionGenerationAuthority } from
   "./reader-summary-promotion-v2-historical-generation-authority";
+import { READER_SUMMARY_PRODUCTION_RUNTIME_POLICY } from
+  "./reader-summary-production-runtime-policy";
 
 const date = "2026-08-01";
 const now = new Date("2026-08-31T12:00:00.000Z");
 
 describe("historical Promotion V2 active-publication preparation", () => {
+  it("admits strict V1 and stale V2 sources only", () => {
+    const tuple = (
+      kind: HistoricalPromotionArtifactVerification["kind"],
+      rankingPolicyVersion: string,
+    ): HistoricalPromotionArtifactVerification => ({
+      kind,
+      rankingPolicyVersion,
+      noSignal: kind === "valid-no-signal",
+      orderedLanes: { top: [], additional: [] },
+      citationCount: 0,
+    });
+
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("strict-v1", "story_ranking_v10"),
+      "story_ranking_v11",
+    )).toBe(true);
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("valid-v2", "story_ranking_v10"),
+      "story_ranking_v11",
+    )).toBe(true);
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("valid-v2", "reader_promotion_policy.v2"),
+      "story_ranking_v11",
+    )).toBe(true);
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("valid-v2", "story_ranking_v11"),
+      "story_ranking_v11",
+    )).toBe(false);
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("valid-no-signal", "story_ranking_v10"),
+      "story_ranking_v11",
+    )).toBe(false);
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("valid-v2", "story_ranking_v12"),
+      "story_ranking_v11",
+    )).toBe(false);
+  });
+
   let directory: string;
 
   beforeEach(() => {
@@ -83,6 +127,12 @@ describe("historical Promotion V2 active-publication preparation", () => {
       bundle,
     };
     const command = historicalPromotionProductionDayCommand(rebuildInput);
+    expect(command.slice(0, 4)).toEqual([
+      process.execPath,
+      expect.stringContaining("run-with-timeout.mjs"),
+      "--timeout-ms",
+      String(READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.historicalRecoveryTimeoutMs),
+    ]);
     expect(command).toEqual(expect.arrayContaining([
       "--inherit-fd",
       "9",
@@ -192,7 +242,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
   });
 
   it.each([
-    ["valid-v2", "active_publication_already_valid_v2"],
+    ["valid-v2", "active_publication_already_uses_current_ranking_policy"],
     ["valid-no-signal", "active_publication_is_explicit_no_signal"],
   ] as const)("returns a verified no-op before capture for %s", async (
     tupleKind,
@@ -207,6 +257,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
         readActiveSource: async () => ({
           ...await dependencies.preparation.readActiveSource(),
           tupleKind,
+          rankingPolicyVersion: "story_ranking_v11",
         }),
         captureDataset,
       },
@@ -221,6 +272,54 @@ describe("historical Promotion V2 active-publication preparation", () => {
       authoritativeInputDigest: null,
     });
     expect(captureDataset).not.toHaveBeenCalled();
+  });
+
+  it.each(["published_at", "observed_at"] as const)("explicitly authorizes retained capture only for published_at rebuilds: %s", async (timestampPolicy) => {
+    const dependencies = preparationDependencies();
+    const captureDataset = jest.fn(dependencies.preparation.captureDataset);
+    const preparation = new ReaderSummaryPromotionV2HistoricalPreparation({
+      ...dependencies,
+      authority: { inspect: async () => ({ ...inspection(), rows: inspection().rows.map((row) => ({ ...row, dayEndMetricProof: null })) }) },
+      preparation: { ...dependencies.preparation, captureDataset },
+      clock: () => now,
+    });
+    await preparation.prepare({ dates: [date], batchSize: 1, timestampPolicy });
+    expect(captureDataset).toHaveBeenCalledWith(expect.objectContaining({
+      retainedCurrentAuthority: timestampPolicy === "published_at", timestampPolicy,
+    }));
+  });
+
+  it("prepares an otherwise valid V2 publication built by an older ranking policy", async () => {
+    const dependencies = preparationDependencies();
+    const captureDataset = jest.fn(dependencies.preparation.captureDataset);
+    const preparation = new ReaderSummaryPromotionV2HistoricalPreparation({
+      authority: dependencies.authority,
+      preparation: {
+        ...dependencies.preparation,
+        readActiveSource: async () => ({
+          ...await dependencies.preparation.readActiveSource(),
+          tupleKind: "valid-v2",
+          rankingPolicyVersion: "reader_promotion_policy.v2",
+        }),
+        captureDataset,
+      },
+      clock: () => now,
+    });
+
+    const [outcome] = await preparation.prepare({
+      dates: [date], batchSize: 1, timestampPolicy: "observed_at",
+    });
+
+    expect(outcome).toMatchObject({
+      status: "prepared",
+      reason: "active_publication_and_canonical_dataset_captured",
+      sourcePublication: {
+        tupleKind: "valid-v2",
+        rankingPolicyVersion: "reader_promotion_policy.v2",
+      },
+    });
+    expect(outcome?.authoritativeInputDigest).toMatch(/^[0-9a-f]{64}$/u);
+    expect(captureDataset).toHaveBeenCalledTimes(1);
   });
 
   it("fails an unknown active version before creating a rebuild identity", async () => {
@@ -279,6 +378,7 @@ const preparationDependencies = () => ({
       reportSha256: "a".repeat(64),
       proofSha256: "b".repeat(64),
       tupleKind: "strict-v1" as const,
+      rankingPolicyVersion: "story_ranking_v10",
     }),
     readGenerationAuthority: async () =>
       historicalPromotionGenerationAuthority({

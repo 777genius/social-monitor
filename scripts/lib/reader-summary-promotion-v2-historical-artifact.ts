@@ -27,6 +27,7 @@ export type HistoricalPromotionTupleKind =
 export type HistoricalPromotionArtifactVerification = Readonly<{
   kind: HistoricalPromotionTupleKind;
   noSignal: boolean;
+  rankingPolicyVersion: string;
   orderedLanes: Readonly<{
     top: readonly unknown[];
     additional: readonly unknown[];
@@ -56,6 +57,9 @@ export const verifyHistoricalPromotionArtifact = (
     }),
   );
   const snapshot = artifact.toSnapshot();
+  const rankingPolicyVersion = requiredRankingPolicyVersion(
+    snapshot.lineage.rankingPolicyVersion,
+  );
   const attestations = snapshot.promotionAttestations ?? [];
   const versions = new Set(attestations.map((item) => item.policyVersion));
   if (versions.size > 1) {
@@ -66,6 +70,7 @@ export const verifyHistoricalPromotionArtifact = (
     return {
       kind: "strict-v1",
       noSignal: false,
+      rankingPolicyVersion,
       orderedLanes: orderedLanes(snapshot, attestations),
       citationCount: snapshot.citationMap.length,
     };
@@ -82,6 +87,7 @@ export const verifyHistoricalPromotionArtifact = (
     return {
       kind: "valid-v2",
       noSignal: false,
+      rankingPolicyVersion,
       orderedLanes: lanes,
       citationCount: snapshot.citationMap.length,
     };
@@ -91,6 +97,7 @@ export const verifyHistoricalPromotionArtifact = (
     return {
       kind: "valid-no-signal",
       noSignal: true,
+      rankingPolicyVersion,
       orderedLanes: { top: [], additional: [] },
       citationCount: 0,
     };
@@ -98,9 +105,39 @@ export const verifyHistoricalPromotionArtifact = (
   throw new Error("Historical promotion artifact tuple is unknown or tampered");
 };
 
+const requiredRankingPolicyVersion = (value: string | undefined): string => {
+  const normalized = value?.trim();
+  if (normalized === undefined || normalized.length === 0) {
+    throw new Error("Historical promotion ranking policy version is missing");
+  }
+  return normalized;
+};
+
 export const isHistoricalPromotionTargetTuple = (
   value: HistoricalPromotionArtifactVerification,
 ): boolean => value.kind === "valid-v2" || value.kind === "valid-no-signal";
+
+export const isHistoricalPromotionRebuildSourceTuple = (
+  value: HistoricalPromotionArtifactVerification,
+  targetRankingPolicyVersion: string,
+): boolean => value.kind === "strict-v1" ||
+  (value.kind === "valid-v2" && isOlderRankingPolicy(
+    value.rankingPolicyVersion,
+    targetRankingPolicyVersion,
+  ));
+
+const isOlderRankingPolicy = (source: string, target: string): boolean => {
+  const targetOrdinal = rankingPolicyOrdinal(target);
+  if (targetOrdinal === null) return false;
+  if (source === "reader_promotion_policy.v2") return true;
+  const sourceOrdinal = rankingPolicyOrdinal(source);
+  return sourceOrdinal !== null && sourceOrdinal < targetOrdinal;
+};
+
+const rankingPolicyOrdinal = (value: string): number | null => {
+  const match = /^story_ranking_v([1-9][0-9]*)$/u.exec(value);
+  return match === null ? null : Number(match[1]);
+};
 
 const orderedLanes = (
   snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,

@@ -460,7 +460,7 @@ prune_expired_auth_pool_snapshots() {
     ((now - modified_at >= retention_seconds)) || continue
     remove_auth_pool_directory "$snapshot"
   done < <(find "$POOL_SNAPSHOT_ROOT/snapshots" -mindepth 1 -maxdepth 1 \
-    -type d -print0)
+    -type d ! -name '.*' -print0)
 }
 
 is_manifest_account() {

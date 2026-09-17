@@ -20,6 +20,7 @@ import type {
   HistoricalPromotionVerifiedOutput,
 } from "./reader-summary-promotion-v2-historical-runner";
 import {
+  isHistoricalPromotionRebuildSourceTuple,
   isHistoricalPromotionTargetTuple,
   verifyHistoricalPromotionArtifact,
   type HistoricalPromotionArtifactRecord,
@@ -29,6 +30,10 @@ import {
   historicalPromotionGenerationAuthority,
   type HistoricalPromotionPolicySnapshot,
 } from "./reader-summary-promotion-v2-historical-generation-authority";
+import { assertHistoricalPromotionPublicArtifact } from
+  "./reader-summary-promotion-v2-public-attestation";
+import { isHistoricalPromotionStaleSourcePreserved } from
+  "./reader-summary-promotion-v2-historical-stale-source";
 
 type AuthorityRow = Readonly<{
   feedItemId: string;
@@ -67,12 +72,16 @@ type PublicationRow = HistoricalPromotionArtifactRecord & Readonly<{
   artifactPayload: unknown;
   citations: unknown;
   qualitySignals: unknown;
+  requestedAt: Date | string;
+  modelAuthority: number;
 }>;
 
 type JobRow = Readonly<{
   jobId: string;
   status: string;
   artifactId: string | null;
+  failureReason: string | null;
+  requestedAt: Date | string;
 }>;
 type PolicyRow = HistoricalPromotionPolicySnapshot;
 
@@ -216,11 +225,11 @@ export class PostgresHistoricalPromotionAdapter
       }
       if (bundle !== undefined && active !== null &&
           active.publicationId === bundle.sourcePublicationId &&
-          publicationTupleKind(active) !== "strict-v1") {
+          !isRebuildableSourcePublication(active, bundle)) {
         return {
           state: "ambiguous",
           activePublicationId: active.publicationId,
-          reason: "active_source_publication_tuple_is_not_strict_v1",
+          reason: "active_source_publication_tuple_is_not_rebuildable",
         };
       }
       if (jobs.rows.length === 0) {
@@ -252,6 +261,19 @@ export class PostgresHistoricalPromotionAdapter
         };
       }
       if (job.status === "FAILED") {
+        if (bundle !== undefined &&
+            isHistoricalPromotionStaleSourcePreserved({
+              sourcePublicationId: bundle.sourcePublicationId,
+              active,
+              job,
+            })) {
+          return {
+            ...common,
+            state: "stale-source-preserved",
+            reason:
+              "stronger_active_publication_preserved_after_lower_authority_stale",
+          };
+        }
         return {
           ...common,
           state: "failed",
@@ -466,7 +488,7 @@ export class HttpHistoricalPromotionApiVisibilityVerifier
     if (!isRecord(item)) {
       throw new Error("Historical promotion API does not expose active artifact");
     }
-    assertApiOrderedLanes(item, input.expected);
+    assertHistoricalPromotionPublicArtifact(item, input.expected, "API");
     const site = await fetch(this.input.siteUrl, {
       signal: AbortSignal.timeout(15_000),
     });
@@ -493,7 +515,11 @@ export class HttpHistoricalPromotionApiVisibilityVerifier
         contractBody.readerSummaryId !== input.artifactId) {
       throw new Error("Historical promotion site contract is invalid");
     }
-    assertApiOrderedLanes(contractBody, input.expected);
+    assertHistoricalPromotionPublicArtifact(
+      contractBody,
+      input.expected,
+      "site contract",
+    );
     return {
       siteReaderRouteHttp200Verified: true,
       siteFacingContractVerified: true,
@@ -730,6 +756,8 @@ const activePublicationQuery = `
     ,artifact.headline
     ,artifact.summary_text as "summaryText"
     ,artifact.created_at as "createdAt"
+    ,publication.requested_at as "requestedAt"
+    ,publication.model_authority as "modelAuthority"
   from reader_summary_publication_slots slot
   join reader_summary_publications publication
     on publication.id = slot.current_publication_id
@@ -747,7 +775,8 @@ const activePublicationQuery = `
 
 const jobsByRebuildIdentityQuery = `
   select job.id::text as "jobId", job.status::text as "status",
-    job.reader_summary_artifact_id::text as "artifactId"
+    job.reader_summary_artifact_id::text as "artifactId",
+    job.failure_reason as "failureReason", job.requested_at as "requestedAt"
   from reader_summary_jobs job
   where job.tenant_id = $1::uuid
     and job.workspace_id = $2::uuid
@@ -852,13 +881,17 @@ const isValidV2Publication = (row: PublicationRow): boolean => {
   }
 };
 
-const publicationTupleKind = (
+const isRebuildableSourcePublication = (
   row: PublicationRow,
-): "strict-v1" | "valid-v2" | "valid-no-signal" | "unknown" => {
+  bundle: HistoricalPromotionEvidenceBundle,
+): boolean => {
   try {
-    return verifyHistoricalPromotionArtifact(row).kind;
+    return isHistoricalPromotionRebuildSourceTuple(
+      verifyHistoricalPromotionArtifact(row),
+      bundle.canonicalInput.generationAuthority.execution.rankingPolicyVersion,
+    );
   } catch {
-    return "unknown";
+    return false;
   }
 };
 
@@ -903,31 +936,6 @@ const requiredValue = (value: string | undefined, label: string): string => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const assertApiOrderedLanes = (
-  item: Record<string, unknown>,
-  expected: HistoricalPromotionArtifactVerification,
-): void => {
-  const brief = isRecord(item.readerBrief) ? item.readerBrief : item;
-  const top = apiLane(brief.topReads);
-  const additional = apiLane(brief.selectedPosts);
-  if (JSON.stringify(top) !== JSON.stringify(expected.orderedLanes.top) ||
-      JSON.stringify(additional) !==
-        JSON.stringify(expected.orderedLanes.additional)) {
-    throw new Error("Historical promotion API ordered V2 tuple is inconsistent");
-  }
-  if (expected.noSignal &&
-      (!Array.isArray(item.qualityFlags) ||
-        !item.qualityFlags.includes("no_signal") ||
-        !isRecord(item.lineage) ||
-        item.lineage.promptVersion !== "reader_summary.promotion_no_signal.v1" ||
-        item.lineage.modelVersion !== "not_invoked" ||
-        item.lineage.providerVersion !== "deterministic" ||
-        item.lineage.rulesVersion !== "reader_promotion_policy.v2" ||
-        item.lineage.evalDatasetVersion !== "reader_promotion_policy.v2")) {
-    throw new Error("Historical promotion API V2 NO_SIGNAL lineage is missing");
-  }
-};
-
 const qualityArtifactHashes = (
   artifactOutput: string,
   date: string,
@@ -953,16 +961,4 @@ const qualityArtifactHashes = (
     name,
     createHash("sha256").update(readFileSync(join(directory, name))).digest("hex"),
   ]));
-};
-
-const apiLane = (value: unknown): readonly unknown[] => {
-  if (!Array.isArray(value)) {
-    throw new Error("Historical promotion API reader lane is missing");
-  }
-  return value.map((card) => {
-    if (!isRecord(card) || !isRecord(card.promotionAttestation)) {
-      throw new Error("Historical promotion API card tuple is missing");
-    }
-    return card.promotionAttestation;
-  });
 };

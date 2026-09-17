@@ -1,3 +1,5 @@
+import { acceptedFixtureReaderHeadline } from "../../test-fixtures/accepted-reader-headline";
+import { mapRankedItem } from "./relevance-reader-summary-evidence-support";
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
@@ -81,10 +83,15 @@ const selectFreshPair = (
 
 const ranker = (items: readonly RankedFeedItemView[]): RankFeedItemsUseCase =>
   ({
-    execute: async () => ok({
+    execute: async (query: { tenantId: string; workspaceId: string }) => ok({
       generatedAt: now.toISOString(),
       profileApplied: false,
-      items,
+      items: items.map((item) => {
+        const assessed = acceptedFixtureReaderHeadline(mapRankedItem(item), {
+            tenantId: query.tenantId, workspaceId: query.workspaceId,
+          });
+        return { ...item, sourceText: assessed.sourceText, readerHeadline: assessed.readerHeadline };
+      }),
     }),
   }) as unknown as RankFeedItemsUseCase;
 

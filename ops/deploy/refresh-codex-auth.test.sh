@@ -316,6 +316,8 @@ fi
 [[ $(cksum < "$TARGET_DIR/auth.json") == "$before_legacy_status" ]]
 [[ $(jq -r '.snapshotId' "$POOL_SNAPSHOT_ROOT/current.json") == "$current_generation" ]]
 expired_generation=$(printf 'f%.0s' {1..64})
+capacity_store="$POOL_SNAPSHOT_ROOT/snapshots/.subscription-runtime-account-capacity"
+install -d "$capacity_store"
 install -d "$POOL_SNAPSHOT_ROOT/snapshots/$expired_generation/account-old"
 printf '{"account":"old"}\n' > \
   "$POOL_SNAPSHOT_ROOT/snapshots/$expired_generation/account-old/auth.json"
@@ -323,6 +325,7 @@ touch -t 202001010000 "$POOL_SNAPSHOT_ROOT/snapshots/$expired_generation"
 run_refresh >/dev/null
 [[ ! -e $POOL_SNAPSHOT_ROOT/snapshots/$expired_generation ]]
 [[ -d $POOL_SNAPSHOT_ROOT/snapshots/$current_generation ]]
+[[ -d $capacity_store ]]
 
 rm -f "$CHANGED_MARKER"
 SOCIAL_MONITOR_TEST_ACCOUNTS='["account-b"]' run_refresh >/dev/null

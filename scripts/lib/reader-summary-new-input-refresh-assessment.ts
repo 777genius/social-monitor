@@ -1,5 +1,5 @@
 import type { SummaryEvidenceItem, SummaryEvidenceSelection } from "@social-monitor/summary/domain";
-import { isGitHubTrendingEvidence } from "@social-monitor/summary/domain";
+import { isGitHubTrendingEvidence, primaryReaderSummaryEvidence } from "@social-monitor/summary/domain";
 import type { ReaderSummaryEvidenceSelectorPort } from "@social-monitor/summary/ports";
 import type { Clock } from "@social-monitor/shared-kernel";
 import { readerPromotionProviderFamily } from "@social-monitor/shared-kernel";
@@ -18,6 +18,15 @@ type AssessmentCompletion = {
   assertComplete(expected: number, selection?: SummaryEvidenceSelection): void;
   assertCaptureComplete(): void;
 };
+
+export const refreshAssessmentScheduling = Object.freeze({
+  // Serial waves leave the rest of the pool available when a slot becomes
+  // unavailable only after its native session starts. Parallel waves can
+  // otherwise lease every apparently healthy slot before capacity propagates,
+  // leaving the runtime with nowhere to perform its bounded fallback.
+  batchConcurrency: 1,
+  totalTimeoutMs: 3_600_000,
+});
 
 export type RefreshAssessmentCanonicalCapture = Readonly<{
   canonicalEvidenceJson: string;
@@ -41,7 +50,23 @@ export type RefreshAssessmentCaptureEvent = Readonly<{
 }>;
 
 export function hasRefreshSelectableEvidence(items: readonly SummaryEvidenceItem[]): boolean {
-  return items.some((item) => isPersistedSelectableEvidence(item));
+  return items.some((item) => !isGitHubTrendingEvidence(item) && isPersistedSelectableEvidence(item));
+}
+
+// A caught error's own stage is the most specific, definitive signal of what
+// actually failed (binding, verdict, parse/schema, runtime status) and must
+// win even when the deadline/abort state happens to also be true by the time
+// the catch runs - otherwise an incidental deadline crossing during a slow
+// batch would mask a genuine binding/verdict failure behind "deadline". Live
+// abort/deadline state is the documented fallback only for an error that
+// never went through our own classification (a truly unknown exception).
+export function classifyAssessmentReviewBatchFailure(input: {
+  error: unknown; aborted: boolean; deadlineExceeded: boolean;
+}): SourceContentAssessmentFailureStage {
+  if (input.error instanceof SourceContentAssessmentStageError) return input.error.stage;
+  if (input.aborted) return "aborted";
+  if (input.deadlineExceeded) return "deadline";
+  return "unknown";
 }
 
 // This caller only authorizes the existing subscription pool. A direct provider
@@ -57,6 +82,14 @@ export function createRefreshAssessmentReviewer(input: {
   }
   const reviewer = createSourceContentAssessmentReviewer({ env: input.env,
     summaryModelMode: "agent-runtime", client: input.runtime, clock: input.clock });
+  const promotionTiming = Object.freeze({
+    batchTimeoutMs: reviewer.promotionTiming!.batchTimeoutMs,
+    totalTimeoutMs: Math.max(
+      reviewer.promotionTiming!.totalTimeoutMs,
+      refreshAssessmentScheduling.totalTimeoutMs,
+    ),
+    batchConcurrency: refreshAssessmentScheduling.batchConcurrency,
+  });
   // Capture immutable bindings from unpaid canonical ranking, before selection.
   // Selected objects cannot introduce or rewrite exemption provenance.
   const exemptBindings = new Set((input.canonicalEvidence ?? [])
@@ -66,6 +99,11 @@ export function createRefreshAssessmentReviewer(input: {
   // Bind the complete sanitized source representation independently of the
   // capped assessment request, for social and exempt GitHub evidence alike.
   const sourceTextBindings = new Set((input.canonicalEvidence ?? []).map(sourceTextBinding));
+  // Trending display rows are appended outside the primary editorial slate.
+  // Their canonical quality need not be promotion-eligible, but cannot change.
+  const supplementalBindings = new Set((input.canonicalEvidence ?? [])
+    .filter((item) => isGitHubTrendingEvidence(item) && item.promotionFacts?.contentKind === "github_trending")
+    .map(supplementalBinding));
   const policy = new SourceContentQualityPolicy();
   const seen = new Map<string, SourceContentQualityReviewRequest>();
   const eligible = new Map<string, { request: SourceContentQualityReviewRequest;
@@ -89,15 +127,16 @@ export function createRefreshAssessmentReviewer(input: {
     try { input.capture(event()); } catch { captureFailures++; }
   };
   const fail = (stage: SourceContentAssessmentFailureStage): never => {
-    input.runtime.invalidateAdapter("source_content_assessment");
+    input.runtime.invalidateAdapter("source_content_assessment", stage);
     throw new SourceContentAssessmentStageError(stage,
       "Refresh assessment is incomplete; original operation requires reconciliation");
   };
   return {
-    // Six workers put the evidenced eleven 8-item batches into two waves
-    // (about 452s at 225.7s each), with the existing 600s operation deadline.
-    promotionTiming: Object.freeze({ batchTimeoutMs: reviewer.promotionTiming!.batchTimeoutMs,
-      totalTimeoutMs: reviewer.promotionTiming!.totalTimeoutMs, batchConcurrency: 6 }),
+    // Keep healthy slots available for runtime fallback when configured pool
+    // entries are leased, cooling down or require re-authentication. The
+    // refresh-only deadline covers every bounded wave at the maximum captured
+    // candidate count instead of timing out a valid later wave.
+    promotionTiming,
     assertCaptureComplete: () => {
       if ((input.capture || input.captureCanonical) && (captureFailures > 0 || terminalBatches !== batches)) {
         throw new Error("Refresh assessment capture is incomplete");
@@ -111,21 +150,30 @@ export function createRefreshAssessmentReviewer(input: {
       if (!Number.isSafeInteger(expected) || expected < 0 || required !== completed || completed !== seen.size) fail("binding");
       if (selection === undefined) return;
       // An empty bounded/uncertain result cannot support exhaustive no-signal.
-      if (selection.selectedEvidence.length === 0 && (completed < expected || abstained > 0)) {
+      if (primaryReaderSummaryEvidence(selection).selectedEvidence.length === 0 && (completed < expected || abstained > 0)) {
         throw new Error("Refresh assessment remains pending; cannot publish exhaustive no-signal");
       }
       for (const item of selection.selectedEvidence) {
         if (!sourceTextBindings.has(sourceTextBinding(item))) fail("binding");
-        const quality = item.contentQuality;
-        if (!quality?.eligibleForSummary || quality.needsLlmReview ||
-            !["promote", "keep", "downrank"].includes(quality.decision) ||
-            quality.reason.startsWith("promotion_assessment_pending:") ||
-            quality.reason.startsWith("promotion_assessment_not_requested:")) return fail("binding");
         // An attempted social identity cannot acquire an exemption by relabeling.
         const recorded = seen.has(item.feedItemId) || [...seen.values()].some((request) =>
           request.promotion?.sourceItemId === item.sourceItemId &&
           request.promotion?.sourceBindingId === item.sourceBindingId &&
           request.promotion?.interestId === item.interestId);
+        if (!recorded && isGitHubTrendingEvidence(item)) {
+          // A changed supplemental row must not fall through to a weaker exemption.
+          if (!supplementalBindings.has(supplementalBinding(item))) fail("binding");
+          const slate = selection.editorialSlate;
+          if (!slate || [...slate.top, ...slate.additional].some((entry) => entry.candidateId === item.feedItemId) ||
+              selection.clusters.some((cluster) => cluster.representativeFeedItemId === item.feedItemId ||
+                cluster.duplicateFeedItemIds.includes(item.feedItemId))) fail("binding");
+          continue;
+        }
+        const quality = item.contentQuality;
+        if (!quality?.eligibleForSummary || quality.needsLlmReview ||
+            !["promote", "keep", "downrank"].includes(quality.decision) ||
+            quality.reason.startsWith("promotion_assessment_pending:") ||
+            quality.reason.startsWith("promotion_assessment_not_requested:")) return fail("binding");
         if (!recorded && persistedAssessmentBindings.has(exemptionBinding(item))) continue;
         const canonicalExemption = !recorded && exemptBindings.has(exemptionBinding(item));
         if (canonicalExemption) {
@@ -156,7 +204,7 @@ export function createRefreshAssessmentReviewer(input: {
       try {
         input.runtime.assertUsable();
         const now = input.clock.now().getTime();
-        deadline ??= now + reviewer.promotionTiming!.totalTimeoutMs;
+        deadline ??= now + promotionTiming.totalTimeoutMs;
         const size = Buffer.byteLength(JSON.stringify(requests), "utf8");
         // Deadline/abort is always the most informative classification when it
         // applies, regardless of which coverage check would otherwise trigger.
@@ -196,12 +244,9 @@ export function createRefreshAssessmentReviewer(input: {
         return reviews;
       } catch (error) {
         terminalBatches++;
-        // Deadline/abort classification is derived from state, not the caught
-        // error, so it stays correct even when the underlying exception is a
-        // generic timeout/cancellation type rather than our own stage error.
-        const stage: SourceContentAssessmentFailureStage = options?.signal.aborted ? "aborted"
-          : deadline !== undefined && input.clock.now().getTime() >= deadline ? "deadline"
-            : error instanceof SourceContentAssessmentStageError ? error.stage : "unknown";
+        const stage = classifyAssessmentReviewBatchFailure({ error,
+          aborted: options?.signal.aborted ?? false,
+          deadlineExceeded: deadline !== undefined && input.clock.now().getTime() >= deadline });
         capture(() => ({ ...event("failed"), failure: stage }));
         return fail(stage);
       }
@@ -244,6 +289,16 @@ function exemptionBinding(item: SummaryEvidenceItem): string {
   return JSON.stringify([item.feedItemId, item.sourceItemId, item.sourceBindingId,
     item.interestId, item.providerKey, item.canonicalUrl, item.title, item.bodyPreview,
     item.promotionFacts, item.contentQuality]);
+}
+
+// Snapshot every remaining evidence field used by supplemental display or lineage.
+// Serialize at construction so later canonical-object mutations cannot rewrite authority.
+function supplementalBinding(item: SummaryEvidenceItem): string {
+  return JSON.stringify([exemptionBinding(item), item.providerMetricLabels,
+    item.providerName, item.readerActionKind, item.score, item.whyImportant,
+    item.publishedAt, item.observedAt, item.previewMedia, item.matchedRules,
+    item.authorHandle, item.sourceOriginUrl, item.conversationContext,
+    item.storyKeyHint, item.providerMetricSummary, item.readerHeadline]);
 }
 
 function sourceTextBinding(item: SummaryEvidenceItem): string {

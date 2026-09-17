@@ -253,6 +253,21 @@ function sourceContentAssessmentOutputSchemas(task) {
 function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
   let executor;
   let disposed = false;
+  let providerTaskEffectPossible = false;
+  const assessmentObservability = {
+    ...progress,
+    emit(event) {
+      // Session reads and auth refreshes happen against a disposable per-account
+      // auth materialization before the model task starts. A typed
+      // provider_session_invalid result can therefore move to another account
+      // after those phases. Once the provider task itself starts, fallback is
+      // forbidden even if a later wrapper misclassifies the failure.
+      if (event?.name === "provider.task.started") {
+        providerTaskEffectPossible = true;
+      }
+      progress?.emit(event);
+    },
+  };
 
   return {
     async start() {},
@@ -338,23 +353,54 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
               retryOnCapacity: false, retryOnAccountUnavailable: false,
               retryOnReconnectRequired: false, retryUnknownCleanWorkspace: false,
             } : {}),
+            ...(isSourceContentAssessment ? { continuationMode: "disabled" } : {}),
           },
           accounts,
           // Assessment never consumes native startup guidance or continuation.
           ...(isSourceContentAssessment ? {
-            observability: progress, shutdownTimeoutMs: 1_000,
+            observability: assessmentObservability, shutdownTimeoutMs: 1_000,
             controlInbox: { consumeForContinuation: async () => undefined },
           } : {}),
         });
         lifecycle.checkpoint();
         progress?.mark("executor_run", "started");
-        const result = await executor.run({
+        const runInput = {
           ...job,
           taskId,
           originalPrompt: job.prompt,
           effectMode: "read_only",
           maxAccountCycles: 1,
-        });
+        };
+        let result = await executor.run(runInput);
+        // Keep the same executor, task journal and round-robin cursor. Grant
+        // exactly one more admission attempt only after proven pre-provider
+        // account_unavailable rejection; retryMode "never" still forbids replay.
+        // Generic capacity failures cannot authorize another admission.
+        for (let attempt = 1; isSourceContentAssessment && attempt < accounts.length; attempt++) {
+          if (!isPreProviderAccountUnavailable(result, attempt, accounts)) break;
+          // The native worker emits provider.task.started before opening its
+          // responses WebSocket. A typed provider_session_invalid rejection
+          // therefore proves that no provider task was admitted even when the
+          // coarse lifecycle signal was already observed. All other failures
+          // remain blocked once that signal has fired.
+          if (providerTaskEffectPossible && !isPreProviderSessionRejection(
+            result.attempts.at(-1), accounts[attempt - 1],
+          )) break;
+          // The exact rejection above proves that this attempt never crossed
+          // the provider boundary. Reset the per-attempt signal before the
+          // next admission so an unrelated disabled-account preflight can
+          // still advance to another healthy account.
+          providerTaskEffectPossible = false;
+          lifecycle.checkpoint();
+          if (disposed || job.abortSignal?.aborted) break;
+          result = await executor.run({
+            ...runInput,
+            safeExecutionPolicy: {
+              maxAttempts: attempt + 1,
+              retryOnAccountUnavailable: true,
+            },
+          });
+        }
         progress?.mark("executor_run", "completed");
         if (result.status === "completed") {
           return result.result;
@@ -384,6 +430,78 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
       await executor?.dispose();
     },
   };
+}
+
+function isPreProviderAccountUnavailable(result, attemptCount, accounts) {
+  if (result.status !== "waiting_capacity" ||
+      result.reason !== "account_unavailable" ||
+      result.attempts?.length !== attemptCount) return false;
+  if (!result.attempts.every((attempt) =>
+    attempt.status === "blocked" &&
+    attempt.failureReason === "account_unavailable" &&
+    attempt.workspaceDirtyBefore === false && attempt.workspaceDirtyAfter === false &&
+    attempt.changedFiles?.length === 0 && attempt.usage === undefined &&
+    attempt.lastOutputSummary === undefined)) return false;
+  // The pool serializes away the auth rejection cause. Accept only the
+  // confirmed native auth-rejection journal signature, scoped to this account.
+  if (isPreProviderSessionRejection(result.attempts.at(-1), accounts[attemptCount - 1])) {
+    const wrapper = result.error;
+    // The local-file executor persists the exact attempt evidence but does not
+    // guarantee that its outer in-memory error wrapper survives readback.
+    // Absence is acceptable here; any present wrapper must remain the narrow
+    // account-unavailable shape below.
+    return isConsistentProviderSessionRejectionError(
+      wrapper, accounts[attemptCount - 1]?.worker.capacityAccountId,
+    );
+  }
+  let error = result.error;
+  // Only unwrap the pool's immediate slot wrapper, never a provider cause chain.
+  if (error instanceof SubscriptionWorkerError &&
+      error.code === "subscription_worker_pool_slot_failed" && error.usage === undefined) {
+    error = error.cause;
+  }
+  // Only these exact native snapshot reasons prove stop and cleanup completed.
+  // Keep account identity and the immediate typed admission wrapper mandatory.
+  if (error instanceof SubscriptionWorkerError && error.cause === undefined &&
+      error.usage === undefined && error.code === "subscription_worker_account_unavailable" &&
+      error.details?.availability === "cooldown" &&
+      typeof error.details.accountId === "string" &&
+      error.details.accountId === accounts[attemptCount - 1]?.worker.capacityAccountId &&
+      ["native_snapshot_invalid", "native_snapshot_deadline"].includes(error.details.reason)) return true;
+  // Explicit disabled-account preflight remains independently harmless.
+  return error instanceof SubscriptionWorkerError && error.cause === undefined &&
+    error.usage === undefined &&
+    error.code === "subscription_worker_account_unavailable" &&
+    error.details?.availability === "disabled" &&
+    error.details?.reason === "account_unavailable";
+}
+
+function isConsistentProviderSessionRejectionError(error, accountId) {
+  if (error === undefined) return true;
+  if (error?.code !== "subscription_worker_pool_slot_failed" ||
+      error.usage !== undefined) return false;
+  const cause = error.cause;
+  if (cause === undefined) return true;
+  if (cause?.usage !== undefined) return false;
+  if (cause?.code === "subscription_worker_account_unavailable") {
+    return cause.cause === undefined;
+  }
+  // The real file-backed worker wraps the native process rejection once
+  // before the pool adds its slot wrapper. Require the same exact session
+  // classification and account identity already persisted in the journal;
+  // a generic provider/task failure remains insufficient.
+  return cause?.code === "subscription_worker_run_failed" &&
+    cause.details?.reason === "provider_session_invalid" &&
+    cause.details?.accountId === accountId;
+}
+
+function isPreProviderSessionRejection(attempt, account) {
+  const details = attempt.failureDetails;
+  return details?.reason === "provider_session_invalid" &&
+    details.accountId === account?.worker.capacityAccountId &&
+    typeof details.accountId === "string" &&
+    details.subscriptionWorkerCode === "subscription_worker_pool_slot_failed" &&
+    (details.exitCode === "1" || details.exitCode === 1);
 }
 
 async function createAuthMaterializationRoot(stateRootDir, taskId) {

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   readerSummaryProductionDayArtifactPolicyVersion,
   readerSummaryProductionDayAttemptIdentity,
@@ -67,9 +69,24 @@ const authorityHashFields = [
 ] as const;
 
 describe("reader summary production-day attempt identity", () => {
-  it("binds retries to the current persisted artifact policy", () => {
+  it("rotates v13 retries to a deterministic v14 artifact identity", () => {
     expect(readerSummaryProductionDayArtifactPolicyVersion).toBe(
-      "reader_summary.artifact_policy.v9",
+      "reader_summary.artifact_policy.v14",
+    );
+    const policyIdentity = (artifactPolicyVersion: string): string =>
+      createHash("sha256").update(JSON.stringify({
+        schemaVersion: "reader_summary.production_day_attempt.v2",
+        artifactPolicyVersion,
+        ...liveIdentity,
+      })).digest("hex");
+    const previous = policyIdentity("reader_summary.artifact_policy.v13");
+    const current = readerSummaryProductionDayAttemptIdentity(liveIdentity);
+
+    expect(current).toBe(policyIdentity("reader_summary.artifact_policy.v14"));
+    expect(current).not.toBe(previous);
+    expect(readerSummaryProductionDayAttemptIdentity(liveIdentity)).toBe(current);
+    expect(readerSummaryProductionDayIdempotencyKey(current)).not.toBe(
+      readerSummaryProductionDayIdempotencyKey(previous),
     );
   });
 

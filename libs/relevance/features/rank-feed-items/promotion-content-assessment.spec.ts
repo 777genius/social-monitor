@@ -15,7 +15,7 @@ describe("promotion assessment through Summary candidate and V2 (synthetic revie
     expect(result.candidates[0]!.evidenceQualityScore).toBe(0.8);
   });
 
-  it("reviews eight candidates in one ordered batch and retains second-batch popularity", async () => {
+  it("reviews eight candidates in one popularity-prioritized batch", async () => {
     const ids = Array.from({ length: 8 }, (_, i) => `candidate-${i}`);
     let active = 0;
     let peak = 0;
@@ -31,7 +31,7 @@ describe("promotion assessment through Summary candidate and V2 (synthetic revie
     const result = await run(items, { reviewBatch });
     expect(reviewBatch).toHaveBeenCalledTimes(1);
     expect(reviewBatch.mock.calls.map(([requests]) => requests.map((r) => r.candidateId)))
-      .toEqual([ids]);
+      .toEqual([["candidate-7", ...ids.slice(0, 7)]]);
     expect(peak).toBe(1);
     expect(result.items.map((item) => item.feedItemId).sort()).toEqual(ids);
     for (const item of result.items) expect(item.contentQuality).toMatchObject({
@@ -108,6 +108,7 @@ describe("promotion assessment through Summary candidate and V2 (synthetic revie
     const result = await run(items, reviewer);
     expect(result.ranking.orderedCandidateIds).toEqual(["self-contained"]);
     expect(result.candidates.find((c) => c.candidateId === "self-contained")!.evidenceQualityScore).toBe(0.7);
+    expect(result.items.every((item) => item.sourceText === "")).toBe(true);
     for (const item of result.items.filter((i) => i.feedItemId.startsWith("ambiguous"))) {
       expect(item.contentQuality).toMatchObject({ qualityScore: 0, needsLlmReview: true,
         reason: "promotion_assessment_pending:needs_context" });

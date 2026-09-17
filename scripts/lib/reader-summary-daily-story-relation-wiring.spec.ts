@@ -3,7 +3,7 @@ import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-fe
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { accepting } from "../../test/support/promotion-content-assessment";
+import { accepting, review } from "../../test/support/promotion-content-assessment";
 import { InMemoryFeedItemReadRepository } from
   "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
 import { FeedItem } from "@social-monitor/feed/domain";
@@ -49,6 +49,10 @@ describe("reader summary daily story relation production wiring", () => {
     const directory = mkdtempSync(join(tmpdir(), "headline-wiring-"));
     try {
       const options = { sameStory: false, attested: true,
+        // Keep one deliberately headline-unassessed row beside the valid lead.
+        qualityReviewer: { reviewBatch: async (requests: Parameters<typeof accepting.reviewBatch>[0]) =>
+          Promise.all(requests.map(async (request) => request.candidateId === "typescript-hn"
+            ? (await accepting.reviewBatch([request]))[0]! : review(request))) },
         secondTitle: "Go rewrite of the TypeScript compiler reaches developers" };
       const plain = await selectDailyEvidence(options);
       const rankCommandCapture = { captured: jest.fn(), failed: jest.fn() };
@@ -62,7 +66,10 @@ describe("reader summary daily story relation production wiring", () => {
       await persisted;
       const rows = JSON.parse(readFileSync(path, "utf8"));
       expect(rows).toHaveLength(2);
-      expect(rows.every((row: { reasonOrigin: string }) => row.reasonOrigin === "not_assessed")).toBe(true);
+      expect(rows).toEqual(expect.arrayContaining([
+        expect.objectContaining({ reviewedTitleUtf16: 39, reasonOrigin: "accepted" }),
+        expect.objectContaining({ reviewedTitleUtf16: 56, reasonOrigin: "not_assessed" }),
+      ]));
       expect(rankCommandCapture.captured.mock.calls[0]![0]).not.toHaveProperty("observeHeadlineDiagnostic");
       const failed = await selectDailyEvidence({ ...options,
         headlineDiagnosticArtifact: { path: directory, attemptId: "synthetic-attempt" } });
@@ -394,7 +401,7 @@ describe("reader summary daily story relation production wiring", () => {
 
 const selectDailyEvidence = async (input: Pick<
   Parameters<typeof createReaderSummaryDailyCapturePublicationWiring>[0],
-  "preparationObserver" | "relationCapture" | "rankCommandCapture" | "headlineDiagnosticArtifact" | "headlineDiagnosticPersist"
+  "preparationObserver" | "relationCapture" | "rankCommandCapture" | "headlineDiagnosticArtifact" | "headlineDiagnosticPersist" | "qualityReviewer"
 > & {
   readonly sameStory: boolean;
   readonly attested: boolean;
@@ -417,7 +424,7 @@ const selectDailyEvidence = async (input: Pick<
     headlineDiagnosticPersist: input.headlineDiagnosticPersist,
     preparationObserver: input.preparationObserver,
     relationCapture: input.relationCapture,
-    qualityReviewer: accepting, // Explicit synthetic content evidence; this suite tests story relations.
+    qualityReviewer: input.qualityReviewer ?? accepting, // Explicit synthetic content evidence; this suite tests story relations.
     configuredInterests: { readCurrent: async (scope) => ({ kind: "available" as const, interest: { ...scope, query: "TypeScript Cursor Claude coding agents" } }) },
     replay: null,
     feedItems: feedRepository({

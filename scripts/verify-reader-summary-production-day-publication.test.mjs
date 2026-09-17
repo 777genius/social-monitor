@@ -362,6 +362,26 @@ test("accepts hash-bound historical regeneration with a fresh summary", () => {
   });
 });
 
+test("accepts bounded-lifetime historical regeneration evidence", () => {
+  withFixture(({ reportPath, proofPath, report, evidence }) => {
+    report.provenance = historicalRegenerationProvenance(
+      report.provenance.sourceEvidence,
+      evidence.provenance.datasetManifest,
+    );
+    delete report.provenance.freshnessOverride.maxManifestAgeSeconds;
+    report.provenance.freshnessOverride.lifetimePolicy = {
+      mode: "fresh_admission_bounded_operation_v1",
+      maxAdmissionAgeSeconds: 1800,
+      maxOperationAgeSeconds: 11760,
+    };
+    report.model.liveCollection = false;
+    report.model.reusedCollection = true;
+    writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
+    const created = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(created.status, 0, created.stderr);
+  });
+});
+
 test("accepts Promotion V2 active-publication source proof without an old report", () => {
   withFixture(({ reportPath, proofPath, report, evidence }) => {
     const provenance = historicalRegenerationProvenance(
@@ -841,6 +861,13 @@ function datasetGuardEvidence() {
     feedRowCount: manifest.feedRowCount,
     githubEligibilityRowCount: manifest.githubEligibilityRowCount,
     providerCounts: manifest.providerCounts,
+    lifetimePolicy: {
+      mode: "fresh_admission_bounded_operation_v1",
+      maxAdmissionAgeSeconds: 1800,
+      maxOperationAgeSeconds: 11760,
+    },
+    admittedAt: "2026-07-16T01:00:00.000Z",
+    validatedAt: "2026-07-16T01:01:00.000Z",
     completedPhases: [
       "before_evidence_selection",
       "after_evidence_selection",

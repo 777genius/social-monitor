@@ -13,7 +13,11 @@ import {
   type ProductionDayUtcPeriod,
 } from "./reader-summary-production-day-provenance";
 import type { ProductionDayExecutionRequest } from "./reader-summary-production-day-reuse-provenance";
-import { readReaderSummaryDayDatasetManifest } from "./reader-summary-day-dataset-guard";
+import {
+  datasetManifestLifetimePolicy,
+  readReaderSummaryDayDatasetAdmission,
+  readReaderSummaryDayDatasetManifest,
+} from "./reader-summary-day-dataset-guard";
 import { assertImmutableRecoveryInputs } from "./reader-summary-recovery-files";
 import { noRawSecretFragments } from "./yesterday-social-replay-support";
 import { historicalPromotionRebuildIdentity } from
@@ -78,7 +82,7 @@ export type HistoricalRegenerationSourceProvenance = {
   readonly freshnessOverride: {
     readonly mode: "historical_regeneration_current_snapshot";
     readonly generalAllowHistorical: false;
-    readonly maxManifestAgeSeconds: 1800;
+    readonly lifetimePolicy: typeof datasetManifestLifetimePolicy;
   };
   readonly promotionRebuild?: Readonly<{
     rebuildIdentity: string;
@@ -102,6 +106,7 @@ type HistoricalRegenerationRequest = Extract<
 
 export function loadHistoricalRegeneration(params: {
   readonly request: HistoricalRegenerationRequest;
+  readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly collectionDate: string;
   readonly githubOmissionReason?: string;
   readonly recoveryRoot: string;
@@ -143,6 +148,9 @@ export function loadHistoricalRegeneration(params: {
         params.collectionDate,
       )
     : null;
+  const admission = readReaderSummaryDayDatasetAdmission(
+    params.environment ?? {},
+  );
   const { manifest: datasetManifest, fileSha256: datasetManifestFileSha256 } =
     readReaderSummaryDayDatasetManifest({
       path: params.request.datasetManifestPath,
@@ -153,6 +161,7 @@ export function loadHistoricalRegeneration(params: {
       endedAt: new Date(productionDayUtcPeriod(params.collectionDate).endedAt),
       now: params.now,
       expectedTimestampPolicy: params.request.timestampPolicy,
+      ...(admission === undefined ? {} : { admission }),
     });
   if (params.request.timestampPolicy === "published_at" && preserved !== null) {
     validateManifestProviderCounts(preserved.collection.value, datasetManifest);
@@ -208,7 +217,7 @@ export function loadHistoricalRegeneration(params: {
     freshnessOverride: {
       mode: "historical_regeneration_current_snapshot",
       generalAllowHistorical: false,
-      maxManifestAgeSeconds: 1800,
+      lifetimePolicy: datasetManifestLifetimePolicy,
     },
     ...(params.request.promotionRebuild === undefined
       ? {}

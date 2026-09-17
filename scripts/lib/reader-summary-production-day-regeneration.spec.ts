@@ -73,11 +73,27 @@ describe("historical production-day regeneration", () => {
         startedAt: "2026-07-19T00:00:00.000Z",
         endedAt: "2026-07-20T00:00:00.000Z",
       },
+      freshnessOverride: {
+        mode: "historical_regeneration_current_snapshot",
+        generalAllowHistorical: false,
+        lifetimePolicy: {
+          mode: "fresh_admission_bounded_operation_v1",
+          maxAdmissionAgeSeconds: 1800,
+          maxOperationAgeSeconds: 11760,
+        },
+      },
       githubPolicy: {
         mode: "verified_collected_rows",
         collectedRowCount: 20,
       },
     });
+  });
+
+  it("rejects a stale manifest at historical admission", () => {
+    const request = writeFixtures();
+    expect(() => loadHistoricalRegeneration({
+      ...loadParams(request), now: new Date("2026-07-20T00:35:00.001Z"),
+    })).toThrow("scope, period or freshness is invalid");
   });
 
   it("admits a complete successful source only through Promotion V2 rebuild authority", () => {

@@ -303,6 +303,12 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
   const topReadFeedItemIds = topReadPromotionCandidateFeedItemIds(
     promotionBoard.topReads,
   );
+  const attestedTopReadFeedItemIds = new Set(
+    view.promotionAttestations
+      .filter((attestation) =>
+        attestation.placement === "top" && attestation.qualityValid)
+      .map((attestation) => attestation.candidateId),
+  );
   const sources = {
     "hacker-news": buildSourceTrace({
       providerKey: "hacker-news",
@@ -310,6 +316,7 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
       rankedById,
       selectedFeedItemIds,
       topReadFeedItemIds,
+      attestedTopReadFeedItemIds,
     }),
     reddit: buildSourceTrace({
       providerKey: "reddit",
@@ -317,6 +324,7 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
       rankedById,
       selectedFeedItemIds,
       topReadFeedItemIds,
+      attestedTopReadFeedItemIds,
     }),
     rss: buildSourceTrace({
       providerKey: "rss",
@@ -324,6 +332,7 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
       rankedById,
       selectedFeedItemIds,
       topReadFeedItemIds,
+      attestedTopReadFeedItemIds,
     }),
     "x-twitter": buildSourceTrace({
       providerKey: "x-twitter",
@@ -331,6 +340,7 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
       rankedById,
       selectedFeedItemIds,
       topReadFeedItemIds,
+      attestedTopReadFeedItemIds,
     }),
   };
   const qualityGates = {
@@ -451,6 +461,7 @@ function buildSourceTrace(params: {
   readonly rankedById: ReadonlyMap<string, RankedTrace>;
   readonly selectedFeedItemIds: ReadonlySet<string>;
   readonly topReadFeedItemIds: ReadonlySet<string>;
+  readonly attestedTopReadFeedItemIds: ReadonlySet<string>;
 }): SourceTrace {
   const providerItems = params.feedItems.filter(
     (item) => item.providerKey === params.providerKey,
@@ -469,6 +480,7 @@ function buildSourceTrace(params: {
         rankedById: params.rankedById,
         selectedFeedItemIds: params.selectedFeedItemIds,
         topReadFeedItemIds: params.topReadFeedItemIds,
+        attestedTopReadFeedItemIds: params.attestedTopReadFeedItemIds,
       }),
     )
     .sort(
@@ -543,6 +555,7 @@ function buildLaneTrace(params: {
   readonly rankedById: ReadonlyMap<string, RankedTrace>;
   readonly selectedFeedItemIds: ReadonlySet<string>;
   readonly topReadFeedItemIds: ReadonlySet<string>;
+  readonly attestedTopReadFeedItemIds: ReadonlySet<string>;
 }): LaneTrace {
   const qualityPolicy = new SourceContentQualityPolicy();
   const safetyPolicy = new SourceContentSafetyPolicy();
@@ -571,6 +584,10 @@ function buildLaneTrace(params: {
     });
     const selected = params.selectedFeedItemIds.has(item.id);
     const topRead = params.topReadFeedItemIds.has(item.id);
+    // A V2 evidence-bound assessment may resolve deterministic lexical
+    // ambiguity. Rehydration has already verified the immutable attestation.
+    const eligibleForTopRead = verdict.eligibleForTopRead ||
+      (topRead && params.attestedTopReadFeedItemIds.has(item.id));
 
     return {
       itemFingerprint: fingerprint(`${item.providerKey}:${item.id}`),
@@ -579,7 +596,7 @@ function buildLaneTrace(params: {
         : { rank: ranked.rank, rankScore: roundMetric(ranked.score) }),
       qualityDecision: verdict.decision,
       eligibleForSummary: verdict.eligibleForSummary,
-      eligibleForTopRead: verdict.eligibleForTopRead,
+      eligibleForTopRead,
       flags: verdict.flags,
       selected,
       topRead,
@@ -588,7 +605,7 @@ function buildLaneTrace(params: {
         selected,
         topRead,
         eligibleForSummary: verdict.eligibleForSummary,
-        eligibleForTopRead: verdict.eligibleForTopRead,
+        eligibleForTopRead,
         flags: verdict.flags,
       }),
     } satisfies ItemTrace;

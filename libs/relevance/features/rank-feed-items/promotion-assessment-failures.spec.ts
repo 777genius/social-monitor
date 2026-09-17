@@ -79,6 +79,81 @@ describe("promotion assessment protocol and budgets through V2", () => {
     expect(oversized.items[0]!.contentQuality.reason).toContain("budget_exhausted");
   });
 
+  it("spends a saturated provider budget on stronger candidates before candidate id", async () => {
+    const reviewBatch = jest.fn(accepting.reviewBatch);
+    const items = Array.from({ length: 201 }, (_, index) => fixture(
+      `candidate-${String(index).padStart(3, "0")}`,
+      "reddit",
+      { providerMetadata: { kind: "reddit_post", score: index === 200 ? 9_000 : 25, upvoteRatio: 0.95 } },
+    ));
+
+    const result = await run(items, { reviewBatch });
+    const reviewedIds = reviewBatch.mock.calls.flatMap(([requests]) => requests.map(({ candidateId }) => candidateId));
+
+    expect(reviewedIds).toContain("candidate-200");
+    expect(reviewedIds).not.toContain("candidate-199");
+    expect(result.items.find(({ feedItemId }) => feedItemId === "candidate-199")!.contentQuality.reason)
+      .toContain("budget_exhausted");
+  });
+
+  it("deterministically round-robins providers without starving a late provider", async () => {
+    const items = [
+      ...Array.from({ length: 201 }, (_, index) => fixture(
+        `reddit-${String(index).padStart(3, "0")}`,
+        "reddit",
+        { providerMetadata: { kind: "reddit_post", score: index + 25, upvoteRatio: 0.95 } },
+      )),
+      fixture("x-late", "x-twitter", {
+        providerMetadata: { kind: "x_post", contentKind: "original_post", likes: 90, reposts: 10 },
+      }),
+    ];
+    const assessedOrder = async (population: typeof items) => {
+      const reviewBatch = jest.fn(accepting.reviewBatch);
+      await run(population, { reviewBatch });
+      return reviewBatch.mock.calls.flatMap(([requests]) => requests.map(({ candidateId }) => candidateId));
+    };
+
+    const forward = await assessedOrder(items);
+    const reversed = await assessedOrder([...items].reverse());
+
+    expect(forward).toContain("x-late");
+    expect(forward).toEqual(reversed);
+  });
+
+  it("groups provider aliases by canonical family before deterministic round-robin", async () => {
+    const xItems = ["x", "x-twitter", "twitter"].flatMap((providerKey, aliasIndex) =>
+      Array.from({ length: 100 }, (_, index) => fixture(
+        `${aliasIndex === 1 ? "z-strong" : "a-weak"}-${aliasIndex}-${String(index).padStart(3, "0")}`,
+        providerKey,
+        { providerMetadata: { kind: "x_post", contentKind: "original_post",
+          likes: aliasIndex === 1 ? 9_000 : 90, reposts: 10 } },
+      )));
+    const items = [...xItems, fixture("hacker-news-chance", "hacker-news")];
+    const assessedOrder = async (population: typeof items) => {
+      const reviewBatch = jest.fn(accepting.reviewBatch);
+      await run(population, { reviewBatch });
+      return reviewBatch.mock.calls.flatMap(([requests]) => requests.map(({ candidateId }) => candidateId));
+    };
+
+    const forward = await assessedOrder(items);
+    const reversed = await assessedOrder([...items].reverse());
+
+    expect(forward).toContain("hacker-news-chance");
+    expect(forward).toContain("z-strong-1-099");
+    expect(forward).not.toContain("a-weak-2-099");
+    expect(forward).toEqual(reversed);
+  });
+
+  it("keeps exact scheduling ties candidate-id stable", async () => {
+    const reviewBatch = jest.fn(accepting.reviewBatch);
+    const items = [fixture("tie-c"), fixture("tie-a"), fixture("tie-b")];
+
+    await run(items, { reviewBatch });
+
+    expect(reviewBatch.mock.calls.flatMap(([requests]) => requests.map(({ candidateId }) => candidateId)))
+      .toEqual(["tie-a", "tie-b", "tie-c"]);
+  });
+
   it("bounds total bytes and runs only one batch at a time", async () => {
     let active = 0;
     let peak = 0;

@@ -1,6 +1,6 @@
+import { reconciliationFixture } from "./reader-summary-refresh-reconciliation.spec-support";
 import { FeedItem, type FeedItemProps } from "@social-monitor/feed/domain";
 import { buildReaderPostPromotionTitle, readerPostAvailableSourceText } from "@social-monitor/summary/domain/services/reader-post-promotion-title";
-import { selectorWiring } from "./reader-summary-new-input-refresh-selector-composition.spec-support";
 import { publicationProbe } from "./reader-summary-new-input-refresh-model-composition.spec-support";
 import { sourceContentAssessmentPurpose as purpose } from "./reader-summary-new-input-refresh-assessment-runtime";
 
@@ -10,8 +10,8 @@ afterEach(() => jest.restoreAllMocks());
 // Reused from the independent integrated-review probe, with rejection required.
 it.each(providers)("rejects the independent sourceText-only bypass for %s", async (providerKey) => {
   canonicalProvider(providerKey);
-  const test = await selectorWiring();
-  const selection = await test.selectComplete();
+  const test = await reconciliationFixture();
+  const selection = await test.reconciliationSelection();
   const original = selection.selectedEvidence.find((item) => item.providerKey === providerKey)!;
   expect(original).toBeDefined();
   const replacement = "Unreviewed replacement: the compiler vendor removed all sandbox isolation guarantees.";
@@ -30,8 +30,8 @@ it.each(providers)("rejects the independent sourceText-only bypass for %s", asyn
 
 it.each(providers.flatMap((provider) => ["canonical", "sanitized", "truncated"].map((kind) => [provider, kind])))("accepts canonical %s %s source representation", async (providerKey, kind) => {
     canonicalProvider(providerKey, kind);
-    const test = await selectorWiring();
-    const selection = await test.selectComplete();
+    const test = await reconciliationFixture();
+    const selection = await test.reconciliationSelection();
     const item = selection.selectedEvidence.find((evidence) => evidence.providerKey === providerKey)!;
     const trusted = test.preflight.canonicalEvidence.find((evidence) => evidence.feedItemId === item.feedItemId)!;
     expect(item.sourceText).toBe(trusted.sourceText);
@@ -58,8 +58,8 @@ it.each(providers.flatMap((provider) => ["canonical", "sanitized", "truncated"].
 
 it.each(providers.flatMap((provider) => ["tail", "removed", "snapshot mutation"].map((kind) => [provider, kind])))("rejects %s sourceText %s drift against the immutable snapshot", async (providerKey, kind) => {
     canonicalProvider(providerKey, "truncated");
-    const test = await selectorWiring();
-    const selection = await test.selectComplete();
+    const test = await reconciliationFixture();
+    const selection = await test.reconciliationSelection();
     const original = selection.selectedEvidence.find((item) => item.providerKey === providerKey)!;
     expect(original.sourceText!.length).toBeGreaterThan(12_000);
     const sourceText = kind === "removed" ? undefined : `${original.sourceText} Unreviewed tail claim.`;
@@ -97,7 +97,7 @@ function canonicalProvider(providerKey: string, kind = "canonical") {
 
   jest.spyOn(FeedItem, "publish").mockImplementation((input) => {
     const canonical = providerInput(input);
-    return publish({ ...canonical,
+    return publish(input.id.startsWith("synthetic-extra-") ? input : { ...canonical,
       bodyPreview: kind === "sanitized" ? `${canonical.bodyPreview}\n password=synthetic-redaction-fixture`
         : kind === "truncated" ? `${canonical.bodyPreview} `.repeat(160) : canonical.bodyPreview,
     });

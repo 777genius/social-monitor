@@ -30,6 +30,7 @@ import type { ConfiguredInterestReaderPort, SourceContentQualityReviewerPort, So
 import { resolvePromotionInterests } from "./resolve-promotion-interests";
 
 import { assessPromotionContent } from "./promotion-content-assessment";
+import { bindRetainedPromotionCandidateAuthority } from "./retained-promotion-candidate-authority";
 import { canCompeteForPromotionAssessment } from "./promotion-assessment-eligibility";
 import { unavailablePromotionHeadline, type PromotionReaderHeadline } from "../../domain/promotion-reader-headline";
 
@@ -57,6 +58,9 @@ export const rankPromotionSnapshot = async (params: {
       command.publishedBefore !== undefined
     ? "published_at" as const
     : "observed_at" as const;
+  if (command.retainedEngagementAuthority !== undefined && timestampPolicy !== "published_at") {
+    return err(new DomainError("validation.failed", "Retained historical authority requires published_at"));
+  }
   const windowStartedAt = timestampPolicy === "published_at"
     ? command.publishedAtOrAfter
     : command.observedAtOrAfter;
@@ -72,6 +76,7 @@ export const rankPromotionSnapshot = async (params: {
   let snapshot;
   try {
     snapshot = await params.feedItems.readPromotionSnapshot({
+      ...(command.retainedEngagementAuthority === undefined ? {} : { retainedAuthorityProjection: true as const }),
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       interestId: normalizeOptional(command.interestId),
@@ -109,6 +114,10 @@ export const rankPromotionSnapshot = async (params: {
   const sourceContentById = new Map(snapshot.sourceContent.map((content) =>
     [content.feedItemId, content] as const));
   const reviewRequests: SourceContentQualityReviewRequest[] = [];
+  const assessmentPriorityByCandidateId = new Map<string, {
+    readonly providerFamily: string;
+    readonly engagementSalience: number;
+  }>();
   const projected = snapshot.candidates.map((candidate) => {
     const item = candidate.item.toSnapshot();
     const sourceContent = sourceContentById.get(item.id);
@@ -136,6 +145,11 @@ export const rankPromotionSnapshot = async (params: {
       providerMetadata,
     });
     const projectedItem = {
+      ...(command.retainedEngagementAuthority === undefined ||
+          candidate.canonical.metrics.kind === "github_repository" ? {} : {
+        retainedEngagementAuthority: bindRetainedPromotionCandidateAuthority(
+          command.retainedEngagementAuthority, candidate),
+      }),
       readerHeadline: unavailablePromotionHeadline("not_assessed") as PromotionReaderHeadline,
       feedItemId: item.id,
       sourceItemId: item.sourceItemId,
@@ -145,11 +159,9 @@ export const rankPromotionSnapshot = async (params: {
       canonicalUrl: safety.sanitizedCanonicalUrl ?? item.canonicalUrl,
       title: safety.sanitizedTitle,
       bodyPreview: safety.sanitizedBodyPreview,
-      ...(safety.sanitizedBodyPreview === undefined ? {} : {
-        sourceText: safety.sanitizedBodyPreview.slice(
-          0, PROMOTION_SOURCE_TEXT_SAFETY_CAP,
-        ),
-      }),
+      sourceText: (safety.sanitizedBodyPreview ?? "").slice(
+        0, PROMOTION_SOURCE_TEXT_SAFETY_CAP,
+      ),
       providerMetadata,
       authorHandle: item.authorHandle,
       publishedAt: item.publishedAt.toISOString(),
@@ -196,6 +208,10 @@ export const rankPromotionSnapshot = async (params: {
               ? "truncated" : body.trim() ? "body_present" : "title_only",
           }),
         }));
+        assessmentPriorityByCandidateId.set(item.id, {
+          providerFamily: candidate.canonical.providerFamily,
+          engagementSalience: feedPromotionMetricStrength(candidate.canonical.metrics),
+        });
       }
       projectedItem.contentQuality = { ...quality, qualityScore: 0,
         eligibleForSummary: false, eligibleForTopRead: false, needsLlmReview: false,
@@ -204,6 +220,7 @@ export const rankPromotionSnapshot = async (params: {
     return projectedItem;
   });
   const assessed = await assessPromotionContent({ requests: reviewRequests,
+    priorityByCandidateId: assessmentPriorityByCandidateId,
     execution: command.promotionAssessmentExecution,
     observeHeadlineDiagnostic: command.observeHeadlineDiagnostic,
     reviewer: params.qualityReviewer, policy: params.qualityPolicy, clock: params.clock });

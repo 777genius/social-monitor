@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   PromotionReviewContext,
   SourceContentQualityReviewerPort,
@@ -49,6 +50,16 @@ implements SourceContentQualityReviewerPort {
         reason: "Explicit synthetic publication scenario; not model accuracy evidence.",
         assessment: {
           binding: request.promotion!,
+          headlineInput: Object.freeze({ request,
+            reviewedInputDigest: createHash("sha256").update(JSON.stringify({
+              candidateId: request.candidateId, providerKey: request.providerKey,
+              context: request.promotion, title: request.title, body: request.bodyPreview ?? "",
+            })).digest("hex"),
+            title: request.title, body: request.bodyPreview ?? "" }),
+          readerHeadline: { status: "available", kind: "claim", text: request.title, confidence: 0.95,
+            support: [{ field: "title", start: 0, end: request.title.length, quote: request.title }],
+            qualifications: [], wholeInput: { titleLength: request.title.length,
+              bodyLength: (request.bodyPreview ?? "").length, qualificationJudgment: "none" } },
           resolvedSoftFlags: [],
           evidence: [{
             field: scenario.evidenceField,

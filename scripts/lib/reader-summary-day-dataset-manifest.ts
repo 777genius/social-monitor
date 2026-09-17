@@ -4,6 +4,9 @@ import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistenc
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
 import type { ReaderSummaryTimestampPolicy } from "@social-monitor/summary/ports";
 
+import { captureRetainedEngagementAuthority, assertRetainedEngagementAuthority,
+  type HistoricalRetainedEngagementAuthority } from "./reader-summary-retained-engagement-authority";
+
 export const readerSummaryDayDatasetManifestFormat =
   "reader-summary-day-dataset-manifest-v1";
 
@@ -17,6 +20,7 @@ type EligibilityRow = {
 };
 
 export type ReaderSummaryDayDatasetManifest = {
+  readonly retainedEngagementAuthority?: HistoricalRetainedEngagementAuthority;
   readonly schemaVersion: 1;
   readonly format: typeof readerSummaryDayDatasetManifestFormat;
   readonly generatedAt: string;
@@ -51,6 +55,7 @@ export type ReaderSummaryDayDatasetManifest = {
 };
 
 export async function captureReaderSummaryDayDatasetManifest(params: {
+  readonly retainedAuthorityBoundThrough?: Date;
   readonly client: Pick<PrismaSummaryClient, "$queryRaw">;
   readonly tenantId: string;
   readonly workspaceId: string;
@@ -61,12 +66,18 @@ export async function captureReaderSummaryDayDatasetManifest(params: {
 }): Promise<ReaderSummaryDayDatasetManifest> {
   assertExactUtcDay(params.startedAt, params.endedAt);
   const timestampPolicy = params.timestampPolicy ?? "published_at";
-  const { feedRows, eligibilityRows } = await runWithTenantDatabaseAccess(
+  if (params.retainedAuthorityBoundThrough !== undefined && timestampPolicy !== "published_at") {
+    throw new Error("Retained historical authority requires published_at");
+  }
+  const { feedRows, eligibilityRows, retainedEngagementAuthority } = await runWithTenantDatabaseAccess(
     {
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
     },
     async () => ({
+      retainedEngagementAuthority: params.retainedAuthorityBoundThrough === undefined ? undefined
+        : await captureRetainedEngagementAuthority({ ...params,
+          boundThrough: params.retainedAuthorityBoundThrough }),
       feedRows: await readFeedRows({ ...params, timestampPolicy }),
       eligibilityRows: await readGitHubEligibilityRows(params),
     }),
@@ -80,10 +91,12 @@ export async function captureReaderSummaryDayDatasetManifest(params: {
     timestampPolicy,
     feedRows,
     eligibilityRows,
+    retainedEngagementAuthority,
   });
 }
 
 export function buildReaderSummaryDayDatasetManifest(params: {
+  readonly retainedEngagementAuthority?: HistoricalRetainedEngagementAuthority;
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly startedAt: Date;
@@ -112,7 +125,13 @@ export function buildReaderSummaryDayDatasetManifest(params: {
     JSON.stringify(sortedRecord(providerCounts)),
     timestampPolicy,
   ]);
+  if (params.retainedEngagementAuthority !== undefined) {
+    assertRetainedEngagementAuthority(params.retainedEngagementAuthority);
+  }
   return {
+    ...(params.retainedEngagementAuthority === undefined ? {} : {
+      retainedEngagementAuthority: params.retainedEngagementAuthority,
+    }),
     schemaVersion: 1,
     format: readerSummaryDayDatasetManifestFormat,
     generatedAt: params.generatedAt.toISOString(),
@@ -152,6 +171,8 @@ export function manifestsMatch(
   actual: ReaderSummaryDayDatasetManifest,
 ): boolean {
   return (
+    JSON.stringify(expected.retainedEngagementAuthority) ===
+      JSON.stringify(actual.retainedEngagementAuthority) &&
     expected.scope.tenantId === actual.scope.tenantId &&
     expected.scope.workspaceId === actual.scope.workspaceId &&
     expected.period.startedAt === actual.period.startedAt &&
@@ -204,6 +225,12 @@ export function parseReaderSummaryDayDatasetManifest(
     Object.values(value.redaction).some((item) => item !== false)
   ) {
     throw new Error("Dataset manifest contract is invalid");
+  }
+  if (value.retainedEngagementAuthority !== undefined) {
+    assertRetainedEngagementAuthority(value.retainedEngagementAuthority as HistoricalRetainedEngagementAuthority);
+    if (value.policy.timestampPolicy !== "published_at") {
+      throw new Error("Retained historical authority requires published_at");
+    }
   }
   return value as unknown as ReaderSummaryDayDatasetManifest;
 }

@@ -375,7 +375,10 @@ for unit in "${base_units[@]}"; do
 done
 : > "$SYSTEMCTL_EVENTS"
 rollback_snapshot=$(snapshot_postgres_runtime_control "$SHA")
+ROLLING_TIMER_NEXT_TRIGGER=
 activate_postgres_runtime_control "$SHA"
+[[ $(<"$ROLLING_TIMER_UNIT_FILE_STATE") == disabled ]]
+[[ $(<"$ROLLING_TIMER_ACTIVE_STATE") == inactive ]]
 release=$POSTGRES_RUNTIME_RELEASES/$SHA
 rm -f \
   "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
@@ -432,7 +435,7 @@ done
   "$unrelated_timer_inode" ]]
 [[ $(grep -E '(^| )(enable|disable|start|stop|restart)( |$)' \
   "$SYSTEMCTL_EVENTS") == \
-  $'enable --now social-monitor-github-premidnight-capture-v1.timer\nenable social-monitor-weekly.timer\nstart social-monitor-weekly.timer\nenable --now social-monitor-rolling.timer' ]]
+  $'enable --now social-monitor-github-premidnight-capture-v1.timer\nenable social-monitor-weekly.timer\nstart social-monitor-weekly.timer' ]]
 [[ $(<"$TIMER_UNIT_FILE_STATE") == enabled ]]
 [[ $(<"$TIMER_ACTIVE_STATE") == active ]]
 [[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == enabled ]]
@@ -577,11 +580,18 @@ set -e
 TIMER_NEXT_TRIGGER='Thu 2026-08-13 23:50:00 UTC'
 printf 'enabled\n' > "$TIMER_UNIT_FILE_STATE"
 printf 'active\n' > "$TIMER_ACTIVE_STATE"
+printf 'enabled\n' > "$ROLLING_TIMER_UNIT_FILE_STATE"
+printf 'active\n' > "$ROLLING_TIMER_ACTIVE_STATE"
+ROLLING_TIMER_NEXT_TRIGGER='Sat 2026-08-15 12:15:00 UTC'
 enabled_timer_snapshot=$(snapshot_postgres_runtime_control "$ENABLED_TIMER_SHA")
 activate_postgres_runtime_control "$ENABLED_TIMER_SHA" >/dev/null 2>&1
 [[ $(<"$TIMER_UNIT_FILE_STATE") == enabled ]]
 [[ $(<"$TIMER_ACTIVE_STATE") == active ]]
+[[ $(<"$ROLLING_TIMER_UNIT_FILE_STATE") == enabled ]]
+[[ $(<"$ROLLING_TIMER_ACTIVE_STATE") == active ]]
 restore_postgres_runtime_control "$enabled_timer_snapshot"
+printf 'disabled\n' > "$ROLLING_TIMER_UNIT_FILE_STATE"
+printf 'inactive\n' > "$ROLLING_TIMER_ACTIVE_STATE"
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$CONTROL/old-runtime" ]]
 [[ $(cat "$CONTROL/github-premidnight-capture-v1.sh") == \
    old-GitHub-premidnight-runner ]]

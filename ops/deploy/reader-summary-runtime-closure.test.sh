@@ -31,6 +31,8 @@ grep -Fx '      AGENT_RUNTIME_READER_SUMMARY_MODEL: gpt-5.6-sol' \
   "$RUNTIME/compose.agent-runtime-model.yml" >/dev/null
 grep -Fx '      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: high' \
   "$RUNTIME/compose.agent-runtime-model.yml" >/dev/null
+grep -Fx '      AGENT_RUNTIME_SOURCE_CONTENT_ASSESSMENT_TOTAL_TIMEOUT_MS: "3600000"' \
+  "$RUNTIME/compose.agent-runtime-model.yml" >/dev/null
 ! grep -F 'xhigh' "$RUNTIME/compose.agent-runtime-model.yml"
 grep -F '$POSTGRES_RUNTIME_CURRENT/compose.agent-runtime-model.yml' \
   "$SCRIPT_DIR/social-monitor-production-deploy.sh" >/dev/null

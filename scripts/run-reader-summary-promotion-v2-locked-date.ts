@@ -9,6 +9,8 @@ import { PrismaSummaryConnection } from
 import { loadDotenvIfPresent } from "./lib/env-file";
 import {
   ReaderSummaryDayDatasetGuard,
+  createReaderSummaryDayDatasetAdmission,
+  datasetManifestAdmissionEnvironment,
   readReaderSummaryDayDatasetManifest,
 } from "./lib/reader-summary-day-dataset-guard";
 import { parseReaderSummaryDayDatasetManifest } from
@@ -88,6 +90,11 @@ async function main(): Promise<void> {
     now,
     expectedTimestampPolicy: parsed.policy.timestampPolicy,
   });
+  const admission = createReaderSummaryDayDatasetAdmission({
+    manifest,
+    manifestFileSha256: fileSha256,
+    admittedAt: now,
+  });
   const connection = await PrismaSummaryConnection.create(
     defaultPostgresRuntimePoolConfig(
       requiredHistoricalPromotionSystemDatabaseUrl(process.env),
@@ -111,6 +118,7 @@ async function main(): Promise<void> {
       manifest,
       fileSha256,
       () => new Date(),
+      admission,
     );
     status = await runHistoricalPromotionLockedPreflight({
       revalidate: async () => {
@@ -261,7 +269,7 @@ async function main(): Promise<void> {
       },
       runProductionDay: () => spawnSync(command[0]!, command.slice(1), {
         cwd: process.cwd(),
-        env: process.env,
+        env: { ...process.env, ...datasetManifestAdmissionEnvironment(admission) },
         stdio: [
           "inherit", "inherit", "inherit",
           "ignore", "ignore", "ignore", "ignore", "ignore", "ignore",

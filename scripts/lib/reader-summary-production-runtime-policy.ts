@@ -7,15 +7,19 @@ export const READER_SUMMARY_PRODUCTION_RUNTIME_POLICY = {
   topicLabelerTimeoutMs: 1_800_000,
   topicRelationTimeoutMs: 300_000,
   topicMapMaximumAttempts: 2,
+  assessmentTimeoutMs: 3_600_000,
   captureGraceMs: 60_000,
-  captureTimeoutMs: 6_960_000,
+  captureTimeoutMs: 10_560_000,
   collectionReadinessDelayMs: 3_900_000,
   collectionExecutionGraceMs: 600_000,
   orchestrationGraceMs: 300_000,
-  orchestrationTimeoutMs: 11_760_000,
+  orchestrationTimeoutMs: 15_660_000,
+  historicalRecoveryTimeoutMs: 11_760_000,
+  lockedOperationTimeoutMs: 11_760_000,
 } as const;
 
 export const readerSummaryProductionMinimumCaptureTimeoutMs = (): number =>
+  READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.assessmentTimeoutMs +
   READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.storyRelationTimeoutMs *
     READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.storyRelationMaximumAttempts +
   READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs *

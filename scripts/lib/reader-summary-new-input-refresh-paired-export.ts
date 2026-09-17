@@ -424,7 +424,13 @@ export class RefreshPairedExport {
     const attempt = this.assessments.find((entry) => entry.phase === "attempt" && entry.batch === event.batch);
     if (attempt?.requestsJson !== event.requestsJson) throw new Error("Assessment parsed request mismatch");
     const requests = JSON.parse(event.requestsJson) as SourceContentQualityReviewRequest[];
-    const parsed = parseReviews(JSON.stringify(envelope.result.structuredOutput), requests);
+    // This replays the exact live agent-runtime parse for determinism
+    // verification, so it must trust the same already-attested request
+    // binding the live adapter did - otherwise a legitimate drifted
+    // bindingId the live parse accepted would make this replay throw
+    // instead of comparing output, diverging live-accept from capture-fail.
+    const parsed = parseReviews(JSON.stringify(envelope.result.structuredOutput), requests,
+      { trustAttestedRequestBinding: true });
     if (JSON.stringify(parsed) !== event.reviewsJson) throw new Error("Assessment concrete parser mismatch");
   }
 

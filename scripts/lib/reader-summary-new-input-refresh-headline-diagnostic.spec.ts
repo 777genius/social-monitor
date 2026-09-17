@@ -1,3 +1,4 @@
+import { fixtureHeadline } from "../../test/support/promotion-content-assessment";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -23,10 +24,10 @@ describe("fresh refresh headline diagnostic reachability", () => {
     const run = async (mode: "off" | "reserved" | "existing") => {
       const fixture = pairedFixture({ capture: false, supplemental: 0, response: (command) => {
         const { candidates } = JSON.parse(command.prompt);
-        return { reviews: candidates.map((c: { candidateId: string; bindingId: string; untrustedSource: { bodyPreview: string } }) => ({
+        return { reviews: candidates.map((c: { candidateId: string; bindingId: string; untrustedSource: { title: string; bodyPreview: string } }) => ({
           candidateId: c.candidateId, bindingId: c.bindingId, decision: "promote", confidence: 0.96,
           qualityScore: 0.85, interestRelevanceScore: 0.95, engagementIntegrityScore: 0.95,
-          flags: [], reason: "Synthetic parser result", resolvedSoftFlags: [],
+          flags: [], reason: "Synthetic parser result", resolvedSoftFlags: [], readerHeadline: fixtureHeadline(c.untrustedSource),
           evidence: [{ field: "bodyPreview", start: 0, end: c.untrustedSource.bodyPreview.length, quote: c.untrustedSource.bodyPreview }],
         })) };
       } });

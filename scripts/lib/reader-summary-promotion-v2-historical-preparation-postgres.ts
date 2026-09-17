@@ -102,6 +102,9 @@ export class PostgresHistoricalPromotionPreparationReader
       reportSha256: requiredSha256(row.reportSha256),
       proofSha256: requiredSha256(row.proofSha256),
       tupleKind: tuple.kind,
+      rankingPolicyVersion: requiredRankingPolicyVersion(
+        tuple.rankingPolicyVersion,
+      ),
     };
   }
 
@@ -135,6 +138,7 @@ export class PostgresHistoricalPromotionPreparationReader
   }
 
   captureDataset(input: {
+    retainedCurrentAuthority?: boolean;
     date: string;
     generatedAt: Date;
     timestampPolicy: "published_at" | "observed_at";
@@ -143,6 +147,9 @@ export class PostgresHistoricalPromotionPreparationReader
     const endedAt = new Date(startedAt);
     endedAt.setUTCDate(endedAt.getUTCDate() + 1);
     return captureReaderSummaryDayDatasetManifest({
+      ...(input.retainedCurrentAuthority === true ? {
+        retainedAuthorityBoundThrough: input.generatedAt,
+      } : {}),
       client: this.client,
       tenantId: this.scope.tenantId,
       workspaceId: this.scope.workspaceId,
@@ -166,6 +173,14 @@ const requiredSha256 = (value: string): string => {
   const normalized = value.trim();
   if (!/^[0-9a-f]{64}$/u.test(normalized)) {
     throw new Error("Historical preparation publication proof is invalid");
+  }
+  return normalized;
+};
+
+const requiredRankingPolicyVersion = (value: string | undefined): string => {
+  const normalized = value?.trim();
+  if (normalized === undefined || normalized.length === 0) {
+    throw new Error("Historical preparation ranking policy version is missing");
   }
   return normalized;
 };

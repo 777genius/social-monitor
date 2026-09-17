@@ -28,7 +28,7 @@ export function fixturePriorPayload() {
     .start({ startedAt: fixturePriorTime });
   const period = refreshPeriod(fixtureDate);
   const evidence: SummaryEvidenceSelection = {
-    rankingPolicyVersion: "reader_promotion_policy.v2", selectedEvidence: [], clusters: [],
+    rankingPolicyVersion: "story_ranking_v10", selectedEvidence: [], clusters: [],
     sourceWindow: { windowId: "fabricated:empty-prior", startedAt: period.startedAt,
       endedAt: period.endedAt, periodStartedAt: period.startedAt, periodEndedAt: period.endedAt,
       ingestionCutoff: fixturePriorTime, selectedFeedItemIds: [], storyClusterIds: [] },

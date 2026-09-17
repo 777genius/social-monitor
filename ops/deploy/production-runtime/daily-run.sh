@@ -50,7 +50,7 @@ MAINTENANCE_DATE=${2:-}
 case "$DATE_FLAG" in
   --check-readiness|--today|--yesterday) ;;
   --maintenance-date)
-    [[ $# -eq 2 && $MAINTENANCE_DATE =~ ^2026-(07-(2[3-9]|3[01])|08-(0[1-9]|1[0-9]|2[0-9]|3[01])|09-0[1-5])$ ]] || {
+    [[ $# -eq 2 && $MAINTENANCE_DATE =~ ^2026-(07-(2[3-9]|3[01])|08-(0[1-9]|1[0-9]|2[0-9]|3[01])|09-(0[1-9]|1[0-3]))$ ]] || {
       echo "historical daily production-day date is outside the reviewed recovery bound" >&2
       exit 64
     }
@@ -212,7 +212,7 @@ fi
   historical_mode=false
   if [ '"$DATE_FLAG"' = --maintenance-date ]; then
     historical_mode=true
-    historical_args="--allow-historical --allow-historical-provider-collection"
+    historical_args="--allow-historical --allow-historical-provider-collection --bounded-historical-recovery"
     export READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR=/var/lib/social-monitor/artifacts/reader-summary-production-history-collection
   fi
   if [ -z "$requested_date" ]; then

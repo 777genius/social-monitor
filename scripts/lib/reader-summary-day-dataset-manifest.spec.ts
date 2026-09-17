@@ -271,7 +271,12 @@ describe("reader summary day dataset manifest", () => {
       ).toThrow("file hash does not match");
       for (const invalid of [
         { tenantId: "55555555-5555-4555-8555-555555555555" },
+        { workspaceId: "55555555-5555-4555-8555-555555555555" },
         { startedAt: new Date("2026-07-18T00:00:00.000Z") },
+        { endedAt: new Date("2026-07-21T00:00:00.000Z") },
+        { expectedTimestampPolicy: "observed_at" as const },
+        { now: new Date("2026-07-20T00:04:59.999Z") },
+        { now: new Date(NaN) },
         { now: new Date("2026-07-20T00:40:01.000Z") },
       ]) {
         expect(() =>

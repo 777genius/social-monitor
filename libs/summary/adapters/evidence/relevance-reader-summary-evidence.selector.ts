@@ -86,6 +86,9 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       ...periodQuery,
       observedAtOrBefore: ingestionCutoff,
       rankingProfile: "reader_post_promotion",
+      ...(params.retainedEngagementAuthority === undefined ? {} : {
+        retainedEngagementAuthority: params.retainedEngagementAuthority,
+      }),
       limit: expandedCandidateLimit(params.maxItems),
       ...(this.preparationObserver === undefined ? {} : {
         observePromotionPreparation: (preparation) => observeReaderPromotionSnapshot(
@@ -221,6 +224,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     const editorialSlate = composeReaderSummaryEditorialSlate({
       selection: deterministicPromotionSelection,
       candidates: promotionPolicyItems,
+      displayScope: params,
     });
     const deterministicFinalSelection = materializeReaderSummaryEditorialSlate({
       selection: deterministicPromotionSelection,

@@ -9,9 +9,14 @@ export const refreshScope = Object.freeze({
   tenantId: "00000000-0000-7000-8000-000000006101",
   workspaceId: "00000000-0000-7000-8000-000000006102",
 });
-export const refreshDates = Object.freeze([
+export const refreshDefaultDates = Object.freeze([
   "2026-08-30", "2026-08-31", "2026-09-01", "2026-09-02",
   "2026-09-03", "2026-09-04", "2026-09-05",
+]);
+export const refreshDates = Object.freeze([
+  ...refreshDefaultDates,
+  "2026-09-06", "2026-09-07", "2026-09-08", "2026-09-09",
+  "2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13",
 ]);
 export type RefreshPrior = Readonly<{
   artifactId: string; jobId: string; publicationId: string;
@@ -56,8 +61,8 @@ export const refreshOperation = (m: Omit<RefreshManifest, "operation">): string 
     runtime: m.runtime, model: m.model, effort: m.reasoningEffort,
   });
 
-export function assertRefreshManifest(m: RefreshManifest, now: Date, fresh = true): void {
-  if (m.successor !== undefined) assertRefreshSuccessorGrant(m, now, { assertOriginal: assertRefreshManifest, hash: refreshHash });
+export function assertRefreshManifest(m: RefreshManifest, now: Date, fresh = true, depth = 0): void {
+  if (m.successor !== undefined) assertRefreshSuccessorGrant(m, now, { assertOriginal: assertRefreshManifest, hash: refreshHash }, depth);
   if (m.format !== "reader-summary-seven-day-new-input-v1" ||
       m.tenantId !== refreshScope.tenantId || m.workspaceId !== refreshScope.workspaceId ||
       !refreshDates.includes(m.date) || m.timezone !== "UTC" ||

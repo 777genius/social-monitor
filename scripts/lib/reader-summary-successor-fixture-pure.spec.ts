@@ -22,7 +22,8 @@ describe("successor fixture without database access", () => {
       periodEndedAt: fixturePriorTime, periodTimezone: "UTC", userId: null, subscriptionId: null,
       headline: String(first.report.headline), summaryText: String(first.report.summaryText),
       createdAt: fixturePriorTime, artifactPayload: first.report.artifactPayload,
-    })).toEqual({ kind: "valid-no-signal", noSignal: true, orderedLanes: { top: [], additional: [] }, citationCount: 0 });
+    })).toEqual({ kind: "valid-no-signal", noSignal: true, rankingPolicyVersion: "story_ranking_v10",
+      orderedLanes: { top: [], additional: [] }, citationCount: 0 });
   });
   it("has actual canonical feed eligibility for the fabricated story", () => {
     expect(classifyFeedPromotionEligibility({ providerKey: "hacker-news", providerMetadata: fixtureMetadata }).eligible).toBe(true);

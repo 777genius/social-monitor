@@ -336,6 +336,12 @@ async function buildReport(): Promise<ArtifactQualityReport> {
       topReads,
       citationById,
       feedItems: topReadFeedItems,
+      attestedQualityByCandidateId: new Map(
+        view.promotionAttestations.map((attestation) => [
+          attestation.candidateId,
+          attestation.qualityValid,
+        ] as const),
+      ),
     });
     const lowConfidenceTopReadCount = topReads.filter(
       (item) => item.confidence.level === "low",
@@ -727,6 +733,7 @@ function buildTopReadSourceQuality(params: {
     }
   >;
   readonly feedItems: readonly TopReadFeedItemQualityRow[];
+  readonly attestedQualityByCandidateId: ReadonlyMap<string, boolean>;
 }): ArtifactQualityReport["sourceQuality"] {
   const qualityPolicy = new SourceContentQualityPolicy();
   const safetyPolicy = new SourceContentSafetyPolicy();
@@ -763,6 +770,11 @@ function buildTopReadSourceQuality(params: {
         asJsonObject(feedItem.providerMetadata),
       ),
     });
+    // V2 may resolve deterministic lexical ambiguity through an evidence-bound
+    // model assessment. The immutable promotion attestation is the authority
+    // consumed by publication; the deterministic replay remains diagnostic.
+    const attestedQualityValid =
+      params.attestedQualityByCandidateId.get(candidateId) === true;
 
     return [{
       citationFingerprint: fingerprint(citation.citationId),
@@ -770,7 +782,8 @@ function buildTopReadSourceQuality(params: {
       providerKey: feedItem.providerKey,
       decision: verdict.decision,
       eligibleForSummary: verdict.eligibleForSummary,
-      eligibleForTopRead: verdict.eligibleForTopRead,
+      eligibleForTopRead:
+        verdict.eligibleForTopRead || attestedQualityValid,
       qualityScore: verdict.qualityScore,
       interestRelevanceScore: verdict.interestRelevanceScore,
       engagementIntegrityScore: verdict.engagementIntegrityScore,

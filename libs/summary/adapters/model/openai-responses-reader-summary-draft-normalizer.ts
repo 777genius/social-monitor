@@ -60,10 +60,14 @@ export const normalizeOpenAiReaderSummaryDraft = (
   const headline = readerSummaryHeadline(
     requiredString(raw.headline, "reader summary headline"),
   );
-  const legacyExecutiveSummary = requiredString(
-    raw.executiveSummary,
-    "reader summary executive summary",
-  );
+  const legacyExecutiveSummary =
+    typeof raw.executiveSummary === "string" &&
+      raw.executiveSummary.trim().length === 0
+      ? ""
+      : requiredString(
+          raw.executiveSummary,
+          "reader summary executive summary",
+        );
   const topStories = normalizeRecordArray(raw.topStories);
   const normalizedTopStories = normalizeTopStories(
     topStories,
@@ -92,9 +96,17 @@ export const normalizeOpenAiReaderSummaryDraft = (
       ),
     ),
   });
+  const noSignalReason =
+    normalizedTopStories.length === 0
+      ? (optionalString(raw.noSignalReason) ??
+        "OpenAI reader summary returned no domain-safe cited stories.")
+      : undefined;
   const executiveSummary =
     narrativeSections.length === 0
-      ? legacyExecutiveSummary
+      ? (optionalString(legacyExecutiveSummary) ??
+        optionalString(normalizedTopStories[0]?.summary) ??
+        noSignalReason ??
+        "")
       : readerSummaryNarrativeMarkdown(narrativeSections);
   const interestHighlights = input.policy.includeInterestHighlights
     ? normalizeInterestHighlights(
@@ -125,11 +137,6 @@ export const normalizeOpenAiReaderSummaryDraft = (
           "limited_sources",
         ]) as readonly ReaderSummaryQualityFlag[])
       : rawQualityFlags.filter((flag) => flag !== "no_signal");
-  const noSignalReason =
-    normalizedTopStories.length === 0
-      ? (optionalString(raw.noSignalReason) ??
-        "OpenAI reader summary returned no domain-safe cited stories.")
-      : undefined;
   const confidence = normalizeConfidence(
     asRecord(raw.confidence) ?? {},
     normalizedTopStories.length,
