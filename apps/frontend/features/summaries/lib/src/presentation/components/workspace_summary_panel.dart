@@ -252,6 +252,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
       onCalendarDateSelected: onCalendarDateSelected,
       onGenerate: onGenerate,
       isGenerating: isGenerating,
+      isLoading: state is LoadingViewState<WorkspaceSummarySnapshot>,
       exportSummary: exportSummary,
       showRefreshSchedule: showRefreshSchedule,
       onRefreshDue: onRefreshDue,

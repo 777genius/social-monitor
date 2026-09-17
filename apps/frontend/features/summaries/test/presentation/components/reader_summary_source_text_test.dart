@@ -288,6 +288,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Original'), findsNothing);
+    final summaryTopBeforeHover = tester
+        .getTopLeft(find.text('A concise model summary of the post.'))
+        .dy;
 
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
@@ -297,6 +300,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Original'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('A concise model summary of the post.')).dy,
+      summaryTopBeforeHover,
+    );
 
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();

@@ -42,34 +42,54 @@ export const exactPromotionPageEvidence = async (
             to_char(feed.observed_at AT TIME ZONE 'UTC',
               'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "observedAt",
             feed.observed_at <= $2::timestamptz AS "observedThrough",
-            to_char(engagement.last_observed_at AT TIME ZONE 'UTC',
-              'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "engagementObservedAt",
-            to_char(engagement.last_changed_at AT TIME ZONE 'UTC',
-              'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "engagementChangedAt",
-            engagement.metrics_hash AS "engagementMetricsHash",
+            to_char(
+              CASE
+                WHEN engagement.last_observed_at <= $2::timestamptz
+                  THEN engagement.last_observed_at
+                ELSE latest_observation.observed_at
+              END AT TIME ZONE 'UTC',
+              'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+            ) AS "engagementObservedAt",
+            to_char(
+              CASE
+                WHEN engagement.last_observed_at <= $2::timestamptz
+                  THEN engagement.last_changed_at
+                ELSE latest_observation.observed_at
+              END AT TIME ZONE 'UTC',
+              'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+            ) AS "engagementChangedAt",
             CASE
-              WHEN engagement.source_item_id IS NULL OR
-                   latest_observation.observed_at IS NULL THEN NULL
-              ELSE COALESCE(engagement.score < latest_observation.score, false)
-                OR COALESCE(engagement.comments < latest_observation.comments, false)
-                OR COALESCE(engagement.likes < latest_observation.likes, false)
-                OR COALESCE(engagement.reposts < latest_observation.reposts, false)
-                OR COALESCE(engagement.points < latest_observation.points, false)
-                OR COALESCE(engagement.stars < latest_observation.stars, false)
-                OR COALESCE(engagement.forks < latest_observation.forks, false)
-                OR COALESCE(
-                  engagement.stars_gained < latest_observation.stars_gained,
-                  false
-                )
-                OR COALESCE(
-                  engagement.provider_rank > latest_observation.provider_rank,
-                  false
-                )
-                OR COALESCE(
-                  engagement.upvote_ratio_bps <
-                    latest_observation.upvote_ratio_bps,
-                  false
-                )
+              WHEN engagement.last_observed_at <= $2::timestamptz
+                THEN engagement.metrics_hash
+              ELSE latest_observation.metrics_hash
+            END AS "engagementMetricsHash",
+            CASE
+              WHEN engagement.last_observed_at <= $2::timestamptz THEN
+                CASE
+                  WHEN engagement.source_item_id IS NULL OR
+                       latest_observation.observed_at IS NULL THEN NULL
+                  ELSE COALESCE(engagement.score < latest_observation.score, false)
+                    OR COALESCE(engagement.comments < latest_observation.comments, false)
+                    OR COALESCE(engagement.likes < latest_observation.likes, false)
+                    OR COALESCE(engagement.reposts < latest_observation.reposts, false)
+                    OR COALESCE(engagement.points < latest_observation.points, false)
+                    OR COALESCE(engagement.stars < latest_observation.stars, false)
+                    OR COALESCE(engagement.forks < latest_observation.forks, false)
+                    OR COALESCE(
+                      engagement.stars_gained < latest_observation.stars_gained,
+                      false
+                    )
+                    OR COALESCE(
+                      engagement.provider_rank > latest_observation.provider_rank,
+                      false
+                    )
+                    OR COALESCE(
+                      engagement.upvote_ratio_bps <
+                        latest_observation.upvote_ratio_bps,
+                      false
+                    )
+                END
+              ELSE false
             END AS "currentHasRegressionFromLatest",
             to_char(latest_observation.observed_at AT TIME ZONE 'UTC',
               'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "latestObservationAt",
@@ -151,6 +171,7 @@ export const exactPromotionPageEvidence = async (
           WHERE observation.tenant_id = feed.tenant_id
             AND observation.workspace_id = feed.workspace_id
             AND observation.source_item_id = feed.source_item_id
+            AND observation.observed_at <= $2::timestamptz
           ORDER BY observation.observed_at DESC, observation.id DESC
           LIMIT 1
        ) latest_observation ON true
@@ -172,6 +193,7 @@ export const exactPromotionPageEvidence = async (
           WHERE observation.tenant_id = feed.tenant_id
             AND observation.workspace_id = feed.workspace_id
             AND observation.source_item_id = feed.source_item_id
+            AND observation.observed_at <= $2::timestamptz
           ORDER BY observation.observed_at DESC, observation.id DESC
           OFFSET 1 LIMIT 1
        ) previous_observation ON true
