@@ -14,12 +14,16 @@ import { presentReaderSummaryArtifact } from "../../features/shared/reader-summa
 import { readerSummaryArtifactViewFromReaderSummaryView } from "./reader-summary-rest.mapper";
 
 /** Deterministic V2 Top/Additional envelope; never invokes a model or provider. */
-export const projectPublicTitles = (title: string, sourceText: string, assessed = false) => {
+export const projectPublicTitles = (
+  title: string, sourceText: string, assessed: boolean | "source" = false,
+) => {
   const selection = dailyEvidenceSelection(25);
   const snapshot = dailySynthesisArtifact().toSnapshot();
+  const acceptedHeadlines = assessed === true;
+  const keepProjectedDisplay = assessed !== false;
   const evidence = selection.selectedEvidence.map((item) => ({
     ...item, title, sourceText, bodyPreview: sourceText.slice(0, 280),
-  })).map((item) => assessed ? acceptedFixtureReaderHeadline(item, { tenantId: snapshot.tenantId, workspaceId: snapshot.workspaceId }) : item);
+  })).map((item) => acceptedHeadlines ? acceptedFixtureReaderHeadline(item, { tenantId: snapshot.tenantId, workspaceId: snapshot.workspaceId }) : item);
   const base = dailySynthesisArtifact();
 
   const binding = { artifactId: snapshot.readerSummaryId, sourceWindow: selection.sourceWindow };
@@ -53,9 +57,9 @@ export const projectPublicTitles = (title: string, sourceText: string, assessed 
     return { ...body, canonicalPayload: payload, digest: promotionPayloadDigest(payload) };
   });
   const artifact = withPublicationCards(base, {
-    topReads: assessed ? projection.topReads : projection.topReads.map(historicalCard),
-    selectedPosts: assessed ? projection.additionalPosts : projection.additionalPosts.map(historicalCard),
-  }, assessed ? projection.attestations : historicalAttestations, projection.attestedEvidenceFacts);
+    topReads: keepProjectedDisplay ? projection.topReads : projection.topReads.map(historicalCard),
+    selectedPosts: keepProjectedDisplay ? projection.additionalPosts : projection.additionalPosts.map(historicalCard),
+  }, keepProjectedDisplay ? projection.attestations : historicalAttestations, projection.attestedEvidenceFacts);
   const view = presentReaderSummaryArtifact(artifact, {
     status: "fresh", checkedAt: new Date("2026-07-05T09:00:00Z"),
   });

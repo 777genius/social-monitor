@@ -8,7 +8,10 @@ import type {
   SourceContentAssessmentFailureStage, SourceContentQualityReviewerPort, SourceContentQualityReviewRequest,
 } from "@social-monitor/relevance/ports";
 import { SourceContentAssessmentStageError } from "@social-monitor/relevance/ports";
-import { assessedPromotionVerdict } from "@social-monitor/relevance/features/rank-feed-items/promotion-assessment-verdict";
+import {
+  assessedPromotionVerdict,
+  isIncompletePromotionAssessment,
+} from "@social-monitor/relevance/features/rank-feed-items/promotion-assessment-verdict";
 import { PROMOTION_ASSESSMENT_BOUNDS } from "@social-monitor/relevance/features/rank-feed-items/promotion-content-assessment";
 import { createSourceContentAssessmentReviewer } from "@social-monitor/relevance/interfaces/rest/source-content-assessment-provider-tokens";
 import { resolveRelevanceContentQualityReviewerMode } from "@social-monitor/relevance/interfaces/rest/relevance-provider-tokens";
@@ -181,14 +184,25 @@ export function createRefreshAssessmentReviewer(input: {
           continue;
         }
         const assessed = eligible.get(item.feedItemId);
-        const request = assessed?.request;
+        if (assessed !== undefined) {
+          const request = assessed.request;
+          if (!request || request.providerKey !== item.providerKey || request.title !== item.title.slice(0, 2_000) ||
+              request.bodyPreview !== (item.bodyPreview ?? "").slice(0, 12_000) ||
+              request.promotion?.interestId !== item.interestId ||
+              request.promotion?.sourceItemId !== item.sourceItemId ||
+              request.promotion?.sourceBindingId !== item.sourceBindingId ||
+              assessed.verdict.reason !== quality.reason ||
+              assessed.verdict.decision !== quality.decision) fail("binding");
+          continue;
+        }
+        const request = seen.get(item.feedItemId);
         if (!request || request.providerKey !== item.providerKey || request.title !== item.title.slice(0, 2_000) ||
             request.bodyPreview !== (item.bodyPreview ?? "").slice(0, 12_000) ||
             request.promotion?.interestId !== item.interestId ||
             request.promotion?.sourceItemId !== item.sourceItemId ||
             request.promotion?.sourceBindingId !== item.sourceBindingId ||
-            assessed?.verdict.reason !== quality.reason ||
-            assessed?.verdict.decision !== quality.decision) fail("binding");
+            quality.decision !== request.deterministic.decision ||
+            quality.reason !== request.deterministic.reason) fail("binding");
       }
     },
     reviewBatch: async (requests, options) => {
@@ -228,9 +242,10 @@ export function createRefreshAssessmentReviewer(input: {
             reviews.find((review) => review.candidateId === request.candidateId), policy);
           verdicts.push({ candidateId: request.candidateId, verdict });
           if (verdict.reason.startsWith("promotion_assessment_pending:")) {
-            // These reasons are emitted only after binding, shape and quote
-            // validation. All other pending outcomes remain authority failures.
-            if (verdict.reason !== "promotion_assessment_pending:needs_context" &&
+            // Quota, timeout and budget gaps keep deterministic floors. Invalid
+            // reviews still fail closed. Needs-context and low-confidence abstain.
+            if (!isIncompletePromotionAssessment(verdict) &&
+                verdict.reason !== "promotion_assessment_pending:needs_context" &&
                 verdict.reason !== "promotion_assessment_pending:low_confidence" &&
                 verdict.reason !== "promotion_assessment_pending:invalid_assessment") fail("verdict");
             abstained++;
@@ -255,7 +270,7 @@ export function createRefreshAssessmentReviewer(input: {
 }
 
 // Check attempted assessment integrity and selected bindings before generation.
-// Canonical ranking keeps unassessed/abstaining candidates pending and unselected.
+// Incomplete assessment may keep deterministic floors on selected evidence.
 export function withRefreshAssessmentCompletion(selector: ReaderSummaryEvidenceSelectorPort,
   assessment: AssessmentCompletion, expected: number): ReaderSummaryEvidenceSelectorPort {
   return { select: async (query) => {

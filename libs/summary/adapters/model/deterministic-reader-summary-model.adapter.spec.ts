@@ -55,13 +55,9 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(attempt.draft.headline).not.toContain(";");
     expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
     expect(attempt.draft.headline).not.toContain("disposable Linux VM");
-    expect(input.evidence.editorialSlate?.additional).toEqual([
-      expect.objectContaining({
-        candidateId: "feed-2",
-        placement: "additional",
-        reasonCodes: expect.arrayContaining(["top_floor_not_met"]),
-      }),
-    ]);
+    expect(input.evidence.editorialSlate?.additional).toEqual([]);
+    expect(input.evidence.editorialSlate?.top.map((entry) => entry.candidateId))
+      .toContain("feed-2");
     expect(input.evidence.selectedEvidence.map((item) => item.feedItemId))
       .toContain("feed-2");
     expect(input.evidence.editorialSlate?.excluded).toContainEqual(
@@ -78,10 +74,11 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
       "hacker-news",
       "x-twitter",
       "github-repo-radar",
+      "reddit",
     ]);
     expect(
       attempt.draft.content?.selectedPosts?.map((item) => item.providerKey),
-    ).toEqual(["reddit"]);
+    ).toEqual([]);
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
     ).not.toContain("github-trending-page");

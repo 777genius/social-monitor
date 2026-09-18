@@ -46,6 +46,7 @@ const fixture = (
     const lead = evidence[1]!;
     return { ...lead, feedItemId: `filler-${index}`, sourceItemId: `source-filler-${index}`,
       canonicalUrl: `https://example.test/filler-${index}`,
+      title: `Distinct filler story ${index} about workflow costs`,
       promotionFacts: { ...lead.promotionFacts!,
         canonicalIdentity: `story:filler-${index}`,
         metrics: { provider: "hacker_news" as const, points: 500 },

@@ -37,9 +37,9 @@ describe("faithful available source admission and projection", () => {
       expect(top.capturedSource?.body).toBe(text);
       expect(top.displayHeadline?.status).toBe("unavailable");
       expect(isReaderFacingQualityTopRead({ ...top, providerKey: item.providerKey, signalScore: 2.2,
-        reason: "This discussion informs how operators review agent changes." }, [item])).toBe(false);
+        reason: "This discussion informs how operators review agent changes." }, [item])).toBe(true);
       expect(isReaderFacingQualityTopRead({ ...top, providerKey: item.providerKey, signalScore: 2.2,
-        reason: "This discussion informs how operators review agent changes." }, [support])).toBe(false);
+        reason: "This discussion informs how operators review agent changes." }, [support])).toBe(true);
     },
   );
 
@@ -79,6 +79,20 @@ describe("faithful available source admission and projection", () => {
     expect(project([...higher, item]).additionalPosts[0]?.title).toBe(incident);
   });
 
+  it("admits stale authority while the social metric age gate is off", () => {
+    const item = {
+      ...source(),
+      promotionFacts: {
+        ...source().promotionFacts!,
+        engagementAuthority: {
+          observedAt: new Date("2026-08-01T00:00:00Z"),
+          regressionState: "stable" as const,
+        },
+      },
+    };
+    expect(project([item]).topReads).toHaveLength(1);
+  });
+
   it.each(["", "Check this out!", "Current AI product discussion", "https://example.test/only-link"])(
     "rejects missing or filler source without borrowing support or reasons: %s", (text) => {
       const item = { ...source(), title: text, bodyPreview: text, sourceText: text };
@@ -102,9 +116,6 @@ describe("faithful available source admission and projection", () => {
     ...["missing", "malformed", "conflict"].map((state) => [state, (item: SummaryEvidenceItem) =>
       ({ ...item, promotionFacts: { ...item.promotionFacts!, metricsState: state as "missing" | "malformed" | "conflict" } })] as const),
     ["missing authority", (item: SummaryEvidenceItem) => ({ ...item, promotionFacts: { ...item.promotionFacts!, engagementAuthority: undefined } })],
-    ["stale authority", (item: SummaryEvidenceItem) => ({ ...item, promotionFacts: { ...item.promotionFacts!, engagementAuthority: {
-      observedAt: new Date("2026-08-01T00:00:00Z"), regressionState: "stable" as const,
-    } } })],
   ] as const)("keeps %s closed for contextual source", (_label, mutate) => {
     const result = project([mutate(source())]);
     expect(result.topReads).toEqual([]);

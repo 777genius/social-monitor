@@ -14,7 +14,7 @@ import type { ReaderSummaryNewInputRefreshAuthority } from "../../application/co
 const scope = { tenantId: tenantId("00000000-0000-7000-8000-000000006101"), workspaceId: workspaceId("00000000-0000-7000-8000-000000006102") };
 const cutoff = new Date("2026-09-05T21:59:00.000Z");
 const now = new Date("2026-09-05T22:10:00.000Z");
-async function scenario(admitted = true, empty = false, headline: "accepted" | "missing" | "wrong_candidate" | "changed_source" = "accepted") {
+async function scenario(admitted = true, empty = false, headline: "accepted" | "missing" | "invalid_assessment" | "wrong_candidate" | "changed_source" = "accepted") {
   const jobs = new FakeReaderSummaryJobRepository();
   const old = ReaderSummaryJob.request({ ...scope, id: "prior-job", scope: { type: "workspace" },
     period: { cadence: "daily", startedAt: new Date("2026-09-03T00:00:00Z"), endedAt: new Date("2026-09-04T00:00:00Z"),
@@ -42,10 +42,14 @@ async function scenario(admitted = true, empty = false, headline: "accepted" | "
     const original = evidence.selectedEvidence[0]!;
     // This synthetic preview is the complete captured input, not a truncated provider body.
     const assessed = acceptedFixtureReaderHeadline({ ...original, sourceText: original.bodyPreview }, scope);
-    const item = headline === "missing" ? original
+    const captured = { ...original, sourceText: original.bodyPreview };
+    const item = headline === "missing" ? captured
+      : headline === "invalid_assessment" ? { ...captured, readerHeadline: { status: "unavailable" as const, reasonCode: "invalid_assessment" as const } }
       : headline === "wrong_candidate" ? { ...assessed, readerHeadline: acceptedFixtureReaderHeadline({ ...assessed, feedItemId: "other-candidate" }, scope).readerHeadline }
       : headline === "changed_source" ? { ...assessed, sourceText: `${assessed.sourceText} Correction: report withdrawn.` }
       : assessed;
+    const displayScope = headline === "wrong_candidate" || headline === "changed_source"
+      ? undefined : scope;
     return withReaderPromotionEditorialSlate({ ...evidence,
       sourceWindow: { ...evidence.sourceWindow, ingestionCutoff: cutoff,
         selectedFeedItemIds: empty ? [] : [item.feedItemId], storyClusterIds: empty ? [] : [evidence.clusters[0]!.id] },
@@ -55,7 +59,7 @@ async function scenario(admitted = true, empty = false, headline: "accepted" | "
       } }, ...githubItems.map((item) => ({ ...shift(githubEvidence()), ...item,
         providerMetricLabels: [{ label: "GitHub Trending today", value: `#${item.rank} · +${item.starsGained} stars today` }],
       }))], clusters: empty ? [] : [evidence.clusters[0]!],
-    });
+    }, displayScope);
   });
   const github = { read: jest.fn(async (_query: unknown) => {
     void _query;
@@ -86,7 +90,7 @@ describe("canonical execution admission for historical new inputs", () => {
     expect(JSON.stringify(await s.jobs.findById({ ...scope, readerSummaryJobId: "prior-job" }))).toBe(s.oldBefore);
     expect(s.model.generatedEvidenceIds()).toHaveLength(1);
   });
-  it.each(["missing", "wrong_candidate", "changed_source"] as const)(
+  it.each(["wrong_candidate", "changed_source"] as const)(
     "rejects historical new inputs with %s headline evidence", async (headline) => {
       const s = await scenario(true, false, headline);
       expect(s.result).toMatchObject({ ok: true, value: { status: "quality_rejected" } });
@@ -94,6 +98,23 @@ describe("canonical execution admission for historical new inputs", () => {
       if (decision?.status !== "rejected") throw new Error("Expected a rejected publication decision");
       expect(decision.findings).toContainEqual({ code: "editorial_quality",
         reason: "Selected reader headline is unavailable or its source identity is invalid." });
+      expect(JSON.stringify(await s.jobs.findById({ ...scope, readerSummaryJobId: "prior-job" }))).toBe(s.oldBefore);
+    },
+  );
+  it.each(["missing", "invalid_assessment"] as const)(
+    "publishes historical new inputs from the reader-facing source title when the headline is %s",
+    async (headline) => {
+      const s = await scenario(true, false, headline);
+      expect(s.result).toMatchObject({ ok: true, value: { status: "completed" } });
+      const card = s.artifacts.all()[0]!.toSnapshot().content!.topReads[0]!;
+      expect(card.title).toBe("Runtime regression discussion");
+      expect(card.displayHeadline).toEqual({ status: "unavailable", reasonCode: "not_assessed" });
+      expect(card.capturedSource).toEqual({
+        title: "Runtime regression discussion",
+        body: "Users are discussing a runtime regression.",
+        captureAvailability: "available",
+        reviewAvailability: "body_present",
+      });
       expect(JSON.stringify(await s.jobs.findById({ ...scope, readerSummaryJobId: "prior-job" }))).toBe(s.oldBefore);
     },
   );

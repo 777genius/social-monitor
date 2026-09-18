@@ -3,6 +3,7 @@ import type { ReaderPostPromotionAttestation } from "../policies/reader-post-pro
 import type { ReaderCapturedSource, ReaderDisplayHeadlineSeal } from "../value-objects/summary-reader-headline";
 import { canonicalPromotionPayload } from "./reader-post-promotion-attestation";
 import { readerCapturedSourceDigest, validDisplayHeadlineSource } from "./reader-post-display-headline";
+import { isCapturedSourceDisplayTitle } from "./reader-post-promotion-title";
 
 const unavailableReasons = ["not_assessed", "invalid_assessment", "incomplete_source",
   "unsafe_text", "unresolved_qualifications", "insufficient_support"];
@@ -37,7 +38,8 @@ export const readerDisplayIdentityMatches = (
       canonicalPromotionPayload(seal.headline) !== canonicalPromotionPayload(card.displayHeadline) ||
       sealedSummary !== card.summary) return false;
   if (isUnavailableDisplayHeadline(seal.headline)) {
-    return Object.keys(seal).length === 1;
+    return Object.keys(seal).length === 1 &&
+      isCapturedSourceDisplayTitle(card.title, card.capturedSource, card.providerKey);
   }
   if (Object.keys(seal).length !== 2 ||
       !validDisplayHeadlineSource(seal.headline, card.capturedSource)) return false;

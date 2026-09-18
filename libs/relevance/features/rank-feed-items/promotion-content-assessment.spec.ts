@@ -173,13 +173,22 @@ describe("promotion assessment through Summary candidate and V2 (synthetic revie
     expect(reviewBatch).not.toHaveBeenCalled();
     expect(result.ranking.ranked).toHaveLength(0);
   });
-  it.each([new Date(cutoff.getTime() - 7 * 3600_000), new Date(cutoff.getTime() + 1)])(
-    "preserves stale/after-cutoff metric veto %s", async (metricTime) => {
-      const reviewBatch = jest.fn(accepting.reviewBatch);
-      const result = await run([fixture("metric")], { reviewBatch }, { metricTime });
-      expect(reviewBatch).not.toHaveBeenCalled();
-      expect(result.ranking.ranked).toHaveLength(0);
+  it("admits observed metrics older than six hours while the age gate is off", async () => {
+    const reviewBatch = jest.fn(accepting.reviewBatch);
+    const result = await run([fixture("metric")], { reviewBatch }, {
+      metricTime: new Date(cutoff.getTime() - 7 * 3600_000),
     });
+    expect(reviewBatch).toHaveBeenCalled();
+    expect(result.ranking.ranked).toHaveLength(1);
+  });
+  it("preserves after-cutoff metric veto", async () => {
+    const reviewBatch = jest.fn(accepting.reviewBatch);
+    const result = await run([fixture("metric")], { reviewBatch }, {
+      metricTime: new Date(cutoff.getTime() + 1),
+    });
+    expect(reviewBatch).not.toHaveBeenCalled();
+    expect(result.ranking.ranked).toHaveLength(0);
+  });
   it("keeps native admission and Top floors distinct", async () => {
     const result = await run([24, 25, 49, 50].map((points) => fixture(`points-${points}`, "hacker-news", {
       providerMetadata: { kind: "hacker_news_story", points },

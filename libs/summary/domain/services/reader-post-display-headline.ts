@@ -4,14 +4,23 @@ import type {
 } from "../value-objects/summary-reader-headline";
 import { isReaderFacingTopReadTitle } from "../policies/reader-display-title-policy";
 import { canonicalPromotionPayload, promotionPayloadDigest } from "./reader-post-promotion-attestation";
+import { hasReaderFacingPromotionSource } from "./reader-post-promotion-title";
 
-export const capturedReaderSource = (lead: SummaryEvidenceItem): ReaderCapturedSource => ({
-  title: lead.title,
-  ...(lead.sourceText === undefined ? {} : { body: lead.sourceText }),
-  captureAvailability: lead.sourceText === undefined ? "unavailable" : "available",
-  reviewAvailability: lead.readerHeadline?.status === "accepted"
-    ? lead.readerHeadline.binding?.availability ?? "unavailable" : "unavailable",
-});
+export const capturedReaderSource = (lead: SummaryEvidenceItem): ReaderCapturedSource => {
+  const body = lead.sourceText;
+  const captureAvailability = body === undefined ? "unavailable" : "available";
+  const reviewAvailability = lead.readerHeadline?.status === "accepted"
+    ? lead.readerHeadline.binding?.availability ?? "unavailable"
+    : captureAvailability === "unavailable"
+      ? "unavailable"
+      : (body ?? "").trim().length === 0 ? "title_only" : "body_present";
+  return {
+    title: lead.title,
+    ...(body === undefined ? {} : { body }),
+    captureAvailability,
+    reviewAvailability,
+  };
+};
 
 export const readerCapturedSourceDigest = (source: ReaderCapturedSource): string =>
   promotionPayloadDigest(canonicalPromotionPayload(source));
@@ -49,6 +58,26 @@ export const readerPostDisplayHeadline = (
     return unavailable("invalid_assessment");
   }
   return headline;
+};
+
+/** Accepted LLM headline, or a reader-facing source title when no accepted headline is bound. */
+export const isReaderDisplayReadyLead = (
+  lead: SummaryEvidenceItem,
+  scope?: Readonly<{ tenantId: string; workspaceId: string }>,
+): boolean => {
+  const headline = readerPostDisplayHeadline(lead, scope);
+  if (headline.status === "accepted") return true;
+  return lead.readerHeadline?.status !== "accepted" && hasReaderFacingPromotionSource(lead);
+};
+
+/** Source-title cards never claim an LLM headline, even if polish failed. */
+export const readerPostPublishedHeadline = (
+  lead: SummaryEvidenceItem,
+  scope?: Readonly<{ tenantId: string; workspaceId: string }>,
+): ReaderDisplayHeadline => {
+  const headline = readerPostDisplayHeadline(lead, scope);
+  return headline.status === "accepted" ? headline
+    : { status: "unavailable", reasonCode: "not_assessed" };
 };
 
 export const validDisplayHeadlineSource = (

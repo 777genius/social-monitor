@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_summaries/src/infrastructure/anti_corruption/reader_post_promotion_attestation_verifier.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 
+import 'reader_post_promotion_v2_body_fixture.dart';
+
 void main() {
   test('accepts and preserves the complete Promotion V2 authority', () {
     final body = _v2Body();
@@ -116,11 +118,96 @@ void main() {
     final slateDigest = _v2Body()..['slateDigest'] = 'f' * 64;
     expect(_verifyV2(slateDigest), isNull);
   });
+
+  test('accepts V2 source-title display when the headline was never assessed', () {
+    const title = 'Runtime regression discussion';
+    final headline = <String, Object?>{
+      'status': 'unavailable',
+      'reasonCode': 'not_assessed',
+    };
+    final source = <String, Object?>{
+      'title': title,
+      'body': 'Users are discussing a runtime regression.',
+      'captureAvailability': 'available',
+      'reviewAvailability': 'body_present',
+    };
+    final seal = <String, Object?>{'headline': headline};
+    final body = _v2Body()..['displayHeadline'] = seal;
+    expect(
+      _verifyV2(
+        body,
+        displayHeadline: headline,
+        capturedSource: source,
+        displayHeadlineSeal: seal,
+        cardTitle: title,
+      ),
+      isNotNull,
+    );
+  });
+
+  test('accepts V2 source-title display for an X body presentation', () {
+    const sourceTitle = 'X post by @atlas: Atlas documents agent safety';
+    const bodyText =
+        'Atlas documents agent safety findings across public websites.';
+    const title = 'Atlas documents agent safety\n\n$bodyText';
+    final headline = <String, Object?>{
+      'status': 'unavailable',
+      'reasonCode': 'not_assessed',
+    };
+    final source = <String, Object?>{
+      'title': sourceTitle,
+      'body': bodyText,
+      'captureAvailability': 'available',
+      'reviewAvailability': 'body_present',
+    };
+    final seal = <String, Object?>{'headline': headline};
+    final body = _v2Body()..['displayHeadline'] = seal;
+    expect(
+      _verifyV2(
+        body,
+        displayHeadline: headline,
+        capturedSource: source,
+        displayHeadlineSeal: seal,
+        cardTitle: title,
+      ),
+      isNotNull,
+    );
+  });
+
+  test('rejects V2 source-title display when the published reason is not not_assessed', () {
+    const title = 'Runtime regression discussion';
+    final headline = <String, Object?>{
+      'status': 'unavailable',
+      'reasonCode': 'invalid_assessment',
+    };
+    final source = <String, Object?>{
+      'title': title,
+      'body': 'Users are discussing a runtime regression.',
+      'captureAvailability': 'available',
+      'reviewAvailability': 'body_present',
+    };
+    final seal = <String, Object?>{'headline': headline};
+    final body = _v2Body()..['displayHeadline'] = seal;
+    expect(
+      _verifyV2(
+        body,
+        displayHeadline: headline,
+        capturedSource: source,
+        displayHeadlineSeal: seal,
+        cardTitle: title,
+      ),
+      isNull,
+    );
+  });
 }
 
 ReaderPostPromotionAttestationApiDto? _verifyV2(
   Map<String, Object?> body, {
   String? digest,
+  Object? displayHeadline,
+  Object? capturedSource,
+  Object? displayHeadlineSeal,
+  String? cardTitle,
 }) {
   final payload = jsonEncode(body);
   final score = body['scoreComponents'];
@@ -160,6 +247,10 @@ ReaderPostPromotionAttestationApiDto? _verifyV2(
     evidenceLineage: lineage is Map<String, Object?>
         ? _evidenceLineage(lineage)
         : null,
+    displayHeadline: displayHeadline,
+    capturedSource: capturedSource,
+    displayHeadlineSeal: displayHeadlineSeal,
+    cardTitle: cardTitle,
     cardProviderKey: 'hacker-news',
     cardStoryClusterId: 'cluster:release',
     cardPublishedAt: DateTime.parse('2026-08-18T10:00:00.000Z'),
@@ -223,114 +314,7 @@ ReaderPostPromotionEvidenceLineageApiDto? _evidenceLineage(
   );
 }
 
-Map<String, Object?> _v2Body() {
-  final score = <String, Object?>{
-    'engagementSalience': 0.5,
-    'relevance': 0.8,
-    'evidenceQuality': 0.8,
-    'integrity': 0.8,
-    'freshness': 0.4,
-    'weightedEngagement': 0.2,
-    'weightedRelevance': 0.24,
-    'weightedEvidenceQuality': 0.12,
-    'weightedIntegrity': 0.08,
-    'weightedFreshness': 0.02,
-    'total': 0.66,
-  };
-  final candidateDigestInput = jsonEncode({
-    'policyVersion': readerPromotionEditorialSlatePolicyVersion,
-    'candidateId': 'candidate-top',
-    'canonicalIdentity': 'story:release',
-    'provider': 'hacker_news',
-  });
-  final entry = <String, Object?>{
-    'policyVersion': readerPromotionEditorialSlatePolicyVersion,
-    'placement': 'top',
-    'slot': 1,
-    'candidateId': 'candidate-top',
-    'canonicalIdentity': 'story:release',
-    'provider': 'hacker_news',
-    'storyClusterId': 'cluster:release',
-    'scoreComponents': score,
-    'reasonCodes': ['reader_promotion_v2_admitted', 'top_slot_assigned'],
-    'candidateDigestInput': candidateDigestInput,
-  };
-  final entryInput = jsonEncode(entry);
-  final slate = <String, Object?>{
-    'policyVersion': readerPromotionEditorialSlatePolicyVersion,
-    'sourceWindow': {
-      'windowId': 'window-1',
-      'startedAt': '2026-08-18T00:00:00.000Z',
-      'endedAt': '2026-08-18T23:00:00.000Z',
-      'periodStartedAt': '2026-08-18T00:00:00.000Z',
-      'periodEndedAt': '2026-08-19T00:00:00.000Z',
-      'ingestionCutoff': '2026-08-18T23:00:00.000Z',
-    },
-    'orderedCandidateIds': ['candidate-top'],
-    'orderedCanonicalIdentities': ['story:release'],
-    'digestInputs': [entryInput],
-  };
-  final slateInput = jsonEncode(slate);
-  return {
-    'schemaVersion': readerPostPromotionAttestationSchemaVersion,
-    'policyVersion': readerPostPromotionPolicyVersion,
-    'digestVersion': readerPostPromotionDigestVersion,
-    'artifactId': 'artifact-1',
-    'sourceWindowId': 'window-1',
-    'periodStartedAt': '2026-08-18T00:00:00.000Z',
-    'periodEndedAt': '2026-08-19T00:00:00.000Z',
-    'ingestionCutoff': '2026-08-18T23:00:00.000Z',
-    'placement': 'top',
-    'slot': 1,
-    'candidateId': 'candidate-top',
-    'provider': 'hacker-news',
-    'contentKind': 'story',
-    'canonicalIdentity': 'story:release',
-    'publishedAt': '2026-08-18T10:00:00.000Z',
-    'observedAt': '2026-08-18T11:00:00.000Z',
-    'citationId': 'citation-1',
-    'freshnessValid': true,
-    'qualityScore': 0.8,
-    'relevanceScore': 0.8,
-    'integrityScore': 0.8,
-    'qualityValid': true,
-    'safetyValid': true,
-    'citationValid': true,
-    'metricsState': 'observed',
-    'metrics': {'provider': 'hacker_news', 'points': 50},
-    'tier': 'top',
-    'decision': 'promote_top',
-    'reason': 'top_engagement_floor_met',
-    'usefulnessComponents': {
-      'normalizedStrength': 0.2,
-      'qualityScore': 0.12,
-      'interestRelevanceScore': 0.24,
-      'engagementIntegrityScore': 0.08,
-      'freshness': 0.02,
-      'total': 0.66,
-    },
-    'supportFacts': <Object?>[],
-    'citationIds': ['citation-1'],
-    'providerCount': 1,
-    'confidence': 0.8,
-    'canonicalDedupeOutcome': 'retained',
-    'capOutcome': 'selected',
-    'storyClusterId': 'cluster:release',
-    'scoreComponents': score,
-    'reasonCodes': ['reader_promotion_v2_admitted', 'top_slot_assigned'],
-    'candidateDigestInput': candidateDigestInput,
-    'slateEntryDigestInput': entryInput,
-    'slateDigestInput': slateInput,
-    'slateDigest': sha256.convert(utf8.encode(slateInput)).toString(),
-    'evidenceLineage': {
-      'leadCandidateId': 'candidate-top',
-      'leadCitationId': 'citation-1',
-      'supportCandidateIds': <Object?>[],
-      'supportCitationIds': <Object?>[],
-      'citationIds': ['citation-1'],
-    },
-  };
-}
+Map<String, Object?> _v2Body() => v2PromotionCanonicalBody();
 
 void _replaceSlate(Map<String, Object?> body, Map<String, Object?> slate) {
   final slateInput = jsonEncode(slate);

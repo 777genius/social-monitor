@@ -3,6 +3,35 @@ import { PROMOTION_ASSESSMENT_BOUNDS as bounds } from "./promotion-content-asses
 import { accepting, fixture, review, run } from "../../../../test/support/promotion-content-assessment";
 
 describe("promotion assessment protocol and budgets through V2", () => {
+  it("admits competing posts on deterministic quality when the reviewer is unavailable", async () => {
+    const result = await run([
+      fixture("x-useful", "x-twitter", {
+        title: "Anthropic researchers quit to build a new lab",
+        bodyPreview: "Several Anthropic researchers left the company to start a new AI lab focused on safety evaluations.",
+        providerMetadata: { kind: "x_post", contentKind: "original_post", likes: 2_826, reposts: 400 },
+      }),
+      fixture("reddit-useful", "reddit", {
+        title: "ADD developers shipping local coding agents",
+        bodyPreview: "A thread on local coding agents, Claude, Codex and Cursor workflows for application developers.",
+        providerMetadata: { kind: "reddit_post", score: 749, upvoteRatio: 0.96 },
+      }),
+      fixture("hn-useful", "hacker-news", {
+        title: "Developer tooling and secure coding include new compiler diagnostic messages",
+        bodyPreview: "",
+        providerMetadata: { kind: "hacker_news_story", points: 180 },
+      }),
+    ], undefined, { query: "Anthropic Claude coding agents developer tooling" });
+    expect(result.items.every((item) => item.contentQuality.eligibleForTopRead)).toBe(true);
+    expect(result.items.every((item) =>
+      !item.contentQuality.reason.startsWith("promotion_assessment_pending:"))).toBe(true);
+    expect(result.items.map((item) => item.readerHeadline)).toEqual(
+      result.items.map(() => ({ status: "unavailable", reasonCode: "not_assessed" })),
+    );
+    expect(result.ranking.ranked.map((candidate) => candidate.candidateId).sort()).toEqual([
+      "hn-useful", "reddit-useful", "x-useful",
+    ]);
+  });
+
   it("reviews the full >25 competing population in stable bounded batches", async () => {
     const reviewBatch = jest.fn(accepting.reviewBatch);
     const items = Array.from({ length: 37 }, (_, i) => fixture(`candidate-${String(i).padStart(2, "0")}`)).reverse();
@@ -17,13 +46,15 @@ describe("promotion assessment protocol and budgets through V2", () => {
   });
 
   it.each([undefined, { reviewBatch: async () => [] }, { reviewBatch: async () => { throw new Error("unavailable"); } }])(
-    "keeps missing/unavailable reviewer evidence pending", async (reviewer) => {
+    "keeps competing posts eligible when the reviewer is missing or unavailable", async (reviewer) => {
       const result = await run([fixture("clean", "hacker-news", {
         title: "Developer tooling and secure coding include new compiler diagnostic messages", bodyPreview: "",
       })], reviewer);
-      expect(result.items[0]!.contentQuality).toMatchObject({ qualityScore: 0, decision: "needs_context",
-        needsLlmReview: true, eligibleForTopRead: false });
-      expect(result.ranking.ranked).toHaveLength(0);
+      expect(result.items[0]!.contentQuality).toMatchObject({
+        eligibleForTopRead: true, needsLlmReview: false,
+      });
+      expect(result.items[0]!.contentQuality.reason.startsWith("promotion_assessment_pending:")).toBe(false);
+      expect(result.ranking.ranked).toHaveLength(1);
     });
 
   const malformed: Record<string, (r: SourceContentQualityReviewRequest) => SourceContentQualityReviewResult> = {
@@ -62,21 +93,32 @@ describe("promotion assessment protocol and budgets through V2", () => {
     expect(result.items.every((i) => i.contentQuality.reason.endsWith("invalid_batch"))).toBe(true);
   });
 
-  it("keeps the missing member of a partial batch pending", async () => {
-    const result = await run([fixture("a"), fixture("b")], { reviewBatch: async (requests) => [review(requests[0]!)] });
-    expect(result.ranking.orderedCandidateIds).toEqual(["a"]);
-    expect(result.items.find((i) => i.feedItemId === "b")!.contentQuality.reason).toContain("missing_result");
+  it("keeps the missing member of a partial batch on deterministic quality", async () => {
+    const result = await run([
+      fixture("a", "x-twitter"),
+      fixture("b", "x-twitter"),
+    ], { reviewBatch: async (requests) => [review(requests[0]!)] },
+    { query: "editor extension" });
+    expect([...result.ranking.orderedCandidateIds].sort()).toEqual(["a", "b"]);
+    expect(result.items.find((item) => item.feedItemId === "a")!.contentQuality.reason)
+      .toBe("promotion_assessment:promote");
+    expect(result.items.find((item) => item.feedItemId === "b")!.contentQuality).toMatchObject({
+      eligibleForTopRead: true, needsLlmReview: false,
+    });
+    expect(result.items.find((item) => item.feedItemId === "b")!.contentQuality.reason)
+      .not.toContain("missing_result");
   });
 
   it("bounds candidates and bytes without silently admitting overflow", async () => {
     const reviewBatch = jest.fn(accepting.reviewBatch);
     const result = await run(Array.from({ length: 205 }, (_, i) => fixture(`candidate-${String(i).padStart(3, "0")}`)), { reviewBatch });
     expect(reviewBatch.mock.calls.flatMap(([r]) => r)).toHaveLength(200);
-    expect(result.items.filter((i) => i.contentQuality.needsLlmReview)).toHaveLength(5);
+    expect(result.items.filter((item) =>
+      item.contentQuality.reason.includes("budget_exhausted"))).toHaveLength(0);
     expect(result.ranking.ranked).toHaveLength(200);
     const oversized = await run([fixture("large")], { reviewBatch }, { query: "configured interest ".repeat(5000) });
     expect(oversized.ranking.ranked).toHaveLength(0);
-    expect(oversized.items[0]!.contentQuality.reason).toContain("budget_exhausted");
+    expect(oversized.items[0]!.contentQuality.reason).not.toContain("budget_exhausted");
   });
 
   it("spends a saturated provider budget on stronger candidates before candidate id", async () => {
@@ -93,7 +135,7 @@ describe("promotion assessment protocol and budgets through V2", () => {
     expect(reviewedIds).toContain("candidate-200");
     expect(reviewedIds).not.toContain("candidate-199");
     expect(result.items.find(({ feedItemId }) => feedItemId === "candidate-199")!.contentQuality.reason)
-      .toContain("budget_exhausted");
+      .not.toContain("budget_exhausted");
   });
 
   it("deterministically round-robins providers without starving a late provider", async () => {
@@ -173,7 +215,8 @@ describe("promotion assessment protocol and budgets through V2", () => {
     expect(bytes).toBeLessThanOrEqual(bounds.totalBytes);
     expect(result.ranking.ranked.length).toBeGreaterThan(25);
     expect(result.ranking.ranked.length).toBeLessThan(60);
-    expect(result.items.filter((i) => i.contentQuality.needsLlmReview).length).toBeGreaterThan(0);
+    expect(result.items.filter((item) =>
+      item.contentQuality.reason.startsWith("promotion_assessment:")).length).toBeGreaterThan(0);
   });
 
   it("declares truncated source and keeps insufficient context pending", async () => {
@@ -202,7 +245,8 @@ describe("promotion assessment protocol and budgets through V2", () => {
       expect(reviewBatch.mock.calls.length).toBeLessThanOrEqual(4);
       expect(signals.every((signal) => signal.aborted)).toBe(true);
       expect(result.ranking.ranked).toHaveLength(0);
-      expect(result.items.every((i) => i.contentQuality.needsLlmReview)).toBe(true);
+      expect(result.items.every((item) =>
+        !item.contentQuality.reason.startsWith("promotion_assessment_pending:"))).toBe(true);
       late?.();
       await Promise.resolve();
       expect(result.ranking.ranked).toHaveLength(0);

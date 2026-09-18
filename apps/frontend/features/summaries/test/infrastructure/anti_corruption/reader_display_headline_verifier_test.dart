@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
+    as generated;
 import 'package:social_monitor_summaries/src/infrastructure/anti_corruption/reader_display_headline_verifier.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/reader_display_source_mapper.dart';
+import 'package:social_monitor_summaries/src/infrastructure/mappers/reader_post_promotion_attestation_rest_mapper.dart';
 
 import '../../support/reader_display_headline_fixture.dart';
 
@@ -49,5 +52,77 @@ void main() {
     expect(verify(fixture), isTrue);
     expect(mapReaderDisplayHeadline(null), isNull);
     expect(mapReaderCapturedSource(null), isNull);
+  });
+  test('unavailable headline with captured source keeps the source title', () {
+    const title =
+        'Atlas documents agent safety findings across public websites and proposes reporting standards for misalignment incidents.';
+    final source = <String, Object?>{
+      'title': title,
+      'body': title,
+      'captureAvailability': 'available',
+      'reviewAvailability': 'body_present',
+    };
+    final headline = <String, Object?>{
+      'status': 'unavailable',
+      'reasonCode': 'not_assessed',
+    };
+    final seal = <String, Object?>{'headline': headline};
+    final fixture = <String, Object?>{
+      'headline': headline,
+      'source': source,
+      'seal': seal,
+      'payload': <String, Object?>{
+        'schemaVersion': 'reader_post_promotion_attestation.v2',
+        'candidateId': 'candidate-fixture',
+        'displayHeadline': seal,
+      },
+    };
+    expect(verify(fixture, title: title), isTrue);
+    expect(verify(fixture, title: 'Invented claim'), isFalse);
+    headline['reasonCode'] = 'invalid_assessment';
+    (seal['headline']! as Map<String, Object?>)['reasonCode'] = 'invalid_assessment';
+    expect(verify(fixture, title: title), isFalse);
+  });
+
+  test('generated unavailable headline round-trips through REST JSON into verification', () {
+    const title =
+        'Atlas documents agent safety findings across public websites and proposes reporting standards for misalignment incidents.';
+    final headline = generated.ReaderSummaryDisplayHeadlineDto.fromJson({
+      'status': 'unavailable',
+      'reasonCode': 'not_assessed',
+    });
+    final source = generated.ReaderSummaryCapturedSourceDto.fromJson({
+      'title': title,
+      'body': title,
+      'captureAvailability': 'available',
+      'reviewAvailability': 'body_present',
+    });
+    final seal = generated.ReaderSummaryDisplayHeadlineSealDto.fromJson({
+      'headline': {'status': 'unavailable', 'reasonCode': 'not_assessed'},
+    });
+    final headlineJson = displayJson(headline.toJson());
+    final sourceJson = displayJson(source.toJson());
+    final sealJson = displayJson(seal.toJson());
+    expect(
+      verifyReaderDisplayHeadline(
+        payload: {
+          'schemaVersion': 'reader_post_promotion_attestation.v2',
+          'candidateId': 'candidate-fixture',
+          'displayHeadline': sealJson,
+        },
+        headline: headlineJson,
+        source: sourceJson,
+        outerSeal: sealJson,
+        title: title,
+        providerKey: 'reddit',
+        tenantId: 'tenant-fixture',
+        workspaceId: 'workspace-fixture',
+        sourceItemId: 'source-fixture',
+        sourceCandidateId: 'candidate-fixture',
+      ),
+      isTrue,
+    );
+    expect(mapReaderDisplayHeadline(headlineJson), isNull);
+    expect(mapReaderCapturedSource(sourceJson)?.title, title);
   });
 }

@@ -36,7 +36,15 @@ describe("summary candidate-bound display headline consumer", () => {
       const invalid = { ...lead, readerHeadline: { ...lead.readerHeadline,
         binding: { ...lead.readerHeadline.binding, [key]: "wrong" } } };
       expect(readerPostDisplayHeadline(invalid, headlineScope).status).toBe("unavailable");
-      expect(project([invalid]).topReads).toHaveLength(1);
+      const projection = project([invalid]);
+      expect(projection.topReads).toHaveLength(1);
+      const fixture = readerSummaryArtifact("faithful-source-fixture").toSnapshot();
+      const input = selection([invalid], [storyCluster(invalid.feedItemId, [invalid])]);
+      expect(readerDisplayPublicationFindings({
+        ...fixture, promotionAttestations: projection.attestations,
+        content: { ...fixture.content!, topReads: projection.topReads,
+          selectedPosts: projection.additionalPosts },
+      }, input)).toHaveLength(1);
     },
   );
 
@@ -87,16 +95,33 @@ describe("summary candidate-bound display headline consumer", () => {
     }
   });
 
-  it("rejects publication for missing annotations without dropping, refilling or demoting selected cards", () => {
+  it("publishes source-title cards when the display headline is unavailable", () => {
     const lead = { ...assessedSource(), readerHeadline: undefined };
     const projection = project([lead]);
     const fixture = readerSummaryArtifact("faithful-source-fixture").toSnapshot();
     const input = selection([lead], [storyCluster(lead.feedItemId, [lead])]);
     const snapshot = { ...fixture, promotionAttestations: projection.attestations,
       content: { ...fixture.content!, topReads: projection.topReads, selectedPosts: projection.additionalPosts } };
+    expect(readerDisplayPublicationFindings(snapshot, input)).toEqual([]);
+    expect(snapshot.content.topReads.map((card) => card.promotionCandidateId)).toEqual([lead.feedItemId]);
+    expect(snapshot.content.topReads[0]?.capturedSource).toEqual({
+      title: lead.title,
+      body: lead.sourceText,
+      captureAvailability: "available",
+      reviewAvailability: "body_present",
+    });
+  });
+
+  it("rejects publication when a source-title card identity is mutated", () => {
+    const lead = { ...assessedSource(), readerHeadline: undefined };
+    const projection = project([lead]);
+    const fixture = readerSummaryArtifact("faithful-source-fixture").toSnapshot();
+    const input = selection([lead], [storyCluster(lead.feedItemId, [lead])]);
+    const [card, ...rest] = projection.topReads;
+    const snapshot = { ...fixture, promotionAttestations: projection.attestations,
+      content: { ...fixture.content!, topReads: [{ ...card!, title: `${card!.title} changed` }, ...rest],
+        selectedPosts: projection.additionalPosts } };
     expect(readerDisplayPublicationFindings(snapshot, input)).toEqual([{ code: "editorial_quality",
       reason: "Selected reader headline is unavailable or its source identity is invalid." }]);
-    expect(snapshot.content.topReads.map((card) => card.promotionCandidateId)).toEqual([lead.feedItemId]);
-    expect(snapshot.content.topReads[0]?.capturedSource?.body).toBe(lead.sourceText);
   });
 });

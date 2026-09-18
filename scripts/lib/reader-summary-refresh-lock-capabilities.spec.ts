@@ -75,7 +75,7 @@ describe("fixed successor lock SQL contract", () => {
 
 describe("recent-date successor lock SQL contract", () => {
   const extension = readFileSync(
-    "prisma/migrations/20260914143000_reader_summary_refresh_recent_dates/migration.sql",
+    "prisma/migrations/20260918120000_reader_summary_refresh_mid_september_dates/migration.sql",
     "utf8",
   );
 

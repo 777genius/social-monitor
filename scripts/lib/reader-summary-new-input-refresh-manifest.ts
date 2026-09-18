@@ -17,6 +17,8 @@ export const refreshDates = Object.freeze([
   ...refreshDefaultDates,
   "2026-09-06", "2026-09-07", "2026-09-08", "2026-09-09",
   "2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13",
+  "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17",
+  "2026-09-18",
 ]);
 export type RefreshPrior = Readonly<{
   artifactId: string; jobId: string; publicationId: string;

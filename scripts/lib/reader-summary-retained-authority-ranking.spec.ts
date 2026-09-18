@@ -68,16 +68,16 @@ describe.each(["reddit", "x-twitter", "hacker-news"])("%s retained historical au
       observedThrough: execution, windowStartedAt: start, windowEndedAt: end, retainedAuthorityProjection: true }));
   });
 
-  it("keeps live stale observations closed without requesting a retained projection", async () => {
+  it("admits live observations older than six hours without requesting a retained projection", async () => {
     const result = await execute(provider, undefined);
-    expect(result.reviewBatch).not.toHaveBeenCalled();
-    expect(result.evaluation.admitted).toBe(false);
+    expect(result.reviewBatch).toHaveBeenCalledTimes(1);
+    expect(result.evaluation.admitted).toBe(true);
     expect(result.finalCandidate.engagementCutoffAt).toBe(execution.toISOString());
     expect(result.readPromotionSnapshot.mock.calls[0]).toBeDefined();
     expect(result.readPromotionSnapshot).toHaveBeenCalledWith(expect.not.objectContaining({ retainedAuthorityProjection: true }));
   });
 
-  it("keeps live fresh observations eligible with the unchanged six-hour limit", async () => {
+  it("keeps live observations eligible while the six-hour age gate is off", async () => {
     const fresh = new Date(execution.getTime() - 6 * 3_600_000);
     const result = await execute(provider, undefined, (candidate) => ({ ...candidate,
       metricAuthority: { observedAt: fresh, regressionState: "stable" } }));
@@ -85,8 +85,8 @@ describe.each(["reddit", "x-twitter", "hacker-news"])("%s retained historical au
     expect(result.evaluation.admitted).toBe(true);
     const stale = await execute(provider, undefined, (candidate) => ({ ...candidate,
       metricAuthority: { observedAt: new Date(fresh.getTime() - 1), regressionState: "stable" } }));
-    expect(stale.reviewBatch).not.toHaveBeenCalled();
-    expect(stale.evaluation.admitted).toBe(false);
+    expect(stale.reviewBatch).toHaveBeenCalledTimes(1);
+    expect(stale.evaluation.admitted).toBe(true);
   });
 
   it.each<[string, (candidate: PromotionFeedItemCandidate) => PromotionFeedItemCandidate]>([

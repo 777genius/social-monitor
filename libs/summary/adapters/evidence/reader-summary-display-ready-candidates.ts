@@ -1,6 +1,6 @@
 import { DomainError } from "@social-monitor/shared-kernel";
 import {
-  readerPostDisplayHeadline,
+  isReaderDisplayReadyLead,
   type SummaryEvidenceItem,
 } from "../../domain";
 
@@ -15,7 +15,7 @@ export const displayReadyPromotionCandidates = (
   scope: ReaderSummaryScope,
 ): readonly SummaryEvidenceItem[] => {
   const ready = candidates.filter((candidate) =>
-    readerPostDisplayHeadline(candidate, scope).status === "accepted");
+    isReaderDisplayReadyLead(candidate, scope));
   if (candidates.length > 0 && ready.length === 0) {
     throw new DomainError(
       "external.dependency_unavailable",

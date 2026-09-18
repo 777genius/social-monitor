@@ -51,7 +51,8 @@ describe("source context through persisted promotion and REST", () => {
       status: "fresh", checkedAt: window.endedAt,
     });
     const response = readerSummaryPromotionBoardRestView(view);
-    const transported = (likes === 35 ? response.selectedPosts : response.topReads)[0];
+    const transported = [...response.topReads, ...response.selectedPosts]
+      .find((entry) => entry.capturedSource?.body === text);
     expect(transported?.title).toBe(card.title);
     expect(transported?.displayHeadline?.status).toBe("accepted");
     expect(transported?.capturedSource).toEqual({ title: original.title, body: text,
@@ -59,7 +60,7 @@ describe("source context through persisted promotion and REST", () => {
     expect(transported?.title.length).toBeLessThanOrEqual(119);
     if (text === simulation) expect(transported?.title).toContain("Only in simulations");
     expect(transported?.citationIds).toEqual(["citation:source"]);
-    expect(transported?.promotionAttestation?.placement).toBe(likes === 35 ? "additional" : "top");
+    expect(transported?.promotionAttestation?.placement).toBe("top");
     expect(persisted.toSnapshot().promotionAttestations).toEqual(board.attestations);
     const viewCard = [...view.content.topReads, ...(view.content.selectedPosts ?? [])]
       .find((entry) => entry.promotionCandidateId === item.feedItemId)!;

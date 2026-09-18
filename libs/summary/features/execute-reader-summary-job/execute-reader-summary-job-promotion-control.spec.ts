@@ -49,26 +49,50 @@ import {
 } from "./reader-summary-promotion-control";
 
 describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
-  it("saves the selected source and returns quality_rejected when the batch has no headline", async () => {
-    const scenario = await arrangePromotionControlScenario("reader-job-unavailable-headline");
-    const result = await executePromotionControlScenario({ ...scenario,
-      assessHeadlines: false,
-      selectEvidence: async () => {
-        const evidence = makeReaderEvidenceSelection();
-        return { ...evidence, selectedEvidence: evidence.selectedEvidence.map((item) => ({
-          ...item, sourceText: item.bodyPreview,
-        })) };
-      },
-      promotionControl: readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
-    });
-    expect(result).toMatchObject({ ok: true, value: { status: "quality_rejected" } });
-    expect(scenario.artifacts.decisions()[0]).toMatchObject({ status: "rejected",
-      reasonCodes: expect.arrayContaining(["editorial_quality"]) });
-    const card = scenario.artifacts.all()[0]!.toSnapshot().content!.topReads[0]!;
-    expect(card.promotionCandidateId).toBe("feed-1");
-    expect(card.displayHeadline).toEqual({ status: "unavailable", reasonCode: "not_assessed" });
-    expect(card.capturedSource?.body).toBe(makeReaderEvidenceSelection().selectedEvidence[0]!.bodyPreview);
-  });
+  it.each([
+    ["missing", undefined],
+    ["invalid_assessment", { status: "unavailable" as const, reasonCode: "invalid_assessment" as const }],
+    ["unresolved_qualifications", {
+      status: "unavailable" as const, reasonCode: "unresolved_qualifications" as const,
+    }],
+  ] as const)(
+    "publishes Top Reads from the reader-facing source title when the headline is %s",
+    async (label, headline) => {
+      const scenario = await arrangePromotionControlScenario(
+        `reader-job-unavailable-headline-${label}`,
+      );
+      const result = await executePromotionControlScenario({
+        ...scenario,
+        assessHeadlines: false,
+        selectEvidence: async () => {
+          const evidence = makeUnmaterializedReaderEvidenceSelection();
+          return withReaderPromotionEditorialSlate({
+            ...evidence,
+            selectedEvidence: evidence.selectedEvidence.map((item) => ({
+              ...item,
+              sourceText: item.bodyPreview,
+              ...(headline === undefined ? {} : { readerHeadline: headline }),
+            })),
+          }, { tenantId: scenario.tenant, workspaceId: scenario.workspace });
+        },
+        topicMapBuilder: promotionControlEmptyTopicMapBuilder(),
+        githubProjectionReader: promotionControlZeroGitHubProjectionReader(),
+        promotionControl: readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
+      });
+      expect(result).toMatchObject({ ok: true, value: { status: "completed" } });
+      expect(scenario.artifacts.decisions()[0]).toMatchObject({ status: "published" });
+      const card = scenario.artifacts.all()[0]!.toSnapshot().content!.topReads[0]!;
+      expect(card.promotionCandidateId).toBe("feed-1");
+      expect(card.title).toBe("Runtime regression discussion");
+      expect(card.displayHeadline).toEqual({ status: "unavailable", reasonCode: "not_assessed" });
+      expect(card.capturedSource).toEqual({
+        title: "Runtime regression discussion",
+        body: "Users are discussing a runtime regression.",
+        captureAvailability: "available",
+        reviewAvailability: "body_present",
+      });
+    },
+  );
 
   it.each([true, false])(
     "publishes an enabled daily job with a valid Trends appendix (primary=%s)",

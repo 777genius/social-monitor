@@ -36,7 +36,8 @@ class _CapturedSourceState extends State<ReaderSummaryCapturedSource> {
           const Text('Captured body unavailable.')
         else if (source.reviewAvailability == ReaderSourceReviewAvailability.titleOnly)
           const Text('Only the source title was available for review.')
-        else if (source.reviewAvailability == ReaderSourceReviewAvailability.unavailable)
+        else if (source.captureAvailability != ReaderCaptureAvailability.available &&
+            source.reviewAvailability == ReaderSourceReviewAvailability.unavailable)
           const Text('Source review unavailable.'),
         Semantics(
           expanded: _expanded,

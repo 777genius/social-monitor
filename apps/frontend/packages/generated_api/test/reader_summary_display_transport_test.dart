@@ -105,4 +105,53 @@ void main() {
       );
     },
   );
+
+  test('generated contract preserves unavailable source-title display', () {
+    const title =
+        'Atlas documents agent safety findings across public websites and proposes reporting standards.';
+    final headline = {'status': 'unavailable', 'reasonCode': 'not_assessed'};
+    final source = {
+      'title': title,
+      'body': title,
+      'captureAvailability': 'available',
+      'reviewAvailability': 'body_present',
+    };
+    final item = ReaderSummaryReaderItemDto.fromJson({
+      'title': title,
+      'providerKey': 'reddit',
+      'providerName': 'Reddit',
+      'primaryActionKind': 'read_source',
+      'reason': 'Selected with 1 cited source in this summary window.',
+      'matchedInterestIds': <String>[],
+      'matchedRules': <String>[],
+      'signalScore': .7,
+      'confidence': {
+        'level': 'high',
+        'score': .95,
+        'rationale': 'Synthetic fixture',
+      },
+      'confirmedProviderKeys': ['reddit'],
+      'providerMetrics': <Object?>[],
+      'whyImportant': <String>[],
+      'whyNow': 'Synthetic period',
+      'citationIds': ['citation-fixture'],
+      'displayHeadline': headline,
+      'capturedSource': source,
+    });
+    final encoded =
+        jsonDecode(jsonEncode(item.toJson())) as Map<String, Object?>;
+    expect(encoded['title'], title);
+    expect(
+      encoded['displayHeadline'],
+      containsPair('status', 'unavailable'),
+    );
+    expect(
+      (encoded['displayHeadline']! as Map<String, Object?>)['reasonCode'],
+      'not_assessed',
+    );
+    expect(
+      (encoded['capturedSource']! as Map<String, Object?>)['body'],
+      title,
+    );
+  });
 }

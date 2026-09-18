@@ -32,6 +32,7 @@ import { resolvePromotionInterests } from "./resolve-promotion-interests";
 import { assessPromotionContent } from "./promotion-content-assessment";
 import { bindRetainedPromotionCandidateAuthority } from "./retained-promotion-candidate-authority";
 import { canCompeteForPromotionAssessment } from "./promotion-assessment-eligibility";
+import { isIncompletePromotionAssessment } from "./promotion-assessment-verdict";
 import { unavailablePromotionHeadline, type PromotionReaderHeadline } from "../../domain/promotion-reader-headline";
 
 import { observePromotionSnapshotPreparation } from "./promotion-snapshot-preparation";
@@ -212,10 +213,11 @@ export const rankPromotionSnapshot = async (params: {
           providerFamily: candidate.canonical.providerFamily,
           engagementSalience: feedPromotionMetricStrength(candidate.canonical.metrics),
         });
+      } else {
+        projectedItem.contentQuality = { ...quality, qualityScore: 0,
+          eligibleForSummary: false, eligibleForTopRead: false, needsLlmReview: false,
+          reason: "promotion_assessment_not_requested:hard_gate" };
       }
-      projectedItem.contentQuality = { ...quality, qualityScore: 0,
-        eligibleForSummary: false, eligibleForTopRead: false, needsLlmReview: false,
-        reason: "promotion_assessment_not_requested:hard_gate" };
     }
     return projectedItem;
   });
@@ -227,7 +229,9 @@ export const rankPromotionSnapshot = async (params: {
   for (const [index, item] of projected.entries()) {
     const quality = assessed.verdicts.get(item.feedItemId);
     item.readerHeadline = assessed.readerHeadlines.get(item.feedItemId) ?? unavailablePromotionHeadline("not_assessed");
-    if (quality !== undefined) item.contentQuality = presentSourceContentQuality(quality);
+    if (quality !== undefined && !isIncompletePromotionAssessment(quality)) {
+      item.contentQuality = presentSourceContentQuality(quality);
+    }
     item.score = Math.min(0.85,
       feedPromotionMetricStrength(snapshot.candidates[index]!.canonical.metrics) / 10,
     ) * item.contentQuality.qualityScore;

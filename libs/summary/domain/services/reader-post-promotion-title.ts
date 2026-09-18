@@ -4,6 +4,7 @@ import {
 } from "../value-objects/reader-summary-provider-identity";
 import type { SummaryEvidenceItem } from
   "../value-objects/summary-evidence-item";
+import type { ReaderCapturedSource } from "../value-objects/summary-reader-headline";
 import {
   isLowInformationReaderTitle,
   isTechnicalReaderTitle,
@@ -71,6 +72,24 @@ export const hasReaderFacingPromotionSource = (
 
 // Compatibility for existing callers; this no longer imposes a brevity gate.
 export const hasReaderFacingPromotionTitle = hasReaderFacingPromotionSource;
+
+/** Reconstructs the source-title card from the captured snapshot only. */
+export const isCapturedSourceDisplayTitle = (
+  title: string,
+  source: ReaderCapturedSource | undefined,
+  providerKey: string,
+): boolean => {
+  if (source === undefined || title.trim().length === 0) return false;
+  const presented = buildReaderPostPromotionTitle({
+    lead: {
+      providerKey,
+      title: source.title,
+      sourceText: source.body,
+      bodyPreview: source.body,
+    } as SummaryEvidenceItem,
+  });
+  return presented.length > 0 && title === presented;
+};
 
 /** Long source presentation is allowed only for the same displayed lead. */
 export const isFaithfulReaderSourcePresentation = (

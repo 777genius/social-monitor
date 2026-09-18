@@ -53,27 +53,31 @@ describe("historical Promotion V2 active-publication preparation", () => {
 
     expect(isHistoricalPromotionRebuildSourceTuple(
       tuple("strict-v1", "story_ranking_v10"),
-      "story_ranking_v11",
+      "story_ranking_v12",
     )).toBe(true);
     expect(isHistoricalPromotionRebuildSourceTuple(
       tuple("valid-v2", "story_ranking_v10"),
-      "story_ranking_v11",
+      "story_ranking_v12",
     )).toBe(true);
     expect(isHistoricalPromotionRebuildSourceTuple(
       tuple("valid-v2", "reader_promotion_policy.v2"),
-      "story_ranking_v11",
+      "story_ranking_v12",
     )).toBe(true);
     expect(isHistoricalPromotionRebuildSourceTuple(
       tuple("valid-v2", "story_ranking_v11"),
-      "story_ranking_v11",
+      "story_ranking_v12",
+    )).toBe(true);
+    expect(isHistoricalPromotionRebuildSourceTuple(
+      tuple("valid-v2", "story_ranking_v12"),
+      "story_ranking_v12",
     )).toBe(false);
     expect(isHistoricalPromotionRebuildSourceTuple(
       tuple("valid-no-signal", "story_ranking_v10"),
-      "story_ranking_v11",
+      "story_ranking_v12",
     )).toBe(false);
     expect(isHistoricalPromotionRebuildSourceTuple(
-      tuple("valid-v2", "story_ranking_v12"),
-      "story_ranking_v11",
+      tuple("valid-v2", "story_ranking_v13"),
+      "story_ranking_v12",
     )).toBe(false);
   });
 
@@ -257,7 +261,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
         readActiveSource: async () => ({
           ...await dependencies.preparation.readActiveSource(),
           tupleKind,
-          rankingPolicyVersion: "story_ranking_v11",
+          rankingPolicyVersion: "story_ranking_v12",
         }),
         captureDataset,
       },

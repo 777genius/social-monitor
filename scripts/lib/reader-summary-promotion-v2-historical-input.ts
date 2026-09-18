@@ -50,7 +50,7 @@ export type HistoricalPromotionGenerationAuthority = Readonly<{
     topicLabelerPromptVersion: string;
     topicRelationPromptVersion: string;
     evalDatasetVersion: string;
-    rankingPolicyVersion: "story_ranking_v10" | "story_ranking_v11";
+    rankingPolicyVersion: "story_ranking_v10" | "story_ranking_v11" | "story_ranking_v12";
     promotionPolicyVersion: typeof readerSummaryPromotionV2HistoricalPolicyVersion;
     maxEvidenceItems: 120;
     maxGeneratedStories: 15;
@@ -183,7 +183,8 @@ export const canonicalHistoricalPromotionGenerationAuthority = (
       value.execution.topicRelationPromptVersion.trim().length === 0 ||
       value.execution.evalDatasetVersion.trim().length === 0 ||
       (value.execution.rankingPolicyVersion !== "story_ranking_v10" &&
-        value.execution.rankingPolicyVersion !== "story_ranking_v11") ||
+        value.execution.rankingPolicyVersion !== "story_ranking_v11" &&
+        value.execution.rankingPolicyVersion !== "story_ranking_v12") ||
       value.execution.promotionPolicyVersion !==
         readerSummaryPromotionV2HistoricalPolicyVersion ||
       value.execution.maxEvidenceItems !== 120 ||

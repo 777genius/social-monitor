@@ -2,6 +2,7 @@ export const READER_PROMOTION_POLICY_V2_VERSION =
   "reader_promotion_policy.v2" as const;
 export const READER_PROMOTION_SOCIAL_METRIC_MAX_AGE_MS =
   6 * 60 * 60 * 1_000;
+export const READER_PROMOTION_SOCIAL_METRIC_AGE_GATE_ENABLED = false;
 
 export type ReaderPromotionV2Provider =
   | "x"

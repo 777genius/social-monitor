@@ -95,7 +95,7 @@ describe("assessment schema consumer protocol", () => {
     expect(failures).toHaveLength(1);
     expect(failures[0]).not.toContain("runtime completion");
     expect(result.ranking.orderedCandidateIds).toHaveLength(0);
-    expect(result.items[0]!.contentQuality).toMatchObject({ qualityScore: 0,
+    expect(result.items[0]!.contentQuality).toMatchObject({
       needsLlmReview: true, eligibleForTopRead: false });
   });
 

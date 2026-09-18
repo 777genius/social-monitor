@@ -111,6 +111,7 @@ export const makeRelatedReaderEvidenceSelection = (): SummaryEvidenceSelection =
 
 export const withReaderPromotionEditorialSlate = (
   selection: SummaryEvidenceSelection,
+  displayScope?: Readonly<{ tenantId: string; workspaceId: string }>,
 ): SummaryEvidenceSelection => {
   const relatedContextIds = new Set(
     (selection.relatedTopicRelations ?? []).map(
@@ -129,6 +130,7 @@ export const withReaderPromotionEditorialSlate = (
   const slate = composeReaderSummaryEditorialSlate({
     selection: selectionWithoutRelatedContext,
     candidates,
+    ...(displayScope === undefined ? {} : { displayScope }),
   });
 
   const materialized = materializeReaderSummaryEditorialSlate({

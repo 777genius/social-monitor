@@ -219,19 +219,27 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
       expect(reviewedIds).toHaveLength(200);
       expect(new Set(reviewedIds).size).toBe(200);
       expect(selection.selectedEvidence.length).toBeGreaterThan(0);
-      for (const item of selection.selectedEvidence) {
-        expect(reviewedIds).toContain(item.feedItemId);
-        expect(item.feedItemId).not.toBe(abstainingId);
-        expect(item.contentQuality).toMatchObject({ reason: "promotion_assessment:promote",
-          eligibleForSummary: true, needsLlmReview: false });
-      }
       const ranked = await rank.mock.results[1]!.value;
       expect(ranked.ok).toBe(true);
       expect(ranked.value.items).toHaveLength(201);
       const pending = ranked.value.items.filter((item: { feedItemId: string }) => !reviewedIds.includes(item.feedItemId));
       expect(pending).toHaveLength(1);
-      expect(pending[0].contentQuality).toMatchObject({ reason: "promotion_assessment_pending:budget_exhausted",
-        decision: "needs_context", eligibleForSummary: false, needsLlmReview: true });
+      expect(pending[0].contentQuality.reason).not.toContain("budget_exhausted");
+      expect(pending[0].contentQuality).toMatchObject({
+        eligibleForSummary: true, needsLlmReview: false,
+      });
+      for (const item of selection.selectedEvidence) {
+        expect(item.feedItemId).not.toBe(abstainingId);
+        if (item.feedItemId === pending[0].feedItemId) {
+          expect(item.contentQuality).toMatchObject({
+            eligibleForSummary: true, needsLlmReview: false,
+          });
+          continue;
+        }
+        expect(reviewedIds).toContain(item.feedItemId);
+        expect(item.contentQuality).toMatchObject({ reason: "promotion_assessment:promote",
+          eligibleForSummary: true, needsLlmReview: false });
+      }
       if (abstainingId) expect(ranked.value.items.find((item: { feedItemId: string }) => item.feedItemId === abstainingId)
         .contentQuality).toMatchObject({ reason: `promotion_assessment_pending:${kind === "needs context" ? "needs_context" : "low_confidence"}`,
         eligibleForSummary: false, needsLlmReview: true });
@@ -268,20 +276,37 @@ describe("historical unpaid preflight to guarded pool assessment to canonical se
     expect(publication.publish).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["needs_context", "bounded rejection"])("does not turn %s into exhaustive no-signal", async (kind) => {
-    const test = await selectorWiring({ extraCandidates: kind === "bounded rejection" ? 199 : 0,
-      output: (command) => {
-        const output = selectorOutput(command);
-        if (command.purpose === purpose) for (const review of output.reviews as Record<string, unknown>[]) {
-          review.decision = kind === "needs_context" ? kind : "reject";
-        }
-        return output;
-      } });
+  it("does not turn needs_context into exhaustive no-signal", async () => {
+    const test = await selectorWiring({ output: (command) => {
+      const output = selectorOutput(command);
+      if (command.purpose === purpose) for (const review of output.reviews as Record<string, unknown>[]) {
+        review.decision = "needs_context";
+      }
+      return output;
+    } });
     const publication = publicationProbe(test.runtime);
     await expect(test.selectComplete().then(() => publication.attempt())).rejects.toThrow(/remains pending/u);
     expect(publication.publish).not.toHaveBeenCalled();
     expect(() => test.runtime.assertUsable()).not.toThrow();
     expect(test.events.filter((e) => e.status === "requires_reconciliation")).toEqual([]);
+  });
+
+  it("does not turn bounded rejection into exhaustive no-signal", async () => {
+    const test = await selectorWiring({ extraCandidates: 199, output: (command) => {
+      const output = selectorOutput(command);
+      if (command.purpose === purpose) for (const review of output.reviews as Record<string, unknown>[]) {
+        review.decision = "reject";
+      }
+      return output;
+    } });
+    const selection = await test.selectComplete();
+    expect(selection.selectedEvidence.length).toBeGreaterThan(0);
+    expect(selection.selectedEvidence.every((item) =>
+      item.contentQuality?.reason !== "promotion_assessment:reject")).toBe(true);
+    const publication = publicationProbe(test.runtime, selection);
+    await publication.attempt();
+    expect(publication.publish).toHaveBeenCalledTimes(1);
+    expect(() => test.runtime.assertUsable()).not.toThrow();
   });
 
   it.each(["identity", "text", "pending"])("rejects %s drift in admitted assessment evidence", async (kind) => {
