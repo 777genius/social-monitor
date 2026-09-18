@@ -82,7 +82,7 @@ function needsPaidPromotionAssessment(item: {
   if (quality.reason.startsWith("promotion_assessment_pending:")) return true;
   if (quality.reason.startsWith("promotion_assessment:")) return false;
   if (quality.reason.startsWith("promotion_assessment_not_requested:")) return false;
-  return quality.eligibleForSummary && !quality.needsLlmReview;
+  return quality.eligibleForSummary;
 }
 export async function assertRefreshHasNewInput(client: Pick<PrismaSummaryClient, "$queryRaw">,
   date: string, previous: string, cutoff: string): Promise<void> {

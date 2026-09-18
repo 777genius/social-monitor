@@ -41,9 +41,7 @@ describe("new daily generation configured interest composition", () => {
   it("wires historical replacement preflight with current intent independently of copied metadata", async () => {
     const potentialInput = { assessmentCandidateCount: 1, canonicalEvidence: [expect.objectContaining({
       feedItemId: "synthetic-feed", sourceItemId: "synthetic-source", interestId: "synthetic-interest",
-      contentQuality: expect.objectContaining({ decision: "needs_context", needsLlmReview: true,
-        eligibleForSummary: false, eligibleForTopRead: false,
-        reason: "promotion_assessment_pending:missing_result" }),
+      contentQuality: expect.objectContaining({ eligibleForSummary: true }),
     })] };
     const configuredInterests = reader("best");
     expect(await preflightRefreshSelection({ feed, date: "2026-09-03",

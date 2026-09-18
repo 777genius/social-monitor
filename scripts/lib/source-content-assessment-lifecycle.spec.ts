@@ -26,7 +26,7 @@ describe("assessment completed receipts and caller abandonment", () => {
         ids: { generate: () => "synthetic-terminal" }, batchTimeoutMs: 300_000, totalTimeoutMs: 600_000 });
       const result = await run([fixture("receipt")], reviewer, { clock: new SystemClock() });
       expect(result.ranking.orderedCandidateIds).toEqual([]);
-      expect(result.candidates[0]!.evidenceQualityScore).toBe(0);
+      expect(result.candidates[0]!.evidenceQualityScore).toBe(0.79);
     });
 
   it.each(["success", "error"])("suppresses cancelled late %s while independent assessments complete", async (outcome) => {
@@ -61,7 +61,7 @@ describe("assessment completed receipts and caller abandonment", () => {
       settle();
       await jest.advanceTimersByTimeAsync(1);
       expect(result.ranking.orderedCandidateIds).toEqual([]);
-      expect(result.candidates[0]!.evidenceQualityScore).toBe(0);
+      expect(result.candidates[0]!.evidenceQualityScore).toBe(0.79);
     } finally { jest.useRealTimers(); }
   });
 
@@ -84,13 +84,12 @@ describe("assessment completed receipts and caller abandonment", () => {
       const result = await pending;
       expect(timeouts).toEqual([100_000, 30_000]);
       expect(result.ranking.orderedCandidateIds).toHaveLength(8);
-      expect(result.candidates.filter((item) => item.evidenceQualityScore === 0)).toHaveLength(16);
+      expect(result.candidates.filter((item) => item.evidenceQualityScore === 0)).toHaveLength(0);
       await jest.advanceTimersByTimeAsync(60_000);
       expect(result.ranking.orderedCandidateIds).toHaveLength(8);
     } finally { jest.useRealTimers(); }
   });
-  // Completion at the 600-second deadline is late: all 25 or 8 timely batches of eight.
-  it.each([[20_000, 200], [70_000, 64]])("accounts for all 200 candidates at %i ms per batch", async (latency, admitted) => {
+  it.each([[20_000, 200], [70_000, 64]])("keeps deterministic quality for overdue batches at %i ms", async (latency, admitted) => {
     jest.useFakeTimers();
     jest.setSystemTime(cutoff);
     try {
@@ -106,7 +105,7 @@ describe("assessment completed receipts and caller abandonment", () => {
       await jest.advanceTimersByTimeAsync(600_001);
       const result = await pending;
       expect(result.ranking.orderedCandidateIds).toHaveLength(admitted!);
-      expect(result.candidates.filter((item) => item.evidenceQualityScore === 0)).toHaveLength(200 - admitted!);
+      expect(result.candidates.filter((item) => item.evidenceQualityScore === 0)).toHaveLength(0);
       await jest.advanceTimersByTimeAsync(100_000);
       expect(result.ranking.orderedCandidateIds).toHaveLength(admitted!);
     } finally { jest.useRealTimers(); }

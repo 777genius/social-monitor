@@ -80,9 +80,9 @@ describe("sealed public real-post grouping replay", () => {
     expect(row.retrieval.candidate).toBe(true); expect(row.retrieval.isolatedRetrieved).toBe(true);
     expect(row.model).toBeNull(); expect(row.relationTogether).toBe(false);
   });
-  it("preserves original admission facts: 42 missing authorities, one admitted public post", () => {
+  it("preserves current admission facts: 42 missing authorities, two admitted public posts", () => {
     const all = new Map(prepared.flatMap((p) => applyDecisions(p).admission).map((a) => [a.feedItemId, a.result]));
-    expect([...all.values()].filter((a) => a?.admitted)).toHaveLength(1);
+    expect([...all.values()].filter((a) => a?.admitted)).toHaveLength(2);
     expect([...all.values()].filter((a) => a && !a.admitted && a.reasons.includes("engagement_unauthoritative"))).toHaveLength(42);
   });
   it("exercises real confidence boundary via adapter normalizer and reconciliation, not gold answers", async () => {

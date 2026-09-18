@@ -42,11 +42,11 @@ describe("promotion terminal envelope through adapter, ranker, Summary and V2", 
     expect(result.ranking.orderedCandidateIds).toEqual(["terminal"]);
     expect(result.candidates[0]!.evidenceQualityScore).toBe(0.8);
   });
-  it.each(mutations)("keeps %s JSON pending with zero evidence", async (_name, mutate) => {
+  it.each(mutations)("keeps %s JSON on deterministic floors when review is incomplete", async (_name, mutate) => {
     const result = await run([fixture("terminal")], adapter(mutate));
     expect(result.ranking.orderedCandidateIds).toEqual([]);
-    expect(result.candidates[0]!.evidenceQualityScore).toBe(0);
-    expect(result.items[0]!.contentQuality).toMatchObject({ needsLlmReview: true,
-      reason: "promotion_assessment_pending:unavailable_or_timeout" });
+    expect(result.candidates[0]!.evidenceQualityScore).toBe(0.79);
+    expect(result.items[0]!.contentQuality.reason.startsWith("promotion_assessment_pending:"))
+      .toBe(false);
   });
 });

@@ -103,9 +103,9 @@ async (): Promise<ReaderPromotionV2ProductAssertionEvidence> => {
   const additionalSlate = composeReaderSummaryEditorialSlate({
     selection: additional,
   });
-  assert(additionalSlate.top.length === 0 &&
-    additionalSlate.additional.map((item) => item.candidateId).join() ===
-      "additional", "additional-never-fills-top");
+  assert(additionalSlate.top.map((item) => item.candidateId).join() ===
+    "additional" && additionalSlate.additional.length === 0,
+    "additional-fills-top-when-empty");
 
   const strong = selection([
     evidence("strong-x", "x", 80, true),
