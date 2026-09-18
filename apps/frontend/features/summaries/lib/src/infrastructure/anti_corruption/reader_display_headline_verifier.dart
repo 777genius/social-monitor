@@ -24,9 +24,19 @@ bool verifyReaderDisplayHeadline({
   if (payload['schemaVersion'] != 'reader_post_promotion_attestation.v2' ||
       seal is! Map<String, Object?> ||
       headline is! Map<String, Object?> || source is! Map<String, Object?> ||
-      !_keys(seal, {'headline', 'capturedSourceDigest'}) ||
       _canonical(seal) != _canonical(outerSeal) ||
-      _canonical(seal['headline']) != _canonical(headline) ||
+      _canonical(seal['headline']) != _canonical(headline)) {
+    return false;
+  }
+  if (headline['status'] == 'unavailable') {
+    return _keys(seal, {'headline'}) &&
+        _keys(headline, {'status', 'reasonCode'}) &&
+        headline['reasonCode'] == 'not_assessed' &&
+        title != null &&
+        _faithfulSourceTitle(title, source) &&
+        _validCapturedSource(source);
+  }
+  if (!_keys(seal, {'headline', 'capturedSourceDigest'}) ||
       !_keys(headline, {'status', 'kind', 'text', 'binding', 'support',
         'qualifications', 'confidence', 'wholeInput'}) ||
       headline['status'] != 'accepted' ||
@@ -159,6 +169,37 @@ bool _wholeSubjectToken(Map<String, Object?> ref, String title, String body) {
   );
   return (before.isEmpty || !continuation.hasMatch(String.fromCharCode(before.last))) &&
       (after.isEmpty || !continuation.hasMatch(String.fromCharCode(after.first)));
+}
+
+bool _faithfulSourceTitle(String title, Map<String, Object?> source) {
+  final sourceTitle = (source['title']! as String)
+      .trim()
+      .replaceFirst(RegExp(r'^X post by @[^:]+:\s*', caseSensitive: false), '');
+  final body = source['body'];
+  return title == sourceTitle ||
+      (body is String && (title == body || title == '$sourceTitle\n\n$body'));
+}
+
+bool _validCapturedSource(Map<String, Object?> source) {
+  const allowed = {
+    'title',
+    'body',
+    'captureAvailability',
+    'reviewAvailability',
+  };
+  if (!source.keys.every(allowed.contains) ||
+      !const {'title', 'captureAvailability', 'reviewAvailability'}
+          .every(source.containsKey) ||
+      source['title'] is! String ||
+      !const {'body_present', 'title_only', 'unavailable'}
+          .contains(source['reviewAvailability'])) {
+    return false;
+  }
+  final body = source['body'];
+  if (body == null) {
+    return source['captureAvailability'] == 'unavailable';
+  }
+  return body is String && source['captureAvailability'] == 'available';
 }
 
 bool _keys(Map<String, Object?> value, Set<String> keys) =>

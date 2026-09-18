@@ -1,4 +1,5 @@
 import {
+  READER_PROMOTION_SOCIAL_METRIC_AGE_GATE_ENABLED,
   READER_PROMOTION_SOCIAL_METRIC_MAX_AGE_MS,
   type ReaderPromotionV2Candidate,
   type ReaderPromotionV2RejectionReason,
@@ -43,13 +44,18 @@ export const evaluateReaderPromotionEngagementAuthority = (
   if (authority.source !== "durable_projection") {
     return { reason: "engagement_authority_malformed" };
   }
-  if (cutoffAt - observedAt > READER_PROMOTION_SOCIAL_METRIC_MAX_AGE_MS) {
+  if (
+    READER_PROMOTION_SOCIAL_METRIC_AGE_GATE_ENABLED &&
+    cutoffAt - observedAt > READER_PROMOTION_SOCIAL_METRIC_MAX_AGE_MS
+  ) {
     return { reason: "engagement_stale" };
   }
   return admitted(
     authority,
     candidate.engagementCutoffAt,
-    READER_PROMOTION_SOCIAL_METRIC_MAX_AGE_MS,
+    READER_PROMOTION_SOCIAL_METRIC_AGE_GATE_ENABLED
+      ? READER_PROMOTION_SOCIAL_METRIC_MAX_AGE_MS
+      : undefined,
   );
 };
 

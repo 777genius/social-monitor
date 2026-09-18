@@ -6,7 +6,7 @@ import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevanc
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import { buildReaderSummaryPeriod } from "@social-monitor/summary/domain";
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
-import { tenantId, workspaceId, type Clock } from "@social-monitor/shared-kernel";
+import { tenantId, workspaceId, type Clock, readerPromotionProviderFamily } from "@social-monitor/shared-kernel";
 import { captureReaderSummaryDayDatasetManifest } from "./reader-summary-day-dataset-manifest";
 import { readRefreshMutableAuthority } from "./reader-summary-new-input-refresh-postgres";
 import { refreshScope, refreshHash } from "./reader-summary-new-input-refresh-manifest";
@@ -45,9 +45,9 @@ export async function captureRefreshDatabaseAuthority(input: {
   return { ...mutable, datasetSha256: dataset.dataset.aggregateSha256,
     feedCount: dataset.dataset.feedRowCount };
 }
-// Unpaid preparation runs the real hard gates on the complete snapshot. Pending
-// assessment is potential input, never admitted evidence or factual no-signal.
-// All paid work happens once, after the durable operation has been consumed.
+// Unpaid preparation runs the real hard gates on the complete snapshot.
+// Competing posts keep deterministic floors until paid assessment runs.
+// Count posts that still need a reviewer, not only wiped pending rows.
 export async function preflightRefreshSelection(input: {
   configuredInterests: ConfiguredInterestReaderPort;
   feed: FeedItemReadRepositoryPort; date: string; observedThrough: Date; clock: Clock;
@@ -65,7 +65,24 @@ export async function preflightRefreshSelection(input: {
   if (!ranked.ok) throw ranked.error;
   return { canonicalEvidence: ranked.value.items.map((item) => mapRankedItem(item, input.observedThrough)),
     assessmentCandidateCount: ranked.value.items.filter((item) =>
-    item.contentQuality.reason.startsWith("promotion_assessment_pending:")).length };
+      needsPaidPromotionAssessment(item)).length };
+}
+
+function needsPaidPromotionAssessment(item: {
+  readonly providerKey: string;
+  readonly contentQuality: {
+    readonly reason: string;
+    readonly eligibleForSummary: boolean;
+    readonly needsLlmReview: boolean;
+  };
+}): boolean {
+  if (readerPromotionProviderFamily(item.providerKey) === "github_radar" ||
+      item.providerKey === "github-trending-page") return false;
+  const quality = item.contentQuality;
+  if (quality.reason.startsWith("promotion_assessment_pending:")) return true;
+  if (quality.reason.startsWith("promotion_assessment:")) return false;
+  if (quality.reason.startsWith("promotion_assessment_not_requested:")) return false;
+  return quality.eligibleForSummary && !quality.needsLlmReview;
 }
 export async function assertRefreshHasNewInput(client: Pick<PrismaSummaryClient, "$queryRaw">,
   date: string, previous: string, cutoff: string): Promise<void> {

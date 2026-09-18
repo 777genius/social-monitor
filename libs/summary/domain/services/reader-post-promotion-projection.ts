@@ -43,7 +43,8 @@ import {
 } from "./reader-post-promotion-reasons";
 import { readerPostPromotionEvidenceInput } from "./reader-post-promotion-evidence-input";
 
-import { capturedReaderSource, readerPostDisplayHeadline, readerCapturedSourceDigest } from "./reader-post-display-headline";
+import { capturedReaderSource, readerCapturedSourceDigest,
+  readerPostPublishedHeadline } from "./reader-post-display-headline";
 
 export type ReaderPostPromotionProjection = {
   readonly topReads: readonly TopRead[];
@@ -213,7 +214,7 @@ const promotedPost = (params: {
     readerSummaryIndependentProviderFamily(item)))]
     .sort((left, right) => left.localeCompare(right));
   const interestIds = compactUnique(admitted.map((item) => item.interestId));
-  const displayHeadline = readerPostDisplayHeadline(lead);
+  const displayHeadline = readerPostPublishedHeadline(lead);
   const capturedSource = capturedReaderSource(lead);
   const title = displayHeadline.status === "accepted"
     ? displayHeadline.text : buildReaderPostPromotionTitle({ lead });

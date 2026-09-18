@@ -22,6 +22,19 @@ describe("grounded headline REST transport", () => {
       [...projection.topReads, ...projection.additionalPosts].map((card) => card.promotionCandidateId));
   });
 
+  it("transports source-title cards when the display headline is unavailable", () => {
+    const body = "Atlas documents agent safety findings across public websites and proposes reporting standards.";
+    const { response, projection } = projectPublicTitles(body, body, "source");
+    const cards = [...response.readerBrief.topReads, ...response.readerBrief.selectedPosts];
+    expect(cards.length).toBeGreaterThan(0);
+    for (const card of cards) {
+      expect(card.displayHeadline?.status).toBe("unavailable");
+      expect(card.title).toBe(body);
+      expect(card.capturedSource?.body).toBe(body);
+    }
+    expect(projection.topReads[0]?.displayHeadline?.status).toBe("unavailable");
+  });
+
   it("transports exact stored title, full source and sealed assessment", () => {
     const view = fixture();
     const board = readerSummaryPromotionBoardRestView(view);

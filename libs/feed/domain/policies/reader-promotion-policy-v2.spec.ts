@@ -290,7 +290,7 @@ describe("Reader Promotion Policy V2", () => {
     });
   });
 
-  it("rejects a stale high social metric snapshot relative to the explicit cutoff", () => {
+  it("admits a last-seen social metric snapshot older than six hours while the age gate is off", () => {
     const baseline = xPromotionCandidate({
       candidateId: "stale-high-metric",
       likes: 11_112,
@@ -308,8 +308,8 @@ describe("Reader Promotion Policy V2", () => {
     } as ReaderPromotionV2Candidate;
 
     expect(evaluateReaderPromotionV2(candidate)).toMatchObject({
-      admitted: false,
-      reasons: ["engagement_stale"],
+      admitted: true,
+      providerSignal: 11_112,
     });
   });
 
@@ -430,7 +430,6 @@ describe("Reader Promotion Policy V2", () => {
         authoritySource: "durable_projection",
         metricsObservedAt: "2026-08-29T17:00:00.000Z",
         freshnessCutoffAt: "2026-08-29T18:00:00.000Z",
-        maximumAgeMs: 21_600_000,
         regressionState: "stable",
       },
     });

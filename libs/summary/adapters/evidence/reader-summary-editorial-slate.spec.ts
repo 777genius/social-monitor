@@ -150,17 +150,42 @@ describe("Reader Promotion V2 editorial slate", () => {
     expect(slate.orderedCandidateIds).toEqual(["x-11112", "x-89"]);
   });
 
-  it("keeps an Additional-floor candidate out of Top", () => {
+  it("lets an admitted HN story take a Top slot beside stronger X posts", () => {
+    const viral = xEvidence("x-viral", 2000);
+    const news = hackerNewsEvidence("hn-news", 30);
+    const slate = compose([viral, news]);
+
+    expect(slate.top.map((entry) => entry.candidateId).sort()).toEqual(
+      ["hn-news", "x-viral"].sort(),
+    );
+  });
+
+  it("promotes an admission-floor candidate into Top when no top-floor posts exist", () => {
     const additionalOnly = xEvidence("x-additional-floor", 35);
     const slate = compose([additionalOnly]);
 
-    expect(slate.top).toEqual([]);
-    expect(slate.additional).toEqual([
+    expect(slate.top).toEqual([
       expect.objectContaining({
         candidateId: "x-additional-floor",
-        placement: "additional",
-        reasonCodes: expect.arrayContaining(["top_floor_not_met"]),
+        placement: "top",
       }),
+    ]);
+    expect(slate.additional).toEqual([]);
+  });
+
+  it("keeps an admission-floor X out of Top after eight top-floor posts fill the board", () => {
+    const items = [
+      ...Array.from({ length: 8 }, (_, index) =>
+        xEvidence(`x-top-${index + 1}`, 1_000 - index)),
+      xEvidence("x-additional-floor", 35),
+    ];
+    const slate = compose(items);
+
+    expect(slate.top).toHaveLength(8);
+    expect(slate.top.every((entry) => entry.candidateId !== "x-additional-floor"))
+      .toBe(true);
+    expect(slate.additional.map((entry) => entry.candidateId)).toEqual([
+      "x-additional-floor",
     ]);
   });
 
@@ -182,12 +207,13 @@ describe("Reader Promotion V2 editorial slate", () => {
     )).toBe(true);
   });
 
-  it("backfills a display-ready candidate after unavailable editorial capacity", () => {
-    const unavailable = Array.from({ length: 16 }, (_, index) => ({
+  it("keeps reader-facing source-title leads when display headlines are unavailable", () => {
+    const unavailable = Array.from({ length: 3 }, (_, index) => ({
       ...xEvidence(`unavailable-${index + 1}`, 10_000 - index),
+      sourceText: "A concrete self-contained product update.",
       readerHeadline: {
         status: "unavailable" as const,
-        reasonCode: "unresolved_qualifications" as const,
+        reasonCode: "not_assessed" as const,
       },
     }));
     const lowerBase = xEvidence("display-ready-lower", 100);
@@ -208,13 +234,16 @@ describe("Reader Promotion V2 editorial slate", () => {
     });
 
     expect(slate.top.map((entry) => entry.candidateId)).toEqual([
+      "unavailable-1",
+      "unavailable-2",
+      "unavailable-3",
       "display-ready-lower",
     ]);
     expect(
       slate.excluded.filter((entry) =>
         entry.reasonCodes.includes("display_headline_unavailable"),
       ),
-    ).toHaveLength(16);
+    ).toHaveLength(0);
   });
 
   it("rejects a viral irrelevant candidate instead of filling a slot", () => {
@@ -265,6 +294,34 @@ describe("Reader Promotion V2 editorial slate", () => {
     expect(slate.excluded).toContainEqual(expect.objectContaining({
       candidateId: "same-story-reddit",
       reasonCodes: ["semantic_story_duplicate"],
+    }));
+  });
+
+  it("collapses a follow-up headline into the stronger same-story representative", () => {
+    const lead = {
+      ...redditEvidence("kimi-lead", 1035, { canonicalIdentity: "story:kimi-a" }),
+      title: "Kimi routed to Claude",
+    };
+    const followUp = {
+      ...redditEvidence("kimi-follow-up", 544, {
+        canonicalIdentity: "story:kimi-b",
+      }),
+      title: "Kimi routed to Claude, leaked chinese data",
+    };
+    const other = redditEvidence("other-reddit", 600, {
+      canonicalIdentity: "story:other",
+    });
+    const slate = compose([lead, followUp, other]);
+
+    expect(slate.top.map((entry) => entry.candidateId)).toEqual(
+      expect.arrayContaining(["kimi-lead"]),
+    );
+    expect(slate.top.map((entry) => entry.candidateId)).not.toContain(
+      "kimi-follow-up",
+    );
+    expect(slate.excluded).toContainEqual(expect.objectContaining({
+      candidateId: "kimi-follow-up",
+      reasonCodes: expect.arrayContaining(["semantic_story_duplicate"]),
     }));
   });
 

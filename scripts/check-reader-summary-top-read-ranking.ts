@@ -15,6 +15,8 @@ import {
   topReadPrimaryMinimumForLimit,
   topReadProviderCapForLimit,
 } from "@social-monitor/summary/domain/policies/top-read-provider-diversity-policy";
+import { hasValidReaderDisplayTitle } from
+  "@social-monitor/summary/domain/policies/reader-display-title-quality";
 import {
   isFallbackReaderReason,
   isUnpolishedReaderTitle,
@@ -343,7 +345,7 @@ async function buildReportFromDatabase(
           severeSameProviderMissedCandidates(missedSameProviderCandidates)
             .length === 0,
         topReadTitlesAreReaderFacing: topReads.every(
-          (item) => !isUnpolishedReaderTitle(item.title),
+          (item) => hasValidReaderDisplayTitle(item),
         ),
         topReadReasonsAreReaderFacing: topReads.every(
           (item) => !isFallbackReaderReason(item.reason),

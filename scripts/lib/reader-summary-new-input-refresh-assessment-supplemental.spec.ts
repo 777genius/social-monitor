@@ -146,32 +146,55 @@ it.each(["missing slate", "top", "additional", "cluster representative", "cluste
   },
 );
 
-it.each(["needs_context", "bounded rejection"])(
-  "keeps supplemental-only selection pending after %s primary coverage", async (kind) => {
-    const supplemental = await supplementalFixture();
-    const test = await selectorWiring({ extraCandidates: kind === "bounded rejection" ? 199 : 0,
-      output: (command) => {
-        const output = selectorOutput(command);
-        if (command.purpose === sourceContentAssessmentPurpose) {
-          for (const review of output.reviews as Record<string, unknown>[]) {
-            review.decision = kind === "needs_context" ? kind : "reject";
-          }
-        }
-        return output;
-      } });
-    const assessment = createRefreshAssessmentReviewer({ env: {}, runtime: test.runtime,
-      clock: new FixedClock(refreshNow),
-      canonicalEvidence: [...test.preflight.canonicalEvidence, ...supplemental.supplemental] });
-    const review = jest.spyOn(test.assessment, "reviewBatch").mockImplementation(assessment.reviewBatch);
-    try {
-      const primary = await test.select();
-      expect(primary.selectedEvidence).toHaveLength(0);
-      expect(test.preflight.assessmentCandidateCount).toBe(kind === "bounded rejection" ? 201 : 2);
-      // Completed bounded coverage passes the binding gate before the empty-primary guard.
-      expect(() => assessment.assertComplete(test.preflight.assessmentCandidateCount)).not.toThrow();
-      expect(() => assessment.assertComplete(test.preflight.assessmentCandidateCount, supplemental.editorial))
-        .toThrow(/remains pending/u);
-      expect(() => test.runtime.assertUsable()).not.toThrow();
-    } finally { review.mockRestore(); }
-  },
-);
+it("keeps supplemental-only selection pending after needs_context primary coverage", async () => {
+  const supplemental = await supplementalFixture();
+  const test = await selectorWiring({ output: (command) => {
+    const output = selectorOutput(command);
+    if (command.purpose === sourceContentAssessmentPurpose) {
+      for (const review of output.reviews as Record<string, unknown>[]) {
+        review.decision = "needs_context";
+      }
+    }
+    return output;
+  } });
+  const assessment = createRefreshAssessmentReviewer({ env: {}, runtime: test.runtime,
+    clock: new FixedClock(refreshNow),
+    canonicalEvidence: [...test.preflight.canonicalEvidence, ...supplemental.supplemental] });
+  const review = jest.spyOn(test.assessment, "reviewBatch").mockImplementation(assessment.reviewBatch);
+  try {
+    const primary = await test.select();
+    expect(primary.selectedEvidence).toHaveLength(0);
+    expect(test.preflight.assessmentCandidateCount).toBe(2);
+    expect(() => assessment.assertComplete(test.preflight.assessmentCandidateCount)).not.toThrow();
+    expect(() => assessment.assertComplete(test.preflight.assessmentCandidateCount, supplemental.editorial))
+      .toThrow(/remains pending/u);
+    expect(() => test.runtime.assertUsable()).not.toThrow();
+  } finally { review.mockRestore(); }
+});
+
+it("does not treat bounded rejection overflow as supplemental-only coverage", async () => {
+  const supplemental = await supplementalFixture();
+  const test = await selectorWiring({ extraCandidates: 199, output: (command) => {
+    const output = selectorOutput(command);
+    if (command.purpose === sourceContentAssessmentPurpose) {
+      for (const review of output.reviews as Record<string, unknown>[]) {
+        review.decision = "reject";
+      }
+    }
+    return output;
+  } });
+  const assessment = createRefreshAssessmentReviewer({ env: {}, runtime: test.runtime,
+    clock: new FixedClock(refreshNow),
+    canonicalEvidence: [...test.preflight.canonicalEvidence, ...supplemental.supplemental] });
+  const review = jest.spyOn(test.assessment, "reviewBatch").mockImplementation(assessment.reviewBatch);
+  try {
+    const primary = await test.select();
+    expect(primary.selectedEvidence.length).toBeGreaterThan(0);
+    expect(primary.selectedEvidence.every((item) =>
+      item.contentQuality?.reason !== "promotion_assessment:reject")).toBe(true);
+    expect(test.preflight.assessmentCandidateCount).toBe(201);
+    expect(() => assessment.assertComplete(test.preflight.assessmentCandidateCount, supplemental.editorial))
+      .toThrow(/reconciliation|pending/u);
+    expect(() => test.runtime.assertUsable()).not.toThrow();
+  } finally { review.mockRestore(); }
+});

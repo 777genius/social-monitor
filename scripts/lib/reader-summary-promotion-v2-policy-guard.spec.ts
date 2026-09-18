@@ -133,7 +133,7 @@ describe("HistoricalPromotionPolicyGuard", () => {
         repository(policy("analytical")),
         expected,
       ),
-      "story_ranking_v11",
+      "story_ranking_v12",
     );
 
     await expect(selector.select({
@@ -161,7 +161,7 @@ describe("HistoricalPromotionPolicyGuard", () => {
         repository(policy("concise")),
         expected,
       ),
-      "story_ranking_v11",
+      "story_ranking_v12",
     );
 
     await expect(selector.select({
@@ -178,7 +178,7 @@ describe("HistoricalPromotionPolicyGuard", () => {
       },
       maxItems: 120,
     })).resolves.toMatchObject({
-      rankingPolicyVersion: "story_ranking_v11",
+      rankingPolicyVersion: "story_ranking_v12",
     });
   });
 });

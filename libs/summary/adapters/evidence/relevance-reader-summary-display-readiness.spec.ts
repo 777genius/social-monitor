@@ -1,10 +1,7 @@
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
-import { ReaderSummaryJob, workspaceReaderSummaryScope } from "../../domain";
-import { ExecuteReaderSummaryJobUseCase } from "../../features/execute-reader-summary-job/execute-reader-summary-job.use-case";
-import { FakeReaderSummaryJobRepository } from "../../features/execute-reader-summary-job/execute-reader-summary-job.spec-support";
-import { readerSummaryPromotionControl, NOOP_READER_SUMMARY_PROMOTION_METRICS } from "../../features/execute-reader-summary-job/reader-summary-promotion-control";
+import { workspaceReaderSummaryScope } from "../../domain";
 import { ok, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import { headlineScope, withAssessment } from "./reader-headline.spec-support";
@@ -38,6 +35,9 @@ describe("RelevanceReaderSummaryEvidenceSelector display readiness", () => {
         providerKey: "hacker-news",
         rank: 2,
         score: 2,
+        title: "Cited story",
+        bodyPreview: "Cited story",
+        sourceText: "Cited story",
         readerHeadline: { status: "unavailable", reasonCode: "not_assessed" },
       }),
     ];
@@ -54,7 +54,7 @@ describe("RelevanceReaderSummaryEvidenceSelector display readiness", () => {
     expect(selection.editorialSlate?.orderedCandidateIds).toEqual(["accepted-hn"]);
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual(["accepted-hn"]);
     expect(selection.editorialSlate?.excluded).toContainEqual(expect.objectContaining({
-      candidateId: "unavailable-hn", reasonCodes: ["display_headline_unavailable"],
+      candidateId: "unavailable-hn",
     }));
   });
 
@@ -115,47 +115,70 @@ const ineligibleReady = () => {
 };
 
 describe("display availability after authoritative eligibility", () => {
+  it("keeps a useful post whose display headline is unavailable", async () => {
+    const selection = await selectorFor([rankedItem({
+      feedItemId: "source-title-hn",
+      providerKey: "hacker-news",
+      rank: 1,
+      score: 3,
+      title: "Developer tooling ships new compiler diagnostics",
+      bodyPreview: "Useful source evidence for an AI developer summary.",
+      readerHeadline: { status: "unavailable", reasonCode: "not_assessed" },
+    })]).select(query);
+
+    expect(selection.editorialSlate?.orderedCandidateIds).toEqual(["source-title-hn"]);
+    expect(selection.editorialSlate?.excluded).not.toContainEqual(expect.objectContaining({
+      candidateId: "source-title-hn", reasonCodes: ["display_headline_unavailable"],
+    }));
+  });
   it("leaves genuinely ineligible inventory with an empty slate", async () => {
     const selection = await selectorFor([ineligibleReady()]).select(query);
     expect(selection.editorialSlate?.orderedCandidateIds).toEqual([]);
     expect(selection.selectedEvidence).toEqual([]);
   });
 
-  it.each([false, true])("fails early without model or publication (ineligible ready=%s)", async (includeReady) => {
-    const jobs = new FakeReaderSummaryJobRepository();
-    await jobs.save(ReaderSummaryJob.request({
-      ...query, id: "display-job", idempotencyKey: "display-job-key", requestedAt: clock.now(),
-    }));
-    const selector = selectorFor([
-      ...Array.from({ length: 6 }, (_, index) => ({
-        ...invalid(), feedItemId: `eligible-invalid-${index}`,
-        canonicalUrl: `https://example.test/invalid-${index}`,
-        title: `Independent signal ${index}`,
-        readerHeadline: { status: "unavailable" as const,
-          reasonCode: index === 5 ? "invalid_assessment" as const : "unresolved_qualifications" as const },
-      })),
-      ...(includeReady ? [ineligibleReady()] : []),
+  it("keeps unassessed source titles together with failed headline polish", async () => {
+    const selection = await selectorFor([
+      rankedItem({
+        feedItemId: "source-title-hn",
+        providerKey: "hacker-news",
+        rank: 1,
+        score: 3,
+        title: "Developer tooling ships new compiler diagnostics",
+        bodyPreview: "Useful source evidence for an AI developer summary.",
+        readerHeadline: { status: "unavailable", reasonCode: "not_assessed" },
+      }),
+      rankedItem({
+        feedItemId: "invalid-assessment-hn",
+        providerKey: "hacker-news",
+        rank: 2,
+        score: 2,
+        title: "Runtime regression discussion stays reader facing",
+        bodyPreview: "Useful source evidence for an AI developer summary.",
+        readerHeadline: { status: "unavailable", reasonCode: "invalid_assessment" },
+      }),
+    ]).select(query);
+
+    expect([...selection.editorialSlate!.orderedCandidateIds].sort()).toEqual([
+      "invalid-assessment-hn",
+      "source-title-hn",
     ]);
-    const model = { route: jest.fn(), generate: jest.fn(), classifyError: jest.fn() };
-    const artifacts = { save: jest.fn() };
-    const publications = { publish: jest.fn() };
-    const useCase = new ExecuteReaderSummaryJobUseCase(
-      jobs, artifacts as never, {} as never, selector, model as never,
-      publications as never, { generate: () => "unused-artifact" }, clock,
-      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
-    );
-    const result = await useCase.execute({ ...query, readerSummaryJobId: "display-job" });
-    expect(result).toEqual({ ok: false, error: expect.objectContaining({
-      code: "external.dependency_unavailable",
-      details: expect.objectContaining({ kind: "reader_summary_display_headlines_unavailable",
-        selectedFeedItemIds: expect.arrayContaining(Array.from({ length: 6 }, (_, index) => `eligible-invalid-${index}`)) }),
-    }) });
-    expect(model.route).not.toHaveBeenCalled();
-    expect(model.generate).not.toHaveBeenCalled();
-    expect(model.classifyError).not.toHaveBeenCalled();
-    expect(artifacts.save).not.toHaveBeenCalled();
-    expect(publications.publish).not.toHaveBeenCalled();
-    expect((await jobs.findById({ ...query, readerSummaryJobId: "display-job" }))?.toSnapshot())
-      .toMatchObject({ status: "failed", failureReason: expect.stringContaining("selected headlines unavailable") });
+    expect(selection.editorialSlate?.excluded).not.toContainEqual(expect.objectContaining({
+      candidateId: "invalid-assessment-hn",
+    }));
+  });
+
+  it("does not select unusable source titles without a display headline", async () => {
+    const selection = await selectorFor(Array.from({ length: 6 }, (_, index) => ({
+      ...invalid(), feedItemId: `eligible-invalid-${index}`,
+      canonicalUrl: `https://example.test/invalid-${index}`,
+      title: "Cited story",
+      bodyPreview: "Cited story",
+      sourceText: "Cited story",
+      readerHeadline: { status: "unavailable" as const,
+        reasonCode: index === 5 ? "invalid_assessment" as const : "unresolved_qualifications" as const },
+    }))).select(query);
+    expect(selection.editorialSlate?.orderedCandidateIds).toEqual([]);
+    expect(selection.selectedEvidence).toEqual([]);
   });
 });

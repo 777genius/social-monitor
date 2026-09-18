@@ -41,11 +41,13 @@ export * from "./policies/reader-post-promotion-support-authority";
 export * from "./services/reader-post-promotion-attestation";
 export * from "./services/reader-post-promotion-projection";
 export * from "./services/reader-post-promotion-evidence-admission";
+export * from "./services/reader-promotion-story-title-duplicate";
 export * from "./policies/reader-summary-schedule-window-policy";
 export * from "./policies/reader-summary-source-authority-policy";
 export * from "./policies/reader-summary-lead-eligibility-policy";
 export * from "./policies/reader-summary-watch-eligibility-policy";
 export * from "./policies/rendered-top-read-selection-policy";
+export * from "./policies/reader-display-title-quality";
 export * from "./policies/reader-summary-topic-recommendation-policy";
 export * from "./policies/reader-summary-topic-map-grouping-policy";
 export * from "./policies/reader-summary-topic-map-structure-quality";
@@ -116,6 +118,7 @@ export type {
   SummaryHeadlineUnavailableReason, ReaderCapturedSource, ReaderDisplayHeadline,
   ReaderDisplayHeadlineSeal,
 } from "./value-objects/summary-reader-headline";
-export { readerPostDisplayHeadline, capturedReaderSource, readerCapturedSourceDigest } from
+export { readerPostDisplayHeadline, readerPostPublishedHeadline, capturedReaderSource,
+  readerCapturedSourceDigest, isReaderDisplayReadyLead } from
   "./services/reader-post-display-headline";
 export { readerDisplayIdentityMatches } from "./services/reader-post-display-identity";

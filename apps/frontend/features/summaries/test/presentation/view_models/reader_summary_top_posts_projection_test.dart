@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/domain/entities/summary_citation.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/reader_captured_source.dart';
 import 'package:social_monitor_summaries/src/presentation/view_models/reader_summary_top_posts_projection.dart';
 
 import '../../support/top_posts_test_fixtures.dart';
@@ -206,6 +207,41 @@ void main() {
     );
 
     expect(projection.additionalNotableStories, isEmpty);
+  });
+
+  test('keeps a source-title curated card without an accepted headline', () {
+    final curated = topPostFixture(
+      title: 'Runtime regression discussion',
+      storyClusterId: 'story:runtime',
+      cardKind: ReaderSummaryCardKind.curatedTopRead,
+      hasDisplayHeadline: false,
+      capturedSource: const ReaderCapturedSource(
+        title: 'Runtime regression discussion',
+        body: 'Users are discussing a runtime regression.',
+        captureAvailability: ReaderCaptureAvailability.available,
+        reviewAvailability: ReaderSourceReviewAvailability.bodyPresent,
+      ),
+      citationIds: const ['runtime-reddit'],
+      providerMetrics: const [ProviderMetric(label: 'Score', value: '50')],
+    );
+    final projection = readerSummaryTopPostsProjection(
+      topPostsSummaryFixture(
+        topReads: [curated],
+        topStories: [
+          _story(
+            id: 'story:runtime',
+            title: 'Runtime regression discussion',
+            citations: const ['runtime-reddit'],
+            providers: const ['reddit'],
+          ),
+        ],
+        citations: [_citation('runtime-reddit', 'reddit')],
+      ),
+    );
+
+    expect(projection.curatedPosts, [curated]);
+    expect(projection.curatedPosts.single.displayHeadline, isNull);
+    expect(projection.curatedPosts.single.capturedSource?.body, contains('runtime regression'));
   });
 
   test('keeps backend lane membership without local cross-lane dedupe', () {

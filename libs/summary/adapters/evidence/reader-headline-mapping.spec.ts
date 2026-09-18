@@ -23,6 +23,16 @@ describe("headline mapping and unchanged top/additional placement", () => {
       .toEqual({ status: "unavailable", reasonCode: "invalid_assessment" });
   });
 
+  it("admits failed headline polish as a source-title display headline", () => {
+    const lead = {
+      ...assessedSource(),
+      readerHeadline: { status: "unavailable" as const, reasonCode: "invalid_assessment" as const },
+    };
+    expect(admittedSummaryEvidenceItem(lead).readerHeadline).toEqual({
+      status: "unavailable", reasonCode: "not_assessed",
+    });
+  });
+
   it("applies the same exact display/source semantics after Additional overflow", () => {
     const lead = assessedSource();
     const higher = Array.from({ length: 8 }, (_, index) => withAssessment({

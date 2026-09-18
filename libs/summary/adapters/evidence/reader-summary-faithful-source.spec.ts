@@ -37,9 +37,9 @@ describe("faithful available source admission and projection", () => {
       expect(top.capturedSource?.body).toBe(text);
       expect(top.displayHeadline?.status).toBe("unavailable");
       expect(isReaderFacingQualityTopRead({ ...top, providerKey: item.providerKey, signalScore: 2.2,
-        reason: "This discussion informs how operators review agent changes." }, [item])).toBe(false);
+        reason: "This discussion informs how operators review agent changes." }, [item])).toBe(true);
       expect(isReaderFacingQualityTopRead({ ...top, providerKey: item.providerKey, signalScore: 2.2,
-        reason: "This discussion informs how operators review agent changes." }, [support])).toBe(false);
+        reason: "This discussion informs how operators review agent changes." }, [support])).toBe(true);
     },
   );
 

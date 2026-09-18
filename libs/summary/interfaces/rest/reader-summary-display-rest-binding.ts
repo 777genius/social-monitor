@@ -26,15 +26,20 @@ export const validReaderDisplayRestBinding = (
     // Preserve historical source presentations without granting new authority.
     return !Object.hasOwn(payload, "displayHeadline");
   }
-  if (seal?.headline.status !== "accepted" ||
-      canonicalPromotionPayload(payload.displayHeadline) !== canonicalPromotionPayload(seal) ||
+  if (canonicalPromotionPayload(payload.displayHeadline) !== canonicalPromotionPayload(seal) ||
       payload.displaySummary !== sealedSummary ||
       !readerDisplayIdentityMatches(card, seal, view, sealedSummary)) return false;
-  const binding = seal.headline.binding;
+  if (seal?.headline.status === "accepted") {
+    const binding = seal.headline.binding;
+    return view.citations.some((citation) =>
+      citation.citationId === attestation.citationId &&
+      card.citationIds.includes(citation.citationId) &&
+      citation.feedItemId === binding.candidateId &&
+      citation.sourceItemId === binding.sourceItemId &&
+      citation.providerKey === binding.providerKey);
+  }
   return view.citations.some((citation) =>
     citation.citationId === attestation.citationId &&
     card.citationIds.includes(citation.citationId) &&
-    citation.feedItemId === binding.candidateId &&
-    citation.sourceItemId === binding.sourceItemId &&
-    citation.providerKey === binding.providerKey);
+    citation.feedItemId === attestation.candidateId);
 };

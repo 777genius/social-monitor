@@ -16,6 +16,8 @@ import {
   type SummaryEvidenceItem,
   type SummaryEvidenceSelection,
 } from "../../domain";
+import { isReaderPromotionStoryTitleDuplicate } from
+  "../../domain/services/reader-promotion-story-title-duplicate";
 import { readerPostPromotionTopProviderCap } from
   "../../domain/policies/top-read-provider-diversity-policy";
 import {
@@ -45,7 +47,10 @@ export const composeReaderSummaryEditorialSlate = (params: {
     throw new Error("Reader summary promotion candidate ids must be unique");
   }
   const clusterIdByEvidenceId = clusterMembership(params.selection.clusters);
-  const semanticStoryIdByEvidenceId = semanticStoryMembership(params.selection);
+  const semanticStoryIdByEvidenceId = semanticStoryMembership(
+    params.selection,
+    params.candidates ?? params.selection.selectedEvidence,
+  );
   const ranking = rankReaderPromotionV2(candidates);
   const { representatives, duplicateExclusions } = semanticRepresentatives({
     ranked: ranking.ranked,
@@ -73,25 +78,26 @@ export const composeReaderSummaryEditorialSlate = (params: {
       canonicalIdentity: candidate.canonicalIdentity,
       reasonCodes: ["display_headline_unavailable"],
     }));
-  const topQualifiedRepresentatives = displayReadyRepresentatives.filter(
-    (candidate) => candidate.topQualified,
-  );
+  const topPool = [
+    ...displayReadyRepresentatives.filter((candidate) => candidate.topQualified),
+    ...displayReadyRepresentatives.filter((candidate) => !candidate.topQualified),
+  ];
   const activeProviderCount = new Set(
-    topQualifiedRepresentatives.map((candidate) => candidate.provider),
+    topPool.map((candidate) => candidate.provider),
   ).size;
   const providerCap = readerPostPromotionTopProviderCap(activeProviderCount);
   const top: AdmittedReaderPromotionV2[] = [];
   const topIds = new Set<string>();
   const topProviderCounts = new Map<ReaderPromotionV2Provider, number>();
 
-  for (const candidate of topQualifiedRepresentatives) {
+  for (const candidate of topPool) {
     if (top.length >= topLimit) break;
     if ((topProviderCounts.get(candidate.provider) ?? 0) > 0) continue;
     top.push(candidate);
     topIds.add(candidate.candidateId);
     topProviderCounts.set(candidate.provider, 1);
   }
-  for (const candidate of topQualifiedRepresentatives) {
+  for (const candidate of topPool) {
     if (top.length >= topLimit) break;
     if (topIds.has(candidate.candidateId)) continue;
     const providerCount = topProviderCounts.get(candidate.provider) ?? 0;
@@ -392,6 +398,7 @@ const clusterMembership = (
 
 const semanticStoryMembership = (
   selection: SummaryEvidenceSelection,
+  evidence: readonly SummaryEvidenceItem[] = selection.selectedEvidence,
 ): ReadonlyMap<string, string> => {
   const parentById = new Map<string, string>();
   const add = (id: string): void => {
@@ -414,7 +421,11 @@ const semanticStoryMembership = (
     parentById.set(second!, first!);
   };
 
-  for (const item of selection.selectedEvidence) add(item.feedItemId);
+  const itemsById = new Map<string, SummaryEvidenceItem>();
+  for (const item of [...selection.selectedEvidence, ...evidence]) {
+    itemsById.set(item.feedItemId, item);
+    add(item.feedItemId);
+  }
   for (const cluster of selection.clusters) {
     const ids = [
       cluster.representativeFeedItemId,
@@ -426,12 +437,23 @@ const semanticStoryMembership = (
     union(relation.leftFeedItemId, relation.rightFeedItemId);
   }
   const canonicalOwner = new Map<string, string>();
-  for (const item of selection.selectedEvidence) {
+  for (const item of itemsById.values()) {
     const identity = item.promotionFacts?.canonicalIdentity.trim();
     if (!identity) continue;
     const owner = canonicalOwner.get(identity);
     if (owner === undefined) canonicalOwner.set(identity, item.feedItemId);
     else union(owner, item.feedItemId);
+  }
+  const items = [...itemsById.values()];
+  for (let index = 0; index < items.length; index += 1) {
+    for (let other = index + 1; other < items.length; other += 1) {
+      if (isReaderPromotionStoryTitleDuplicate(
+        items[index]!.title,
+        items[other]!.title,
+      )) {
+        union(items[index]!.feedItemId, items[other]!.feedItemId);
+      }
+    }
   }
 
   return new Map([...parentById.keys()].sort((left, right) =>

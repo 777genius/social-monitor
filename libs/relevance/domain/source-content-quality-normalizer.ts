@@ -67,12 +67,17 @@ export const normalizeSourceContentQualityInput = (
   const promoOffer =
     promoOfferPattern.test(text) ||
     (isXProvider(input.providerKey) && trainingIncomePromisePattern.test(text));
-  const engagementBait = engagementBaitPattern.test(text) || promoOffer;
+  const engagementBait = engagementBaitPattern.test(text) ||
+    promoOffer ||
+    generativeImageShowcasePattern.test(text) ||
+    vendorHandlePitchPattern.test(text);
   const predictionMarketRumor =
     predictionMarketPattern.test(text) &&
     rumorOrPoliticalClaimPattern.test(text);
   const rumorOnly =
-    rumorOnlyPattern.test(text) && unreleasedAiModelPattern.test(text);
+    (rumorOnlyPattern.test(text) && unreleasedAiModelPattern.test(text)) ||
+    (hedgedCapabilityRumorPattern.test(text) &&
+      extraordinaryCapabilityPattern.test(text));
   const speculativeFinancialChallenge =
     speculativeFinancialChallengePattern.test(textWithoutUrls) &&
     financialAssetPattern.test(textWithoutUrls) &&
@@ -83,9 +88,12 @@ export const normalizeSourceContentQualityInput = (
     aiCodingToolPattern.test(text) &&
     medicalContextPattern.test(text);
   const genericQuestion =
-    /\?\s*$/u.test(textWithoutUrls) &&
-    /\b(?:what|which|who|why|how|кто|что|как|какой|какие)\b/iu.test(
-      textWithoutUrls,
+    (/\?\s*$/u.test(textWithoutUrls) &&
+      /\b(?:what|which|who|why|how|кто|что|как|какой|какие)\b/iu.test(
+        textWithoutUrls,
+      )) ||
+    personalOpinionOpenerPattern.test(
+      input.title.replace(generatedXTitlePrefix, ""),
     );
   const needsLinkContext =
     (hasUrl && lowInformationDensity) ||
@@ -260,6 +268,17 @@ const hasTopicMatch = (params: {
   const strongTopicTerms = params.topicTerms.filter(
     (term) => !isShortTopicTerm(term),
   );
+  const topicIncludesAiFamily = params.topicTerms.some((term) =>
+    topicTermVariants(term).some((variant) =>
+      variant === "ai" || strongCoreTopicAliases.has(variant),
+    ),
+  );
+  if (
+    topicIncludesAiFamily &&
+    [...textTokenSet].some((token) => strongCoreTopicAliases.has(token))
+  ) {
+    return true;
+  }
 
   if (
     strongTopicTerms.some((term) =>
@@ -352,8 +371,12 @@ const financialGrowthPattern =
   /\b(?:turn|grow|flip|multiply|make|profit)\b.{0,40}\b(?:into|to|from|before)\b/iu;
 const moneyTargetPattern =
   /(?:\$\s*\d[\d,.]*|\d[\d,.]*\s*\$|\b\d+(?:\.\d+)?\s*(?:k|usd|dollars?)\b)/iu;
+const vendorHandlePitchPattern =
+  /@\w[\w.]{1,30}\s+is\s+(?:focused\s+on|building|the\s+(?:infrastructure|platform|protocol))/iu;
+const generativeImageShowcasePattern =
+  /\b(?:made|generated|created)\s+(?:using|with|by)\b[\s\S]{0,80}\bimages?\b|\b(?:chatgpt|dall-?e|midjourney|stable\s+diffusion|flux|minimax)\s+images?\b/iu;
 const engagementBaitPattern =
-  /\b(?:drop\s+your|share\s+your|comment\s+below|reply\s+with|retweet|repost|like\s+and|follow\s+for|top\s+\d+|stop\s+wasting\s+hours?|i\s+have\s+already\s+done\s+it\s+for\s+you|with\s+one\s+list|zero\s+confusion|no\s+fluff)\b/iu;
+  /\b(?:drop\s+your|share\s+your|comment\s+below|reply\s+with|retweet|repost|like\s+and|follow\s+for|top\s+\d+|stop\s+wasting\s+hours?|save\s+you\s+(?:hundreds\s+of\s+)?hours?|i\s+have\s+already\s+done\s+it\s+for\s+you|with\s+one\s+list|zero\s+confusion|no\s+fluff|accounts?\s+worth\s+following|\d{2,}\s+(?:ai\s+)?tools?\s+(?:that\s+will|you\s+should|every)|tools?\s+every\s+(?:\w+\s+){0,4}should\s+know)\b/iu;
 const promoOfferPattern =
   /\b(?:all\s+paid\s+courses?|paid\s+courses?|free\s+courses?|free\s+for\s+(?:the\s+)?first|first\s+\d{2,6}\s+people|limited\s+spots?|claim\s+(?:your\s+)?free|course\s+giveaway|free\s+access)\b/iu;
 const trainingIncomePromisePattern =
@@ -362,8 +385,15 @@ const predictionMarketPattern =
   /\b(?:polymarket|kalshi|prediction\s+market|market\s+odds|betting\s+odds)\b/iu;
 const rumorOrPoliticalClaimPattern =
   /\b(?:rumou?r|claim(?:s|ed)?|may|might|could|expected|odds?|administration|government|trump|biden|white\s+house|approval|restore|ban|allow)\b/iu;
+const generatedXTitlePrefix = /^x post by @[^:]+:\s*/iu;
+const personalOpinionOpenerPattern =
+  /^(?:i|we)\s+(?:personally\s+)?(?:think|believe|feel|guess)\b|\bi have to say(?:\s+something)?\b/iu;
 const rumorOnlyPattern =
   /\b(?:rumou?r|claim(?:s|ed)?|alleged|leak(?:ed)?|early\s+tester|unreleased|expected|may|might|could)\b/iu;
+const hedgedCapabilityRumorPattern =
+  /\b(?:alleged(?:ly)?|rumou?r(?:ed)?|unconfirmed|supposedly)\b/iu;
+const extraordinaryCapabilityPattern =
+  /\b(?:rsi|recursive\s+self-improvement|agi|superintelligence|sentien(?:t|ce))\b/iu;
 const unreleasedAiModelPattern =
   /\b(?:gpt[-\s]?\d+(?:\.\d+)?|claude\s*\d+(?:\.\d+)?|gemini\s*\d+(?:\.\d+)?|early\s+tester|early\s+access|unreleased\s+model)\b/iu;
 const personalExperiencePattern =
@@ -381,6 +411,21 @@ const trustedXAuthors = new Set([
   "nvidiaai",
   "openai",
   "sama",
+]);
+const strongCoreTopicAliases = new Set([
+  "altman",
+  "amodei",
+  "anthropic",
+  "chatgpt",
+  "claude",
+  "codex",
+  "copilot",
+  "cursor",
+  "gpt",
+  "llm",
+  "llms",
+  "mcp",
+  "openai",
 ]);
 const topicTermAliases = new Map<string, readonly string[]>([
   [

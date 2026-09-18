@@ -3,7 +3,8 @@ import type { Clock } from "@social-monitor/shared-kernel";
 import type { SourceContentQualityPolicy } from "../../domain";
 import type { SourceContentQualityReviewerPort, SourceContentQualityReviewRequest,
   SourceContentQualityReviewResult } from "../../ports";
-import { assessedPromotionVerdict, pendingPromotionAssessment } from "./promotion-assessment-verdict";
+import { assessedPromotionVerdict, isIncompletePromotionAssessment,
+  pendingPromotionAssessment } from "./promotion-assessment-verdict";
 import { unavailablePromotionHeadline, type PromotionReaderHeadline } from "../../domain/promotion-reader-headline";
 import { assessPromotionReaderHeadline } from "./promotion-reader-headline-assessment";
 
@@ -101,10 +102,15 @@ export const assessPromotionContent = async (input: {
                   timelyResponse.find((review) => review.candidateId === request.candidateId), input.policy);
           verdicts.set(request.candidateId, verdict);
           readerHeadlines.set(request.candidateId,
-            malformed || timelyResponse === undefined || verdict.reason.startsWith("promotion_assessment_pending:")
+            malformed
               ? unavailablePromotionHeadline("invalid_assessment")
-              : assessPromotionReaderHeadline(request,
-                  timelyResponse.find((review) => review.candidateId === request.candidateId), input.observeHeadlineDiagnostic));
+              : timelyResponse === undefined || isIncompletePromotionAssessment(verdict)
+                ? unavailablePromotionHeadline("not_assessed")
+                : verdict.reason.startsWith("promotion_assessment_pending:")
+                  ? unavailablePromotionHeadline("invalid_assessment")
+                  : assessPromotionReaderHeadline(request,
+                      timelyResponse.find((review) => review.candidateId === request.candidateId),
+                      input.observeHeadlineDiagnostic));
         }
       }
     };

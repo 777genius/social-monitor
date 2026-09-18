@@ -18,11 +18,13 @@ export const encodeDisplaySourceContent = (content: ReaderSummaryContent | undef
 const encode = (card: TopRead): unknown => {
   const source = card.capturedSource;
   if (source === undefined || (isDisplayRoundTripText(source.title) &&
-      (source.body === undefined || isDisplayRoundTripText(source.body)))) return card;
+      (source.body === undefined || isDisplayRoundTripText(source.body)) &&
+      isDisplayRoundTripText(card.title))) return card;
   if (card.displayHeadline?.status !== "unavailable") {
     throw new Error("Accepted display source cannot require persistence repair");
   }
-  return { ...card, capturedSource: { encoding: "json_string", value: JSON.stringify(source) } };
+  return { ...card, capturedSource: { encoding: "json_string",
+    value: JSON.stringify({ source, title: card.title }) } };
 };
 
 export const decodeDisplaySource = <T extends TopRead>(card: T): T => {
@@ -35,8 +37,16 @@ export const decodeDisplaySource = <T extends TopRead>(card: T): T => {
       throw new Error("Invalid rejected display source encoding");
     }
     const decoded: unknown = JSON.parse(encoded.value);
-    if (!validCapturedReaderSource(decoded)) throw new Error("Invalid captured reader source");
-    return { ...card, capturedSource: decoded };
+    if (validCapturedReaderSource(decoded)) {
+      return { ...card, capturedSource: decoded };
+    }
+    if (decoded !== null && typeof decoded === "object" && !Array.isArray(decoded)) {
+      const envelope = decoded as { source?: unknown; title?: unknown };
+      if (validCapturedReaderSource(envelope.source) && typeof envelope.title === "string") {
+        return { ...card, title: envelope.title, capturedSource: envelope.source };
+      }
+    }
+    throw new Error("Invalid captured reader source");
   }
   if (!validCapturedReaderSource(source)) throw new Error("Invalid captured reader source");
   return card;

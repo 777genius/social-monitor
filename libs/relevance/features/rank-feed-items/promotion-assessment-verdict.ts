@@ -12,6 +12,21 @@ export const pendingPromotionAssessment = (
   reason: `promotion_assessment_pending:${reason}`,
 });
 
+const incompletePromotionAssessmentReasons = new Set([
+  "budget_exhausted",
+  "unavailable_or_timeout",
+  "missing_result",
+]);
+
+/** Quota, timeout and budget gaps keep deterministic floors; invalid reviews still fail closed. */
+export const isIncompletePromotionAssessment = (
+  verdict: SourceContentQualityVerdict,
+): boolean => {
+  const prefix = "promotion_assessment_pending:";
+  return verdict.reason.startsWith(prefix) &&
+    incompletePromotionAssessmentReasons.has(verdict.reason.slice(prefix.length));
+};
+
 export const assessedPromotionVerdict = (
   request: SourceContentQualityReviewRequest,
   review: SourceContentQualityReviewResult | undefined,
