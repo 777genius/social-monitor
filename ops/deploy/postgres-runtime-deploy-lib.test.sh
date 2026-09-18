@@ -376,7 +376,9 @@ done
 : > "$SYSTEMCTL_EVENTS"
 rollback_snapshot=$(snapshot_postgres_runtime_control "$SHA")
 ROLLING_TIMER_NEXT_TRIGGER=
+chmod 755 "$REPO/ops/deploy/production-runtime/daily-run.sh"
 activate_postgres_runtime_control "$SHA"
+[[ $(stat -c '%a' "$REPO/ops/deploy/production-runtime/daily-run.sh") == 644 ]]
 [[ $(<"$ROLLING_TIMER_UNIT_FILE_STATE") == disabled ]]
 [[ $(<"$ROLLING_TIMER_ACTIVE_STATE") == inactive ]]
 release=$POSTGRES_RUNTIME_RELEASES/$SHA

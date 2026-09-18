@@ -261,6 +261,10 @@ activate_postgres_runtime_control_transaction() (
   for launcher in "${release_launchers[@]}"; do
     launcher_source_mode=755
     [[ $launcher != daily-run.sh ]] || launcher_source_mode=644
+    if [[ $launcher == daily-run.sh && -f $source/$launcher && ! -L $source/$launcher &&
+          $(stat -c '%a' "$source/$launcher") == 755 ]]; then
+      chmod 644 "$source/$launcher"
+    fi
     require_postgres_runtime_regular_source \
       "$source/$launcher" "$launcher_source_mode"
   done
