@@ -13,7 +13,7 @@ export const capturedReaderSource = (lead: SummaryEvidenceItem): ReaderCapturedS
     ? lead.readerHeadline.binding?.availability ?? "unavailable"
     : captureAvailability === "unavailable"
       ? "unavailable"
-      : body.trim().length === 0 ? "title_only" : "body_present";
+      : (body ?? "").trim().length === 0 ? "title_only" : "body_present";
   return {
     title: lead.title,
     ...(body === undefined ? {} : { body }),

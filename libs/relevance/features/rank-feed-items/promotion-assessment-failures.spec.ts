@@ -99,7 +99,7 @@ describe("promotion assessment protocol and budgets through V2", () => {
       fixture("b", "x-twitter"),
     ], { reviewBatch: async (requests) => [review(requests[0]!)] },
     { query: "editor extension" });
-    expect(result.ranking.orderedCandidateIds.sort()).toEqual(["a", "b"]);
+    expect([...result.ranking.orderedCandidateIds].sort()).toEqual(["a", "b"]);
     expect(result.items.find((item) => item.feedItemId === "a")!.contentQuality.reason)
       .toBe("promotion_assessment:promote");
     expect(result.items.find((item) => item.feedItemId === "b")!.contentQuality).toMatchObject({
