@@ -18,7 +18,7 @@ concurrency:
 jobs:
   reproducible_archive:
     name: Subscription runtime reproducible archive
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Check out the review commit
@@ -31,3 +31,14 @@ jobs:
 
       - name: Rebuild and compare the vendored archive twice
         run: npm run check:subscription-runtime-reproducible-archive
+        env:
+          SUBSCRIPTION_RUNTIME_REBUILD_EXPORT_DIR: ${{ runner.temp }}/subscription-runtime-rebuilds
+
+      - name: Preserve mismatched rebuilds for diagnosis
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: subscription-runtime-rebuilds
+          path: ${{ runner.temp }}/subscription-runtime-rebuilds
+          if-no-files-found: error
+          retention-days: 1

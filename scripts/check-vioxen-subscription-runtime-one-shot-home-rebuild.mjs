@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,6 +56,16 @@ try {
 
   const expected = await sha256(expectedArchive);
   const rebuilt = await Promise.all(outputs.map(sha256));
+  const exportDirectory =
+    process.env.SUBSCRIPTION_RUNTIME_REBUILD_EXPORT_DIR?.trim();
+  if (exportDirectory) {
+    await mkdir(exportDirectory, { recursive: true });
+    await Promise.all(
+      outputs.map((output, index) =>
+        cp(output, join(exportDirectory, `rebuild-${index + 1}.tgz`)),
+      ),
+    );
+  }
   assert.deepEqual(rebuilt, [expected, expected]);
   process.stdout.write(
     `subscription-runtime one-shot archive reproduced twice: ${expected}\n`,
