@@ -1,0 +1,33 @@
+name: Subscription runtime reproducibility
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/subscription-runtime-reproducibility.yml"
+      - "scripts/check-vioxen-subscription-runtime-one-shot-home-rebuild.mjs"
+      - "scripts/rebuild-vioxen-subscription-runtime-one-shot-home.mjs"
+      - "vendor/vioxen-subscription-runtime-0.1.0-main.42*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-runtime-reproducibility-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  reproducible_archive:
+    name: Subscription runtime reproducible archive
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the review commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up the pinned build runtime
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 26.9.0
+
+      - name: Rebuild and compare the vendored archive twice
+        run: npm run check:subscription-runtime-reproducible-archive
