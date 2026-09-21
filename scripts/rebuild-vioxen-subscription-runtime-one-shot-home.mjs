@@ -3,7 +3,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { createReadStream, createWriteStream } from "node:fs";
 import {
   cp,
   mkdir,
@@ -18,10 +17,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
-import { createGzip } from "node:zlib";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const [toolchain, output] = process.argv.slice(2);
@@ -190,23 +186,58 @@ function tarHeader(path, size, executable) {
   return header;
 }
 
-async function* tarEntries() {
+async function tarBytes() {
+  const chunks = [];
   for (const path of packedFiles) {
     const absolute = join(pack, path);
     const metadata = await stat(absolute);
-    yield tarHeader(path, metadata.size, (metadata.mode & 0o111) !== 0);
-    for await (const chunk of createReadStream(absolute)) yield chunk;
+    chunks.push(tarHeader(path, metadata.size, (metadata.mode & 0o111) !== 0));
+    chunks.push(await readFile(absolute));
     const padding = (512 - (metadata.size % 512)) % 512;
-    if (padding > 0) yield Buffer.alloc(padding);
+    if (padding > 0) chunks.push(Buffer.alloc(padding));
   }
-  yield Buffer.alloc(1024);
+  chunks.push(Buffer.alloc(1024));
+  return Buffer.concat(chunks);
 }
 
-await pipeline(
-  Readable.from(tarEntries()),
-  createGzip({ level: 9, mtime: 0 }),
-  createWriteStream(resolve(output)),
-);
+const crcTable = Array.from({ length: 256 }, (_, value) => {
+  let current = value;
+  for (let bit = 0; bit < 8; bit += 1) {
+    current = (current & 1) !== 0
+      ? 0xedb88320 ^ (current >>> 1)
+      : current >>> 1;
+  }
+  return current >>> 0;
+});
+
+function crc32(bytes) {
+  let value = 0xffffffff;
+  for (const byte of bytes) {
+    value = crcTable[(value ^ byte) & 0xff] ^ (value >>> 8);
+  }
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+function deterministicGzip(bytes) {
+  const chunks = [Buffer.from([0x1f, 0x8b, 0x08, 0, 0, 0, 0, 0, 0, 0xff])];
+  if (bytes.length === 0) chunks.push(Buffer.from([1, 0, 0, 0xff, 0xff]));
+  for (let offset = 0; offset < bytes.length; offset += 0xffff) {
+    const end = Math.min(offset + 0xffff, bytes.length);
+    const length = end - offset;
+    const block = Buffer.alloc(5);
+    block[0] = end === bytes.length ? 1 : 0;
+    block.writeUInt16LE(length, 1);
+    block.writeUInt16LE(0xffff ^ length, 3);
+    chunks.push(block, bytes.subarray(offset, end));
+  }
+  const footer = Buffer.alloc(8);
+  footer.writeUInt32LE(crc32(bytes), 0);
+  footer.writeUInt32LE(bytes.length >>> 0, 4);
+  chunks.push(footer);
+  return Buffer.concat(chunks);
+}
+
+await writeFile(resolve(output), deterministicGzip(await tarBytes()));
 process.stdout.write(
   `${JSON.stringify({
     source,
