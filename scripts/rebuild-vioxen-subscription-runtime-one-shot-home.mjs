@@ -11,12 +11,14 @@ import {
   readFile,
   readdir,
   rm,
+  stat,
   symlink,
   utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
@@ -138,51 +140,73 @@ const packedFiles = await files(pack);
 await Promise.all(
   packedFiles.map((path) => utimes(join(pack, path), new Date(0), new Date(0))),
 );
-if (process.platform === "darwin") {
-  const uncompressedArchive = `${resolve(output)}.tmp`;
-  run(
-    "tar",
-    [
-      "-cf",
-      uncompressedArchive,
-      "--uid",
-      "0",
-      "--gid",
-      "0",
-      "--uname",
-      "root",
-      "--gname",
-      "root",
-      "-T",
-      "-",
-    ],
-    pack,
-    `${packedFiles.join("\n")}\n`,
-  );
-  await pipeline(
-    createReadStream(uncompressedArchive),
-    createGzip({ level: 9 }),
-    createWriteStream(resolve(output)),
-  );
-  await rm(uncompressedArchive, { force: true });
-} else {
-  run(
-    "tar",
-    [
-        "--mtime=@0",
-        "--owner=0",
-        "--group=0",
-        "--numeric-owner",
-        "--no-recursion",
-        "-czf",
-        resolve(output),
-        "-T",
-        "-",
-    ],
-    pack,
-    `${packedFiles.join("\n")}\n`,
-  );
+
+function writeString(buffer, offset, length, value) {
+  const bytes = Buffer.from(value, "utf8");
+  assert.ok(bytes.length <= length, `${value} exceeds ${length} tar bytes`);
+  bytes.copy(buffer, offset);
 }
+
+function writeOctal(buffer, offset, length, value) {
+  const encoded = value.toString(8).padStart(length - 1, "0");
+  assert.ok(encoded.length < length, `${value} exceeds tar numeric field`);
+  writeString(buffer, offset, length - 1, encoded);
+}
+
+function splitTarPath(path) {
+  if (Buffer.byteLength(path) <= 100) return { name: path, prefix: "" };
+  for (let slash = path.lastIndexOf("/"); slash > 0; slash = path.lastIndexOf("/", slash - 1)) {
+    const prefix = path.slice(0, slash);
+    const name = path.slice(slash + 1);
+    if (Buffer.byteLength(prefix) <= 155 && Buffer.byteLength(name) <= 100) {
+      return { name, prefix };
+    }
+  }
+  assert.fail(`${path} cannot be represented as a USTAR path`);
+}
+
+function tarHeader(path, size, executable) {
+  const header = Buffer.alloc(512);
+  const { name, prefix } = splitTarPath(path);
+  writeString(header, 0, 100, name);
+  writeOctal(header, 100, 8, executable ? 0o755 : 0o644);
+  writeOctal(header, 108, 8, 0);
+  writeOctal(header, 116, 8, 0);
+  writeOctal(header, 124, 12, size);
+  writeOctal(header, 136, 12, 0);
+  header.fill(0x20, 148, 156);
+  header[156] = "0".charCodeAt(0);
+  writeString(header, 257, 6, "ustar\0");
+  writeString(header, 263, 2, "00");
+  writeString(header, 265, 32, "root");
+  writeString(header, 297, 32, "root");
+  writeOctal(header, 329, 8, 0);
+  writeOctal(header, 337, 8, 0);
+  writeString(header, 345, 155, prefix);
+  const checksum = header.reduce((sum, byte) => sum + byte, 0);
+  writeString(header, 148, 6, checksum.toString(8).padStart(6, "0"));
+  header[154] = 0;
+  header[155] = 0x20;
+  return header;
+}
+
+async function* tarEntries() {
+  for (const path of packedFiles) {
+    const absolute = join(pack, path);
+    const metadata = await stat(absolute);
+    yield tarHeader(path, metadata.size, (metadata.mode & 0o111) !== 0);
+    for await (const chunk of createReadStream(absolute)) yield chunk;
+    const padding = (512 - (metadata.size % 512)) % 512;
+    if (padding > 0) yield Buffer.alloc(padding);
+  }
+  yield Buffer.alloc(1024);
+}
+
+await pipeline(
+  Readable.from(tarEntries()),
+  createGzip({ level: 9, mtime: 0 }),
+  createWriteStream(resolve(output)),
+);
 process.stdout.write(
   `${JSON.stringify({
     source,

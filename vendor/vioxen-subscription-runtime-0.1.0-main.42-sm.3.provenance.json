@@ -10,7 +10,7 @@
   "packageVersion": "0.1.0-main.42-sm.3",
   "packageVersionIsLocal": true,
   "packagingProfile": "thin-bundle-agent-account-observability-v1",
-  "sha256": "e0e1fc618596f4b29af9fc7317e439ac97964f00e987c5e51b9a0a61608aecb8",
+  "sha256": "55e490e7e390aaac949bd8dc523d8ab8f1f835c07387c9cadf4ce43059bffc8a",
   "launcherSha256": "50ea49b618cb3273421fe8f39b571194cb3250270477efb20298eea927e6c533",
   "nonManifestFiles": 3731,
   "nonManifestInventorySha256": "f9574d874e97a4c38d636656a1143a55295d07928ec6ddf23be2c85205b6ef6d",
@@ -26,16 +26,16 @@
   },
   "build": {
     "script": "scripts/rebuild-vioxen-subscription-runtime-one-shot-home.mjs",
-    "scriptSha256": "2b62e1573dd78487612c9230ed5a19ad63eb4f238b2c806d31ec1e93c4bb3856",
+    "scriptSha256": "347f22fb13c248fa2894f93c60d9cf0bee07c79e9db14d2626b85b7d07fe90fd",
     "node": "v26.9.0",
     "typescript": "6.0.3",
     "vitest": "4.1.8",
     "nodeTypes": "22.20.0",
-    "profile": "Reconstruct reviewed main.42 source plus sm.1, sm.2 and sm.3 patches; build with an explicit offline toolchain; overlay compiled outputs onto immutable sm.2; apply a local version-only manifest edit; archive a sorted fixed-metadata file list."
+    "profile": "Reconstruct reviewed main.42 source plus sm.1, sm.2 and sm.3 patches; build with an explicit offline toolchain; overlay compiled outputs onto immutable sm.2; apply a local version-only manifest edit; write a sorted platform-independent USTAR stream with normalized metadata and pinned Node gzip."
   },
   "rebuildEvidence": {
     "runs": 2,
-    "matchingSha256": "e0e1fc618596f4b29af9fc7317e439ac97964f00e987c5e51b9a0a61608aecb8"
+    "matchingSha256": "55e490e7e390aaac949bd8dc523d8ab8f1f835c07387c9cadf4ce43059bffc8a"
   },
   "change": "Adds typed one-shot and continuation executor factories. One-shot executors reject continuation inputs and remove their materialized CODEX_HOME on executor disposal. The raw constructor retains legacy preserve-on-dispose behavior."
 }
