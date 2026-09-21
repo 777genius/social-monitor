@@ -11,13 +11,13 @@ export async function verifyNativeQuota(packageRoot, { unitQuotaParams = false }
     const { CodexEphemeralSessionMaterializer } = await import(pathToFileURL(join(packageRoot, 'dist/provider-codex/codex-session-materializer.js')).href);
     const { CodexQuotaSnapshotObservation } = await import(pathToFileURL(join(packageRoot, 'dist/worker-codex/adapters/codex-quota-snapshot-observation.js')).href);
     const { CodexSnapshotObservationStatus: Status } = await import(pathToFileURL(join(packageRoot, 'dist/worker-codex/application/codex-account-capacity-rechecker.js')).href);
-    const now = new Date("2026-09-09T00:00:00Z");
+    const now = new Date();
     function auth(accountId = "A", rotation = "first") {
         const jwt = ["e30", Buffer.from(JSON.stringify({
                 exp: rotation === "first" ? 2_000_000_000 : 2_000_000_001, email: "same@example.invalid",
                 "https://api.openai.com/auth": { chatgpt_account_id: accountId, chatgpt_user_id: "user-a" },
             })).toString("base64url"), "c2ln"].join(".");
-        return { auth_mode: "chatgpt", OPENAI_API_KEY: null, last_refresh: now.toISOString(),
+        return { auth_mode: "chatgpt", OPENAI_API_KEY: null, last_refresh: new Date().toISOString(),
             tokens: { account_id: accountId, id_token: jwt, access_token: jwt, refresh_token: rotation } };
     }
     const quota = () => ({ rateLimits: { limitId: "codex", planType: "plus", spendControlReached: false,

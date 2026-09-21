@@ -1,0 +1,249 @@
+diff --git a/src/worker-codex/codex-session-home-profile.ts b/src/worker-codex/codex-session-home-profile.ts
+new file mode 100644
+index 0000000..629ed0b
+--- /dev/null
++++ b/src/worker-codex/codex-session-home-profile.ts
+@@ -0,0 +1,50 @@
++export enum CodexSessionHomeProfileKind {
++  OneShot = "one-shot",
++  Continuation = "continuation",
++}
++
++export type CodexSessionHomeProfile =
++  | {
++      readonly kind: CodexSessionHomeProfileKind.OneShot;
++      readonly sessionId?: never;
++    }
++  | {
++      readonly kind: CodexSessionHomeProfileKind.Continuation;
++      readonly sessionId: string;
++    };
++
++export function assertCodexSessionHomeProfile(
++  profile: CodexSessionHomeProfile | undefined,
++): void {
++  if (profile === undefined) return;
++  if (profile.kind === CodexSessionHomeProfileKind.OneShot) {
++    if ("sessionId" in profile) {
++      throw new Error("file_backend_codex_one_shot_session_id_conflict");
++    }
++    return;
++  }
++  if (profile.kind === CodexSessionHomeProfileKind.Continuation) {
++    if (typeof profile.sessionId !== "string" || !profile.sessionId.trim()) {
++      throw new Error("file_backend_codex_continuation_session_id_required");
++    }
++    return;
++  }
++  throw new Error("file_backend_codex_session_home_profile_invalid");
++}
++
++export function codexSessionHomeCacheKey(input: {
++  readonly profile: CodexSessionHomeProfile | undefined;
++  readonly providerInstanceId: string;
++  readonly workerId: string;
++}): string {
++  if (input.profile?.kind === CodexSessionHomeProfileKind.Continuation) {
++    return `codex:${input.providerInstanceId}:session:${input.profile.sessionId.trim()}`;
++  }
++  return `codex:${input.providerInstanceId}:${input.workerId}`;
++}
++
++export function codexSessionHomePreservedOnDispose(
++  profile: CodexSessionHomeProfile | undefined,
++): boolean {
++  return profile?.kind !== CodexSessionHomeProfileKind.OneShot;
++}
+diff --git a/src/worker-codex/file-backend-codex-executor-factories.ts b/src/worker-codex/file-backend-codex-executor-factories.ts
+new file mode 100644
+index 0000000..f94c47d
+--- /dev/null
++++ b/src/worker-codex/file-backend-codex-executor-factories.ts
+@@ -0,0 +1,47 @@
++import { CodexSessionHomeProfileKind } from "./codex-session-home-profile";
++import {
++  FileBackendCodexSafeExecutor,
++  type FileBackendCodexSafeExecutorOptions,
++} from "./file-backend-codex-safe-executor";
++
++export type FileBackendCodexOneShotExecutorOptions = Omit<
++  FileBackendCodexSafeExecutorOptions,
++  "sessionHomeProfile"
++>;
++
++export type FileBackendCodexContinuationExecutorOptions = Omit<
++  FileBackendCodexSafeExecutorOptions,
++  "sessionHomeProfile"
++> & {
++  readonly sessionId: string;
++};
++
++/**
++ * Creates an executor whose materialized CODEX_HOME is removed on disposal.
++ * Logical-thread and managed-run continuation inputs are rejected.
++ */
++export function createOneShotExecutor(
++  options: FileBackendCodexOneShotExecutorOptions,
++): FileBackendCodexSafeExecutor {
++  return new FileBackendCodexSafeExecutor({
++    ...options,
++    sessionHomeProfile: { kind: CodexSessionHomeProfileKind.OneShot },
++  });
++}
++
++/**
++ * Creates an executor whose materialized CODEX_HOME is retained under a stable
++ * session identity while auth.json is scrubbed on disposal.
++ */
++export function createContinuationExecutor(
++  options: FileBackendCodexContinuationExecutorOptions,
++): FileBackendCodexSafeExecutor {
++  const { sessionId, ...executorOptions } = options;
++  return new FileBackendCodexSafeExecutor({
++    ...executorOptions,
++    sessionHomeProfile: {
++      kind: CodexSessionHomeProfileKind.Continuation,
++      sessionId: sessionId.trim(),
++    },
++  });
++}
+diff --git a/src/worker-codex/file-backend-codex-runtime-factory.ts b/src/worker-codex/file-backend-codex-runtime-factory.ts
+index e29afb4..5cd8335 100644
+--- a/src/worker-codex/file-backend-codex-runtime-factory.ts
++++ b/src/worker-codex/file-backend-codex-runtime-factory.ts
+@@ -38,6 +38,10 @@ import { codexAppServerCommandApprovalPolicy } from "./file-backend-codex-comman
+ import { LocalFileManagedRunStore } from "./file-backend-codex-managed-run-store";
+ import type { FileBackendCodexWorkerOptions } from "./file-backend-codex-worker";
+ import { buildCodexWorkspaceToolsProfile } from "./workspace-tools/codex-workspace-tools-profile";
++import {
++  codexSessionHomeCacheKey,
++  codexSessionHomePreservedOnDispose,
++} from "./codex-session-home-profile";
+
+ export type CodexWorkerExecutionEngine =
+   | "app-server"
+@@ -321,11 +325,17 @@ function createCodexAgentDriver(input: {
+           ),
+         }),
+     sessionMaterializer: new CodexWorkerCacheSessionPoolMaterializer({
+-      cacheKey: `codex:${options.providerInstanceId}:${input.workerId}`,
++      cacheKey: codexSessionHomeCacheKey({
++        profile: options.sessionHomeProfile,
++        providerInstanceId: options.providerInstanceId,
++        workerId: input.workerId,
++      }),
+       providerEgressPolicy,
+       slots: options.sessionCacheSlots ?? 1,
+       rootDir: join(options.stateRootDir, "codex-session-cache"),
+-      preserveOnDispose: true,
++      preserveOnDispose: codexSessionHomePreservedOnDispose(
++        options.sessionHomeProfile,
++      ),
+       scrubAuthOnDispose: true,
+       ...(workspaceToolsProfile
+         ? { configToml: workspaceToolsProfile.configToml }
+diff --git a/src/worker-codex/file-backend-codex-safe-executor.ts b/src/worker-codex/file-backend-codex-safe-executor.ts
+index 4034583..d290a52 100644
+--- a/src/worker-codex/file-backend-codex-safe-executor.ts
++++ b/src/worker-codex/file-backend-codex-safe-executor.ts
+@@ -51,7 +51,12 @@ import {
+ import { CodexAccountCapacityRechecker } from "./application/codex-account-capacity-rechecker";
+ import { CodexQuotaSnapshotObservation } from "./adapters/codex-quota-snapshot-observation";
+ import { CodexAccountCapacityAliasStore } from "./application/codex-account-capacity-alias-store";
+ import { recordCodexAppServerRateLimitsSnapshot } from "./application/codex-live-quota-capacity";
++import {
++  assertCodexSessionHomeProfile,
++  CodexSessionHomeProfileKind,
++  type CodexSessionHomeProfile,
++} from "./codex-session-home-profile";
+
+ const REPLACEMENT_GOAL_OBJECTIVE =
+   "Continue the same authorized task using broker-delivered replacement wording.";
+@@ -69,5 +74,10 @@ export type FileBackendCodexSafeExecutorOptions = {
+   readonly executorId?: string;
+   readonly stateRootDir: string;
++  /**
++   * Prefer createOneShotExecutor or createContinuationExecutor. Omission keeps
++   * the legacy preserve-on-dispose behavior for existing integrations.
++   */
++  readonly sessionHomeProfile?: CodexSessionHomeProfile;
+   readonly authRootDir?: string;
+   readonly workspacePath: string;
+   readonly accounts: readonly FileBackendCodexSafeExecutorAccount[];
+@@ -237,5 +247,8 @@ export class FileBackendCodexSafeExecutor {
+           const worker = new FileBackendCodexWorker({
+             ...account.worker,
++            ...(options.sessionHomeProfile === undefined
++              ? {}
++              : { sessionHomeProfile: options.sessionHomeProfile }),
+             capacityAccountId:
+               account.worker.capacityAccountId ??
+               safeExecutorAccountLabel(account, slotIndex),
+@@ -308,6 +321,13 @@ export class FileBackendCodexSafeExecutor {
+   async run(
+     input: FileBackendCodexSafeExecutorRunInput,
+   ): Promise<SafeExecutionRunResult<FileBackendCodexWorkerResult>> {
++    if (
++      this.options.sessionHomeProfile?.kind ===
++        CodexSessionHomeProfileKind.OneShot &&
++      (input.logicalThread !== undefined || input.recoveryPacket !== undefined)
++    ) {
++      throw new Error("file_backend_codex_one_shot_continuation_invalid");
++    }
+     // Provider setup is not a task attempt. A prewarm failure must surface once
+     // instead of consuming the account-rotation retry budget.
+     if (this.options.prewarmOnStart) await this.start();
+@@ -692,6 +712,7 @@ function assertSafeExecutorOptions(
+   if (options.accounts.length === 0) {
+     throw new Error("file_backend_codex_safe_accounts_required");
+   }
++  assertCodexSessionHomeProfile(options.sessionHomeProfile);
+   assertMaxAccountCycles(options.maxAccountCycles);
+   for (const account of options.accounts) {
+     if (account.codexAuthJson && account.codexAuthJsonPath) {
+diff --git a/src/worker-codex/file-backend-codex-worker-options.ts b/src/worker-codex/file-backend-codex-worker-options.ts
+index ee3f255..df033c5 100644
+--- a/src/worker-codex/file-backend-codex-worker-options.ts
++++ b/src/worker-codex/file-backend-codex-worker-options.ts
+@@ -3,4 +3,8 @@ import type { CodexExecutionProfile, CodexProviderEgressPolicy, CodexAppServerPr
+ import type { CommandPolicy } from "@vioxen/subscription-runtime/worker-core";
+ import type { CodexWorkerExecutionEngine } from "./file-backend-codex-runtime-factory";
+ import type { CodexWorkerCapacityPolicy } from "./file-backend-codex-capacity";
++import {
++  assertCodexSessionHomeProfile,
++  type CodexSessionHomeProfile,
++} from "./codex-session-home-profile";
+
+@@ -8,6 +12,8 @@ export type FileBackendCodexWorkerOptions = {
+   readonly workerId?: string;
+   readonly providerInstanceId: string;
+   readonly stateRootDir: string;
++  /** Executor-scoped CODEX_HOME lifecycle. Omitted for legacy preservation. */
++  readonly sessionHomeProfile?: CodexSessionHomeProfile;
+   readonly codexBinaryPath: string;
+   readonly encryptionKey: Uint8Array | string;
+   readonly model?: string;
+@@ -59,6 +65,7 @@ export function assertWorkerOptions(options: FileBackendCodexWorkerOptions): voi
+   if (!options.stateRootDir.trim()) {
+     throw new Error("file_backend_codex_state_root_required");
+   }
++  assertCodexSessionHomeProfile(options.sessionHomeProfile);
+   if (!options.codexBinaryPath.trim()) {
+     throw new Error("file_backend_codex_binary_required");
+   }
+diff --git a/src/worker-codex/index.ts b/src/worker-codex/index.ts
+index 7f1f2a3..72026dd 100644
+--- a/src/worker-codex/index.ts
++++ b/src/worker-codex/index.ts
+@@ -7,6 +7,11 @@ export * from "./codex-goal-jobs";
+ export * from "./codex-goal-ops";
+ export * from "./codex-goal-mcp-client";
+ export * from "./codex-run-observation";
++export {
++  CodexSessionHomeProfileKind,
++  type CodexSessionHomeProfile,
++} from "./codex-session-home-profile";
++export * from "./file-backend-codex-executor-factories";
+ export * from "./file-backend-codex-safe-executor";
+ export * from "./file-backend-codex-worker";
+ export * from "./node-process-runner";

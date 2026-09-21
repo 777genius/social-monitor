@@ -9,7 +9,9 @@ import { fileURLToPath } from "node:url";
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const wireFix = process.argv.includes("--quota-wire-fix");
-assert.ok(process.argv.slice(2).every((arg) => arg === "--quota-wire-fix"), "Unknown verifier option");
+const historical = process.argv.includes("--historical");
+assert.ok(process.argv.slice(2).every((arg) =>
+  arg === "--quota-wire-fix" || arg === "--historical"), "Unknown verifier option");
 const version = wireFix ? "0.1.0-main.42-sm.2" : "0.1.0-main.42";
 const artifactPath = join(
   projectRoot,
@@ -208,17 +210,21 @@ try {
       "package/package.json",
     ]);
   }
-  const hostManifest = JSON.parse(await readFile(join(projectRoot, "package.json"), "utf8"));
-  const lock = JSON.parse(await readFile(join(projectRoot, "package-lock.json"), "utf8"));
-  const dependency = "@vioxen/subscription-runtime";
-  const pin = `file:vendor/vioxen-subscription-runtime-${version}.tgz`;
-  assert.equal(hostManifest.dependencies[dependency], pin);
-  assert.equal(lock.packages[""].dependencies[dependency], pin);
-  const locked = lock.packages[`node_modules/${dependency}`];
-  assert.equal(locked.version, manifest.version);
-  assert.equal(locked.resolved, pin);
-  assert.equal(locked.integrity, `sha512-${createHash("sha512").update(artifactBytes).digest("base64")}`);
-  await verifyNativeQuota(packageRoot, { unitQuotaParams: wireFix });
+  if (!historical) {
+    const hostManifest = JSON.parse(await readFile(join(projectRoot, "package.json"), "utf8"));
+    const lock = JSON.parse(await readFile(join(projectRoot, "package-lock.json"), "utf8"));
+    const dependency = "@vioxen/subscription-runtime";
+    const pin = `file:vendor/vioxen-subscription-runtime-${version}.tgz`;
+    assert.equal(hostManifest.dependencies[dependency], pin);
+    assert.equal(lock.packages[""].dependencies[dependency], pin);
+    const locked = lock.packages[`node_modules/${dependency}`];
+    assert.equal(locked.version, manifest.version);
+    assert.equal(locked.resolved, pin);
+    assert.equal(locked.integrity, `sha512-${createHash("sha512").update(artifactBytes).digest("base64")}`);
+  }
+  if (!historical || process.platform === "linux") {
+    await verifyNativeQuota(packageRoot, { unitQuotaParams: wireFix });
+  }
   process.stdout.write(
     `subscription-runtime ${manifest.version} vendor artifact verified from ${provenance.sourceCommit ?? provenance.quotaWirePatch.sha256}\n`,
   );

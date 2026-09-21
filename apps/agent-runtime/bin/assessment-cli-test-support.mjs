@@ -20,12 +20,12 @@ export const request = { protocolVersion: 1, runId: "synthetic-assessment",
     controls: { outputSchema: { type: "object" } } },
   context: { purpose: "social_monitor.relevance.assess_source_content.v1" } };
 
-// Import the pinned legacy entrypoint, never the prepared main.41 installation or a real worker factory.
+// Import the pinned reviewed entrypoint, never a mutable installation or a real worker factory.
 export async function legacyFixture() {
   const root = await mkdtemp(join(tmpdir(), "assessment-deadline-legacy-"));
-  const archive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.2.tgz");
+  const archive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz");
   assert.equal(createHash("sha256").update(await readFile(archive)).digest("hex"),
-    "cb657dd811ee6ee0915215ee47f7f366375ce8aaff0c9faaa584716e3f8417c7");
+    "b0741affeecd959acef3e33261be6b4014a6b2d1b978cf7538db234c1cec490b");
   try {
     execFileSync("tar", ["-xzf", archive, "-C", root], { timeout: 10_000, stdio: "pipe" });
     const packageRoot = join(root, "package");

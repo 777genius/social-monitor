@@ -74,7 +74,7 @@ await lifecycle.work(() => writeFile(inputPath, JSON.stringify(admission.canonic
 const { FileBackendCodexWorker, NodeProcessRunner } = await lifecycle.work(() => import(
   "@vioxen/subscription-runtime/worker-codex"
 ));
-const { FileBackendCodexSafeExecutor } = await lifecycle.work(() => import(
+const { createOneShotExecutor } = await lifecycle.work(() => import(
   "@vioxen/subscription-runtime/worker-codex"
 ));
 const { SubscriptionWorkerError } = await lifecycle.work(() => import(
@@ -339,7 +339,7 @@ function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
         );
         lifecycle.checkpoint();
         progress?.mark("account_materialization", "completed");
-        executor = new FileBackendCodexSafeExecutor({
+        executor = createOneShotExecutor({
           executorId: `social-monitor-agent-task:${taskHash}`,
           stateRootDir: input.stateRootDir,
           workspacePath,

@@ -53,13 +53,13 @@ describe("subscription runtime installation admission", () => {
     expect(rootManifest.dependencies["@vioxen/subscription-runtime"]).toBe(
       `file:vendor/vioxen-subscription-runtime-${approvedSubscriptionRuntimePackageVersion}.tgz`,
     );
-    installationRoot = await mkdtemp(join(tmpdir(), "runtime-main42-sm2-installation-"));
+    installationRoot = await mkdtemp(join(tmpdir(), "runtime-main42-sm3-installation-"));
     const modules = join(installationRoot, "node_modules");
     const packageRoot = join(modules, "@vioxen/subscription-runtime");
     await mkdir(packageRoot, { recursive: true });
-    const archive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.2.tgz");
+    const archive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz");
     expect(createHash("sha256").update(await readFile(archive)).digest("hex")).toBe(
-      "cb657dd811ee6ee0915215ee47f7f366375ce8aaff0c9faaa584716e3f8417c7",
+      "b0741affeecd959acef3e33261be6b4014a6b2d1b978cf7538db234c1cec490b",
     );
     await promisify(execFile)("tar", [
       "-xzf", archive, "-C", packageRoot, "--strip-components=1",
@@ -75,7 +75,7 @@ describe("subscription runtime installation admission", () => {
       await symlink(join(providedModules, "@vioxen", name), join(modules, "@vioxen", name));
     }
     expect(JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"))).toMatchObject({
-      name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.2",
+      name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.3",
     });
   }, 15_000);
 
@@ -102,7 +102,7 @@ describe("subscription runtime installation admission", () => {
     }
   });
 
-  it("admits the exact repository launcher and vendored main.42-sm.2 in a sandbox", async () => {
+  it("admits the exact repository launcher and vendored main.42-sm.3 in a sandbox", async () => {
     const command = join(await copyInstallation(), launcherName);
 
     await expect(

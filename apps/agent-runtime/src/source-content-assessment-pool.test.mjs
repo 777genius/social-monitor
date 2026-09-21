@@ -80,7 +80,7 @@ async function fixture() {
     subscriptionOnlyCodexEnvironment: () => ({}), resolvePinnedCodexBinaryPath: () => "/synthetic/never-executed",
     isSourceContentAssessment: true,
     admission: { profile: { retryMode: "never", reasoningEffort: "low" } },
-    FileBackendCodexSafeExecutor: SyntheticExecutor, SubscriptionWorkerError: core.SubscriptionWorkerError,
+    createOneShotExecutor: (options) => new SyntheticExecutor(options), SubscriptionWorkerError: core.SubscriptionWorkerError,
   };
   const create = new Function(...Object.keys(dependencies), `${body}\nreturn createPooledCodexWorker;`)(...Object.values(dependencies));
   const worker = () => create({ model: "gpt-5.6-sol", input: { stateRootDir: "/synthetic/state" },
