@@ -14,6 +14,7 @@ export async function verifyNativeQuota(packageRoot, { unitQuotaParams = false }
     // Keep the observation and synthetic credential on the same clock edge.
     // A later last_refresh is correctly rejected as a credential from the future.
     const now = new Date();
+    const nowSeconds = Math.floor(now.getTime() / 1000);
     function auth(accountId = "A", rotation = "first") {
         const jwt = ["e30", Buffer.from(JSON.stringify({
                 exp: rotation === "first" ? 2_000_000_000 : 2_000_000_001, email: "same@example.invalid",
@@ -23,8 +24,8 @@ export async function verifyNativeQuota(packageRoot, { unitQuotaParams = false }
             tokens: { account_id: accountId, id_token: jwt, access_token: jwt, refresh_token: rotation } };
     }
     const quota = () => ({ rateLimits: { limitId: "codex", planType: "plus", spendControlReached: false,
-            primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: now.getTime() / 1000 + 3600 },
-            secondary: { usedPercent: 30, windowDurationMins: 10080, resetsAt: now.getTime() / 1000 + 86400 } } });
+            primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: nowSeconds + 3600 },
+            secondary: { usedPercent: 30, windowDurationMins: 10080, resetsAt: nowSeconds + 86400 } } });
     async function setup(hooks = {}) {
         const root = await mkdtemp(join(tmpdir(), "native-quota-test-"));
         const source = join(root, "synthetic-auth.json");
