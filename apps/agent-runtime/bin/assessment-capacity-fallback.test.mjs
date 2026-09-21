@@ -10,10 +10,10 @@ import { createContext, SourceTextModule, SyntheticModule } from "node:vm";
 import test, { before, after } from "node:test";
 import { request, completed } from "./assessment-cli-test-support.mjs";
 
-let root, core, executorSource, recheckerSource;
+let root, core, executorSource, recheckerSource, sessionHomeProfileSource;
 before(async () => {
   root = await mkdtemp(path.join(tmpdir(), "assessment-capacity-fallback-"));
-  const archive = path.resolve("vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.2.tgz");
+  const archive = path.resolve("vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz");
   const provenance = JSON.parse(await readFile(archive.replace(/\.tgz$/u, ".provenance.json")));
   assert.equal(crypto.createHash("sha256").update(await readFile(archive)).digest("hex"),
     provenance.sha256);
@@ -27,6 +27,7 @@ before(async () => {
   core.WorkerControlService = class { constructor() { throw new Error("Control service forbidden"); } };
   recheckerSource = await readFile(path.join(root, "package/dist/worker-codex/application/codex-account-capacity-rechecker.js"), "utf8");
   executorSource = await readFile(path.join(root, "package/dist/worker-codex/file-backend-codex-safe-executor.js"), "utf8");
+  sessionHomeProfileSource = await readFile(path.join(root, "package/dist/worker-codex/codex-session-home-profile.js"), "utf8");
 });
 after(async () => { if (root) await rm(root, { recursive: true, force: true }); });
 
@@ -147,8 +148,14 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
   async function load(specifier) {
     if (modules.has(specifier)) return modules.get(specifier);
     let module;
-    if (specifier === "./application/codex-account-capacity-rechecker.js" || specifier === "executor" || ["./run-codex-subscription-runtime-agent-task.mjs", "./assessment-cli-lifecycle.mjs", "./assessment-cli-progress.mjs"].includes(specifier)) {
-      const source = specifier === "./application/codex-account-capacity-rechecker.js" ? recheckerSource : specifier === "executor" ? executorSource : await readFile(new URL(specifier, import.meta.url), "utf8");
+    if (specifier === "./application/codex-account-capacity-rechecker.js" || specifier === "./codex-session-home-profile.js" || specifier === "executor" || ["./run-codex-subscription-runtime-agent-task.mjs", "./assessment-cli-lifecycle.mjs", "./assessment-cli-progress.mjs"].includes(specifier)) {
+      const source = specifier === "./application/codex-account-capacity-rechecker.js"
+        ? recheckerSource
+        : specifier === "./codex-session-home-profile.js"
+          ? sessionHomeProfileSource
+          : specifier === "executor"
+            ? executorSource
+            : await readFile(new URL(specifier, import.meta.url), "utf8");
       module = new SourceTextModule(source, { context, importModuleDynamically: async (name) => {
         const loaded = await load(name); if (loaded.status === "linked") await loaded.evaluate(); return loaded;
       } });
@@ -175,6 +182,7 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
   }
   namespaces.set("@vioxen/subscription-runtime/worker-codex", {
     FileBackendCodexSafeExecutor: ObservedExecutor, FileBackendCodexWorker: FakeWorker,
+    createOneShotExecutor: (options) => new ObservedExecutor(options),
     NodeProcessRunner: class { constructor() { throw new Error("Native processes forbidden"); } },
   });
   const launcher = await load("./run-codex-subscription-runtime-agent-task.mjs"); await launcher.evaluate();

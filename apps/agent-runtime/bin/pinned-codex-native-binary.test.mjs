@@ -163,10 +163,10 @@ test("every wrapper factory uses the native default and preserves explicit synth
           return resolvePinnedCodexBinaryPath();
         },
         FileBackendCodexWorker: class { constructor(options) { captured.push(options); } },
-        FileBackendCodexSafeExecutor: class {
+        createOneShotExecutor: (options) => new (class {
           constructor(options) { captured.push(...options.accounts.map(({ worker }) => worker)); }
           async run() { return { status: "completed", result: {} }; }
-        },
+        })(options),
         NodeProcessRunner: class { capabilities = {}; },
         subscriptionOnlyCodexEnvironment: (env) => env,
         nonEmptyRunId: (id) => id,

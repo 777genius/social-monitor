@@ -108,7 +108,7 @@ async function launch(t, { hold, neverStop = false, failedTask = false, parentLo
         ...(admissionFailure ? [{ id: "synthetic-second", authJsonPath: "/synthetic/second" }] : []),
         ...(accountFailure ? [{ id: "synthetic-failed", authJsonPath: "/synthetic/fail" }] : [])] };
     } }],
-    ["@vioxen/subscription-runtime/worker-codex", { FileBackendCodexSafeExecutor: FakeExecutor,
+    ["@vioxen/subscription-runtime/worker-codex", { createOneShotExecutor: (options) => new FakeExecutor(options),
       FileBackendCodexWorker: class { constructor() { throw new Error("Real/default worker forbidden"); } },
       NodeProcessRunner: class { constructor() { throw new Error("Native runner forbidden"); } } }],
     ["@vioxen/subscription-runtime/worker-core", { SubscriptionWorkerError }],

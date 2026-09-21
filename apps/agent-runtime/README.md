@@ -2,12 +2,12 @@
 
 Internal gRPC boundary between Social Monitor summary adapters and
 `@vioxen/subscription-runtime`. The dependency is vendored as
-`vendor/vioxen-subscription-runtime-0.1.0-main.41.tgz` so Docker and `npm ci`
-install the CLI binary deterministically. `main.41` is packed from upstream
-commit `42ea1696` (PR #165), which bills a Codex turn its own growth instead of
-the thread's cumulative `tokenUsage.total`. Provenance and
-packaging are proved by `npm run vendor:subscription-runtime`; the usage
-contract itself is proved by `npm run check:subscription-runtime-usage-contract`.
+`vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz` so Docker and
+`npm ci` install the CLI binary deterministically. The active artifact includes
+the reviewed one-shot executor profile from upstream commit `5ff55dc2` (PR
+#176). Provenance and packaging are proved by
+`npm run vendor:subscription-runtime`; the usage contract itself is proved by
+`npm run check:subscription-runtime-usage-contract`.
 
 `vendor/vioxen-subscription-runtime-0.1.0-main.30.tgz` stays vendored because the
 Reader Promotion V2 canary lane pins that release deliberately.
@@ -33,7 +33,9 @@ apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs --provider 
 
 The bridge delegates lifecycle, durable sessions and task execution to
 `@vioxen/subscription-runtime`, while enforcing the exact purpose route before
-constructing the Codex worker. Active `social_monitor.reader_summary.*.v2`
+constructing a one-shot Codex executor. Its writable `CODEX_HOME` is isolated
+for the task and removed when the executor settles; agents cannot opt into
+retention through a request or prompt. Active `social_monitor.reader_summary.*.v2`
 routes use `gpt-5.6-sol` with `high` reasoning; structured routes use structured
 JSON output, while `social_monitor.reader_summary.weekly.generate.v2` and the
 dedicated `social_monitor.reader_summary.daily.canonical_recovery.v2` route use

@@ -215,6 +215,7 @@ test(
         await readdir(join(fixture.stateRoot, "auth-materializations")),
         [],
       );
+      await assertOneShotHomesClean(fixture.stateRoot);
     } finally {
       await fixture.cleanup();
     }
@@ -260,6 +261,7 @@ for (const [firstAccount, available] of [["account-b", false], ["account-a", fal
         assert.equal(attempts.filter(({ command }) => command === "turn").length, 0);
       }
       assert.deepEqual(await readdir(join(fixture.stateRoot, "auth-materializations")), []);
+      await assertOneShotHomesClean(fixture.stateRoot);
     } finally { await fixture.cleanup(); }
   });
 }
@@ -292,6 +294,14 @@ for (const invalid of ["missing-name", "wrong-name", "conflicting-name", "missin
       await assert.rejects(stat(fixture.attemptLogPath), { code: "ENOENT" });
     } finally { await fixture.cleanup(); }
   });
+}
+
+async function assertOneShotHomesClean(stateRoot) {
+  try {
+    assert.deepEqual(await readdir(join(stateRoot, "codex-session-cache")), []);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
 }
 
 async function createFixture(available = false) {
