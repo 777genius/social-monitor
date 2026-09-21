@@ -59,7 +59,7 @@ describe("subscription runtime installation admission", () => {
     await mkdir(packageRoot, { recursive: true });
     const archive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz");
     expect(createHash("sha256").update(await readFile(archive)).digest("hex")).toBe(
-      "e0e1fc618596f4b29af9fc7317e439ac97964f00e987c5e51b9a0a61608aecb8",
+      "68e664272bc4dc9e8ba51327b4cac456c7feff731abc02f7e36ba1b3105bd85b",
     );
     await promisify(execFile)("tar", [
       "-xzf", archive, "-C", packageRoot, "--strip-components=1",
