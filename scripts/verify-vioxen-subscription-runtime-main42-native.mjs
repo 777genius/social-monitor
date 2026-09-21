@@ -11,13 +11,15 @@ export async function verifyNativeQuota(packageRoot, { unitQuotaParams = false }
     const { CodexEphemeralSessionMaterializer } = await import(pathToFileURL(join(packageRoot, 'dist/provider-codex/codex-session-materializer.js')).href);
     const { CodexQuotaSnapshotObservation } = await import(pathToFileURL(join(packageRoot, 'dist/worker-codex/adapters/codex-quota-snapshot-observation.js')).href);
     const { CodexSnapshotObservationStatus: Status } = await import(pathToFileURL(join(packageRoot, 'dist/worker-codex/application/codex-account-capacity-rechecker.js')).href);
+    // Keep the observation and synthetic credential on the same clock edge.
+    // A later last_refresh is correctly rejected as a credential from the future.
     const now = new Date();
     function auth(accountId = "A", rotation = "first") {
         const jwt = ["e30", Buffer.from(JSON.stringify({
                 exp: rotation === "first" ? 2_000_000_000 : 2_000_000_001, email: "same@example.invalid",
                 "https://api.openai.com/auth": { chatgpt_account_id: accountId, chatgpt_user_id: "user-a" },
             })).toString("base64url"), "c2ln"].join(".");
-        return { auth_mode: "chatgpt", OPENAI_API_KEY: null, last_refresh: new Date().toISOString(),
+        return { auth_mode: "chatgpt", OPENAI_API_KEY: null, last_refresh: now.toISOString(),
             tokens: { account_id: accountId, id_token: jwt, access_token: jwt, refresh_token: rotation } };
     }
     const quota = () => ({ rateLimits: { limitId: "codex", planType: "plus", spendControlReached: false,
@@ -157,8 +159,8 @@ export async function verifyNativeQuota(packageRoot, { unitQuotaParams = false }
     try {
         const boundA = await a.adapter.read({ now, demand: null });
         const boundB = await b.adapter.read({ now, demand: null });
-        assert.equal(boundA.status, Status.Bound);
-        assert.equal(boundB.status, Status.Bound);
+        assert.equal(boundA.status, Status.Bound, JSON.stringify(boundA));
+        assert.equal(boundB.status, Status.Bound, JSON.stringify(boundB));
         assert.notEqual(boundA.independentAccountKeyHash, boundB.independentAccountKeyHash);
         const previous = { availability: "quota_exhausted", reason: "quota_limited",
             cooldownUntil: new Date(now.getTime() + 86_400_000) };
