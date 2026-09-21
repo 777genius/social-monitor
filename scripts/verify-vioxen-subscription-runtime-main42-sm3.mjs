@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const version = "0.1.0-main.42-sm.3";
@@ -29,7 +29,7 @@ try {
   assert.equal(provenance.schemaVersion, 1);
   assert.equal(
     provenance.sourceCommit,
-    "7d3e29972ad0b8fcb6b6a12a02e025572e9bc251",
+    "5ff55dc2eb25036933cce717d4cf7b083725a47a",
   );
   assert.equal(
     provenance.sourcePullRequest,
@@ -115,6 +115,33 @@ try {
   );
   assert.match(factorySource, /function createOneShotExecutor/u);
   assert.match(factorySource, /function createContinuationExecutor/u);
+  const sessionHomeProfile = await import(
+    `${pathToFileURL(join(
+      packageRoot,
+      "dist/worker-codex/codex-session-home-profile.js",
+    )).href}?artifact=${provenance.sha256}`
+  );
+  const providerInstanceId = "provider:ambiguous";
+  const legacyKey = sessionHomeProfile.codexSessionHomeCacheKey({
+    profile: undefined,
+    providerInstanceId,
+    workerId: "session:sandbox-session",
+  });
+  const oneShotKey = sessionHomeProfile.codexSessionHomeCacheKey({
+    profile: { kind: sessionHomeProfile.CodexSessionHomeProfileKind.OneShot },
+    providerInstanceId,
+    workerId: "session:sandbox-session",
+  });
+  const continuationKey = sessionHomeProfile.codexSessionHomeCacheKey({
+    profile: {
+      kind: sessionHomeProfile.CodexSessionHomeProfileKind.Continuation,
+      sessionId: "sandbox-session",
+    },
+    providerInstanceId,
+    workerId: "ignored",
+  });
+  assert.equal(legacyKey, "codex:provider:ambiguous:session:sandbox-session");
+  assert.equal(new Set([legacyKey, oneShotKey, continuationKey]).size, 3);
   const runtimeFactorySource = await readFile(
     join(
       packageRoot,

@@ -222,6 +222,9 @@ try {
     assert.equal(locked.resolved, pin);
     assert.equal(locked.integrity, `sha512-${createHash("sha512").update(artifactBytes).digest("base64")}`);
   }
+  // The historical native fixture exercises Linux-only packaged behavior and
+  // rejects on Darwin. CI always runs it on Linux; local historical checks keep
+  // the archive/inventory gates without claiming cross-platform native parity.
   if (!historical || process.platform === "linux") {
     await verifyNativeQuota(packageRoot, { unitQuotaParams: wireFix });
   }

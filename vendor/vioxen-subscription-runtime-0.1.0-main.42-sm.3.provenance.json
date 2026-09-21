@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "sourceRepository": "https://github.com/vioxen/subscription-runtime.git",
-  "sourceCommit": "7d3e29972ad0b8fcb6b6a12a02e025572e9bc251",
+  "sourceCommit": "5ff55dc2eb25036933cce717d4cf7b083725a47a",
   "sourcePullRequest": "https://github.com/vioxen/subscription-runtime/pull/176",
   "baseCommit": "42ea16961987f8a626a5219b030a5029f28bcdfd",
   "reviewedParentSourceCommit": "22db9bbca1c2315e93211887a7738a6b40f21167",
@@ -10,23 +10,23 @@
   "packageVersion": "0.1.0-main.42-sm.3",
   "packageVersionIsLocal": true,
   "packagingProfile": "thin-bundle-agent-account-observability-v1",
-  "sha256": "b0741affeecd959acef3e33261be6b4014a6b2d1b978cf7538db234c1cec490b",
+  "sha256": "e0e1fc618596f4b29af9fc7317e439ac97964f00e987c5e51b9a0a61608aecb8",
   "launcherSha256": "50ea49b618cb3273421fe8f39b571194cb3250270477efb20298eea927e6c533",
   "nonManifestFiles": 3731,
-  "nonManifestInventorySha256": "99a788c38f3b2714e9656fc3e9c23afc102be83c312765e26632034e9f5c994f",
+  "nonManifestInventorySha256": "f9574d874e97a4c38d636656a1143a55295d07928ec6ddf23be2c85205b6ef6d",
   "fixedSourceFiles": 1465,
-  "fixedSourceInventorySha256": "663a545c8888260a4e7529fd60f8db8e963ea9305cac5a7158cdc57baea480c1",
+  "fixedSourceInventorySha256": "5ba756374e46e32235fe0f5f8fd570c336742ae1edd11d4d4625cb17c20515fb",
   "parentArchive": {
     "path": "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.2.tgz",
     "sha256": "cb657dd811ee6ee0915215ee47f7f366375ce8aaff0c9faaa584716e3f8417c7"
   },
   "oneShotHomePatch": {
     "path": "vendor/patches/vioxen-subscription-runtime-0.1.0-main.42-sm.3.patch",
-    "sha256": "b02e2c0821d4f6d6314d0abbc0ed2f29a2133ef94e0671925015395cb10a3805"
+    "sha256": "a105708b242fe3785d19c52f7e44b009226e9f914c5bfca8cc2707a739b89839"
   },
   "build": {
     "script": "scripts/rebuild-vioxen-subscription-runtime-one-shot-home.mjs",
-    "scriptSha256": "a884b9ef5c82f0785d6d18e2573cdef0a830f42265118e456d04f792257a4d7a",
+    "scriptSha256": "2b62e1573dd78487612c9230ed5a19ad63eb4f238b2c806d31ec1e93c4bb3856",
     "node": "v26.9.0",
     "typescript": "6.0.3",
     "vitest": "4.1.8",
@@ -35,7 +35,7 @@
   },
   "rebuildEvidence": {
     "runs": 2,
-    "matchingSha256": "b0741affeecd959acef3e33261be6b4014a6b2d1b978cf7538db234c1cec490b"
+    "matchingSha256": "e0e1fc618596f4b29af9fc7317e439ac97964f00e987c5e51b9a0a61608aecb8"
   },
   "change": "Adds typed one-shot and continuation executor factories. One-shot executors reject continuation inputs and remove their materialized CODEX_HOME on executor disposal. The raw constructor retains legacy preserve-on-dispose behavior."
 }

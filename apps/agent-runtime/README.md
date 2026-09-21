@@ -4,7 +4,7 @@ Internal gRPC boundary between Social Monitor summary adapters and
 `@vioxen/subscription-runtime`. The dependency is vendored as
 `vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz` so Docker and
 `npm ci` install the CLI binary deterministically. The active artifact includes
-the reviewed one-shot executor profile from upstream commit `7d3e2997` (PR
+the reviewed one-shot executor profile from upstream commit `5ff55dc2` (PR
 #176). Provenance and packaging are proved by
 `npm run vendor:subscription-runtime`; the usage contract itself is proved by
 `npm run check:subscription-runtime-usage-contract`.

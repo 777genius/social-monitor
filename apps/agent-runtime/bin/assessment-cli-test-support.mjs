@@ -25,7 +25,7 @@ export async function legacyFixture() {
   const root = await mkdtemp(join(tmpdir(), "assessment-deadline-legacy-"));
   const archive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz");
   assert.equal(createHash("sha256").update(await readFile(archive)).digest("hex"),
-    "b0741affeecd959acef3e33261be6b4014a6b2d1b978cf7538db234c1cec490b");
+    "e0e1fc618596f4b29af9fc7317e439ac97964f00e987c5e51b9a0a61608aecb8");
   try {
     execFileSync("tar", ["-xzf", archive, "-C", root], { timeout: 10_000, stdio: "pipe" });
     const packageRoot = join(root, "package");

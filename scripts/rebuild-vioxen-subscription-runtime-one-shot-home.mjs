@@ -29,6 +29,13 @@ assert.ok(
 );
 
 const root = await mkdtemp(join(tmpdir(), "sm-one-shot-home-build-"));
+try {
+  await rebuild(root);
+} finally {
+  await rm(root, { recursive: true, force: true });
+}
+
+async function rebuild(root) {
 const source = join(root, "source");
 const pack = join(root, "pack");
 const parent = JSON.parse(
@@ -183,3 +190,4 @@ process.stdout.write(
     sha256: hash(await readFile(resolve(output))),
   })}\n`,
 );
+}
