@@ -73,41 +73,78 @@ const isSensitiveNormalizedUrlCredentialKey = (
 export const urlContainsCredentials = (value: string): boolean => {
   try {
     const url = new URL(value);
-    const keys = [...url.searchParams.keys()];
-    const normalizedKeys = new Set(keys.map((key) => key.toLowerCase()));
+    const queryKeys = [...url.searchParams.keys()];
+    const normalizedQueryKeys = new Set(queryKeys.map((key) => key.toLowerCase()));
+    const fragmentKeys = [...new URLSearchParams(url.hash.slice(1)).keys()];
+    const normalizedFragmentKeys = new Set(fragmentKeys.map((key) => key.toLowerCase()));
     return url.username.length > 0 || url.password.length > 0 ||
-      keys.some((key) => isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedKeys));
+      queryKeys.some((key) => isSensitiveNormalizedUrlCredentialKey(
+        key.toLowerCase(), normalizedQueryKeys,
+      )) || fragmentKeys.some((key) => isSensitiveNormalizedUrlCredentialKey(
+        key.toLowerCase(), normalizedFragmentKeys,
+      ));
   } catch {
     return false;
   }
 };
 
-/** Parse first so one credential value can never consume a following query parameter. */
+/** Parse first so one credential value can never consume a following URL parameter. */
 export const sanitizeUrlCredentials = (value: string): string => {
   try {
-    const url = new URL(value);
-    const keys = [...url.searchParams.keys()];
-    const normalizedKeys = new Set(keys.map((key) => key.toLowerCase()));
-    const fragmentStart = value.indexOf('#');
-    const queryStart = value.indexOf('?');
+    const normalizedValue = normalizeWhatwgUrlInput(value);
+    const url = new URL(normalizedValue);
+    const queryKeys = [...url.searchParams.keys()];
+    const normalizedQueryKeys = new Set(queryKeys.map((key) => key.toLowerCase()));
+    const fragmentKeys = [...new URLSearchParams(url.hash.slice(1)).keys()];
+    const normalizedFragmentKeys = new Set(fragmentKeys.map((key) => key.toLowerCase()));
+    const fragmentStart = normalizedValue.indexOf('#');
+    const queryStart = normalizedValue.indexOf('?');
     const hasQuery = queryStart >= 0 && (fragmentStart < 0 || queryStart < fragmentStart);
-    const queryEnd = fragmentStart < 0 ? value.length : fragmentStart;
+    const queryEnd = fragmentStart < 0 ? normalizedValue.length : fragmentStart;
     const retained = hasQuery
-      ? value.slice(queryStart + 1, queryEnd).split('&').filter((component) => {
-        const key = new URLSearchParams(component).keys().next().value ?? '';
-        return !isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedKeys);
-      })
+      ? retainSafeUrlParameterComponents(
+        normalizedValue.slice(queryStart + 1, queryEnd), normalizedQueryKeys,
+      )
       : [];
     const withoutSensitiveQuery = hasQuery
-      ? `${value.slice(0, queryStart)}${retained.length > 0 ? `?${retained.join('&')}` : ''}${value.slice(queryEnd)}`
-      : value;
-    return url.username.length > 0 || url.password.length > 0
-      ? removeRawUrlUserInfo(withoutSensitiveQuery)
+      ? `${normalizedValue.slice(0, queryStart)}${retained.length > 0 ? `?${retained.join('&')}` : ''}${normalizedValue.slice(queryEnd)}`
+      : normalizedValue;
+    const sanitizedFragment = fragmentStart >= 0
+      ? retainSafeUrlParameterComponents(
+        normalizedValue.slice(fragmentStart + 1), normalizedFragmentKeys,
+      )
+      : [];
+    const withoutSensitiveFragment = fragmentStart >= 0
+      ? `${withoutSensitiveQuery.slice(0, withoutSensitiveQuery.indexOf('#'))}${sanitizedFragment.length > 0 ? `#${sanitizedFragment.join('&')}` : ''}`
       : withoutSensitiveQuery;
+    return url.username.length > 0 || url.password.length > 0
+      ? removeRawUrlUserInfo(withoutSensitiveFragment)
+      : withoutSensitiveFragment;
   } catch {
     return redactSensitiveTextFallback(value);
   }
 };
+
+// The URL parser removes ASCII tabs/newlines anywhere and trims leading or
+// trailing C0 controls and spaces before parsing. Apply that preprocessing to
+// the raw representation too so credential detection and removal see the same
+// bytes while retained components otherwise remain unchanged.
+const normalizeWhatwgUrlInput = (value: string): string => {
+  const withoutAsciiTabOrNewline = value.replace(/[\t\n\r]/g, '');
+  let start = 0;
+  let end = withoutAsciiTabOrNewline.length;
+  while (start < end && withoutAsciiTabOrNewline.charCodeAt(start) <= 0x20) start += 1;
+  while (end > start && withoutAsciiTabOrNewline.charCodeAt(end - 1) <= 0x20) end -= 1;
+  return withoutAsciiTabOrNewline.slice(start, end);
+};
+
+const retainSafeUrlParameterComponents = (
+  rawParameters: string,
+  normalizedKeys: ReadonlySet<string>,
+): string[] => rawParameters.split('&').filter((component) => {
+  const key = new URLSearchParams(component).keys().next().value ?? '';
+  return !isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedKeys);
+});
 
 const removeRawUrlUserInfo = (value: string): string => {
   const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(value);
@@ -142,8 +179,8 @@ const redactSensitiveTextFallback = (value: string): string =>
     .replace(inlineGeneratedSecretPattern, REDACTED_VALUE));
 
 const redactEmbeddedUrlCredentials = (value: string): string =>
-  !value.includes('?') ? value : value.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>{}]+/gi, (candidate) => {
-    if (!candidate.includes('?') || !urlContainsCredentials(candidate)) return candidate;
+  !/[?#]/.test(value) ? value : value.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>{}]+/gi, (candidate) => {
+    if (!/[?#]/.test(candidate) || !urlContainsCredentials(candidate)) return candidate;
     return sanitizeUrlCredentials(candidate);
   });
 

@@ -125,7 +125,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(result.evidence.selectedEvidence).toHaveLength(11);
     expect(result.evidence.selectedEvidence[0]?.feedItemId).toBe(id(1));
     expect(result.evidence.selectedEvidence.slice(1).map((item) =>
-      item.sourceBindingId)).toEqual(Array.from({ length: 10 }, (_, index) =>
+      item.sourceBindingId)).toEqual(Array.from({ length: 10 }, () =>
       "github-binding"));
     expect(result.evidence.sourceWindow.selectedFeedItemIds).toEqual(
       result.evidence.selectedEvidence.map((item) => item.feedItemId),

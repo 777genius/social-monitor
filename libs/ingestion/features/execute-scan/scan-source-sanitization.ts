@@ -137,5 +137,8 @@ const isAbsoluteUrl = (value: string): boolean => {
   }
 };
 
-export const sanitizeFetchedSourceUrl = (value: string): string =>
-  sanitizeUrlCredentials(value);
+export const sanitizeFetchedSourceUrl = (value: string): string => {
+  const sanitized = sanitizeUrlCredentials(value);
+  const fragmentStart = sanitized.indexOf('#');
+  return fragmentStart < 0 ? sanitized : sanitized.slice(0, fragmentStart);
+};

@@ -150,8 +150,10 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
         selectionStrategy: "jev_primary_v3",
         admittedCandidateIds: ["feed-runtime"],
       },
-      selectedEvidence: base.selectedEvidence.map(({ contentQuality: _, ...item }) =>
-        item),
+      selectedEvidence: base.selectedEvidence.map(({ contentQuality, ...item }) => {
+        void contentQuality;
+        return item;
+      }),
     });
 
     expect(result.ok).toBe(true);

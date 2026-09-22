@@ -111,6 +111,38 @@ describe('redaction helpers', () => {
     );
   });
 
+  it('removes sensitive fragment parameters while preserving harmless fragments', () => {
+    expect(urlContainsCredentials(
+      'https://example.test/callback#access_token=fixture-secret',
+    )).toBe(true);
+    expect(sanitizeUrlCredentials(
+      'https://example.test/callback#access_token=fixture-secret',
+    )).toBe('https://example.test/callback');
+    expect(sanitizeUrlCredentials(
+      'https://example.test/report#section=overview&access_token=fixture-secret&panel=details',
+    )).toBe('https://example.test/report#section=overview&panel=details');
+    expect(redactSensitiveRecord({
+      url: 'https://example.test/report#section=overview&refresh_token=fixture-secret',
+    })).toEqual({
+      url: 'https://example.test/report#section=overview',
+    });
+    expect(sanitizeUrlCredentials(
+      'https://example.test/report#section%202',
+    )).toBe('https://example.test/report#section%202');
+  });
+
+  it('normalizes WHATWG-discarded ASCII before removing URL credentials', () => {
+    expect(sanitizeUrlCredentials(
+      ' \thttps://user:pass@example.test/report?edition=west',
+    )).toBe('https://example.test/report?edition=west');
+    expect(sanitizeUrlCredentials(
+      'https://example.test/report?to\tken=fixture-secret&edition=west#section',
+    )).toBe('https://example.test/report?edition=west#section');
+    expect(sanitizeUrlCredentials(
+      'https://example.test/re\nport?edition=we\rst#sec\ttion',
+    )).toBe('https://example.test/report?edition=west#section');
+  });
+
   it('does not collapse distinct retained query identities', () => {
     const fixtures = [
       ['https://example.test/report?token=fixture&edition#part', 'https://example.test/report?edition#part'],

@@ -562,6 +562,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-v3-postgres-assessment-lifecycle.ts
       scripts/lib/reader-summary-v3-postgres-contract.ts
       scripts/lib/reader-summary-v3-postgres-preflight-client.ts
+      scripts/lib/reader-summary-v3-postgres-preflight-fence.ts
       scripts/lib/reader-summary-v3-postgres-production-preflight.ts
       scripts/lib/reader-summary-weekly-atomic-publication-postgres-contract.ts
       scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts

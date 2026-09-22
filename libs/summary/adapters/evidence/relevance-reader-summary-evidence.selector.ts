@@ -1,8 +1,16 @@
-import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
+import {
+  MAX_FEED_ITEM_PAGE_LIMIT,
+  type FeedItemReadRepositoryPort,
+} from "@social-monitor/feed/ports";
+import {
+  SourceContentQualityPolicy,
+  SourceContentSafetyPolicy,
+} from "@social-monitor/relevance/domain";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import type { Clock } from "@social-monitor/shared-kernel";
 
 import {
+  githubTrendingProviderKey,
   isGitHubTrendingEvidence,
   primaryReaderSummaryEvidence,
   selectGitHubTrendingSupplementalEvidence,
@@ -30,6 +38,7 @@ import {
   filterItemsByDefaultReaderSummaryProviders,
   filterItemsByReaderSummaryPeriod,
   mapRankedItem,
+  mapSupplementFeedItem,
   readerSummaryPeriodQuery,
 } from "./relevance-reader-summary-evidence-support";
 import {
@@ -59,6 +68,9 @@ export const READER_SUMMARY_ORIGINAL_SOURCE_TEXT_SAFETY_CAP = 256_000;
 export class RelevanceReaderSummaryEvidenceSelector implements
 ReaderSummaryEvidenceSelectorPort, ReaderSummarySupplementalEvidenceSelectorPort {
   private readonly clusterer: StoryClusteringService;
+  private readonly qualityPolicy = new SourceContentQualityPolicy();
+  private readonly safetyPolicy = new SourceContentSafetyPolicy();
+
   constructor(
     private readonly rankFeedItems: RankFeedItemsUseCase,
     private readonly feedItems: FeedItemReadRepositoryPort,
@@ -268,13 +280,28 @@ ReaderSummaryEvidenceSelectorPort, ReaderSummarySupplementalEvidenceSelectorPort
     const ingestionCutoff = new Date(
       (params.observedThrough ?? this.clock.now()).getTime(),
     );
-    const ranked = await this.loadRankedInventory(
-      { ...params, observedThrough: ingestionCutoff },
-      ingestionCutoff,
-    );
+    const query = { ...params, observedThrough: ingestionCutoff };
+    const page = await this.feedItems.list({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      interestId:
+        params.scope.type === "interest" ? params.scope.interestId : undefined,
+      providerKey: githubTrendingProviderKey,
+      ...readerSummaryPeriodQuery(query),
+      observedAtOrBefore: ingestionCutoff,
+      limit: MAX_FEED_ITEM_PAGE_LIMIT,
+    });
+    const supplemental = page.items.map((item) =>
+      mapSupplementFeedItem({
+        snapshot: item.toSnapshot(),
+        qualityPolicy: this.qualityPolicy,
+        safetyPolicy: this.safetyPolicy,
+        now: ingestionCutoff,
+      }));
+
     return selectGitHubTrendingSupplementalEvidence(
       filterItemsByReaderSummaryPeriod(
-        ranked.items,
+        supplemental,
         params.period,
         params.timestampPolicy,
       ),
