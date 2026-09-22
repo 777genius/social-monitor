@@ -59,6 +59,10 @@ const fragmentDelimiterStart = (raw: string, delimiters: string): number => {
     else if (raw[index] === ';' && bracketDepth === 0) {
       inValue = false;
       inRouteBase = false;
+    } else if (raw[index] === '/' && bracketDepth === 0 && !inValue) {
+      // A matrix name can end at a route slash without an equals sign.
+      // Brackets in the next segment belong to its route base.
+      inRouteBase = true;
     } else if (!inValue && !inRouteBase && raw[index] === '[' && matchedOpenings.has(index)) bracketDepth += 1;
     else if (!inValue && !inRouteBase && raw[index] === ']') bracketDepth = Math.max(0, bracketDepth - 1);
   }
@@ -159,31 +163,40 @@ const stripAmbiguousMatrixCredentials = (
     return { sanitized: raw, hasCredentials: false, keys: [] };
   }
   const first = raw.slice(0, firstEnd);
-  const matrixStart = fragmentDelimiterStart(first, ';');
-  if (matrixStart < 0) return { sanitized: raw, hasCredentials: false, keys: [] };
-
-  const fields = matrixFields(first.slice(matrixStart + 1));
-  const keys = fields.map(({ key }) => key.toLowerCase());
+  const segments = routeSegments(first);
+  const parsed = segments.map((segment) => {
+    const matrixStart = fragmentDelimiterStart(segment, ';');
+    return { segment, matrixStart, fields: matrixStart < 0
+      ? [] : matrixFields(segment.slice(matrixStart + 1)) };
+  });
+  const keys = parsed.flatMap(({ fields }) => fields.map(({ key }) => key.toLowerCase()));
+  if (keys.length === 0) return { sanitized: raw, hasCredentials: false, keys };
   const normalizedKeys = new Set([
     ...fragmentComponents(raw).map(({ key }) => key.toLowerCase()),
     ...fragmentComponents(raw.slice(queryStart + 1)).map(({ key }) => key.toLowerCase()),
     ...keys,
   ]);
-  let position = matrixStart + 1;
-  const retained: string[] = [];
+  let segmentStart = 0;
   let hasCredentials = false;
-  fields.forEach((field) => {
-    const ambiguous = position > queryStart &&
-      isSensitiveNormalizedKey(field.key.toLowerCase(), normalizedKeys);
-    if (ambiguous) hasCredentials = true;
-    else retained.push(field.raw);
-    position += field.raw.length + 1;
+  const safeSegments = parsed.map(({ segment, matrixStart, fields }) => {
+    if (matrixStart < 0) {
+      segmentStart += segment.length + 1;
+      return segment;
+    }
+    let position = segmentStart + matrixStart + 1;
+    const retained = fields.filter((field) => {
+      const ambiguous = position > queryStart &&
+        isSensitiveNormalizedKey(field.key.toLowerCase(), normalizedKeys);
+      position += field.raw.length + 1;
+      if (ambiguous) hasCredentials = true;
+      return !ambiguous;
+    });
+    segmentStart += segment.length + 1;
+    return `${segment.slice(0, matrixStart)}${retained.length > 0
+      ? `;${retained.map(({ raw: field }) => field).join(';')}` : ''}`;
   });
   if (!hasCredentials) return { sanitized: raw, hasCredentials, keys };
-
-  const safeFirst = `${first.slice(0, matrixStart)}${retained.length > 0
-    ? `;${retained.join(';')}` : ''}`;
-  return { sanitized: `${safeFirst}${raw.slice(firstEnd)}`, hasCredentials, keys };
+  return { sanitized: `${safeSegments.join('/')}${raw.slice(firstEnd)}`, hasCredentials, keys };
 };
 
 // Classify the full list, route suffix, and leading matrix fields against the

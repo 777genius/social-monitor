@@ -417,6 +417,69 @@ describe('redaction helpers', () => {
   });
 
   it.each([
+    [
+      'https://example.test/#/callback;mode/orders[?access_token]=fixture-secret&panel=details',
+      'https://example.test/#/callback;mode/orders[?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;mode/orders%5B?access_token%5D=fixture-secret&panel=details',
+      'https://example.test/#/callback;mode/orders%5B?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;mode/orders[?accessToken]=fixture-secret&panel=details',
+      'https://example.test/#/callback;mode/orders[?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;mode/orders[inner[?access_token]]=fixture-secret&panel=details',
+      'https://example.test/#/callback;mode/orders[inner[?panel=details',
+    ],
+  ])('finds a credential query after a valueless matrix field and route slash: %s', (
+    url, sanitized,
+  ) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it.each([
+    [
+      'https://example.test/#/callback;tag[?=one;access_token=fixture-secret/orders/123&panel=details',
+      'https://example.test/#/callback;tag[?=one/orders/123&panel=details',
+    ],
+    [
+      'https://example.test/#/callback;tag[?=one;access_token=fixture-secret/orders/987&panel=details',
+      'https://example.test/#/callback;tag[?=one/orders/987&panel=details',
+    ],
+    [
+      'https://example.test/#/callback;tag%5B?=one;access_token=fixture-secret/orders/sku-42&panel=details',
+      'https://example.test/#/callback;tag%5B?=one/orders/sku-42&panel=details',
+    ],
+    [
+      'https://example.test/#/callback;tag%5B?=one;access_%74oken=fixture-secret/orders/abc%2F123&panel=details',
+      'https://example.test/#/callback;tag%5B?=one/orders/abc%2F123&panel=details',
+    ],
+  ])('keeps later route segments after an ambiguous matrix credential: %s', (
+    url, sanitized,
+  ) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it.each([
+    'https://example.test/#/callback;mode/orders[?edition]=west&panel=details',
+    'https://example.test/#/callback;tag[?=one;edition=west/orders/123&panel=details',
+    'https://example.test/#/callback;tag%5B?=one;edition=west/orders/987&panel=details',
+  ])('preserves harmless bracketed route identity: %s', (url) => {
+    expect(urlContainsCredentials(url)).toBe(false);
+    expect(sanitizeUrlCredentials(url)).toBe(url);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${url}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: url });
+  });
+
+  it.each([
     ['access_token', ''],
     ['access_%74oken', ''],
     ['access_token[?]', ''],
