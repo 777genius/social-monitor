@@ -417,6 +417,105 @@ describe('redaction helpers', () => {
   });
 
   it.each([
+    ['access_token', ''],
+    ['access_%74oken', ''],
+    ['access_token[?]', ''],
+    ['access_token%5B;%5D', ''],
+    ['access_token', '?panel=details'],
+    ['access_%74oken', '?panel=details'],
+    ['access_token[?]', '?panel=details'],
+    ['access_token%5B;%5D', '?panel=details'],
+  ])('redacts a matrix credential after an unmatched encoded bracket: %s%s', (
+    key,
+    trailingQuery,
+  ) => {
+    const url = `https://example.test/#/callback;tag%5B?=one;${key}=fixture-secret${trailingQuery}`;
+    const sanitized = 'https://example.test/#/callback;tag%5B?=one';
+
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it('keeps later harmless fields when an ambiguous matrix credential is removed', () => {
+    const url = 'https://example.test/#/callback;tag%5B?=one;access_token=fixture-secret;edition=west&panel=details';
+    const sanitized = 'https://example.test/#/callback;tag%5B?=one;edition=west&panel=details';
+
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it('closes unmatched bracket and matrix separator combinations across public APIs', () => {
+    const routes = ['/callback', 'callback', '!/callback'];
+    const brackets = ['tag%5B', 'tag['];
+    const keys = ['access_token', 'access_%74oken', 'access_token[?]', 'access_token%5B;%5D'];
+    const tails = ['', '?panel=details', '&panel=details'];
+
+    for (const route of routes) {
+      for (const bracket of brackets) {
+        for (const key of keys) {
+          for (const tail of tails) {
+            const url = `https://example.test/#${route};${bracket}?=one;${key}=fixture-secret${tail}`;
+            const sanitized = sanitizeUrlCredentials(url);
+
+            expect(urlContainsCredentials(url)).toBe(true);
+            expect(sanitized).not.toContain('fixture-secret');
+            expect(sanitized).toContain(`#${route}`);
+            expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+            expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+          }
+        }
+      }
+    }
+  });
+
+  it.each([
+    [
+      'https://example.test/#/callback;access_token[/]=fixture-secret?panel=details',
+      'https://example.test/#/callback?panel=details',
+    ],
+    [
+      'https://example.test/#/callback[;access_token]=fixture-secret?panel=details',
+      'https://example.test/#/callback[?panel=details',
+    ],
+    [
+      'https://example.test/#access_token[x]?tag=fixture-secret&panel=details',
+      'https://example.test/#panel=details',
+    ],
+    [
+      'https://example.test/#cookie;tag=fixture-secret&panel=details',
+      'https://example.test/#panel=details',
+    ],
+    [
+      'https://example.test/#clientSecret?tag=fixture-secret&panel=details',
+      'https://example.test/#panel=details',
+    ],
+    [
+      'https://example.test/#%61ccess_token%5Bx%5D?tag=fixture-secret&panel=details',
+      'https://example.test/#panel=details',
+    ],
+  ])('redacts bracketed and disguised fragment credentials: %s', (url, sanitized) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it.each([
+    'https://example.test/#users/sessions',
+    'https://example.test/#users/password-reset',
+    'https://example.test/#user-sessions',
+  ])('preserves queryless harmless routes: %s', (url) => {
+    expect(urlContainsCredentials(url)).toBe(false);
+    expect(sanitizeUrlCredentials(url)).toBe(url);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${url}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: url });
+  });
+
+  it.each([
     [
       'https://example.test/#/callback;access_token[;]=fixture-secret?panel=details',
       'https://example.test/#/callback?panel=details',
