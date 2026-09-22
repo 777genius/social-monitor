@@ -309,7 +309,7 @@ ReaderSummaryEvidenceSelectorPort, ReaderSummarySupplementalEvidenceSelectorPort
       });
       feedItems.push(...page.items);
       if (page.nextCursor === undefined) {
-        exhausted = true;
+        exhausted = page.candidateWindowExhausted === true;
         break;
       }
       if (seenCursors.has(page.nextCursor)) {

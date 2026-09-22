@@ -134,6 +134,25 @@ describe('redaction helpers', () => {
     )).toBe('https://example.test/report#section%202');
   });
 
+  it('treats question marks inside plain fragment values as parameter data', () => {
+    const credentialWithRouteState =
+      'https://example.test/#auth=fixture-secret&state=/callback?panel=details';
+    const mixedParameters =
+      'https://example.test/#section=overview&auth=fixture-secret&state=/callback?panel=details&next=/done?tab=summary';
+
+    expect(urlContainsCredentials(credentialWithRouteState)).toBe(true);
+    expect(sanitizeUrlCredentials(credentialWithRouteState)).toBe(
+      'https://example.test/#state=/callback?panel=details',
+    );
+    expect(urlContainsCredentials(mixedParameters)).toBe(true);
+    expect(sanitizeUrlCredentials(mixedParameters)).toBe(
+      'https://example.test/#section=overview&state=/callback?panel=details&next=/done?tab=summary',
+    );
+    expect(redactSensitiveText(`redirect ${mixedParameters}`)).toBe(
+      'redirect https://example.test/#section=overview&state=/callback?panel=details&next=/done?tab=summary',
+    );
+  });
+
   it('removes credentials from route fragment query suffixes without discarding route state', () => {
     const routeOnly = 'https://example.test/#/callback';
     const routeWithState = 'https://example.test/#/callback?state=fixture-state';

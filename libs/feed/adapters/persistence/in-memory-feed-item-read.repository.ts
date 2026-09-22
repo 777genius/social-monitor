@@ -71,10 +71,11 @@ export class InMemoryFeedItemReadRepository
 
   async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
     assertValidFeedItemListQuery(query);
-    const allItems = await this.listSignalCandidates(query);
+    const candidateWindow = this.readSignalCandidateWindow(query);
 
     const offset = parseOffsetCursor(query.cursor);
-    const boundedItems = [...allItems].sort(compareFeedItemsByProviderSignal);
+    const boundedItems = [...candidateWindow.items]
+      .sort(compareFeedItemsByProviderSignal);
     const items = boundedItems.slice(offset, offset + query.limit);
     const nextOffset = offset + items.length;
 
@@ -84,13 +85,20 @@ export class InMemoryFeedItemReadRepository
         nextOffset < boundedItems.length
           ? encodeOffsetCursor(nextOffset)
           : undefined,
+      candidateWindowExhausted: candidateWindow.exhausted,
     };
   }
 
   async listSignalCandidates(
     query: ListFeedItemSignalCandidatesQuery,
   ): Promise<readonly FeedItem[]> {
-    return [...this.itemsById.values()]
+    return this.readSignalCandidateWindow(query).items;
+  }
+
+  private readSignalCandidateWindow(
+    query: ListFeedItemSignalCandidatesQuery,
+  ): SignalCandidateWindow {
+    const matching = [...this.itemsById.values()]
       .filter((item) => {
         const snapshot = item.toSnapshot();
 
@@ -116,8 +124,11 @@ export class InMemoryFeedItemReadRepository
           matchesFeedItemReadFilters(item, query)
         );
       })
-      .sort(compareFeedItemsByPublishedAt)
-      .slice(0, PROVIDER_SIGNAL_SCAN_LIMIT);
+      .sort(compareFeedItemsByPublishedAt);
+    return {
+      items: matching.slice(0, PROVIDER_SIGNAL_SCAN_LIMIT),
+      exhausted: matching.length <= PROVIDER_SIGNAL_SCAN_LIMIT,
+    };
   }
 
   async readPromotionSnapshot(
@@ -293,6 +304,11 @@ export class InMemoryFeedItemReadRepository
     return [...this.itemsById.values()];
   }
 }
+
+type SignalCandidateWindow = {
+  readonly items: readonly FeedItem[];
+  readonly exhausted: boolean;
+};
 
 const exactTimestamp = (value: Date): string =>
   value.toISOString().replace(/\.(\d{3})Z$/u, ".$1" + "000Z");

@@ -75,6 +75,7 @@ describe("InMemoryFeedItemReadRepository", () => {
         }),
       ],
       nextCursor: undefined,
+      candidateWindowExhausted: true,
     });
     await expect(
       repository.list({
@@ -89,6 +90,7 @@ describe("InMemoryFeedItemReadRepository", () => {
         }),
       ],
       nextCursor: undefined,
+      candidateWindowExhausted: true,
     });
   });
 
@@ -133,6 +135,7 @@ describe("InMemoryFeedItemReadRepository", () => {
         }),
       ],
       nextCursor: undefined,
+      candidateWindowExhausted: true,
     });
     await expect(
       repository.list({
@@ -148,8 +151,50 @@ describe("InMemoryFeedItemReadRepository", () => {
         }),
       ],
       nextCursor: undefined,
+      candidateWindowExhausted: true,
     });
   });
+
+  it.each([
+    [999, true],
+    [1_000, true],
+    [1_001, false],
+  ] as const)(
+    "reports candidate-window exhaustion for %i matching rows",
+    async (total, expectedExhausted) => {
+      const repository = new InMemoryFeedItemReadRepository();
+      for (let index = 0; index < total; index += 1) {
+        repository.upsert(makeItem({
+          id: `bounded-${index}`,
+          sourceItemId: `source-bounded-${index}`,
+          canonicalUrl: `https://example.test/bounded/${index}`,
+          publishedAt: new Date(1_780_000_000_000 + index),
+        }));
+      }
+
+      const items = [] as FeedItem[];
+      let cursor: string | undefined;
+      let finalResult: Awaited<ReturnType<
+        InMemoryFeedItemReadRepository["list"]
+      >>;
+      do {
+        finalResult = await repository.list({
+          tenantId: tenantId("tenant-1"),
+          workspaceId: workspaceId("workspace-1"),
+          limit: 200,
+          cursor,
+        });
+        items.push(...finalResult.items);
+        cursor = finalResult.nextCursor;
+      } while (cursor !== undefined);
+
+      expect(items).toHaveLength(Math.min(total, 1_000));
+      expect(finalResult).toMatchObject({
+        nextCursor: undefined,
+        candidateWindowExhausted: expectedExhausted,
+      });
+    },
+  );
 
   it("dedupes enriched articles by semantic fingerprint across different source URLs", async () => {
     const repository = new InMemoryFeedItemReadRepository();

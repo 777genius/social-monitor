@@ -68,6 +68,7 @@ describe("RelevanceReaderSummaryEvidenceSelector GitHub display evidence", () =>
     const list = jest.fn(async () => ({
       items: Array.from({ length: 12 }, (_, index) =>
         githubTrendingFeedItem(index + 1)),
+      candidateWindowExhausted: true,
     }));
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
@@ -134,6 +135,7 @@ describe("RelevanceReaderSummaryEvidenceSelector GitHub display evidence", () =>
           items,
           nextCursor:
             nextOffset < observations.length ? String(nextOffset) : undefined,
+          candidateWindowExhausted: true,
         };
       },
     );
@@ -179,6 +181,83 @@ describe("RelevanceReaderSummaryEvidenceSelector GitHub display evidence", () =>
       );
     }
     expect(rankFeedItems.execute).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on the 1,009-row truncated snapshot reproduction", async () => {
+    const newestSnapshotAt = new Date("2026-06-23T18:00:00.000Z");
+    const observations = [
+      ...Array.from({ length: 111 }, (_, snapshotIndex) =>
+        Array.from({ length: 9 }, (_, rankIndex) =>
+          githubTrendingFeedItem(rankIndex + 1, {
+            snapshotKey: `incomplete-${snapshotIndex}`,
+            snapshotTime: new Date(
+              newestSnapshotAt.getTime() - snapshotIndex * 60_000,
+            ),
+          }),
+        )).flat(),
+      ...Array.from({ length: 10 }, (_, rankIndex) =>
+        githubTrendingFeedItem(rankIndex + 1, {
+          snapshotKey: "older-complete",
+          snapshotTime: new Date("2026-06-23T15:00:00.000Z"),
+        })),
+    ];
+    expect(observations).toHaveLength(1_009);
+    const list = jest.fn(
+      async ({ cursor }: Parameters<FeedItemReadRepositoryPort["list"]>[0]) => {
+        const offset = cursor === undefined ? 0 : Number(cursor);
+        const visible = observations.slice(0, 1_000);
+        const items = visible.slice(offset, offset + 200);
+        const nextOffset = offset + items.length;
+        return {
+          items,
+          nextCursor: nextOffset < visible.length
+            ? String(nextOffset)
+            : undefined,
+          candidateWindowExhausted: false,
+        };
+      },
+    );
+    const rankFeedItems = {
+      execute: jest.fn(),
+    } as unknown as RankFeedItemsUseCase;
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      { list, findById: jest.fn(async () => null) },
+      clock,
+    );
+
+    await expect(selector.selectSupplemental({
+      tenantId: tenantId("tenant-github-display"),
+      workspaceId: workspaceId("workspace-github-display"),
+      scope: { type: "workspace" },
+      period,
+      maxItems: 200,
+      observedThrough: new Date("2026-06-23T20:30:00.000Z"),
+    })).resolves.toEqual([]);
+
+    expect(list).toHaveBeenCalledTimes(5);
+    expect(rankFeedItems.execute).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when repository exhaustion is not explicitly proved", async () => {
+    const list = jest.fn(async () => ({
+      items: Array.from({ length: 10 }, (_, index) =>
+        githubTrendingFeedItem(index + 1)),
+    }));
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      { execute: jest.fn() } as unknown as RankFeedItemsUseCase,
+      { list, findById: jest.fn(async () => null) },
+      clock,
+    );
+
+    await expect(selector.selectSupplemental({
+      tenantId: tenantId("tenant-github-display"),
+      workspaceId: workspaceId("workspace-github-display"),
+      scope: { type: "workspace" },
+      period,
+      maxItems: 200,
+    })).resolves.toEqual([]);
+    expect(list).toHaveBeenCalledTimes(1);
   });
 
   it("fails closed when the bounded supplemental scan is not exhausted", async () => {
@@ -286,19 +365,22 @@ const githubTrendingFeedItem = (
   rank: number,
   overrides: {
     readonly snapshotHour?: number;
+    readonly snapshotKey?: string;
+    readonly snapshotTime?: Date;
     readonly starsGained?: number;
   } = {},
 ): FeedItem => {
   const snapshotHour = overrides.snapshotHour;
-  const snapshotSuffix = snapshotHour === undefined ? "" : `${snapshotHour}-`;
-  const snapshotTime = new Date(
+  const snapshotKey = overrides.snapshotKey ?? snapshotHour;
+  const snapshotSuffix = snapshotKey === undefined ? "" : `${snapshotKey}-`;
+  const snapshotTime = overrides.snapshotTime ?? new Date(
     Date.UTC(2026, 5, 23, snapshotHour ?? 10, 0, 0),
   );
   return FeedItem.publish({
     id: `feed-github-${snapshotSuffix}${rank}`,
     tenantId: tenantId("tenant-github-display"),
     workspaceId: workspaceId("workspace-github-display"),
-    sourceItemId: `source-github-${rank}`,
+    sourceItemId: `source-github-${snapshotSuffix}${rank}`,
     sourceBindingId: "binding-github-trending-overall",
     interestId: "interest-ai",
     providerKey: "github-trending-page",

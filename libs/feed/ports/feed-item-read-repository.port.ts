@@ -35,6 +35,13 @@ export type ListFeedItemsQuery = {
 export type ListFeedItemsResult = {
   readonly items: readonly FeedItem[];
   readonly nextCursor?: string;
+  /**
+   * Whether the repository proved that the bounded candidate window contains
+   * every row matching the query. `false` exposes ceiling truncation; absence
+   * is retained only for compatible legacy/test implementations and must not
+   * be treated as proof of exhaustion by completeness-sensitive consumers.
+   */
+  readonly candidateWindowExhausted?: boolean;
 };
 
 export type ListFeedItemSignalCandidatesQuery = Omit<

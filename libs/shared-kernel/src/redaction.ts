@@ -154,10 +154,12 @@ const parseUrlFragmentParameters = (rawFragment: string): {
   hasQuerySuffix: boolean;
 } => {
   const queryStart = rawFragment.indexOf('?');
-  return queryStart < 0
+  const prefixBeforeQuestionMark = rawFragment.slice(0, queryStart);
+  const isRouteStyle = queryStart >= 0 && !/[=&]/.test(prefixBeforeQuestionMark);
+  return !isRouteStyle
     ? { route: '', rawParameters: rawFragment, hasQuerySuffix: false }
     : {
-      route: rawFragment.slice(0, queryStart),
+      route: prefixBeforeQuestionMark,
       rawParameters: rawFragment.slice(queryStart + 1),
       hasQuerySuffix: true,
     };
