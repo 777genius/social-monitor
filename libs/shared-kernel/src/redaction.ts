@@ -155,7 +155,11 @@ const parseUrlFragmentParameters = (rawFragment: string): {
 } => {
   const queryStart = rawFragment.indexOf('?');
   const prefixBeforeQuestionMark = rawFragment.slice(0, queryStart);
-  const isRouteStyle = queryStart >= 0 && !/[=&]/.test(prefixBeforeQuestionMark);
+  const prefixKeys = [...new URLSearchParams(prefixBeforeQuestionMark).keys()];
+  const normalizedPrefixKeys = new Set(prefixKeys.map((key) => key.toLowerCase()));
+  const prefixContainsCredentials = prefixKeys.some((key) =>
+    isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedPrefixKeys));
+  const isRouteStyle = queryStart >= 0 && !prefixContainsCredentials;
   return !isRouteStyle
     ? { route: '', rawParameters: rawFragment, hasQuerySuffix: false }
     : {

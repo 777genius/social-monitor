@@ -180,6 +180,20 @@ describe('redaction helpers', () => {
     });
   });
 
+  it('redacts route query credentials after matrix parameters', () => {
+    const matrixRoute =
+      'https://example.test/#/callback;mode=compact?auth=fixture-secret&panel=details';
+    const sanitized =
+      'https://example.test/#/callback;mode=compact?panel=details';
+
+    expect(urlContainsCredentials(matrixRoute)).toBe(true);
+    expect(sanitizeUrlCredentials(matrixRoute)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${matrixRoute}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: matrixRoute })).toEqual({
+      callbackUrl: sanitized,
+    });
+  });
+
   it('normalizes WHATWG-discarded ASCII before removing URL credentials', () => {
     expect(sanitizeUrlCredentials(
       ' \thttps://user:pass@example.test/report?edition=west',
