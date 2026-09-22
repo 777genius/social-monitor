@@ -226,8 +226,17 @@ const setupWithInventory = (inventory: ReaderValuePreparationInventory) => {
   const builder: jest.Mocked<ReaderValueInputBuilder> = {
     prepare: jest.fn(prepare),
   };
+  const pin: ReaderValueAssessmentStore["pin"] = async (
+    scope, interestId, jobId, references,
+  ) => {
+    void scope;
+    void interestId;
+    void jobId;
+    void references;
+    return true;
+  };
   const store: jest.Mocked<Pick<ReaderValueAssessmentStore, "ensure" | "pin">> = {
-    ensure: jest.fn(), pin: jest.fn(async () => true),
+    ensure: jest.fn(), pin: jest.fn(pin),
   };
   const interests: ConfiguredInterestReaderPort = { readCurrent: async () => ({
     kind: "available", interest: { tenantId: tenantId(ids.tenant),

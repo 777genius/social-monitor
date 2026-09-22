@@ -1,3 +1,4 @@
+import type { FeedItem } from "@social-monitor/feed/domain";
 import {
   MAX_FEED_ITEM_PAGE_LIMIT,
   type FeedItemReadRepositoryPort,
@@ -64,6 +65,11 @@ import {
  * allocations; only the sanitized result can reach relation verification.
  */
 export const READER_SUMMARY_ORIGINAL_SOURCE_TEXT_SAFETY_CAP = 256_000;
+
+// A daily projection normally contains about 240 hourly observations. The
+// wider cap tolerates retries and denser collection without permitting an
+// unbounded evidence read; reaching it without exhaustion must fail closed.
+const MAX_GITHUB_TRENDING_SUPPLEMENTAL_PAGES = 25;
 
 export class RelevanceReaderSummaryEvidenceSelector implements
 ReaderSummaryEvidenceSelectorPort, ReaderSummarySupplementalEvidenceSelectorPort {
@@ -281,17 +287,42 @@ ReaderSummaryEvidenceSelectorPort, ReaderSummarySupplementalEvidenceSelectorPort
       (params.observedThrough ?? this.clock.now()).getTime(),
     );
     const query = { ...params, observedThrough: ingestionCutoff };
-    const page = await this.feedItems.list({
-      tenantId: params.tenantId,
-      workspaceId: params.workspaceId,
-      interestId:
-        params.scope.type === "interest" ? params.scope.interestId : undefined,
-      providerKey: githubTrendingProviderKey,
-      ...readerSummaryPeriodQuery(query),
-      observedAtOrBefore: ingestionCutoff,
-      limit: MAX_FEED_ITEM_PAGE_LIMIT,
-    });
-    const supplemental = page.items.map((item) =>
+    const feedItems: FeedItem[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+    let exhausted = false;
+    for (
+      let pageNumber = 0;
+      pageNumber < MAX_GITHUB_TRENDING_SUPPLEMENTAL_PAGES;
+      pageNumber += 1
+    ) {
+      const page = await this.feedItems.list({
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        interestId:
+          params.scope.type === "interest" ? params.scope.interestId : undefined,
+        providerKey: githubTrendingProviderKey,
+        ...readerSummaryPeriodQuery(query),
+        observedAtOrBefore: ingestionCutoff,
+        limit: MAX_FEED_ITEM_PAGE_LIMIT,
+        cursor,
+      });
+      feedItems.push(...page.items);
+      if (page.nextCursor === undefined) {
+        exhausted = true;
+        break;
+      }
+      if (seenCursors.has(page.nextCursor)) {
+        return [];
+      }
+      seenCursors.add(page.nextCursor);
+      cursor = page.nextCursor;
+    }
+    if (!exhausted) {
+      return [];
+    }
+
+    const supplemental = feedItems.map((item) =>
       mapSupplementFeedItem({
         snapshot: item.toSnapshot(),
         qualityPolicy: this.qualityPolicy,

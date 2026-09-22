@@ -389,10 +389,14 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     });
     expect(projection.topReads[0]?.providerKey).toBe(providerKey);
     expect(projection.attestations[0]?.provider).toBe(providerKey);
-    const publicBinding = projection.attestations[0]?.schemaVersion ===
+    const publicHeadline = projection.attestations[0]?.schemaVersion ===
       "reader_post_promotion_attestation.v3"
-      ? projection.attestations[0].presentation.displayHeadline.headline.binding
+      ? projection.attestations[0].presentation.displayHeadline.headline
       : undefined;
+    if (publicHeadline?.status !== "accepted") {
+      throw new Error("invalid public headline fixture");
+    }
+    const publicBinding = publicHeadline.binding;
     expect(publicBinding).toEqual(expect.objectContaining({
       interestDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
     }));

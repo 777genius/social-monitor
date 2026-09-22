@@ -115,6 +115,139 @@ describe("RelevanceReaderSummaryEvidenceSelector GitHub display evidence", () =>
     expect(rankFeedItems.execute).not.toHaveBeenCalled();
   });
 
+  it("follows cursors beyond 200 observations and selects the latest complete snapshot", async () => {
+    const cutoff = new Date("2026-06-23T20:30:00.000Z");
+    const observations = Array.from({ length: 21 }, (_, hour) =>
+      Array.from({ length: 10 }, (_, index) =>
+        githubTrendingFeedItem(index + 1, {
+          snapshotHour: hour,
+          starsGained: 10_000 - hour * 100 - index,
+        }),
+      ),
+    ).flat();
+    const list = jest.fn(
+      async ({ cursor }: Parameters<FeedItemReadRepositoryPort["list"]>[0]) => {
+        const offset = cursor === undefined ? 0 : Number(cursor);
+        const items = observations.slice(offset, offset + 200);
+        const nextOffset = offset + items.length;
+        return {
+          items,
+          nextCursor:
+            nextOffset < observations.length ? String(nextOffset) : undefined,
+        };
+      },
+    );
+    const rankFeedItems = {
+      execute: jest.fn(),
+    } as unknown as RankFeedItemsUseCase;
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      { list, findById: jest.fn(async () => null) },
+      clock,
+    );
+
+    const supplemental = await selector.selectSupplemental({
+      tenantId: tenantId("tenant-github-display"),
+      workspaceId: workspaceId("workspace-github-display"),
+      scope: { type: "interest", interestId: "interest-ai" },
+      period,
+      maxItems: 200,
+      observedThrough: cutoff,
+    });
+
+    expect(supplemental).toHaveLength(10);
+    expect(supplemental.map((item) => item.feedItemId)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `feed-github-20-${index + 1}`),
+    );
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(list.mock.calls.map(([query]) => query.cursor)).toEqual([
+      undefined,
+      "200",
+    ]);
+    for (const [query] of list.mock.calls) {
+      expect(query).toEqual(
+        expect.objectContaining({
+          tenantId: "tenant-github-display",
+          workspaceId: "workspace-github-display",
+          interestId: "interest-ai",
+          providerKey: "github-trending-page",
+          publishedAtOrAfter: period.startedAt,
+          publishedBefore: period.endedAt,
+          observedAtOrBefore: cutoff,
+          limit: 200,
+        }),
+      );
+    }
+    expect(rankFeedItems.execute).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the bounded supplemental scan is not exhausted", async () => {
+    const list = jest.fn(
+      async ({ cursor }: Parameters<FeedItemReadRepositoryPort["list"]>[0]) => ({
+        items:
+          cursor === undefined
+            ? Array.from({ length: 10 }, (_, index) =>
+                githubTrendingFeedItem(index + 1),
+              )
+            : [],
+        nextCursor: String((cursor === undefined ? 0 : Number(cursor)) + 200),
+      }),
+    );
+    const rankFeedItems = {
+      execute: jest.fn(),
+    } as unknown as RankFeedItemsUseCase;
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      { list, findById: jest.fn(async () => null) },
+      clock,
+    );
+
+    await expect(
+      selector.selectSupplemental({
+        tenantId: tenantId("tenant-github-display"),
+        workspaceId: workspaceId("workspace-github-display"),
+        scope: { type: "workspace" },
+        period,
+        maxItems: 200,
+      }),
+    ).resolves.toEqual([]);
+
+    expect(list).toHaveBeenCalledTimes(25);
+    expect(rankFeedItems.execute).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when supplemental pagination repeats a cursor", async () => {
+    const list = jest.fn(
+      async ({ cursor }: Parameters<FeedItemReadRepositoryPort["list"]>[0]) => ({
+        items: Array.from({ length: 10 }, (_, index) =>
+          githubTrendingFeedItem(index + 1),
+        ),
+        nextCursor: cursor ?? "stuck",
+      }),
+    );
+    const rankFeedItems = {
+      execute: jest.fn(),
+    } as unknown as RankFeedItemsUseCase;
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      { list, findById: jest.fn(async () => null) },
+      clock,
+    );
+
+    await expect(
+      selector.selectSupplemental({
+        tenantId: tenantId("tenant-github-display"),
+        workspaceId: workspaceId("workspace-github-display"),
+        scope: { type: "workspace" },
+        period,
+        maxItems: 200,
+      }),
+    ).resolves.toEqual([]);
+
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(rankFeedItems.execute).not.toHaveBeenCalled();
+  });
+
   it("does not invoke the legacy model reviewer when the scope has no GitHub evidence", async () => {
     const legacyModelReviewer = { reviewBatch: jest.fn() };
     const rankFeedItems = {
@@ -149,29 +282,46 @@ describe("RelevanceReaderSummaryEvidenceSelector GitHub display evidence", () =>
   });
 });
 
-const githubTrendingFeedItem = (rank: number): FeedItem => FeedItem.publish({
-  id: `feed-github-${rank}`,
-  tenantId: tenantId("tenant-github-display"),
-  workspaceId: workspaceId("workspace-github-display"),
-  sourceItemId: `source-github-${rank}`,
-  sourceBindingId: "binding-github-trending-overall",
-  interestId: "interest-ai",
-  providerKey: "github-trending-page",
-  canonicalUrl: `https://github.com/owner/repository-${rank}`,
-  title: `owner/repository-${rank} is #${rank} on GitHub Trending`,
-  bodyPreview: "Repository listed on the overall daily Trending page.",
-  publishedAt: new Date("2026-06-23T10:00:00.000Z"),
-  observedAt: new Date("2026-06-23T10:05:00.000Z"),
-  providerMetadata: {
-    kind: "github_trending_page_repository",
-    repository: {
-      fullName: `owner/repository-${rank}`,
-      totalStars: 20_000,
-      forksCount: 500,
+const githubTrendingFeedItem = (
+  rank: number,
+  overrides: {
+    readonly snapshotHour?: number;
+    readonly starsGained?: number;
+  } = {},
+): FeedItem => {
+  const snapshotHour = overrides.snapshotHour;
+  const snapshotSuffix = snapshotHour === undefined ? "" : `${snapshotHour}-`;
+  const snapshotTime = new Date(
+    Date.UTC(2026, 5, 23, snapshotHour ?? 10, 0, 0),
+  );
+  return FeedItem.publish({
+    id: `feed-github-${snapshotSuffix}${rank}`,
+    tenantId: tenantId("tenant-github-display"),
+    workspaceId: workspaceId("workspace-github-display"),
+    sourceItemId: `source-github-${rank}`,
+    sourceBindingId: "binding-github-trending-overall",
+    interestId: "interest-ai",
+    providerKey: "github-trending-page",
+    canonicalUrl: `https://github.com/owner/repository-${rank}`,
+    title: `owner/repository-${rank} is #${rank} on GitHub Trending`,
+    bodyPreview: "Repository listed on the overall daily Trending page.",
+    publishedAt: snapshotTime,
+    observedAt: new Date(snapshotTime.getTime() + 5 * 60_000),
+    providerMetadata: {
+      kind: "github_trending_page_repository",
+      repository: {
+        fullName: `owner/repository-${rank}`,
+        totalStars: 20_000,
+        forksCount: 500,
+      },
+      trending: {
+        rank,
+        starsGained: overrides.starsGained ?? 100 + rank,
+        window: "daily",
+      },
     },
-    trending: { rank, starsGained: 100 + rank, window: "daily" },
-  },
-});
+  });
+};
 
 const githubTrendingRankedItem = (rank: number): RankedFeedItemView => ({
   feedItemId: `feed-github-${rank}`,

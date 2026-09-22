@@ -15,7 +15,8 @@ describe("PrismaReaderSummaryV3Preflight execution fence", () => {
     const tx = transactionReturning({ ...lockedRow(), status: "RUNNING" });
     const jobs = repositoryReturning(requested, running);
     const source: ReaderSummaryV3PreparationSourcePort = {
-      configuration: jest.fn(async () => ({ ok: true, config })),
+      configuration: jest.fn<ReturnType<ConfigurationMethod>,
+        Parameters<ConfigurationMethod>>(async () => ({ ok: true, config })),
       prepare: jest.fn(), coverage: jest.fn(),
     };
 
@@ -46,8 +47,9 @@ describe("PrismaReaderSummaryV3Preflight execution fence", () => {
     const tx = transactionReturning({ ...lockedRow(), status: "RUNNING" });
     const jobs = repositoryReturning(requested, running);
     const source: ReaderSummaryV3PreparationSourcePort = {
-      configuration: jest.fn(async () => ({ ok: false,
-        code: "config_unavailable" as const })),
+      configuration: jest.fn<ReturnType<ConfigurationMethod>,
+        Parameters<ConfigurationMethod>>(async () => ({ ok: false,
+          code: "config_unavailable" })),
       prepare: jest.fn(), coverage: jest.fn(),
     };
 
@@ -64,8 +66,9 @@ describe("PrismaReaderSummaryV3Preflight execution fence", () => {
       preparation_manifest: null, preparation_manifest_sha256: null });
     const jobs = repositoryReturning(requested, failed);
     const source: ReaderSummaryV3PreparationSourcePort = {
-      configuration: jest.fn(async () => ({ ok: false,
-        code: "config_unavailable" as const })),
+      configuration: jest.fn<ReturnType<ConfigurationMethod>,
+        Parameters<ConfigurationMethod>>(async () => ({ ok: false,
+          code: "config_unavailable" })),
       prepare: jest.fn(), coverage: jest.fn(),
     };
 
@@ -194,6 +197,19 @@ describe("PrismaReaderSummaryV3Preflight execution fence", () => {
     });
 });
 
+type ConfigurationMethod = ReaderSummaryV3PreparationSourcePort["configuration"];
+
+type LockedRow = {
+  readonly status: string;
+  readonly selection_strategy: string | null;
+  readonly preparation_manifest: unknown | null;
+  readonly preparation_config: unknown | null;
+  readonly preparation_manifest_sha256: string | null;
+  readonly preparation_deadline_at: string | null;
+  readonly started_at: Date | null;
+  readonly terminal_failure_code: string | null;
+};
+
 const requestedJob = () => ReaderSummaryJob.request({ id: id(1),
   tenantId: tenantId(id(2)), workspaceId: workspaceId(id(3)),
   scope: { type: "interest", interestId: id(4) },
@@ -221,7 +237,7 @@ const preparation = () => ({ ok: true as const, config,
   manifest: frozenJob().toSnapshot().preparationManifest!,
   manifestSha256: "4".repeat(64) });
 
-const transactionReturning = (row: ReturnType<typeof lockedRow>) => ({
+const transactionReturning = (row: LockedRow) => ({
   $queryRaw: jest.fn(async (parts: TemplateStringsArray) =>
     parts.join("?").includes("FROM reader_summary_jobs") ? [row] : []),
 });
@@ -249,7 +265,8 @@ const repositoryReturning = (...jobs: readonly ReaderSummaryJob[]) => ({
   findById: jest.fn().mockResolvedValueOnce(jobs[0]).mockResolvedValueOnce(jobs[1]),
 }) as unknown as PrismaReaderSummaryJobRepository;
 
-const lockedRow = () => ({ status: "REQUESTED", selection_strategy: "jev_primary_v3",
+const lockedRow = (): LockedRow => ({ status: "REQUESTED",
+  selection_strategy: "jev_primary_v3",
   preparation_manifest: {}, preparation_config: config,
   preparation_manifest_sha256: "4".repeat(64),
   preparation_deadline_at: "2026-09-21T00:15:00.123456Z",

@@ -109,6 +109,9 @@ describe('redaction helpers', () => {
     expect(sanitizeUrlCredentials(url)).toBe(
       'https://example.test/report?tag=one&tag=two&edition&empty=&plus=a+b&space=a%20b&escape=%2f%2F&&tail=#part%202',
     );
+    expect(sanitizeUrlCredentials('https://example.test/report#')).toBe(
+      'https://example.test/report#',
+    );
   });
 
   it('removes sensitive fragment parameters while preserving harmless fragments', () => {
@@ -129,6 +132,33 @@ describe('redaction helpers', () => {
     expect(sanitizeUrlCredentials(
       'https://example.test/report#section%202',
     )).toBe('https://example.test/report#section%202');
+  });
+
+  it('removes credentials from route fragment query suffixes without discarding route state', () => {
+    const routeOnly = 'https://example.test/#/callback';
+    const routeWithState = 'https://example.test/#/callback?state=fixture-state';
+    const routeWithCredential = 'https://example.test/#/callback?auth=fixture-secret';
+    const routeWithMixedSuffix =
+      'https://example.test/#/callback?state=fixture-state&auth=fixture-secret&panel=details';
+
+    expect(urlContainsCredentials(routeOnly)).toBe(false);
+    expect(sanitizeUrlCredentials(routeOnly)).toBe(routeOnly);
+    expect(urlContainsCredentials(routeWithState)).toBe(false);
+    expect(sanitizeUrlCredentials(routeWithState)).toBe(routeWithState);
+    expect(urlContainsCredentials(routeWithCredential)).toBe(true);
+    expect(sanitizeUrlCredentials(routeWithCredential)).toBe(
+      'https://example.test/#/callback',
+    );
+    expect(urlContainsCredentials(routeWithMixedSuffix)).toBe(true);
+    expect(sanitizeUrlCredentials(routeWithMixedSuffix)).toBe(
+      'https://example.test/#/callback?state=fixture-state&panel=details',
+    );
+    expect(redactSensitiveText(`redirect ${routeWithMixedSuffix}`)).toBe(
+      'redirect https://example.test/#/callback?state=fixture-state&panel=details',
+    );
+    expect(redactSensitiveRecord({ callbackUrl: routeWithCredential })).toEqual({
+      callbackUrl: 'https://example.test/#/callback',
+    });
   });
 
   it('normalizes WHATWG-discarded ASCII before removing URL credentials', () => {

@@ -14,7 +14,8 @@ describe("InMemoryReaderSummaryV3Preflight", () => {
     const running = runningJob();
     await jobs.save(requested);
     const source: ReaderSummaryV3PreparationSourcePort = {
-      configuration: jest.fn(async () => {
+      configuration: jest.fn<ReturnType<ConfigurationMethod>,
+        Parameters<ConfigurationMethod>>(async () => {
         await jobs.save(running);
         return { ok: true, config: fixture(1).config };
       }),
@@ -52,9 +53,10 @@ describe("InMemoryReaderSummaryV3Preflight", () => {
     const running = runningJob();
     await jobs.save(requested);
     const source: ReaderSummaryV3PreparationSourcePort = {
-      configuration: jest.fn(async () => {
+      configuration: jest.fn<ReturnType<ConfigurationMethod>,
+        Parameters<ConfigurationMethod>>(async () => {
         await jobs.save(running);
-        return { ok: false, code: "config_unavailable" as const };
+        return { ok: false, code: "config_unavailable" };
       }),
       prepare: jest.fn(), coverage: jest.fn(),
     };
@@ -69,8 +71,9 @@ describe("InMemoryReaderSummaryV3Preflight", () => {
     const requested = requestedJob();
     await jobs.save(requested);
     const source: ReaderSummaryV3PreparationSourcePort = {
-      configuration: jest.fn(async () => ({ ok: false,
-        code: "config_unavailable" as const })),
+      configuration: jest.fn<ReturnType<ConfigurationMethod>,
+        Parameters<ConfigurationMethod>>(async () => ({ ok: false,
+          code: "config_unavailable" })),
       prepare: jest.fn(), coverage: jest.fn(),
     };
 
@@ -171,6 +174,8 @@ describe("InMemoryReaderSummaryV3Preflight", () => {
     expect(result.job.toSnapshot().preparationManifestSha256).toBe("1".repeat(64));
   });
 });
+
+type ConfigurationMethod = ReaderSummaryV3PreparationSourcePort["configuration"];
 
 const requestedJob = () => ReaderSummaryJob.request({
   id: "00000000-0000-4000-8000-000000000001",

@@ -80,6 +80,9 @@ describe("Promotion V3 full-source presentation", () => {
     if (result.status !== "available") throw new Error("invalid fixture");
     const publicSeal = publicReaderPostPresentationV3Seal(result.seal);
     expect(JSON.stringify(publicSeal)).not.toContain(input.trustedIntent);
+    if (publicSeal.headline.status !== "accepted") {
+      throw new Error("invalid public headline fixture");
+    }
     expect(publicSeal.headline.binding).not.toHaveProperty("trustedIntent");
     const substituted = { ...capturedSource(input), body: "Substituted content" };
     expect(readerPostPresentationV3MatchesCard({

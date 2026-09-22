@@ -75,7 +75,8 @@ export const urlContainsCredentials = (value: string): boolean => {
     const url = new URL(value);
     const queryKeys = [...url.searchParams.keys()];
     const normalizedQueryKeys = new Set(queryKeys.map((key) => key.toLowerCase()));
-    const fragmentKeys = [...new URLSearchParams(url.hash.slice(1)).keys()];
+    const fragment = parseUrlFragmentParameters(url.hash.slice(1));
+    const fragmentKeys = [...new URLSearchParams(fragment.rawParameters).keys()];
     const normalizedFragmentKeys = new Set(fragmentKeys.map((key) => key.toLowerCase()));
     return url.username.length > 0 || url.password.length > 0 ||
       queryKeys.some((key) => isSensitiveNormalizedUrlCredentialKey(
@@ -95,9 +96,11 @@ export const sanitizeUrlCredentials = (value: string): string => {
     const url = new URL(normalizedValue);
     const queryKeys = [...url.searchParams.keys()];
     const normalizedQueryKeys = new Set(queryKeys.map((key) => key.toLowerCase()));
-    const fragmentKeys = [...new URLSearchParams(url.hash.slice(1)).keys()];
-    const normalizedFragmentKeys = new Set(fragmentKeys.map((key) => key.toLowerCase()));
     const fragmentStart = normalizedValue.indexOf('#');
+    const rawFragment = fragmentStart >= 0 ? normalizedValue.slice(fragmentStart + 1) : '';
+    const fragment = parseUrlFragmentParameters(rawFragment);
+    const fragmentKeys = [...new URLSearchParams(fragment.rawParameters).keys()];
+    const normalizedFragmentKeys = new Set(fragmentKeys.map((key) => key.toLowerCase()));
     const queryStart = normalizedValue.indexOf('?');
     const hasQuery = queryStart >= 0 && (fragmentStart < 0 || queryStart < fragmentStart);
     const queryEnd = fragmentStart < 0 ? normalizedValue.length : fragmentStart;
@@ -109,13 +112,20 @@ export const sanitizeUrlCredentials = (value: string): string => {
     const withoutSensitiveQuery = hasQuery
       ? `${normalizedValue.slice(0, queryStart)}${retained.length > 0 ? `?${retained.join('&')}` : ''}${normalizedValue.slice(queryEnd)}`
       : normalizedValue;
-    const sanitizedFragment = fragmentStart >= 0
+    const retainedFragmentParameters = fragmentStart >= 0
       ? retainSafeUrlParameterComponents(
-        normalizedValue.slice(fragmentStart + 1), normalizedFragmentKeys,
+        fragment.rawParameters, normalizedFragmentKeys,
       )
       : [];
+    const sanitizedFragment = fragment.hasQuerySuffix
+      ? `${fragment.route}${retainedFragmentParameters.length > 0
+        ? `?${retainedFragmentParameters.join('&')}`
+        : ''}`
+      : retainedFragmentParameters.join('&');
+    const hasSanitizedFragment = fragment.route.length > 0 ||
+      retainedFragmentParameters.length > 0;
     const withoutSensitiveFragment = fragmentStart >= 0
-      ? `${withoutSensitiveQuery.slice(0, withoutSensitiveQuery.indexOf('#'))}${sanitizedFragment.length > 0 ? `#${sanitizedFragment.join('&')}` : ''}`
+      ? `${withoutSensitiveQuery.slice(0, withoutSensitiveQuery.indexOf('#'))}${hasSanitizedFragment ? `#${sanitizedFragment}` : ''}`
       : withoutSensitiveQuery;
     return url.username.length > 0 || url.password.length > 0
       ? removeRawUrlUserInfo(withoutSensitiveFragment)
@@ -136,6 +146,21 @@ const normalizeWhatwgUrlInput = (value: string): string => {
   while (start < end && withoutAsciiTabOrNewline.charCodeAt(start) <= 0x20) start += 1;
   while (end > start && withoutAsciiTabOrNewline.charCodeAt(end - 1) <= 0x20) end -= 1;
   return withoutAsciiTabOrNewline.slice(start, end);
+};
+
+const parseUrlFragmentParameters = (rawFragment: string): {
+  route: string;
+  rawParameters: string;
+  hasQuerySuffix: boolean;
+} => {
+  const queryStart = rawFragment.indexOf('?');
+  return queryStart < 0
+    ? { route: '', rawParameters: rawFragment, hasQuerySuffix: false }
+    : {
+      route: rawFragment.slice(0, queryStart),
+      rawParameters: rawFragment.slice(queryStart + 1),
+      hasQuerySuffix: true,
+    };
 };
 
 const retainSafeUrlParameterComponents = (

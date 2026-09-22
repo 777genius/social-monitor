@@ -19,6 +19,7 @@ describe("reader summary operator cancellation CLI", () => {
     const result = await runReaderSummaryOperatorCancellation({ command: preview,
       cancellation: adapter });
     expect(result.mode).toBe("preview");
+    if (result.mode !== "preview") throw new Error("invalid preview result");
     expect(result.rows[0]?.job).not.toContain(jobId);
     expect(adapter.cancel).not.toHaveBeenCalled();
 
