@@ -81,6 +81,12 @@ extension on SummaryMapper {
     final promotionBoardValid = _validPromotionBoard(
       mappedTopReads,
       mappedSelectedPosts,
+      authoritativeStoryClusterIds: storyClusterIds,
+      hasReaderItems: readerItems.isNotEmpty,
+      hasCitations: citationsById.isNotEmpty,
+      noSignal:
+          dto.qualityState.status == 'no_signal' ||
+          dto.qualityState.flags.contains('no_signal'),
     );
     return ReaderSummaryContent(
       headline: _nonEmpty(dto.headline, fallback: 'Workspace summary'),
@@ -147,9 +153,23 @@ extension on SummaryMapper {
     );
   }
 }
-bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
+
+bool _validPromotionBoard(
+  List<TopRead> topReads,
+  List<TopRead> selectedPosts, {
+  required Set<String> authoritativeStoryClusterIds,
+  required bool hasReaderItems,
+  required bool hasCitations,
+  required bool noSignal,
+}) {
   if (topReads.length > 8 || selectedPosts.length > 8) return false;
   final all = [...topReads, ...selectedPosts];
+  if (all.isEmpty) {
+    return noSignal &&
+        !hasReaderItems &&
+        !hasCitations &&
+        authoritativeStoryClusterIds.isEmpty;
+  }
   final attestations = all
       .map((item) => item.promotionAttestation)
       .whereType<ReaderPostPromotionAttestation>()
@@ -175,7 +195,11 @@ bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
           !_validV2PromotionSlate(attestations)) ||
       (attestations.isNotEmpty &&
           attestations.every((value) => value.isV3) &&
-          !_validV3PromotionSlate(topReads, selectedPosts))) {
+          !_validV3PromotionSlate(
+            topReads,
+            selectedPosts,
+            authoritativeStoryClusterIds,
+          ))) {
     return false;
   }
   bool laneIsExact(
@@ -210,6 +234,7 @@ bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
 bool _validV3PromotionSlate(
   List<TopRead> topReads,
   List<TopRead> selectedPosts,
+  Set<String> authoritativeStoryClusterIds,
 ) {
   bool validLane(List<TopRead> items) {
     final attestations = items
@@ -235,7 +260,18 @@ bool _validV3PromotionSlate(
     return true;
   }
 
-  return validLane(topReads) && validLane(selectedPosts);
+  if (!validLane(topReads) || !validLane(selectedPosts)) return false;
+  final orderedStoryIds = [...topReads, ...selectedPosts]
+      .map((item) => item.promotionAttestation!.storyId!)
+      .toList(growable: false);
+  final authoritativeOrder = authoritativeStoryClusterIds.toList(
+    growable: false,
+  );
+  return orderedStoryIds.length == authoritativeOrder.length &&
+      List.generate(
+        orderedStoryIds.length,
+        (index) => index,
+      ).every((index) => orderedStoryIds[index] == authoritativeOrder[index]);
 }
 
 int _compareV3Attestation(
@@ -320,81 +356,4 @@ bool _validV2PromotionSlate(List<ReaderPostPromotionAttestation> attestations) {
         digestInputs.cast<String>(),
         attestations.map((value) => value.slateEntryDigestInput!).toList(),
       );
-}
-
-SummaryReliabilityReport _summaryReliabilityToDomain(
-  SummaryMapper mapper,
-  SummaryReliabilityReportApiDto dto,
-) {
-  return SummaryReliabilityReport(
-    mode: mapper._nonEmpty(dto.mode, fallback: 'shadow'),
-    policyVersion: mapper._nonEmpty(
-      dto.policyVersion,
-      fallback: 'reader_summary_reliability_shadow_v1',
-    ),
-    riskLevel: mapper._readerItemConfidenceLevel(dto.riskLevel),
-    riskScore: mapper._boundedScore(dto.riskScore),
-    risks: dto.risks
-        .map(
-          (risk) => SummaryReliabilityRisk(
-            kind: mapper._nonEmpty(
-              risk.kind,
-              fallback: 'low_evidence_diversity',
-            ),
-            level: mapper._readerItemConfidenceLevel(risk.level),
-            score: mapper._boundedScore(risk.score),
-            description: mapper._safeText(
-              risk.description,
-              fallback: 'Evidence quality needs review.',
-            ),
-          ),
-        )
-        .toList(growable: false),
-  );
-}
-
-SummaryClaim _summaryClaimToDomain(
-  SummaryMapper mapper,
-  SummaryClaimApiDto dto,
-) {
-  return SummaryClaim(
-    id: mapper._nonEmptyOrNull(dto.id),
-    claim: mapper._safeText(dto.claim, fallback: 'Unlabeled claim'),
-    evidence: dto.evidence
-        .map(
-          (evidence) => SummaryClaimEvidence(
-            title: mapper._safeText(evidence.title, fallback: dto.claim),
-            providerKey: mapper._nonEmpty(
-              evidence.providerKey,
-              fallback: 'unknown',
-            ),
-            citationId: mapper._nonEmpty(
-              evidence.citationId,
-              fallback: 'unknown',
-            ),
-            canonicalUrl: mapper._safeUrl(evidence.canonicalUrl),
-          ),
-        )
-        .toList(growable: false),
-    confidence: TopReadConfidence(
-      level: mapper._readerItemConfidenceLevel(dto.confidence.level),
-      score: mapper._boundedScore(dto.confidence.score),
-      rationale: mapper._safeText(
-        dto.confidence.rationale,
-        fallback: 'Confidence inferred from cited evidence.',
-      ),
-    ),
-    risks: dto.risks
-        .map(
-          (risk) => SummaryClaimRisk(
-            kind: mapper._nonEmpty(risk.kind, fallback: 'unresolved'),
-            description: mapper._safeText(
-              risk.description,
-              fallback: 'Needs confirmation.',
-            ),
-          ),
-        )
-        .toList(growable: false),
-    citationIds: mapper._safeTextList(dto.citationIds),
-  );
 }

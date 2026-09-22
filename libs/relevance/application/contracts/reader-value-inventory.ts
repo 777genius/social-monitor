@@ -18,6 +18,21 @@ export interface ReaderValueInventory {
     limit: number, sourceByteBudget?: number, exclusivePeriodEnd?: string): Promise<readonly ReaderValueInventoryItem[]>;
 }
 
+export interface ReaderValueInventorySnapshot {
+  page(backfillFrom: string, cursor: ReaderValueInventoryCursor | undefined,
+    limit: number, sourceByteBudget?: number, exclusivePeriodEnd?: string): Promise<readonly ReaderValueInventoryItem[]>;
+}
+
+/**
+ * Preparation-only inventory boundary. Every page read by one operation must
+ * observe one database snapshot; callers must finish reading before doing any
+ * provider work or persistence.
+ */
+export interface ReaderValuePreparationInventory {
+  readSnapshot<T>(scope: ReaderValueDiscoveryScope,
+    operation: (snapshot: ReaderValueInventorySnapshot) => Promise<T>): Promise<T>;
+}
+
 export class ReaderValueInventoryByteCeilingExceeded extends Error {
   constructor() {
     super('Reader value inventory exceeds the source byte ceiling');

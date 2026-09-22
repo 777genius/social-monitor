@@ -7,6 +7,7 @@ import {
   type ReaderSummaryArtifact,
   type ReaderSummaryContextArtifact,
   type ReaderSummaryJob,
+  type ReaderSummaryTopicMapEvidenceAdmission,
   primaryReaderSummaryEvidence,
   type SummaryEvidenceSelection,
 } from "../../domain";
@@ -112,6 +113,10 @@ export const withReaderSummaryTopicMap = async (params: {
     scope: params.snapshot.scope,
     period: params.snapshot.period,
     requestedAt: params.snapshot.requestedAt,
+    evidenceAdmission: topicMapEvidenceAdmission(
+      params.snapshot.selectionStrategy,
+      primaryEvidence,
+    ),
     clusters: primaryEvidence.clusters,
     selectedEvidence: primaryEvidence.selectedEvidence,
     topStories: params.draft.topStories,
@@ -125,3 +130,15 @@ export const withReaderSummaryTopicMap = async (params: {
     content: { ...params.draft.content, topicMap: topicMapResult.value },
   });
 };
+
+const topicMapEvidenceAdmission = (
+  selectionStrategy: ReturnType<ReaderSummaryJob["toSnapshot"]>["selectionStrategy"],
+  evidence: SummaryEvidenceSelection,
+): ReaderSummaryTopicMapEvidenceAdmission =>
+  selectionStrategy === "jev_primary_v3"
+    ? { selectionStrategy,
+        admittedCandidateIds: [
+          ...(evidence.promotionV3?.top ?? []),
+          ...(evidence.promotionV3?.additional ?? []),
+        ].map((candidate) => candidate.candidateId) }
+    : { selectionStrategy: selectionStrategy ?? "legacy_v2" };

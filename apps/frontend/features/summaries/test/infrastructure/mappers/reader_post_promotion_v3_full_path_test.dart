@@ -29,6 +29,9 @@ void main() {
       'provider',
       'storyId',
       'publishedAt',
+      'periodStartedAt',
+      'periodEndedAt',
+      'ingestionCutoff',
       'exactIngestionCutoff',
       'assessment',
       'comparator',
@@ -107,6 +110,15 @@ void main() {
       );
     });
   }
+
+  test('rejects a missing outer V3 ingestion cutoff', () {
+    final payload = _payload();
+    _transportAttestation(payload).remove('ingestionCutoff');
+    expect(
+      _map(payload).content.promotionBoardAvailability,
+      ReaderSummaryPromotionBoardAvailability.unavailable,
+    );
+  });
 }
 
 Map<String, dynamic> _transportAttestation(Map<String, dynamic> payload) =>

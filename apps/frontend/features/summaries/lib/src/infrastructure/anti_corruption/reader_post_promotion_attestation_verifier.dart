@@ -9,6 +9,7 @@ part 'reader_post_promotion_attestation_schema.dart';
 part 'reader_post_promotion_attestation_semantics.dart';
 part 'reader_post_promotion_attestation_v2_schema.dart';
 part 'reader_post_promotion_attestation_v3_schema.dart';
+part 'reader_post_promotion_attestation_v3_assessment.dart';
 
 const readerPostPromotionAttestationSchemaV1 =
     'reader_post_promotion_attestation.v1';
@@ -70,6 +71,9 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
   Object? outerProvider,
   Object? outerStoryId,
   Object? outerPublishedAt,
+  Object? outerPeriodStartedAt,
+  Object? outerPeriodEndedAt,
+  Object? outerIngestionCutoff,
   Object? outerExactIngestionCutoff,
   Object? outerAssessment,
   Object? outerComparator,
@@ -150,6 +154,9 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
       outerProvider: outerProvider,
       outerStoryId: outerStoryId,
       outerPublishedAt: outerPublishedAt,
+      outerPeriodStartedAt: outerPeriodStartedAt,
+      outerPeriodEndedAt: outerPeriodEndedAt,
+      outerIngestionCutoff: outerIngestionCutoff,
       outerExactIngestionCutoff: outerExactIngestionCutoff,
       outerAssessment: outerAssessment,
       outerComparator: outerComparator,

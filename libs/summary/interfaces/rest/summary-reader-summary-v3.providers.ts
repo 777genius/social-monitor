@@ -16,6 +16,8 @@ import { CONFIGURED_INTEREST_READER, type ConfiguredInterestReaderPort } from
 import { CryptoIdGenerator } from "@social-monitor/shared-kernel";
 import { RelevanceReaderSummaryV3PreparationSource } from
   "../../adapters/evidence/relevance-reader-summary-v3-preparation-source";
+import { RelevanceReaderSummaryEvidenceSelector } from
+  "../../adapters/evidence/relevance-reader-summary-evidence.selector";
 import { RelevanceReaderSummaryV3Promotion } from
   "../../adapters/evidence/relevance-reader-summary-v3-promotion";
 import { AgentRuntimePromotionPresentationV3Builder,
@@ -60,16 +62,18 @@ export const readerSummaryV3Providers: readonly Provider[] = [{
   provide: READER_SUMMARY_V3_PROMOTION,
   useFactory: (mode: SummaryPersistenceMode, prisma: PrismaSummaryClient | null,
     options: AgentRuntimePromotionPresentationV3BuilderOptions,
-    runtime: GrpcAgentRuntimeClient):
+    runtime: GrpcAgentRuntimeClient,
+    supplementalEvidence: RelevanceReaderSummaryEvidenceSelector):
   ReaderSummaryV3PromotionPort | undefined => {
     if (mode !== "prisma") return undefined;
     const client = requirePrismaSummaryClient(prisma) as unknown as AssessmentSqlClient;
     return new RelevanceReaderSummaryV3Promotion(
       new PrismaReaderValueAssessmentStore(client),
-      new AgentRuntimePromotionPresentationV3Builder({ ...options, client: runtime }));
+      new AgentRuntimePromotionPresentationV3Builder({ ...options, client: runtime }),
+      supplementalEvidence);
   }, inject: [SUMMARY_PERSISTENCE_MODE, SUMMARY_PRISMA_CLIENT,
     SUMMARY_AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_OPTIONS,
-    GrpcAgentRuntimeClient],
+    GrpcAgentRuntimeClient, RelevanceReaderSummaryEvidenceSelector],
 }];
 
 const requirePrismaSummaryClient = (client: PrismaSummaryClient | null) => {

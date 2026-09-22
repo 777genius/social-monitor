@@ -2,7 +2,7 @@ import { err, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import type { ReaderValueAssessmentStore } from
   "../contracts/reader-value-assessment-store";
-import type { ReaderValueInputBuilder, ReaderValueInventory,
+import type { ReaderValueInputBuilder, ReaderValuePreparationInventory,
   ReaderValueInventoryItem } from "../contracts/reader-value-inventory";
 import { ReaderValueInventoryByteCeilingExceeded } from
   "../contracts/reader-value-inventory";
@@ -26,21 +26,22 @@ describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
     })));
     const budgets: number[] = [];
     let pageIndex = 0;
-    const inventory: ReaderValueInventory = { page: async (
-      _scope, _backfillFrom, _cursor, _limit, sourceByteBudget,
-    ) => {
-      if (sourceByteBudget === undefined) {
-        throw new Error("summary preparation must pass the remaining byte budget");
-      }
-      budgets.push(sourceByteBudget);
-      const page = pages[pageIndex++] ?? [];
-      const bytes = page.reduce((sum, row) => sum +
-        Buffer.byteLength(row.source.title) + Buffer.byteLength(row.source.body), 0);
-      if (bytes > sourceByteBudget) {
-        throw new ReaderValueInventoryByteCeilingExceeded();
-      }
-      return page;
-    } };
+    const inventory: ReaderValuePreparationInventory = { readSnapshot: async (_scope, operation) =>
+      operation({ page: async (
+        _backfillFrom, _cursor, _limit, sourceByteBudget,
+      ) => {
+        if (sourceByteBudget === undefined) {
+          throw new Error("summary preparation must pass the remaining byte budget");
+        }
+        budgets.push(sourceByteBudget);
+        const page = pages[pageIndex++] ?? [];
+        const bytes = page.reduce((sum, row) => sum +
+          Buffer.byteLength(row.source.title) + Buffer.byteLength(row.source.body), 0);
+        if (bytes > sourceByteBudget) {
+          throw new ReaderValueInventoryByteCeilingExceeded();
+        }
+        return page;
+      } }) };
     const fixture = setupWithInventory(inventory);
 
     await expect(prepare(fixture.subject)).resolves.toEqual({
@@ -59,14 +60,15 @@ describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
   });
 
   it("passes the exclusive period end to inventory before source bytes are materialized", async () => {
-    const inventory: ReaderValueInventory = { page: async (
-      _scope, _from, _cursor, _limit, _sourceByteBudget, exclusivePeriodEnd,
-    ) => {
-      expect(exclusivePeriodEnd).toBe("2026-09-21T00:00:00.000000Z");
-      // An adapter must filter this row in SQL rather than return its large body
-      // for the use case to discard after charging the page budget.
-      return [];
-    } };
+    const inventory: ReaderValuePreparationInventory = { readSnapshot: async (_scope, operation) =>
+      operation({ page: async (
+        _from, _cursor, _limit, _sourceByteBudget, exclusivePeriodEnd,
+      ) => {
+        expect(exclusivePeriodEnd).toBe("2026-09-21T00:00:00.000000Z");
+        // An adapter must filter this row in SQL rather than return its large body
+        // for the use case to discard after charging the page budget.
+        return [];
+      } }) };
     const fixture = setupWithInventory(inventory);
 
     await expect(prepare(fixture.subject)).resolves.toMatchObject({ ok: true });
@@ -155,6 +157,41 @@ describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
 
       expect(fixture.builder.prepare).toHaveBeenCalledTimes(included ? 1 : 0);
     });
+
+  it("finishes every snapshot page before persisting assessments and pins", async () => {
+    const rows = Array.from({ length: 26 }, (_, index) => ({
+      ...item({ publishedAt: `2026-09-20T23:59:${String(index).padStart(2, "0")}.000000Z` }),
+      cursor: { publishedAt: `2026-09-20T23:59:${String(index).padStart(2, "0")}.000000Z`,
+        feedItemId: `00000000-0000-4000-8000-${String(index + 100).padStart(12, "0")}` },
+    }));
+    let snapshotOpen = false;
+    let pageIndex = 0;
+    const inventory: ReaderValuePreparationInventory = { readSnapshot: async (_scope, operation) => {
+      snapshotOpen = true;
+      try {
+        return await operation({ page: async () => pageIndex++ === 0 ? rows.slice(0, 25) : rows.slice(25) });
+      } finally {
+        snapshotOpen = false;
+      }
+    } };
+    const fixture = setupWithInventory(inventory);
+    const actual = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy());
+    fixture.builder.prepare.mockImplementation((source, revision) => actual.prepare(source, revision));
+    fixture.store.ensure.mockImplementation(async () => {
+      expect(snapshotOpen).toBe(false);
+      return { id: ids.assessment } as never;
+    });
+    fixture.store.pin.mockImplementation(async () => {
+      expect(snapshotOpen).toBe(false);
+      return true;
+    });
+
+    await expect(prepare(fixture.subject)).resolves.toMatchObject({
+      ok: true, manifest: { candidates: expect.any(Array) },
+    });
+    expect(fixture.store.ensure).toHaveBeenCalledTimes(26);
+    expect(fixture.store.pin).toHaveBeenCalledTimes(1);
+  });
 });
 
 const prepare = async (subject: PrepareReaderValueSummaryUseCase,
@@ -171,19 +208,20 @@ const prepare = async (subject: PrepareReaderValueSummaryUseCase,
 
 const setup = (row: ReaderValueInventoryItem) => {
   let served = false;
-  const inventory: ReaderValueInventory = { page: async (
-    _scope, _from, _cursor, _limit, _sourceByteBudget, exclusivePeriodEnd,
-  ) => {
-    if (served) return [];
-    served = true;
-    if (exclusivePeriodEnd !== undefined &&
-        row.cursor.publishedAt >= exclusivePeriodEnd) return [];
-    return [row];
-  } };
+  const inventory: ReaderValuePreparationInventory = { readSnapshot: async (_scope, operation) =>
+    operation({ page: async (
+      _from, _cursor, _limit, _sourceByteBudget, exclusivePeriodEnd,
+    ) => {
+      if (served) return [];
+      served = true;
+      if (exclusivePeriodEnd !== undefined &&
+          row.cursor.publishedAt >= exclusivePeriodEnd) return [];
+      return [row];
+    } }) };
   return setupWithInventory(inventory);
 };
 
-const setupWithInventory = (inventory: ReaderValueInventory) => {
+const setupWithInventory = (inventory: ReaderValuePreparationInventory) => {
   const prepare: ReaderValueInputBuilder["prepare"] = () => err("unsafe_source");
   const builder: jest.Mocked<ReaderValueInputBuilder> = {
     prepare: jest.fn(prepare),

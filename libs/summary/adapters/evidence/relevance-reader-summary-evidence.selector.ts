@@ -12,6 +12,7 @@ import {
 import {
   NOOP_STORY_RANKING_METRICS,
   type ReaderSummaryEvidenceSelectorPort,
+  type ReaderSummarySupplementalEvidenceSelectorPort,
   type ReaderSummaryStoryRelationVerifierPort,
   type StoryRankingMetricsPort,
 } from "../../ports";
@@ -55,7 +56,8 @@ import {
  */
 export const READER_SUMMARY_ORIGINAL_SOURCE_TEXT_SAFETY_CAP = 256_000;
 
-export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSelectorPort {
+export class RelevanceReaderSummaryEvidenceSelector implements
+ReaderSummaryEvidenceSelectorPort, ReaderSummarySupplementalEvidenceSelectorPort {
   private readonly clusterer: StoryClusteringService;
   constructor(
     private readonly rankFeedItems: RankFeedItemsUseCase,
@@ -76,32 +78,8 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       (params.observedThrough ?? this.clock.now()).getTime(),
     );
     const query = { ...params, observedThrough: ingestionCutoff };
-    const periodQuery = readerSummaryPeriodQuery(query);
-    const ranked = await this.rankFeedItems.execute({
-      tenantId: params.tenantId,
-      workspaceId: params.workspaceId,
-      interestId:
-        params.scope.type === "interest" ? params.scope.interestId : undefined,
-      userId: params.userId,
-      ...periodQuery,
-      observedAtOrBefore: ingestionCutoff,
-      rankingProfile: "reader_post_promotion",
-      ...(params.retainedEngagementAuthority === undefined ? {} : {
-        retainedEngagementAuthority: params.retainedEngagementAuthority,
-      }),
-      limit: expandedCandidateLimit(params.maxItems),
-      ...(this.preparationObserver === undefined ? {} : {
-        observePromotionPreparation: (preparation) => observeReaderPromotionSnapshot(
-          this.preparationObserver!, preparation, ingestionCutoff, params,
-        ),
-      }),
-    });
-
-    if (!ranked.ok) {
-      throw ranked.error;
-    }
-    const rankedInventory = ranked.value.items.map((item) =>
-      mapRankedItem(item, query.observedThrough, params));
+    const ranked = await this.loadRankedInventory(query, ingestionCutoff);
+    const rankedInventory = ranked.items;
     const expandedRankedItems = filterItemsByReaderSummaryPeriod(
       rankedInventory,
       params.period,
@@ -196,7 +174,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     };
     if (this.preparationObserver !== undefined) {
       observeReaderSummaryPreparation(this.preparationObserver, {
-        rankingOrder: ranked.value.items.map(({ feedItemId, rank }) => ({ feedItemId, rank })),
+        rankingOrder: ranked.rankingOrder,
         rankedInventory,
         periodExcludedIds: excludedPreparationIds(rankedInventory, expandedRankedItems),
         defaultProviderExcludedIds: excludedPreparationIds(expandedRankedItems, rankedItems),
@@ -249,19 +227,19 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       approvedSameStoryRelations: graduatedRelations,
       relatedTopicRelations,
       personalization:
-        ranked.value.memoryGuidance === undefined
+        ranked.memoryGuidance === undefined
           ? undefined
           : {
-              memoryGuidanceStatus: ranked.value.memoryGuidance.status,
-              memoryGuidanceApplied: ranked.value.memoryGuidance.applied,
+              memoryGuidanceStatus: ranked.memoryGuidance.status,
+              memoryGuidanceApplied: ranked.memoryGuidance.applied,
               providerPreferenceCount:
-                ranked.value.memoryGuidance.providerPreferenceCount,
+                ranked.memoryGuidance.providerPreferenceCount,
               keywordPreferenceCount:
-                ranked.value.memoryGuidance.keywordPreferenceCount,
-              mutedKeywordCount: ranked.value.memoryGuidance.mutedKeywordCount,
+                ranked.memoryGuidance.keywordPreferenceCount,
+              mutedKeywordCount: ranked.memoryGuidance.mutedKeywordCount,
               blockedProviderCount:
-                ranked.value.memoryGuidance.blockedProviderCount,
-              signals: ranked.value.memoryGuidance.signals,
+                ranked.memoryGuidance.blockedProviderCount,
+              signals: ranked.memoryGuidance.signals,
             },
     };
     this.recordTelemetry(() =>
@@ -280,6 +258,66 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       authoritativeCandidates: approvedRelations.candidates,
     });
     return personalizedSelection;
+  }
+
+  async selectSupplemental(
+    params: Parameters<ReaderSummarySupplementalEvidenceSelectorPort[
+      "selectSupplemental"
+    ]>[0],
+  ): Promise<readonly SummaryEvidenceItem[]> {
+    const ingestionCutoff = new Date(
+      (params.observedThrough ?? this.clock.now()).getTime(),
+    );
+    const ranked = await this.loadRankedInventory(
+      { ...params, observedThrough: ingestionCutoff },
+      ingestionCutoff,
+    );
+    return selectGitHubTrendingSupplementalEvidence(
+      filterItemsByReaderSummaryPeriod(
+        ranked.items,
+        params.period,
+        params.timestampPolicy,
+      ),
+    );
+  }
+
+  private async loadRankedInventory(
+    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
+    ingestionCutoff: Date,
+  ) {
+    const periodQuery = readerSummaryPeriodQuery(params);
+    const ranked = await this.rankFeedItems.execute({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      interestId:
+        params.scope.type === "interest" ? params.scope.interestId : undefined,
+      userId: params.userId,
+      ...periodQuery,
+      observedAtOrBefore: ingestionCutoff,
+      rankingProfile: "reader_post_promotion",
+      ...(params.retainedEngagementAuthority === undefined ? {} : {
+        retainedEngagementAuthority: params.retainedEngagementAuthority,
+      }),
+      limit: expandedCandidateLimit(params.maxItems),
+      ...(this.preparationObserver === undefined ? {} : {
+        observePromotionPreparation: (preparation) => observeReaderPromotionSnapshot(
+          this.preparationObserver!, preparation, ingestionCutoff, params,
+        ),
+      }),
+    });
+
+    if (!ranked.ok) {
+      throw ranked.error;
+    }
+    return {
+      items: ranked.value.items.map((item) =>
+        mapRankedItem(item, ingestionCutoff, params)),
+      rankingOrder: ranked.value.items.map(({ feedItemId, rank }) => ({
+        feedItemId,
+        rank,
+      })),
+      memoryGuidance: ranked.value.memoryGuidance,
+    };
   }
 
   private recordTelemetry(record: () => void): void {

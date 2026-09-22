@@ -4332,6 +4332,18 @@
             "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
             "type": "string"
           },
+          "ingestionCutoff": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "periodEndedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "periodStartedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "placement": {
             "enum": [
               "top",

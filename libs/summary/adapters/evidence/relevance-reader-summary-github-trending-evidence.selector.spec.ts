@@ -58,6 +58,38 @@ describe("RelevanceReaderSummaryEvidenceSelector GitHub display evidence", () =>
     );
     expect(selection.sourceWindow.selectedFeedItemIds).toEqual(expectedIds);
   });
+
+  it("loads the supplemental projection at the caller's frozen cutoff", async () => {
+    const cutoff = new Date("2026-06-23T12:34:56.789Z");
+    const rankFeedItems = {
+      execute: jest.fn(async () => ok({
+        generatedAt: cutoff.toISOString(), profileApplied: false,
+        items: Array.from({ length: 12 }, (_, index) =>
+          githubTrendingRankedItem(index + 1)),
+      })),
+    } as unknown as RankFeedItemsUseCase;
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems, {} as FeedItemReadRepositoryPort, clock,
+    );
+
+    const supplemental = await selector.selectSupplemental({
+      tenantId: tenantId("tenant-github-display"),
+      workspaceId: workspaceId("workspace-github-display"),
+      scope: { type: "interest", interestId: "interest-ai" },
+      period, maxItems: 200, observedThrough: cutoff,
+    });
+
+    expect(supplemental.map((item) => item.feedItemId)).toEqual(Array.from(
+      { length: 10 }, (_, index) => `feed-github-${index + 1}`,
+    ));
+    expect(rankFeedItems.execute).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: "tenant-github-display",
+      workspaceId: "workspace-github-display",
+      interestId: "interest-ai",
+      observedAtOrBefore: cutoff,
+      rankingProfile: "reader_post_promotion",
+    }));
+  });
 });
 
 const githubTrendingRankedItem = (rank: number): RankedFeedItemView => ({

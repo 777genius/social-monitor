@@ -112,6 +112,9 @@ void main() {
       _verify(body, fixture, transportStoryId: 'story-renamed'),
       isNull,
     );
+    expect(_verify(body, fixture, transportPeriodStartedAt: null), isNull);
+    expect(_verify(body, fixture, transportPeriodEndedAt: null), isNull);
+    expect(_verify(body, fixture, transportIngestionCutoff: null), isNull);
     expect(
       _verify(body, fixture, transportAssessment: changedAssessment),
       isNull,
@@ -165,6 +168,9 @@ Object? _verify(
   String cardProviderKey = 'reddit',
   Object? transportProvider = _unmodified,
   Object? transportStoryId = _unmodified,
+  Object? transportPeriodStartedAt = _unmodified,
+  Object? transportPeriodEndedAt = _unmodified,
+  Object? transportIngestionCutoff = _unmodified,
   Object? transportAssessment = _unmodified,
   Object? transportPresentation = _unmodified,
 }) {
@@ -208,6 +214,15 @@ Object? _verify(
         ? body['storyId']
         : transportStoryId,
     outerPublishedAt: body['publishedAt'],
+    outerPeriodStartedAt: identical(transportPeriodStartedAt, _unmodified)
+        ? body['periodStartedAt']
+        : transportPeriodStartedAt,
+    outerPeriodEndedAt: identical(transportPeriodEndedAt, _unmodified)
+        ? body['periodEndedAt']
+        : transportPeriodEndedAt,
+    outerIngestionCutoff: identical(transportIngestionCutoff, _unmodified)
+        ? body['ingestionCutoff']
+        : transportIngestionCutoff,
     outerExactIngestionCutoff: body['exactIngestionCutoff'],
     outerAssessment: identical(transportAssessment, _unmodified)
         ? body['assessment']

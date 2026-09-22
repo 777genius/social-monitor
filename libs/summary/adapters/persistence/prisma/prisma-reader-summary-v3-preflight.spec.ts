@@ -86,6 +86,9 @@ describe("PrismaReaderSummaryV3Preflight execution fence", () => {
       if (text.includes("FROM interests")) {
         return [{ query: interestQuery, status: "ENABLED", deleted_at: null }];
       }
+      if (text.includes("UPDATE reader_summary_jobs SET status='RUNNING'")) {
+        return [{ started_at: now }];
+      }
       return [];
     }) };
     const prisma = { ...tx, $transaction: async (operation: (client: typeof tx) =>
@@ -103,6 +106,31 @@ describe("PrismaReaderSummaryV3Preflight execution fence", () => {
       "started_at=date_trunc('milliseconds', clock_timestamp())"))).toBe(true);
     expect(sql.some((text) => text.includes(
       "to_char(preparation_deadline_at AT TIME ZONE 'UTC'"))).toBe(true);
+  });
+
+  it("does not return a claim when cancellation commits before the job reread", async () => {
+    const requested = frozenJob();
+    const cancelled = requested.startPrepared({ startedAt: now, readyAt: now })
+      .cancelByOperator({ cancelledAt: new Date(now.getTime() + 1) });
+    const tx = readyClaimTransaction(now);
+    const jobs = repositoryReturning(requested, cancelled);
+
+    await expect(new PrismaReaderSummaryV3Preflight(prismaFor(tx), jobs, unusedSource())
+      .advance({ job: requested, requestedAt: now, startedAt: now }))
+      .resolves.toMatchObject({ kind: "terminal", job: cancelled });
+  });
+
+  it("does not return a claim for a different running execution fence", async () => {
+    const requested = frozenJob();
+    const replacement = requested.startPrepared({
+      startedAt: new Date(now.getTime() + 1), readyAt: now,
+    });
+    const tx = readyClaimTransaction(now);
+    const jobs = repositoryReturning(requested, replacement);
+
+    await expect(new PrismaReaderSummaryV3Preflight(prismaFor(tx), jobs, unusedSource())
+      .advance({ job: requested, requestedAt: now, startedAt: now }))
+      .resolves.toMatchObject({ kind: "already_running", job: replacement });
   });
 
   it("treats duplicate delivery of the running claim as idempotent", async () => {
@@ -147,6 +175,9 @@ describe("PrismaReaderSummaryV3Preflight execution fence", () => {
           rubric_sha256: config.rubricSha256,
           model_config_version: config.modelConfigVersion,
         }];
+        if (text.includes("UPDATE reader_summary_jobs SET status='RUNNING'")) {
+          return [{ started_at: now }];
+        }
         if (text.includes("SELECT clock_timestamp()")) return [{ expired: true }];
         return [];
       }) };
@@ -195,7 +226,22 @@ const transactionReturning = (row: ReturnType<typeof lockedRow>) => ({
     parts.join("?").includes("FROM reader_summary_jobs") ? [row] : []),
 });
 
-const prismaFor = (tx: ReturnType<typeof transactionReturning>) => ({ ...tx,
+const readyClaimTransaction = (startedAt: Date) => ({
+  $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
+    const text = parts.join("?");
+    if (text.includes("FROM reader_summary_jobs")) return [lockedRow()];
+    if (text.includes("FROM workspaces")) return [{ live: true }];
+    if (text.includes("FROM interests")) {
+      return [{ query: interestQuery, status: "ENABLED", deleted_at: null }];
+    }
+    if (text.includes("UPDATE reader_summary_jobs SET status='RUNNING'")) {
+      return [{ started_at: startedAt }];
+    }
+    return [];
+  }),
+});
+
+const prismaFor = (tx: { readonly $queryRaw: jest.Mock }) => ({ ...tx,
   $transaction: async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
 }) as unknown as PrismaSummaryClient;
 

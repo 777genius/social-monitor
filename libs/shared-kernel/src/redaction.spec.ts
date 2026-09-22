@@ -3,6 +3,7 @@ import {
   countSensitiveTextFragments,
   isSensitiveKey,
   isSensitiveString,
+  isSensitiveUrlCredentialKey,
   redactSensitiveMetadataRecord,
   redactSensitiveRecord,
   redactSensitiveResponseText,
@@ -87,6 +88,42 @@ describe('redaction helpers', () => {
       downloadUrl: 'https://blob.example.test/report?edition=west',
     });
     expect(urlContainsCredentials(azure)).toBe(true);
+  });
+
+  it.each(['cookie', 'session_id', 'private_key', 'password_reset_token'])(
+    'keeps generic sensitive-key protection for URL query key %s',
+    (key) => {
+      const url = `https://example.test/report?edition=west&${key}=fixture-secret#section`;
+
+      expect(isSensitiveUrlCredentialKey(key)).toBe(true);
+      expect(urlContainsCredentials(url)).toBe(true);
+      expect(sanitizeUrlCredentials(url)).toBe(
+        'https://example.test/report?edition=west#section',
+      );
+    },
+  );
+
+  it('preserves retained raw query components and fragments byte-for-byte', () => {
+    const url = 'https://example.test/report?tag=one&token=fixture-one&tag=two&cook%69e=fixture-two&edition&empty=&plus=a+b&space=a%20b&escape=%2f%2F&&tail=#part%202';
+
+    expect(sanitizeUrlCredentials(url)).toBe(
+      'https://example.test/report?tag=one&tag=two&edition&empty=&plus=a+b&space=a%20b&escape=%2f%2F&&tail=#part%202',
+    );
+  });
+
+  it('does not collapse distinct retained query identities', () => {
+    const fixtures = [
+      ['https://example.test/report?token=fixture&edition#part', 'https://example.test/report?edition#part'],
+      ['https://example.test/report?token=fixture&edition=#part', 'https://example.test/report?edition=#part'],
+      ['https://example.test/report?token=fixture&q=west%20coast#part', 'https://example.test/report?q=west%20coast#part'],
+      ['https://example.test/report?token=fixture&q=west+coast#part', 'https://example.test/report?q=west+coast#part'],
+    ] as const;
+
+    const sanitized = fixtures.map(([input, expected]) => {
+      expect(sanitizeUrlCredentials(input)).toBe(expected);
+      return sanitizeUrlCredentials(input);
+    });
+    expect(new Set(sanitized).size).toBe(fixtures.length);
   });
 
   it('does not classify short semantic parameters as Azure credentials without a signature', () => {

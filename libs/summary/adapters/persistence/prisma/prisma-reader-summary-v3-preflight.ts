@@ -26,6 +26,11 @@ type LockedJob = {
   readonly terminal_failure_code: string | null;
 };
 
+type ClaimedExecution = {
+  readonly kind: "claimed";
+  readonly startedAt: Date;
+};
+
 export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightPort {
   constructor(
     private readonly prisma: PrismaSummaryClient,
@@ -153,7 +158,9 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
         const ready = states.every((state) => state.state === "assessed" &&
           state.accepted_on_time);
         if (ready) {
-          await tx.$queryRaw`
+          const claimed = await tx.$queryRaw<readonly {
+            readonly started_at: Date;
+          }[]>`
             UPDATE reader_summary_jobs SET status='RUNNING',
               preparation_ready_at=clock_timestamp(),
               started_at=date_trunc('milliseconds', clock_timestamp()),
@@ -161,9 +168,13 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
             WHERE tenant_id=${snapshot.tenantId}::uuid
               AND workspace_id=${snapshot.workspaceId}::uuid
               AND id=${snapshot.id}::uuid AND status='REQUESTED'
-            RETURNING id
+            RETURNING started_at
           `;
-          return "claimed" as const;
+          const startedAt = claimed[0]?.started_at;
+          if (!(startedAt instanceof Date) || Number.isNaN(startedAt.getTime())) {
+            throw new Error("Reader summary V3 claim did not return an execution fence");
+          }
+          return { kind: "claimed", startedAt } satisfies ClaimedExecution;
         }
         const wall = await tx.$queryRaw<readonly { readonly expired: boolean }[]>`
           SELECT clock_timestamp() >= ${deadlineText}::timestamptz AS expired
@@ -181,8 +192,17 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
         return "deferred" as const;
       }));
     const current = await this.find(job) ?? job;
-    if (decision === "claimed") return { kind: "claimed", job: current, manifest };
     const currentStatus = current.toSnapshot().status;
+    if (typeof decision !== "string") {
+      const currentStartedAt = current.toSnapshot().startedAt;
+      if (currentStatus === "running" && currentStartedAt?.getTime() ===
+          decision.startedAt.getTime()) {
+        return { kind: "claimed", job: current, manifest };
+      }
+      if (currentStatus === "running") return { kind: "already_running", job: current };
+      if (currentStatus === "requested") return { kind: "deferred", job: current };
+      return { kind: "terminal", job: current };
+    }
     if (currentStatus === "running") return { kind: "already_running", job: current };
     if (currentStatus !== "requested") return { kind: "terminal", job: current };
     if (decision === "deferred") return { kind: "deferred", job: current };

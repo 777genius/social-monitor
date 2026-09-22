@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -61,7 +62,38 @@ test('reports invalid usage values as unknown rather than zero', () => {
   assert.equal(safe.usageAccounting.knownInputTokensSubtotal, 120);
 });
 
-function runAnalysis({ firstDayTimes, omitUsageFor, invalidUsageFor } = {}) {
+test('rejects stale source and request digests with candidate-specific errors', () => {
+  for (const field of ['sourceSnapshotSha256', 'requestSha256']) {
+    assert.throws(() => runAnalysis({ transformRecords: (records) => records.map((record, index) =>
+      index === 0 ? { ...record, [field]: 'stale' } : record) }),
+    new RegExp(`heldout result provenance mismatch for candidate ${candidateId(1)}: ${field}`, 'u'));
+  }
+});
+
+test('rejects stale scoring configuration and rubric provenance', () => {
+  for (const field of ['rubricVersion', 'configSha256']) {
+    assert.throws(() => runAnalysis({ transformRecords: (records) => records.map((record, index) =>
+      index === 0 ? { ...record, [field]: 'stale' } : record) }),
+    new RegExp(`heldout result provenance mismatch for candidate ${candidateId(1)}: ${field}`, 'u'));
+  }
+});
+
+test('rejects duplicate successes independently of JSONL order', () => {
+  const duplicate = (records) => [...records, { ...records[0] }];
+  const errors = [duplicate, (records) => duplicate(records).reverse()].map((transformRecords) => {
+    try {
+      runAnalysis({ transformRecords });
+      assert.fail('expected duplicate successes to be rejected');
+    } catch (error) {
+      return String(error);
+    }
+  });
+  const expected = `duplicate successful heldout result for candidate ${candidateId(1)}`;
+  assert.ok(errors.every((message) => message.includes(expected)));
+});
+
+function runAnalysis({ firstDayTimes, omitUsageFor, invalidUsageFor,
+  transformRecords = (records) => records } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'reader-value-heldout-analysis-'));
   const timestamps = firstDayTimes ?? Array.from({ length: 9 }, (_, index) =>
     `2026-09-13T12:00:${String(9 - index).padStart(2, '0')}.000000Z`);
@@ -69,16 +101,20 @@ function runAnalysis({ firstDayTimes, omitUsageFor, invalidUsageFor } = {}) {
     ...timestamps.map((publishedAt, index) => row(index + 1, days[0], publishedAt)),
     ...days.slice(1).map((day, index) => row(index + 10, day, `${day}T12:00:00.000000Z`)),
   ];
+  const scoringConfig = { rubricVersion: 'reader-value.v1', configSha256: 'config' };
   const corpus = { corpusId: 'fixture', corpusDigest: 'corpus', scorerCorpusDigest: 'scorer',
     cutoffKind: 'fixture', cutoffs: [], days, rowCount: rows.length, rows,
+    scoringConfig,
     interest: { query: 'fixture interest' },
     legacyTop: days.map((day) => ({ day, status: 'READY', selected: [] })) };
-  const records = rows.map((candidate) => ({ candidateId: candidate.candidateId,
-    status: 'success', latencyMs: 10, rubricVersion: 'reader-value.v1', configSha256: 'config',
+  const records = transformRecords(rows.map((candidate) => ({ candidateId: candidate.candidateId,
+    sourceSnapshotSha256: candidate.sourceSnapshotSha256,
+    requestSha256: candidate.requestSha256,
+    status: 'success', latencyMs: 10, ...scoringConfig,
     response: { model: 'fixture-model', provider: 'fixture-provider', answers: usefulAnswers(),
       ...(candidate.candidateId === omitUsageFor ? {} : { usage:
         candidate.candidateId === invalidUsageFor ? { cost: -1, input_tokens: '10' } :
-          { cost: 0.125, input_tokens: 10 } }) } }));
+          { cost: 0.125, input_tokens: 10 } }) } })));
   const paths = ['corpus.json', 'results.jsonl', 'packet.json', 'safe.json', 'selection.json']
     .map((name) => join(directory, name));
   writeFileSync(paths[0], JSON.stringify(corpus));
@@ -89,10 +125,14 @@ function runAnalysis({ firstDayTimes, omitUsageFor, invalidUsageFor } = {}) {
 }
 
 function row(ordinal, day, publishedAt) {
+  const title = `Title ${ordinal}`;
+  const body = `Body ${ordinal}`;
   return { candidateId: candidateId(ordinal), day, providerKey: 'rss',
     sourceItemId: `source-${ordinal}`, canonicalUrl: `https://example.test/story-${ordinal}`,
-    title: `Title ${ordinal}`, body: `Body ${ordinal}`, textState: 'full',
-    modelInputTruncated: false, publishedAt };
+    title, body, textState: 'full', modelInputTruncated: false, publishedAt,
+    sourceSnapshotSha256: sha256(JSON.stringify({ title, body })),
+    requestSha256: sha256(JSON.stringify({ interest: 'fixture interest', title, body,
+      rubricVersion: 'reader-value.v1', configSha256: 'config' })) };
 }
 
 function candidateId(ordinal) {
@@ -101,4 +141,8 @@ function candidateId(ordinal) {
 
 function usefulAnswers() {
   return { usefulness: { choice: 'useful' }, relevance: { choice: 'relevant' } };
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
 }

@@ -154,6 +154,7 @@ export const normalizeOpenAiReaderSummaryDraft = (
     sourceWindow: input.evidence.sourceWindow,
     selectedEvidence: input.evidence.selectedEvidence,
     editorialSlate: input.evidence.editorialSlate,
+    promotionV3: input.evidence.promotionV3,
     qualityFlags: normalizedQualityFlags,
     noSignalReason,
   });

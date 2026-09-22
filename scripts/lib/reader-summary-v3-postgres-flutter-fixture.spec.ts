@@ -23,6 +23,35 @@ describe("reader summary V3 Flutter SQL fixture", () => {
     expect(canonicalizeSqlRestTransport(dynamic)).toEqual(expected);
   });
 
+  it.each([
+    ["provider", (card: Record<string, unknown>) => {
+      card.providerKey = "reddit";
+    }],
+    ["assessment id", (card: Record<string, unknown>) => {
+      const attestation = promotionAttestation(card);
+      const assessment = requiredRecord(attestation.assessment);
+      assessment.assessmentId = "00000000-0000-4000-8000-000000000099";
+    }],
+    ["headline", (card: Record<string, unknown>) => {
+      const headline = requiredRecord(card.displayHeadline);
+      headline.text = "Mutated independently transported headline";
+    }],
+    ["attestation field", (card: Record<string, unknown>) => {
+      promotionAttestation(card).storyId = "mutated-story";
+    }],
+  ] as const)(
+    "rejects a mismatched independently transported %s",
+    (_, mutate) => {
+      const transport = JSON.parse(readFileSync(fixturePath, "utf8")) as
+        Record<string, unknown>;
+      mutate(topCard(transport));
+
+      expect(() => canonicalizeSqlRestTransport(transport)).toThrow(
+        /disagrees with canonical payload/u,
+      );
+    },
+  );
+
   it("asserts freshness without rewriting source and rejects stale transport", () => {
     const before = readFileSync(fixturePath, "utf8");
     const transport = JSON.parse(before) as Record<string, unknown>;
@@ -69,3 +98,21 @@ describe("reader summary V3 Flutter SQL fixture", () => {
     }
   });
 });
+
+const topCard = (transport: Record<string, unknown>): Record<string, unknown> => {
+  const brief = requiredRecord(transport.readerBrief);
+  const cards = brief.topReads;
+  if (!Array.isArray(cards) || cards.length === 0) throw new Error("fixture");
+  return requiredRecord(cards[0]);
+};
+
+const promotionAttestation = (
+  card: Record<string, unknown>,
+): Record<string, unknown> => requiredRecord(card.promotionAttestation);
+
+const requiredRecord = (value: unknown): Record<string, unknown> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("fixture");
+  }
+  return value as Record<string, unknown>;
+};

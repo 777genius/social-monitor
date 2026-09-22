@@ -20,6 +20,30 @@ export function assessmentTransaction<T>(client: AssessmentSqlClient, scope: Rea
   }, { isolationLevel: 'Serializable', timeout: 10_000, maxWait: 5_000 })));
 }
 
+/** One transaction-scoped, read-only snapshot for bounded preparation scans. */
+export function assessmentReadSnapshot<T>(client: AssessmentSqlClient, scope: ReaderValueScope,
+  operation: (transaction: AssessmentSqlTransaction) => Promise<T>): Promise<T> {
+  return client.$transaction(async (transaction) => {
+    // Prisma has already opened this as Serializable. Mark it read-only and
+    // deferrable before the tenant guard's first data statement so PostgreSQL
+    // chooses one safe snapshot. This command carries no tenant data.
+    await transaction.$executeRawUnsafe('SET TRANSACTION READ ONLY, DEFERRABLE');
+    return runWithTenantDatabaseAccess(scope, async () => {
+      // Keep non-Prisma contract clients tenant-scoped too. The guarded Prisma
+      // client performs the same assignment before forwarding this statement.
+      await transaction.$executeRawUnsafe(
+        `SELECT set_config('social_monitor.tenant_id', $1, true),
+                set_config('social_monitor.workspace_id', $2, true),
+                set_config('social_monitor.system_access', 'false', true)`,
+        scope.tenantId, scope.workspaceId,
+      );
+      await transaction.$executeRawUnsafe("SET LOCAL statement_timeout = '5000ms'");
+      await transaction.$executeRawUnsafe("SET LOCAL lock_timeout = '2000ms'");
+      return operation(transaction);
+    });
+  }, { isolationLevel: 'Serializable', timeout: 10_000, maxWait: 5_000 });
+}
+
 /** a is always the assessment row. No popularity, quality flags or semantic floors. */
 export const liveAssessmentScope = `EXISTS (
   SELECT 1 FROM source_items s

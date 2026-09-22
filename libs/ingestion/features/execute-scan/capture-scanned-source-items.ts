@@ -39,7 +39,11 @@ export const captureScannedSourceItems = async (params: {
   let skipped = 0;
   // This lookup is independent of candidate memory and runs for an empty/304
   // response. Native persistence precedes HTTP so newer URLs invalidate claims.
-  const due = params.enrichment === noopSourceItemEnrichment ? [] : await params.repository.findDueArticleCaptures({ ...params.scope, now: params.clock.now(), limit: 20 });
+  const liveArticleCredentialIdentities = [...(params.liveArticleFetchUrls ?? [])]
+    .map(([externalId, liveUrl]) => ({ externalId, articleUrl: sanitizeCaptureUrl(liveUrl) }));
+  const due = params.enrichment === noopSourceItemEnrichment ? [] : await params.repository.findDueArticleCaptures({
+    ...params.scope, now: params.clock.now(), limit: 20, liveArticleCredentialIdentities,
+  });
   const reservations: SourceItem[] = [];
   for (const candidate of due) {
     const remaining = deadline - params.clock.now().getTime();
@@ -93,7 +97,14 @@ export const captureScannedSourceItems = async (params: {
     const persisted = await params.repository.completeArticleCapture({
       ...params.scope, item: completed, expected, lease: params.lease, now: params.clock.now(),
     });
-    if (persisted === null) continue;
+    if (persisted === null) {
+      // The reservation snapshot is no longer authoritative. In particular,
+      // native persistence may have advanced its revision while extraction was
+      // in flight, so retaining the pre-extraction ref would project stale
+      // provider data over that newer source item.
+      refs.delete(original.externalId);
+      continue;
+    }
     if (success) enriched += 1;
     else if (undispatched) skipped += 1;
     else failed += 1;

@@ -11,6 +11,14 @@ const corpus = JSON.parse(readFileSync(corpusPath, 'utf8'));
 const records = readFileSync(resultsPath, 'utf8').trim().split('\n')
   .filter(Boolean).map((line) => JSON.parse(line));
 const success = records.filter((record) => record.status === 'success');
+const successfulCandidateIds = new Set();
+for (const record of success) {
+  if (successfulCandidateIds.has(record.candidateId)) {
+    throw new Error(`duplicate successful heldout result for candidate ${record.candidateId}`);
+  }
+  successfulCandidateIds.add(record.candidateId);
+}
+validateSuccessfulResultProvenance(corpus, success);
 const byCandidate = new Map(success.map((record) => [record.candidateId, record]));
 if (corpus.days.length !== 5 || corpus.rowCount !== corpus.rows.length ||
     byCandidate.size !== corpus.rows.length || records.length !== success.length) {
@@ -191,4 +199,40 @@ function isKnownCost(value) {
 
 function isKnownInputTokens(value) {
   return Number.isSafeInteger(value) && value >= 0;
+}
+
+function validateSuccessfulResultProvenance(value, successfulResults) {
+  const scoringConfig = value?.scoringConfig;
+  if (scoringConfig === null || typeof scoringConfig !== 'object' ||
+      typeof scoringConfig.rubricVersion !== 'string' || scoringConfig.rubricVersion.length === 0 ||
+      typeof scoringConfig.configSha256 !== 'string' || scoringConfig.configSha256.length === 0) {
+    throw new Error('heldout corpus scoring configuration provenance is incomplete');
+  }
+
+  const candidates = new Map();
+  for (const row of Array.isArray(value?.rows) ? value.rows : []) {
+    if (typeof row?.candidateId !== 'string' || typeof row.sourceSnapshotSha256 !== 'string' ||
+        row.sourceSnapshotSha256.length === 0 || typeof row.requestSha256 !== 'string' ||
+        row.requestSha256.length === 0) {
+      throw new Error(`heldout corpus provenance is incomplete for candidate ${String(row?.candidateId)}`);
+    }
+    candidates.set(row.candidateId, row);
+  }
+
+  for (const result of successfulResults) {
+    const expected = candidates.get(result.candidateId);
+    if (expected === undefined) {
+      throw new Error(`successful heldout result has unknown candidate ${String(result.candidateId)}`);
+    }
+    for (const [field, expectedValue] of [
+      ['sourceSnapshotSha256', expected.sourceSnapshotSha256],
+      ['requestSha256', expected.requestSha256],
+      ['rubricVersion', scoringConfig.rubricVersion],
+      ['configSha256', scoringConfig.configSha256],
+    ]) {
+      if (result[field] !== expectedValue) {
+        throw new Error(`heldout result provenance mismatch for candidate ${result.candidateId}: ${field}`);
+      }
+    }
+  }
 }

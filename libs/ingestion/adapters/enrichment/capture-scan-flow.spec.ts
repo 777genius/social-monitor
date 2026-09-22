@@ -112,6 +112,44 @@ describe('durable ingestion article capture', () => {
     expect(JSON.stringify(recovered)).not.toContain('fixture-signature');
   });
 
+  it('selects a newer eligible article past 20 credential-waiting retries', async () => {
+    const fixture = setup();
+    fixture.extract.mockResolvedValue({
+      ok: false,
+      sourceUrl: 'https://example.test/article',
+      reason: 'temporary',
+      reasonCode: 'http_503',
+      retryable: true,
+    });
+    const waiting = Array.from({ length: 20 }, (_, index) => native(
+      `waiting-${String(index).padStart(2, '0')}`,
+      `https://example.test/waiting/${index}?sig=fixture-${index}`,
+    ));
+    await fixture.scan(waiting);
+    expect(fixture.extract).toHaveBeenCalledTimes(20);
+    fixture.advance(60_000);
+    fixture.extract.mockImplementation(async ({ url }) => success(url));
+
+    const eligible = {
+      ...native('eligible', 'https://example.test/eligible'),
+      publishedAt: new Date(start.getTime() + 1_000),
+    };
+    const result = await fixture.scan([eligible]);
+
+    expect(fixture.extract).toHaveBeenCalledTimes(21);
+    expect(fixture.extract).toHaveBeenLastCalledWith(expect.objectContaining({
+      url: 'https://example.test/eligible',
+    }));
+    expect(result.items.map((item) => item.toSnapshot().externalId)).toContain('eligible');
+    for (const item of fixture.repository.all().filter((entry) =>
+      entry.toSnapshot().externalId.startsWith('waiting-'))) {
+      expect(readArticleCaptureAttempt(item.toSnapshot())).toMatchObject({
+        attemptCount: 1,
+        status: 'retryable_failed',
+      });
+    }
+  });
+
   it('keeps normal query parameters as distinct durable article identities', () => {
     const first = sanitizeAndPrepareLiveArticleFetchUrls(scope.providerKey, [
       native('north', 'https://example.test/article?token=fixture-one&edition=north'),
@@ -200,19 +238,23 @@ describe('durable ingestion article capture', () => {
     expect(readContentCapture(fixture.repository.all()[0]!.toSnapshot())?.article).toBeDefined();
   });
 
-  it('A11 refuses an old article completion after native persistence changes the URL', async () => {
+  it('A11 refuses an old article completion and never returns its stale projection after a native revision change', async () => {
     const fixture = setup();
     fixture.extract.mockImplementationOnce(async ({ url }) => {
       const current = fixture.repository.all()[0]!.toSnapshot();
       await fixture.repository.saveBatch({ ...scope, items: [SourceItem.ingest({
         ...native('1', 'https://example.test/new'), ...scope, id: current.id, ingestedAt: fixture.clock.now(),
+        title: 'Newer provider title', body: 'Newer provider body',
       })] });
       return success(url);
     });
-    await fixture.scan([native('1', 'https://example.test/old')]);
+    const result = await fixture.scan([native('1', 'https://example.test/old')]);
     const saved = fixture.repository.all()[0]!.toSnapshot();
-    expect(saved.body).toBe('Native caveat');
+    expect(saved.title).toBe('Newer provider title');
+    expect(saved.body).toBe('Newer provider body');
     expect(readContentCapture(saved)?.articleUrl).toBe('https://example.test/new');
+    expect(result.items).toEqual([]);
+    expect(result.saveResult.items).toEqual([]);
   });
 
   it('refunds a reservation if the budget expires before dispatch and retries it on the next empty batch', async () => {

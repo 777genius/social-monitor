@@ -41,6 +41,9 @@ class ReaderSummaryPromotionAttestationDto {
     this.displaySummary,
     this.evidenceLineage,
     this.exactIngestionCutoff,
+    this.ingestionCutoff,
+    this.periodEndedAt,
+    this.periodStartedAt,
     this.presentation,
     this.provider,
     this.publishedAt,
@@ -73,6 +76,9 @@ class ReaderSummaryPromotionAttestationDto {
   final String? displaySummary;
   final ReaderSummaryPromotionEvidenceLineageDto? evidenceLineage;
   final String? exactIngestionCutoff;
+  final DateTime? ingestionCutoff;
+  final DateTime? periodEndedAt;
+  final DateTime? periodStartedAt;
   final ReaderSummaryPromotionAttestationDtoPlacementPlacement placement;
   final ReaderSummaryPromotionAttestationDtoPolicyVersionPolicyVersion
   policyVersion;

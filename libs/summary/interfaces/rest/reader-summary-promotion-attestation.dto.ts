@@ -207,6 +207,12 @@ export class ReaderSummaryPromotionAttestationDto {
   @ApiPropertyOptional() declare readonly storyId?: string;
   @ApiPropertyOptional({ pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$" })
   declare readonly publishedAt?: string;
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly periodStartedAt?: string;
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly periodEndedAt?: string;
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly ingestionCutoff?: string;
   @ApiPropertyOptional({
     pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$" })
   declare readonly exactIngestionCutoff?: string;

@@ -28,10 +28,17 @@ export const capturePostgresFixture = async (url: string, runId: string) => {
       fencing_token text NOT NULL, expires_at timestamptz NOT NULL
     );
   `);
-  const clientFor = (connection: PoolClient) => ({
+  const clientFor = (connection: Pick<PoolClient, 'query'>) => ({
     $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) =>
       (await connection.query(strings.reduce((sql, part, i) => sql + (i ? `$${i}` : '') + part, ''), values)).rows,
     sourceItem: {
+      findMany: async ({ where }: { where: { tenantId: string; workspaceId: string; providerKey: string;
+        providerItemId: { in: readonly string[] } } }) => {
+        const rows = (await connection.query(`SELECT * FROM source_items WHERE tenant_id=$1 AND workspace_id=$2
+          AND provider_key=$3 AND provider_item_id = ANY($4::text[])`,
+        [where.tenantId, where.workspaceId, where.providerKey, where.providerItemId.in])).rows;
+        return rows.map(fromRow);
+      },
       findFirst: async ({ where }: { where: { tenantId: string; workspaceId: string; providerKey: string; providerItemId: string } }) => {
         const row = (await connection.query(`SELECT * FROM source_items WHERE tenant_id=$1 AND workspace_id=$2
           AND provider_key=$3 AND provider_item_id=$4`, [where.tenantId, where.workspaceId, where.providerKey, where.providerItemId])).rows[0];
@@ -42,6 +49,7 @@ export const capturePostgresFixture = async (url: string, runId: string) => {
   let transactionCount = 0;
   let activePid = 0;
   const client = {
+    ...clientFor(pool),
     $transaction: async <T>(operation: (tx: PrismaIngestionClient) => Promise<T>, options: { isolationLevel: string }) => {
       if (options.isolationLevel !== 'Serializable') throw new Error('Expected Serializable isolation');
       transactionCount += 1;

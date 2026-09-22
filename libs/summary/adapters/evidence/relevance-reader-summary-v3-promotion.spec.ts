@@ -7,6 +7,8 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import { ReaderSummaryJob, type ReaderSummaryPreparationManifest } from
   "../../domain";
+import type { SummaryEvidenceItem } from "../../domain";
+import type { ReaderSummarySupplementalEvidenceSelectorPort } from "../../ports";
 import { sealReaderPostPresentationV3,
   type PromotionPresentationBuilder,
   type ReaderPostPresentationV3Input } from
@@ -69,6 +71,82 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
       .toEqual([id(1)]);
     expect(result.evidence.clusters).toHaveLength(1);
     expect(result.evidence.clusters[0]?.duplicateFeedItemIds).toEqual([id(2)]);
+  });
+
+  it("reuses deterministic cross-provider story membership before V3 ordering", async () => {
+    const sharedTimestamp = "2026-09-20T12:00:00.000001Z";
+    const reddit = { ...candidate(1, "useful", "central", "legacy-reddit"),
+      provider: "reddit", publishedAt: sharedTimestamp,
+      canonicalIdentity:
+        "https://www.reddit.com/r/ClaudeAI/comments/abc/claude_code_cache_security",
+      title: "Claude Code session cache security concern gets traction",
+      body: "Developers discuss Claude Code cache leakage and security impact." };
+    const x = { ...candidate(2, "useful", "central", "legacy-x"),
+      provider: "x-twitter", publishedAt: sharedTimestamp,
+      canonicalIdentity: "https://x.com/example/status/123",
+      title: "Claude Code security chatter focuses on session cache leak",
+      body: "Builders mention Claude Code session cache risk and mitigation steps." };
+
+    for (const candidates of [[reddit, x], [x, reddit]]) {
+      const fixture = setup(candidates, new TestPresentation());
+      const result = await fixture.subject.build({ job: fixture.job,
+        manifest: fixture.manifest });
+
+      expect(result.kind).toBe("ready");
+      if (result.kind !== "ready") continue;
+      expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
+        .toEqual([id(1)]);
+      expect(result.evidence.clusters).toHaveLength(1);
+      expect(result.evidence.clusters[0]).toMatchObject({
+        representativeFeedItemId: id(1), duplicateFeedItemIds: [id(2)],
+        providerKeys: ["reddit", "x-twitter"],
+      });
+    }
+  });
+
+  it("attaches the frozen eligible GitHub projection beside V3 social evidence", async () => {
+    const supplemental = new TestSupplementalEvidenceSelector(
+      Array.from({ length: 10 }, (_, index) => githubEvidence(index + 1)),
+    );
+    const fixture = setup([candidate(1, "important", "central")],
+      new TestPresentation(), supplemental);
+
+    const result = await fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest });
+
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(supplemental.calls).toHaveLength(1);
+    expect(supplemental.calls[0]).toMatchObject({
+      tenantId: id(901), workspaceId: id(902),
+      scope: { type: "interest", interestId: id(903) },
+      observedThrough: new Date("2026-09-21T00:00:00.000Z"),
+    });
+    expect(result.evidence.selectedEvidence).toHaveLength(11);
+    expect(result.evidence.selectedEvidence[0]?.feedItemId).toBe(id(1));
+    expect(result.evidence.selectedEvidence.slice(1).map((item) =>
+      item.sourceBindingId)).toEqual(Array.from({ length: 10 }, (_, index) =>
+      "github-binding"));
+    expect(result.evidence.sourceWindow.selectedFeedItemIds).toEqual(
+      result.evidence.selectedEvidence.map((item) => item.feedItemId),
+    );
+    expect(result.evidence.clusters).toHaveLength(1);
+  });
+
+  it("keeps supplemental evidence when V3 has no admitted social signal", async () => {
+    const fixture = setup([candidate(1, "noise", "central")],
+      new TestPresentation(), new TestSupplementalEvidenceSelector(
+        Array.from({ length: 10 }, (_, index) => githubEvidence(index + 1)),
+      ));
+
+    const result = await fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest });
+
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(result.evidence.promotionV3?.outcome).toBe("no_signal");
+    expect(result.evidence.selectedEvidence).toHaveLength(10);
+    expect(result.evidence.clusters).toEqual([]);
   });
 
   it("publishes one stable representative for feed items sharing an assessment source", async () => {
@@ -403,7 +481,9 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
 type Candidate = ReturnType<typeof candidate>;
 
 const setup = (candidates: readonly Candidate[],
-  presentation: PromotionPresentationBuilder) => {
+  presentation: PromotionPresentationBuilder,
+  supplementalEvidence: ReaderSummarySupplementalEvidenceSelectorPort =
+    new TestSupplementalEvidenceSelector([])) => {
   const assessments = candidates.map((value) => assessment(value));
   const store: Pick<ReaderValueAssessmentStore, "read"> = {
     read: async (_scope, _interest, references) => references.map((reference) => {
@@ -434,9 +514,28 @@ const setup = (candidates: readonly Candidate[],
       sourceKind: "article", canonicalIdentity: value.canonicalIdentity,
       storyId: value.storyId,
     })) };
-  return { subject: new RelevanceReaderSummaryV3Promotion(store, presentation),
+  return { subject: new RelevanceReaderSummaryV3Promotion(
+    store, presentation, supplementalEvidence),
     job, manifest };
 };
+
+class TestSupplementalEvidenceSelector implements
+ReaderSummarySupplementalEvidenceSelectorPort {
+  readonly calls: Parameters<ReaderSummarySupplementalEvidenceSelectorPort[
+    "selectSupplemental"
+  ]>[0][] = [];
+
+  constructor(private readonly evidence: readonly SummaryEvidenceItem[]) {}
+
+  async selectSupplemental(
+    params: Parameters<ReaderSummarySupplementalEvidenceSelectorPort[
+      "selectSupplemental"
+    ]>[0],
+  ): Promise<readonly SummaryEvidenceItem[]> {
+    this.calls.push(params);
+    return this.evidence;
+  }
+}
 
 class TestPresentation implements PromotionPresentationBuilder {
   attempted = 0;
@@ -486,6 +585,7 @@ const candidate = (ordinal: number,
   sourceSnapshotSha256: ordinal.toString(16).padStart(64, "0"),
   inputSha256: (ordinal + 1).toString(16).padStart(64, "0"),
   assessedAt: "2026-09-20T00:10:00.000001Z",
+  title: `Title ${id(ordinal)}`,
   body: "Useful body text with exact evidence.",
   usefulness, relevance });
 
@@ -503,7 +603,7 @@ const assessment = (value: Candidate): ReaderValueAssessment => ({
     requestSha256: "3".repeat(64), requestedModel: "jev", requestBody: "{}",
     snapshot: { sourceSnapshotSha256: value.sourceSnapshotSha256,
       interestSha256: "1".repeat(64), sanitizedTextSha256: "4".repeat(64),
-      title: `Title ${value.id}`, body: value.body,
+      title: value.title, body: value.body,
       interest: "testing", capture: { representationVersion: "capture.v1",
         availability: "complete", segments: [] },
       availableAt: "2026-09-20T00:00:00.000001Z",
@@ -532,3 +632,17 @@ const answer = <K extends ReaderValueCriterion>(criterion: K,
 
 const id = (ordinal: number): string =>
   `00000000-0000-4000-8000-${String(ordinal).padStart(12, "0")}`;
+
+const githubEvidence = (rank: number): SummaryEvidenceItem => ({
+  feedItemId: id(500 + rank), sourceItemId: `github-source-${rank}`,
+  sourceBindingId: "github-binding", interestId: id(903),
+  providerKey: "github-trending-page", providerName: "GitHub Trending",
+  canonicalUrl: `https://github.com/example/repository-${rank}`,
+  title: `Repository ${rank}`, bodyPreview: `Trending repository ${rank}`,
+  publishedAt: new Date("2026-09-20T18:00:00.000Z"),
+  observedAt: new Date("2026-09-20T18:05:00.000Z"),
+  score: 1, whyImportant: ["Eligible frozen GitHub projection"],
+  providerMetricLabels: [{ label: "GitHub Trending Today",
+    value: `#${rank} · +${2_000 - rank} stars today` }],
+  readerActionKind: "watch_repository",
+});

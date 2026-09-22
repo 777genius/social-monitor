@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { SourceItem } from '../../../domain/entities/source-item';
-import { captureNativeText, captureArticleText, captureSha256 } from '../../../domain/value-objects/source-content-capture';
+import { captureNativeText, captureArticleText, captureSha256, markLiveArticleCredentialsRequired } from '../../../domain/value-objects/source-content-capture';
 import { prepareArticleCaptureAttempt, reserveArticleCapture, readArticleCaptureAttempt, finishArticleCapture } from '../../../domain/value-objects/article-capture-attempt';
 import { sourceItemContentHash, sourceItemProviderContentHash } from '../../../domain/value-objects/source-item-content-fingerprint';
 import { PrismaArticleCaptureRepository } from './prisma-article-capture.repository';
@@ -61,6 +61,48 @@ sqlTest('merges a competing committed engagement/author/date correction after wa
   } finally {
     await writer.query('ROLLBACK');
     writer.release();
+    await f.close();
+  }
+}, 20_000);
+
+sqlTest('filters 20 credential-waiting rows before limiting the due capture page', async () => {
+  const f = await capturePostgresFixture(databaseUrl!, randomUUID().replaceAll('-', ''));
+  try {
+    const now: Date = (await f.pool.query('SELECT clock_timestamp() AS now')).rows[0].now;
+    const scope = { tenantId: tenantId('10000000-0000-4000-8000-000000000001'),
+      workspaceId: workspaceId('20000000-0000-4000-8000-000000000002'),
+      sourceBindingId: '30000000-0000-4000-8000-000000000003', providerKey: 'hacker-news' };
+    const persist = async (externalId: string, articleUrl: string, publishedAt: Date, liveUrlRequired: boolean) => {
+      const input = { ...scope, id: randomUUID(), externalId,
+        canonicalUrl: `https://news.ycombinator.com/item?id=${externalId}`, title: externalId, body: 'Native',
+        publishedAt, ingestedAt: now, metadata: { kind: 'hacker_news_story', externalUrl: articleUrl } };
+      const native = captureNativeText(liveUrlRequired ? markLiveArticleCredentialsRequired(input) : input,
+        scope.providerKey, now);
+      const prepared = prepareArticleCaptureAttempt(native, now);
+      await f.pool.query(`INSERT INTO source_items VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$11,$11,$11,$12,$13,$14)`,
+        [prepared.id, scope.tenantId, scope.workspaceId, scope.sourceBindingId, scope.providerKey,
+          prepared.externalId, prepared.canonicalUrl, prepared.title, prepared.body, null, prepared.publishedAt,
+          sourceItemContentHash(prepared), sourceItemProviderContentHash({ providerKey: scope.providerKey, snapshot: prepared }),
+          JSON.stringify(prepared.metadata)]);
+    };
+    const older = new Date(now.getTime() - 60_000);
+    for (let index = 0; index < 20; index += 1) {
+      await persist(`waiting-${String(index).padStart(2, '0')}`, `https://example.test/waiting/${index}`, older, true);
+    }
+    await persist('eligible', 'https://example.test/eligible', now, false);
+    const repository = new PrismaArticleCaptureRepository(f.client);
+
+    const withoutCredentials = await repository.findDueArticleCaptures({
+      ...scope, now, limit: 20, liveArticleCredentialIdentities: [],
+    });
+    expect(withoutCredentials.map((item) => item.toSnapshot().externalId)).toEqual(['eligible']);
+
+    const withMatchingCredentials = await repository.findDueArticleCaptures({
+      ...scope, now, limit: 20,
+      liveArticleCredentialIdentities: [{ externalId: 'waiting-00', articleUrl: 'https://example.test/waiting/0' }],
+    });
+    expect(withMatchingCredentials.map((item) => item.toSnapshot().externalId)).toEqual(['waiting-00', 'eligible']);
+  } finally {
     await f.close();
   }
 }, 20_000);

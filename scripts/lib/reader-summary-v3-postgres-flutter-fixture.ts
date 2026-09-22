@@ -57,6 +57,9 @@ const dartFixtureSource = (jsonBytes: string): string => {
 };
 
 export const canonicalizeSqlRestTransport = (value: unknown): unknown => {
+  const rawTransport = JSON.parse(JSON.stringify(value)) as
+    Record<string, unknown>;
+  validateV3TransportBindings(rawTransport);
   const identifiers = new Map<string, string>();
   const replacement = (id: string): string => {
       const normalized = id.toLowerCase();
@@ -79,7 +82,7 @@ export const canonicalizeSqlRestTransport = (value: unknown): unknown => {
     ));
     return input;
   };
-  const transport = normalize(JSON.parse(JSON.stringify(value))) as Record<string, unknown>;
+  const transport = normalize(rawTransport) as Record<string, unknown>;
   const brief = requiredRecord(transport.readerBrief, "readerBrief");
   for (const lane of ["topReads", "selectedPosts"] as const) {
     const cards = brief[lane];
@@ -96,16 +99,58 @@ export const canonicalizeSqlRestTransport = (value: unknown): unknown => {
       }
       const body = normalize(JSON.parse(originalCanonical)) as Record<string, unknown>;
       canonicalizeOpaqueDigests(body);
-      const presentation = requiredRecord(body.presentation, "V3 presentation");
-      const seal = requiredRecord(presentation.displayHeadline, "V3 display headline seal");
-      card.displayHeadline = seal.headline;
-      for (const [key, child] of Object.entries(body)) attestation[key] = child;
+      canonicalizeOpaqueDigests(attestation);
+      canonicalizeDisplayHeadline(card.displayHeadline);
       const canonicalPayload = stableJson(body);
       attestation.canonicalPayload = canonicalPayload;
       attestation.digest = sha256(canonicalPayload);
     }
   }
   return transport;
+};
+
+const validateV3TransportBindings = (
+  transport: Record<string, unknown>,
+): void => {
+  const brief = requiredRecord(transport.readerBrief, "readerBrief");
+  for (const lane of ["topReads", "selectedPosts"] as const) {
+    const cards = brief[lane];
+    if (cards === undefined) continue;
+    if (!Array.isArray(cards)) throw new Error(`SQL REST ${lane} is not an array`);
+    for (const cardValue of cards) {
+      const card = requiredRecord(cardValue, `${lane} card`);
+      const attestation = requiredRecord(card.promotionAttestation,
+        `${lane} promotion attestation`);
+      if (attestation.schemaVersion !== "reader_post_promotion_attestation.v3") continue;
+      if (typeof attestation.canonicalPayload !== "string") {
+        throw new Error("SQL REST V3 canonical payload is missing");
+      }
+      const body = requiredRecord(JSON.parse(attestation.canonicalPayload),
+        "SQL REST V3 canonical payload");
+      for (const [key, canonicalValue] of Object.entries(body)) {
+        if (!Object.hasOwn(attestation, key) ||
+            stableJson(attestation[key]) !== stableJson(canonicalValue)) {
+          throw new Error(
+            `SQL REST V3 transported attestation ${key} disagrees with canonical payload: ` +
+            `transported=${stableJson(attestation[key])} canonical=${stableJson(canonicalValue)}`,
+          );
+        }
+      }
+      const presentation = requiredRecord(body.presentation, "V3 presentation");
+      const seal = requiredRecord(presentation.displayHeadline,
+        "V3 display headline seal");
+      if (card.providerKey !== body.provider) {
+        throw new Error(
+          "SQL REST V3 transported provider disagrees with canonical payload",
+        );
+      }
+      if (stableJson(card.displayHeadline) !== stableJson(seal.headline)) {
+        throw new Error(
+          "SQL REST V3 transported headline disagrees with canonical payload",
+        );
+      }
+    }
+  }
 };
 
 const canonicalizeOpaqueDigests = (body: Record<string, unknown>): void => {
@@ -116,15 +161,20 @@ const canonicalizeOpaqueDigests = (body: Record<string, unknown>): void => {
   presentation.presentationInputDigest = "4".repeat(64);
   const seal = requiredRecord(presentation.displayHeadline, "V3 display headline seal");
   const headline = requiredRecord(seal.headline, "V3 display headline");
-  const binding = requiredRecord(headline.binding, "V3 display headline binding");
-  binding.interestDigest = "a".repeat(64);
-  binding.reviewedInputDigest = "b".repeat(64);
+  canonicalizeDisplayHeadline(headline);
   presentation.presentationIdentity = sha256(stableJson({
     schemaVersion: "reader_post_presentation.v3",
     sourceSnapshotSha256: assessment.sourceSnapshotSha256,
     presentationInputDigest: presentation.presentationInputDigest,
     displayHeadline: seal,
   }));
+};
+
+const canonicalizeDisplayHeadline = (value: unknown): void => {
+  const headline = requiredRecord(value, "V3 display headline");
+  const binding = requiredRecord(headline.binding, "V3 display headline binding");
+  binding.interestDigest = "a".repeat(64);
+  binding.reviewedInputDigest = "b".repeat(64);
 };
 
 const requiredRecord = (value: unknown, label: string): Record<string, unknown> => {

@@ -2,7 +2,7 @@ import { lockArticleCapture, writeArticleCapture, type ArticleCaptureTransaction
 import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { SourceItem } from '../../../domain/entities/source-item';
 import { articleCaptureCompletionMatches, articleCaptureIsDue, prepareLegacyArticleCapture, reserveArticleCapture } from '../../../domain/value-objects/article-capture-attempt';
-import { readContentCapture } from '../../../domain/value-objects/source-content-capture';
+import { ARTICLE_FETCH_POLICY_VERSION, readContentCapture } from '../../../domain/value-objects/source-content-capture';
 import { mergeArticleCaptureCompletion } from '../../../domain/value-objects/merge-article-capture-completion';
 import { sourceItemProviderContentHash } from '../../../domain/value-objects/source-item-content-fingerprint';
 import type { ArticleCaptureRepository, ArticleCaptureScope, CompleteArticleCaptureCommand, ReserveArticleCaptureCommand } from '../../../ports/article-capture-repository';
@@ -15,7 +15,7 @@ type TransactionClient = PrismaIngestionClient & {
 export class PrismaArticleCaptureRepository implements ArticleCaptureRepository {
   constructor(private readonly prisma: PrismaIngestionClient) {}
 
-  async findDueArticleCaptures(command: ArticleCaptureScope & { now: Date; limit: number }): Promise<readonly SourceItem[]> {
+  async findDueArticleCaptures(command: Parameters<ArticleCaptureRepository['findDueArticleCaptures']>[0]): Promise<readonly SourceItem[]> {
     const client = this.prisma as ArticleCaptureTransaction;
     if (typeof client.$queryRaw !== 'function' || this.prisma.sourceItem.findMany === undefined) {
       throw new Error('Article capture requires scoped SQL due lookup support');
@@ -24,6 +24,16 @@ export class PrismaArticleCaptureRepository implements ArticleCaptureRepository 
       SELECT provider_item_id FROM source_items
       WHERE tenant_id = ${command.tenantId}::uuid AND workspace_id = ${command.workspaceId}::uuid
         AND source_binding_id = ${command.sourceBindingId}::uuid AND provider_key = ${command.providerKey}
+        AND (
+          metadata #>> '{articleFetchPolicy,version}' IS DISTINCT FROM ${ARTICLE_FETCH_POLICY_VERSION}
+          OR metadata #>> '{articleFetchPolicy,liveUrlRequired}' IS DISTINCT FROM 'true'
+          OR EXISTS (
+            SELECT 1 FROM jsonb_to_recordset(${JSON.stringify(command.liveArticleCredentialIdentities)}::jsonb)
+              AS live("externalId" text, "articleUrl" text)
+            WHERE live."externalId" = source_items.provider_item_id
+              AND live."articleUrl" = metadata #>> '{contentCapture,articleUrl}'
+          )
+        )
         AND (
           (metadata #>> '{articleCaptureAttempt,version}' = 'article_capture_attempt.v1'
             AND metadata #>> '{articleCaptureAttempt,status}' IN ('pending', 'retryable_failed', 'running')

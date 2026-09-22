@@ -9,7 +9,9 @@ import { canonicalReaderValueTimestamp } from
 
 import {
   compareReaderPostPromotionV3,
+  selectGitHubTrendingSupplementalEvidence,
   selectReaderPostPromotionsV3,
+  StoryClusteringService,
   type ReaderPostPromotionV3Candidate,
   type ReaderPostPromotionV3Presentation,
   type ReaderPostPromotionV3Provider,
@@ -30,7 +32,10 @@ import { READER_POST_PRESENTATION_V3_MAX_BODY_UTF16,
   READER_POST_PRESENTATION_V3_MAX_TITLE_UTF16 } from
   "../../domain/services/reader-post-presentation-v3";
 import type { ReaderSummaryV3PromotionPort,
+  ReaderSummarySupplementalEvidenceSelectorPort,
   ReaderSummaryV3PromotionOutcome } from "../../ports";
+import { maxReaderSummaryEvidenceItems } from
+  "./relevance-reader-summary-evidence-support";
 
 const maxPresentationCandidates = 32;
 const presentationBatchSize = 4;
@@ -40,6 +45,7 @@ implements ReaderSummaryV3PromotionPort {
   constructor(
     private readonly assessments: Pick<ReaderValueAssessmentStore, "read">,
     private readonly presentation: PromotionPresentationBuilder,
+    private readonly supplementalEvidence: ReaderSummarySupplementalEvidenceSelectorPort,
   ) {}
 
   async build(params: Parameters<ReaderSummaryV3PromotionPort["build"]>[0]):
@@ -50,6 +56,21 @@ implements ReaderSummaryV3PromotionPort {
       return { kind: "dependency_failure", reason: "config_unavailable" };
     }
     const interestId = job.scope.interestId;
+    let supplementalEvidence: readonly SummaryEvidenceItem[];
+    try {
+      supplementalEvidence = selectGitHubTrendingSupplementalEvidence(
+        await this.supplementalEvidence.selectSupplemental({
+          tenantId: job.tenantId, workspaceId: job.workspaceId,
+          scope: job.scope, period: job.period, userId: job.userId,
+          subscriptionId: job.subscriptionId,
+          maxItems: maxReaderSummaryEvidenceItems,
+          observedThrough: new Date(params.manifest.cutoffAt),
+        }),
+      );
+    } catch (error) {
+      return { kind: "dependency_failure", reason: error instanceof Error
+        ? error.message : "supplemental_evidence_unavailable" };
+    }
     const references: ReaderValueReference[] = params.manifest.candidates.map(
       (candidate) => ({ assessmentId: candidate.assessmentId,
         feedItemId: candidate.candidateId,
@@ -72,7 +93,8 @@ implements ReaderSummaryV3PromotionPort {
     const explicitStoryIds = new Map(params.manifest.candidates.map((candidate) =>
       [candidate.candidateId, candidate.storyId] as const));
     const deterministicStoryIds = new Map<string, string>();
-    const candidates = normalizeDuplicateStoryIds(params.manifest.candidates.map((frozen) => {
+    const frozenEvidence: SummaryEvidenceItem[] = [];
+    const rawCandidates = params.manifest.candidates.map((frozen) => {
       const assessment = assessmentById.get(frozen.assessmentId);
       if (assessment === undefined || assessment.answers === null ||
           assessment.assessedAt === null) {
@@ -94,6 +116,7 @@ implements ReaderSummaryV3PromotionPort {
           snapshot.capture.availability !== "truncated",
       };
       presentationInputById.set(frozen.candidateId, presentationInput);
+      frozenEvidence.push(clusteringEvidenceItem(frozen, presentationInput, assessment));
       return {
         candidateId: frozen.candidateId, providerKey: frozen.providerKey,
         providerFamily, sourceItemId: frozen.sourceItemId,
@@ -115,7 +138,22 @@ implements ReaderSummaryV3PromotionPort {
         safetyValid: snapshot.safety !== "blocked", citationValid: true,
         blocked: snapshot.safety === "blocked",
       } satisfies ReaderPostPromotionV3Candidate;
-    }), explicitStoryIds, deterministicStoryIds).sort(compareReaderPostPromotionV3);
+    });
+    const storyMembership = new StoryClusteringService(
+      { now: () => new Date(params.manifest.cutoffAt) },
+      { ...STORY_RANKING_POLICY_V1,
+        maxClusters: Math.max(1, frozenEvidence.length) },
+    ).cluster({
+      identity: { tenantId: job.tenantId, workspaceId: job.workspaceId,
+        scope: job.scope },
+      items: [...frozenEvidence].sort((left, right) =>
+        compareUtf8Bytes(left.feedItemId, right.feedItemId)),
+      limit: Math.max(1, frozenEvidence.length),
+      now: new Date(params.manifest.cutoffAt),
+    });
+    const candidates = normalizeDuplicateStoryIds(rawCandidates,
+      explicitStoryIds, deterministicStoryIds, storyMembership.clusters)
+      .sort(compareReaderPostPromotionV3);
 
     const statuses = new Map<string, ReaderPostPromotionV3Presentation>(candidates.map((candidate) =>
       [candidate.candidateId, candidate.presentation] as const));
@@ -215,7 +253,15 @@ implements ReaderSummaryV3PromotionPort {
     const completed = candidates.map((candidate) => ({ ...candidate,
       presentation: statuses.get(candidate.candidateId)! }));
     const selection = selectReaderPostPromotionsV3(completed);
-    if (selection.outcome !== "ready") return { kind: selection.outcome };
+    if (selection.outcome !== "ready") {
+      if (selection.outcome !== "no_signal" || supplementalEvidence.length === 0) {
+        return { kind: selection.outcome };
+      }
+      return { kind: "ready", evidence: v3EvidenceSelection({
+        jobId: job.id, period: job.period, cutoffAt: params.manifest.cutoffAt,
+        clusters: [], primaryEvidence: [], supplementalEvidence, selection,
+      }) };
+    }
     const selectedIds = new Set([...selection.top, ...selection.additional]
       .map((candidate) => candidate.candidateId));
     const evidence = params.manifest.candidates.filter((candidate) =>
@@ -232,23 +278,9 @@ implements ReaderSummaryV3PromotionPort {
     const clusters = clustersForSelection(selection, evidence, completed);
     const selectedOrdered = [...selection.top, ...selection.additional].map((candidate) =>
       evidence.find((item) => item.feedItemId === candidate.candidateId)!);
-    const exactCutoff = canonicalReaderSummaryPreparationTimestamp(
-      params.manifest.cutoffAt);
-    const value: SummaryEvidenceSelection = {
-      rankingPolicyVersion: "reader_promotion_policy.v3",
-      sourceWindow: {
-        windowId: `reader-summary-v3:${job.id}`,
-        startedAt: job.period.startedAt,
-        endedAt: job.period.endedAt,
-        selectedFeedItemIds: selectedOrdered.map((item) => item.feedItemId),
-        storyClusterIds: clusters.map((cluster) => cluster.id),
-        periodStartedAt: job.period.startedAt,
-        periodEndedAt: job.period.endedAt,
-        ingestionCutoff: new Date(exactCutoff),
-        exactIngestionCutoff: exactCutoff,
-      },
-      clusters, selectedEvidence: selectedOrdered, promotionV3: selection,
-    };
+    const value = v3EvidenceSelection({ jobId: job.id, period: job.period,
+      cutoffAt: params.manifest.cutoffAt, clusters,
+      primaryEvidence: selectedOrdered, supplementalEvidence, selection });
     return { kind: "ready", evidence: value };
   }
 }
@@ -293,6 +325,7 @@ const normalizeDuplicateStoryIds = (
   candidates: readonly ReaderPostPromotionV3Candidate[],
   explicitStoryIds: ReadonlyMap<string, string | undefined>,
   deterministicStoryIds: ReadonlyMap<string, string>,
+  storyClusters: readonly StoryCluster[],
 ): ReaderPostPromotionV3Candidate[] => {
   const parent = new Map(candidates.map((candidate) =>
     [candidate.candidateId, candidate.candidateId] as const));
@@ -317,6 +350,15 @@ const normalizeDuplicateStoryIds = (
       const previous = map.get(key);
       if (previous === undefined) map.set(key, candidate.candidateId);
       else union(previous, candidate.candidateId);
+    }
+  }
+  for (const cluster of storyClusters) {
+    const memberIds = [cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds];
+    const first = memberIds[0];
+    if (first === undefined || !parent.has(first)) continue;
+    for (const memberId of memberIds.slice(1)) {
+      if (parent.has(memberId)) union(first, memberId);
     }
   }
   const groups = new Map<string, ReaderPostPromotionV3Candidate[]>();
@@ -363,20 +405,64 @@ const evidenceItem = (
   storyKeyHint: frozen.storyId,
 });
 
+const clusteringEvidenceItem = (
+  frozen: ReaderSummaryPreparationCandidate,
+  input: ReaderPostPresentationV3Input,
+  assessment: ReaderValueAssessment,
+): SummaryEvidenceItem => ({
+  feedItemId: frozen.candidateId, sourceItemId: frozen.sourceItemId,
+  sourceBindingId: frozen.sourceBindingId, interestId: assessment.input.interestId,
+  providerKey: frozen.providerKey, canonicalUrl: frozen.canonicalIdentity,
+  title: input.title, bodyPreview: input.body, sourceText: input.body,
+  publishedAt: new Date(frozen.publishedAt), observedAt: new Date(frozen.observedAt),
+  score: 0, whyImportant: [], storyKeyHint: frozen.storyId,
+});
+
+const v3EvidenceSelection = (params: {
+  readonly jobId: string;
+  readonly period: { readonly startedAt: Date; readonly endedAt: Date };
+  readonly cutoffAt: string;
+  readonly clusters: readonly StoryCluster[];
+  readonly primaryEvidence: readonly SummaryEvidenceItem[];
+  readonly supplementalEvidence: readonly SummaryEvidenceItem[];
+  readonly selection: NonNullable<SummaryEvidenceSelection["promotionV3"]>;
+}): SummaryEvidenceSelection => {
+  const primaryIds = new Set(params.primaryEvidence.map((item) => item.feedItemId));
+  const selectedEvidence = [...params.primaryEvidence,
+    ...params.supplementalEvidence.filter((item) => !primaryIds.has(item.feedItemId))];
+  const exactCutoff = canonicalReaderSummaryPreparationTimestamp(params.cutoffAt);
+  return {
+    rankingPolicyVersion: "reader_promotion_policy.v3",
+    sourceWindow: {
+      windowId: `reader-summary-v3:${params.jobId}`,
+      startedAt: params.period.startedAt, endedAt: params.period.endedAt,
+      selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
+      storyClusterIds: params.clusters.map((cluster) => cluster.id),
+      periodStartedAt: params.period.startedAt,
+      periodEndedAt: params.period.endedAt,
+      ingestionCutoff: new Date(exactCutoff), exactIngestionCutoff: exactCutoff,
+    },
+    clusters: params.clusters, selectedEvidence, promotionV3: params.selection,
+  };
+};
+
 const clustersForSelection = (
   selection: ReturnType<typeof selectReaderPostPromotionsV3>,
   evidence: readonly SummaryEvidenceItem[],
   candidates: readonly ReaderPostPromotionV3Candidate[],
 ): readonly StoryCluster[] => [...selection.top, ...selection.additional].map((candidate) => {
   const item = evidence.find((value) => value.feedItemId === candidate.candidateId)!;
-  const duplicateFeedItemIds = candidates.filter((value) =>
+  const members = candidates.filter((value) =>
+    value.storyId === candidate.storyId || value.sourceItemId === candidate.sourceItemId);
+  const duplicateFeedItemIds = members.filter((value) =>
     value.candidateId !== candidate.candidateId &&
     (value.storyId === candidate.storyId || value.sourceItemId === candidate.sourceItemId))
     .map((value) => value.candidateId);
   return { id: candidate.storyId, storyKey: candidate.storyId,
     rankingPolicyVersion: "reader_promotion_policy.v3",
     representativeFeedItemId: candidate.candidateId, duplicateFeedItemIds,
-    interestIds: [item.interestId], providerKeys: [candidate.providerKey], score: 0,
+    interestIds: [item.interestId], providerKeys: [...new Set(
+      members.map((member) => member.providerKey))].sort(compareUtf8Bytes), score: 0,
     observedAtRange: { startedAt: item.observedAt, endedAt: item.observedAt },
     whyImportant: [] };
 });

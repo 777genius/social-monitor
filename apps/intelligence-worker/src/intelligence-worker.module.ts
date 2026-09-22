@@ -21,6 +21,7 @@ import { SystemClock } from "@social-monitor/shared-kernel";
 
 import {
   INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS,
+  INTELLIGENCE_READER_SUMMARY_JOB_LOOP_CLOCK,
   INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS,
   INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS,
   INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_READER_OPTIONS,
@@ -80,6 +81,10 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
     {
       provide: INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS,
       useFactory: () => resolveIntelligenceReaderSummaryJobLoopOptions(process.env),
+    },
+    {
+      provide: INTELLIGENCE_READER_SUMMARY_JOB_LOOP_CLOCK,
+      useFactory: () => new SystemClock(),
     },
     {
       provide: INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS,

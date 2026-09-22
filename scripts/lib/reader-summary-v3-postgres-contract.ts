@@ -14,8 +14,7 @@ import { sealReaderPostPresentationV3 } from
   "../../libs/summary/domain/services/reader-post-presentation-v3";
 import { canonicalPromotionPayload, promotionPayloadDigest } from
   "../../libs/summary/domain/services/reader-post-promotion-attestation";
-import type { ReaderSummaryPublicationCommand } from "../../libs/summary/ports";
-import type { ReaderSummaryV3PreparationSourcePort } from "../../libs/summary/ports";
+import type { ReaderSummaryPublicationCommand, ReaderSummaryV3PreparationSourcePort } from "../../libs/summary/ports";
 import type { PrismaReaderSummaryClient } from
   "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import { ReaderSummaryArtifact, selectReaderPostPromotionsV3,
@@ -43,6 +42,7 @@ import { sha256, stableJson } from
   "./reader-summary-weekly-publication-evidence-postgres-contract";
 import { postgresPreflightClient } from
   "./reader-summary-v3-postgres-preflight-client";
+import { assertV3PreflightCancellationFence } from "./reader-summary-v3-postgres-preflight-fence";
 import { runProductionV3Preflight, seedProductionReaderValueCapture } from
   "./reader-summary-v3-postgres-production-preflight";
 import { completeProductionV3Assessment, fixtureReaderValueAnswers } from
@@ -97,7 +97,6 @@ export const assertReaderSummaryV3PostgresContract = async (params: Params) => {
   await assertRejects(() => blockedPublication,
     "cancel-first publication must reject");
   await assertCounts(params.client, cancelFirst, 0, 0);
-
   const publishFirst = await preflightFixture(params, "NO_SIGNAL", 13);
   await params.client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
   assert(await params.publish(params.client, publishFirst.payload) === "published",
@@ -110,7 +109,6 @@ export const assertReaderSummaryV3PostgresContract = async (params: Params) => {
   assert(await params.publish(params.client, publishFirst.payload) === "replayed",
     "lost ACK must replay without generation");
   await assertCounts(params.client, publishFirst, 1, 1);
-
   const nested = await params.createFixture("COMPLETED", 14,
     { publicationInterestId: randomUUID(), providerEvidence: "rss",
       providerPublishedAt: "2026-06-14T09:00:00.123456Z",
@@ -132,11 +130,13 @@ export const assertReaderSummaryV3PostgresContract = async (params: Params) => {
     params, nested, changed, false),
     "changed completed replay must reject");
   await assertCounts(params.client, nested, 1, 1);
-
   await assertFrozenAuthorityTamperCases(params);
 
   await assertRevocationCommitOrders(params);
   await assertPreflightCompetingHandlers(params);
+  await assertV3PreflightCancellationFence({ client: params.client,
+    cancellationClient: params.concurrentClient, fixture: await params.createFixture("NO_SIGNAL",
+      34, { publicationInterestId: randomUUID() }) });
   await assertProductionPreflightDeadlineLockOutcomes(params);
   await assertProductionPreflightHydration(params);
   console.log("Reader summary V3 cancel/replay/revocation PostgreSQL 18 contract OK");

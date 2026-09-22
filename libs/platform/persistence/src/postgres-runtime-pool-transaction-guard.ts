@@ -217,6 +217,16 @@ function invokeModelOperation(
   );
 }
 
+function isReadOnlyTransactionPrologue(
+  args: readonly unknown[],
+  state: TransactionScopeState,
+): boolean {
+  return state.access === undefined && state.configured === undefined &&
+    args.length === 1 && typeof args[0] === 'string' &&
+    args[0].trim().replaceAll(/\s+/gu, ' ').toUpperCase() ===
+      'SET TRANSACTION READ ONLY, DEFERRABLE';
+}
+
 async function invokeInsideTransaction(
   params: {
     readonly args: unknown[];
@@ -252,6 +262,11 @@ function invokeRawOperation(params: {
     params.metadata.transactionClient !== undefined &&
     params.metadata.transactionState !== undefined
   ) {
+    if (isReadOnlyTransactionPrologue(params.args, params.metadata.transactionState)) {
+      // Transaction characteristics must precede the guard's SELECT set_config.
+      // This exact prologue only removes write capability and carries no data.
+      return Reflect.apply(params.value, params.currentTarget, params.args);
+    }
     return invokeInsideTransaction(params, access);
   }
   const operation =

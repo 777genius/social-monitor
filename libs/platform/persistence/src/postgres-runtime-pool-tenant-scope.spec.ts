@@ -99,6 +99,28 @@ describe('PostgreSQL runtime tenant scope', () => {
     expect(fake.calls[0]?.[1]).toBe(explicitTransactionOptions);
   });
 
+  it('allows an exact read-only prologue before configuring interactive transaction scope', async () => {
+    const fake = fakePrismaClient();
+    const client = guardRootClientDuringInteractiveTransaction(fake.client);
+
+    await runWithTenantDatabaseAccess(
+      { tenantId: tenantOne, workspaceId: workspaceOne },
+      () => client.$transaction(async (transaction) => {
+        await transaction.$executeRawUnsafe('SET TRANSACTION READ ONLY, DEFERRABLE');
+        await transaction.scanJob.findMany({
+          where: { tenantId: tenantOne, workspaceId: workspaceOne },
+        });
+      }),
+    );
+
+    expect(fake.calls).toEqual([
+      ['transaction'],
+      ['raw', 'SET TRANSACTION READ ONLY, DEFERRABLE'],
+      ['set_config', tenantOne, workspaceOne, 'false'],
+      ['scanJob.findMany'],
+    ]);
+  });
+
   it('uses explicit system access and timeout options for cross-tenant worker operations', async () => {
     const fake = fakePrismaClient();
     const client = guardRootClientDuringInteractiveTransaction(fake.client);
@@ -186,8 +208,9 @@ function fakePrismaClient(): {
     feedItem: delegate('feedItem'),
     outboxEvent: delegate('outboxEvent'),
     sourceCatalogEntry: delegate('sourceCatalogEntry'),
-    async $executeRawUnsafe(_query, ...values): Promise<number> {
-      calls.push(['set_config', ...values]);
+    async $executeRawUnsafe(query, ...values): Promise<number> {
+      calls.push(query.includes("set_config('social_monitor.tenant_id'")
+        ? ['set_config', ...values] : ['raw', query, ...values]);
       return 1;
     },
   };

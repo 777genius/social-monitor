@@ -53,6 +53,7 @@ describe("reader summary agent topic evidence policy", () => {
     });
     const result = buildReaderSummaryAgentTopicEvidence({
       requestedAt: new Date("2026-07-16T12:00:00.000Z"),
+      evidenceAdmission: { selectionStrategy: "legacy_v2" },
       selectedEvidence: [rejected, accepted, rejectedOnly],
       clusters: [
         cluster({
@@ -130,6 +131,7 @@ describe("reader summary agent topic evidence policy", () => {
     };
     const result = buildReaderSummaryAgentTopicEvidence({
       requestedAt: new Date("2026-07-16T12:00:00.000Z"),
+      evidenceAdmission: { selectionStrategy: "legacy_v2" },
       selectedEvidence: [accepted],
       clusters: [
         cluster({
@@ -182,6 +184,7 @@ describe("reader summary agent topic evidence policy", () => {
     });
     const result = buildReaderSummaryAgentTopicEvidence({
       requestedAt: new Date("2026-07-16T12:00:00.000Z"),
+      evidenceAdmission: { selectionStrategy: "legacy_v2" },
       selectedEvidence: [rejected, accepted],
       clusters: [
         cluster({
@@ -225,6 +228,7 @@ describe("reader summary agent topic evidence policy", () => {
     ];
     const result = buildReaderSummaryAgentTopicEvidence({
       requestedAt: new Date("2026-07-16T12:00:00.000Z"),
+      evidenceAdmission: { selectionStrategy: "legacy_v2" },
       selectedEvidence,
       clusters,
       citationMap,

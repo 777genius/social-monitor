@@ -9,6 +9,16 @@ export type ArticleCaptureScope = {
   readonly sourceBindingId: string;
   readonly providerKey: string;
 };
+export type LiveArticleCredentialIdentity = {
+  readonly externalId: string;
+  readonly articleUrl: string;
+};
+export type FindDueArticleCapturesCommand = ArticleCaptureScope & {
+  readonly now: Date;
+  readonly limit: number;
+  /** Credential-free identities for live URLs available to this scan only. */
+  readonly liveArticleCredentialIdentities: readonly LiveArticleCredentialIdentity[];
+};
 export type ReserveArticleCaptureCommand = ArticleCaptureScope & {
   readonly externalId: string;
   readonly expectedNativeRevision: string;
@@ -24,7 +34,7 @@ export type CompleteArticleCaptureCommand = ArticleCaptureScope & {
   readonly now: Date;
 };
 export interface ArticleCaptureRepository {
-  findDueArticleCaptures(command: ArticleCaptureScope & { readonly now: Date; readonly limit: number }): Promise<readonly SourceItem[]>;
+  findDueArticleCaptures(command: FindDueArticleCapturesCommand): Promise<readonly SourceItem[]>;
   reserveArticleCapture(command: ReserveArticleCaptureCommand): Promise<SourceItem | null>;
   completeArticleCapture(command: CompleteArticleCaptureCommand): Promise<SourceItem | null>;
 }

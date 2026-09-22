@@ -61,6 +61,15 @@ _$ReaderSummaryPromotionAttestationDtoFromJson(
           json['evidenceLineage'] as Map<String, dynamic>,
         ),
   exactIngestionCutoff: json['exactIngestionCutoff'] as String?,
+  ingestionCutoff: json['ingestionCutoff'] == null
+      ? null
+      : DateTime.parse(json['ingestionCutoff'] as String),
+  periodEndedAt: json['periodEndedAt'] == null
+      ? null
+      : DateTime.parse(json['periodEndedAt'] as String),
+  periodStartedAt: json['periodStartedAt'] == null
+      ? null
+      : DateTime.parse(json['periodStartedAt'] as String),
   presentation: json['presentation'] == null
       ? null
       : ReaderSummaryPromotionV3PresentationDto.fromJson(
@@ -101,6 +110,9 @@ Map<String, dynamic> _$ReaderSummaryPromotionAttestationDtoToJson(
   'displaySummary': instance.displaySummary,
   'evidenceLineage': instance.evidenceLineage,
   'exactIngestionCutoff': instance.exactIngestionCutoff,
+  'ingestionCutoff': instance.ingestionCutoff?.toIso8601String(),
+  'periodEndedAt': instance.periodEndedAt?.toIso8601String(),
+  'periodStartedAt': instance.periodStartedAt?.toIso8601String(),
   'placement': instance.placement,
   'policyVersion': instance.policyVersion,
   'presentation': instance.presentation,

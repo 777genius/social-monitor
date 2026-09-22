@@ -60,6 +60,7 @@ const isSensitiveNormalizedUrlCredentialKey = (
   normalized: string,
   normalizedKeys: ReadonlySet<string>,
 ): boolean => {
+  if (isSensitiveKey(normalized)) return true;
   if (commonUrlCredentialKeys.has(normalized)) return true;
   if (awsV4SignedUrlKeys.has(normalized) || googleV4SignedUrlKeys.has(normalized)) return true;
   if (['awsaccesskeyid', 'googleaccessid', 'key-pair-id'].includes(normalized)) return true;
@@ -87,18 +88,37 @@ export const sanitizeUrlCredentials = (value: string): string => {
     const url = new URL(value);
     const keys = [...url.searchParams.keys()];
     const normalizedKeys = new Set(keys.map((key) => key.toLowerCase()));
-    url.username = '';
-    url.password = '';
-    url.hash = '';
-    const retained = [...url.searchParams.entries()].filter(
-      ([key]) => !isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedKeys),
-    );
-    url.search = '';
-    for (const [key, entry] of retained) url.searchParams.append(key, entry);
-    return url.toString();
+    const fragmentStart = value.indexOf('#');
+    const queryStart = value.indexOf('?');
+    const hasQuery = queryStart >= 0 && (fragmentStart < 0 || queryStart < fragmentStart);
+    const queryEnd = fragmentStart < 0 ? value.length : fragmentStart;
+    const retained = hasQuery
+      ? value.slice(queryStart + 1, queryEnd).split('&').filter((component) => {
+        const key = new URLSearchParams(component).keys().next().value ?? '';
+        return !isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedKeys);
+      })
+      : [];
+    const withoutSensitiveQuery = hasQuery
+      ? `${value.slice(0, queryStart)}${retained.length > 0 ? `?${retained.join('&')}` : ''}${value.slice(queryEnd)}`
+      : value;
+    return url.username.length > 0 || url.password.length > 0
+      ? removeRawUrlUserInfo(withoutSensitiveQuery)
+      : withoutSensitiveQuery;
   } catch {
     return redactSensitiveTextFallback(value);
   }
+};
+
+const removeRawUrlUserInfo = (value: string): string => {
+  const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(value);
+  if (!scheme) return value;
+  const authorityStart = scheme[0].length;
+  const authorityLength = value.slice(authorityStart).search(/[/?#]/);
+  const end = authorityLength < 0 ? value.length : authorityStart + authorityLength;
+  const userInfoEnd = value.lastIndexOf('@', end);
+  return userInfoEnd < authorityStart
+    ? value
+    : `${value.slice(0, authorityStart)}${value.slice(userInfoEnd + 1)}`;
 };
 
 export const isSensitiveString = (value: string): boolean =>

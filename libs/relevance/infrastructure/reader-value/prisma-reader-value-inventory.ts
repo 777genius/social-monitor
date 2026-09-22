@@ -1,9 +1,11 @@
 import type { JsonObject } from '@social-monitor/shared-kernel';
 import { ReaderValueInventoryByteCeilingExceeded,
   type ReaderValueInventory, type ReaderValueInventoryCursor,
-  type ReaderValueInventoryItem } from '../../application/contracts/reader-value-inventory';
+  type ReaderValueInventoryItem, type ReaderValueInventorySnapshot,
+  type ReaderValuePreparationInventory } from '../../application/contracts/reader-value-inventory';
 import type { ReaderValueDiscoveryScope } from '../../application/contracts/reader-value-assessment-store';
-import { assessmentTransaction, liveAssessmentScope, type AssessmentSqlClient } from './assessment-sql';
+import { assessmentReadSnapshot, assessmentTransaction, liveAssessmentScope,
+  type AssessmentSqlClient, type AssessmentSqlTransaction } from './assessment-sql';
 import { readReaderValueCapture } from './reader-value-capture';
 import { canonicalPostgresTimestamp } from './canonical-postgres-timestamp';
 
@@ -23,19 +25,42 @@ type InventoryIdentityRow = {
 
 export const READER_VALUE_INVENTORY_MAX_SOURCE_BYTES = 32 * 1024 * 1024;
 
-export class PrismaReaderValueInventory implements ReaderValueInventory {
+export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderValuePreparationInventory {
   constructor(private readonly client: AssessmentSqlClient) {}
 
   page(scope: ReaderValueDiscoveryScope, backfillFrom: string, cursor: ReaderValueInventoryCursor | undefined,
     limit: number, sourceByteBudget = READER_VALUE_INVENTORY_MAX_SOURCE_BYTES,
     exclusivePeriodEnd?: string):
     Promise<readonly ReaderValueInventoryItem[]> {
-    if (!Number.isInteger(limit) || limit < 1 || limit > 25) throw new Error('Reader value inventory page limit is 25');
-    if (!Number.isSafeInteger(sourceByteBudget) || sourceByteBudget < 0 ||
-        sourceByteBudget > READER_VALUE_INVENTORY_MAX_SOURCE_BYTES) {
-      throw new Error('Reader value inventory source byte budget is invalid');
-    }
-    return assessmentTransaction(this.client, scope, async (tx) => {
+    validatePage(limit, sourceByteBudget);
+    return assessmentTransaction(this.client, scope, (tx) => this.pageInTransaction(tx, scope,
+      backfillFrom, cursor, limit, sourceByteBudget, exclusivePeriodEnd));
+  }
+
+  readSnapshot<T>(scope: ReaderValueDiscoveryScope,
+    operation: (snapshot: ReaderValueInventorySnapshot) => Promise<T>): Promise<T> {
+    return assessmentReadSnapshot(this.client, scope, async (tx) => {
+      let active = true;
+      const snapshot: ReaderValueInventorySnapshot = { page: async (
+        backfillFrom, cursor, limit, sourceByteBudget = READER_VALUE_INVENTORY_MAX_SOURCE_BYTES,
+        exclusivePeriodEnd,
+      ) => {
+        if (!active) throw new Error('Reader value inventory snapshot is closed');
+        validatePage(limit, sourceByteBudget);
+        return this.pageInTransaction(tx, scope, backfillFrom, cursor, limit,
+          sourceByteBudget, exclusivePeriodEnd);
+      } };
+      try {
+        return await operation(snapshot);
+      } finally {
+        active = false;
+      }
+    });
+  }
+
+  private async pageInTransaction(tx: AssessmentSqlTransaction, scope: ReaderValueDiscoveryScope,
+    backfillFrom: string, cursor: ReaderValueInventoryCursor | undefined, limit: number,
+    sourceByteBudget: number, exclusivePeriodEnd?: string): Promise<readonly ReaderValueInventoryItem[]> {
       // Preflight only bounded identities, versions and database byte lengths. A
       // rejected page never transfers a source body into the application process.
       const identities = await tx.$queryRawUnsafe<InventoryIdentityRow[]>(`SELECT
@@ -114,7 +139,16 @@ export class PrismaReaderValueInventory implements ReaderValueInventory {
             interest: row.query, ...readReaderValueCapture(metadata, row.provider_key, row.title, row.body) },
         };
       });
-    });
+  }
+}
+
+function validatePage(limit: number, sourceByteBudget: number): void {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 25) {
+    throw new Error('Reader value inventory page limit is 25');
+  }
+  if (!Number.isSafeInteger(sourceByteBudget) || sourceByteBudget < 0 ||
+      sourceByteBudget > READER_VALUE_INVENTORY_MAX_SOURCE_BYTES) {
+    throw new Error('Reader value inventory source byte budget is invalid');
   }
 }
 

@@ -2,7 +2,7 @@ import { preserveVerifiedLegacyCapture } from '../../domain/value-objects/legacy
 import { mergeArticleCaptureCompletion } from '../../domain/value-objects/merge-article-capture-completion';
 import { isCurrentInMemoryScanLease } from '../lease/in-memory-scan-lease.adapter';
 import { articleCaptureCompletionMatches, articleCaptureIsDue, prepareLegacyArticleCapture, reserveArticleCapture } from '../../domain/value-objects/article-capture-attempt';
-import { readContentCapture } from '../../domain/value-objects/source-content-capture';
+import { readContentCapture, requiresLiveArticleCredentials } from '../../domain/value-objects/source-content-capture';
 import type { ArticleCaptureRepository } from '../../ports/article-capture-repository';
 import { prepareArticleCaptureAttempt } from '../../domain/value-objects/article-capture-attempt';
 import { captureNativeText, preserveSourceCapture } from '../../domain/value-objects/source-content-capture';
@@ -121,6 +121,8 @@ export class InMemorySourceItemRepository implements SourceItemRepositoryPort {
   }
 
   async findDueArticleCaptures(command: Parameters<ArticleCaptureRepository['findDueArticleCaptures']>[0]): Promise<readonly SourceItem[]> {
+    const liveArticleCredentialIdentities = new Map(command.liveArticleCredentialIdentities
+      .map((identity) => [identity.externalId, identity.articleUrl]));
     let initialized = 0;
     for (const [key, item] of this.itemsByDeduplicationKey) {
       const snapshot = item.toSnapshot();
@@ -137,7 +139,10 @@ export class InMemorySourceItemRepository implements SourceItemRepositoryPort {
       .filter(([key, item]) => {
         const snapshot = item.toSnapshot();
         return key === sourceItemDeduplicationKey(command, snapshot.externalId) &&
-          snapshot.sourceBindingId === command.sourceBindingId && articleCaptureIsDue(prepareLegacyArticleCapture(snapshot, command.providerKey, command.now), command.now);
+          snapshot.sourceBindingId === command.sourceBindingId &&
+          (!requiresLiveArticleCredentials(snapshot) ||
+            liveArticleCredentialIdentities.get(snapshot.externalId) === readContentCapture(snapshot)?.articleUrl) &&
+          articleCaptureIsDue(prepareLegacyArticleCapture(snapshot, command.providerKey, command.now), command.now);
       })
       .map(([, item]) => SourceItem.rehydrate(prepareLegacyArticleCapture(item.toSnapshot(), command.providerKey, command.now)))
       .sort((a, b) => a.toSnapshot().publishedAt.getTime() - b.toSnapshot().publishedAt.getTime() ||

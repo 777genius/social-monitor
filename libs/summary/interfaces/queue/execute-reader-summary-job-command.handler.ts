@@ -111,7 +111,13 @@ export class ExecuteReaderSummaryJobCommandHandler {
 }
 
 type ReaderSummaryJobMetricStatus =
-  "started" | "succeeded" | "failed" | "no_signal" | "quality_rejected";
+  | "started"
+  | "succeeded"
+  | "failed"
+  | "no_signal"
+  | "quality_rejected"
+  | "deferred"
+  | "in_progress";
 
 const completionMetricStatus = (
   status: ReaderSummaryJobStatus,
@@ -126,6 +132,14 @@ const completionMetricStatus = (
 
   if (status === "quality_rejected") {
     return "quality_rejected";
+  }
+
+  if (status === "requested") {
+    return "deferred";
+  }
+
+  if (status === "running") {
+    return "in_progress";
   }
 
   return "succeeded";
