@@ -79,7 +79,7 @@ export const urlContainsCredentials = (value: string): boolean => {
     return url.username.length > 0 || url.password.length > 0 ||
       queryKeys.some((key) => isSensitiveNormalizedUrlCredentialKey(
         key.toLowerCase(), normalizedQueryKeys,
-      )) || fragment.full.hasCredentials || fragment.suffix?.hasCredentials === true;
+      )) || fragment.hasCredentials;
   } catch {
     return false;
   }
@@ -133,79 +133,155 @@ const normalizeWhatwgUrlInput = (value: string): string => {
   return withoutAsciiTabOrNewline.slice(start, end);
 };
 
-type UrlParameterCandidate = {
-  hasCredentials: boolean;
-  hasCredentialsBefore: (boundary: number) => boolean;
-  retained: string[];
+type FragmentComponent = { raw: string; key: string };
+
+const fragmentComponents = (raw: string): FragmentComponent[] => raw.split('&').map((part) => ({
+  raw: part,
+  key: new URLSearchParams(part).keys().next().value ?? '',
+}));
+
+const encodedBracketAt = (raw: string, index: number): '[' | ']' | '' => {
+  const encoded = raw.slice(index, index + 3).toLowerCase();
+  return encoded === '%5b' ? '[' : encoded === '%5d' ? ']' : '';
 };
 
-const analyzeUrlParameterCandidate = (
-  rawParameters: string,
-  protectLeadingRouteText = false,
-): UrlParameterCandidate => {
-  let componentStart = 0;
-  const components = rawParameters.split('&').map((raw, index) => {
-    const key = new URLSearchParams(raw).keys().next().value ?? '';
-    const equalsIndex = raw.indexOf('=');
-    const keyEnd = componentStart + (equalsIndex < 0 ? raw.length : equalsIndex);
-    const component = { raw, key, keyEnd, index };
-    componentStart += raw.length + 1;
-    return component;
+// Brackets in a parameter name can contain a literal question mark. Route
+// paths and values still expose query suffixes after a question mark.
+const fragmentDelimiterStart = (raw: string, delimiters: string): number => {
+  let bracketDepth = 0;
+  let inValue = false;
+  let inRouteBase = raw.startsWith('/') || raw.startsWith('!');
+  for (let index = 0; index < raw.length; index += 1) {
+    const encodedBracket = !inValue && !inRouteBase ? encodedBracketAt(raw, index) : '';
+    if (encodedBracket) {
+      bracketDepth = encodedBracket === '[' ? bracketDepth + 1 : Math.max(0, bracketDepth - 1);
+      index += 2;
+      continue;
+    }
+    if (raw[index] === '&') {
+      bracketDepth = 0;
+      inValue = false;
+      inRouteBase = false;
+    } else if (raw[index] === '=') {
+      bracketDepth = 0;
+      inValue = true;
+      inRouteBase = false;
+    } else if (inRouteBase && raw[index] === ';') inRouteBase = false;
+    else if (!inValue && !inRouteBase && raw[index] === '[') bracketDepth += 1;
+    else if (!inValue && !inRouteBase && raw[index] === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+    else if (bracketDepth === 0 && delimiters.includes(raw.charAt(index))) return index;
+  }
+  return -1;
+};
+
+const fragmentQueryStart = (raw: string): number => fragmentDelimiterStart(raw, '?');
+
+// Matrix separators are lexical: a semicolon inside a bracketed key belongs
+// to that key, while a semicolon after '=' starts the next matrix field.
+const matrixFields = (raw: string): FragmentComponent[] => {
+  const fields: FragmentComponent[] = [];
+  let start = 0;
+  let bracketDepth = 0;
+  let inValue = false;
+  for (let index = 0; index <= raw.length; index += 1) {
+    const character = raw.charAt(index);
+    const encodedBracket = !inValue ? encodedBracketAt(raw, index) : '';
+    if (encodedBracket) {
+      bracketDepth = encodedBracket === '[' ? bracketDepth + 1 : Math.max(0, bracketDepth - 1);
+      index += 2;
+      continue;
+    }
+    if (index === raw.length || (character === ';' && bracketDepth === 0)) {
+      const part = raw.slice(start, index);
+      fields.push({ raw: part, key: new URLSearchParams(part).keys().next().value ?? '' });
+      start = index + 1;
+      bracketDepth = 0;
+      inValue = false;
+    } else if (character === '=') {
+      bracketDepth = 0;
+      inValue = true;
+    } else if (!inValue && character === '[') bracketDepth += 1;
+    else if (!inValue && character === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+  }
+  return fields;
+};
+
+// Classify the full list, route suffix, and leading matrix fields against the
+// same original key set. Removing a companion must not change later decisions.
+const analyzeUrlFragment = (raw: string): { hasCredentials: boolean; sanitized: string } => {
+  const full = fragmentComponents(raw);
+  const queryStart = fragmentQueryStart(raw);
+  const queryComponentIndex = queryStart < 0 ? -1 : raw.slice(0, queryStart).split('&').length - 1;
+  const suffix = queryStart < 0 ? [] : fragmentComponents(raw.slice(queryStart + 1));
+  const first = full[0]?.raw ?? '';
+  const routeEnd = fragmentDelimiterStart(first, ';?');
+  const routePrefix = routeEnd < 0 ? first : first.slice(0, routeEnd);
+  const decodedRoutePrefix = new URLSearchParams(`${routePrefix}=`).keys().next().value ?? '';
+  const benignRoutePrefix = ['sessions', 'password-reset'].includes(decodedRoutePrefix.toLowerCase());
+  const leadingRoute = first.startsWith('/') || first.startsWith('!') ||
+    (routeEnd >= 0 && !routePrefix.includes('=') &&
+      first[routeEnd + 1] !== '=' && (!isSensitiveKey(decodedRoutePrefix) || benignRoutePrefix));
+  const matrixEnd = queryComponentIndex === 0 ? queryStart : -1;
+  const matrixText = leadingRoute
+    ? first.slice(0, matrixEnd < 0 ? first.length : matrixEnd)
+    : '';
+  const matrixStart = first.startsWith('/') || first.startsWith('!')
+    ? matrixText.indexOf(';')
+    : fragmentDelimiterStart(matrixText, ';');
+  const matrixParts = leadingRoute
+    ? matrixStart < 0
+      ? [{ raw: matrixText, key: '' }]
+      : [{ raw: matrixText.slice(0, matrixStart), key: '' },
+        ...matrixFields(matrixText.slice(matrixStart + 1))]
+    : [];
+  const matrix = matrixParts.slice(1);
+  const normalizedKeys = new Set([...full, ...suffix, ...matrix]
+    .map(({ key }) => key.toLowerCase()));
+  const sensitive = (key: string): boolean =>
+    isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedKeys);
+  const removeFull = new Set(full.flatMap(({ key }, index) =>
+    !(leadingRoute && index === 0) && sensitive(key) ? [index] : []));
+  const removeSuffix = new Set(suffix.flatMap(({ key }, index) =>
+    sensitive(key) ? [index] : []));
+  const removeMatrix = new Set(matrix.flatMap(({ key }, index) =>
+    sensitive(key) ? [index] : []));
+  // A '?' directly in a sensitive matrix name can make its value look like a
+  // harmless query field. Drop that ambiguous first suffix with the field.
+  if (queryComponentIndex === 0 && first.indexOf('=') >= queryStart &&
+    matrix.length > 0 && sensitive(matrix[matrix.length - 1]?.key ?? '')) {
+    removeSuffix.add(0);
+  }
+  const hasCredentials = removeFull.size > 0 || removeSuffix.size > 0 || removeMatrix.size > 0;
+  if (!hasCredentials) return { hasCredentials: false, sanitized: raw };
+
+  const retained = full.flatMap(({ raw: component }, index) => {
+    if (removeFull.has(index) || (index > queryComponentIndex &&
+      removeSuffix.has(index - queryComponentIndex))) return [];
+    let safe = component;
+    if (index === 0 && removeMatrix.size > 0) {
+      safe = [matrixParts[0]?.raw ?? '', ...matrix.filter((_, partIndex) =>
+        !removeMatrix.has(partIndex)).map(({ raw }) => raw)].join(';') + component.slice(matrixText.length);
+    }
+    if (index === queryComponentIndex && removeSuffix.has(0)) {
+      safe = safe.slice(0, fragmentQueryStart(safe));
+    }
+    return [{ raw: safe, index }];
   });
-  const normalizedKeys = new Set(components.map(({ key }) => key.toLowerCase()));
-  const sensitiveComponents = components.filter(({ key, index }) =>
-    !(protectLeadingRouteText && index === 0) &&
-    isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedKeys));
-  const sensitiveIndexes = new Set(sensitiveComponents.map(({ index }) => index));
-
-  return {
-    hasCredentials: sensitiveComponents.length > 0,
-    hasCredentialsBefore: (boundary) =>
-      sensitiveComponents.some(({ keyEnd }) => keyEnd <= boundary),
-    retained: components
-      .filter(({ index }) => !sensitiveIndexes.has(index))
-      .map(({ raw }) => raw),
-  };
+  const retainedQueryPrefix = retained.some(({ index }) => index === queryComponentIndex);
+  let querySeparatorPending = retainedQueryPrefix && removeSuffix.has(0);
+  const sanitized = retained.reduce((result, component, position) => {
+    if (position === 0) return component.raw;
+    if (querySeparatorPending && component.index > queryComponentIndex) {
+      querySeparatorPending = false;
+      return `${result}?${component.raw}`;
+    }
+    return `${result}&${component.raw}`;
+  }, '');
+  return { hasCredentials, sanitized };
 };
 
-const analyzeUrlFragment = (rawFragment: string): {
-  full: UrlParameterCandidate;
-  queryStart: number;
-  suffix?: UrlParameterCandidate;
-} => {
-  const queryStart = rawFragment.indexOf('?');
-  const hasLeadingRouteEvidence = rawFragment.startsWith('/') || rawFragment.startsWith('!');
-  return {
-    full: analyzeUrlParameterCandidate(rawFragment, hasLeadingRouteEvidence),
-    queryStart,
-    suffix: queryStart < 0
-      ? undefined
-      : analyzeUrlParameterCandidate(rawFragment.slice(queryStart + 1)),
-  };
-};
-
-const sanitizeRouteQuerySuffix = (rawFragment: string): string => {
-  const queryStart = rawFragment.indexOf('?');
-  if (queryStart < 0) return rawFragment;
-  const suffix = analyzeUrlParameterCandidate(rawFragment.slice(queryStart + 1));
-  if (!suffix.hasCredentials) return rawFragment;
-  return `${rawFragment.slice(0, queryStart)}${suffix.retained.length > 0
-    ? `?${suffix.retained.join('&')}`
-    : ''}`;
-};
-
-const sanitizeUrlFragment = (rawFragment: string): string => {
-  const fragment = analyzeUrlFragment(rawFragment);
-  if (!fragment.full.hasCredentials && fragment.suffix?.hasCredentials !== true) {
-    return rawFragment;
-  }
-  if (fragment.full.hasCredentialsBefore(
-    fragment.queryStart < 0 ? rawFragment.length + 1 : fragment.queryStart,
-  )) {
-    return sanitizeRouteQuerySuffix(fragment.full.retained.join('&'));
-  }
-  return sanitizeRouteQuerySuffix(rawFragment);
-};
+const sanitizeUrlFragment = (rawFragment: string): string =>
+  analyzeUrlFragment(rawFragment).sanitized;
 
 const retainSafeUrlParameterComponents = (
   rawParameters: string,

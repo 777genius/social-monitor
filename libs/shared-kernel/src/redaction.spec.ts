@@ -223,7 +223,7 @@ describe('redaction helpers', () => {
       [cloudFront, sanitized],
       [azure, sanitized],
       [cloudFrontWithBareComponent, sanitizedWithBareComponent],
-    ]) {
+    ] as const) {
       expect(urlContainsCredentials(url)).toBe(true);
       expect(sanitizeUrlCredentials(url)).toBe(expected);
       expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${expected}`);
@@ -258,6 +258,8 @@ describe('redaction helpers', () => {
   it.each([
     'https://example.test/#/sessions?panel=details',
     'https://example.test/#/password-reset?panel=details',
+    'https://example.test/#sessions?panel=details',
+    'https://example.test/#password-reset?panel=details',
   ])('preserves harmless routes whose names contain sensitive substrings: %s', (url) => {
     expect(urlContainsCredentials(url)).toBe(false);
     expect(sanitizeUrlCredentials(url)).toBe(url);
@@ -332,6 +334,165 @@ describe('redaction helpers', () => {
     expect(redactSensitiveRecord({ callbackUrl: matrixRoute })).toEqual({
       callbackUrl: sanitized,
     });
+  });
+
+  it.each([
+    [
+      'https://example.test/#/callback;access_%74oken=fixture-secret?panel=details',
+      'https://example.test/#/callback?panel=details',
+    ],
+    [
+      'https://example.test/#!/callback;mode=compact;access_token=fixture-secret?panel=details',
+      'https://example.test/#!/callback;mode=compact?panel=details',
+    ],
+    [
+      'https://example.test/#callback;access_token=fixture-secret?tag[]=one&tag[]=two',
+      'https://example.test/#callback?tag[]=one&tag[]=two',
+    ],
+    [
+      'https://example.test/#/callback;tag[?]=one;access_token%3F=fixture-secret?panel=details',
+      'https://example.test/#/callback;tag[?]=one?panel=details',
+    ],
+    [
+      'https://example.test/#/callback[view;access_token=fixture-secret?panel=details',
+      'https://example.test/#/callback[view?panel=details',
+    ],
+  ])('removes a sensitive matrix field while retaining the route: %s', (url, sanitized) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it.each([
+    [
+      'https://example.test/#/callback;access_token[;]=fixture-secret?panel=details',
+      'https://example.test/#/callback?panel=details',
+    ],
+    [
+      'https://example.test/#callback;tag[;]=one;access_token=fixture-secret',
+      'https://example.test/#callback;tag[;]=one',
+    ],
+    [
+      'https://example.test/#!/callback;;tag[;]=one;access_%74oken=fixture-secret;edition=&?panel=details',
+      'https://example.test/#!/callback;;tag[;]=one;edition=&?panel=details',
+    ],
+    [
+      'https://example.test/#callback;edition;access_token[;]=fixture-secret;edition=west;access_token=fixture-two',
+      'https://example.test/#callback;edition;edition=west',
+    ],
+    [
+      'https://example.test/#callback;se=1900000000;tag[;]=one;sig=fixture-signature?panel=details',
+      'https://example.test/#callback;tag[;]=one?panel=details',
+    ],
+    [
+      'https://example.test/#callback;tag[?]=one;access_token=fixture-secret?panel=one?two',
+      'https://example.test/#callback;tag[?]=one?panel=one?two',
+    ],
+    [
+      'https://example.test/#callback;access_token?=fixture-secret&panel=details',
+      'https://example.test/#callback?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;access_token%5B;%5D=fixture-secret?panel=details',
+      'https://example.test/#/callback?panel=details',
+    ],
+    [
+      'https://example.test/#callback;tag%5B;%5D=one;access_token=fixture-secret',
+      'https://example.test/#callback;tag%5B;%5D=one',
+    ],
+  ])('removes whole lexical matrix fields and keeps route state: %s', (url, sanitized) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it.each([
+    [
+      'https://example.test/#access_token;tag=fixture-secret&panel=details',
+      'https://example.test/#panel=details',
+    ],
+    [
+      'https://example.test/#access_token;tag[;]=fixture-secret?panel=details',
+      'https://example.test/',
+    ],
+    [
+      'https://example.test/#%61ccess_token;tag=fixture-secret&panel=details',
+      'https://example.test/#panel=details',
+    ],
+    [
+      'https://example.test/#tag[;]=one;mode=compact&auth=fixture-secret',
+      'https://example.test/#tag[;]=one;mode=compact',
+    ],
+    [
+      'https://example.test/#tag=one;mode=compact&auth=fixture-secret',
+      'https://example.test/#tag=one;mode=compact',
+    ],
+  ])('keeps plain fragment lists distinct from matrix routes: %s', (url, sanitized) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it.each([
+    [
+      'https://example.test/#section=overview&access_token[?]=fixture-secret&panel=details',
+      'https://example.test/#section=overview&panel=details',
+    ],
+    [
+      'https://example.test/#section=overview&access_token%3F=fixture-secret&panel=details',
+      'https://example.test/#section=overview&panel=details',
+    ],
+    [
+      'https://example.test/#access_token[?]=fixture-secret&panel=details',
+      'https://example.test/#panel=details',
+    ],
+    [
+      'https://example.test/#access_token?=fixture-secret&panel=details',
+      'https://example.test/#panel=details',
+    ],
+    [
+      'https://example.test/#section=overview&access_token?panel=fixture-secret&edition=west',
+      'https://example.test/#section=overview&edition=west',
+    ],
+    [
+      'https://example.test/#access_token;tag=fixture-secret&panel=details',
+      'https://example.test/#panel=details',
+    ],
+  ])('removes a sensitive full-fragment key with route-like punctuation: %s', (url, sanitized) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it.each([
+    [
+      'https://example.test/#expires=1900000000&state=/callback?policy=fixture-private-policy&Key-Pair-Id=fixture-id',
+      'https://example.test/#state=/callback',
+    ],
+    [
+      'https://example.test/#Key-Pair-Id=fixture-id&state=/callback?policy=fixture-private-policy&panel=details',
+      'https://example.test/#state=/callback?panel=details',
+    ],
+    [
+      'https://example.test/#sip=192.0.2.0%2F24&state=/callback?sig=fixture-azure&panel=details',
+      'https://example.test/#state=/callback?panel=details',
+    ],
+    [
+      'https://example.test/#Expires=1900000000&state=/callback?GoogleAccessId=fixture-id&panel=details',
+      'https://example.test/#state=/callback?panel=details',
+    ],
+  ])('uses original signed-fragment companions when removing nested suffix fields: %s', (
+    url,
+    sanitized,
+  ) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
   });
 
   it('normalizes WHATWG-discarded ASCII before removing URL credentials', () => {
