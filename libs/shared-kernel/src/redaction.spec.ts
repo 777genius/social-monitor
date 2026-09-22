@@ -469,6 +469,28 @@ describe('redaction helpers', () => {
   });
 
   it.each([
+    [
+      'https://example.test/#/callback;tag[?=one/orders[;access_token]=fixture-secret/123&panel=details',
+      'https://example.test/#/callback;tag[?=one/orders[/123&panel=details',
+    ],
+    [
+      'https://example.test/#/callback;tag[?=one/orders[;access_token]=fixture-secret/456&panel=details',
+      'https://example.test/#/callback;tag[?=one/orders[/456&panel=details',
+    ],
+    [
+      'https://example.test/#/callback;tag%5B?=one/orders%5B;accessToken%5D=fixture-secret/123&panel=details',
+      'https://example.test/#/callback;tag%5B?=one/orders%5B/123&panel=details',
+    ],
+  ])('redacts bracketed matrix credentials in a later ambiguous route segment: %s', (
+    url, sanitized,
+  ) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it.each([
     'https://example.test/#/callback;mode/orders[?edition]=west&panel=details',
     'https://example.test/#/callback;tag[?=one;edition=west/orders/123&panel=details',
     'https://example.test/#/callback;tag%5B?=one;edition=west/orders/987&panel=details',

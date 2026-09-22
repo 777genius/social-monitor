@@ -165,7 +165,7 @@ const stripAmbiguousMatrixCredentials = (
   const first = raw.slice(0, firstEnd);
   const segments = routeSegments(first);
   const parsed = segments.map((segment) => {
-    const matrixStart = fragmentDelimiterStart(segment, ';');
+    const matrixStart = routeMatrixStart(segment, isSensitiveNormalizedKey);
     return { segment, matrixStart, fields: matrixStart < 0
       ? [] : matrixFields(segment.slice(matrixStart + 1)) };
   });
