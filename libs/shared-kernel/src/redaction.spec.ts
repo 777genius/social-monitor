@@ -482,6 +482,14 @@ describe('redaction helpers', () => {
       'https://example.test/#/callback[?panel=details',
     ],
     [
+      'https://example.test/#/callback[tag/next;access_token]=fixture-secret;edition=west?panel=details',
+      'https://example.test/#/callback[tag/next;edition=west?panel=details',
+    ],
+    [
+      'https://example.test/#/callback%5Btag/next;accessToken%5D=fixture-secret;edition=west?panel=details',
+      'https://example.test/#/callback%5Btag/next;edition=west?panel=details',
+    ],
+    [
       'https://example.test/#access_token[x]?tag=fixture-secret&panel=details',
       'https://example.test/#panel=details',
     ],
