@@ -491,6 +491,20 @@ describe('redaction helpers', () => {
   });
 
   it.each([
+    'https://example.test/#/callback?orders[;access_token;edition]=fixture-secret&panel=details',
+    'https://example.test/#/callback?orders%5B;access_%74oken;edition%5D=fixture-secret&panel=details',
+    'https://example.test/#/callback?orders[inner[;accessToken;edition]]=fixture-secret&panel=details',
+    'https://example.test/#/callback?orders[;access_token;edition]=fixture-secret/123&panel=details',
+  ])('removes an original sensitive suffix before ambiguous matrix rewriting: %s', (url) => {
+    const sanitized = 'https://example.test/#/callback?panel=details';
+
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it.each([
     'https://example.test/#/callback;mode/orders[?edition]=west&panel=details',
     'https://example.test/#/callback;tag[?=one;edition=west/orders/123&panel=details',
     'https://example.test/#/callback;tag%5B?=one;edition=west/orders/987&panel=details',

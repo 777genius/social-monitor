@@ -176,6 +176,13 @@ const stripAmbiguousMatrixCredentials = (
     ...fragmentComponents(raw.slice(queryStart + 1)).map(({ key }) => key.toLowerCase()),
     ...keys,
   ]);
+  // This pass can reinterpret semicolons inside a query key as matrix fields.
+  // Keep an originally sensitive suffix intact so the main pass removes its
+  // entire key and value, including any harmless text around the semicolon.
+  const originalSuffixKey = fragmentComponents(raw.slice(queryStart + 1))[0]?.key ?? '';
+  if (isSensitiveNormalizedKey(originalSuffixKey.toLowerCase(), normalizedKeys)) {
+    return { sanitized: raw, hasCredentials: false, keys };
+  }
   let segmentStart = 0;
   let hasCredentials = false;
   const safeSegments = parsed.map(({ segment, matrixStart, fields }) => {
