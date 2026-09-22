@@ -153,6 +153,139 @@ describe('redaction helpers', () => {
     );
   });
 
+  it.each([
+    [
+      'https://example.test/#section=overview&edition&auth=fixture-secret',
+      'https://example.test/#section=overview&edition',
+    ],
+    [
+      'https://example.test/#section=overview&edition&%61uth=fixture-secret',
+      'https://example.test/#section=overview&edition',
+    ],
+  ])('redacts credentials from mixed plain fragment parameters: %s', (url, sanitized) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({
+      callbackUrl: sanitized,
+    });
+  });
+
+  it.each([
+    [
+      'https://example.test/#section=overview&=ignored&%61uth=fixture-secret',
+      'https://example.test/#section=overview&=ignored',
+    ],
+    [
+      'https://example.test/#tag[]=one&auth=fixture-secret',
+      'https://example.test/#tag[]=one',
+    ],
+    [
+      'https://example.test/#édition=une&auth=fixture-secret',
+      'https://example.test/#édition=une',
+    ],
+    [
+      'https://example.test/#tag[/]=one&auth=fixture-secret',
+      'https://example.test/#tag[/]=one',
+    ],
+    [
+      'https://example.test/#tag[;]=one&auth=fixture-secret',
+      'https://example.test/#tag[;]=one',
+    ],
+    [
+      'https://example.test/#tag/name=one&auth=fixture-secret',
+      'https://example.test/#tag/name=one',
+    ],
+  ])('redacts credentials after unrestricted fragment parameter names: %s', (
+    url,
+    sanitized,
+  ) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({
+      callbackUrl: sanitized,
+    });
+  });
+
+  it('uses the complete plain fragment for companion-dependent credential context', () => {
+    const cloudFront =
+      'https://example.test/#policy=fixture-private-policy&state=/callback?panel=details&Key-Pair-Id=fixture-id';
+    const azure =
+      'https://example.test/#sip=192.0.2.0%2F24&state=/callback?panel=details&sig=fixture-azure';
+    const sanitized = 'https://example.test/#state=/callback?panel=details';
+    const cloudFrontWithBareComponent =
+      'https://example.test/#policy=fixture-private-policy&edition&state=/callback?panel=details&Key-Pair-Id=fixture-id';
+    const sanitizedWithBareComponent =
+      'https://example.test/#edition&state=/callback?panel=details';
+
+    for (const [url, expected] of [
+      [cloudFront, sanitized],
+      [azure, sanitized],
+      [cloudFrontWithBareComponent, sanitizedWithBareComponent],
+    ]) {
+      expect(urlContainsCredentials(url)).toBe(true);
+      expect(sanitizeUrlCredentials(url)).toBe(expected);
+      expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${expected}`);
+      expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({
+        callbackUrl: expected,
+      });
+    }
+  });
+
+  it.each([
+    'https://example.test/#section',
+    'https://example.test/#section?',
+  ])('preserves an anchor without inventing or discarding a query marker: %s', (url) => {
+    expect(urlContainsCredentials(url)).toBe(false);
+    expect(sanitizeUrlCredentials(url)).toBe(url);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${url}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: url });
+  });
+
+  it('removes a URL query credential before an anchor without adding a query marker', () => {
+    const url = 'https://example.test/?auth=fixture-secret#section';
+    const sanitized = 'https://example.test/#section';
+
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({
+      callbackUrl: sanitized,
+    });
+  });
+
+  it.each([
+    'https://example.test/#/sessions?panel=details',
+    'https://example.test/#/password-reset?panel=details',
+  ])('preserves harmless routes whose names contain sensitive substrings: %s', (url) => {
+    expect(urlContainsCredentials(url)).toBe(false);
+    expect(sanitizeUrlCredentials(url)).toBe(url);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${url}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: url });
+  });
+
+  it.each([
+    [
+      'https://example.test/#callback?auth=fixture-secret&panel=details',
+      'https://example.test/#callback?panel=details',
+    ],
+    [
+      'https://example.test/#sessions?auth=fixture-secret',
+      'https://example.test/#sessions',
+    ],
+  ])('keeps non-leading route text when the sensitive key crosses its query boundary: %s', (
+    url,
+    sanitized,
+  ) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({
+      callbackUrl: sanitized,
+    });
+  });
+
   it('removes credentials from route fragment query suffixes without discarding route state', () => {
     const routeOnly = 'https://example.test/#/callback';
     const routeWithState = 'https://example.test/#/callback?state=fixture-state';
@@ -180,12 +313,19 @@ describe('redaction helpers', () => {
     });
   });
 
-  it('redacts route query credentials after matrix parameters', () => {
-    const matrixRoute =
-      'https://example.test/#/callback;mode=compact?auth=fixture-secret&panel=details';
-    const sanitized =
-      'https://example.test/#/callback;mode=compact?panel=details';
-
+  it.each([
+    [
+      'https://example.test/#/callback;mode=compact?auth=fixture-secret&panel=details',
+      'https://example.test/#/callback;mode=compact?panel=details',
+    ],
+    [
+      'https://example.test/#callback;mode=compact?auth=fixture-secret&panel=details',
+      'https://example.test/#callback;mode=compact?panel=details',
+    ],
+  ])('redacts route query credentials after matrix parameters: %s', (
+    matrixRoute,
+    sanitized,
+  ) => {
     expect(urlContainsCredentials(matrixRoute)).toBe(true);
     expect(sanitizeUrlCredentials(matrixRoute)).toBe(sanitized);
     expect(redactSensitiveText(`redirect ${matrixRoute}`)).toBe(`redirect ${sanitized}`);

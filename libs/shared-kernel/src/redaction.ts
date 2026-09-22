@@ -75,15 +75,11 @@ export const urlContainsCredentials = (value: string): boolean => {
     const url = new URL(value);
     const queryKeys = [...url.searchParams.keys()];
     const normalizedQueryKeys = new Set(queryKeys.map((key) => key.toLowerCase()));
-    const fragment = parseUrlFragmentParameters(url.hash.slice(1));
-    const fragmentKeys = [...new URLSearchParams(fragment.rawParameters).keys()];
-    const normalizedFragmentKeys = new Set(fragmentKeys.map((key) => key.toLowerCase()));
+    const fragment = analyzeUrlFragment(url.hash.slice(1));
     return url.username.length > 0 || url.password.length > 0 ||
       queryKeys.some((key) => isSensitiveNormalizedUrlCredentialKey(
         key.toLowerCase(), normalizedQueryKeys,
-      )) || fragmentKeys.some((key) => isSensitiveNormalizedUrlCredentialKey(
-        key.toLowerCase(), normalizedFragmentKeys,
-      ));
+      )) || fragment.full.hasCredentials || fragment.suffix?.hasCredentials === true;
   } catch {
     return false;
   }
@@ -98,9 +94,6 @@ export const sanitizeUrlCredentials = (value: string): string => {
     const normalizedQueryKeys = new Set(queryKeys.map((key) => key.toLowerCase()));
     const fragmentStart = normalizedValue.indexOf('#');
     const rawFragment = fragmentStart >= 0 ? normalizedValue.slice(fragmentStart + 1) : '';
-    const fragment = parseUrlFragmentParameters(rawFragment);
-    const fragmentKeys = [...new URLSearchParams(fragment.rawParameters).keys()];
-    const normalizedFragmentKeys = new Set(fragmentKeys.map((key) => key.toLowerCase()));
     const queryStart = normalizedValue.indexOf('?');
     const hasQuery = queryStart >= 0 && (fragmentStart < 0 || queryStart < fragmentStart);
     const queryEnd = fragmentStart < 0 ? normalizedValue.length : fragmentStart;
@@ -112,18 +105,10 @@ export const sanitizeUrlCredentials = (value: string): string => {
     const withoutSensitiveQuery = hasQuery
       ? `${normalizedValue.slice(0, queryStart)}${retained.length > 0 ? `?${retained.join('&')}` : ''}${normalizedValue.slice(queryEnd)}`
       : normalizedValue;
-    const retainedFragmentParameters = fragmentStart >= 0
-      ? retainSafeUrlParameterComponents(
-        fragment.rawParameters, normalizedFragmentKeys,
-      )
-      : [];
-    const sanitizedFragment = fragment.hasQuerySuffix
-      ? `${fragment.route}${retainedFragmentParameters.length > 0
-        ? `?${retainedFragmentParameters.join('&')}`
-        : ''}`
-      : retainedFragmentParameters.join('&');
-    const hasSanitizedFragment = fragment.route.length > 0 ||
-      retainedFragmentParameters.length > 0;
+    const sanitizedFragment = fragmentStart >= 0
+      ? sanitizeUrlFragment(rawFragment)
+      : rawFragment;
+    const hasSanitizedFragment = rawFragment.length === 0 || sanitizedFragment.length > 0;
     const withoutSensitiveFragment = fragmentStart >= 0
       ? `${withoutSensitiveQuery.slice(0, withoutSensitiveQuery.indexOf('#'))}${hasSanitizedFragment ? `#${sanitizedFragment}` : ''}`
       : withoutSensitiveQuery;
@@ -148,25 +133,78 @@ const normalizeWhatwgUrlInput = (value: string): string => {
   return withoutAsciiTabOrNewline.slice(start, end);
 };
 
-const parseUrlFragmentParameters = (rawFragment: string): {
-  route: string;
-  rawParameters: string;
-  hasQuerySuffix: boolean;
+type UrlParameterCandidate = {
+  hasCredentials: boolean;
+  hasCredentialsBefore: (boundary: number) => boolean;
+  retained: string[];
+};
+
+const analyzeUrlParameterCandidate = (
+  rawParameters: string,
+  protectLeadingRouteText = false,
+): UrlParameterCandidate => {
+  let componentStart = 0;
+  const components = rawParameters.split('&').map((raw, index) => {
+    const key = new URLSearchParams(raw).keys().next().value ?? '';
+    const equalsIndex = raw.indexOf('=');
+    const keyEnd = componentStart + (equalsIndex < 0 ? raw.length : equalsIndex);
+    const component = { raw, key, keyEnd, index };
+    componentStart += raw.length + 1;
+    return component;
+  });
+  const normalizedKeys = new Set(components.map(({ key }) => key.toLowerCase()));
+  const sensitiveComponents = components.filter(({ key, index }) =>
+    !(protectLeadingRouteText && index === 0) &&
+    isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedKeys));
+  const sensitiveIndexes = new Set(sensitiveComponents.map(({ index }) => index));
+
+  return {
+    hasCredentials: sensitiveComponents.length > 0,
+    hasCredentialsBefore: (boundary) =>
+      sensitiveComponents.some(({ keyEnd }) => keyEnd <= boundary),
+    retained: components
+      .filter(({ index }) => !sensitiveIndexes.has(index))
+      .map(({ raw }) => raw),
+  };
+};
+
+const analyzeUrlFragment = (rawFragment: string): {
+  full: UrlParameterCandidate;
+  queryStart: number;
+  suffix?: UrlParameterCandidate;
 } => {
   const queryStart = rawFragment.indexOf('?');
-  const prefixBeforeQuestionMark = rawFragment.slice(0, queryStart);
-  const prefixKeys = [...new URLSearchParams(prefixBeforeQuestionMark).keys()];
-  const normalizedPrefixKeys = new Set(prefixKeys.map((key) => key.toLowerCase()));
-  const prefixContainsCredentials = prefixKeys.some((key) =>
-    isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedPrefixKeys));
-  const isRouteStyle = queryStart >= 0 && !prefixContainsCredentials;
-  return !isRouteStyle
-    ? { route: '', rawParameters: rawFragment, hasQuerySuffix: false }
-    : {
-      route: prefixBeforeQuestionMark,
-      rawParameters: rawFragment.slice(queryStart + 1),
-      hasQuerySuffix: true,
-    };
+  const hasLeadingRouteEvidence = rawFragment.startsWith('/') || rawFragment.startsWith('!');
+  return {
+    full: analyzeUrlParameterCandidate(rawFragment, hasLeadingRouteEvidence),
+    queryStart,
+    suffix: queryStart < 0
+      ? undefined
+      : analyzeUrlParameterCandidate(rawFragment.slice(queryStart + 1)),
+  };
+};
+
+const sanitizeRouteQuerySuffix = (rawFragment: string): string => {
+  const queryStart = rawFragment.indexOf('?');
+  if (queryStart < 0) return rawFragment;
+  const suffix = analyzeUrlParameterCandidate(rawFragment.slice(queryStart + 1));
+  if (!suffix.hasCredentials) return rawFragment;
+  return `${rawFragment.slice(0, queryStart)}${suffix.retained.length > 0
+    ? `?${suffix.retained.join('&')}`
+    : ''}`;
+};
+
+const sanitizeUrlFragment = (rawFragment: string): string => {
+  const fragment = analyzeUrlFragment(rawFragment);
+  if (!fragment.full.hasCredentials && fragment.suffix?.hasCredentials !== true) {
+    return rawFragment;
+  }
+  if (fragment.full.hasCredentialsBefore(
+    fragment.queryStart < 0 ? rawFragment.length + 1 : fragment.queryStart,
+  )) {
+    return sanitizeRouteQuerySuffix(fragment.full.retained.join('&'));
+  }
+  return sanitizeRouteQuerySuffix(rawFragment);
 };
 
 const retainSafeUrlParameterComponents = (
