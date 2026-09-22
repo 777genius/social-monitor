@@ -260,6 +260,10 @@ describe('redaction helpers', () => {
     'https://example.test/#/password-reset?panel=details',
     'https://example.test/#sessions?panel=details',
     'https://example.test/#password-reset?panel=details',
+    'https://example.test/#users/sessions?panel=details',
+    'https://example.test/#users/password-reset?panel=details',
+    'https://example.test/#user-sessions?panel=details',
+    'https://example.test/#password-reset-confirm?panel=details',
   ])('preserves harmless routes whose names contain sensitive substrings: %s', (url) => {
     expect(urlContainsCredentials(url)).toBe(false);
     expect(sanitizeUrlCredentials(url)).toBe(url);
@@ -275,6 +279,10 @@ describe('redaction helpers', () => {
     [
       'https://example.test/#sessions?auth=fixture-secret',
       'https://example.test/#sessions',
+    ],
+    [
+      'https://example.test/#session_id?=fixture-secret&panel=details',
+      'https://example.test/#panel=details',
     ],
   ])('keeps non-leading route text when the sensitive key crosses its query boundary: %s', (
     url,
@@ -358,6 +366,50 @@ describe('redaction helpers', () => {
       'https://example.test/#/callback[view?panel=details',
     ],
   ])('removes a sensitive matrix field while retaining the route: %s', (url, sanitized) => {
+    expect(urlContainsCredentials(url)).toBe(true);
+    expect(sanitizeUrlCredentials(url)).toBe(sanitized);
+    expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);
+    expect(redactSensitiveRecord({ callbackUrl: url })).toEqual({ callbackUrl: sanitized });
+  });
+
+  it.each([
+    [
+      'https://example.test/#/callback;tag%5B?auth=fixture-secret&panel=details',
+      'https://example.test/#/callback;tag%5B?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;tag[?auth=fixture-secret&panel=details',
+      'https://example.test/#/callback;tag[?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;mode=compact;access_token[?]=fixture-secret?panel=details',
+      'https://example.test/#/callback;mode=compact?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;mode=compact;access_token?=fixture-secret&panel=details',
+      'https://example.test/#/callback;mode=compact?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;access_token=fixture-secret/orders/123?panel=details',
+      'https://example.test/#/callback/orders/123?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;access_token=fixture%2Fsecret/orders/123?panel=details',
+      'https://example.test/#/callback/orders/123?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;mode=compact/orders;access_token=fixture-secret/123?panel=details',
+      'https://example.test/#/callback;mode=compact/orders/123?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;mode=compact/orders;access_token[?]=fixture-secret?panel=details',
+      'https://example.test/#/callback;mode=compact/orders?panel=details',
+    ],
+    [
+      'https://example.test/#/callback;mode=compact/orders;tag[?]=one;access_token=fixture-secret?panel=details',
+      'https://example.test/#/callback;mode=compact/orders;tag[?]=one?panel=details',
+    ],
+  ])('keeps route identity when redacting lexical route credentials: %s', (url, sanitized) => {
     expect(urlContainsCredentials(url)).toBe(true);
     expect(sanitizeUrlCredentials(url)).toBe(sanitized);
     expect(redactSensitiveText(`redirect ${url}`)).toBe(`redirect ${sanitized}`);

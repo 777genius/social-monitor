@@ -29,6 +29,7 @@ const commonUrlCredentialKeys = new Set([
   'oauth-token', 'oauth_token', 'password', 'refresh-token', 'refresh_token',
   'refreshtoken', 'secret', 'session', 'signature', 'token',
 ]);
+const credentialShapedRouteKeyPattern = /(?:^|[_-])(?:token|secret|credential|authorization|signature|api[_-]?key|private[_-]?key|session[_-]?id)(?:$|[_-])/i;
 const azureSignedUrlKeys = new Set([
   'rscc', 'rscd', 'rsce', 'rscl', 'rsct', 'scid', 'se', 'ses', 'si', 'sig', 'sip',
   'skoid', 'sks', 'skt', 'sktid', 'skv', 'sp', 'spr', 'sr', 'srt', 'ss', 'st', 'sv',
@@ -145,16 +146,35 @@ const encodedBracketAt = (raw: string, index: number): '[' | ']' | '' => {
   return encoded === '%5b' ? '[' : encoded === '%5d' ? ']' : '';
 };
 
+// An unclosed bracket is route text, not a reason to hide a later query or
+// matrix delimiter. Match encoded and literal brackets within each key first.
+const matchedBracketOpenings = (raw: string): ReadonlySet<number> => {
+  const openings = new Set<number>();
+  const pending: number[] = [];
+  for (let index = 0; index < raw.length; index += 1) {
+    const encoded = encodedBracketAt(raw, index);
+    const bracket = encoded || raw.charAt(index);
+    if (bracket === '[') pending.push(index);
+    else if (bracket === ']' && pending.length > 0) {
+      openings.add(pending.pop()!);
+    } else if (bracket === '=' || bracket === '&') pending.length = 0;
+    if (encoded) index += 2;
+  }
+  return openings;
+};
+
 // Brackets in a parameter name can contain a literal question mark. Route
 // paths and values still expose query suffixes after a question mark.
 const fragmentDelimiterStart = (raw: string, delimiters: string): number => {
+  const matchedOpenings = matchedBracketOpenings(raw);
   let bracketDepth = 0;
   let inValue = false;
   let inRouteBase = raw.startsWith('/') || raw.startsWith('!');
   for (let index = 0; index < raw.length; index += 1) {
     const encodedBracket = !inValue && !inRouteBase ? encodedBracketAt(raw, index) : '';
     if (encodedBracket) {
-      bracketDepth = encodedBracket === '[' ? bracketDepth + 1 : Math.max(0, bracketDepth - 1);
+      if (encodedBracket === '[' && matchedOpenings.has(index)) bracketDepth += 1;
+      else if (encodedBracket === ']') bracketDepth = Math.max(0, bracketDepth - 1);
       index += 2;
       continue;
     }
@@ -166,10 +186,12 @@ const fragmentDelimiterStart = (raw: string, delimiters: string): number => {
       bracketDepth = 0;
       inValue = true;
       inRouteBase = false;
-    } else if (inRouteBase && raw[index] === ';') inRouteBase = false;
-    else if (!inValue && !inRouteBase && raw[index] === '[') bracketDepth += 1;
+    } else if (bracketDepth === 0 && delimiters.includes(raw.charAt(index))) return index;
+    else if (raw[index] === ';' && bracketDepth === 0) {
+      inValue = false;
+      inRouteBase = false;
+    } else if (!inValue && !inRouteBase && raw[index] === '[' && matchedOpenings.has(index)) bracketDepth += 1;
     else if (!inValue && !inRouteBase && raw[index] === ']') bracketDepth = Math.max(0, bracketDepth - 1);
-    else if (bracketDepth === 0 && delimiters.includes(raw.charAt(index))) return index;
   }
   return -1;
 };
@@ -180,6 +202,7 @@ const fragmentQueryStart = (raw: string): number => fragmentDelimiterStart(raw, 
 // to that key, while a semicolon after '=' starts the next matrix field.
 const matrixFields = (raw: string): FragmentComponent[] => {
   const fields: FragmentComponent[] = [];
+  const matchedOpenings = matchedBracketOpenings(raw);
   let start = 0;
   let bracketDepth = 0;
   let inValue = false;
@@ -187,7 +210,8 @@ const matrixFields = (raw: string): FragmentComponent[] => {
     const character = raw.charAt(index);
     const encodedBracket = !inValue ? encodedBracketAt(raw, index) : '';
     if (encodedBracket) {
-      bracketDepth = encodedBracket === '[' ? bracketDepth + 1 : Math.max(0, bracketDepth - 1);
+      if (encodedBracket === '[' && matchedOpenings.has(index)) bracketDepth += 1;
+      else if (encodedBracket === ']') bracketDepth = Math.max(0, bracketDepth - 1);
       index += 2;
       continue;
     }
@@ -200,7 +224,7 @@ const matrixFields = (raw: string): FragmentComponent[] => {
     } else if (character === '=') {
       bracketDepth = 0;
       inValue = true;
-    } else if (!inValue && character === '[') bracketDepth += 1;
+    } else if (!inValue && character === '[' && matchedOpenings.has(index)) bracketDepth += 1;
     else if (!inValue && character === ']') bracketDepth = Math.max(0, bracketDepth - 1);
   }
   return fields;
@@ -217,24 +241,26 @@ const analyzeUrlFragment = (raw: string): { hasCredentials: boolean; sanitized: 
   const routeEnd = fragmentDelimiterStart(first, ';?');
   const routePrefix = routeEnd < 0 ? first : first.slice(0, routeEnd);
   const decodedRoutePrefix = new URLSearchParams(`${routePrefix}=`).keys().next().value ?? '';
-  const benignRoutePrefix = ['sessions', 'password-reset'].includes(decodedRoutePrefix.toLowerCase());
+  const normalizedRoutePrefix = decodedRoutePrefix.toLowerCase();
+  const credentialRoutePrefix = !decodedRoutePrefix.includes('/') &&
+    (commonUrlCredentialKeys.has(normalizedRoutePrefix) ||
+      credentialShapedRouteKeyPattern.test(normalizedRoutePrefix));
   const leadingRoute = first.startsWith('/') || first.startsWith('!') ||
     (routeEnd >= 0 && !routePrefix.includes('=') &&
-      first[routeEnd + 1] !== '=' && (!isSensitiveKey(decodedRoutePrefix) || benignRoutePrefix));
+      first[routeEnd + 1] !== '=' && !credentialRoutePrefix);
   const matrixEnd = queryComponentIndex === 0 ? queryStart : -1;
   const matrixText = leadingRoute
     ? first.slice(0, matrixEnd < 0 ? first.length : matrixEnd)
     : '';
-  const matrixStart = first.startsWith('/') || first.startsWith('!')
-    ? matrixText.indexOf(';')
-    : fragmentDelimiterStart(matrixText, ';');
-  const matrixParts = leadingRoute
-    ? matrixStart < 0
-      ? [{ raw: matrixText, key: '' }]
-      : [{ raw: matrixText.slice(0, matrixStart), key: '' },
-        ...matrixFields(matrixText.slice(matrixStart + 1))]
-    : [];
-  const matrix = matrixParts.slice(1);
+  // A raw slash ends a route segment's matrix fields. Keep later segments
+  // intact, and inspect their own fields for credentials as well.
+  const matrixSegments = leadingRoute ? matrixText.split('/').map((segment) => {
+    const start = fragmentDelimiterStart(segment, ';');
+    return start < 0
+      ? { base: segment, fields: [] as FragmentComponent[] }
+      : { base: segment.slice(0, start), fields: matrixFields(segment.slice(start + 1)) };
+  }) : [];
+  const matrix = matrixSegments.flatMap(({ fields }) => fields);
   const normalizedKeys = new Set([...full, ...suffix, ...matrix]
     .map(({ key }) => key.toLowerCase()));
   const sensitive = (key: string): boolean =>
@@ -243,12 +269,12 @@ const analyzeUrlFragment = (raw: string): { hasCredentials: boolean; sanitized: 
     !(leadingRoute && index === 0) && sensitive(key) ? [index] : []));
   const removeSuffix = new Set(suffix.flatMap(({ key }, index) =>
     sensitive(key) ? [index] : []));
-  const removeMatrix = new Set(matrix.flatMap(({ key }, index) =>
-    sensitive(key) ? [index] : []));
+  const removeMatrix = new Set(matrix.filter(({ key }) => sensitive(key)));
   // A '?' directly in a sensitive matrix name can make its value look like a
   // harmless query field. Drop that ambiguous first suffix with the field.
-  if (queryComponentIndex === 0 && first.indexOf('=') >= queryStart &&
-    matrix.length > 0 && sensitive(matrix[matrix.length - 1]?.key ?? '')) {
+  const finalMatrixField = matrixSegments[matrixSegments.length - 1]?.fields.at(-1);
+  if (queryComponentIndex === 0 && finalMatrixField &&
+    !finalMatrixField.raw.includes('=') && sensitive(finalMatrixField.key)) {
     removeSuffix.add(0);
   }
   const hasCredentials = removeFull.size > 0 || removeSuffix.size > 0 || removeMatrix.size > 0;
@@ -259,8 +285,9 @@ const analyzeUrlFragment = (raw: string): { hasCredentials: boolean; sanitized: 
       removeSuffix.has(index - queryComponentIndex))) return [];
     let safe = component;
     if (index === 0 && removeMatrix.size > 0) {
-      safe = [matrixParts[0]?.raw ?? '', ...matrix.filter((_, partIndex) =>
-        !removeMatrix.has(partIndex)).map(({ raw }) => raw)].join(';') + component.slice(matrixText.length);
+      safe = matrixSegments.map(({ base, fields }) => [base, ...fields.filter((field) =>
+        !removeMatrix.has(field)).map(({ raw }) => raw)].join(';')).join('/') +
+        component.slice(matrixText.length);
     }
     if (index === queryComponentIndex && removeSuffix.has(0)) {
       safe = safe.slice(0, fragmentQueryStart(safe));
