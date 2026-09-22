@@ -38,15 +38,25 @@ final class GeneratedSummaryRestMapper {
         binding: ReaderSummaryArtifactBinding(
           tenantId: dto.tenantId,
           workspaceId: dto.workspaceId,
-          feedItemIdsByCitation: {for (final citation in dto.citations)
-            citation.citationId: citation.feedItemId},
-          sourceItemIdsByCitation: {for (final citation in dto.citations)
-            citation.citationId: citation.sourceItemId},
+          feedItemIdsByCitation: {
+            for (final citation in dto.citations)
+              citation.citationId: citation.feedItemId,
+          },
+          sourceItemIdsByCitation: {
+            for (final citation in dto.citations)
+              citation.citationId: citation.sourceItemId,
+          },
+          providerKeysByCitation: {
+            for (final citation in dto.citations)
+              citation.citationId: citation.providerKey,
+          },
           artifactId: dto.readerSummaryId,
           sourceWindowId: dto.sourceWindow.windowId,
           periodStart: dto.period.startedAt,
           periodEnd: dto.period.endedAt,
           ingestionCutoff: dto.sourceWindow.ingestionCutoff,
+          exactIngestionCutoff:
+              dto.sourceWindow.toJson()['exactIngestionCutoff'] as String?,
         ),
       ),
       topStories: _readerSummaryTopStories(dto.topStories),
@@ -362,21 +372,6 @@ final class GeneratedSummaryRestMapper {
       generated.ReaderSummaryJobStatusResponseDtoStatusStatus.$unknown =>
         'unknown',
     };
-  }
-
-  String _readerSummaryBodyText({
-    required String executiveSummary,
-    required String? noSignalReason,
-  }) {
-    final parts = <String>[
-      executiveSummary,
-      ...?noSignalReason == null ? null : <String>[noSignalReason],
-    ];
-    final normalized = parts
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .join(' ');
-    return normalized.isEmpty ? 'No summary available' : normalized;
   }
 
   String _bodyText({

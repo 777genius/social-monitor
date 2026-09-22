@@ -1,3 +1,8 @@
+import { preserveVerifiedLegacyCapture } from '../../../domain/value-objects/legacy-source-capture';
+import { PrismaArticleCaptureRepository } from './prisma-article-capture.repository';
+import type { ArticleCaptureRepository } from '../../../ports/article-capture-repository';
+import { prepareArticleCaptureAttempt } from '../../../domain/value-objects/article-capture-attempt';
+import { captureNativeText, preserveSourceCapture } from '../../../domain/value-objects/source-content-capture';
 import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
 import {
   assertGitHubTrendingDurableObservationCoherence,
@@ -27,7 +32,20 @@ type TransactionalPrismaIngestionClient = PrismaIngestionClient & {
 };
 
 export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
-  constructor(private readonly prisma: PrismaIngestionClient) {}
+  private readonly articleCaptures: PrismaArticleCaptureRepository;
+  constructor(private readonly prisma: PrismaIngestionClient) {
+    this.articleCaptures = new PrismaArticleCaptureRepository(prisma);
+  }
+
+  findDueArticleCaptures(command: Parameters<ArticleCaptureRepository['findDueArticleCaptures']>[0]) {
+    return this.articleCaptures.findDueArticleCaptures(command);
+  }
+  reserveArticleCapture(command: Parameters<ArticleCaptureRepository['reserveArticleCapture']>[0]) {
+    return this.articleCaptures.reserveArticleCapture(command);
+  }
+  completeArticleCapture(command: Parameters<ArticleCaptureRepository['completeArticleCapture']>[0]) {
+    return this.articleCaptures.completeArticleCapture(command);
+  }
 
   async saveBatch(
     command: SaveSourceItemsCommand,
@@ -86,8 +104,15 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
     }
 
     for (const item of command.items) {
-      const snapshot = item.toSnapshot();
+      const raw = item.toSnapshot();
+      let snapshot = command.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY ? raw : captureNativeText(raw, command.providerKey, raw.ingestedAt);
       const existing = existingByProviderItemId.get(snapshot.externalId);
+      if (existing !== undefined && existing.sourceBindingId === snapshot.sourceBindingId) {
+        snapshot = preserveSourceCapture(snapshot, sourceItemFromPrisma(existing).toSnapshot());
+        snapshot = preserveVerifiedLegacyCapture(snapshot, sourceItemFromPrisma(existing).toSnapshot(), command.providerKey,
+          command.unchangedNativeExternalIds?.includes(snapshot.externalId) ?? false);
+      }
+      snapshot = prepareArticleCaptureAttempt(snapshot, raw.ingestedAt);
       const providerContentHash = sourceItemProviderContentHash({
         providerKey: command.providerKey,
         snapshot,
@@ -184,6 +209,7 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
         : {
             providerContentHash: params.providerContentHash,
             lastObservedAt: params.snapshot.ingestedAt,
+            metadata: params.snapshot.metadata ?? {},
           },
     });
     return { record, contentChanged };

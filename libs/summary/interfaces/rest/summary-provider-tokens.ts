@@ -14,6 +14,8 @@ import {
 import {
   EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
 } from "../../ports";
+import { resolveReaderSummarySelectionStrategy } from
+  "./reader-summary-selection-strategy.resolver";
 
 export type { SummaryProviderTokenMap } from "./summary-provider-token-map";
 
@@ -36,6 +38,11 @@ export const SUMMARY_MODEL_PROVIDER_MODE = Symbol(
 export const READER_SUMMARY_MODEL_PROVIDER_MODE = Symbol(
   "READER_SUMMARY_MODEL_PROVIDER_MODE",
 );
+export const READER_SUMMARY_SELECTION_STRATEGY = Symbol(
+  "READER_SUMMARY_SELECTION_STRATEGY",
+);
+export const READER_SUMMARY_V3_PREFLIGHT = Symbol("READER_SUMMARY_V3_PREFLIGHT");
+export const READER_SUMMARY_V3_PROMOTION = Symbol("READER_SUMMARY_V3_PROMOTION");
 export const READER_SUMMARY_TOPIC_LABELER_MODE = Symbol(
   "READER_SUMMARY_TOPIC_LABELER_MODE",
 );
@@ -125,6 +132,11 @@ export const readerSummaryModelProviderModeProvider: Provider<ReaderSummaryModel
     provide: READER_SUMMARY_MODEL_PROVIDER_MODE,
     useFactory: () => resolveReaderSummaryModelProviderMode(process.env),
   };
+
+export const readerSummarySelectionStrategyProvider: Provider = {
+  provide: READER_SUMMARY_SELECTION_STRATEGY,
+  useFactory: () => resolveReaderSummarySelectionStrategy(process.env),
+};
 
 export const readerSummaryTopicLabelerModeProvider: Provider<ReaderSummaryTopicLabelerMode> =
   {

@@ -14,6 +14,10 @@ enum ReaderSummaryPromotionAttestationDtoDigestVersionDigestVersion {
   @JsonValue('reader_post_promotion_digest.sha256.v2')
   undefined1('reader_post_promotion_digest.sha256.v2'),
 
+  /// Incorrect name has been replaced. Original name: `reader_post_promotion_digest.sha256.v3`.
+  @JsonValue('reader_post_promotion_digest.sha256.v3')
+  undefined2('reader_post_promotion_digest.sha256.v3'),
+
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);
 

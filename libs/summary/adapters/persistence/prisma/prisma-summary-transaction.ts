@@ -33,3 +33,11 @@ const isTransactionalSummaryClient = (
   client: PrismaSummaryClient,
 ): client is PrismaTransactionalSummaryClient =>
   "$transaction" in client && typeof client.$transaction === "function";
+
+export const requireSerializableReaderSummaryTransactions = (
+  client: PrismaSummaryClient,
+): void => {
+  if (!isTransactionalSummaryClient(client)) {
+    throw new Error("Reader summary V3 requires Prisma transaction capability");
+  }
+};

@@ -58,6 +58,7 @@ import { SummaryJobPollingLoop } from "./summary-job-polling-loop";
 import { AutoSummarySchedulerLoop } from "./auto-summary-scheduler-loop";
 import { PeriodicReaderSummarySchedulerLoop } from "./periodic-reader-summary-scheduler-loop";
 import { RelevanceMemoryProjectionLoop } from "./relevance-memory-projection-loop";
+import { ReaderValueModule } from "./reader-value.module";
 
 const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
   "INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL",
@@ -69,6 +70,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
     WorkerRuntimeModule.register({ serviceName: "intelligence-worker" }),
     SummaryRestModule,
     RelevanceRestModule,
+    ReaderValueModule,
   ],
   providers: [
     {

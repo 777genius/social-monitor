@@ -18,9 +18,9 @@ Map<String, Object?> readerDisplayFixture() {
   final headline = <String, Object?>{
     'status': 'accepted', 'kind': 'subject_label', 'text': title,
     'binding': {
-      ...context, 'candidateId': 'candidate-fixture', 'providerKey': 'reddit',
+      ...context, 'candidateId': '44444444-4444-4444-8444-444444444444', 'providerKey': 'reddit',
       'reviewedInputDigest': _digest(jsonEncode({
-        'candidateId': 'candidate-fixture', 'providerKey': 'reddit',
+        'candidateId': '44444444-4444-4444-8444-444444444444', 'providerKey': 'reddit',
         'context': context, 'title': title, 'body': body,
       })),
     },
@@ -38,6 +38,6 @@ Map<String, Object?> readerDisplayFixture() {
   }))};
   return {'headline': headline, 'source': source, 'seal': seal,
     'payload': {'schemaVersion': 'reader_post_promotion_attestation.v2',
-      'candidateId': 'candidate-fixture', 'displayHeadline': seal}};
+      'candidateId': '44444444-4444-4444-8444-444444444444', 'displayHeadline': seal}};
 }
 String _digest(String value) => sha256.convert(utf8.encode(value)).toString();

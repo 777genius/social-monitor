@@ -18,8 +18,8 @@ import {
   type DeploymentPostgresBudgetConfiguration,
 } from './postgres-runtime-pool-budget';
 import {
-  PUBLICATION_POSTGRES_TEST_ONLY_FILES,
-  PUBLICATION_POSTGRES_TEST_POOL_MAXIMUMS,
+  BOUNDED_POSTGRES_TEST_ONLY_FILES,
+  BOUNDED_POSTGRES_TEST_POOL_MAXIMUMS,
 } from './postgres-runtime-pool-budget-test-inventory';
 import {
   directDatabaseConstructions,
@@ -294,8 +294,7 @@ describe('deployment PostgreSQL budget', () => {
 });
 
 describe('production PostgreSQL construction and entrypoint inventory', () => {
-  const publicationPostgresTestOnlyFiles =
-    PUBLICATION_POSTGRES_TEST_ONLY_FILES;
+  const boundedPostgresTestOnlyFiles = BOUNDED_POSTGRES_TEST_ONLY_FILES;
   const sourceFiles = [...runtimeSourceFiles('apps'), ...runtimeSourceFiles('libs')];
   const completeDatabaseSourceFiles = [
     'test/feed-reader-summary-coverage-pool.integration.spec.ts',
@@ -335,6 +334,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
 
     // Cursor cleanup regression uses installed Pool lifecycle with a controlled wire client and an unused pool.
     expect(rawConstructions).toEqual(expectedSourceList(`
+      libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts:Pool
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:Pool
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:PrismaPg
       libs/platform/persistence/src/postgres-runtime-pool.ts:Pool
@@ -418,6 +418,9 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-ready-delivery-postgres-fixture.ts:Pool
       scripts/lib/reader-summary-ready-delivery-postgres-fixture.ts:Pool
       scripts/lib/reader-summary-successor-fixture-migrations.ts:Pool
+      scripts/lib/reader-value-postgres-fixture.ts:Pool
+      scripts/lib/reader-value-postgres-fixture.ts:Pool
+      scripts/lib/reader-value-postgres-fixture.ts:Pool
       scripts/lib/yesterday-social-replay-support.ts:Pool
       scripts/prepare-reader-summary-successor-fixture.ts:Pool
       scripts/prepare-reader-summary-successor-fixture.ts:Pool
@@ -471,6 +474,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // The replay dispatch spec imports pg only to assert its throwing mock stays unused.
     // Cursor cleanup helper imports only the Pool type; its spec exercises the installed Pool lifecycle.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
+      libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts
       libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts
       libs/platform/persistence/src/postgres-runtime-pool.spec.ts
@@ -554,6 +558,11 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-successor-native-support.ts
       scripts/lib/reader-summary-successor-publication-github.spec.ts
       scripts/lib/reader-summary-successor-publication-github.ts
+      scripts/lib/reader-summary-v3-migration-integration.spec.ts
+      scripts/lib/reader-summary-v3-postgres-assessment-lifecycle.ts
+      scripts/lib/reader-summary-v3-postgres-contract.ts
+      scripts/lib/reader-summary-v3-postgres-preflight-client.ts
+      scripts/lib/reader-summary-v3-postgres-production-preflight.ts
       scripts/lib/reader-summary-weekly-atomic-publication-postgres-contract.ts
       scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts
       scripts/lib/reader-summary-weekly-daily-certification-backfill-postgres-contract.ts
@@ -561,6 +570,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-weekly-publication-evidence-postgres-contract.ts
       scripts/lib/reader-summary-weekly-publication-github-fixture.ts
       scripts/lib/reader-summary-weekly-review-manifest-postgres-contract.ts
+      scripts/lib/reader-value-postgres-fixture.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.ts
       scripts/lib/yesterday-replay-dispatch.spec.ts
@@ -593,7 +603,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     );
 
     for (const path of directPoolFiles) {
-      if (publicationPostgresTestOnlyFiles.has(path)) {
+      if (boundedPostgresTestOnlyFiles.has(path)) {
         continue;
       }
       const options = directPoolOptions(readSource(path));
@@ -614,7 +624,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       /Prisma[A-Za-z]+Connection\.create\s*\(/.test(readSource(path)),
     );
 
-    expect(productionConstructionSites).toHaveLength(12);
+    expect(productionConstructionSites).toHaveLength(13);
     for (const path of productionConstructionSites) {
       const source = readSource(path);
       expect(source).toContain('resolvePostgresRuntimePoolConfig(process.env)');
@@ -625,7 +635,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
   it('keeps every direct script and seed pool at two connections or fewer', () => {
     const scriptSources = [
       ...runtimeSourceFiles('scripts').filter(
-        (path) => !publicationPostgresTestOnlyFiles.has(path),
+        (path) => !boundedPostgresTestOnlyFiles.has(path),
       ),
       'prisma/seed.ts',
     ].map(readSource);
@@ -655,7 +665,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
 
   it('keeps one admitted manual or daily script process within the declared three-connection group', () => {
     for (const path of runtimeSourceFiles('scripts')) {
-      if (publicationPostgresTestOnlyFiles.has(path)) {
+      if (boundedPostgresTestOnlyFiles.has(path)) {
         continue;
       }
       const source = readSource(path);
@@ -679,11 +689,11 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     }
   });
 
-  it('keeps the PostgreSQL publication harness test-only and explicitly bounded', () => {
+  it('keeps bounded PostgreSQL test harnesses test-only and explicit', () => {
     for (const [
       path,
       expectedMaximums,
-    ] of PUBLICATION_POSTGRES_TEST_POOL_MAXIMUMS) {
+    ] of BOUNDED_POSTGRES_TEST_POOL_MAXIMUMS) {
       const maximums = directPoolOptions(readSource(path)).map((options) =>
         Number(/\bmax:\s*([124])\b/.exec(options)?.[1] ?? 0),
       );
@@ -691,7 +701,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     }
 
     const productionImporters = completeDatabaseSourceFiles
-      .filter((path) => !publicationPostgresTestOnlyFiles.has(path))
+      .filter((path) => !boundedPostgresTestOnlyFiles.has(path))
       .filter(
         (path) =>
           path !==

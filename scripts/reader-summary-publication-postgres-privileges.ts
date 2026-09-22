@@ -209,6 +209,10 @@ export const createPublicationFixtureRuntimeRole = async (params: {
        NOSUPERUSER NOCREATEDB CREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`,
     );
     provisionerCreated = true;
+    // PostgreSQL 18 records a protected creator edge for a CREATEROLE issuer.
+    // Pin its optional membership bits before CREATE ROLE so the edge is the
+    // sole ADMIN-only, non-inheritable, non-settable bootstrap membership.
+    await provisioner.query("SET createrole_self_grant = ''");
     await provisioner.query(
       `CREATE ROLE ${quoteIdentifier(params.runtimeRole)} LOGIN PASSWORD ${quoteLiteral(params.runtimePassword)}
        NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`,

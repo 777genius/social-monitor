@@ -306,7 +306,9 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
   const attestedTopReadFeedItemIds = new Set(
     view.promotionAttestations
       .filter((attestation) =>
-        attestation.placement === "top" && attestation.qualityValid)
+        attestation.placement === "top" &&
+        (attestation.schemaVersion === "reader_post_promotion_attestation.v3" ||
+          attestation.qualityValid))
       .map((attestation) => attestation.candidateId),
   );
   const sources = {

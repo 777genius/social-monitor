@@ -12,6 +12,9 @@ import 'reader_summary_promotion_attestation_dto_policy_version_policy_version.d
 import 'reader_summary_promotion_attestation_dto_schema_version_schema_version.dart';
 import 'reader_summary_promotion_evidence_lineage_dto.dart';
 import 'reader_summary_promotion_score_components_dto.dart';
+import 'reader_summary_promotion_v3_assessment_dto.dart';
+import 'reader_summary_promotion_v3_comparator_dto.dart';
+import 'reader_summary_promotion_v3_presentation_dto.dart';
 
 part 'reader_summary_promotion_attestation_dto.g.dart';
 
@@ -31,16 +34,23 @@ class ReaderSummaryPromotionAttestationDto {
     required this.schemaVersion,
     required this.slot,
     required this.sourceWindowId,
+    this.assessment,
     this.candidateDigestInput,
+    this.comparator,
     this.displayHeadline,
     this.displaySummary,
     this.evidenceLineage,
+    this.exactIngestionCutoff,
+    this.presentation,
+    this.provider,
+    this.publishedAt,
     this.reasonCodes,
     this.scoreComponents,
     this.slateDigest,
     this.slateDigestInput,
     this.slateEntryDigestInput,
     this.storyClusterId,
+    this.storyId,
   });
 
   factory ReaderSummaryPromotionAttestationDto.fromJson(
@@ -48,11 +58,13 @@ class ReaderSummaryPromotionAttestationDto {
   ) => _$ReaderSummaryPromotionAttestationDtoFromJson(json);
 
   final String artifactId;
+  final ReaderSummaryPromotionV3AssessmentDto? assessment;
   final String? candidateDigestInput;
   final String candidateId;
   final String canonicalIdentity;
   final String canonicalPayload;
   final List<String> citationIds;
+  final ReaderSummaryPromotionV3ComparatorDto? comparator;
   final ReaderSummaryPromotionAttestationDtoDecisionDecision decision;
   final String digest;
   final ReaderSummaryPromotionAttestationDtoDigestVersionDigestVersion
@@ -60,9 +72,13 @@ class ReaderSummaryPromotionAttestationDto {
   final ReaderSummaryDisplayHeadlineSealDto? displayHeadline;
   final String? displaySummary;
   final ReaderSummaryPromotionEvidenceLineageDto? evidenceLineage;
+  final String? exactIngestionCutoff;
   final ReaderSummaryPromotionAttestationDtoPlacementPlacement placement;
   final ReaderSummaryPromotionAttestationDtoPolicyVersionPolicyVersion
   policyVersion;
+  final ReaderSummaryPromotionV3PresentationDto? presentation;
+  final String? provider;
+  final String? publishedAt;
   final List<String>? reasonCodes;
   final ReaderSummaryPromotionAttestationDtoSchemaVersionSchemaVersion
   schemaVersion;
@@ -73,6 +89,7 @@ class ReaderSummaryPromotionAttestationDto {
   final num slot;
   final String sourceWindowId;
   final String? storyClusterId;
+  final String? storyId;
 
   Map<String, Object?> toJson() =>
       _$ReaderSummaryPromotionAttestationDtoToJson(this);

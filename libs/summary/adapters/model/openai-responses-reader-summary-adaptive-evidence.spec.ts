@@ -107,6 +107,60 @@ describe("adaptive reader summary evidence", () => {
       "Prefer sourceContent over bodyPreview when resolving exact model variants",
     );
   });
+
+  it("serializes a verified qualification after 60k for the final V3 writer", () => {
+    const qualification = "only in Ultra preview mode";
+    const body = `${"a".repeat(60_500)} ${qualification}`;
+    const start = body.indexOf(qualification);
+    const base = evidenceItem(0);
+    const item: SummaryEvidenceItem = { ...base, feedItemId: "feed-late",
+      sourceText: body, bodyPreview: body, readerHeadline: {
+        status: "accepted", kind: "claim", text: "The limit changed in preview",
+        binding: { candidateId: "feed-late", providerKey: base.providerKey,
+          tenantId: "tenant", workspaceId: "workspace", interestId: base.interestId,
+          sourceBindingId: base.sourceBindingId, sourceItemId: base.sourceItemId,
+          trustedIntent: "intent", availability: "body_present",
+          reviewedInputDigest: "a".repeat(64) },
+        support: [{ field: "bodyPreview", start: 60_500, end: 60_501,
+          quote: " " }],
+        qualifications: [{ phrase: qualification, evidence: [{
+          field: "bodyPreview", start, end: start + qualification.length,
+          quote: qualification,
+        }] }], confidence: 0.95,
+        wholeInput: { titleLength: base.title.length, bodyLength: body.length,
+          qualificationJudgment: "preserved" },
+      } };
+    const selection: SummaryEvidenceSelection = {
+      ...evidenceSelection(), selectedEvidence: [item],
+      sourceWindow: { ...evidenceSelection().sourceWindow,
+        selectedFeedItemIds: [item.feedItemId] },
+      promotionV3: { policyVersion: "reader_promotion_policy.v3", outcome: "ready",
+        top: [{ candidateId: item.feedItemId,
+          presentation: { status: "available", presentationInputDigest: "b".repeat(64) } } as never],
+        additional: [], excluded: [] },
+    };
+    const plan: ReaderSummaryCoveragePlan = { ...coveragePlan(),
+      lead: { ...coveragePlan().lead!, feedItemIds: [item.feedItemId] } };
+    const evidence = buildAdaptiveReaderSummaryEvidence(selection, plan);
+    const accepted = evidence[0]?.acceptedReaderPresentation as {
+      readonly headline: string;
+      readonly qualifications: readonly { readonly phrase: string;
+        readonly evidence: readonly { readonly quote: string }[] }[];
+      readonly reviewedBodyLength: number;
+    };
+
+    expect(accepted.headline).toBe("The limit changed in preview");
+    expect(accepted.qualifications[0]?.phrase).toBe(qualification);
+    expect(accepted.qualifications[0]?.evidence[0]?.quote).toBe(qualification);
+    expect(accepted.reviewedBodyLength).toBeGreaterThan(60_000);
+    const input = modelInput(selection);
+    Object.assign(input, { coveragePlan: plan });
+    const payload = buildOpenAiReaderSummaryPromptPayload(input);
+    expect(payload).toContain(qualification);
+    expect(buildOpenAiReaderSummaryInstructions(input)).toContain(
+      "never restate its claim without those qualifications",
+    );
+  });
 });
 
 const evidenceSelection = (): SummaryEvidenceSelection => {

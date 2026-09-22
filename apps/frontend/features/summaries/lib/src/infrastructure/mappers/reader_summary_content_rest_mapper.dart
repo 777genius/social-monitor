@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 
@@ -136,6 +138,10 @@ final class ReaderSummaryContentRestMapper {
     generated.ReaderSummaryReaderItemDto dto,
     ReaderSummaryArtifactBinding binding,
   ) {
+    final attestationBinding = _promotionCitationBinding(
+      dto.promotionAttestation,
+      binding,
+    );
     final storyClusterMarker = _reservedMarker(
       dto.matchedRules,
       'reader-story-cluster:',
@@ -185,16 +191,8 @@ final class ReaderSummaryContentRestMapper {
         cardTitle: dto.title,
         tenantId: binding.tenantId,
         workspaceId: binding.workspaceId,
-        sourceCandidateId:
-            binding.feedItemIdsByCitation[dto
-                .promotionAttestation
-                ?.evidenceLineage
-                ?.leadCitationId],
-        sourceItemId:
-            binding.sourceItemIdsByCitation[dto
-                .promotionAttestation
-                ?.evidenceLineage
-                ?.leadCitationId],
+        sourceCandidateId: attestationBinding?.candidateId,
+        sourceItemId: attestationBinding?.sourceItemId,
         cardProviderKey: dto.providerKey,
         cardStoryClusterId: storyClusterMarker.value,
         cardPublishedAt: dto.publishedAt,
@@ -204,6 +202,7 @@ final class ReaderSummaryContentRestMapper {
         enclosingPeriodStart: binding.periodStart,
         enclosingPeriodEnd: binding.periodEnd,
         enclosingIngestionCutoff: binding.ingestionCutoff,
+        enclosingExactIngestionCutoff: binding.exactIngestionCutoff,
       ),
       displayHeadline: displayJson(dto.toJson()['displayHeadline']),
       capturedSource: displayJson(dto.toJson()['capturedSource']),
@@ -240,6 +239,55 @@ final class ReaderSummaryContentRestMapper {
       previewMedia: _previewMedia(dto.previewMedia),
       citationIds: dto.citationIds,
     );
+  }
+
+  _PromotionCitationBinding? _promotionCitationBinding(
+    generated.ReaderSummaryPromotionAttestationDto? attestation,
+    ReaderSummaryArtifactBinding binding,
+  ) {
+    if (attestation == null) return null;
+    final canonicalPayload = _canonicalAttestationPayload(
+      attestation.canonicalPayload,
+    );
+    final isV3 =
+        attestation.schemaVersion.json ==
+            'reader_post_promotion_attestation.v3' ||
+        canonicalPayload?['schemaVersion'] ==
+            'reader_post_promotion_attestation.v3';
+    if (!isV3) {
+      final citationId = attestation.evidenceLineage?.leadCitationId;
+      if (citationId == null) return null;
+      final candidateId = binding.feedItemIdsByCitation[citationId];
+      final sourceItemId = binding.sourceItemIdsByCitation[citationId];
+      return candidateId == null || sourceItemId == null
+          ? null
+          : _PromotionCitationBinding(candidateId, sourceItemId);
+    }
+    final provider = canonicalPayload?['provider'];
+    final matches = attestation.citationIds
+        .where(
+          (citationId) =>
+              binding.feedItemIdsByCitation[citationId] ==
+                  attestation.candidateId &&
+              binding.sourceItemIdsByCitation[citationId] != null &&
+              provider is String &&
+              binding.providerKeysByCitation[citationId] == provider,
+        )
+        .toList();
+    if (matches.length != 1) return null;
+    return _PromotionCitationBinding(
+      binding.feedItemIdsByCitation[matches.single]!,
+      binding.sourceItemIdsByCitation[matches.single]!,
+    );
+  }
+
+  Map<String, Object?>? _canonicalAttestationPayload(String value) {
+    try {
+      final decoded = jsonDecode(value);
+      return decoded is Map<String, Object?> ? decoded : null;
+    } on FormatException {
+      return null;
+    }
   }
 
   ReaderSummaryReservedMarker _reservedMarker(
@@ -326,29 +374,22 @@ final class ReaderSummaryContentRestMapper {
     );
   }
 
-  int _safeCount(num value) {
-    if (!value.isFinite || value < 0) {
-      return 0;
-    }
-    return value.round();
-  }
+  int _safeCount(num value) =>
+      !value.isFinite || value < 0 ? 0 : value.round();
 
-  double _safeScore(num value) {
-    if (!value.isFinite || value < 0) {
-      return 0;
-    }
-    return value.toDouble();
-  }
+  double _safeScore(num value) =>
+      !value.isFinite || value < 0 ? 0 : value.toDouble();
 
-  double _safeConfidenceScore(num value) {
-    if (!value.isFinite || value < 0) {
-      return 0;
-    }
-    if (value > 1) {
-      return 1;
-    }
-    return value.toDouble();
-  }
+  double _safeConfidenceScore(num value) => !value.isFinite || value < 0
+      ? 0
+      : value > 1
+      ? 1
+      : value.toDouble();
+}
+final class _PromotionCitationBinding {
+  const _PromotionCitationBinding(this.candidateId, this.sourceItemId);
+  final String candidateId;
+  final String sourceItemId;
 }
 
 const _canonicalReaderCardKinds = {

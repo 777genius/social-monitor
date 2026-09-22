@@ -281,3 +281,73 @@ bool _sameOrderedStrings(List<String> left, List<String> right) =>
       left.length,
       (index) => index,
     ).every((index) => left[index] == right[index]);
+
+bool _validCanonicalBody(Map<String, Object?> body, {required bool isV2}) {
+  if (!_exactKeys(
+        body,
+        {..._bodyRequiredKeys, if (isV2) ..._bodyV2RequiredKeys},
+        {
+          ..._bodyOptionalKeys,
+          if (isV2) 'displayHeadline',
+          if (isV2) 'displaySummary',
+        },
+      ) ||
+      !_isoDate(body['periodStartedAt']) ||
+      !_isoDate(body['periodEndedAt']) ||
+      !_isoDate(body['ingestionCutoff']) ||
+      !_isoDate(body['publishedAt']) ||
+      !_isoDate(body['observedAt']) ||
+      !_validOptionalExactPromotionTimestamps(body) ||
+      (body.containsKey('checkedAt') && !_isoDate(body['checkedAt'])) ||
+      !_nonEmptyStrings(body, const {
+        'artifactId',
+        'sourceWindowId',
+        'candidateId',
+        'provider',
+        'canonicalIdentity',
+        'citationId',
+        'reason',
+      }) ||
+      !_integer(body['slot']) ||
+      !_integer(body['providerCount']) ||
+      !_unit(body['confidence']) ||
+      !_unit(body['qualityScore']) ||
+      !_unit(body['relevanceScore']) ||
+      !_unit(body['integrityScore']) ||
+      body['freshnessValid'] is! bool ||
+      body['qualityValid'] is! bool ||
+      body['safetyValid'] is! bool ||
+      body['citationValid'] is! bool ||
+      body['metricsState'] != 'observed' ||
+      body['canonicalDedupeOutcome'] != 'retained' ||
+      body['capOutcome'] != 'selected' ||
+      body['tier'] != body['placement'] ||
+      (body['placement'] == 'top'
+          ? body['decision'] != 'promote_top'
+          : body['decision'] != 'promote_additional') ||
+      !_validContentKind(body['contentKind']) ||
+      !_validMetrics(body['metrics'], body['provider']) ||
+      !_validUsefulness(body['usefulnessComponents']) ||
+      !_validAuthority(body['authorityAttestation']) ||
+      !_validRelation(body['relationTrace']) ||
+      !_validSupportFacts(body['supportFacts']) ||
+      (isV2 && !_validV2CanonicalFields(body))) {
+    return false;
+  }
+  final citations = _stringList(body['citationIds']);
+  final supports = (body['supportFacts'] as List<Object?>)
+      .cast<Map<String, Object?>>();
+  final expectedCitations = <String>{
+    body['citationId']! as String,
+    ...supports.map((fact) => fact['citationId']! as String),
+  }.toList()..sort();
+  return citations != null &&
+      _sameOrderedStrings(citations, expectedCitations) &&
+      body['providerCount'] ==
+          <String>{
+            _providerFamily(body['provider']! as String)!,
+            ...supports.map(
+              (fact) => _providerFamily(fact['provider']! as String)!,
+            ),
+          }.length;
+}

@@ -764,6 +764,46 @@
       "purgeTrigger": "conversation_unit_age_expired_or_interest_deleted"
     },
     {
+      "table": "reader_summary_new_input_refresh_reconciliations",
+      "dataClass": "immutable_summary_provider_reconciliation_audit",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "owner_authorized_graph_purge_after_retention",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "reader_summary_publication_graph_retention_completed"
+    },
+    {
+      "table": "reader_summary_new_input_refresh_reconciliation_counters",
+      "dataClass": "immutable_summary_provider_accounting_evidence",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "owner_authorized_graph_purge_after_retention",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "reader_summary_publication_graph_retention_completed"
+    },
+    {
+      "table": "reader_summary_promotion_v2_rollback_receipts",
+      "dataClass": "immutable_summary_promotion_rollback_audit",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "owner_authorized_graph_purge_after_retention",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "reader_summary_publication_graph_retention_completed"
+    },
+    {
+      "table": "reader_summary_promotion_v2_canary_publication_receipts",
+      "dataClass": "immutable_summary_publication_evidence",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "owner_authorized_graph_purge_after_retention",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "reader_summary_publication_graph_retention_completed"
+    },
+    {
       "table": "reader_summary_topic_recommendation_decisions",
       "dataClass": "ai_generated_topic_recommendation_decision",
       "owner": "summary-owner",
@@ -782,6 +822,16 @@
       "exportable": false,
       "legalHoldAware": false,
       "purgeTrigger": "cache_entry_expires_at_elapsed"
+    },
+    {
+      "table": "reader_value_assessments",
+      "dataClass": "derived_reader_value_cache",
+      "owner": "relevance",
+      "retentionDays": 180,
+      "deleteMode": "hard_delete_after_expiry",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "assessment_and_source_retention_expired_without_active_preparation_or_execution_pin"
     }
   ]
 }

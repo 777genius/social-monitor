@@ -3,6 +3,8 @@ export type RssFeedItem = {
   readonly link?: string;
   readonly title?: string;
   readonly content?: string;
+  /** Explicit supplier completeness evidence; an XML tag name or length is not evidence. */
+  readonly contentComplete?: boolean;
   readonly author?: string;
   readonly mediaThumbnailUrl?: string;
   readonly mediaContentUrl?: string;

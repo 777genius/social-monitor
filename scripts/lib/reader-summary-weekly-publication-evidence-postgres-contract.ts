@@ -22,6 +22,8 @@ export type ReaderSummaryPublicationGitHubEvidenceMode =
   | "historical_unavailable";
 export type EvidenceFixtureOverrides = Readonly<{
   providerEvidence?: "default" | "none" | "reddit" | "rss";
+  providerPublishedAt?: string;
+  providerObservedAt?: string;
   githubEvidenceMode?: ReaderSummaryPublicationGitHubEvidenceMode;
   publicationInterestId?: string;
 }>;
@@ -625,19 +627,47 @@ const createOrdinaryCitation = async (
   const sourceItemId = randomUUID();
   const feedItemId = randomUUID();
   const sourceBindingId = randomUUID();
+  const interestId = params.overrides?.publicationInterestId ?? randomUUID();
   const canonicalUrl = `https://example.test/publication/${sourceItemId}`;
+  const publishedAt = params.overrides?.providerPublishedAt ?? params.requestedAt;
+  const observedAt = params.overrides?.providerObservedAt ?? params.requestedAt;
+  if (params.overrides?.publicationInterestId !== undefined) {
+    const catalog = await params.client.query<{ readonly id: string }>(
+      `SELECT id::text FROM source_catalog_entries WHERE provider_key = $1`,
+      [providerKey],
+    );
+    const sourceCatalogEntryId = catalog.rows[0]?.id ?? randomUUID();
+    if (catalog.rows[0] === undefined) {
+      await params.client.query(
+        `INSERT INTO source_catalog_entries (
+           id, provider_key, display_name, acquisition_mode, readiness,
+           created_at, updated_at
+         ) VALUES ($1, $2, $3, 'pull', 'ready', $4, $4)`,
+        [sourceCatalogEntryId, providerKey,
+          `Publication fixture ${providerKey}`, params.requestedAt],
+      );
+    }
+    await params.client.query(
+      `INSERT INTO source_bindings (
+         id, tenant_id, workspace_id, interest_id, source_catalog_entry_id,
+         capability_profile_version, status, config, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, 1, 'ENABLED', '{}'::jsonb, $6, $6)`,
+      [sourceBindingId, params.tenantId, params.workspaceId, interestId,
+        sourceCatalogEntryId, params.requestedAt],
+    );
+  }
   await params.client.query(
     `INSERT INTO source_items (
        id, tenant_id, workspace_id, source_binding_id, provider_key,
        provider_item_id, canonical_url, title, body, published_at,
        content_hash, observed_at, metadata
      ) VALUES (
-       $1, $2, $3, $4, $9, $5, $6, 'Publication evidence',
-       'Exact provider evidence body.', $7, $8, $7, '{}'::jsonb
+       $1, $2, $3, $4, $10, $5, $6, 'Publication evidence',
+       'Exact provider evidence body.', $7, $8, $9, '{}'::jsonb
      )`,
     [sourceItemId, params.tenantId, params.workspaceId, sourceBindingId,
-      `publication-provider:${sourceItemId}`, canonicalUrl, params.requestedAt,
-      "a".repeat(64), providerKey],
+      `publication-provider:${sourceItemId}`, canonicalUrl, publishedAt,
+      "a".repeat(64), observedAt, providerKey],
   );
   await params.client.query(
     `INSERT INTO feed_items (
@@ -645,13 +675,13 @@ const createOrdinaryCitation = async (
        source_binding_id, provider_key, dedupe_key, canonical_url, title,
        body_preview, published_at, observed_at, updated_at
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, $10, $7, $8,
+       $1, $2, $3, $4, $5, $6, $11, $7, $8,
        'Publication evidence', 'Exact provider evidence body.',
-       $9, $9, $9
+       $9, $10, $10
      )`,
-    [feedItemId, params.tenantId, params.workspaceId, randomUUID(),
+    [feedItemId, params.tenantId, params.workspaceId, interestId,
       sourceItemId, sourceBindingId, `publication-feed:${feedItemId}`,
-      canonicalUrl, params.requestedAt, providerKey],
+      canonicalUrl, publishedAt, observedAt, providerKey],
   );
   return {
     citationId: randomUUID(),

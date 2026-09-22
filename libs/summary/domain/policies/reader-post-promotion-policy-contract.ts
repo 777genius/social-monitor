@@ -1,4 +1,6 @@
 import type { ReaderDisplayHeadlineSeal } from "../value-objects/summary-reader-headline";
+import type { ReaderValueAnswers } from
+  "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
 
 import { READER_PROMOTION_PROVIDER_ALIASES } from
   "@social-monitor/shared-kernel";
@@ -17,6 +19,12 @@ export const READER_POST_PROMOTION_DIGEST_V1 =
   "reader_post_promotion_digest.sha256.v1" as const;
 export const READER_POST_PROMOTION_DIGEST_VERSION =
   "reader_post_promotion_digest.sha256.v2" as const;
+export const READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3 =
+  "reader_post_promotion_attestation.v3" as const;
+export const READER_POST_PROMOTION_POLICY_V3 =
+  "reader_post_promotion.v3" as const;
+export const READER_POST_PROMOTION_DIGEST_V3 =
+  "reader_post_promotion_digest.sha256.v3" as const;
 
 export type ReaderPostPromotionDecision =
   | "promote_top"
@@ -237,9 +245,60 @@ export type ReaderPostPromotionAttestationV2 = Omit<
   readonly displaySummary?: string;
 };
 
+export type ReaderPostPromotionAttestationV3 = {
+  readonly schemaVersion: typeof READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3;
+  readonly policyVersion: typeof READER_POST_PROMOTION_POLICY_V3;
+  readonly digestVersion: typeof READER_POST_PROMOTION_DIGEST_V3;
+  readonly digest: string;
+  readonly canonicalPayload: string;
+  readonly artifactId: string;
+  readonly sourceWindowId: string;
+  readonly periodStartedAt: Date;
+  readonly periodEndedAt: Date;
+  readonly ingestionCutoff: Date;
+  readonly exactIngestionCutoff: string;
+  readonly placement: "top" | "additional";
+  readonly slot: number;
+  readonly candidateId: string;
+  /** Exact persisted provider key, preserved through publication. */
+  readonly provider: string;
+  readonly canonicalIdentity: string;
+  readonly storyId: string;
+  readonly publishedAt: string;
+  readonly citationIds: readonly string[];
+  readonly decision: "promote_top" | "promote_additional";
+  readonly assessment: {
+    readonly schemaVersion: "reader_value.v1";
+    readonly assessmentId: string;
+    readonly assessedAt: string;
+    readonly sourceSnapshotSha256: string;
+    readonly inputSha256: string;
+    readonly rubricVersion: string;
+    readonly rubricSha256: string;
+    readonly modelConfigVersion: string;
+    readonly answers: ReaderValueAnswers;
+  };
+  readonly comparator: {
+    readonly usefulness: ReaderValueAnswers["usefulness"]["choice"];
+    readonly relevance: ReaderValueAnswers["relevance"]["choice"];
+    readonly publishedAt: string;
+    readonly candidateId: string;
+  };
+  readonly presentation: {
+    readonly schemaVersion: "reader_post_presentation.v3";
+    readonly presentationInputDigest: string;
+    readonly presentationIdentity: string;
+    readonly displayHeadline: ReaderDisplayHeadlineSeal;
+  };
+};
+
 export type ReaderPostPromotionAttestation =
   | ReaderPostPromotionAttestationV1
   | ReaderPostPromotionAttestationV2;
+
+export type ReaderPostPromotionAttestationAny =
+  | ReaderPostPromotionAttestation
+  | ReaderPostPromotionAttestationV3;
 
 const xFloors = Object.freeze({
   top: Object.freeze({ weighted: 70, likes: 30, reposts: 10 }),

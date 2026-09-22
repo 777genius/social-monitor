@@ -1,4 +1,7 @@
-import { err, ok, type DomainError, type Result } from "@social-monitor/shared-kernel";
+import { err, ok, DomainError, type Clock, type Result } from "@social-monitor/shared-kernel";
+import { readerSummaryNewInputRefreshPrefix,
+  type ReaderSummaryNewInputRefreshAuthority } from
+  "../../application/contracts/reader-summary-new-input-refresh-authority";
 
 import {
   type ReaderSummaryArtifact,
@@ -29,6 +32,28 @@ export type ReaderSummaryDraft = ProviderReaderSummaryAttempt["draft"];
 export type ReaderSummaryContextBuildResult = {
   readonly artifacts: readonly ReaderSummaryContextArtifact[];
   readonly unavailable: boolean;
+};
+
+export const readerSummaryObservedThrough = async (params: {
+  readonly job: ReaderSummaryJob;
+  readonly authority?: ReaderSummaryNewInputRefreshAuthority;
+  readonly clock: Clock;
+}): Promise<Date | DomainError | undefined> => {
+  const snapshot = params.job.toSnapshot();
+  if (!snapshot.idempotencyKey.startsWith(readerSummaryNewInputRefreshPrefix)) {
+    return undefined;
+  }
+  try {
+    if (params.authority === undefined) throw new Error("missing authority");
+    const observed = await params.authority.claim(snapshot);
+    return Number.isFinite(observed.getTime()) &&
+      observed.getTime() <= params.clock.now().getTime() ? observed :
+      new DomainError("validation.failed",
+        "Historical new-input refresh cutoff is invalid");
+  } catch {
+    return new DomainError("operation.conflict",
+      "Historical new-input refresh requires reconciliation or valid authority");
+  }
 };
 
 export const defaultModelPolicy: ReaderSummaryModelPolicy = {

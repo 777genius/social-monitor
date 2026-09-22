@@ -13,6 +13,8 @@ export type SourceContentSafetyInput = {
   readonly bodyPreview?: string;
   readonly canonicalUrl?: string;
   readonly providerKey: string;
+  /** Assessment custody preserves captured whitespace and quote offsets. */
+  readonly preserveWhitespace?: boolean;
 };
 
 export type SourceContentSafetyVerdict = {
@@ -52,12 +54,12 @@ export class SourceContentSafetyPolicy {
       categories.add('sensitive_data');
     }
 
-    const sanitizedTitle = title.value.trim();
-    const sanitizedBodyPreview = normalizeOptional(bodyPreview?.value);
+    const sanitizedTitle = input.preserveWhitespace === true ? title.value : title.value.trim();
+    const sanitizedBodyPreview = input.preserveWhitespace === true ? bodyPreview?.value : normalizeOptional(bodyPreview?.value);
     const status = categories.size > 1 ? 'sanitized' : 'allowed';
 
     return {
-      status: sanitizedTitle.length === 0 && sanitizedBodyPreview === undefined ? 'blocked' : status,
+      status: sanitizedTitle.trim().length === 0 && (sanitizedBodyPreview?.trim().length ?? 0) === 0 ? 'blocked' : status,
       categories: [...categories].sort((left, right) => left.localeCompare(right)),
       sanitizedTitle,
       sanitizedBodyPreview,

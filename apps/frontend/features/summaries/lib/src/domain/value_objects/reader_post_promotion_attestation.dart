@@ -18,6 +18,12 @@ final class ReaderPostPromotionAttestation {
     this.slateDigestInput,
     this.slateDigest,
     this.evidenceLineage,
+    this.assessment,
+    this.comparator,
+    this.presentation,
+    this.providerKey,
+    this.storyId,
+    this.exactPublishedAt,
   });
 
   final String schemaVersion;
@@ -36,8 +42,15 @@ final class ReaderPostPromotionAttestation {
   final String? slateDigestInput;
   final String? slateDigest;
   final ReaderPostPromotionEvidenceLineage? evidenceLineage;
+  final Map<String, Object?>? assessment;
+  final Map<String, Object?>? comparator;
+  final Map<String, Object?>? presentation;
+  final String? providerKey;
+  final String? storyId;
+  final String? exactPublishedAt;
 
   bool get isV2 => schemaVersion == 'reader_post_promotion_attestation.v2';
+  bool get isV3 => schemaVersion == 'reader_post_promotion_attestation.v3';
 }
 
 final class ReaderPostPromotionScoreComponents {

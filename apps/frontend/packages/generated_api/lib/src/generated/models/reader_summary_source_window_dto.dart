@@ -14,6 +14,7 @@ class ReaderSummarySourceWindowDto {
     required this.startedAt,
     required this.storyClusterIds,
     required this.windowId,
+    this.exactIngestionCutoff,
     this.ingestionCutoff,
   });
 
@@ -21,6 +22,7 @@ class ReaderSummarySourceWindowDto {
       _$ReaderSummarySourceWindowDtoFromJson(json);
 
   final DateTime endedAt;
+  final String? exactIngestionCutoff;
   final DateTime? ingestionCutoff;
   final List<String> selectedFeedItemIds;
   final DateTime startedAt;

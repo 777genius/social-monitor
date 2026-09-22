@@ -1,6 +1,10 @@
 import type { Provider } from "@nestjs/common";
 
 import {
+  resolveAgentRuntimePromotionPresentationV3BuilderOptions,
+  type AgentRuntimePromotionPresentationV3BuilderOptions,
+} from "../../adapters/model/agent-runtime-promotion-presentation-v3.builder";
+import {
   resolveAgentRuntimeReaderSummaryModelOptions,
   type AgentRuntimeReaderSummaryModelAdapterOptions,
 } from "../../adapters/model/agent-runtime-reader-summary-model.adapter";
@@ -41,6 +45,8 @@ export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_MODEL_OPTIONS = Symbol(
 );
 export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS =
   Symbol("SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS");
+export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_OPTIONS =
+  Symbol("SUMMARY_AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_OPTIONS");
 export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_OPTIONS =
   Symbol(
     "SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_OPTIONS",
@@ -68,7 +74,8 @@ export const summaryAgentRuntimeClientOptionsProvider: Provider<SummaryAgentRunt
         requireAddress:
           summaryMode === "agent-runtime" ||
           readerSummaryMode === "agent-runtime" ||
-          topicLabelerMode === "agent-runtime",
+          topicLabelerMode === "agent-runtime" ||
+          process.env.READER_VALUE_MODE === "jev_primary_v3",
       }),
     inject: [
       SUMMARY_MODEL_PROVIDER_MODE,
@@ -98,6 +105,14 @@ export const summaryAgentRuntimeReaderSummaryTopicLabelerOptionsProvider: Provid
     provide: SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS,
     useFactory: (client: GrpcAgentRuntimeClient) =>
       resolveAgentRuntimeReaderSummaryTopicLabelerOptions(process.env, client),
+    inject: [GrpcAgentRuntimeClient],
+  };
+
+export const summaryAgentRuntimeReaderSummaryPresentationOptionsProvider: Provider<AgentRuntimePromotionPresentationV3BuilderOptions> =
+  {
+    provide: SUMMARY_AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_OPTIONS,
+    useFactory: (client: GrpcAgentRuntimeClient) =>
+      resolveAgentRuntimePromotionPresentationV3BuilderOptions(process.env, client),
     inject: [GrpcAgentRuntimeClient],
   };
 

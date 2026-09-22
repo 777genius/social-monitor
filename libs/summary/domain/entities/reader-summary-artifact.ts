@@ -33,6 +33,7 @@ import { assertReaderSummaryArtifactValid } from "./reader-summary-artifact-vali
 import { assertReaderSummaryCitationsAgainstEvidence } from "./reader-summary-citation-evidence-validation";
 import type {
   ReaderPostPromotionAttestation,
+  ReaderPostPromotionAttestationAny,
   ReaderPostPromotionInput,
 } from "../policies/reader-post-promotion-policy";
 
@@ -95,7 +96,7 @@ export type ReaderSummaryArtifactProps = {
   readonly sourceWindow: SummarySourceWindow;
   readonly storyClusters: readonly StoryCluster[];
   readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
-  readonly promotionAttestations?: readonly ReaderPostPromotionAttestation[];
+  readonly promotionAttestations?: readonly ReaderPostPromotionAttestationAny[];
   readonly promotionEvidenceFacts?: readonly ReaderPostPromotionInput[];
   readonly promotionBoardState?: "legacy_unavailable";
   readonly contextArtifacts: readonly ReaderSummaryContextArtifact[];
@@ -267,8 +268,17 @@ const freezePromotionInput = (
 });
 
 const freezePromotionAttestation = (
-  attestation: ReaderPostPromotionAttestation,
-): ReaderPostPromotionAttestation => Object.freeze({
+  attestation: ReaderPostPromotionAttestationAny,
+): ReaderPostPromotionAttestationAny => {
+  if (attestation.schemaVersion === "reader_post_promotion_attestation.v3") {
+    return immutableDisplayValue({
+      ...attestation,
+      periodStartedAt: freezeDate(attestation.periodStartedAt),
+      periodEndedAt: freezeDate(attestation.periodEndedAt),
+      ingestionCutoff: freezeDate(attestation.ingestionCutoff),
+    });
+  }
+  return Object.freeze({
   ...attestation,
   periodStartedAt: freezeDate(attestation.periodStartedAt),
   periodEndedAt: freezeDate(attestation.periodEndedAt),
@@ -318,11 +328,20 @@ const freezePromotionAttestation = (
           ]),
         }),
       }),
-});
+  });
+};
 
 const clonePromotionAttestations = (
-  attestations: readonly ReaderPostPromotionAttestation[],
-): readonly ReaderPostPromotionAttestation[] => attestations.map((attestation) => ({
+  attestations: readonly ReaderPostPromotionAttestationAny[],
+): readonly ReaderPostPromotionAttestationAny[] => attestations.map((attestation) =>
+  attestation.schemaVersion === "reader_post_promotion_attestation.v3"
+    ? immutableDisplayValue({
+        ...attestation,
+        periodStartedAt: new Date(attestation.periodStartedAt),
+        periodEndedAt: new Date(attestation.periodEndedAt),
+        ingestionCutoff: new Date(attestation.ingestionCutoff),
+      })
+    : ({
   ...attestation,
   publishedAt: new Date(attestation.publishedAt),
   observedAt: new Date(attestation.observedAt),
@@ -397,7 +416,7 @@ const clonePromotionAttestations = (
           citationIds: [...attestation.evidenceLineage.citationIds],
         },
       }),
-}));
+    }));
 
 const clonePromotionInput = (
   fact: ReaderPostPromotionInput,

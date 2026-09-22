@@ -14,6 +14,33 @@ const reclaimedAt = new Date("2026-08-14T12:30:00.000Z");
 const staleBefore = new Date("2026-08-14T12:15:00.000Z");
 
 describe("PrismaReaderSummaryJobRepository execution lease", () => {
+  it("maps exact PostgreSQL preparation timestamps without Date truncation", () => {
+    const job = readerSummaryJobFromPrisma(record({
+      preparationCutoffAt: new Date("2026-09-21T00:00:00.123Z"),
+      preparationDeadlineAt: new Date("2026-09-21T00:15:00.123Z"),
+      preparationCutoffAtText: "2026-09-21T00:00:00.123456Z",
+      preparationDeadlineAtText: "2026-09-21T00:15:00.123456Z",
+    }));
+
+    expect(job.toSnapshot()).toMatchObject({
+      preparationCutoffAt: "2026-09-21T00:00:00.123456Z",
+      preparationDeadlineAt: "2026-09-21T00:15:00.123456Z",
+    });
+  });
+
+  it("rehydrates a requested job when PostgreSQL terminal failure is NULL", () => {
+    const job = readerSummaryJobFromPrisma(record({
+      status: "REQUESTED",
+      startedAt: null,
+      terminalFailureCode: null,
+    }));
+
+    expect(job.toSnapshot()).toMatchObject({
+      status: "requested",
+      terminalFailureCode: undefined,
+    });
+  });
+
   it("does not issue a write for a fresh running job", async () => {
     const updateMany = jest.fn();
     const repository = repositoryWith({
@@ -137,6 +164,28 @@ describe("PrismaReaderSummaryJobRepository execution lease", () => {
         },
       }),
     );
+  });
+
+  it.each([
+    ["success", (job: ReturnType<typeof readerSummaryJobFromPrisma>) => job.complete({
+      completedAt: reclaimedAt, readerSummaryId: "00000000-0000-7000-8000-000000000104" })],
+    ["failure", (job: ReturnType<typeof readerSummaryJobFromPrisma>) => job.fail({
+      failedAt: reclaimedAt, failureReason: "model unavailable" })],
+    ["quality rejection", (job: ReturnType<typeof readerSummaryJobFromPrisma>) =>
+      job.rejectForQuality({ rejectedAt: reclaimedAt,
+        failureReason: "quality gate rejected",
+        readerSummaryId: "00000000-0000-7000-8000-000000000105" })],
+  ])("persists %s through the exact stable execution fence", async (_label, finish) => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const repository = repositoryWith({ findFirst: jest.fn(), updateMany });
+    const finalJob = finish(readerSummaryJobFromPrisma(record()));
+
+    await expect(repository.saveExecutionOutcome({ job: finalJob,
+      expectedStartedAt: oldStartedAt })).resolves.toBe(true);
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: {
+      tenantId: tenant, workspaceId: workspace, id: record().id,
+      status: "RUNNING", startedAt: oldStartedAt,
+    } }));
   });
 });
 

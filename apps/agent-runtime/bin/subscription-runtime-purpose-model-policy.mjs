@@ -73,6 +73,8 @@ const profilesByPurpose = Object.freeze({
     activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.verify_related_topic_relations.v2":
     activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.promotion_presentation.v3":
+    activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.daily.canonical_recovery.v2":
     activeReaderSummaryTextProfile,
   "social_monitor.reader_summary.weekly.review.v2": activeReaderSummaryStructuredProfile,

@@ -72,6 +72,23 @@ describe("subscription runtime purpose policy", () => {
     }
   });
 
+  it("admits V3 promotion presentation on the active structured default only", () => {
+    const admission = admitSubscriptionRuntimeRequest(request({
+      purpose: "social_monitor.reader_summary.promotion_presentation.v3",
+    }));
+    expect(admission.profile).toEqual({
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "high",
+      outputKind: "structured_output",
+      responseFormat: "json",
+    });
+    expect(() => admitSubscriptionRuntimeRequest(request({
+      purpose: "social_monitor.reader_summary.promotion_presentation.v3",
+      metadata: { reasoningEffort: "xhigh" },
+    }))).toThrow("reasoningEffort conflicts with purpose policy");
+  });
+
   it.each(dailyPurposes)(
     "keeps %s on the active reader-summary structured-output profile",
     (purpose) => {

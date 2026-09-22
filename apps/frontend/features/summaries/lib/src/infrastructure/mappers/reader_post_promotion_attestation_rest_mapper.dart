@@ -25,9 +25,14 @@ ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
   required DateTime enclosingPeriodStart,
   required DateTime enclosingPeriodEnd,
   required DateTime? enclosingIngestionCutoff,
+  required String? enclosingExactIngestionCutoff,
 }) {
   if (dto == null) return null;
+  final outer = _canonicalObject(jsonEncode(dto.toJson()));
   return verifyReaderPostPromotionAttestation(
+    // Generated enums deliberately erase unknown wire values to `$unknown`.
+    // Never recover a rejected outer transport version from the sealed body:
+    // both envelopes are independent authorities and must agree exactly.
     schemaVersion: dto.schemaVersion.json,
     policyVersion: dto.policyVersion.json,
     digestVersion: dto.digestVersion.json,
@@ -43,6 +48,7 @@ ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
     enclosingPeriodStart: enclosingPeriodStart,
     enclosingPeriodEnd: enclosingPeriodEnd,
     enclosingIngestionCutoff: enclosingIngestionCutoff,
+    enclosingExactIngestionCutoff: enclosingExactIngestionCutoff,
     slot: dto.slot.toInt() == dto.slot ? dto.slot.toInt() : -1,
     decision: dto.decision.json,
     citationIds: dto.citationIds,
@@ -98,7 +104,26 @@ ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
     cardStoryClusterId: cardStoryClusterId,
     cardPublishedAt: cardPublishedAt,
     cardCitationIds: cardCitationIds,
+    // V3 has two independent authorities: transport and signed body. Never
+    // reconstruct missing outer fields from the signed body, because that
+    // would turn an incomplete REST response into an apparently verified one.
+    outerProvider: outer?['provider'],
+    outerStoryId: outer?['storyId'],
+    outerPublishedAt: outer?['publishedAt'],
+    outerExactIngestionCutoff: outer?['exactIngestionCutoff'],
+    outerAssessment: outer?['assessment'],
+    outerComparator: outer?['comparator'],
+    outerPresentation: outer?['presentation'],
   );
+}
+
+Map<String, Object?>? _canonicalObject(String value) {
+  try {
+    final decoded = jsonDecode(value);
+    return decoded is Map<String, Object?> ? decoded : null;
+  } on FormatException {
+    return null;
+  }
 }
 
 // Generated optional fields serialize null; absence is preserved for sealed JSON.

@@ -1,6 +1,8 @@
 import { immutableDisplayValue } from "../../../domain/services/reader-post-display-identity";
 import type {
   ReaderPostPromotionAttestation,
+  ReaderPostPromotionAttestationAny,
+  ReaderPostPromotionAttestationV3,
   ReaderPostPromotionAttestationV2,
   ReaderSummaryContent,
 } from "../../../domain";
@@ -15,13 +17,15 @@ import { assertExactPromotionAttestationPayload } from
 
 export const normalizePromotionAttestations = (
   value: unknown,
-): readonly ReaderPostPromotionAttestation[] => {
+): readonly ReaderPostPromotionAttestationAny[] => {
   if (value === undefined) return [];
   assertExactPromotionAttestationPayload(value);
   return requireArray<Record<string, unknown>>(
       value,
       "Reader summary promotion attestations",
-    ).map((item) => ({
+    ).map((item) => item.schemaVersion === "reader_post_promotion_attestation.v3"
+      ? normalizeV3Attestation(item)
+      : ({
       ...(item as unknown as ReaderPostPromotionAttestation),
       ...(item.displayHeadline === undefined ? {} : {
         displayHeadline: immutableDisplayValue(item.displayHeadline as NonNullable<
@@ -58,8 +62,23 @@ export const normalizePromotionAttestations = (
         ? {}
         : { metrics: normalizePromotionMetrics(item.metrics) }),
       supportFacts: normalizeSupportFacts(item.supportFacts),
-    }));
+      }));
 };
+
+const normalizeV3Attestation = (
+  item: Record<string, unknown>,
+): ReaderPostPromotionAttestationV3 => ({
+  ...(item as unknown as ReaderPostPromotionAttestationV3),
+  periodStartedAt: requireDate(item.periodStartedAt,
+    "Reader summary promotion period start"),
+  periodEndedAt: requireDate(item.periodEndedAt,
+    "Reader summary promotion period end"),
+  ingestionCutoff: requireDate(item.ingestionCutoff,
+    "Reader summary promotion ingestion cutoff"),
+  exactIngestionCutoff: String(item.exactIngestionCutoff),
+  presentation: immutableDisplayValue(item.presentation) as
+    ReaderPostPromotionAttestationV3["presentation"],
+});
 
 export const normalizePromotionEvidenceFacts = (
   value: unknown,
@@ -71,7 +90,7 @@ export const normalizePersistedPromotionBoard = (input: {
   readonly promotionEvidenceFacts: unknown;
   readonly content: ReaderSummaryContent | undefined;
 }): Readonly<{
-  promotionAttestations: readonly ReaderPostPromotionAttestation[];
+  promotionAttestations: readonly ReaderPostPromotionAttestationAny[];
   promotionEvidenceFacts: ReaderPostPromotionAttestation["supportFacts"];
   content: ReaderSummaryContent | undefined;
   promotionBoardState?: "legacy_unavailable";

@@ -4,6 +4,8 @@ import type { ProviderMetric } from "./provider-metric-label";
 import type { PreviewMedia } from "./preview-media";
 import type { ReaderSummaryRelatedTopicRelationProps } from "./reader-summary-related-topic-relation";
 import type { ReaderPostPromotionAttestation } from "../policies/reader-post-promotion-policy-contract";
+import type { ReaderPostPromotionV3Selection } from
+  "../policies/reader-post-promotion-v3";
 import type { ReaderSummaryEditorialSlate } from
   "./reader-summary-editorial-slate";
 
@@ -210,6 +212,8 @@ export type SummaryEvidenceSelection = {
   readonly approvedSameStoryRelations?: readonly ApprovedSameStoryRelation[];
   readonly promotionAttestations?: readonly ReaderPostPromotionAttestation[];
   readonly editorialSlate?: ReaderSummaryEditorialSlate;
+  /** Frozen V3 authority. When present, legacy promotion scoring is bypassed. */
+  readonly promotionV3?: ReaderPostPromotionV3Selection;
 };
 
 export type ApprovedSameStoryRelation = {
@@ -240,4 +244,6 @@ export type SummarySourceWindow = {
   readonly periodStartedAt?: Date;
   readonly periodEndedAt?: Date;
   readonly ingestionCutoff?: Date;
+  /** Canonical microsecond timestamp retained alongside the legacy Date view. */
+  readonly exactIngestionCutoff?: string;
 };

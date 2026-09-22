@@ -1,7 +1,17 @@
+import { guardedContentGet } from '../../http/guarded-content-http';
+jest.mock('../../http/guarded-content-http', () => ({ guardedContentGet: jest.fn() }));
 import { HttpRssClient } from './http-rss-client';
 
 describe('HttpRssClient', () => {
   const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    jest.mocked(guardedContentGet).mockImplementation(async (input) => {
+      const response = await globalThis.fetch(input.url, { headers: input.headers });
+      return { status: response.status, headers: response.headers,
+        finalUrl: response.url || input.url, body: await response.text() };
+    });
+  });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
@@ -114,6 +124,21 @@ describe('HttpRssClient', () => {
     });
   });
 
+  it('captures Atom XHTML mixed content in document order rather than falling back to summary', async () => {
+    globalThis.fetch = jest.fn(async () => new Response(`
+      <feed xmlns="http://www.w3.org/2005/Atom"><entry>
+        <id>xhtml-1</id><title>Study</title>
+        <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">
+          <p>Benefit <strong>was not</strong> demonstrated.</p>
+          <p>Second paragraph with <em>qualification</em> after the claim.</p>
+        </div></content><summary>Short preview</summary>
+      </entry></feed>`)) as typeof fetch;
+    const result = await new HttpRssClient().readFeed('https://example.test/atom', 10);
+    expect(result.items[0]?.content).toContain('Benefit was not demonstrated.');
+    expect(result.items[0]?.content).toContain('Second paragraph with qualification after the claim.');
+    expect(result.items[0]?.content).not.toContain('Short preview');
+  });
+
   it('returns notModified without parsing body for HTTP 304', async () => {
     globalThis.fetch = jest.fn(async () =>
       new Response(null, {
@@ -136,16 +161,12 @@ describe('HttpRssClient', () => {
   });
 
   it('rejects redirects to private or local network URLs', async () => {
-    const response = new Response('<rss />', { status: 200 });
-    Object.defineProperty(response, 'url', {
-      value: 'http://127.0.0.1/feed.xml',
-    });
-    globalThis.fetch = jest.fn(async () => response) as unknown as typeof fetch;
+    jest.mocked(guardedContentGet).mockRejectedValue(new Error('Content URL must not target private or local networks.'));
 
     await expect(
       new HttpRssClient().readFeed('https://example.test/feed.xml', 10),
     ).rejects.toThrow(
-      'Feed URL redirect rejected: Feed URL must not target private or local networks.',
+      'Content URL must not target private or local networks.',
     );
   });
 });

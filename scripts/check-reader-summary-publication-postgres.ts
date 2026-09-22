@@ -37,6 +37,8 @@ import {
   assertReaderSummaryPromotionV2RollbackPostgresContract,
 } from
   "./lib/reader-summary-promotion-v2-rollback-postgres-contract";
+import { assertReaderSummaryV3PostgresContract } from
+  "./lib/reader-summary-v3-postgres-contract";
 import { assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract } from "./lib/reader-summary-weekly-daily-certification-backfill-postgres-contract";
 import { assertReaderSummaryWeeklyCertificationSealPostgresContract } from "./lib/reader-summary-weekly-certification-seal-postgres-contract";
 import { assertReaderSummaryWeeklyAtomicPublicationPostgresContract } from "./lib/reader-summary-weekly-atomic-publication-postgres-contract";
@@ -115,6 +117,7 @@ export type ReaderSummaryPublicationPostgresContract =
   | "feed-promotion"
   | "promotion-v2-ownership"
   | "promotion-v2-rollback"
+  | "promotion-v3"
   | "publication"
   | "weekly-certification-seal"
   | "weekly-atomic-publication"
@@ -288,6 +291,14 @@ export const runReaderSummaryPublicationPostgresContract = async (
               createRunningFixture(first, status, day, overrides),
             publish: (payload) => publish(first, payload),
           });
+          return;
+        }
+        if (contract === "promotion-v3") {
+          await assertReaderSummaryV3PostgresContract({ client: first,
+            concurrentClient: second,
+            createFixture: (status, day, overrides) =>
+              createRunningFixture(first, status, day, overrides),
+            publish: (client, payload) => publish(client, payload) });
           return;
         }
         if (

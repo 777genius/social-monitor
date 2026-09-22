@@ -1,9 +1,13 @@
+import { ContentHttpPolicyError } from '../http/guarded-content-http';
 import { createHash } from 'node:crypto';
+import { articleFetchUrl, articleRequestUrl, captureNativeText, captureArticleText, requiresLiveArticleCredentials, sanitizeCaptureUrl } from '../../domain/value-objects/source-content-capture';
 
-import type { JsonObject, JsonValue } from '@social-monitor/shared-kernel';
+import type { JsonObject } from '@social-monitor/shared-kernel';
+import { redactSensitiveRecord, redactSensitiveText } from '@social-monitor/shared-kernel';
 
 import type {
   ArticleContentExtractorPort,
+  ArticleContentExtractionResult,
   EnrichSourceItemsCommand,
   EnrichSourceItemsResult,
   FetchedSourceItem,
@@ -17,13 +21,6 @@ export type ArticleContentSourceItemEnrichmentOptions = {
 
 const defaultProviderKeys = ['reddit', 'hacker-news', 'rss'];
 const defaultMaxItemsPerScan = 20;
-const discussionHosts = new Set([
-  'news.ycombinator.com',
-  'old.reddit.com',
-  'reddit.com',
-  'www.reddit.com',
-]);
-
 export class ArticleContentSourceItemEnrichmentAdapter implements SourceItemEnrichmentPort {
   private readonly providerKeys: ReadonlySet<string>;
   private readonly maxItemsPerScan: number;
@@ -51,43 +48,97 @@ export class ArticleContentSourceItemEnrichmentAdapter implements SourceItemEnri
     let skipped = 0;
     let failed = 0;
 
-    for (const [index, item] of command.items.entries()) {
-      if (index >= this.maxItemsPerScan) {
-        enrichedItems.push(markArticleContent(item, { status: 'skipped', reason: 'scan item enrichment budget exceeded' }));
-        skipped += 1;
-        continue;
-      }
-
-      const url = articleUrlForItem(command.providerKey, item);
-      if (url === undefined) {
+    let attempts = 0;
+    const requests = new Map<string, ArticleContentExtractionResult>();
+    for (const originalItem of command.items) {
+      // Signed URLs only enter through this in-memory map. The item itself is
+      // already safe to persist, and every result below is rebuilt from that
+      // safe representation before it leaves this adapter.
+      const captureUrl = articleRequestUrl(command.providerKey, originalItem);
+      const liveUrl = command.liveArticleFetchUrls?.get(originalItem.externalId);
+      const matchingLiveUrl = liveUrl !== undefined && captureUrl !== undefined &&
+        sanitizeCaptureUrl(liveUrl) === captureUrl ? liveUrl : undefined;
+      const fetchUrl = matchingLiveUrl ?? (requiresLiveArticleCredentials(originalItem)
+        ? undefined
+        : articleFetchUrl(command.providerKey, originalItem));
+      const item = captureNativeText(
+        sanitizeArticleItem(originalItem, command.providerKey, captureUrl),
+        command.providerKey,
+        command.capturedAt,
+      );
+      if (fetchUrl === undefined || captureUrl === undefined) {
         enrichedItems.push(markArticleContent(item, { status: 'skipped', reason: 'no external article URL' }));
         skipped += 1;
         continue;
       }
 
+      if (command.signal?.aborted || (command.deadlineAt !== undefined && command.clock.now() >= command.deadlineAt) || (attempts >= this.maxItemsPerScan && !requests.has(fetchUrl))) {
+        enrichedItems.push(markArticleContent(item, { status: 'skipped', reason: 'scan item enrichment budget exceeded', reasonCode: 'scan_budget_exhausted' }));
+        skipped += 1;
+        continue;
+      }
+
       try {
-        const extraction = await this.extractor.extract({
-          url,
-          correlationId: command.correlationId,
-        });
+        let extraction = requests.get(fetchUrl);
+        if (extraction === undefined) {
+          attempts += 1;
+          try {
+            extraction = await this.extractor.extract({
+              url: fetchUrl, correlationId: command.correlationId, signal: command.signal,
+              ...(command.deadlineAt === undefined ? {} : {
+                remainingBudgetMs: command.deadlineAt.getTime() - command.clock.now().getTime(),
+              }),
+            });
+          } catch (error) {
+            extraction = { ok: false, sourceUrl: fetchUrl, reason: safeErrorReason(error),
+              reasonCode: error instanceof ContentHttpPolicyError ? error.reasonCode : 'network_or_timeout',
+              retryable: !(error instanceof ContentHttpPolicyError) };
+          }
+          requests.set(fetchUrl, extraction);
+        }
 
         if (!extraction.ok) {
-          enrichedItems.push(markArticleContent(item, { status: 'skipped', reason: extraction.reason }));
+          enrichedItems.push(markArticleContent(item, { status: 'skipped', reason: extraction.reason, reasonCode: extraction.reasonCode ?? 'unavailable', retryable: extraction.retryable ?? false, retryAfter: extraction.retryAfter }));
           skipped += 1;
           continue;
         }
 
+        const safeText = redactSensitiveText(extraction.text);
+        const redactionChanged = safeText !== extraction.text;
+        // HttpReadabilityArticleContentExtractor already measures and hashes a
+        // fully redacted representation before truncating it. Preserve that
+        // provenance. If an older/custom extractor hands us changed raw text,
+        // it cannot provide a trustworthy safe full-length/hash, so bind the
+        // persisted capture to the exact safe prefix instead.
+        const originalLength = redactionChanged ? safeText.length
+          : extraction.originalTextLength ?? safeText.length;
+        const fullTextSha256 = redactionChanged ? sha256(safeText)
+          : extraction.fullTextSha256 ?? sha256(safeText);
+        const captureTruncated = extraction.truncated === true || originalLength > safeText.length;
+        const captured = captureArticleText(item, {
+          text: safeText, sourceUrl: captureUrl, finalUrl: sanitizeCaptureUrl(extraction.finalUrl),
+          // Do not retain raw-length or raw-text hashes after redaction. A
+          // non-cooperating extractor may only give us a truncated raw prefix;
+          // retain that fact without claiming its raw length is the safe text.
+          originalLength,
+          fullTextSha256,
+          truncated: captureTruncated,
+          extractionVersion: extraction.extractionVersion ?? 'legacy_extractor',
+          acquiredAt: command.clock.now(),
+        });
         enrichedItems.push({
-          ...item,
-          title: item.title.trim().length > 0 ? item.title : extraction.title ?? item.title,
-          body: mergeBody(item.body, extraction.text),
-          metadata: articleContentMetadata(item.metadata, {
+          ...captured,
+          metadata: articleContentMetadata(captured.metadata, {
             status: 'enriched',
-            finalUrlHost: hostOf(extraction.finalUrl),
-            finalUrlSha256: sha256(extraction.finalUrl),
+            finalUrlHost: hostOf(sanitizeCaptureUrl(extraction.finalUrl)),
+            finalUrlSha256: sha256(sanitizeCaptureUrl(extraction.finalUrl)),
             contentHash: extraction.contentHash,
             semanticFingerprint: extraction.semanticFingerprint,
-            textLength: extraction.textLength,
+            textLength: safeText.length,
+            originalTextLength: originalLength,
+            truncated: captureTruncated,
+            fullTextSha256,
+            extractionVersion: extraction.extractionVersion ?? 'legacy_extractor',
             wordCount: extraction.wordCount,
           }),
         });
@@ -96,6 +147,8 @@ export class ArticleContentSourceItemEnrichmentAdapter implements SourceItemEnri
         enrichedItems.push(markArticleContent(item, {
           status: 'failed',
           reason: safeErrorReason(error),
+          reasonCode: error instanceof ContentHttpPolicyError ? error.reasonCode : 'network_or_timeout',
+          retryable: !(error instanceof ContentHttpPolicyError),
         }));
         failed += 1;
       }
@@ -113,47 +166,19 @@ export class ArticleContentSourceItemEnrichmentAdapter implements SourceItemEnri
 type ArticleContentMetadataInput = {
   readonly status: 'enriched' | 'skipped' | 'failed';
   readonly reason?: string;
+  readonly reasonCode?: string;
+  readonly retryable?: boolean;
+  readonly retryAfter?: string;
   readonly finalUrlHost?: string;
   readonly finalUrlSha256?: string;
   readonly contentHash?: string;
   readonly semanticFingerprint?: string;
   readonly textLength?: number;
+  readonly originalTextLength?: number;
+  readonly truncated?: boolean;
+  readonly fullTextSha256?: string;
+  readonly extractionVersion?: string;
   readonly wordCount?: number;
-};
-
-const articleUrlForItem = (providerKey: string, item: FetchedSourceItem): string | undefined => {
-  if (providerKey === 'reddit') {
-    const linkedUrl = readString(item.metadata, 'linkedUrl');
-
-    return linkedUrl === undefined || isDiscussionUrl(linkedUrl) ? undefined : linkedUrl;
-  }
-
-  if (isDiscussionUrl(item.canonicalUrl)) {
-    return undefined;
-  }
-
-  return item.canonicalUrl;
-};
-
-const isDiscussionUrl = (value: string): boolean => {
-  try {
-    return discussionHosts.has(new URL(value).hostname.toLocaleLowerCase('en-US'));
-  } catch {
-    return true;
-  }
-};
-
-const mergeBody = (existingBody: string, articleText: string): string => {
-  const existing = existingBody.trim();
-  if (existing.length === 0) {
-    return articleText;
-  }
-
-  if (articleText.includes(existing) || existing.includes(articleText)) {
-    return articleText.length >= existing.length ? articleText : existing;
-  }
-
-  return `${existing}\n\nArticle text:\n${articleText}`;
 };
 
 const markArticleContent = (
@@ -164,6 +189,26 @@ const markArticleContent = (
   metadata: articleContentMetadata(item.metadata, input),
 });
 
+const sanitizeArticleItem = (
+  item: FetchedSourceItem,
+  providerKey: string,
+  captureUrl: string | undefined,
+): FetchedSourceItem => {
+  const metadata = item.metadata === undefined ? undefined
+    : redactSensitiveRecord(item.metadata) as JsonObject;
+  const sourceUrlKey = providerKey === 'hacker-news' ? 'externalUrl'
+    : providerKey === 'reddit' ? 'linkedUrl' : undefined;
+  const safeMetadata = sourceUrlKey === undefined || metadata === undefined ? metadata
+    : captureUrl === undefined ? Object.fromEntries(Object.entries(metadata)
+      .filter(([key]) => key !== sourceUrlKey)) as JsonObject
+      : { ...metadata, [sourceUrlKey]: captureUrl };
+  return {
+    ...item,
+    canonicalUrl: sanitizeCaptureUrl(item.canonicalUrl),
+    metadata: safeMetadata,
+  };
+};
+
 const articleContentMetadata = (
   metadata: JsonObject | undefined,
   input: ArticleContentMetadataInput,
@@ -171,21 +216,22 @@ const articleContentMetadata = (
   ...(metadata ?? {}),
   articleContent: {
     status: input.status,
+    ...(input.reasonCode === undefined ? {} : { reasonCode: input.reasonCode }),
+    ...(input.retryable === undefined ? {} : { retryable: input.retryable }),
+    ...(input.retryAfter === undefined ? {} : { retryAfter: input.retryAfter.slice(0, 128) }),
     ...(input.reason === undefined ? {} : { reason: input.reason }),
     ...(input.finalUrlHost === undefined ? {} : { finalUrlHost: input.finalUrlHost }),
     ...(input.finalUrlSha256 === undefined ? {} : { finalUrlSha256: input.finalUrlSha256 }),
     ...(input.contentHash === undefined ? {} : { contentHash: input.contentHash }),
     ...(input.semanticFingerprint === undefined ? {} : { semanticFingerprint: input.semanticFingerprint }),
     ...(input.textLength === undefined ? {} : { textLength: input.textLength }),
+    ...(input.originalTextLength === undefined ? {} : { originalTextLength: input.originalTextLength }),
+    ...(input.truncated === undefined ? {} : { truncated: input.truncated }),
+    ...(input.fullTextSha256 === undefined ? {} : { fullTextSha256: input.fullTextSha256 }),
+    ...(input.extractionVersion === undefined ? {} : { extractionVersion: input.extractionVersion }),
     ...(input.wordCount === undefined ? {} : { wordCount: input.wordCount }),
   },
 });
-
-const readString = (metadata: JsonObject | undefined, key: string): string | undefined => {
-  const value: JsonValue | undefined = metadata?.[key];
-
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-};
 
 const hostOf = (value: string): string | undefined => {
   try {

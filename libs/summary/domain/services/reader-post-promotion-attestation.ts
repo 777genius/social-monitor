@@ -9,6 +9,7 @@ import {
   READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
   READER_POST_PROMOTION_DIGEST_VERSION,
   type ReaderPostPromotionAttestation,
+  type ReaderPostPromotionAttestationAny,
   type ReaderPostPromotionAttestationV2,
 } from "../policies/reader-post-promotion-policy";
 import {
@@ -176,7 +177,7 @@ export const promotionPayloadDigest = (canonicalPayload: string): string =>
   createHash("sha256").update(canonicalPayload, "utf8").digest("hex");
 
 export const verifyReaderPostPromotionAttestationDigest = (
-  attestation: ReaderPostPromotionAttestation,
+  attestation: ReaderPostPromotionAttestationAny,
 ): boolean => {
   const { digest, canonicalPayload, ...body } = attestation;
   return canonicalPayload === canonicalPromotionPayload(body) &&

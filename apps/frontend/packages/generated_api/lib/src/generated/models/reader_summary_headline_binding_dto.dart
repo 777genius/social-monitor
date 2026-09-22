@@ -19,7 +19,8 @@ class ReaderSummaryHeadlineBindingDto {
     required this.sourceBindingId,
     required this.sourceItemId,
     required this.tenantId,
-    required this.trustedIntent,
+    this.interestDigest,
+    this.trustedIntent,
     required this.workspaceId,
   });
 
@@ -34,7 +35,8 @@ class ReaderSummaryHeadlineBindingDto {
   final String sourceBindingId;
   final String sourceItemId;
   final String tenantId;
-  final String trustedIntent;
+  final String? interestDigest;
+  final String? trustedIntent;
   final String workspaceId;
 
   Map<String, Object?> toJson() =>

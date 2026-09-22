@@ -74,6 +74,7 @@ export type ReaderSummaryFactoryInput = {
   readonly qualityFlags: readonly ReaderSummaryQualityFlag[];
   readonly noSignalReason?: string;
   readonly editorialSlate?: ReaderSummaryEditorialSlate;
+  readonly promotionV3?: SummaryEvidenceSelection["promotionV3"];
 };
 
 export class ReaderSummary {
@@ -103,6 +104,7 @@ export class ReaderSummary {
       relatedTopicRelations: input.relatedTopicRelations,
       editorialSlate: input.editorialSlate,
       topStories: input.topStories,
+      promotionV3: input.promotionV3,
     });
     if (
       promotion.topReads.length === 0 &&

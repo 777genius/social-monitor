@@ -15,7 +15,7 @@ import {
 } from "@social-monitor/summary/ports";
 import { ExecuteReaderSummaryJobCommandHandler } from "@social-monitor/summary/interfaces/queue/execute-reader-summary-job-command.handler";
 import { READER_SUMMARY_JOB_REPOSITORY } from "@social-monitor/summary/interfaces/rest/summary-provider-tokens";
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { SystemClock, type Clock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
   INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS,
@@ -40,6 +40,7 @@ export class ReaderSummaryJobPollingLoop
     @Inject(INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS)
     private readonly options: IntelligenceReaderSummaryJobLoopOptions,
     private readonly commandIds: WorkerCommandIdFactory = WorkerCommandIdFactory.system(),
+    private readonly clock: Clock = new SystemClock(),
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -104,6 +105,7 @@ export class ReaderSummaryJobPollingLoop
     try {
       const jobs = await this.readerSummaryJobs.findRequested({
         limit: this.options.limit,
+        now: this.clock.now(),
         ...(this.options.tenantId === undefined
           ? {}
           : {

@@ -46,8 +46,12 @@ export class ReaderSummaryHeadlineBindingDto {
   @ApiProperty()
   declare readonly sourceItemId: string;
 
-  @ApiProperty()
-  declare readonly trustedIntent: string;
+  /** Legacy-only; V3 uses interestDigest and never returns plaintext. */
+  @ApiPropertyOptional()
+  declare readonly trustedIntent?: string;
+
+  @ApiPropertyOptional({ pattern: "^[0-9a-f]{64}$" })
+  declare readonly interestDigest?: string;
 
   @ApiProperty({ enum: ["title_only", "body_present"] })
   declare readonly availability: "title_only" | "body_present";

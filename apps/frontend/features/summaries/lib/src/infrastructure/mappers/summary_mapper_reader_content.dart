@@ -147,7 +147,6 @@ extension on SummaryMapper {
     );
   }
 }
-
 bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
   if (topReads.length > 8 || selectedPosts.length > 8) return false;
   final all = [...topReads, ...selectedPosts];
@@ -155,16 +154,28 @@ bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
       .map((item) => item.promotionAttestation)
       .whereType<ReaderPostPromotionAttestation>()
       .toList(growable: false);
+  final schemaVersions = attestations
+      .map((value) => value.schemaVersion)
+      .toSet();
   if (attestations.length != all.length ||
       attestations.map((value) => value.candidateId).toSet().length !=
           all.length ||
       attestations.map((value) => value.canonicalIdentity).toSet().length !=
           all.length ||
-      (attestations.any((value) => value.isV2) &&
-          !attestations.every((value) => value.isV2)) ||
+      schemaVersions.length != 1 ||
+      schemaVersions.any(
+        (value) => !const {
+          'reader_post_promotion_attestation.v1',
+          'reader_post_promotion_attestation.v2',
+          'reader_post_promotion_attestation.v3',
+        }.contains(value),
+      ) ||
       (attestations.isNotEmpty &&
           attestations.every((value) => value.isV2) &&
-          !_validV2PromotionSlate(attestations))) {
+          !_validV2PromotionSlate(attestations)) ||
+      (attestations.isNotEmpty &&
+          attestations.every((value) => value.isV3) &&
+          !_validV3PromotionSlate(topReads, selectedPosts))) {
     return false;
   }
   bool laneIsExact(
@@ -178,7 +189,8 @@ bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
     return item.cardKind == cardKind &&
         attestation != null &&
         attestation.placement == placement &&
-        attestation.slot == index + (attestation.isV2 ? 1 : 0) &&
+        attestation.slot ==
+            index + (attestation.isV2 || attestation.isV3 ? 1 : 0) &&
         attestation.decision == decision;
   });
   return laneIsExact(
@@ -193,6 +205,67 @@ bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
         ReaderPostPromotionPlacement.additional,
         'promote_additional',
       );
+}
+
+bool _validV3PromotionSlate(
+  List<TopRead> topReads,
+  List<TopRead> selectedPosts,
+) {
+  bool validLane(List<TopRead> items) {
+    final attestations = items
+        .map((item) => item.promotionAttestation!)
+        .toList();
+    if (attestations.any(
+      (value) =>
+          value.providerKey == null ||
+          value.storyId == null ||
+          value.exactPublishedAt == null ||
+          value.assessment == null ||
+          value.comparator == null ||
+          value.presentation == null,
+    )) {
+      return false;
+    }
+    for (var index = 1; index < attestations.length; index += 1) {
+      if (_compareV3Attestation(attestations[index - 1], attestations[index]) >
+          0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  return validLane(topReads) && validLane(selectedPosts);
+}
+
+int _compareV3Attestation(
+  ReaderPostPromotionAttestation left,
+  ReaderPostPromotionAttestation right,
+) {
+  const usefulness = {'important': 3, 'useful': 2};
+  const relevance = {'central': 3, 'relevant': 2};
+  final leftUsefulness = left.comparator?['usefulness'];
+  final rightUsefulness = right.comparator?['usefulness'];
+  final leftRelevance = left.comparator?['relevance'];
+  final rightRelevance = right.comparator?['relevance'];
+  if (!usefulness.containsKey(leftUsefulness) ||
+      !usefulness.containsKey(rightUsefulness) ||
+      !relevance.containsKey(leftRelevance) ||
+      !relevance.containsKey(rightRelevance)) {
+    return 1;
+  }
+  final semantic =
+      usefulness[rightUsefulness]! - usefulness[leftUsefulness]! != 0
+      ? usefulness[rightUsefulness]! - usefulness[leftUsefulness]!
+      : relevance[rightRelevance]! - relevance[leftRelevance]!;
+  if (semantic != 0) return semantic;
+  final leftPublishedAt = DateTime.tryParse(left.exactPublishedAt!);
+  final rightPublishedAt = DateTime.tryParse(right.exactPublishedAt!);
+  if (leftPublishedAt == null || rightPublishedAt == null) return 1;
+  final published = rightPublishedAt.compareTo(leftPublishedAt);
+  return published != 0
+      ? published
+      : left.candidateId.compareTo(right.candidateId);
 }
 
 bool _validV2PromotionSlate(List<ReaderPostPromotionAttestation> attestations) {

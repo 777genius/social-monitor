@@ -11,7 +11,10 @@ import {
   READER_POST_PROMOTION_POLICY_V1,
   type ReaderPostPromotionInput,
   type ReaderPostPromotionAttestation,
+  type ReaderPostPromotionAttestationAny,
 } from "../policies/reader-post-promotion-policy";
+import type { ReaderPostPromotionV3Selection } from
+  "../policies/reader-post-promotion-v3";
 import type {
   ApprovedSameStoryRelation,
   RelatedTopicRelation,
@@ -45,6 +48,8 @@ import { readerPostPromotionEvidenceInput } from "./reader-post-promotion-eviden
 
 import { capturedReaderSource, readerCapturedSourceDigest,
   readerPostPublishedHeadline } from "./reader-post-display-headline";
+import { buildReaderPostPromotionV3Projection } from
+  "./reader-post-promotion-v3-projection";
 
 export type ReaderPostPromotionProjection = {
   readonly topReads: readonly TopRead[];
@@ -53,7 +58,7 @@ export type ReaderPostPromotionProjection = {
   readonly admittedCitations: readonly ReaderSummaryCitation[];
   readonly admittedClusters: readonly StoryCluster[];
   readonly topClusterIds: ReadonlySet<string>;
-  readonly attestations: readonly ReaderPostPromotionAttestation[];
+  readonly attestations: readonly ReaderPostPromotionAttestationAny[];
   readonly attestedEvidenceFacts: readonly ReaderPostPromotionInput[];
   readonly evaluatedEvidence: readonly {
     readonly candidateId: string;
@@ -61,7 +66,7 @@ export type ReaderPostPromotionProjection = {
   }[];
 };
 
-export const buildReaderPostPromotionProjection = (params: {
+export type ReaderPostPromotionProjectionInput = {
   readonly evidence: readonly SummaryEvidenceItem[];
   readonly clusters: readonly StoryCluster[];
   readonly citations: readonly ReaderSummaryCitation[];
@@ -73,10 +78,19 @@ export const buildReaderPostPromotionProjection = (params: {
     "editorialSlate"
   >;
   readonly editorialSlate?: ReaderSummaryEditorialSlate;
+  readonly promotionV3?: ReaderPostPromotionV3Selection;
   readonly topStories?: readonly TopReadCandidate[];
-}): ReaderPostPromotionProjection => {
+};
+
+export const buildReaderPostPromotionProjection = (
+  params: ReaderPostPromotionProjectionInput,
+): ReaderPostPromotionProjection => {
   const evidenceById = uniqueEvidenceById(params.evidence);
   const citationByFeedItemId = citationByEvidenceId(params.citations);
+  if (params.promotionV3 !== undefined) {
+    return buildReaderPostPromotionV3Projection(params, evidenceById,
+      citationByFeedItemId);
+  }
   const clusterByEvidenceId = clusterMembership(params.clusters);
   const baseInputs = params.evidence.map((item) => {
     const citation = citationByFeedItemId.get(item.feedItemId);

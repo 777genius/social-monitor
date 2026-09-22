@@ -108,6 +108,8 @@ extension on SummaryMapper {
         promotionAttestation != null &&
         (!promotionAttestation.isV2 ||
             promotionAttestation.storyClusterId == storyClusterId) &&
+        (!promotionAttestation.isV3 ||
+            promotionAttestation.storyId == storyClusterId) &&
         _sameOrderedReaderCitationIds(
           promotionAttestation.citationIds,
           dto.citationIds,
@@ -259,6 +261,12 @@ extension on SummaryMapper {
           citationIds: List.unmodifiable(value.citationIds),
         ),
       },
+      assessment: dto.assessment,
+      comparator: dto.comparator,
+      presentation: dto.presentation,
+      providerKey: dto.providerKey,
+      storyId: dto.storyId,
+      exactPublishedAt: dto.exactPublishedAt,
     );
     return attestation;
   }

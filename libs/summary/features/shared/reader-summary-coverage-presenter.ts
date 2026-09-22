@@ -91,7 +91,9 @@ export const buildReaderSummaryCoverageView = (
   const selectedFeedItemCount = new Set(
     (snapshot.promotionAttestations ?? []).flatMap((attestation) => [
       attestation.candidateId,
-      ...attestation.supportFacts.map((fact) => fact.candidateId),
+      ...(attestation.schemaVersion === "reader_post_promotion_attestation.v3"
+        ? []
+        : attestation.supportFacts.map((fact) => fact.candidateId)),
     ]),
   ).size;
   const collectedFeedItemCount =

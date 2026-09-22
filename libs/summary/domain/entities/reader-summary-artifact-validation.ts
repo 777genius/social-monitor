@@ -56,6 +56,16 @@ export const assertReaderSummaryArtifactValid = (
     throw new Error("Reader summary source window end must be after start");
   }
 
+  const exactCutoff = props.sourceWindow.exactIngestionCutoff;
+  if (exactCutoff !== undefined && (
+    props.sourceWindow.ingestionCutoff === undefined ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u.test(exactCutoff) ||
+    !Number.isFinite(Date.parse(exactCutoff)) ||
+    Date.parse(exactCutoff) !== props.sourceWindow.ingestionCutoff.getTime()
+  )) {
+    throw new Error("Reader summary exact ingestion cutoff is invalid");
+  }
+
   if (
     props.sourceWindow.startedAt.getTime() < props.period.startedAt.getTime() ||
     props.sourceWindow.endedAt.getTime() > props.period.endedAt.getTime()

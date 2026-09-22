@@ -14,6 +14,8 @@ import {
   type ReaderSummaryScheduleSettings,
   type ReaderSummaryPolicyTone,
   type ReaderSummaryScope,
+  assertReaderSummarySelectionStrategy,
+  canonicalReaderSummaryPreparationTimestamp,
   type ScheduledReaderSummaryCadence,
   readerSummaryScopeKey,
 } from "../../../domain";
@@ -53,6 +55,17 @@ export type PrismaReaderSummaryJobRecord = {
   readonly failedAt: Date | null;
   readonly readerSummaryArtifactId: string | null;
   readonly failureReason: string | null;
+  readonly terminalFailureCode?: string | null;
+  readonly selectionStrategy?: string | null;
+  readonly preparationConfig?: unknown | null;
+  readonly preparationManifest?: unknown | null;
+  readonly preparationManifestSha256?: string | null;
+  readonly preparationCutoffAt?: Date | null;
+  readonly preparationDeadlineAt?: Date | null;
+  readonly preparationCutoffAtText?: string | null;
+  readonly preparationDeadlineAtText?: string | null;
+  readonly preparationNextCheckAt?: Date | null;
+  readonly preparationReadyAt?: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
@@ -129,8 +142,12 @@ export type PrismaReaderSummaryPolicyRecord = {
 
 export const readerSummaryJobFromPrisma = (
   record: PrismaReaderSummaryJobRecord,
-): ReaderSummaryJob =>
-  ReaderSummaryJob.rehydrate({
+): ReaderSummaryJob => {
+  const selectionStrategy = record.selectionStrategy ?? undefined;
+  if (selectionStrategy !== undefined) {
+    assertReaderSummarySelectionStrategy(selectionStrategy);
+  }
+  return ReaderSummaryJob.rehydrate({
     id: record.id,
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
@@ -151,7 +168,33 @@ export const readerSummaryJobFromPrisma = (
     failedAt: record.failedAt ?? undefined,
     readerSummaryId: record.readerSummaryArtifactId ?? undefined,
     failureReason: record.failureReason ?? undefined,
+    selectionStrategy,
+    preparationConfig: (record.preparationConfig ?? undefined) as ReaderSummaryJobProps["preparationConfig"],
+    preparationManifest: (record.preparationManifest ?? undefined) as ReaderSummaryJobProps["preparationManifest"],
+    preparationManifestSha256: record.preparationManifestSha256 ?? undefined,
+    preparationCutoffAt: exactPreparationTimestamp(
+      record.preparationCutoffAtText,
+      record.preparationCutoffAt,
+    ),
+    preparationDeadlineAt: exactPreparationTimestamp(
+      record.preparationDeadlineAtText,
+      record.preparationDeadlineAt,
+    ),
+    preparationNextCheckAt: record.preparationNextCheckAt ?? undefined,
+    preparationReadyAt: record.preparationReadyAt ?? undefined,
+    terminalFailureCode: (record.terminalFailureCode ?? undefined) as
+      ReaderSummaryJobProps["terminalFailureCode"],
   } satisfies ReaderSummaryJobProps);
+};
+
+const exactPreparationTimestamp = (
+  text: string | null | undefined,
+  fallback: Date | null | undefined,
+): string | undefined => text !== null && text !== undefined
+  ? canonicalReaderSummaryPreparationTimestamp(text)
+  : fallback === null || fallback === undefined
+    ? undefined
+    : canonicalReaderSummaryPreparationTimestamp(fallback);
 
 export const readerSummaryArtifactFromPrisma = (
   record: PrismaReaderSummaryArtifactRecord,

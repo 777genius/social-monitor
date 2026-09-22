@@ -449,7 +449,7 @@ describe("ExecuteScanUseCase", () => {
         metadata: {
           accessToken: REDACTED_VALUE,
           nested: {
-            url: REDACTED_VALUE,
+            url: "https://example.test/source",
           },
         },
       }),

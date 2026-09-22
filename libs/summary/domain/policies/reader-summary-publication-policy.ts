@@ -21,6 +21,8 @@ import type {
 import { publicationShadowReport } from "./reader-summary-publication-shadow";
 import { promotionPublicationFindings } from "./reader-summary-promotion-publication-verification";
 import { readerSummaryPromotionPublicationOracle } from "./reader-summary-promotion-publication-oracle";
+import { readerSummaryV3PromotionFindings } from
+  "./reader-summary-v3-publication";
 import {
   READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
   READER_POST_PROMOTION_POLICY_V1,
@@ -74,31 +76,35 @@ export class ReaderSummaryPublicationPolicy {
       ...readerDisplayPublicationFindings(snapshot, params.evidence),
     ];
 
-    const verification = readerSummaryPromotionPublicationOracle({
-      evidence: params.evidence.selectedEvidence,
-      citations: independentPromotionCitations(
-        params.evidence.selectedEvidence,
-        snapshot.citationMap,
-      ),
-      sourceWindow: params.evidence.sourceWindow,
-      clusters: params.evidence.clusters,
-      approvedSameStoryRelations: params.evidence.approvedSameStoryRelations,
-      relatedTopicRelations: params.evidence.relatedTopicRelations,
-      editorialSlate: params.evidence.editorialSlate,
-    });
-    rejectionFindings.push(
-      ...promotionPublicationFindings({
-        expectedTop: verification.top,
-        expectedAdditional: verification.additional,
-        actualTop: snapshot.content?.topReads ?? [],
-        actualSelected: (snapshot.content?.selectedPosts ?? []).filter(
-          (item) => !isGitHubReaderItem(item),
+    if (params.evidence.promotionV3 !== undefined) {
+      rejectionFindings.push(...readerSummaryV3PromotionFindings(snapshot, params.evidence));
+    } else {
+      const verification = readerSummaryPromotionPublicationOracle({
+        evidence: params.evidence.selectedEvidence,
+        citations: independentPromotionCitations(
+          params.evidence.selectedEvidence,
+          snapshot.citationMap,
         ),
-        expectedPolicyVersion: params.evidence.editorialSlate === undefined
-          ? READER_POST_PROMOTION_POLICY_V1.version
-          : READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
-      }),
-    );
+        sourceWindow: params.evidence.sourceWindow,
+        clusters: params.evidence.clusters,
+        approvedSameStoryRelations: params.evidence.approvedSameStoryRelations,
+        relatedTopicRelations: params.evidence.relatedTopicRelations,
+        editorialSlate: params.evidence.editorialSlate,
+      });
+      rejectionFindings.push(
+        ...promotionPublicationFindings({
+          expectedTop: verification.top,
+          expectedAdditional: verification.additional,
+          actualTop: snapshot.content?.topReads ?? [],
+          actualSelected: (snapshot.content?.selectedPosts ?? []).filter(
+            (item) => !isGitHubReaderItem(item),
+          ),
+          expectedPolicyVersion: params.evidence.editorialSlate === undefined
+            ? READER_POST_PROMOTION_POLICY_V1.version
+            : READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
+        }),
+      );
+    }
 
     if (!noSignal && topReads.length === 0) {
       rejectionFindings.push({

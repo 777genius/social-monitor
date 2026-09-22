@@ -106,6 +106,7 @@ void main() {
           enclosingPeriodStart: DateTime.parse('2026-08-18T00:00:00.000Z'),
           enclosingPeriodEnd: DateTime.parse('2026-08-19T00:00:00.000Z'),
           enclosingIngestionCutoff: DateTime.parse('2026-08-18T23:00:00.000Z'),
+          enclosingExactIngestionCutoff: null,
         ),
         isNotNull,
       );

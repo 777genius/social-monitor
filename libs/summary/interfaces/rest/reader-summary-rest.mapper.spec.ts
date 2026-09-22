@@ -158,6 +158,7 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
     (original.authorityAttestation as { official: boolean }).official = false;
     (original.citationIds as string[]).push("forged-input-citation");
     const protectedSnapshot = artifact.toSnapshot().promotionAttestations![0]!;
+    if (protectedSnapshot.schemaVersion === "reader_post_promotion_attestation.v3") throw new Error("fixture");
     expect(protectedSnapshot.publishedAt.getUTCFullYear()).toBe(2026);
     expect(protectedSnapshot.citationIds).toEqual(["citation-1"]);
     expect(protectedSnapshot.authorityAttestation?.official).toBe(true);
@@ -169,8 +170,9 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       checkedAt: new Date("2026-06-06T00:05:00.000Z"),
     });
     const mutableSnapshot = artifact.toSnapshot();
-    mutableSnapshot.promotionAttestations?.[0]?.publishedAt.setUTCFullYear(2000);
     const mutableAttestation = mutableSnapshot.promotionAttestations?.[0];
+    if (mutableAttestation?.schemaVersion === "reader_post_promotion_attestation.v3") throw new Error("fixture");
+    mutableAttestation?.publishedAt.setUTCFullYear(2000);
     if (mutableAttestation?.metrics?.provider === "github_radar") {
       mutableAttestation.metrics.windowStartedAt.setUTCFullYear(2000);
     }
@@ -181,6 +183,7 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       new Date("2026-06-06T00:00:00.000Z"),
     );
     const afterMutation = artifact.toSnapshot().promotionAttestations![0]!;
+    if (afterMutation.schemaVersion === "reader_post_promotion_attestation.v3") throw new Error("fixture");
     expect(afterMutation.authorityAttestation?.official).toBe(true);
     if (afterMutation.metrics?.provider === "github_radar") {
       expect(afterMutation.metrics.windowStartedAt.getUTCFullYear()).toBe(2026);

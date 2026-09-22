@@ -7,6 +7,8 @@ import {
   redactSensitiveRecord,
   redactSensitiveResponseText,
   redactSensitiveText,
+  sanitizeUrlCredentials,
+  urlContainsCredentials,
 } from './redaction';
 
 describe('redaction helpers', () => {
@@ -65,6 +67,40 @@ describe('redaction helpers', () => {
       'See token=memory-leak, secret=another-leak, private_key=key-leak, {"access_token":"json-leak"} and https://user:pass@example.test/feed.',
     )).toBe(
       `See token=${REDACTED_VALUE}, secret=${REDACTED_VALUE}, private_key=${REDACTED_VALUE}, {"access_token":"${REDACTED_VALUE}"} and https://${REDACTED_VALUE}@example.test/feed.`,
+    );
+  });
+
+  it('removes signed URL credentials individually while preserving semantic query identity', () => {
+    const azure = 'https://blob.example.test/report?sv=2025-01-05&se=2030-01-01&sp=r&sig=fixture-azure&edition=west';
+    const aws = 'https://object.example.test/report?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=fixture&part=2&X-Amz-Signature=fixture-signature';
+    const google = 'https://storage.example.test/report?X-Goog-Algorithm=GOOG4-RSA-SHA256&chapter=7&X-Goog-Signature=fixture-signature';
+    const legacyGoogle = 'https://storage.example.test/report?GoogleAccessId=fixture-id&Expires=1900000000&Signature=fixture-signature&chapter=8';
+
+    expect(sanitizeUrlCredentials(azure)).toBe('https://blob.example.test/report?edition=west');
+    expect(sanitizeUrlCredentials(aws)).toBe('https://object.example.test/report?part=2');
+    expect(sanitizeUrlCredentials(google)).toBe('https://storage.example.test/report?chapter=7');
+    expect(sanitizeUrlCredentials(legacyGoogle)).toBe('https://storage.example.test/report?chapter=8');
+    expect(redactSensitiveText(`download ${azure}`)).toBe(
+      'download https://blob.example.test/report?edition=west',
+    );
+    expect(redactSensitiveRecord({ downloadUrl: azure })).toEqual({
+      downloadUrl: 'https://blob.example.test/report?edition=west',
+    });
+    expect(urlContainsCredentials(azure)).toBe(true);
+  });
+
+  it('does not classify short semantic parameters as Azure credentials without a signature', () => {
+    expect(sanitizeUrlCredentials(
+      'https://example.test/search?sv=semantic-version&se=southeast&key=topic&x-amz-meta-label=report',
+    )).toBe('https://example.test/search?sv=semantic-version&se=southeast&key=topic&x-amz-meta-label=report');
+  });
+
+  it('does not let a credential value consume following ordinary parameters', () => {
+    expect(redactSensitiveText('https://example.test/article?token=fixture&edition=north')).toBe(
+      'https://example.test/article?edition=north',
+    );
+    expect(redactSensitiveText('failed token=fixture&edition=north')).toBe(
+      `failed token=${REDACTED_VALUE}&edition=north`,
     );
   });
 

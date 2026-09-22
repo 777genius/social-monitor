@@ -487,8 +487,9 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
     if (inputFact.metrics?.provider === "hacker_news") {
       (inputFact.metrics as { points: number }).points = 0;
     }
-    const snapshotFact = artifact.toSnapshot().promotionAttestations![0]!
-      .supportFacts[0]!;
+    const snapshotAttestation = artifact.toSnapshot().promotionAttestations![0]!;
+    if (snapshotAttestation.schemaVersion === "reader_post_promotion_attestation.v3") throw new Error("fixture");
+    const snapshotFact = snapshotAttestation.supportFacts[0]!;
     expect(snapshotFact.publishedAt.getUTCFullYear()).toBe(2026);
     expect(snapshotFact.relation?.confidence).toBe(0.95);
     expect(snapshotFact.authorityAttestation?.official).toBe(true);
@@ -497,8 +498,9 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
     snapshotFact.publishedAt.setUTCFullYear(2000);
     (snapshotFact.relation as { confidence: number }).confidence = 0;
     (snapshotFact.authorityAttestation as { official: boolean }).official = false;
-    const protectedFact = artifact.toSnapshot().promotionAttestations![0]!
-      .supportFacts[0]!;
+    const protectedAttestation = artifact.toSnapshot().promotionAttestations![0]!;
+    if (protectedAttestation.schemaVersion === "reader_post_promotion_attestation.v3") throw new Error("fixture");
+    const protectedFact = protectedAttestation.supportFacts[0]!;
     expect(protectedFact.publishedAt.getUTCFullYear()).toBe(2026);
     expect(protectedFact.relation?.confidence).toBe(0.95);
     expect(protectedFact.authorityAttestation?.official).toBe(true);

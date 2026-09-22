@@ -8,7 +8,7 @@ const basicPattern = /^basic\s+(?!client\b)[A-Za-z0-9._~+/-]{8,}=*/i;
 const generatedSecretPattern = /^(?:smk|whsec)_[A-Za-z0-9_-]+/;
 const urlWithPasswordPattern = /^[a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:[^@\s]+@/i;
 const inlineCredentialPattern =
-  /\b((?:access|refresh|id)?[_-]?token|api[_-]?key|client[_-]?secret|secret|credential|authorization|password|session|cookie|signature|private[_-]?key)\s*[:=]\s*([^\s'",<>{}]+)/gi;
+  /\b((?:access|refresh|id)?[_-]?token|api[_-]?key|client[_-]?secret|secret|credential|authorization|password|session|cookie|signature|private[_-]?key)\s*[:=]\s*([^\s'",<>{}&?#]+)/gi;
 const inlineJsonCredentialPattern =
   /"((?:access|refresh|id)?[_-]?token|api[_-]?key|client[_-]?secret|secret|credential|authorization|password|session|cookie|signature|private[_-]?key)"\s*:\s*"[^"]+"/gi;
 const inlineBearerPattern = /\b(?:bearer|basic)\s+(?!jwt\b|client\b)[A-Za-z0-9._~+/-]{8,}=*/gi;
@@ -22,6 +22,85 @@ const sensitiveTextFragmentPatterns = [
 
 export const isSensitiveKey = (key: string): boolean => sensitiveKeyPattern.test(key);
 
+const commonUrlCredentialKeys = new Set([
+  'access-token', 'access_token', 'accesstoken', 'api-key', 'api_key', 'apikey',
+  'auth', 'authorization', 'auth-token', 'auth_token', 'authtoken', 'client-secret',
+  'client_secret', 'credential', 'id-token', 'id_token', 'idtoken', 'jwt',
+  'oauth-token', 'oauth_token', 'password', 'refresh-token', 'refresh_token',
+  'refreshtoken', 'secret', 'session', 'signature', 'token',
+]);
+const azureSignedUrlKeys = new Set([
+  'rscc', 'rscd', 'rsce', 'rscl', 'rsct', 'scid', 'se', 'ses', 'si', 'sig', 'sip',
+  'skoid', 'sks', 'skt', 'sktid', 'skv', 'sp', 'spr', 'sr', 'srt', 'ss', 'st', 'sv',
+]);
+const awsV4SignedUrlKeys = new Set([
+  'x-amz-algorithm', 'x-amz-content-sha256', 'x-amz-credential', 'x-amz-date',
+  'x-amz-expires', 'x-amz-security-token', 'x-amz-signature', 'x-amz-signedheaders',
+]);
+const googleV4SignedUrlKeys = new Set([
+  'x-goog-algorithm', 'x-goog-content-sha256', 'x-goog-credential', 'x-goog-date',
+  'x-goog-expires', 'x-goog-signature', 'x-goog-signedheaders',
+]);
+
+/**
+ * URL query credentials need more context than record keys. In particular,
+ * short Azure names such as `se` and `sv` are only credentials when the query
+ * also carries an Azure signature, while provider-prefixed AWS/Google keys are
+ * unambiguous on their own.
+ */
+export const isSensitiveUrlCredentialKey = (
+  key: string,
+  queryKeys: readonly string[] = [key],
+): boolean => isSensitiveNormalizedUrlCredentialKey(
+  key.toLowerCase(),
+  new Set(queryKeys.map((entry) => entry.toLowerCase())),
+);
+
+const isSensitiveNormalizedUrlCredentialKey = (
+  normalized: string,
+  normalizedKeys: ReadonlySet<string>,
+): boolean => {
+  if (commonUrlCredentialKeys.has(normalized)) return true;
+  if (awsV4SignedUrlKeys.has(normalized) || googleV4SignedUrlKeys.has(normalized)) return true;
+  if (['awsaccesskeyid', 'googleaccessid', 'key-pair-id'].includes(normalized)) return true;
+  if (normalized === 'expires' && ['awsaccesskeyid', 'googleaccessid', 'key-pair-id']
+    .some((companion) => normalizedKeys.has(companion))) return true;
+  if (normalized === 'policy' && normalizedKeys.has('key-pair-id')) return true;
+  return azureSignedUrlKeys.has(normalized) && normalizedKeys.has('sig');
+};
+
+export const urlContainsCredentials = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    const keys = [...url.searchParams.keys()];
+    const normalizedKeys = new Set(keys.map((key) => key.toLowerCase()));
+    return url.username.length > 0 || url.password.length > 0 ||
+      keys.some((key) => isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedKeys));
+  } catch {
+    return false;
+  }
+};
+
+/** Parse first so one credential value can never consume a following query parameter. */
+export const sanitizeUrlCredentials = (value: string): string => {
+  try {
+    const url = new URL(value);
+    const keys = [...url.searchParams.keys()];
+    const normalizedKeys = new Set(keys.map((key) => key.toLowerCase()));
+    url.username = '';
+    url.password = '';
+    url.hash = '';
+    const retained = [...url.searchParams.entries()].filter(
+      ([key]) => !isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedKeys),
+    );
+    url.search = '';
+    for (const [key, entry] of retained) url.searchParams.append(key, entry);
+    return url.toString();
+  } catch {
+    return redactSensitiveTextFallback(value);
+  }
+};
+
 export const isSensitiveString = (value: string): boolean =>
   bearerPattern.test(value) ||
   basicPattern.test(value) ||
@@ -29,11 +108,24 @@ export const isSensitiveString = (value: string): boolean =>
   urlWithPasswordPattern.test(value);
 
 export const redactSensitiveText = (value: string): string =>
+  redactUrlPasswords(redactEmbeddedUrlCredentials(value)
+    .replace(inlineJsonCredentialPattern, (_match, key: string) => `"${key}":"${REDACTED_VALUE}"`)
+    .replace(inlineBearerPattern, REDACTED_VALUE)
+    .replace(inlineCredentialPattern, (_match, key: string) => `${key}=${REDACTED_VALUE}`)
+    .replace(inlineGeneratedSecretPattern, REDACTED_VALUE));
+
+const redactSensitiveTextFallback = (value: string): string =>
   redactUrlPasswords(value
     .replace(inlineJsonCredentialPattern, (_match, key: string) => `"${key}":"${REDACTED_VALUE}"`)
     .replace(inlineBearerPattern, REDACTED_VALUE)
     .replace(inlineCredentialPattern, (_match, key: string) => `${key}=${REDACTED_VALUE}`)
     .replace(inlineGeneratedSecretPattern, REDACTED_VALUE));
+
+const redactEmbeddedUrlCredentials = (value: string): string =>
+  !value.includes('?') ? value : value.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>{}]+/gi, (candidate) => {
+    if (!candidate.includes('?') || !urlContainsCredentials(candidate)) return candidate;
+    return sanitizeUrlCredentials(candidate);
+  });
 
 export const countSensitiveTextFragments = (value: string): number =>
   sensitiveTextFragmentPatterns.reduce(

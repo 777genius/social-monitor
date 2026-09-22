@@ -8,7 +8,8 @@ import { isTopReadEligibleEvidence } from "../../domain/policies/top-read-eligib
 const baselineTextLimit = 600;
 const expandedCandidateLimit = 25;
 const expandedSourceLimit = 2_500;
-const sourceHydrationLimit = 50_000;
+const legacySourceHydrationLimit = 50_000;
+const v3SourceHydrationLimit = 64_000;
 const relevantFragmentLimit = 780;
 const maxRelevantFragments = 3;
 
@@ -18,6 +19,13 @@ export const buildAdaptiveReaderSummaryEvidence = (
   citationIdByFeedItemId?: ReadonlyMap<string, string>,
 ): readonly Record<string, unknown>[] => {
   const expandedIds = expandedEvidenceIds(selection, coveragePlan);
+  const verifiedV3PresentationIds = new Set([
+    ...(selection.promotionV3?.top ?? []),
+    ...(selection.promotionV3?.additional ?? []),
+  ].filter((candidate) => candidate.presentation.status === "available")
+    .map((candidate) => candidate.candidateId));
+  const sourceHydrationLimit = selection.promotionV3 === undefined
+    ? legacySourceHydrationLimit : v3SourceHydrationLimit;
 
   return selection.selectedEvidence.map((item, index) =>
     promptEvidenceItem(
@@ -25,6 +33,8 @@ export const buildAdaptiveReaderSummaryEvidence = (
       index,
       expandedIds.has(item.feedItemId),
       citationIdByFeedItemId?.get(item.feedItemId) ?? `c${index + 1}`,
+      sourceHydrationLimit,
+      verifiedV3PresentationIds.has(item.feedItemId),
     ),
   );
 };
@@ -42,7 +52,9 @@ const expandedEvidenceIds = (
     if (
       result.size < expandedCandidateLimit &&
       evidence !== undefined &&
-      normalizeSourceText(evidence.sourceText ?? evidence.bodyPreview) !==
+      normalizeSourceText(evidence.sourceText ?? evidence.bodyPreview,
+        selection.promotionV3 === undefined ? legacySourceHydrationLimit :
+          v3SourceHydrationLimit) !==
         undefined
     ) {
       result.add(feedItemId);
@@ -82,6 +94,8 @@ const promptEvidenceItem = (
   index: number,
   expanded: boolean,
   citationId: string,
+  sourceHydrationLimit: number,
+  verifiedV3Presentation: boolean,
 ): Record<string, unknown> => {
   const baselineSource = item.sourceText ?? item.bodyPreview;
 
@@ -97,7 +111,9 @@ const promptEvidenceItem = (
       baselineSource === undefined
         ? undefined
         : compactText(baselineSource, baselineTextLimit),
-    sourceContent: expanded ? adaptiveSourceContent(item) : undefined,
+    sourceContent: expanded ? adaptiveSourceContent(item, sourceHydrationLimit) : undefined,
+    acceptedReaderPresentation: verifiedV3Presentation
+      ? acceptedReaderPresentation(item) : undefined,
     canonicalUrl: item.canonicalUrl,
     authorHandle: item.authorHandle,
     publishedAt: item.publishedAt.toISOString(),
@@ -127,8 +143,10 @@ const promptEvidenceItem = (
 
 const adaptiveSourceContent = (
   item: SummaryEvidenceItem,
+  sourceHydrationLimit: number,
 ): Record<string, unknown> | undefined => {
-  const source = normalizeSourceText(item.sourceText ?? item.bodyPreview);
+  const source = normalizeSourceText(item.sourceText ?? item.bodyPreview,
+    sourceHydrationLimit);
   if (source === undefined) {
     return undefined;
   }
@@ -266,7 +284,8 @@ const sourceStopWords = new Set([
   "with",
 ]);
 
-const normalizeSourceText = (value: string | undefined): string | undefined => {
+const normalizeSourceText = (value: string | undefined,
+  sourceHydrationLimit: number): string | undefined => {
   const normalized = value
     ?.slice(0, sourceHydrationLimit)
     .replace(/\[([^\]]+)\]\(\s*https?:\/\/[^)\s]+\s*\)/giu, "$1")
@@ -277,6 +296,22 @@ const normalizeSourceText = (value: string | undefined): string | undefined => {
   return normalized === undefined || normalized.length === 0
     ? undefined
     : normalized;
+};
+
+const acceptedReaderPresentation = (
+  item: SummaryEvidenceItem,
+): Record<string, unknown> | undefined => {
+  const headline = item.readerHeadline;
+  if (headline?.status !== "accepted" ||
+      headline.binding.candidateId !== item.feedItemId) return undefined;
+  return {
+    headline: headline.text,
+    kind: headline.kind,
+    support: headline.support,
+    qualifications: headline.qualifications,
+    qualificationJudgment: headline.wholeInput.qualificationJudgment,
+    reviewedBodyLength: headline.wholeInput.bodyLength,
+  };
 };
 
 const compactConversationContext = (

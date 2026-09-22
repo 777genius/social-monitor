@@ -41,3 +41,18 @@ _readerSummaryStoryClusterAuthorities(
       ),
     )
     .toList(growable: false);
+
+String _readerSummaryBodyText({
+  required String executiveSummary,
+  required String? noSignalReason,
+}) {
+  final parts = <String>[
+    executiveSummary,
+    ...?noSignalReason == null ? null : <String>[noSignalReason],
+  ];
+  final normalized = parts
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty)
+      .join(' ');
+  return normalized.isEmpty ? 'No summary available' : normalized;
+}
