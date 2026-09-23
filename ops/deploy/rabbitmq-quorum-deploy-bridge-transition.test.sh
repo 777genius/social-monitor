@@ -83,7 +83,8 @@ assert_reviewed_upload_delta() {
 }
 
 assert_rolling_entrypoint_bridge() {
-  local current bridge_blob current_blob bridge_file current_file variant
+  local current bridge_blob current_blob bridge_file candidate_file variant
+  local reviewed_candidate_blob=d245faeac28a99be7c22ecec3d330698059fba12
   current=$(git -C "$PROJECT_ROOT" rev-parse 'HEAD^{commit}')
   REPO=$PROJECT_ROOT
   fail() { printf 'rolling-entrypoint-bridge-error: %s\n' "$*" >&2; exit 1; }
@@ -97,27 +98,32 @@ assert_rolling_entrypoint_bridge() {
   current_blob=$(git -C "$PROJECT_ROOT" rev-parse \
     'HEAD:ops/deploy/social-monitor-production-deploy.sh')
   bridge_file=$FIXTURE/rolling-bridge.sh
-  current_file=$FIXTURE/rolling-current.sh
+  candidate_file=$FIXTURE/rolling-reviewed-uploader.sh
   git -C "$PROJECT_ROOT" cat-file blob "$bridge_blob" > "$bridge_file"
-  cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" "$current_file"
-  current_blob=$(git -C "$PROJECT_ROOT" hash-object "$current_file")
-  [[ $current_blob == d245faeac28a99be7c22ecec3d330698059fba12 ]]
-  # Keep W==HEAD unless the exact reviewed uploader delta is proven.
-  [[ $bridge_blob == "$current_blob" ]] || assert_reviewed_upload_delta "$bridge_file" "$current_file" || {
-    echo 'rolling entrypoint bridge has an unreviewed current-release delta' >&2
+  git -C "$PROJECT_ROOT" cat-file blob "$reviewed_candidate_blob" > "$candidate_file"
+  chmod 0644 "$candidate_file"
+  [[ $current_blob == 4322ac0ed50279d168db0dd71f0a6844c417c934 &&
+     $(git -C "$PROJECT_ROOT" hash-object "$SCRIPT_DIR/social-monitor-production-deploy.sh") == "$current_blob" ]] || {
+    echo 'current rolling entrypoint differs from the pinned release' >&2
+    exit 1
+  }
+  # Compare W with the historical reviewed uploader, independent of HEAD.
+  [[ $bridge_blob == "$reviewed_candidate_blob" ]] || \
+    assert_reviewed_upload_delta "$bridge_file" "$candidate_file" || {
+    echo 'rolling entrypoint bridge has an unreviewed uploader delta' >&2
     exit 1
   }
   assert_reviewed_upload_delta "$bridge_file" "$bridge_file"
   for variant in extra-edit missing-timeout missing-fallback wrong-umask missing symlink mode-drift; do
-    cp "$current_file" "$FIXTURE/$variant.sh"
+    cp "$candidate_file" "$FIXTURE/$variant.sh"
     case $variant in
       missing) rm "$FIXTURE/$variant.sh" ;;
-      symlink) rm "$FIXTURE/$variant.sh"; ln -s "$current_file" "$FIXTURE/$variant.sh" ;;
+      symlink) rm "$FIXTURE/$variant.sh"; ln -s "$candidate_file" "$FIXTURE/$variant.sh" ;;
       mode-drift) chmod 0755 "$FIXTURE/$variant.sh" ;;
       extra-edit) printf '\n# unreviewed edit\n' >> "$FIXTURE/$variant.sh" ;;
-      missing-timeout) sed '/(umask 022; timeout /d' "$current_file" > "$FIXTURE/$variant.sh" ;;
-      missing-fallback) sed '/(umask 022; tar /d' "$current_file" > "$FIXTURE/$variant.sh" ;;
-      wrong-umask) sed 's/umask 022;/umask 000;/' "$current_file" > "$FIXTURE/$variant.sh" ;;
+      missing-timeout) sed '/(umask 022; timeout /d' "$candidate_file" > "$FIXTURE/$variant.sh" ;;
+      missing-fallback) sed '/(umask 022; tar /d' "$candidate_file" > "$FIXTURE/$variant.sh" ;;
+      wrong-umask) sed 's/umask 022;/umask 000;/' "$candidate_file" > "$FIXTURE/$variant.sh" ;;
     esac
     if assert_reviewed_upload_delta "$bridge_file" "$FIXTURE/$variant.sh"; then
       printf 'unreviewed uploader variant was accepted: %s\n' "$variant" >&2
@@ -173,13 +179,16 @@ assert_real_bridge_target_assets() {
         expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
         alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
         reviewed_digest=cc869266046dbe9edc590e83944e93bab8ebdf19e8ef66f4917c896bbd48fcde
-        current_release_digest=b15e93451395568d49c2a1ef9c9ae86ace1320ef18e68ea42b2b90d9963529da
+        current_release_digest=3295d8c6c0056284828c016c4a8d8b170dfc72b6e22b879aca9679c1c882e0fc
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
         # The ordinary-release controller preserves the frozen B0 authority
         # and verifies current installed bytes before treating recovery as a no-op.
-        current_release_digest=78e9a52cf2c4775160a959e8dd695cb1fc35e745066e221bec473cf5ad861b57
+        current_release_digest=fa3a3078cfcc485b1d39be5155c458317f911d5cceef201e50b311a8574c0264
+        ;;
+      ops/deploy/x-collector-image-deploy-lib.sh)
+        current_release_digest=77e4cf95a66a30b36c0095680b7edf65b7cdad7e3e553e738811cf8a96ce6ecf
         ;;
       ops/deploy/postgres-runtime-deploy-lib.sh)
         expected_digest=261fb030bea2f203564c59e0c22db8058b310fb5d979c7db622938fe6045545a
