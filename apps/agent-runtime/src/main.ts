@@ -7,9 +7,13 @@ import "reflect-metadata";
 import { createAgentRuntimeGrpcService } from "./agent-runtime-grpc-service";
 import { resolveAgentRuntimeSettings } from "./agent-runtime-settings";
 import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-executor";
+import { FileSubscriptionRuntimeInstallationInspector } from "./subscription-runtime-installation";
 
 async function bootstrap(): Promise<void> {
   const settings = resolveAgentRuntimeSettings(process.env);
+  if (settings.strictAdmission !== undefined) {
+    await new FileSubscriptionRuntimeInstallationInspector().inspect(settings.cli.command);
+  }
   const server = new Server();
   const executor = new SubscriptionRuntimeCliExecutor(settings.cli);
 
@@ -17,6 +21,7 @@ async function bootstrap(): Promise<void> {
     AgentRuntimeServiceService,
     createAgentRuntimeGrpcService(executor, {
       serviceToken: settings.serviceToken,
+      strictAdmission: settings.strictAdmission,
     }),
   );
 

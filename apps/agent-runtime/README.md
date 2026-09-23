@@ -65,6 +65,39 @@ Important env:
 - `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`, manifest path inside the pool root
 - `AGENT_RUNTIME_CLAUDE_TOKEN_ENV`, default `CLAUDE_CODE_OAUTH_TOKEN`
 
+## Opt-in strict gRPC admission
+
+Set `AGENT_RUNTIME_STRICT_PRODUCTION_ADMISSION=1` to enable strict admission.
+The default remains compatible with existing source DO and Agent Teams callers.
+Strict startup requires all of these explicit values:
+
+- `AGENT_RUNTIME_SERVICE_TOKEN`: nonempty bearer token required by both RPCs.
+- `AGENT_RUNTIME_GRPC_BIND`: numeric private or loopback IP and port; wildcard,
+  public and hostname binds are rejected.
+- `AGENT_RUNTIME_PROJECT_WORKSPACE_ROOT`: existing absolute trusted project
+  directory. Every `RunAgentTask.cwd` must name this directory or a descendant.
+- `AGENT_RUNTIME_STATE_ROOT`: existing absolute directory on an operator-managed
+  durable volume; `AGENT_RUNTIME_EPHEMERAL` must be disabled.
+- `AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT` and
+  `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`: existing absolute pool directory and
+  manifest inside it with at least one account reference. Single-account auth
+  paths are rejected in strict mode.
+- `AGENT_RUNTIME_CLI_PATH`: existing absolute executable regular file with no
+  symlink or traversal components. Startup also checks the pinned installation
+  bytes and package identity.
+
+The workspace, state and pool roots must be separate. The CLI must sit outside
+the task workspace and state roots so admitted tasks cannot rewrite runtime
+state, auth references or launcher bytes through their workspace.
+
+Strict task admission rejects empty, relative, traversing, symlinked and
+foreign-mounted cwd paths before execution. The trusted project root and
+mounts must remain under operator control while tasks run; a mutable directory
+tree can still change after admission. The gRPC server uses `createInsecure`,
+so production strict mode also requires peer-only private transport and a
+firewall that prevents untrusted peers from reaching the bind address. This
+change does not enable strict mode in any deployment or compose configuration.
+
 Operational invariant: production summary launchers append
 `compose.agent-runtime-model.yml` last and idempotently recreate
 `agent-runtime` before daily or weekly jobs, so the admitted model remains
