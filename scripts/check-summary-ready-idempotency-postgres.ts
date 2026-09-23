@@ -14,32 +14,37 @@ import { withReaderDeliveryPostgresFixture } from './lib/reader-summary-ready-de
 
 async function main(): Promise<void> {
   await withReaderDeliveryPostgresFixture(async ({ runtimeUrl, database }) => {
-    const config = defaultPostgresRuntimePoolConfig(runtimeUrl, 'delivery-service');
-    const delivery = await PrismaDeliveryConnection.create(config);
-    const Client = loadPrismaRuntimeClient<PrismaPgRuntimeClientConstructor<
-      PrismaReaderSummaryProjectionClient & { $disconnect(): Promise<void> }
-    >>();
-    const peer = await new PostgresRuntimePoolRegistry().acquire(config, Client);
-    const runtime = new WorkerRuntime({ serviceName: 'summary-delivery-postgres-fixture' });
-    runtime.onModuleInit();
-    const metrics = new InMemoryMetricsRecorder();
-    const published: Array<{ id: string; sequence: number }> = [];
-    const makeHandler = (client: PrismaReaderSummaryProjectionClient) => new ProjectSummaryReadyEventHandler(
-      new ProjectSummaryReadyEventUseCase(new PrismaSummaryReadyProjectionStore(client),
-        { publish: async event => { const { id, sequence } = event.toSnapshot(); published.push({ id, sequence }); } }), metrics, runtime);
-    const tenant = randomUUID();
-    const workspace = randomUUID();
-    const source = { eventId: randomUUID(), eventType: 'summary.ready', schemaVersion: 1,
-      occurredAt: '2026-09-23T00:00:00.000Z', tenantId: tenant, workspaceId: workspace,
-      correlationId: 'fixture-correlation', causationId: 'fixture-job',
-      payload: { tenantId: tenant, workspaceId: workspace, interestId: 'fixture-interest',
-        summaryJobId: 'fixture-job', summaryId: 'fixture-summary', status: 'completed' } };
-    const counts = async (expected: number) => {
-      const result = await database.query<{ events: number; inbox: number }>(
-        'SELECT (SELECT count(*)::int FROM realtime_events) AS events, (SELECT count(*)::int FROM inbox_records) AS inbox');
-      assert.deepEqual(result.rows[0], { events: expected, inbox: expected });
-    };
+    const cleanup: Array<() => Promise<void>> = [];
+    const errors: unknown[] = [];
     try {
+      const config = defaultPostgresRuntimePoolConfig(runtimeUrl, 'delivery-service');
+      const delivery = await PrismaDeliveryConnection.create(config);
+      cleanup.push(() => delivery.close());
+      const Client = loadPrismaRuntimeClient<PrismaPgRuntimeClientConstructor<
+        PrismaReaderSummaryProjectionClient & { $disconnect(): Promise<void> }
+      >>();
+      const peer = await new PostgresRuntimePoolRegistry().acquire(config, Client);
+      cleanup.push(() => peer.close());
+      const runtime = new WorkerRuntime({ serviceName: 'summary-delivery-postgres-fixture' });
+      cleanup.push(() => runtime.onApplicationShutdown('fixture complete'));
+      runtime.onModuleInit();
+      const metrics = new InMemoryMetricsRecorder();
+      const published: Array<{ id: string; sequence: number }> = [];
+      const makeHandler = (client: PrismaReaderSummaryProjectionClient) => new ProjectSummaryReadyEventHandler(
+        new ProjectSummaryReadyEventUseCase(new PrismaSummaryReadyProjectionStore(client),
+          { publish: async event => { const { id, sequence } = event.toSnapshot(); published.push({ id, sequence }); } }), metrics, runtime);
+      const tenant = randomUUID();
+      const workspace = randomUUID();
+      const source = { eventId: randomUUID(), eventType: 'summary.ready', schemaVersion: 1,
+        occurredAt: '2026-09-23T00:00:00.000Z', tenantId: tenant, workspaceId: workspace,
+        correlationId: 'fixture-correlation', causationId: 'fixture-job',
+        payload: { tenantId: tenant, workspaceId: workspace, interestId: 'fixture-interest',
+          summaryJobId: 'fixture-job', summaryId: 'fixture-summary', status: 'completed' } };
+      const counts = async (expected: number) => {
+        const result = await database.query<{ events: number; inbox: number }>(
+          'SELECT (SELECT count(*)::int FROM realtime_events) AS events, (SELECT count(*)::int FROM inbox_records) AS inbox');
+        assert.deepEqual(result.rows[0], { events: expected, inbox: expected });
+      };
       const concurrent = await Promise.all(synchronizedFirstReads([delivery, peer.client])
         .map(client => makeHandler(client).handle(source)));
       assert.equal(concurrent[0]?.realtimeEventId, concurrent[1]?.realtimeEventId);
@@ -47,8 +52,8 @@ async function main(): Promise<void> {
       await counts(1);
 
       const restarted = await new PostgresRuntimePoolRegistry().acquire(config, Client);
-      try { assert.deepEqual(await makeHandler(restarted.client).handle(source), concurrent[0]); }
-      finally { await restarted.close(); }
+      cleanup.push(() => restarted.close());
+      assert.deepEqual(await makeHandler(restarted.client).handle(source), concurrent[0]);
       assert.equal(published.length, 3);
       assert(published.every(item => item.id === concurrent[0]?.realtimeEventId && item.sequence === 1));
       await counts(1);
@@ -95,13 +100,15 @@ async function main(): Promise<void> {
         });
       }
       await counts(4);
-      console.log('Summary ready PostgreSQL fixture OK: concurrent dedupe, rollback/retry, redelivery, scope collision, sequence contention');
-    } finally {
-      await runtime.onApplicationShutdown('fixture complete');
-      await delivery.close();
-      await peer.close();
+    } catch (error) {
+      errors.push(error);
     }
+    const closed = await Promise.allSettled(cleanup.reverse().map(close => Promise.resolve().then(close)));
+    for (const result of closed) if (result.status === 'rejected') errors.push(result.reason);
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, 'Summary ready PostgreSQL assertions and cleanup failed');
   });
+  console.log('Summary ready PostgreSQL fixture OK: concurrent dedupe, rollback/retry, redelivery, scope collision, sequence contention');
 }
 
 function synchronizedFirstReads(clients: readonly PrismaReaderSummaryProjectionClient[]): PrismaReaderSummaryProjectionClient[] {
@@ -126,6 +133,9 @@ function synchronizedFirstReads(clients: readonly PrismaReaderSummaryProjectionC
 }
 
 void main().catch(error => {
-  console.error(redactSensitiveResponseText(error instanceof Error ? error.message : 'Summary ready PostgreSQL fixture failed'));
+  const describe = (failure: unknown): string => failure instanceof AggregateError
+    ? [failure.message, ...failure.errors.map(describe)].join('\n')
+    : failure instanceof Error ? failure.message : 'Summary ready PostgreSQL fixture failed';
+  console.error(redactSensitiveResponseText(describe(error)));
   process.exitCode = 1;
 });
