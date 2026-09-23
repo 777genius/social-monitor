@@ -1,5 +1,7 @@
 import { InMemoryReaderSummaryReadyProjectionStore } from '../../adapters/persistence/in-memory-reader-summary-ready-projection.store';
+import { InMemorySummaryReadyProjectionStore } from '../../adapters/persistence/in-memory-summary-ready-projection.store';
 import { PrismaReaderSummaryReadyProjectionStore } from '../../adapters/persistence/prisma/prisma-reader-summary-ready-projection.store';
+import { PrismaSummaryReadyProjectionStore } from '../../adapters/persistence/prisma/prisma-summary-ready-projection.store';
 import { ProjectReaderSummaryReadyEventUseCase } from '../../features/project-reader-summary-ready-event/project-reader-summary-ready-event.use-case';
 import { Module } from '@nestjs/common';
 import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
@@ -424,9 +426,19 @@ export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
     },
     {
       provide: ProjectSummaryReadyEventUseCase,
-      useFactory: (recordRealtimeEvent: RecordRealtimeEventUseCase) =>
-        new ProjectSummaryReadyEventUseCase(recordRealtimeEvent),
-      inject: [RecordRealtimeEventUseCase],
+      useFactory: (
+        mode: DeliveryPersistenceMode,
+        prisma: PrismaDeliveryConnection | null,
+        events: RealtimeEventRepositoryPort,
+        fanout: RealtimeFanoutPort,
+      ) => {
+        if (mode === 'prisma') {
+          if (prisma === null) throw new Error('Summary ready projection requires Prisma');
+          return new ProjectSummaryReadyEventUseCase(new PrismaSummaryReadyProjectionStore(prisma), fanout);
+        }
+        return new ProjectSummaryReadyEventUseCase(new InMemorySummaryReadyProjectionStore(events), fanout);
+      },
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, DELIVERY_REALTIME_EVENT_REPOSITORY, DELIVERY_REALTIME_FANOUT],
     },
   ],
   exports: [

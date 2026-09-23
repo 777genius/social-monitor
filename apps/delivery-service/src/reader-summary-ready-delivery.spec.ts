@@ -4,10 +4,10 @@ import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
 import { InMemoryRealtimeEventRepository } from '@social-monitor/delivery/adapters/persistence/in-memory-realtime-event.repository';
 import { InMemoryReaderSummaryReadyProjectionStore } from '@social-monitor/delivery/adapters/persistence/in-memory-reader-summary-ready-projection.store';
+import { InMemorySummaryReadyProjectionStore } from '@social-monitor/delivery/adapters/persistence/in-memory-summary-ready-projection.store';
 import { ProjectReaderSummaryReadyEventUseCase } from '@social-monitor/delivery/features/project-reader-summary-ready-event/project-reader-summary-ready-event.use-case';
 import { ProjectReaderSummaryReadyEventHandler } from '@social-monitor/delivery/interfaces/events/project-reader-summary-ready-event.handler';
 import { ProjectSummaryReadyEventUseCase } from '@social-monitor/delivery/features/project-summary-ready-event/project-summary-ready-event.use-case';
-import { RecordRealtimeEventUseCase } from '@social-monitor/delivery/features/record-realtime-event/record-realtime-event.use-case';
 import { ProjectSummaryReadyEventHandler } from '@social-monitor/delivery/interfaces/events/project-summary-ready-event.handler';
 import { SummaryReadyEventDispatcher } from '@social-monitor/delivery/interfaces/events/summary-ready-event.dispatcher';
 import { readerSummaryReadyFixture } from '@social-monitor/delivery/test-support/reader-summary-ready.fixture';
@@ -30,7 +30,7 @@ function setup(input: readonly GetMessage[], failAck = false) {
     new InMemoryReaderSummaryReadyProjectionStore(events, new CryptoIdGenerator())), metrics, runtime);
   const clock = new FixedClock(new Date('2026-09-04T00:03:00.000Z'));
   const legacy = new ProjectSummaryReadyEventHandler(new ProjectSummaryReadyEventUseCase(
-    new RecordRealtimeEventUseCase(events, new CryptoIdGenerator(), clock)), metrics, runtime);
+    new InMemorySummaryReadyProjectionStore(events), { publish: async () => undefined }), metrics, runtime);
   const queue = new RabbitMqSummaryReadyEventQueueReader(channel, resolveDeliverySummaryReadyEventQueueOptions({}));
   const dispatcher = new SummaryReadyEventDispatcher(legacy, reader);
   return { channel, events, reader, dispatcher, runtime,

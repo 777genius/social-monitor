@@ -17,7 +17,7 @@ import { WorkerRuntime } from '@social-monitor/platform-worker';
 import { ProjectSummaryReadyEventUseCase } from '../libs/delivery/features/project-summary-ready-event/project-summary-ready-event.use-case';
 import type { SummaryReadyProjectionPayload } from '../libs/delivery/features/project-summary-ready-event/project-summary-ready-event.command';
 import { ListRealtimeEventsUseCase } from '../libs/delivery/features/list-realtime-events/list-realtime-events.use-case';
-import { RecordRealtimeEventUseCase } from '../libs/delivery/features/record-realtime-event/record-realtime-event.use-case';
+import { InMemorySummaryReadyProjectionStore } from '../libs/delivery/adapters/persistence/in-memory-summary-ready-projection.store';
 import { InMemoryDeliveryProvider } from '../libs/delivery/adapters/notification/in-memory-delivery.provider';
 import { InMemoryDeliveryAttemptRepository } from '../libs/delivery/adapters/persistence/in-memory-delivery-attempt.repository';
 import { InMemoryDigestRepository } from '../libs/delivery/adapters/persistence/in-memory-digest.repository';
@@ -530,7 +530,8 @@ async function main(): Promise<void> {
   assertSummaryReadyEvent(summaryReadyEvent);
   const realtimeProjection = unwrap(
     await new ProjectSummaryReadyEventUseCase(
-      new RecordRealtimeEventUseCase(realtimeEvents, ids, clock),
+      new InMemorySummaryReadyProjectionStore(realtimeEvents),
+      { publish: async () => undefined },
     ).execute({
       event: summaryReadyEvent,
     }),
