@@ -149,6 +149,22 @@ async function requireFile(root, rel) {
 }
 
 async function requireReadOnlyForService(root, serviceUid) {
+  let child = root;
+  for (let path = dirname(root); ; path = dirname(path)) {
+    const st = await lstat(path);
+    if (!st.isDirectory() || await realpath(path) !== path || st.uid === serviceUid) {
+      throw new Error(`Release has unsafe ancestor: ${path}`);
+    }
+    if ((st.mode & 0o022) !== 0) {
+      const childStat = await lstat(child);
+      // Sticky directories prevent a different UID from replacing a root-owned child.
+      if ((st.mode & 0o1000) === 0 || childStat.uid !== 0) {
+        throw new Error(`Release has writable ancestor: ${path}`);
+      }
+    }
+    if (path === dirname(path)) break;
+    child = path;
+  }
   async function walk(path) {
     const st = await lstat(path);
     if (st.uid === serviceUid || (!st.isSymbolicLink() && (st.mode & 0o022) !== 0)) {
@@ -231,9 +247,14 @@ async function build(args) {
   const output = resolve(option(args, "--output-dir"));
   if (inside(sourceRoot, output)) throw new Error("Host release output must be outside the product checkout");
   const scratch = await mkdtemp(join(tmpdir(), "sm-agent-host-release-"));
+  if (inside(sourceRoot, await realpath(scratch))) {
+    await rm(scratch, { recursive: true, force: true });
+    throw new Error("Host release scratch must be outside the product checkout");
+  }
   process.env.npm_config_cache ??= join(scratch, "npm-cache");
   const stage = join(scratch, "stage");
   const install = join(scratch, "install");
+  const compiled = join(scratch, "compiled");
   try {
     const commit = await gitOutput(["rev-parse", "HEAD"]);
     if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error("Source commit is invalid");
@@ -244,7 +265,13 @@ async function build(args) {
     await run("npm", ["run", "prisma:generate"], sourceRoot, {
       DATABASE_URL: "postgresql://agent_runtime_build:token-value@127.0.0.1:1/agent_runtime_build",
     });
-    await run("npm", ["run", "build"], sourceRoot);
+    await run(join(sourceRoot, "node_modules/.bin/tsc"), [
+      "-p", "tsconfig.build.json", "--outDir", compiled,
+      "--tsBuildInfoFile", join(scratch, "tsconfig.build.tsbuildinfo"),
+    ], sourceRoot);
+    await run(join(sourceRoot, "node_modules/.bin/tsc-alias"), [
+      "-p", "tsconfig.build.json", "--outDir", compiled,
+    ], sourceRoot);
     if (await gitOutput(["status", "--porcelain", "--untracked-files=all"])) {
       throw new Error("TypeScript build changed tracked product sources");
     }
@@ -262,8 +289,8 @@ async function build(args) {
       await copyFile(join(sourceRoot, "vendor", name), join(install, "vendor", name));
     }
     await run("npm", ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], install);
-    await cp(join(sourceRoot, "dist/apps/agent-runtime"), join(stage, "dist/apps/agent-runtime"), { recursive: true });
-    await cp(join(sourceRoot, "dist/libs"), join(stage, "dist/libs"), { recursive: true });
+    await cp(join(compiled, "apps/agent-runtime"), join(stage, "dist/apps/agent-runtime"), { recursive: true });
+    await cp(join(compiled, "libs"), join(stage, "dist/libs"), { recursive: true });
     await cp(join(install, "node_modules"), join(stage, "node_modules"), {
       recursive: true, verbatimSymlinks: true,
     });

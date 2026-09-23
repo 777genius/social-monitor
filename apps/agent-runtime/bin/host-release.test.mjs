@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { chmod, mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -34,7 +33,7 @@ async function put(root, path, content) {
 }
 
 async function fixture(t) {
-  const temp = await realpath(await mkdtemp(join(tmpdir(), "sm-agent-host-test-")));
+  const temp = await realpath(await mkdtemp(join(dirname(fileURLToPath(import.meta.url)), ".sm-agent-host-test-")));
   t.after(() => rm(temp, { recursive: true, force: true }));
   const root = join(temp, "release");
   const archive = join(temp, "release.tar.gz");
@@ -137,4 +136,15 @@ test("rejects a staging root writable by the service group", async (t) => {
   const { root, args } = await fixture(t);
   await chmod(root, 0o775);
   await assert.rejects(verify(args), /Release can be modified by service UID/);
+});
+
+test("rejects a service-writable ancestor of an otherwise sealed release", async (t) => {
+  const { root, args } = await fixture(t);
+  const parent = dirname(root);
+  await chmod(parent, 0o777);
+  try {
+    await assert.rejects(verify(args), /Release has writable ancestor/);
+  } finally {
+    await chmod(parent, 0o700);
+  }
 });

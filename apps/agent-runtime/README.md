@@ -6,10 +6,12 @@ The host release is a tarball built from a clean product checkout. It
 does not contain a `bridge.mjs`. Build on a Linux host with Node 22 or newer,
 `tar`, the checked-in vendor archives, and the lockfile. The command runs the
 existing Prisma codegen with a synthetic, nonconnecting database URL, compiles
-the TypeScript build, and installs locked production dependencies in an
-isolated temporary directory, and emits a tarball plus a separate JSON
+TypeScript into fresh temporary output with fresh incremental state, and
+installs locked production dependencies in an isolated temporary directory.
+It emits a tarball plus a separate JSON
 provenance manifest in an output directory outside the checkout. It does not
-start an agent or enable any unit.
+start an agent or enable any unit. Existing ignored `dist` in the checkout is
+neither modified nor packaged.
 Set `TMPDIR` to a writable scratch directory when the host's `/tmp` is
 read-only; temporary installation files are removed after packaging.
 
@@ -64,9 +66,11 @@ The verifier rejects a wrong archive hash, product commit, missing helper or
 verifier,
 changed extracted bytes, forbidden `.env`/`.git`/test/fixture paths, and a
 symlink that leaves the extracted tree. It also rejects release entries owned
-by the target service UID or writable by group/other. Keep the verified
-release owned by root; its archived directories and files have no group or
-other write bits.
+by the target service UID or writable by group/other. Ancestor directories
+through `/` must also be real directories, not service-owned, and not writable
+by group/other unless a sticky directory protects its root-owned child. Keep
+the verified release and its parent owned by root; its archived directories
+and files have no group or other write bits.
 The systemd service UID must be non-root and must receive write access only to
 separate state, logs and auth-pool mounts. Set `AGENT_RUNTIME_CLI_PATH` to the absolute
 extracted wrapper path. Start Node with the absolute extracted entrypoint and
@@ -84,8 +88,8 @@ ExecStart=/usr/bin/node /opt/social-monitor-agent-runtime/releases/<product-sha>
 Environment=AGENT_RUNTIME_CLI_PATH=/opt/social-monitor-agent-runtime/releases/<product-sha>/apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs
 ```
 
-The release command requires working `npm ci` and `npm run build` in the clean
-product checkout. If its pinned lockfile or dependency installation fails,
+The release command requires working `npm ci` and pinned `tsc`/`tsc-alias`
+binaries in the clean product checkout. If its pinned lockfile or dependency installation fails,
 no archive should be promoted. The synthetic packaging and verifier tests do
 not start the service:
 

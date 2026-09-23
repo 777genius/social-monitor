@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { verify, verifyArchive } from "./host-release.mjs";
 
 const commit = "c045beb60f0b02ea8ae6b264036bef88ada20b76";
@@ -37,7 +37,7 @@ async function restoreWritableDirectories(dir) {
 test("builds a deterministic, extractable host release from a disposable synthetic checkout", {
   skip: process.platform !== "linux",
 }, async (t) => {
-  const temp = await mkdtemp(join(tmpdir(), "sm-host-archive-test-"));
+  const temp = await mkdtemp(join(dirname(fileURLToPath(import.meta.url)), ".sm-host-archive-test-"));
   t.after(async () => {
     await restoreWritableDirectories(temp);
     await rm(temp, { recursive: true, force: true });
@@ -52,8 +52,10 @@ test("builds a deterministic, extractable host release from a disposable synthet
   for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz"]) {
     await put(source, `vendor/${name}`, "synthetic vendor archive\n");
   }
-  await put(source, "dist/apps/agent-runtime/src/main.js", "export {};\n");
-  await put(source, "dist/libs/contracts/generated/grpc/agent_runtime/v1/agent_runtime.js", "export {};\n");
+  const staleEntrypoint = "stale source dist entrypoint must never ship\n";
+  await put(source, "dist/apps/agent-runtime/src/main.js", staleEntrypoint);
+  await put(source, "dist/libs/stale.js", "stale source dist library must never ship\n");
+  await put(source, "dist/apps/agent-runtime/stale.js", "stale source dist app must never ship\n");
   for (const name of helpers) {
     const target = join(source, "apps/agent-runtime/bin", name);
     await mkdir(dirname(target), { recursive: true });
@@ -62,9 +64,28 @@ test("builds a deterministic, extractable host release from a disposable synthet
   await copyFile(new URL("./host-release.mjs", import.meta.url), join(source, "apps/agent-runtime/bin/host-release.mjs"));
   const fakeGit = await put(fakeBin, "git", `#!/bin/sh\nif [ "$1" = "rev-parse" ]; then printf '%s\\n' '${commit}'; fi\n`);
   await chmod(fakeGit, 0o755);
+  const fakeTsc = await put(source, "node_modules/.bin/tsc", `#!/usr/bin/env node
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+const args = process.argv.slice(2);
+const value = (flag) => args[args.indexOf(flag) + 1];
+if (value("-p") !== "tsconfig.build.json" || !value("--outDir") || !value("--tsBuildInfoFile")) process.exit(2);
+const out = value("--outDir");
+for (const name of ["apps/agent-runtime/src/main.js", "libs/contracts/generated/grpc/agent_runtime/v1/agent_runtime.js"]) {
+  mkdirSync(join(out, name, ".."), { recursive: true });
+  writeFileSync(join(out, name), "fresh compiled bytes\\n");
+}
+writeFileSync(value("--tsBuildInfoFile"), "fresh incremental state\\n");
+`);
+  await chmod(fakeTsc, 0o755);
+  const fakeAlias = await put(source, "node_modules/.bin/tsc-alias", `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[args.indexOf("-p") + 1] !== "tsconfig.build.json" || !args[args.indexOf("--outDir") + 1]) process.exit(2);
+`);
+  await chmod(fakeAlias, 0o755);
   const fakeNpm = await put(fakeBin, "npm", `#!/usr/bin/env node
 import { chmodSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
-if (process.argv[2] === "run" && ["prisma:generate", "build"].includes(process.argv[3])) process.exit(0);
+if (process.argv[2] === "run" && process.argv[3] === "prisma:generate") process.exit(0);
 if (process.argv[2] !== "ci") process.exit(2);
 mkdirSync("node_modules/@vioxen/subscription-runtime", { recursive: true });
 writeFileSync("node_modules/@vioxen/subscription-runtime/package.json", JSON.stringify({ name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.3" }));
@@ -110,6 +131,10 @@ writeFileSync("node_modules/synthetic.test.js", "excluded");
       "--service-uid", String(process.getuid())]), /Release can be modified by service UID/);
   }
   assert.equal((await stat(join(extracted, "dist/apps/agent-runtime/src/main.js"))).isFile(), true);
+  assert.equal(await readFile(join(extracted, "dist/apps/agent-runtime/src/main.js"), "utf8"), "fresh compiled bytes\n");
+  assert.equal(await readFile(join(source, "dist/apps/agent-runtime/src/main.js"), "utf8"), staleEntrypoint);
+  await assert.rejects(stat(join(extracted, "dist/apps/agent-runtime/stale.js")), /ENOENT/);
+  await assert.rejects(stat(join(extracted, "dist/libs/stale.js")), /ENOENT/);
   await assert.rejects(stat(join(extracted, "node_modules/test")), /ENOENT/);
   await assert.rejects(stat(join(extracted, "node_modules/.env")), /ENOENT/);
   await assert.rejects(stat(join(extracted, "node_modules/synthetic.test.js")), /ENOENT/);
