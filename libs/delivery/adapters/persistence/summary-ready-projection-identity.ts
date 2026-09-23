@@ -3,9 +3,9 @@ import { DomainError } from '@social-monitor/shared-kernel';
 import { SUMMARY_READY_CONSUMER, type SummaryReadyProjection } from '../../application/contracts/summary-ready-projection-store';
 import type { RealtimeEventProps } from '../../domain/entities/realtime-event';
 
-export function summaryReadyReplayId(projection: SummaryReadyProjection): string {
+export function summaryReadyReplayId(source: Pick<SummaryReadyProjection, 'sourceEventId' | 'sourceIdentityHash'>): string {
   const hex = createHash('sha256').update(JSON.stringify([
-    SUMMARY_READY_CONSUMER, projection.sourceEventId, projection.sourceIdentityHash,
+    SUMMARY_READY_CONSUMER, source.sourceEventId, source.sourceIdentityHash,
   ])).digest('hex');
   // RFC 9562 version 8: a deterministic, consumer-scoped UUID. Its identity
   // commits the full source fingerprint without changing the public payload.

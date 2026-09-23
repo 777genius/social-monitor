@@ -11,14 +11,14 @@ export class InMemorySummaryReadyProjectionStore implements SummaryReadyProjecti
 
   project(projection: SummaryReadyProjection): Promise<RealtimeEvent> {
     const operation = this.pending.then(async () => {
-      const existing = this.inbox.get(projection.sourceEventId);
+      const { sourceEventId, sourceIdentityHash, ...props } = projection;
+      const existing = this.inbox.get(sourceEventId);
       if (existing) {
         assertSameSummaryReadyProjection(existing.toSnapshot(), projection);
         return existing;
       }
       const sequence = await this.events.nextSequence(projection);
-      const { sourceEventId, sourceIdentityHash, ...props } = projection;
-      const event = RealtimeEvent.create({ ...props, id: summaryReadyReplayId(projection), sequence,
+      const event = RealtimeEvent.create({ ...props, id: summaryReadyReplayId({ sourceEventId, sourceIdentityHash }), sequence,
         replayCursor: encodeRealtimeReplayCursor(sequence) });
       await this.events.append(event);
       this.inbox.set(sourceEventId, event);

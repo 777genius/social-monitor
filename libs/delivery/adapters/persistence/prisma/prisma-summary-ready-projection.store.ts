@@ -10,12 +10,13 @@ export class PrismaSummaryReadyProjectionStore implements SummaryReadyProjection
   constructor(private readonly prisma: PrismaReaderSummaryProjectionClient) {}
 
   project(projection: SummaryReadyProjection): Promise<RealtimeEvent> {
-    const id = summaryReadyReplayId(projection);
+    const { sourceEventId, sourceIdentityHash, ...props } = projection;
+    const id = summaryReadyReplayId({ sourceEventId, sourceIdentityHash });
     return withPrismaWriteRetry(async () => {
       try {
         return await this.prisma.$transaction(async tx => {
           const existing = await tx.inboxRecord.findUnique({ where: {
-            consumerName_eventId: { consumerName: SUMMARY_READY_CONSUMER, eventId: projection.sourceEventId },
+            consumerName_eventId: { consumerName: SUMMARY_READY_CONSUMER, eventId: sourceEventId },
           } });
           if (existing !== null) {
             // Check tenant before loading the replay row. Never return another
@@ -36,7 +37,6 @@ export class PrismaSummaryReadyProjectionStore implements SummaryReadyProjection
             orderBy: { sequence: 'desc' },
           });
           const sequence = (latest?.sequence ?? 0) + 1;
-          const { sourceEventId, sourceIdentityHash, ...props } = projection;
           const event = RealtimeEvent.create({ ...props, id, sequence, replayCursor: encodeRealtimeReplayCursor(sequence) });
           await tx.inboxRecord.create({ data: { id, consumerName: SUMMARY_READY_CONSUMER,
             eventId: sourceEventId, tenantId: projection.tenantId, schemaVersion: 1 } });
