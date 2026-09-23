@@ -169,9 +169,40 @@ def stop_managed_owners():
 
 
 def reject_detached_compose_run(command):
-    if len(command) < 3 or command[1] != "compose":
+    if len(command) < 2:
         return
-    args = command[2:]
+    # Only inspect Docker invocations. In test mode the executable is a
+    # disposable fake Docker binary rather than a file named "docker".
+    docker = (os.environ.get("SOCIAL_MONITOR_X_LAUNCH_TEST_DOCKER")
+              if os.environ.get("SOCIAL_MONITOR_X_LAUNCH_TEST_MODE") == "1" else "docker")
+    if command[0] != docker and Path(command[0]).name != "docker":
+        return
+    docker_values = {"--config", "--context", "-H", "--host", "-l", "--log-level",
+                     "--tlscacert", "--tlscert", "--tlskey"}
+    docker_flags = {"-D", "--debug", "--tls", "--tlsverify", "-v", "--version"}
+    index = 1
+    while index < len(command):
+        arg = command[index]
+        if arg in docker_values:
+            if index + 1 >= len(command):
+                raise Denied("missing Docker global option value")
+            index += 2
+        elif (arg in docker_flags or
+              any(arg.startswith(option + "=") for option in docker_values | docker_flags) or
+              any(arg.startswith(option) and len(arg) > len(option)
+                  for option in {"-H", "-l"})):
+            index += 1
+        elif arg.startswith("-"):
+            # An unrecognized global option may consume the next token.
+            # Refuse a possible Compose command instead of guessing its shape.
+            if "compose" in command[index + 1:]:
+                raise Denied("unknown Docker global option before Compose")
+            return
+        else:
+            break
+    if index >= len(command) or command[index] != "compose":
+        return
+    args = command[index + 1:]
     global_values = {"-f", "--file", "-p", "--project-name", "--profile",
                      "--env-file", "--project-directory", "--parallel",
                      "--progress", "--ansi"}
@@ -204,6 +235,8 @@ def reject_detached_compose_run(command):
         arg = args[index]
         if arg == "--":
             return
+        # Deny explicit false forms too: detached admission stays conservative
+        # until the CLI's boolean syntax can be proven across deployed versions.
         if arg == "--detach" or arg.startswith("--detach="):
             raise Denied("detached Compose run cannot be held safely")
         if arg in run_values:

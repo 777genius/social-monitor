@@ -207,6 +207,65 @@ class LaunchGuardTest(unittest.TestCase):
         self.assertEqual(self.call("hold", env=env).returncode, 0)
         self.assertFalse(one_off.exists())
 
+    def test_docker_global_options_cannot_detach_compose_run(self):
+        self.init_allow()
+        one_off = self.root / "global-option-one-off-active"
+        docker = self.root / "docker"
+        docker.write_text(
+            "#!/bin/sh\n"
+            "case \" $* \" in\n"
+            f"  *' compose run -d '*) touch '{one_off}' ;;\n"
+            "esac\n"
+            "case \"$*\" in *'tasks ls'*) printf 'TASK PID STATUS\\n';; esac\n")
+        docker.chmod(0o755)
+        env = dict(self.env, SOCIAL_MONITOR_X_LAUNCH_TEST_DOCKER=str(docker),
+                   SOCIAL_MONITOR_X_LAUNCH_TEST_CTR=str(docker),
+                   PATH=str(self.root) + os.pathsep + self.env.get("PATH", ""))
+        # The fake exits while the one-off remains active, reproducing the
+        # lock-release failure if admission ever reaches the Docker CLI.
+        self.assertEqual(subprocess.run([str(docker), "--debug", "compose", "run", "-d",
+                                         "x-collector"], env=env).returncode, 0)
+        self.assertTrue(one_off.exists())
+        one_off.unlink()
+        attempts = (
+            ("--debug", "compose", "run", "-d", "--no-deps", "x-collector"),
+            ("--context", "fixture", "compose", "run", "--detach", "x-collector"),
+            ("--context=fixture", "compose", "run", "--detach=true", "x-collector"),
+            ("--debug", "--context", "fixture", "-H", "unix:///tmp/fixture.sock",
+             "compose", "run", "-Td", "x-collector"),
+            ("--context", "compose", "compose", "run", "-d", "x-collector"),
+            ("--config=compose", "--log-level", "debug", "compose", "run",
+             "--detach", "x-collector"),
+            ("compose", "run", "--detach=false", "x-collector"),
+            ("compose", "run", "-d=false", "x-collector"),
+            ("--future-option", "compose", "run", "-d", "x-collector"),
+        )
+        for args in attempts:
+            with self.subTest(args=args):
+                denied = self.call("run", "docker", *args, env=env)
+                self.assertEqual(denied.returncode, 75, denied.stderr)
+                self.assertFalse(one_off.exists())
+                self.assertEqual(self.call("hold", env=env).returncode, 0)
+                self.assertFalse(one_off.exists(), "hold missed a detached one-off")
+                self.assertEqual(self.call("allow", env=env).returncode, 0)
+        wrapper = HERE / "x-launch-docker-compose.sh"
+        for args in (("run", "-d", "x-collector"),
+                     ("--profile", "app", "run", "--detach", "x-collector")):
+            with self.subTest(wrapper=args):
+                denied = self.call(*args, script=wrapper, env=env)
+                self.assertEqual(denied.returncode, 75, denied.stderr)
+                self.assertFalse(one_off.exists())
+                self.assertEqual(self.call("hold", env=env).returncode, 0)
+                self.assertFalse(one_off.exists())
+                self.assertEqual(self.call("allow", env=env).returncode, 0)
+        for args in (("compose", "run", "x-collector"),
+                     ("--context", "compose", "compose", "up", "-d"),
+                     ("ps", "-a"), ("--context", "compose", "ps")):
+            with self.subTest(allowed=args):
+                self.assertEqual(self.call("run", str(docker), *args, env=env).returncode, 0)
+                self.assertFalse(one_off.exists())
+        self.assertEqual(self.call("run", str(self.fake), "ctr", "-d", env=env).returncode, 0)
+
     def test_compose_non_launch_commands_work_while_held(self):
         wrapper = HERE / "x-launch-docker-compose.sh"
         self.assertEqual(self.call("init").returncode, 0)
