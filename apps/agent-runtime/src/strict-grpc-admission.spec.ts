@@ -71,6 +71,7 @@ describe("opt-in strict gRPC admission", () => {
     ["missing token", { AGENT_RUNTIME_SERVICE_TOKEN: undefined }],
     ["wildcard bind", { AGENT_RUNTIME_GRPC_BIND: "0.0.0.0:50052" }],
     ["IPv6 wildcard", { AGENT_RUNTIME_GRPC_BIND: "[::]:50052" }],
+    ["short IPv6 prefix outside ULA", { AGENT_RUNTIME_GRPC_BIND: "[fc::1]:50052" }],
     ["public bind", { AGENT_RUNTIME_GRPC_BIND: "8.8.8.8:50052" }],
     ["host name", { AGENT_RUNTIME_GRPC_BIND: "localhost:50052" }],
     ["missing workspace", { AGENT_RUNTIME_PROJECT_WORKSPACE_ROOT: undefined }],
@@ -84,6 +85,27 @@ describe("opt-in strict gRPC admission", () => {
     ["ephemeral state", { AGENT_RUNTIME_EPHEMERAL: "true" }],
   ])("fails closed for %s", (_label, override) => {
     expect(() => resolveAgentRuntimeSettings({ ...env, ...override })).toThrow();
+  });
+
+  it("accepts a correctly ranged IPv6 unique-local bind", () => {
+    expect(resolveAgentRuntimeSettings({ ...env, AGENT_RUNTIME_GRPC_BIND: "[fc00::1]:50052" }).strictAdmission).toBeDefined();
+  });
+
+  it("rejects pool manifests that the launcher parser cannot use", async () => {
+    const manifest = env.AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST!;
+    const account = { id: "fixture", relativePath: "snapshots/fixture/auth.json" };
+    const base = { schemaVersion: 1, snapshotId: "fixture", accounts: [account] };
+    for (const invalid of [
+      { ...base, accounts: [account, account] },
+      { ...base, accounts: [account, { id: "other", relativePath: account.relativePath }] },
+      { ...base, extra: true },
+      { ...base, accounts: [{ ...account, extra: true }] },
+      { ...base, accounts: [{ ...account, relativePath: "snapshots//fixture/auth.json" }] },
+      { ...base, accounts: [{ ...account, relativePath: "snapshots\\fixture\\auth.json" }] },
+    ]) {
+      await writeFile(manifest, JSON.stringify(invalid));
+      expect(() => resolveAgentRuntimeSettings(env)).toThrow();
+    }
   });
 
   it("rejects a symlinked CLI and missing pool account reference", async () => {

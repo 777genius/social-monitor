@@ -82,8 +82,11 @@ const bindAddress = (value: string | undefined): void => {
     if (!(a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168))) {
       throw new Error("AGENT_RUNTIME_GRPC_BIND must use a private or loopback IP");
     }
-  } else if (!ip.toLowerCase().startsWith("fc") && !ip.toLowerCase().startsWith("fd") && ip !== "::1") {
-    throw new Error("AGENT_RUNTIME_GRPC_BIND must use a private or loopback IP");
+  } else {
+    const firstHextet = Number.parseInt(ip.split(":")[0] ?? "", 16);
+    if (ip !== "::1" && !(firstHextet >= 0xfc00 && firstHextet <= 0xfdff)) {
+      throw new Error("AGENT_RUNTIME_GRPC_BIND must use a private or loopback IP");
+    }
   }
 };
 
@@ -112,6 +115,7 @@ export const resolveStrictGrpcAdmission = (env: NodeJS.ProcessEnv): StrictGrpcAd
   }
   const parsed: unknown = JSON.parse(readFileSync(manifest, "utf8"));
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed) ||
+      Object.keys(parsed).sort().join(",") !== "accounts,schemaVersion,snapshotId" ||
       !Array.isArray((parsed as { accounts?: unknown }).accounts) ||
       (parsed as { accounts: unknown[] }).accounts.length === 0 ||
       (parsed as { accounts: unknown[] }).accounts.length > 16 ||
@@ -120,17 +124,24 @@ export const resolveStrictGrpcAdmission = (env: NodeJS.ProcessEnv): StrictGrpcAd
       !safePoolId.test((parsed as { snapshotId: string }).snapshotId)) {
     throw new Error("AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST must name a versioned account pool");
   }
+  const accountIds = new Set<string>();
+  const accountPaths = new Set<string>();
   for (const account of (parsed as { accounts: unknown[] }).accounts) {
     if (account === null || typeof account !== "object" || Array.isArray(account) ||
+        Object.keys(account).sort().join(",") !== "id,relativePath" ||
         typeof (account as { relativePath?: unknown }).relativePath !== "string" ||
         typeof (account as { id?: unknown }).id !== "string" ||
         !safePoolId.test((account as { id: string }).id)) {
       throw new Error("Codex auth pool account reference is invalid");
     }
     const relativePath = (account as { relativePath: string }).relativePath;
-    if (relativePath === "" || isAbsolute(relativePath) || relativePath.split(sep).some((part) => part === "." || part === "..")) {
+    if (relativePath === "" || relativePath.trim() !== relativePath || isAbsolute(relativePath) ||
+        relativePath.includes("\\") || relativePath.split("/").some((part) => part === "" || part === "." || part === "..") ||
+        accountIds.has((account as { id: string }).id) || accountPaths.has(relativePath)) {
       throw new Error("Codex auth pool account path is invalid");
     }
+    accountIds.add((account as { id: string }).id);
+    accountPaths.add(relativePath);
     const accountPath = join(poolRoot, relativePath);
     if (!pathWithin(poolRoot, accountPath)) throw new Error("Codex auth pool account escapes the pool root");
     file(accountPath, "Codex auth pool account reference");
