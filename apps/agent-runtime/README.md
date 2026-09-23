@@ -1,5 +1,96 @@
 # Agent Runtime Service
 
+## Host release for the disabled systemd bridge
+
+The host release is a tarball built from a clean product checkout. It
+does not contain a `bridge.mjs`. Build on a Linux host with Node 22 or newer,
+`tar`, the checked-in vendor archives, and the lockfile. The command runs the
+existing Prisma codegen with a synthetic, nonconnecting database URL, compiles
+the TypeScript build, and installs locked production dependencies in an
+isolated temporary directory, and emits a tarball plus a separate JSON
+provenance manifest in an output directory outside the checkout. It does not
+start an agent or enable any unit.
+Set `TMPDIR` to a writable scratch directory when the host's `/tmp` is
+read-only; temporary installation files are removed after packaging.
+
+```sh
+node apps/agent-runtime/bin/host-release.mjs build --output-dir /tmp/agent-runtime-host-release
+```
+
+The extracted root has these exact entry paths:
+
+- `dist/apps/agent-runtime/src/main.js` — Node service entrypoint.
+- `apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs` — pinned CLI wrapper, with its pinned adjacent helper closure.
+- `dist/libs/` — compiled Social Monitor libraries, including the generated gRPC contract.
+- `node_modules/` — locked production dependencies, including the vendored
+  `@vioxen/subscription-runtime` and pinned Codex native package. The wrapper's
+  direct vendored import resolves to
+  `node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js`.
+- `package.json` and `package-lock.json` — root package metadata and lockfile.
+
+The archive filename includes its Linux CPU architecture. The JSON manifest
+records equal `sourceCommit` and `productCommit` pins, the target architecture,
+`entry`, `cli`, `helpers`, each helper SHA-256, the archive SHA-256, wrapper
+SHA-256, lockfile SHA-256, and a canonical hash of all extracted file bytes,
+modes, paths and symlink targets. Copy the manifest and archive together over
+an authenticated channel. Platform infra must pin
+the intended product commit independently; a manifest supplied with an
+untrusted archive is not itself an authority for that commit.
+
+Before extracting, verify the archive SHA-256 and expected product commit
+against the trusted manifest. Extract as root into a **new, empty** staging
+directory and verify against the product checkout's verifier pinned to the
+same reviewed source commit:
+
+```sh
+approved_commit="${APPROVED_PRODUCT_COMMIT:?set the reviewed product commit}"
+service_uid="${AGENT_RUNTIME_SERVICE_UID:?set the numeric systemd service UID}"
+archive="/opt/social-monitor/releases/agent-runtime-host-${approved_commit}-linux-$(uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/').tar.gz"
+manifest="${archive}.json"
+node apps/agent-runtime/bin/host-release.mjs verify-archive \
+  --manifest "$manifest" --archive "$archive" \
+  --expect-product-commit "$approved_commit"
+mkdir /opt/social-monitor/agent-runtime-stage
+tar -xzf "$archive" -C /opt/social-monitor/agent-runtime-stage --no-same-owner
+node apps/agent-runtime/bin/host-release.mjs verify \
+  --release-dir /opt/social-monitor/agent-runtime-stage \
+  --manifest "$manifest" --archive "$archive" \
+  --expect-product-commit "$approved_commit" \
+  --service-uid "$service_uid"
+```
+
+The verifier rejects a wrong archive hash, product commit, missing helper,
+changed extracted bytes, forbidden `.env`/`.git`/test/fixture paths, and a
+symlink that leaves the extracted tree. It also rejects release entries owned
+by the target service UID or writable by group/other. Keep the verified
+release owned by root; its archived directories and files have no group or
+other write bits.
+The systemd service UID must be non-root and must receive write access only to
+separate state, logs and auth-pool mounts. Set `AGENT_RUNTIME_CLI_PATH` to the absolute
+extracted wrapper path. Start Node with the absolute extracted entrypoint and
+the release root as working directory; `node_modules` resolution and the
+wrapper's relative vendored import depend on this layout. The auth pool,
+local encryption key and state root are operator-managed external paths and
+must never be copied into the release.
+
+For a verified release at `/opt/social-monitor/agent-runtime-current`, the
+systemd bridge's paths are:
+
+```ini
+WorkingDirectory=/opt/social-monitor/agent-runtime-current
+ExecStart=/usr/bin/node /opt/social-monitor/agent-runtime-current/dist/apps/agent-runtime/src/main.js
+Environment=AGENT_RUNTIME_CLI_PATH=/opt/social-monitor/agent-runtime-current/apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs
+```
+
+The release command requires working `npm ci` and `npm run build` in the clean
+product checkout. If its pinned lockfile or dependency installation fails,
+no archive should be promoted. The synthetic packaging and verifier tests do
+not start the service:
+
+```sh
+node --test apps/agent-runtime/bin/host-release*.test.mjs
+```
+
 Internal gRPC boundary between Social Monitor summary adapters and
 `@vioxen/subscription-runtime`. The dependency is vendored as
 `vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz` so Docker and
