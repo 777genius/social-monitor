@@ -132,6 +132,52 @@ class LaunchGuardTest(unittest.TestCase):
         self.assertIn("/run/social-monitor-x-launch-guard.py:ro", overlay)
         self.assertIn("x-launch-docker-compose.sh", (HERE.parent / "social-monitor-production-deploy.sh").read_text())
 
+    def test_compose_launch_variants_require_host_admission(self):
+        wrapper = HERE / "x-launch-docker-compose.sh"
+        launches = (
+            ("-p", "social-monitor-prod", "--profile", "app", "up", "-d"),
+            ("up", "--no-deps"),
+            ("up", "-d", "--no-deps"),
+            ("up", "--no-deps", "x-collector"),
+            ("start",),
+            ("start", "api"),
+            ("restart",),
+            ("restart", "api"),
+            ("run", "api"),
+            ("run", "--no-deps", "api"),
+            ("run", "-d", "x-collector"),
+            ("run", "--no-deps", "x-collector"),
+        )
+        self.assertEqual(self.call("init").returncode, 0)
+        for args in launches:
+            with self.subTest(args=args, state="held"):
+                self.assert_no_effect(self.call(*args, script=wrapper))
+        self.assertEqual(self.call("allow").returncode, 0)
+        for args in launches:
+            with self.subTest(args=args, state="missing guard"):
+                self.installed_guard.unlink()
+                self.assert_no_effect(self.call(*args, script=wrapper))
+                self.installed_guard.write_bytes(GUARD.read_bytes())
+            with self.subTest(args=args, state="unreadable guard"):
+                self.installed_guard.chmod(0)
+                self.assert_no_effect(self.call(*args, script=wrapper))
+                self.installed_guard.chmod(0o644)
+            with self.subTest(args=args, state="allowed"):
+                result = self.call(*args, script=wrapper)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.log.read_text(), "compose " + " ".join(args) + "\n")
+                self.log.unlink()
+
+    def test_compose_non_launch_commands_work_while_held(self):
+        wrapper = HERE / "x-launch-docker-compose.sh"
+        self.assertEqual(self.call("init").returncode, 0)
+        for args in (("config",), ("pull",), ("down",)):
+            with self.subTest(args=args):
+                result = self.call(*args, script=wrapper)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.log.read_text(), "compose " + " ".join(args) + "\n")
+                self.log.unlink()
+
     def test_hold_waits_for_admitted_command_and_denies_next(self):
         self.init_allow()
         started = self.root / "started"

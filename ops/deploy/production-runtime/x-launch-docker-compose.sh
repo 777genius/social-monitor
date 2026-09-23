@@ -28,19 +28,13 @@ guard_owner=0
 
 # The wrapper is the Compose entrypoint for deploy and the production unit.
 # Admission wraps the Docker request, including detached launch completion.
-command_name= target_x=false
+command_name=
 for argument in "$@"; do
   if [[ -z $command_name ]]; then
     case $argument in up|start|restart|run) command_name=$argument ;; esac
   fi
-  [[ $argument != x-collector ]] || target_x=true
 done
-if [[ $command_name == up || $command_name == start || $command_name == restart ]]; then
-  if [[ $target_x == true || " $* " != *' --no-deps '* ]]; then
-    exec python3 "$guard" run "$docker" compose "$@"
-  fi
-fi
-if [[ $command_name == run && $target_x == true ]]; then
+if [[ -n $command_name ]]; then
   exec python3 "$guard" run "$docker" compose "$@"
 fi
 exec "$docker" compose "$@"
