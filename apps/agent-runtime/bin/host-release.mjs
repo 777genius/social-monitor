@@ -239,7 +239,7 @@ async function build(args) {
     }
     await assertPinnedHelperClosure(join(sourceRoot, "apps/agent-runtime/bin"));
     await run("npm", ["run", "prisma:generate"], sourceRoot, {
-      DATABASE_URL: "postgresql://agent_runtime_build:synthetic@127.0.0.1:1/agent_runtime_build",
+      DATABASE_URL: "postgresql://agent_runtime_build:token-value@127.0.0.1:1/agent_runtime_build",
     });
     await run("npm", ["run", "build"], sourceRoot);
     if (await gitOutput(["status", "--porcelain", "--untracked-files=all"])) {

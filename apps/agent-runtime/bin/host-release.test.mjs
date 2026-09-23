@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmod, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -33,7 +33,7 @@ async function put(root, path, content) {
 }
 
 async function fixture(t) {
-  const temp = await mkdtemp(join(tmpdir(), "sm-agent-host-test-"));
+  const temp = await realpath(await mkdtemp(join(tmpdir(), "sm-agent-host-test-")));
   t.after(() => rm(temp, { recursive: true, force: true }));
   const root = join(temp, "release");
   const archive = join(temp, "release.tar.gz");

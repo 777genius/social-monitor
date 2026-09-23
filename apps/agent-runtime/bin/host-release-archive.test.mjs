@@ -34,7 +34,9 @@ async function restoreWritableDirectories(dir) {
   for (const name of await readdir(dir)) await restoreWritableDirectories(join(dir, name));
 }
 
-test("builds a deterministic, extractable host release from a disposable synthetic checkout", async (t) => {
+test("builds a deterministic, extractable host release from a disposable synthetic checkout", {
+  skip: process.platform !== "linux",
+}, async (t) => {
   const temp = await mkdtemp(join(tmpdir(), "sm-host-archive-test-"));
   t.after(async () => {
     await restoreWritableDirectories(temp);
