@@ -17,17 +17,19 @@ function fixture() {
   const published: RealtimeEvent[] = [];
   const fanout = { publish: jest.fn(async (event: RealtimeEvent) => { published.push(event); }) };
   const useCase = new ProjectSummaryReadyEventUseCase(new InMemorySummaryReadyProjectionStore(events), fanout);
+  const tenant = tenantId('tenant-1');
+  const workspace = workspaceId('workspace-1');
   const event: ProjectSummaryReadyEventCommand['event'] = {
     eventId: eventId('summary-ready-event-1'), eventType: 'summary.ready', schemaVersion: 1,
-    occurredAt: new Date('2026-06-06T00:00:00.000Z'), tenantId: tenantId('tenant-1'),
-    workspaceId: workspaceId('workspace-1'), correlationId: correlationId('correlation-1'),
+    occurredAt: new Date('2026-06-06T00:00:00.000Z'), tenantId: tenant,
+    workspaceId: workspace, correlationId: correlationId('correlation-1'),
     causationId: causationId('summary-job-1'),
-    payload: { tenantId: tenantId('tenant-1'), workspaceId: workspaceId('workspace-1'),
+    payload: { tenantId: tenant, workspaceId: workspace,
       interestId: 'interest-1', summaryJobId: 'summary-job-1', summaryId: 'summary-1', status: 'no_signal' },
   };
-  const list = () => events.list({ tenantId: event.tenantId, workspaceId: event.workspaceId,
+  const list = () => events.list({ tenantId: tenant, workspaceId: workspace,
     channel: 'interest:interest-1:summary-status', limit: 20 });
-  return { events, ids, fanout, published, useCase, event, list };
+  return { events, ids, fanout, published, useCase, event, list, tenant, workspace };
 }
 
 describe('ProjectSummaryReadyEventUseCase', () => {
@@ -81,7 +83,7 @@ describe('ProjectSummaryReadyEventUseCase', () => {
   });
 
   it('serializes distinct events on one channel and leaves ordinary record behavior intact', async () => {
-    const { useCase, event, list, events, ids } = fixture();
+    const { useCase, event, list, events, ids, tenant, workspace } = fixture();
     const second = { ...event, eventId: eventId('summary-ready-event-2') };
     const results = await Promise.all([useCase.execute({ event }), useCase.execute({ event: second })]);
     expect(results.map(result => result.ok && result.value.sequence)).toEqual([1, 2]);
@@ -94,7 +96,7 @@ describe('ProjectSummaryReadyEventUseCase', () => {
     ]);
     expect((await list()).events).toHaveLength(2);
     const record = new RecordRealtimeEventUseCase(events, ids, new FixedClock(event.occurredAt));
-    expect(await record.execute({ tenantId: event.tenantId, workspaceId: event.workspaceId,
+    expect(await record.execute({ tenantId: tenant, workspaceId: workspace,
       channel: 'interest:interest-1:summary-status', eventType: 'other.v1', resourceType: 'summary',
       resourceId: 'summary-3', correlationId: event.correlationId, payload: {} }))
       .toMatchObject({ ok: true, value: { sequence: 3 } });
