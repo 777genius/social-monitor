@@ -168,6 +168,65 @@ def stop_managed_owners():
         raise Denied("managed X owner remains active")
 
 
+def reject_detached_compose_run(command):
+    if len(command) < 3 or command[1] != "compose":
+        return
+    args = command[2:]
+    global_values = {"-f", "--file", "-p", "--project-name", "--profile",
+                     "--env-file", "--project-directory", "--parallel",
+                     "--progress", "--ansi"}
+    global_flags = {"--all-resources", "--compatibility", "--dry-run", "--verbose"}
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg in global_values:
+            index += 2
+        elif arg in global_flags or any(arg.startswith(option + "=") for option in global_values):
+            index += 1
+        elif arg.startswith("-f") or arg.startswith("-p"):
+            index += 1
+        elif arg.startswith("-"):
+            raise Denied("unknown Compose global option")
+        else:
+            break
+    if index >= len(args) or args[index] != "run":
+        return
+    index += 1
+    run_values = {"--add-host", "--cap-add", "--cap-drop", "--device", "--entrypoint",
+                  "--env", "--env-from-file", "--gpus", "--group-add", "--hostname",
+                  "--label", "--memory", "--name", "--network", "--platform", "--publish",
+                  "--pull", "--user", "--volume", "--workdir", "--cpus"}
+    run_flags = {"--build", "--interactive", "--no-build", "--no-deps", "--no-TTY",
+                 "--publish-all", "--quiet", "--quiet-build", "--quiet-pull",
+                 "--remove-orphans", "--rm", "--service-ports", "--use-aliases"}
+    short_values = {"e", "l", "p", "u", "v", "w"}
+    while index < len(args):
+        arg = args[index]
+        if arg == "--":
+            return
+        if arg == "--detach" or arg.startswith("--detach="):
+            raise Denied("detached Compose run cannot be held safely")
+        if arg in run_values:
+            index += 2
+        elif arg in run_flags or any(arg.startswith(option + "=") for option in run_values):
+            index += 1
+        elif arg.startswith("--"):
+            raise Denied("unknown Compose run option")
+        elif arg.startswith("-"):
+            for position, flag in enumerate(arg[1:]):
+                if flag == "d":
+                    raise Denied("detached Compose run cannot be held safely")
+                if flag in short_values:
+                    index += 1 if position + 2 < len(arg) else 2
+                    break
+                if flag not in {"i", "P", "q", "T"}:
+                    raise Denied("unknown Compose run option")
+            else:
+                index += 1
+        else:
+            return  # The service has been reached; remaining tokens are its command.
+
+
 def init(directory_path):
     directory(directory_path)
     lock_path = directory_path / "x-launch.lock"
@@ -232,6 +291,7 @@ def main(argv):
             os.close(fd)
             fd = -1
             os.execvp(command[0], command)
+        reject_detached_compose_run(command)
         return subprocess.call(command)
     finally:
         if fd >= 0:

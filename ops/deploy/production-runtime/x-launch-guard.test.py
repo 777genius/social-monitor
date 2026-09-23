@@ -145,8 +145,8 @@ class LaunchGuardTest(unittest.TestCase):
             ("restart", "api"),
             ("run", "api"),
             ("run", "--no-deps", "api"),
-            ("run", "-d", "x-collector"),
             ("run", "--no-deps", "x-collector"),
+            ("run", "--env", "SOURCE=fixture", "x-collector", "echo", "-d"),
         )
         self.assertEqual(self.call("init").returncode, 0)
         for args in launches:
@@ -167,6 +167,45 @@ class LaunchGuardTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(self.log.read_text(), "compose " + " ".join(args) + "\n")
                 self.log.unlink()
+
+    def test_detached_compose_run_cannot_escape_hold(self):
+        self.init_allow()
+        one_off = self.root / "one-off-active"
+        owner = self.root / "fake-compose-owner"
+        owner.write_text(
+            "#!/bin/sh\n"
+            "case \"$1\" in\n"
+            f"  compose) touch '{one_off}' ;;\n"
+            "  ps) : ;;\n"
+            "  -n) printf 'TASK PID STATUS\\n' ;;\n"
+            "  *) exit 99 ;;\n"
+            "esac\n")
+        owner.chmod(0o755)
+        env = dict(self.env, SOCIAL_MONITOR_X_LAUNCH_TEST_DOCKER=str(owner),
+                   SOCIAL_MONITOR_X_LAUNCH_TEST_CTR=str(owner))
+        wrapper = HERE / "x-launch-docker-compose.sh"
+        attempts = (
+            ("run", "-d", "x-collector"),
+            ("run", "--detach", "x-collector"),
+            ("run", "--detach=true", "x-collector"),
+            ("run", "--no-deps", "-d", "x-collector"),
+            ("run", "--env", "SOURCE=fixture", "--detach", "x-collector"),
+            ("-p", "social-monitor-prod", "--profile", "app", "run", "-Td", "x-collector"),
+        )
+        for args in attempts:
+            with self.subTest(args=args):
+                result = self.call(*args, script=wrapper, env=env)
+                self.assertEqual(result.returncode, 75, result.stderr)
+                self.assertFalse(one_off.exists())
+                self.assertEqual(self.call("hold", env=env).returncode, 0)
+                self.assertFalse(one_off.exists(), "hold missed a detached one-off")
+                self.assertEqual(self.call("allow", env=env).returncode, 0)
+        direct = self.call("run", str(owner), "compose", "run", "--no-deps",
+                           "--detach", "x-collector", env=env)
+        self.assertEqual(direct.returncode, 75, direct.stderr)
+        self.assertFalse(one_off.exists())
+        self.assertEqual(self.call("hold", env=env).returncode, 0)
+        self.assertFalse(one_off.exists())
 
     def test_compose_non_launch_commands_work_while_held(self):
         wrapper = HERE / "x-launch-docker-compose.sh"
