@@ -2,10 +2,16 @@
 set -euo pipefail
 
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+if [[ ${SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE:-} == 1 && \
+      ${BASH_SOURCE[0]} == /var/data/social-monitor/* ]]; then
+  echo 'installed rolling runner cannot use test mode' >&2
+  exit 75
+fi
 
 if [[ ${SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE:-} == 1 ]]; then
   ROOT=${SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT:?rolling-run test root is required}
-  [[ $ROOT == /tmp/* ]] || {
+  ROOT=$(realpath -e -- "$ROOT" 2>/dev/null) || exit 64
+  [[ -d $ROOT && $ROOT == /tmp/* ]] || {
     echo 'rolling summary test root must be below /tmp' >&2
     exit 64
   }
@@ -47,6 +53,15 @@ COMPOSE=(
   -f "$ROOT/control/postgres-runtime-current/compose.agent-runtime-model.yml"
   -f "$ROOT/control/postgres-runtime-current/compose.daily-artifacts.yml"
 )
+X_LAUNCH_GUARD=$ROOT/control/postgres-runtime-current/x-launch-guard.py
+guard_owner=0
+[[ ${SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE:-} != 1 ]] || guard_owner=$(id -u)
+[[ -f $X_LAUNCH_GUARD && ! -L $X_LAUNCH_GUARD && \
+   $(stat -c '%a:%u' "$X_LAUNCH_GUARD" 2>/dev/null) == "644:$guard_owner" ]] || {
+  echo 'X launch guard is missing or unsafe' >&2
+  exit 75
+}
+python3 "$X_LAUNCH_GUARD" check || exit 75
 
 "$ROOT/control/postgres-runtime-current/reader-summary-scheduler-hold-status.sh" \
   >/dev/null || {
@@ -93,7 +108,7 @@ if "$ROOT/control/refresh-codex-auth.sh"; then
         "$ROOT/runtime/subscription-runtime/sessions"
     fi
     if [[ $ROLLING_RUNTIME == docker ]]; then
-      "${COMPOSE[@]}" restart agent-runtime
+      python3 "$X_LAUNCH_GUARD" run "${COMPOSE[@]}" restart agent-runtime
       rm -f "$ROOT/runtime/auth-account-changed"
       sleep 3
     else
@@ -108,7 +123,7 @@ if "$ROOT/control/refresh-codex-auth.sh"; then
     fi
   fi
   if [[ $ROLLING_RUNTIME == docker ]]; then
-    "${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime
+    python3 "$X_LAUNCH_GUARD" run "${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime
   fi
 fi
 
@@ -129,7 +144,7 @@ export SOCIAL_MONITOR_ROLLING_RUN_RECEIPT_HOST_PATH=$receipt_host_path
 container_body='exec sh ops/deploy/production-runtime/rolling-summary-container-run.sh'
 
 if [[ $ROLLING_RUNTIME == docker ]]; then
-  "${COMPOSE[@]}" --profile daily run --rm --no-deps \
+  python3 "$X_LAUNCH_GUARD" run "${COMPOSE[@]}" --profile daily run --rm --no-deps \
     -e "ROLLING_RUN_ID=$run_id" \
     -e "ROLLING_COLLECTION_DATE=$collection_date" \
     -e "ROLLING_PERIOD_ENDED_AT=$NOW" \
@@ -182,7 +197,7 @@ else
     printf '%s=%s\n' "$key" "$value" >> "$runtime_env"
   done < "$rendered_env"
 
-  "$CTR_COMMAND" -n moby run --rm --net-host \
+  python3 "$X_LAUNCH_GUARD" run "$CTR_COMMAND" -n moby run --rm --net-host \
     --env-file "$runtime_env" \
     --env "ROLLING_RUN_ID=$run_id" \
     --env "ROLLING_COLLECTION_DATE=$collection_date" \

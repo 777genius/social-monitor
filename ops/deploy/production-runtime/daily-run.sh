@@ -6,9 +6,14 @@ PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # collection -> collection quality -> AI summary -> publication gates.
 
 DAILY_TEST_MODE=${SOCIAL_MONITOR_DAILY_RUN_TEST_MODE:-0}
+if [[ $DAILY_TEST_MODE == 1 && ${BASH_SOURCE[0]} == /var/data/social-monitor/* ]]; then
+  echo 'installed daily runner cannot use test mode' >&2
+  exit 75
+fi
 if [[ $DAILY_TEST_MODE == 1 ]]; then
   ROOT=${SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT:?daily-run test root is required}
-  [[ $ROOT == /tmp/* ]] || {
+  ROOT=$(realpath -e -- "$ROOT" 2>/dev/null) || exit 64
+  [[ -d $ROOT && $ROOT == /tmp/* ]] || {
     echo 'daily production-day test root must be below /tmp' >&2
     exit 64
   }
@@ -44,6 +49,14 @@ COMPOSE=(
   -f "$ROOT/control/postgres-runtime-current/compose.agent-runtime-model.yml"
   -f "$ROOT/control/postgres-runtime-current/compose.daily-artifacts.yml"
 )
+X_LAUNCH_GUARD=$ROOT/control/postgres-runtime-current/x-launch-guard.py
+guard_owner=0
+[[ $DAILY_TEST_MODE != 1 ]] || guard_owner=$(id -u)
+[[ -f $X_LAUNCH_GUARD && ! -L $X_LAUNCH_GUARD && \
+   $(stat -c '%a:%u' "$X_LAUNCH_GUARD" 2>/dev/null) == "644:$guard_owner" ]] || {
+  echo 'X launch guard is missing or unsafe' >&2
+  exit 75
+}
 DATE_FLAG=${1:---yesterday}
 MAINTENANCE_DATE=${2:-}
 
@@ -81,9 +94,12 @@ check_runtime_release() {
 }
 
 if [[ $DATE_FLAG == --check-readiness ]]; then
+  python3 "$X_LAUNCH_GUARD" check || exit 75
   check_runtime_release || exit 75
   exit 0
 fi
+
+python3 "$X_LAUNCH_GUARD" check || exit 75
 
 "$ROOT/control/postgres-runtime-current/reader-summary-scheduler-hold-status.sh" \
   >/dev/null || {
@@ -115,16 +131,16 @@ if [[ -f "$ROOT/runtime/auth-account-changed" ]]; then
   fi
   install -d -m 0700 -o 1000 -g 1000 \
     "$ROOT/runtime/subscription-runtime/sessions"
-  "${COMPOSE[@]}" restart agent-runtime
+  python3 "$X_LAUNCH_GUARD" run "${COMPOSE[@]}" restart agent-runtime
   rm -f "$ROOT/runtime/auth-account-changed"
   sleep 3
 fi
 
-"${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime
+python3 "$X_LAUNCH_GUARD" run "${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime
 
 # The quoted body expands inside the daily runner container.
 # shellcheck disable=SC2016
-"${COMPOSE[@]}" --profile daily run --rm --no-deps daily-runner sh -lc '
+python3 "$X_LAUNCH_GUARD" run "${COMPOSE[@]}" --profile daily run --rm --no-deps daily-runner sh -lc '
   set -eu
 
   timeout_ms=${READER_SUMMARY_DAILY_RUN_TIMEOUT_MS:-12300000}

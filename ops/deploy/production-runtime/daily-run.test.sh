@@ -81,6 +81,14 @@ grep -Fx 'Persistent=true' "$DAILY_TIMER" >/dev/null
 test_root=$(mktemp -d /tmp/social-monitor-daily-run-test.XXXXXX)
 trap 'rm -rf "$test_root"' EXIT HUP INT TERM
 mkdir -p "$test_root/control/postgres-runtime-current"
+mkdir -p "$test_root/control/deploy-state"
+cp "$SCRIPT_DIR/x-launch-guard.py" "$test_root/control/postgres-runtime-current/"
+SOCIAL_MONITOR_X_LAUNCH_TEST_MODE=1 \
+SOCIAL_MONITOR_X_LAUNCH_TEST_ROOT=$test_root \
+  python3 "$SCRIPT_DIR/x-launch-guard.py" init
+SOCIAL_MONITOR_X_LAUNCH_TEST_MODE=1 \
+SOCIAL_MONITOR_X_LAUNCH_TEST_ROOT=$test_root \
+  python3 "$SCRIPT_DIR/x-launch-guard.py" allow
 cp "$SCRIPT_DIR/reader-summary-scheduler-hold-common.sh" \
   "$SCRIPT_DIR/reader-summary-scheduler-hold-status.sh" \
   "$test_root/control/postgres-runtime-current/"
