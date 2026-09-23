@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const entry = "dist/apps/agent-runtime/src/main.js";
 const cli = "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs";
+const verifier = "apps/agent-runtime/bin/host-release.mjs";
 const vendoredCliImport = "node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js";
 const target = Object.freeze({ platform: process.platform, arch: process.arch });
 const codexNativeBinary = `node_modules/@openai/codex-linux-${target.arch}/vendor/${
@@ -168,7 +169,7 @@ export async function verifyArchive(args) {
   if (manifest.schemaVersion !== 1 || manifest.productCommit !== expectedCommit ||
       manifest.sourceCommit !== expectedCommit ||
       !/^[a-f0-9]{40}$/.test(expectedCommit)) throw new Error("Product commit mismatch");
-  if (manifest.entry !== entry || manifest.cli !== cli ||
+  if (manifest.entry !== entry || manifest.cli !== cli || manifest.verifier !== verifier ||
       JSON.stringify(manifest.helpers) !== JSON.stringify(helpers)) throw new Error("Release path contract mismatch");
   if (manifest.target?.platform !== target.platform || manifest.target?.arch !== target.arch) {
     throw new Error("Host release target mismatch");
@@ -189,6 +190,7 @@ export async function verify(args) {
   const manifest = await verifyArchive(args);
   await requireFile(root, entry);
   await requireFile(root, cli);
+  await requireFile(root, verifier);
   if (((await lstat(join(root, cli))).mode & 0o111) !== 0o111) {
     throw new Error("Agent runtime CLI is not executable for the service UID");
   }
@@ -210,6 +212,7 @@ export async function verify(args) {
     throw new Error("Pinned Codex native binary is not executable for the service UID");
   }
   if (await hashFile(join(root, cli)) !== manifest.wrapperSha256 ||
+      await hashFile(join(root, verifier)) !== manifest.verifierSha256 ||
       await hashFile(join(root, "package-lock.json")) !== manifest.lockfileSha256 ||
       await treeHash(root) !== manifest.treeSha256) throw new Error("Staged release bytes mismatch");
   await requireReadOnlyForService(root, serviceUid);
@@ -265,7 +268,7 @@ async function build(args) {
       recursive: true, verbatimSymlinks: true,
     });
     await mkdir(join(stage, "apps/agent-runtime/bin"), { recursive: true });
-    for (const name of [basename(cli), ...helpers]) {
+    for (const name of [basename(cli), basename(verifier), ...helpers]) {
       await copyFile(join(sourceRoot, "apps/agent-runtime/bin", name), join(stage, "apps/agent-runtime/bin", name));
     }
     await chmod(join(stage, cli), 0o755);
@@ -289,9 +292,10 @@ async function build(args) {
     await pipeline(createReadStream(tarPath), createGzip({ level: 9 }), createWriteStream(archiveTmp));
     const manifest = {
       schemaVersion: 1, sourceCommit: commit, productCommit: commit, target,
-      entry, cli, helpers, helperSha256,
+      entry, cli, verifier, helpers, helperSha256,
       archive: archiveName, archiveSha256: await hashFile(archiveTmp),
       wrapperSha256: await hashFile(join(stage, cli)),
+      verifierSha256: await hashFile(join(stage, verifier)),
       lockfileSha256: await hashFile(join(stage, "package-lock.json")), treeSha256,
     };
     const manifestName = `${archiveName}.json`;

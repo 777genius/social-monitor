@@ -19,47 +19,49 @@ node apps/agent-runtime/bin/host-release.mjs build --output-dir /tmp/agent-runti
 
 The extracted root has these exact entry paths:
 
-- `dist/apps/agent-runtime/src/main.js` — Node service entrypoint.
-- `apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs` — pinned CLI wrapper, with its pinned adjacent helper closure.
-- `dist/libs/` — compiled Social Monitor libraries, including the generated gRPC contract.
-- `node_modules/` — locked production dependencies, including the vendored
+- `dist/apps/agent-runtime/src/main.js` - Node service entrypoint.
+- `apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs` - pinned CLI wrapper, with its pinned adjacent helper closure.
+- `apps/agent-runtime/bin/host-release.mjs` - packaged verifier, covered by the release tree hash.
+- `dist/libs/` - compiled Social Monitor libraries, including the generated gRPC contract.
+- `node_modules/` - locked production dependencies, including the vendored
   `@vioxen/subscription-runtime` and pinned Codex native package. The wrapper's
   direct vendored import resolves to
   `node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js`.
-- `package.json` and `package-lock.json` — root package metadata and lockfile.
+- `package.json` and `package-lock.json` - root package metadata and lockfile.
 
 The archive filename includes its Linux CPU architecture. The JSON manifest
 records equal `sourceCommit` and `productCommit` pins, the target architecture,
-`entry`, `cli`, `helpers`, each helper SHA-256, the archive SHA-256, wrapper
-SHA-256, lockfile SHA-256, and a canonical hash of all extracted file bytes,
+`entry`, `cli`, `verifier`, `helpers`, each helper SHA-256, the archive SHA-256,
+wrapper SHA-256, verifier SHA-256, lockfile SHA-256, and a canonical hash of all extracted file bytes,
 modes, paths and symlink targets. Copy the manifest and archive together over
 an authenticated channel. Platform infra must pin
 the intended product commit independently; a manifest supplied with an
 untrusted archive is not itself an authority for that commit.
 
-Before extracting, verify the archive SHA-256 and expected product commit
-against the trusted manifest. Extract as root into a **new, empty** staging
-directory and verify against the product checkout's verifier pinned to the
-same reviewed source commit:
+Keep the archive and sidecar under `/opt/social-monitor-agent-runtime/artifacts/`,
+outside the extracted release root. Before extracting, compare the sidecar's
+SHA-256 with the independently approved manifest hash and verify its product
+commit and archive SHA-256. Extract as root into a **new, empty** directory
+under `/opt/social-monitor-agent-runtime/releases/<product-sha>`. Then run the
+packaged verifier; the approved manifest and archive hashes pin its bytes:
 
 ```sh
 approved_commit="${APPROVED_PRODUCT_COMMIT:?set the reviewed product commit}"
 service_uid="${AGENT_RUNTIME_SERVICE_UID:?set the numeric systemd service UID}"
-archive="/opt/social-monitor/releases/agent-runtime-host-${approved_commit}-linux-$(uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/').tar.gz"
+archive="/opt/social-monitor-agent-runtime/artifacts/agent-runtime-host-${approved_commit}-linux-$(uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/').tar.gz"
 manifest="${archive}.json"
-node apps/agent-runtime/bin/host-release.mjs verify-archive \
-  --manifest "$manifest" --archive "$archive" \
-  --expect-product-commit "$approved_commit"
-mkdir /opt/social-monitor/agent-runtime-stage
-tar -xzf "$archive" -C /opt/social-monitor/agent-runtime-stage --no-same-owner
-node apps/agent-runtime/bin/host-release.mjs verify \
-  --release-dir /opt/social-monitor/agent-runtime-stage \
+release="/opt/social-monitor-agent-runtime/releases/${approved_commit}"
+mkdir "$release"
+tar -xzf "$archive" -C "$release" --no-same-owner
+node "$release/apps/agent-runtime/bin/host-release.mjs" verify \
+  --release-dir "$release" \
   --manifest "$manifest" --archive "$archive" \
   --expect-product-commit "$approved_commit" \
   --service-uid "$service_uid"
 ```
 
-The verifier rejects a wrong archive hash, product commit, missing helper,
+The verifier rejects a wrong archive hash, product commit, missing helper or
+verifier,
 changed extracted bytes, forbidden `.env`/`.git`/test/fixture paths, and a
 symlink that leaves the extracted tree. It also rejects release entries owned
 by the target service UID or writable by group/other. Keep the verified
@@ -73,13 +75,13 @@ wrapper's relative vendored import depend on this layout. The auth pool,
 local encryption key and state root are operator-managed external paths and
 must never be copied into the release.
 
-For a verified release at `/opt/social-monitor/agent-runtime-current`, the
+For a verified release at `/opt/social-monitor-agent-runtime/releases/<product-sha>`, the
 systemd bridge's paths are:
 
 ```ini
-WorkingDirectory=/opt/social-monitor/agent-runtime-current
-ExecStart=/usr/bin/node /opt/social-monitor/agent-runtime-current/dist/apps/agent-runtime/src/main.js
-Environment=AGENT_RUNTIME_CLI_PATH=/opt/social-monitor/agent-runtime-current/apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs
+WorkingDirectory=/opt/social-monitor-agent-runtime/releases/<product-sha>
+ExecStart=/usr/bin/node /opt/social-monitor-agent-runtime/releases/<product-sha>/dist/apps/agent-runtime/src/main.js
+Environment=AGENT_RUNTIME_CLI_PATH=/opt/social-monitor-agent-runtime/releases/<product-sha>/apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs
 ```
 
 The release command requires working `npm ci` and `npm run build` in the clean

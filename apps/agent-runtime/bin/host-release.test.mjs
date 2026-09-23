@@ -10,6 +10,7 @@ import { assertPinnedHelperClosure, treeHash, verify, verifyArchive } from "./ho
 const commit = "c045beb60f0b02ea8ae6b264036bef88ada20b76";
 const entry = "dist/apps/agent-runtime/src/main.js";
 const cli = "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs";
+const verifier = "apps/agent-runtime/bin/host-release.mjs";
 const native = `node_modules/@openai/codex-linux-${process.arch}/vendor/${
   process.arch === "x64" ? "x86_64-unknown-linux-musl" : "aarch64-unknown-linux-musl"
 }/bin/codex`;
@@ -40,6 +41,7 @@ async function fixture(t) {
   const manifestPath = join(temp, "release.json");
   await put(root, entry, "compiled");
   await put(root, cli, "wrapper");
+  await put(root, verifier, "verifier");
   await chmod(join(root, cli), 0o755);
   for (const helper of helpers) await put(root, `apps/agent-runtime/bin/${helper}`, helper);
   await put(root, "package.json", "{}");
@@ -55,10 +57,10 @@ async function fixture(t) {
   await writeFile(archive, "synthetic archive");
   const manifest = {
     schemaVersion: 1, sourceCommit: commit, productCommit: commit,
-    target: { platform: process.platform, arch: process.arch }, entry, cli, helpers,
+    target: { platform: process.platform, arch: process.arch }, entry, cli, verifier, helpers,
     helperSha256: Object.fromEntries(helpers.map((name) => [name, hash(name)])),
     archive: "release.tar.gz", archiveSha256: hash("synthetic archive"),
-    wrapperSha256: hash("wrapper"), lockfileSha256: hash("lock"),
+    wrapperSha256: hash("wrapper"), verifierSha256: hash("verifier"), lockfileSha256: hash("lock"),
     treeSha256: await treeHash(root),
   };
   await writeFile(manifestPath, JSON.stringify(manifest));
@@ -109,6 +111,14 @@ test("rejects changed helper bytes and a non-executable CLI", async (t) => {
   await chmod(join(root, cli), 0o755);
   await chmod(join(root, native), 0o644);
   await assert.rejects(verify(args), /native binary is not executable/);
+});
+
+test("rejects a missing or modified packaged verifier", async (t) => {
+  const { root, args } = await fixture(t);
+  await rm(join(root, verifier));
+  await assert.rejects(verify(args), /Missing regular release file/);
+  await put(root, verifier, "changed verifier");
+  await assert.rejects(verify(args), /Staged release bytes mismatch/);
 });
 
 test("rejects a symlink escaping the staged release", async (t) => {
