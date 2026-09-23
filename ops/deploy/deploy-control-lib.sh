@@ -838,6 +838,8 @@ reconcile_current_postgres_pool_bootstrap() {
 }
 deploy_frontend() {
   local sha=$1
+  local PUBLIC_LINK=$ROOT/runtime/frontend-public-web
+  local ADMIN_LINK=$ROOT/runtime/frontend-admin-web
   local staged=$STAGING/$sha/frontend
   local release=$RELEASES/$sha
   local upload_lock=$STAGING/$sha/upload.lock

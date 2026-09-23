@@ -806,9 +806,19 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     expect(dailyRunner).toMatch(/deploy:\s*\n\s+replicas: 1/);
 
     const deploy = readSource('ops/deploy/social-monitor-production-deploy.sh');
+    const composeScopeChecker = readSource(
+      'ops/deploy/production-compose-scope-check.py',
+    );
+    const serviceAllowlist = composeScopeChecker.match(/expected_services = \{([^}]+)\}/)?.[1];
     for (const externallyComposedService of ['daily-runner', 'x-collector']) {
-      expect(deploy).toContain(`"${externallyComposedService}"`);
+      expect(serviceAllowlist).toContain(`"${externallyComposedService}"`);
     }
+    expect(composeScopeChecker).toContain('if set(services) != expected_services:');
+    expect(deploy).toContain(
+      'local scope_checker=$REPO/ops/deploy/production-compose-scope-check.py',
+    );
+    expect(deploy).toContain('python3 "$scope_checker" \\');
+    expect(deploy).toContain('"$rendered" "$ROOT" "$REPO" "$CONTROL"');
     expect(deploy).toContain('exec 8>"$POSTGRES_ADMISSION_LOCK"');
     expect(deploy).toContain(
       'acquire_postgres_admission_with_daily_priority 8',
