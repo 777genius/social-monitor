@@ -163,20 +163,20 @@ describe("opt-in strict gRPC admission", () => {
     });
     expect(await new Promise<status | undefined>((resolve) => {
       const supplied = new Metadata();
-      supplied.set("authorization", "Bearer x");
+      supplied.set("authorization", `Bearer ${env.AGENT_RUNTIME_SERVICE_TOKEN}`);
       missingTokenService.checkHealth({ request: {}, metadata: supplied } as Parameters<typeof service.checkHealth>[0],
         (error) => resolve(error?.code));
     })).toBe(status.UNAUTHENTICATED);
     const wrong = new Metadata();
-    wrong.set("authorization", "Bearer x-extra");
+    wrong.set("authorization", `Bearer ${env.AGENT_RUNTIME_SERVICE_TOKEN}-extra`);
     expect(await invokeTask(workspace, wrong)).toBe(status.UNAUTHENTICATED);
     const duplicate = new Metadata();
-    duplicate.add("authorization", "Bearer x");
-    duplicate.add("authorization", "Bearer x");
+    duplicate.add("authorization", `Bearer ${env.AGENT_RUNTIME_SERVICE_TOKEN}`);
+    duplicate.add("authorization", `Bearer ${env.AGENT_RUNTIME_SERVICE_TOKEN}`);
     expect(await invokeHealth(duplicate)).toBe(status.UNAUTHENTICATED);
     expect(calls).toEqual([]);
     const good = new Metadata();
-    good.set("authorization", "Bearer x");
+    good.set("authorization", `Bearer ${env.AGENT_RUNTIME_SERVICE_TOKEN}`);
     const alias = join(workspace, "alias");
     await symlink(join(workspace, "nested"), alias);
     for (const cwd of ["", "nested", fixtureRoot, `${workspace}/../project/nested`, alias]) {
