@@ -91,11 +91,9 @@ export const resolveIntelligenceSummaryJobLoopOptions = (
   env: NodeJS.ProcessEnv,
 ): IntelligenceSummaryJobLoopOptions => {
   const defaultMode =
-    (env.READER_VALUE_MODE ??
-      (env.NODE_ENV === "test" ? "legacy_v2" : "jev_primary_v3")) === "jev_primary_v3" ||
-    (env.NODE_ENV !== "test" &&
-      env.INTELLIGENCE_SUMMARY_QUEUE_READER !== "rabbitmq")
-      ? "enabled" : "disabled";
+    env.NODE_ENV === "test" ||
+    env.INTELLIGENCE_SUMMARY_QUEUE_READER === "rabbitmq"
+      ? "disabled" : "enabled";
   const loopMode = env.INTELLIGENCE_SUMMARY_JOB_LOOP ?? defaultMode;
 
   if (loopMode !== "enabled" && loopMode !== "disabled") {
@@ -142,10 +140,11 @@ export const resolveIntelligenceReaderSummaryJobLoopOptions = (
   env: NodeJS.ProcessEnv,
 ): IntelligenceReaderSummaryJobLoopOptions => {
   const defaultMode =
-    env.NODE_ENV === "test" ||
-    env.INTELLIGENCE_SUMMARY_QUEUE_READER === "rabbitmq"
-      ? "disabled"
-      : "enabled";
+    (env.READER_VALUE_MODE ??
+      (env.NODE_ENV === "test" ? "legacy_v2" : "jev_primary_v3")) === "jev_primary_v3" ||
+    (env.NODE_ENV !== "test" &&
+      env.INTELLIGENCE_SUMMARY_QUEUE_READER !== "rabbitmq")
+      ? "enabled" : "disabled";
   const loopMode = env.INTELLIGENCE_READER_SUMMARY_JOB_LOOP ?? defaultMode;
 
   if (loopMode !== "enabled" && loopMode !== "disabled") {

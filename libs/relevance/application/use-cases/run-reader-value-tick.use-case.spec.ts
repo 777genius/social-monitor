@@ -60,11 +60,14 @@ describe('reader-value worker tick', () => {
     const f = setup(); f.next.mockRejectedValue(new Error('private database details'));
     expect(await f.runner.execute()).toMatchObject({ health: 'persistence_unavailable', fatalFailureCode: 'persistence_unavailable', ...discoveryCounts });
   });
-  it('discovers active scopes in bounded pages and retries the same page after failure', async () => {
-    const page = Array.from({ length: 25 }, (_, index) => ({ ...scope,
+  it('gives every active interest a turn and retries the same scope after failure', async () => {
+    const interests = Array.from({ length: 29 }, (_, index) => ({ ...scope,
       interestId: `interest-${index}` }));
-    const nextDiscoverable = jest.fn().mockResolvedValueOnce(page)
-      .mockResolvedValueOnce(page).mockResolvedValueOnce([scope]);
+    const nextDiscoverable = jest.fn().mockImplementation(async (after) => {
+      const index = after === undefined ? 0 : interests.findIndex((item) =>
+        item.interestId === after.interestId) + 1;
+      return interests[index] === undefined ? [] : [interests[index]];
+    });
     const discover = jest.fn().mockResolvedValueOnce({ ok: false, error: 'persistence_unavailable' })
       .mockResolvedValue(ok(discoveryCounts));
     const assess = jest.fn().mockResolvedValue(ok(scoringCounts));
@@ -77,12 +80,13 @@ describe('reader-value worker tick', () => {
       { backlogAgeMs: async () => 0 }, { nextDiscoverable });
 
     expect(await runner.execute()).toMatchObject({ health: 'persistence_unavailable' });
-    await runner.execute();
-    await runner.execute();
-    expect(nextDiscoverable.mock.calls.map((call) => call[0]))
-      .toEqual([undefined, undefined, page[24]]);
-    expect(discover).toHaveBeenLastCalledWith({ scopes: [scope],
-      backfillFrom: '2026-09-01T00:00:00Z' });
+    for (let index = 0; index < interests.length; index += 1) await runner.execute();
+    expect(nextDiscoverable.mock.calls[0]).toEqual([undefined,
+      '2026-09-01T00:00:00Z', 1]);
+    expect(nextDiscoverable.mock.calls[1]).toEqual([undefined,
+      '2026-09-01T00:00:00Z', 1]);
+    expect(discover.mock.calls.slice(1).map((call) => call[0].scopes[0].interestId))
+      .toEqual(interests.map((item) => item.interestId));
     expect(assess).toHaveBeenCalledWith(expect.objectContaining({ pinnedOnly: false }));
   });
 });

@@ -12,7 +12,7 @@ export type ReaderValueRuntimeOptions = {
   readonly drainFrozenInputs: boolean;
   readonly tickMs: 10_000;
   readonly discoveryLimit: 100;
-  readonly scopePageLimit: 25;
+  readonly scopePageLimit: 1;
   readonly concurrency: 2;
 };
 
@@ -57,7 +57,7 @@ export function resolveReaderValueRuntimeOptions(env: NodeJS.ProcessEnv): Reader
     mode, scoringLoopEnabled: loop === 'enabled', discoveryScopes: Object.freeze(mode === 'legacy_v2' ? [] : scopes),
     discoverAllActiveScopes: mode === 'jev_primary_v3' && env.READER_VALUE_DISCOVERY_SCOPES === undefined,
     backfillFrom: mode === 'legacy_v2' ? null : backfill!, drainFrozenInputs: loop === 'enabled',
-    tickMs: 10_000, discoveryLimit: 100, scopePageLimit: 25, concurrency: 2,
+    tickMs: 10_000, discoveryLimit: 100, scopePageLimit: 1, concurrency: 2,
   });
 }
 

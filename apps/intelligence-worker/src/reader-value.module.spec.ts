@@ -6,7 +6,7 @@ import { ReaderValueModule } from './reader-value.module';
 
 const keys = ['READER_VALUE_MODE', 'READER_VALUE_SCORING_LOOP', 'RELEVANCE_PERSISTENCE', 'READER_VALUE_DISCOVERY_SCOPES',
   'READER_VALUE_BACKFILL_FROM', 'OPENROUTER_API_KEY', 'INTELLIGENCE_READER_SUMMARY_JOB_LOOP',
-  'SUMMARY_PERSISTENCE'] as const;
+  'SUMMARY_PERSISTENCE', 'NODE_ENV'] as const;
 const original = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
 beforeEach(() => { for (const key of keys) delete process.env[key]; });
 afterEach(() => { for (const key of keys) {
@@ -52,6 +52,13 @@ describe('reader-value worker composition', () => {
     process.env.INTELLIGENCE_READER_SUMMARY_JOB_LOOP = 'enabled';
     process.env.SUMMARY_PERSISTENCE = 'prisma';
     process.env.OPENROUTER_API_KEY = 'fixture-key';
+    const module = await compile({ client: {} });
+    expect(module.get(RunReaderValueTickUseCase)).toBeInstanceOf(RunReaderValueTickUseCase);
+    await module.close();
+  });
+  it('wires production primary without an explicit mode or scope allowlist', async () => {
+    Object.assign(process.env, { NODE_ENV: 'production', RELEVANCE_PERSISTENCE: 'prisma',
+      SUMMARY_PERSISTENCE: 'prisma', OPENROUTER_API_KEY: 'fixture-key' });
     const module = await compile({ client: {} });
     expect(module.get(RunReaderValueTickUseCase)).toBeInstanceOf(RunReaderValueTickUseCase);
     await module.close();

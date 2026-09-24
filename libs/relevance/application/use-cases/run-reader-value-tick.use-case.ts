@@ -41,8 +41,11 @@ export class RunReaderValueTickUseCase {
         }
         const scopes = this.options.discoverAllActiveScopes
           ? await this.discoveryScopes!.nextDiscoverable(this.discoveryCursor,
-            this.options.backfillFrom, 25)
+            this.options.backfillFrom, 1)
           : this.options.discoveryScopes;
+        if (this.options.discoverAllActiveScopes && scopes.length > 1) {
+          return result('persistence_unavailable', 'persistence_unavailable');
+        }
         const discovered = await this.discovery.execute({ scopes, backfillFrom: this.options.backfillFrom });
         const diagnostics = discovered.ok ? discovered.value : discovered.diagnostics;
         if (diagnostics) Object.assign(counts, diagnostics);
@@ -51,7 +54,7 @@ export class RunReaderValueTickUseCase {
           return result(code, code);
         }
         if (this.options.discoverAllActiveScopes) {
-          this.discoveryCursor = scopes.length < 25 ? undefined : scopes[scopes.length - 1];
+          this.discoveryCursor = scopes[0];
         }
       }
       // Four scopes, 25 reservations each; persistent rows, disposable fair cursor.

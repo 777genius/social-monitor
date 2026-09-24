@@ -24,6 +24,10 @@ export async function checkReaderValueInventory(fixture: Awaited<ReturnType<type
   const { input, feedId }=seed;
   const inventory=new PrismaReaderValueInventory(fixture.client);
   const window='2000-01-01T00:00:00Z';
+  const liveScopes=new PrismaReaderValueMaintenanceScopes(fixture.client);
+  assert((await liveScopes.nextDiscoverable(undefined,window,25)).some((scope) =>
+    scope.tenantId===input.tenantId && scope.workspaceId===input.workspaceId && scope.interestId===input.interestId),
+  'live discovery must find an enabled interest with a visible bound post');
   const first=await inventory.page(input,window,undefined,25);
   assert.equal(first.length,1);
   assert.equal(first[0]?.source.body,'full source body','never substitute feed preview');
@@ -109,6 +113,10 @@ export async function checkReaderValueInventory(fixture: Awaited<ReturnType<type
   assert.equal((await inventory.page(input,window,undefined,25))[0]?.source.interest,'New interest meaning');
   await fixture.setup.query("UPDATE feed_items SET status='TOMBSTONED' WHERE id=$1",[feedId]);
   assert.equal((await inventory.page(input,window,undefined,25)).length,0,'a source revocation blocks its duplicates');
+  await fixture.setup.query("UPDATE source_bindings SET status='DISABLED' WHERE id=$1",[first[0]!.sourceBindingId]);
+  assert(!(await liveScopes.nextDiscoverable(undefined,window,25)).some((scope) =>
+    scope.tenantId===input.tenantId && scope.workspaceId===input.workspaceId && scope.interestId===input.interestId),
+  'live discovery must skip an interest when its only source binding is disabled');
 
   await checkPreparationInventorySnapshot(fixture);
 

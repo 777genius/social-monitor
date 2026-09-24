@@ -22,7 +22,7 @@ describe('reader-value runtime options', () => {
   it('retains bounded durable drain after rollback without discovering new scope', () => {
     expect(resolveReaderValueRuntimeOptions({ ...configured, READER_VALUE_MODE: 'legacy_v2' })).toMatchObject({
       mode: 'legacy_v2', discoveryScopes: [], backfillFrom: null, drainFrozenInputs: true,
-      scoringLoopEnabled: true, tickMs: 10_000, discoveryLimit: 100, scopePageLimit: 25, concurrency: 2,
+      scoringLoopEnabled: true, tickMs: 10_000, discoveryLimit: 100, scopePageLimit: 1, concurrency: 2,
     });
   });
   it('requires durable enabled scoped discovery and an explicit valid window', () => {
@@ -45,6 +45,7 @@ describe('reader-value runtime options', () => {
   });
   it('rejects queue-only primary and a poller restricted to another scope', () => {
     const primary = { ...configured, READER_VALUE_MODE: 'jev_primary_v3', INTELLIGENCE_SUMMARY_QUEUE_READER: 'rabbitmq' };
+    expect(resolveReaderValueRuntimeOptions(primary).mode).toBe('jev_primary_v3');
     expect(() => resolveReaderValueRuntimeOptions({ ...primary,
       INTELLIGENCE_READER_SUMMARY_JOB_LOOP: 'disabled' })).toThrow(/poller/u);
     expect(() => resolveReaderValueRuntimeOptions({ ...primary,
