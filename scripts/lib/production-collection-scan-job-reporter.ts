@@ -37,11 +37,24 @@ export class ProductionCollectionScanJobReporter implements ScanExecutionReporte
     readonly scanPolicyId: string;
   }): string {
     const scanJobId = this.ids.generate();
+    this.beginReservedAttempt(scanJobId, params);
+    return scanJobId;
+  }
+
+  /** Recovery identity is durably reserved before this reporter is composed. */
+  beginReservedAttempt(scanJobId: string, params: {
+    readonly tenantId: TenantId;
+    readonly workspaceId: WorkspaceId;
+    readonly sourceBindingId: string;
+    readonly scanPolicyId: string;
+  }): void {
+    if (this.pendingScans.has(scanJobId)) {
+      throw new Error("Collection scan identity is already pending");
+    }
     this.pendingScans.set(scanJobId, {
       ...params,
       requestedAt: this.clock.now(),
     });
-    return scanJobId;
   }
 
   async reportSucceeded(command: ReportScanSucceededCommand): Promise<void> {
