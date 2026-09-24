@@ -10,6 +10,8 @@ Owner direction on 2026-09-24 changed the rollout decision: `jev_primary_v3` is 
 - Primary requires Prisma relevance and summary persistence, the scoring loop, the reader-summary due poller, and a non-empty `OPENROUTER_API_KEY` in the intelligence-worker. Startup fails when prerequisites are missing; it does not silently select V2. The agent-runtime service and its supported subscription auth must also be healthy for presentation and final summary generation.
 - The repository's local in-memory `.env.example` explicitly uses `legacy_v2`. `docker-compose.yml` overrides it to primary with both loops enabled. Production deployment has separate configuration and must reproduce the primary contract; do not infer deployment from this compose file.
 
+The production private-API Compose inspected on 2026-09-24 has Prisma persistence but no Jev-specific settings; the live stack does not yet run intelligence-worker or agent-runtime. Deploying only a new API image would therefore create V3 jobs without a processor. The deployment agent must bring up the complete path as one coordinated activation, or explicitly hold API mode at `legacy_v2` until the dependencies are ready.
+
 ## Deployment agent checks (not performed by this PR)
 
 1. Apply additive migrations, start durable API/intelligence-worker/agent-runtime with the same mode and scope policy, and verify healthy dependencies. Do not use a real project for agent-runtime smoke tests; use a sandbox/test project.
