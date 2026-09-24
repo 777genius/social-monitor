@@ -10,10 +10,8 @@ import { PrismaReaderSummaryJobRepository } from
   "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import { readerSummaryArtifactFromPrisma, type PrismaReaderSummaryArtifactRecord } from
   "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-records";
-import { sealReaderPostPresentationV3 } from
-  "../../libs/summary/domain/services/reader-post-presentation-v3";
-import { canonicalPromotionPayload, promotionPayloadDigest } from
-  "../../libs/summary/domain/services/reader-post-promotion-attestation";
+import { sealReaderPostPresentationV3 } from "../../libs/summary/domain/services/reader-post-presentation-v3";
+import { canonicalPromotionPayload, promotionPayloadDigest } from "../../libs/summary/domain/services/reader-post-promotion-attestation";
 import type { ReaderSummaryPublicationCommand, ReaderSummaryV3PreparationSourcePort } from "../../libs/summary/ports";
 import type { PrismaReaderSummaryClient } from
   "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-client";
@@ -26,31 +24,27 @@ import { buildReaderSummaryDraftWithPromotionContent } from
   "../../libs/summary/features/execute-reader-summary-job/reader-summary-promotion-content";
 import { buildReaderSummaryPromotionArtifactFields } from
   "../../libs/summary/features/execute-reader-summary-job/reader-summary-promotion-artifact-fields";
-import { serializeReaderSummaryArtifact } from
-  "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-json";
-import { presentReaderSummaryArtifact } from
-  "../../libs/summary/features/shared/reader-summary-artifact-presenter";
-import { validReaderDisplayRestBinding } from
-  "../../libs/summary/interfaces/rest/reader-summary-display-rest-binding";
-import { readerSummaryArtifactViewFromReaderSummaryView } from
-  "../../libs/summary/interfaces/rest/reader-summary-rest.mapper";
+import { serializeReaderSummaryArtifact } from "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-json";
+import { presentReaderSummaryArtifact } from "../../libs/summary/features/shared/reader-summary-artifact-presenter";
+import { validReaderDisplayRestBinding } from "../../libs/summary/interfaces/rest/reader-summary-display-rest-binding";
+import { readerSummaryArtifactViewFromReaderSummaryView } from "../../libs/summary/interfaces/rest/reader-summary-rest.mapper";
 import type { ReaderSummaryPublicationRunningFixture } from
   "./reader-summary-publication-postgres-running-fixture";
 import { assertPostgres as assert, assertPostgresRejects as assertRejects } from
   "./reader-summary-publication-postgres-assertions";
 import { sha256, stableJson } from
   "./reader-summary-weekly-publication-evidence-postgres-contract";
-import { postgresPreflightClient } from
-  "./reader-summary-v3-postgres-preflight-client";
+import { postgresPreflightClient } from "./reader-summary-v3-postgres-preflight-client";
 import { assertV3PreflightCancellationFence } from "./reader-summary-v3-postgres-preflight-fence";
-import { runProductionV3Preflight, seedProductionReaderValueCapture } from
-  "./reader-summary-v3-postgres-production-preflight";
-import { completeProductionV3Assessment, fixtureReaderValueAnswers } from
-  "./reader-summary-v3-postgres-assessment-lifecycle";
+import { runProductionV3Preflight, seedProductionReaderValueCapture } from "./reader-summary-v3-postgres-production-preflight";
+import { completeProductionV3Assessment, fixtureReaderValueAnswers } from "./reader-summary-v3-postgres-assessment-lifecycle";
 import { assertFlutterV3FixtureFresh } from
   "./reader-summary-v3-postgres-flutter-fixture";
+import { assertV3LongSourcePostgresContract } from
+  "./reader-summary-v3-long-source-postgres-contract";
 type Params = {
   readonly client: PoolClient;
+  readonly adminClient: PoolClient;
   readonly concurrentClient: PoolClient;
   readonly createFixture: (status: "COMPLETED" | "NO_SIGNAL", day: number,
     overrides?: { readonly requestedAt?: string; readonly publicationInterestId?: string;
@@ -124,6 +118,12 @@ export const assertReaderSummaryV3PostgresContract = async (params: Params) => {
   assert(await publishThroughApplicationGuard(params, nested, payload) === "replayed",
     "nested V3 replay must be exact");
   await assertApplicationPayloadRoundTrip(params.client, nested, payload);
+  await assertV3LongSourcePostgresContract({ client: params.client,
+    adminClient: params.adminClient, createFixture: params.createFixture,
+    build: (source) => buildApplicationV3FixturePayload(params.client, source),
+    advance: (fixture) => advanceV3Preflight(params.client, fixture, fixture.payload),
+    publish: (fixture, source) => publishThroughProductionEquivalentGuard(
+      params.client, fixture, source, params.publish) });
   const changed = JSON.parse(JSON.stringify(payload));
   changed.report.artifactPayload.promotionAttestations[0].storyId = "changed";
   await assertRejects(() => publishThroughApplicationGuard(

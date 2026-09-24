@@ -321,6 +321,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
             "./lib/reader-summary-v3-postgres-contract"
           );
           await assertReaderSummaryV3PostgresContract({ client: first,
+            adminClient,
             concurrentClient: second,
             createFixture: (status, day, overrides) =>
               createRunningFixture(first, status, day, overrides),
