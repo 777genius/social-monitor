@@ -153,11 +153,26 @@ const normalizeRssItem = (item: Readonly<Record<string, unknown>>): RssFeedItem 
   guid: readText(item.guid),
   link: readText(item.link),
   title: readText(item.title),
-  content: readText(item['content:encoded']) ?? readText(item.description),
+  content: readRssBody(item),
   author: readText(item.author) ?? readText(item['dc:creator']),
   ...rssMediaFields(item),
   publishedAt: parseDate(readText(item.pubDate) ?? readText(item['dc:date'])),
 });
+
+const readRssBody = (item: Readonly<Record<string, unknown>>): string | undefined => {
+  const encoded = readText(item['content:encoded']);
+  if (encoded !== undefined && hasReadableFeedText(encoded)) return encoded;
+  // Keep the original parsed summary bytes when blank encoded HTML loses priority.
+  const description = encoded === undefined
+    ? readText(item.description) : readRawRssSummary(item.description);
+  return description ?? encoded;
+};
+
+const readRawRssSummary = (value: unknown): string | undefined => {
+  if (typeof value === 'string') return value.trim().length > 0 ? value : undefined;
+  if (isRecord(value)) return readRawRssSummary(value['#text']);
+  return readText(value);
+};
 
 const normalizeAtomEntry = (entry: Readonly<Record<string, unknown>>, rawEntry: unknown): RssFeedItem => {
   const raw = isRecord(rawEntry) ? rawEntry : {};
