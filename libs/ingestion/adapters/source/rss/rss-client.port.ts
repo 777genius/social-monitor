@@ -1,18 +1,10 @@
 export type RssTextType = 'text' | 'html' | 'xhtml' | 'unsupported';
 
-export type RssFeedItem = {
+type RssFeedItemFields = {
   readonly guid?: string;
   readonly link?: string;
   readonly title?: string;
-  /** Atom text constructs are literal; absent for RSS fields, which may contain HTML. */
-  readonly titleType?: RssTextType;
   readonly content?: string;
-  readonly contentType?: RssTextType;
-  /** Semantic visibility of Atom XHTML constructs, computed from the parsed feed. */
-  readonly xhtmlReadability?: {
-    readonly title?: boolean;
-    readonly content?: boolean;
-  };
   readonly author?: string;
   readonly mediaThumbnailUrl?: string;
   readonly mediaContentUrl?: string;
@@ -21,6 +13,16 @@ export type RssFeedItem = {
   readonly enclosureType?: string;
   readonly publishedAt?: Date;
 };
+
+type XhtmlReadability = { readonly title: boolean; readonly content: boolean };
+type NonXhtmlTextType = Exclude<RssTextType, 'xhtml'>;
+
+/** A client must supply an XML-semantic decision for every XHTML construct it returns. */
+export type RssFeedItem = RssFeedItemFields & (
+  | { readonly titleType: 'xhtml'; readonly contentType?: RssTextType; readonly xhtmlReadability: XhtmlReadability }
+  | { readonly titleType?: RssTextType; readonly contentType: 'xhtml'; readonly xhtmlReadability: XhtmlReadability }
+  | { readonly titleType?: NonXhtmlTextType; readonly contentType?: NonXhtmlTextType; readonly xhtmlReadability?: never }
+);
 
 export type RssReadFeedOptions = {
   readonly etag?: string;

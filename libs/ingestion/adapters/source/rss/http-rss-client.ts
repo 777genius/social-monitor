@@ -9,6 +9,7 @@ const parser = new XMLParser({
   attributeNamePrefix: '@_',
   textNodeName: '#text',
   trimValues: true,
+  htmlEntities: true,
 });
 const rawXhtmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -153,22 +154,26 @@ const normalizeAtomEntry = (entry: Readonly<Record<string, unknown>>, rawEntry: 
   const primaryContent = readAtomConstruct(entry.content, raw.content);
   const contentName = primaryContent === undefined ? 'summary' : 'content';
   const content = primaryContent ?? readAtomConstruct(entry.summary, raw.summary);
-  const xhtmlReadability = {
-    ...(title?.type === 'xhtml' ? { title: hasReadableXmlText(entry.title) } : {}),
-    ...(content?.type === 'xhtml' ? { content: hasReadableXmlText(entry[contentName]) } : {}),
-  };
-  return {
+  const common = {
     guid: readText(entry.id),
     link: readAtomLink(entry.link),
     title: title?.text,
-    titleType: title?.type,
     content: content?.text,
-    contentType: content?.type,
-    ...(Object.keys(xhtmlReadability).length > 0 ? { xhtmlReadability } : {}),
     author: readAtomAuthor(entry.author),
     ...atomMediaFields(entry),
     publishedAt: parseDate(readText(entry.published) ?? readText(entry.updated)),
   };
+  if (title?.type === 'xhtml' || content?.type === 'xhtml') {
+    const xhtmlReadability = {
+      title: title?.type === 'xhtml' && hasReadableXmlText(entry.title),
+      content: content?.type === 'xhtml' && hasReadableXmlText(entry[contentName]),
+    };
+    if (title?.type === 'xhtml') {
+      return { ...common, titleType: 'xhtml', contentType: content?.type, xhtmlReadability };
+    }
+    return { ...common, titleType: title?.type, contentType: 'xhtml', xhtmlReadability };
+  }
+  return { ...common, titleType: title?.type, contentType: content?.type };
 };
 
 const isXhtmlType = (value: unknown): boolean =>
@@ -190,27 +195,30 @@ const readAtomConstruct = (value: unknown, rawValue: unknown): { readonly text: 
   if (type === 'xhtml' && value !== undefined && rawValue === undefined) {
     throw new Error('Atom XHTML construct could not be recovered from XML');
   }
-  const text = type === 'xhtml' ? (typeof xhtmlMarkup === 'string' && xhtmlMarkup.length > 0 ? xhtmlMarkup : undefined) : readText(value);
+  const text = type === 'xhtml' ? (typeof xhtmlMarkup === 'string' && xhtmlMarkup.trim().length > 0 ? xhtmlMarkup : undefined) : readText(value);
   return text === undefined ? undefined : { text, type };
 };
 
+type RssMediaFields = Partial<Pick<RssFeedItem,
+  'mediaThumbnailUrl' | 'mediaContentUrl' | 'mediaContentType' | 'enclosureUrl' | 'enclosureType'>>;
+
 const rssMediaFields = (
   item: Readonly<Record<string, unknown>>,
-): Partial<RssFeedItem> => ({
+): RssMediaFields => ({
   ...mediaFieldsFromMediaElements(item),
   ...enclosureFields(item.enclosure),
 });
 
 const atomMediaFields = (
   entry: Readonly<Record<string, unknown>>,
-): Partial<RssFeedItem> => ({
+): RssMediaFields => ({
   ...mediaFieldsFromMediaElements(entry),
   ...enclosureFields(readAtomEnclosure(entry.link), '@_href'),
 });
 
 const mediaFieldsFromMediaElements = (
   value: Readonly<Record<string, unknown>>,
-): Partial<RssFeedItem> => {
+): RssMediaFields => {
   const thumbnailUrl = readElementAttribute(value['media:thumbnail'], '@_url');
   const content = firstRecord(value['media:content']);
   const contentUrl = readElementAttribute(content, '@_url');
@@ -226,7 +234,7 @@ const mediaFieldsFromMediaElements = (
 const enclosureFields = (
   value: unknown,
   urlAttribute: '@_url' | '@_href' = '@_url',
-): Partial<RssFeedItem> => {
+): RssMediaFields => {
   const enclosure = firstRecord(value);
   const enclosureUrl = readElementAttribute(enclosure, urlAttribute);
   const enclosureType = readElementAttribute(enclosure, '@_type');
@@ -299,7 +307,7 @@ const firstRecord = (
 };
 
 const readText = (value: unknown): string | undefined => {
-  if (typeof value === 'string' || typeof value === 'number') {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     const text = String(value).trim();
     return text.length > 0 ? text : undefined;
   }

@@ -28,11 +28,11 @@ const visibleHtmlText = (node: Node): string => {
   return Array.from(node.childNodes, visibleHtmlText).join('');
 };
 
-/** The normal feed parse has expanded XML entities and kept CDATA as literal text. */
+/** The normal feed parse expands XML references while retaining CDATA and escaped references as literal text. */
 export const hasReadableXmlText = (construct: unknown): boolean => {
   const visible: string[] = [];
   const visit = (value: unknown): void => {
-    if (typeof value === 'string' || typeof value === 'number') {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
       visible.push(String(value));
     } else if (Array.isArray(value)) {
       value.forEach(visit);
