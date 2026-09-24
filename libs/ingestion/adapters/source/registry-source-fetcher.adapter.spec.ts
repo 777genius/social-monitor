@@ -130,6 +130,44 @@ describe('RegistrySourceFetcherAdapter', () => {
     );
   });
 
+  it('retains an older supporting root for an in-window comment and excludes older comments', async () => {
+    class HistoricalCommentsProvider extends WindowedProvider {
+      override async scan(): Promise<SourceProviderScanResult> {
+        return {
+          items: [fetchedItem('old-root', '2026-07-06T12:00:00.000Z')],
+          conversationUnits: [
+            conversationUnit('old-root'),
+            { ...conversationUnit('old-root'), providerUnitId: 'old-root:old-comment',
+              publishedAt: new Date('2026-07-06T13:00:00.000Z') },
+          ],
+          warnings: [],
+        };
+      }
+    }
+    const fetcher = new RegistrySourceFetcherAdapter(
+      new InMemorySourceProviderRegistry([new HistoricalCommentsProvider()], []),
+      { async readConfig() { return { targetPublishedWindow: {
+        startInclusive: '2026-07-07T00:00:00.000Z',
+        endExclusive: '2026-07-08T00:00:00.000Z',
+      } }; } } satisfies SourceConfigReaderPort,
+    );
+
+    const result = await fetcher.fetch({
+      tenantId: tenantId('tenant-registry-fetcher'),
+      workspaceId: workspaceId('workspace-registry-fetcher'),
+      sourceBindingId: 'source-binding-registry-fetcher',
+      scanJobId: 'scan-job-registry-fetcher',
+      providerKey: 'windowed-source',
+      sourceQuery: { mode: 'search', query: 'AI agents' },
+      correlationId: 'correlation-registry-fetcher',
+    });
+
+    expect(result.items).toEqual([fetchedItem('old-root', '2026-07-06T12:00:00.000Z')]);
+    expect(result.conversationUnits?.map((unit) => unit.providerUnitId)).toEqual(['old-root:comment']);
+    expect(result.conversationUnits?.[0]?.publishedAt.toISOString()).toBe('2026-07-07T12:30:00.000Z');
+    expect(result.warnings).toEqual([]);
+  });
+
   it('does not call the source query planner when the runtime flag is disabled', async () => {
     class ThrowingPlanner implements SourceQueryPlannerPort {
       async compilePlan(): Promise<SourceQueryPlan> {
@@ -636,7 +674,7 @@ class WindowedProvider implements SourceProviderPort {
       ],
       conversationUnits: [
         conversationUnit('inside-window'),
-        conversationUnit('outside-window'),
+        { ...conversationUnit('outside-window'), publishedAt: new Date('2026-07-06T13:00:00.000Z') },
       ],
       warnings: [],
     };

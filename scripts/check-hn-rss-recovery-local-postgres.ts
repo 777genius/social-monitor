@@ -6,11 +6,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Pool } from "pg";
-import type { SourceProviderPort } from "@social-monitor/ingestion/ports";
-import { PrismaIngestionWorkerConnection } from "../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
-import { executeRecoveryAcquisitionInDisposableJournalForTest } from "./lib/hn-rss-recovery-acquisition";
+import { HackerNewsSourceProvider } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-source.provider";
+import { HttpHackerNewsClient } from "@social-monitor/ingestion/adapters/source/hacker-news/http-hacker-news-client";
+import { SystemClock } from "@social-monitor/shared-kernel";
+import { executeRecoveryAcquisitionInDisposableJournalForTest, openDisposableRecoveryAcquisitionFixture } from "./lib/hn-rss-recovery-acquisition";
 import { parseRecoveryArgs, type RecoveryProvider, type RecoveryRequest } from "./lib/hn-rss-recovery-plan";
-import { syntheticHnIdForBinding, syntheticRecoveryProvider, syntheticRssGuidForBinding } from "./lib/hn-rss-recovery-synthetic-provider";
+import { syntheticHnIdForBinding, syntheticRssGuidForBinding } from "./lib/hn-rss-recovery-synthetic-provider";
 import { provisionReaderSummaryPublicationFixtureScope } from "./lib/reader-summary-publication-postgres-fixture-scope";
 import { closeReaderSummaryPublicationPostgresContract, runReaderSummaryPublicationPostgresContract } from "./check-reader-summary-publication-postgres";
 import { readBindingFromDatabase, runRecoveryInDisposableJournalForTest, type RecoveryDependencies } from "./run-hn-rss-recovery";
@@ -62,8 +63,11 @@ async function child(mode: "run" | "crash", runtimeUrl: string, request: Recover
     const worker = spawn(process.execPath, ["-r", "ts-node/register/transpile-only", "-r", "tsconfig-paths/register",
       join(__dirname, "lib/hn-rss-recovery-postgres-worker.ts"), mode, ...processArgs], {
       cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"],
-      env: { PATH: process.env.PATH ?? "", TZ: "UTC", TS_NODE_PROJECT: join(process.cwd(), "tsconfig.build.json"),
-        HN_RSS_RECOVERY_SYNTHETIC_RUNTIME_URL: runtimeUrl },
+      env: { PATH: process.env.PATH ?? "", TZ: "UTC", NODE_ENV: "production", TS_NODE_PROJECT: join(process.cwd(), "tsconfig.build.json"),
+        HN_RSS_RECOVERY_SYNTHETIC_RUNTIME_URL: runtimeUrl,
+        ...(process.env.READER_SUMMARY_PUBLICATION_TEST_PG18_SOCKET_TRANSPORT === undefined ? {} : {
+          READER_SUMMARY_PUBLICATION_TEST_PG18_SOCKET_TRANSPORT: process.env.READER_SUMMARY_PUBLICATION_TEST_PG18_SOCKET_TRANSPORT,
+        }) },
     });
     let output = "";
     worker.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
@@ -76,16 +80,26 @@ async function child(mode: "run" | "crash", runtimeUrl: string, request: Recover
 async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
   const journal = mkdtempSync(join(tmpdir(), "hn-rss-pg18-proof-"));
   const auditor = new Pool({ connectionString: auditorUrl, min: 0, max: 2 });
-  let connection: PrismaIngestionWorkerConnection | undefined;
+  const fixture = await openDisposableRecoveryAcquisitionFixture(runtimeUrl);
   try {
-    connection = await PrismaIngestionWorkerConnection.createForProcess(runtimeUrl, "daily-runner");
-    const activeConnection = connection;
     const fixtureScope = { tenantId: randomUUID(), workspaceId: randomUUID() };
     const seedClient = await auditor.connect();
     try { await provisionReaderSummaryPublicationFixtureScope(seedClient, fixtureScope); }
     finally { seedClient.release(); }
     const hn = await seedBinding(auditor, fixtureScope, "hacker-news");
     const rss = await seedBinding(auditor, fixtureScope, "rss");
+    const injectionRequest = parseRecoveryArgs(args(hn, journal, ...hnWindow), new Date());
+    const injectionBinding = await readBindingFromDatabase(injectionRequest, runtimeUrl);
+    await executeRecoveryAcquisitionInDisposableJournalForTest({
+      fixture, tenantId: hn.tenantId, workspaceId: hn.workspaceId, sourceBindingId: hn.sourceBindingId,
+      providerKey: hn.providerKey, from: injectionRequest.from, to: injectionRequest.to,
+      binding: injectionBinding, runId: randomUUID(), attemptId: randomUUID(), scanJobId: randomUUID(),
+      provider: new HackerNewsSourceProvider(new HttpHackerNewsClient(), new SystemClock()),
+    } as never, journal).then(() => { throw new Error("HTTP provider reached synthetic acquisition"); }, (error: unknown) => {
+      assert(error instanceof Error && error.message.includes("fixture-owned connection and provider"), "HTTP provider rejection was not the fixture guard");
+    });
+    const injectedJobs = await auditor.query<{ count: string }>("SELECT count(*)::text AS count FROM scan_jobs WHERE source_binding_id=$1", [hn.sourceBindingId]);
+    assert(injectedJobs.rows[0]?.count === "0", "Rejected HTTP provider reached the database write boundary");
     const cursorId = randomUUID();
     await auditor.query(`INSERT INTO cursor_checkpoints
       (id,tenant_id,workspace_id,source_binding_id,schema_version,cursor_payload,created_at,updated_at)
@@ -108,9 +122,9 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
       readBinding: (request) => readBindingFromDatabase(request, runtimeUrl),
       acquire: async (request, binding, identity) => {
         acquisitions += 1;
-        return executeRecoveryAcquisitionInDisposableJournalForTest({ connection: activeConnection, tenantId: request.tenantId, workspaceId: request.workspaceId,
+        return executeRecoveryAcquisitionInDisposableJournalForTest({ fixture, tenantId: request.tenantId, workspaceId: request.workspaceId,
           sourceBindingId: request.sourceBindingId, providerKey: request.providerKey, from: request.from, to: request.to,
-          binding, ...identity, provider: syntheticRecoveryProvider(request.providerKey, request.sourceBindingId) }, request.journalDir);
+          binding, ...identity }, request.journalDir);
       },
     };
     const plan = async (scope: Scope, from: string, to: string): Promise<RecoveryRequest> => {
@@ -120,6 +134,9 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
       return { ...request, apply: true, planSha256: String(result.planSha256) };
     };
     const firstPlan = await plan(hn, ...hnWindow);
+    const arbitraryWorker = await child("run", "postgresql://synthetic@127.0.0.1:5432/social_monitor_production", firstPlan);
+    assert(arbitraryWorker.code === 2 && !arbitraryWorker.output.includes("SYNTHETIC_ACQUIRE"),
+      "Synthetic worker accepted a production-like database URL");
     assert(acquisitions === 0 && readdirSync(journal).length === 0, "Plan mode acquired or reserved");
     for (const mismatch of [
       { ...firstPlan, tenantId: randomUUID() }, { ...firstPlan, workspaceId: randomUUID() },
@@ -262,19 +279,12 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
 
     const warningBinding = await seedBinding(auditor, fixtureScope, "hacker-news");
     const warningPlan = await plan(warningBinding, ...hnWindow);
-    const baseProvider = syntheticRecoveryProvider("hacker-news", warningBinding.sourceBindingId);
-    const warningProvider: SourceProviderPort = {
-      key: () => baseProvider.key(), capabilityProfile: () => baseProvider.capabilityProfile(),
-      validateBinding: (query) => baseProvider.validateBinding(query),
-      planScan: (query, context) => baseProvider.planScan(query, context),
-      classifyError: (error, context) => baseProvider.classifyError(error, context),
-      scan: async (scanPlan, context) => ({ ...await baseProvider.scan(scanPlan, context), warnings: ["synthetic comment enrichment degraded"] }),
-    };
     await runRecoveryInDisposableJournalForTest(warningPlan, {
       readBinding: dependencies.readBinding,
-      acquire: (request, binding, identity) => executeRecoveryAcquisitionInDisposableJournalForTest({ connection: activeConnection,
+      acquire: (request, binding, identity) => executeRecoveryAcquisitionInDisposableJournalForTest({ fixture,
         tenantId: request.tenantId, workspaceId: request.workspaceId, sourceBindingId: request.sourceBindingId,
-        providerKey: request.providerKey, from: request.from, to: request.to, binding, ...identity, provider: warningProvider }, request.journalDir),
+        providerKey: request.providerKey, from: request.from, to: request.to, binding, ...identity,
+        syntheticWarning: "synthetic comment enrichment degraded" }, request.journalDir),
     }).then(() => { throw new Error("Partial provider completed"); }, () => undefined);
     assert(existsSync(join(journal, `${warningPlan.planSha256}.started.json`)) &&
       !existsSync(join(journal, `${warningPlan.planSha256}.completed.json`)) && await cursorBytes() === beforeCursor,
@@ -317,7 +327,7 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
       durableCursorUnchanged: true, oldJobUnchanged: true })}\n`);
     process.stdout.write("synthetic_pg18_recovery=PASS\n");
   } finally {
-    try { await connection?.close(); } finally {
+    try { await fixture.close(); } finally {
       try { await auditor.end(); } finally { rmSync(journal, { recursive: true, force: true }); }
     }
   }

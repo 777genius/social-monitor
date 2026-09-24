@@ -22,7 +22,7 @@ import {
   FakeScanFailureQueue, FakeScanLease, FakeSourceItemRepository, SequenceIdGenerator,
 } from "../../libs/ingestion/features/execute-scan/execute-scan.use-case.spec-support";
 import { CleanRealDaySourceConfigReader } from "./clean-real-day-source-config-reader";
-import { executeRecoveryAcquisition, requireCompleteRecoveryFetch, requireCompleteRecoveryScan, validateRecoveryWindow, type RecoveryBinding } from "./hn-rss-recovery-acquisition";
+import { executeRecoveryAcquisition, executeRecoveryAcquisitionInDisposableJournalForTest, openDisposableRecoveryAcquisitionFixture, requireCompleteRecoveryFetch, requireCompleteRecoveryScan, validateRecoveryWindow, type RecoveryBinding } from "./hn-rss-recovery-acquisition";
 import { parseRecoveryArgs } from "./hn-rss-recovery-plan";
 import { runRecoveryInDisposableJournalForTest } from "../run-hn-rss-recovery";
 
@@ -56,6 +56,30 @@ describe("HN/RSS recovery injected acquisition path", () => {
   let directory: string;
   beforeEach(() => { directory = mkdtempSync(join(tmpdir(), "hn-rss-acq-test-")); });
   afterEach(() => { rmSync(directory, { recursive: true, force: true }); });
+
+  it("rejects production-like and remote database URLs before issuing a synthetic capability", async () => {
+    await expect(openDisposableRecoveryAcquisitionFixture("postgresql://runtime@127.0.0.1:5432/social_monitor_production"))
+      .rejects.toThrow("disposable local PostgreSQL fixture");
+    await expect(openDisposableRecoveryAcquisitionFixture(
+      "postgresql://social_monitor_publication_test_0123456789abcdef0123@db.example.test:5432/reader_summary_publication_test_0123456789abcdef0123",
+    )).rejects.toThrow("disposable local PostgreSQL fixture");
+  });
+
+  it("rejects a forged fixture and a real HTTP provider before any provider effect", async () => {
+    const provider = new HackerNewsSourceProvider(new HttpHackerNewsClient(), new FixedClock(observed));
+    const validate = jest.spyOn(provider, "validateBinding");
+    const request = {
+      fixture: { close: async () => undefined }, tenantId: tenant, workspaceId: workspace,
+      sourceBindingId: bindingId, providerKey: "hacker-news" as const,
+      from: "2026-09-23T16:00:00.000Z", to: "2026-09-23T17:00:00.000Z",
+      binding: { interestId, scanPolicyId: policyId, interestQuery: "synthetic", config: { mode: "search", query: "synthetic" } },
+      runId: "synthetic", attemptId: "synthetic", scanJobId: "synthetic",
+      provider,
+    };
+    await expect(executeRecoveryAcquisitionInDisposableJournalForTest(request as never, directory))
+      .rejects.toThrow("fixture-owned connection and provider");
+    expect(validate).not.toHaveBeenCalled();
+  });
 
   it("refuses a complete Algolia window whose eleventh valid hit exceeds maxItems", async () => {
     const originalFetch = globalThis.fetch;
@@ -273,7 +297,7 @@ describe("HN/RSS recovery injected acquisition path", () => {
     }
   });
 
-  it("rejects a registry window warning before source or feed persistence", async () => {
+  it("retains an older root supporting an in-window HN comment", async () => {
     const client = new SyntheticHnClient();
     client.searchComments = async () => [{
       id: 12348, kind: "comment", storyId: 12347, parentId: 12347,
@@ -300,8 +324,9 @@ describe("HN/RSS recovery injected acquisition path", () => {
       correlationId: "synthetic-run",
     };
     const raw = await fetcher.fetch(command);
-    expect(raw.items.map((item) => item.externalId)).toEqual(["hn:12345"]);
-    expect(raw.warnings).toEqual(["target_published_window.filtered;kept=1;dropped=1"]);
+    expect(raw.items.map((item) => item.externalId)).toEqual(["hn:12345", "hn:12347"]);
+    expect(raw.warnings).toEqual([]);
+    expect(raw.items[1]?.publishedAt.toISOString()).toBe("2026-09-22T16:00:00.000Z");
 
     const sourceItems = new FakeSourceItemRepository();
     const feedItems = new InMemoryFeedItemReadRepository();
@@ -311,10 +336,9 @@ describe("HN/RSS recovery injected acquisition path", () => {
       new FakeScanExecutionReporter(), new FakeScanFailureQueue(), new FakeScanLease(), new SequenceIdGenerator(), new FixedClock(observed),
     );
     const result = await scan.execute({ ...command, interestId, scanPolicyId: policyId, causationId: "synthetic-attempt", retryBudget: 0 });
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.message).toContain("partial acquisition");
-    expect(sourceItems.all()).toHaveLength(0);
-    expect(feedItems.all()).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    expect(sourceItems.all().map((item) => item.toSnapshot().externalId)).toEqual(["hn:12345", "hn:12347"]);
+    expect(feedItems.all()).toHaveLength(2);
   });
 
   it("bounds base and expanded RSS reads before the provider is called", () => {

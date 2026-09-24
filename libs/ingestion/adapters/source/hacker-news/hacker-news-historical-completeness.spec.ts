@@ -4,9 +4,11 @@ import { join } from 'node:path';
 
 import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { requireCompleteRecoveryScan } from '../../../../../scripts/lib/hn-rss-recovery-acquisition';
+import { requireCompleteRecoveryFetch, requireCompleteRecoveryScan } from '../../../../../scripts/lib/hn-rss-recovery-acquisition';
 import { parseRecoveryArgs } from '../../../../../scripts/lib/hn-rss-recovery-plan';
 import { runRecoveryInDisposableJournalForTest } from '../../../../../scripts/run-hn-rss-recovery';
+import { InMemorySourceProviderRegistry } from '../in-memory-source-provider.registry';
+import { RegistrySourceFetcherAdapter } from '../registry-source-fetcher.adapter';
 
 import type { HackerNewsClientPort, HackerNewsListStoryCommentsRequest, HackerNewsSearchOptions, HackerNewsStory } from './hacker-news-client.port';
 import { HackerNewsSourceProvider } from './hacker-news-source.provider';
@@ -132,6 +134,31 @@ describe('Hacker News historical completeness', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it('fetches an old supporting root with its original date and only in-window comments', async () => {
+    const client = new WindowClient();
+    client.comments = [comment(10, 20), { ...comment(11, 20), time: second('2026-09-22T17:00:00Z') }];
+    client.itemsById.set(20, { id: 20, kind: 'comment', parentId: 1, deleted: true });
+    client.itemsById.set(1, { ...story(1), time: second('2026-09-22T16:00:00Z') });
+    const provider = requireCompleteRecoveryScan(new HackerNewsSourceProvider(client, new FixedClock(to)));
+    const fetcher = requireCompleteRecoveryFetch(new RegistrySourceFetcherAdapter(
+      new InMemorySourceProviderRegistry([provider], []),
+      { async readConfig() { return context(commentPassConfig).config; } },
+    ));
+
+    const result = await fetcher.fetch({
+      tenantId: tenantId('tenant-1'), workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1', scanJobId: 'scan-1', correlationId: 'correlation-1',
+      providerKey: 'hacker-news', sourceQuery: { mode: 'search', query: 'synthetic' },
+    });
+
+    expect(result.items.map((item) => [item.externalId, item.publishedAt.toISOString()]))
+      .toEqual([['hn:1', '2026-09-22T16:00:00.000Z']]);
+    expect(result.conversationUnits?.map((unit) => [unit.providerUnitId, unit.publishedAt.toISOString()]))
+      .toEqual([['hn:10', '2026-09-23T16:30:00.000Z']]);
+    expect(result.warnings).toEqual([]);
+    expect(client.storyReads).toEqual([20, 1]);
+  });
+
   it('does not resolve a null story_id outside the requested interval', async () => {
     const client = new WindowClient();
     client.comments = [{ ...comment(10, 20), time: second('2026-09-23T17:00:00Z') }];
@@ -142,6 +169,33 @@ describe('Hacker News historical completeness', () => {
     expect(result.conversationUnits).toEqual([]);
     expect(result.warnings).toEqual([]);
     expect(client.storyReads).toEqual([]);
+  });
+
+  it('marks a resolved in-window comment without text as incomplete', async () => {
+    const client = new WindowClient();
+    client.comments = [{ ...comment(10, 20), storyTitle: 'Synthetic story', text: undefined }];
+    client.itemsById.set(20, { id: 20, kind: 'comment', parentId: 1, deleted: true });
+    client.itemsById.set(1, { ...story(1), title: 'Synthetic story' });
+
+    const result = await scanComments(client);
+
+    expect(client.storyReads).toEqual([20, 1]);
+    expect(result.items).toEqual([]);
+    expect(result.conversationUnits).toEqual([]);
+    expect(result.warnings).toEqual([expect.stringContaining('comment was not projectable (comment:10)')]);
+  });
+
+  it('marks a nonprojectable expanded comment as incomplete for a historical window', async () => {
+    const client = new WindowClient();
+    client.comments = [{ ...comment(10, 1), text: undefined }];
+    const provider = new HackerNewsSourceProvider(client, new FixedClock(to));
+    const scope = context({ includeComments: true });
+
+    const result = await provider.scan(provider.planScan({ mode: 'search', query: 'boundary' }, scope), scope);
+
+    expect(result.items.map((item) => item.externalId)).toEqual(['hn:1']);
+    expect(result.conversationUnits).toEqual([]);
+    expect(result.warnings).toEqual([expect.stringContaining('comment was not projectable (comment:10)')]);
   });
 
   it('keeps historical maxItems incomplete when null-root comments exceed the pass limit', async () => {
@@ -237,6 +291,60 @@ describe('Hacker News historical completeness', () => {
           const scope = context({ ...binding.config, targetPublishedWindow: {
             startInclusive: from.toISOString(), endExclusive: to.toISOString(),
           } });
+          const result = await provider.scan(provider.planScan({ mode: 'search', query: 'synthetic' }, scope), scope);
+          return { fetched: result.items.length, inserted: 0, projected: 0, skippedDuplicates: 0, warningCount: result.warnings.length };
+        },
+      };
+      const plan = await runRecoveryInDisposableJournalForTest(parseRecoveryArgs(argv, to), dependencies);
+      await expect(runRecoveryInDisposableJournalForTest(
+        parseRecoveryArgs([...argv, '--apply', '--plan-sha256', String(plan.planSha256)], to), dependencies,
+      )).rejects.toThrow('partial acquisition');
+      expect(readdirSync(directory).some((name) => name.endsWith('.completed.json'))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a completion receipt for an HTTP comment hit missing text after root resolution', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'hn-missing-comment-text-'));
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = jest.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('/search_by_date')) {
+          return new Response(JSON.stringify({
+            hits: [{ objectID: '10', story_id: null, parent_id: 20,
+              story_title: 'Synthetic story', created_at_i: second('2026-09-23T16:30:00Z') }],
+            nbHits: 1, nbPages: 1, page: 0, exhaustiveNbHits: true,
+          }), { status: 200 });
+        }
+        if (url.endsWith('/item/20.json')) return new Response(JSON.stringify({
+          id: 20, type: 'comment', parent: 1, deleted: true,
+        }), { status: 200 });
+        if (url.endsWith('/item/1.json')) return new Response(JSON.stringify({
+          id: 1, type: 'story', title: 'Synthetic story', time: second('2026-09-23T16:00:00Z'),
+        }), { status: 200 });
+        throw new Error(`Unexpected synthetic URL: ${url}`);
+      }) as unknown as typeof fetch;
+      const provider = requireCompleteRecoveryScan(new HackerNewsSourceProvider(new HttpHackerNewsClient(), new FixedClock(to)));
+      const argv = [
+        '--tenant-id', '00000000-0000-7000-8000-000000000101',
+        '--workspace-id', '00000000-0000-7000-8000-000000000102',
+        '--source-binding-id', '00000000-0000-7000-8000-000000000103',
+        '--provider', 'hacker-news', '--from', from.toISOString(), '--to', to.toISOString(),
+        '--journal-dir', directory,
+      ];
+      const binding = {
+        interestId: '00000000-0000-7000-8000-000000000104',
+        scanPolicyId: '00000000-0000-7000-8000-000000000105',
+        interestQuery: 'synthetic',
+        config: { mode: 'search', query: 'synthetic', ...commentPassConfig },
+      };
+      const dependencies = {
+        readBinding: async () => binding,
+        acquire: async () => {
+          const scope = context(binding.config);
           const result = await provider.scan(provider.planScan({ mode: 'search', query: 'synthetic' }, scope), scope);
           return { fetched: result.items.length, inserted: 0, projected: 0, skippedDuplicates: 0, warningCount: result.warnings.length };
         },

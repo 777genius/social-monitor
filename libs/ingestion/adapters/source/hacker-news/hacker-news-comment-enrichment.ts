@@ -135,13 +135,19 @@ export const normalizeHackerNewsCommentSearchPass = async (params: {
       continue;
     }
 
-    items.push(...rootItems);
-    for (const unit of normalizeHackerNewsCommentConversationUnit(
+    const units = normalizeHackerNewsCommentConversationUnit(
       comment,
       rootStory,
       params.sourceKey,
       params.searchQuery,
-    )) {
+    );
+    if (units.length === 0) {
+      warnings.push(`Hacker News comment coverage incomplete: comment was not projectable (comment:${comment.id}).`);
+      continue;
+    }
+
+    items.push(...rootItems);
+    for (const unit of units) {
       conversationUnits.set(unit.providerUnitId, unit);
     }
   }
@@ -201,16 +207,18 @@ const normalizeStoriesWithCommentExpansion = async (params: {
       if (comment.time === undefined) warnings.push(`Hacker News comment missing timestamp (${comment.id}); comment skipped.`);
       return commentInWindow(comment, params.targetWindow!);
     });
-    conversationUnits.push(
-      ...boundedComments.flatMap((comment) =>
-        normalizeHackerNewsCommentConversationUnit(
-          comment,
-          story,
-          params.sourceKey,
-          params.searchQuery,
-        ),
-      ),
-    );
+    for (const comment of boundedComments) {
+      const units = normalizeHackerNewsCommentConversationUnit(
+        comment,
+        story,
+        params.sourceKey,
+        params.searchQuery,
+      );
+      if (units.length === 0 && params.targetWindow !== undefined) {
+        warnings.push(`Hacker News comment coverage incomplete: comment was not projectable (comment:${comment.id}).`);
+      }
+      conversationUnits.push(...units);
+    }
   }
 
   return { items, conversationUnits, warnings };

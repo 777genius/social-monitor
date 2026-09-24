@@ -187,6 +187,8 @@ describe("HN/RSS recovery plan and journal", () => {
   it("refuses a second real acquisition after STARTED in A when the same digest is reserved in B", async () => {
     const other = mkdtempSync(join(tmpdir(), "hn-rss-other-journal-"));
     const actualAuthority = recoveryPlanModule.recoveryCliJournalDir;
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
     // Give this test a private canonical A; the production entrypoint still uses its real authority in every other test.
     Object.defineProperty(recoveryPlanModule, "recoveryCliJournalDir", { value: directory, configurable: true });
     try {
@@ -211,18 +213,23 @@ describe("HN/RSS recovery plan and journal", () => {
       })).rejects.toThrow("authoritative journal directory");
       expect(providerCalls).toBe(0);
       await expect(executeRecoveryAcquisitionInDisposableJournalForTest({
+        fixture: {} as never,
         connection: {} as never, tenantId, workspaceId, sourceBindingId,
         providerKey: "hacker-news", from: request.from, to: request.to, binding,
         runId: second.reservation.runId, attemptId: second.reservation.attemptId,
         scanJobId: second.reservation.scanJobId, reservationPermit: second.permit,
         provider: { key: () => "hacker-news", validateBinding: () => { providerCalls += 1; return { ok: true }; } } as never,
-      }, directory)).rejects.toThrow("Disposable journal must differ from the authoritative journal");
+      } as never, directory)).rejects.toThrow("fixture-owned connection and provider");
       expect(providerCalls).toBe(0);
+      expect(() => assertRecoveryAcquisitionPermitInDisposableJournalForTest(
+        second.permit, scope, second.reservation, directory)).toThrow("Disposable journal must differ from the authoritative journal");
       expect(() => assertRecoveryAcquisitionPermitInDisposableJournalForTest(
         second.permit, scope, second.reservation, other)).not.toThrow();
       expect(readdirSync(directory)).toEqual([`${digest}.started.json`]);
       expect(readdirSync(other)).toEqual([`${digest}.started.json`]);
     } finally {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
       Object.defineProperty(recoveryPlanModule, "recoveryCliJournalDir", { value: actualAuthority, configurable: true });
       rmSync(other, { recursive: true, force: true });
     }

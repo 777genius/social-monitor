@@ -23,8 +23,9 @@ import { PrismaScanJobRepository } from "@social-monitor/monitoring/adapters/per
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import { CryptoIdGenerator, SystemClock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { Pool } from "pg";
 
-import type { PrismaIngestionWorkerConnection } from "../../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
+import { PrismaIngestionWorkerConnection } from "../../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
 import { cleanRealDayFeedProjectionClient } from "./clean-real-day-provider-acquisition";
 import { CleanRealDaySourceConfigReader } from "./clean-real-day-source-config-reader";
 import { composeCollectionScanExecution } from "./collection-scan-execution";
@@ -118,6 +119,67 @@ export type RecoveryAcquisitionInput = Readonly<{
   provider?: SourceProviderPort;
 }>;
 
+/** The connection and provider for a synthetic acquisition never come from its caller. */
+declare const disposableFixtureBrand: unique symbol;
+export type DisposableRecoveryAcquisitionFixture = Readonly<{
+  [disposableFixtureBrand]: true; close: () => Promise<void>;
+}>;
+const disposableFixtures = new WeakMap<DisposableRecoveryAcquisitionFixture, {
+  connection: PrismaIngestionWorkerConnection; closed: boolean;
+}>();
+
+function assertDisposableFixtureUrl(databaseUrl: string): void {
+  let url: URL;
+  try { url = new URL(databaseUrl); } catch { throw new Error("Synthetic recovery requires a disposable local PostgreSQL fixture"); }
+  const database = url.pathname.slice(1);
+  const user = url.username;
+  const suffix = /^reader_summary_publication_test_([0-9a-f]{20})$/.exec(database)?.[1];
+  const socketMode = url.searchParams.has("host");
+  if (url.protocol !== "postgresql:" || !["127.0.0.1", "localhost"].includes(url.hostname) ||
+    url.port === "" || (url.search !== "" && !(socketMode && url.searchParams.size === 1)) || url.hash !== "" || suffix === undefined ||
+    user !== `social_monitor_publication_test_${suffix}`) {
+    throw new Error("Synthetic recovery requires a disposable local PostgreSQL fixture");
+  }
+}
+
+/** Issue a process-local capability only for the isolated PostgreSQL 18 fixture role and database. */
+export async function openDisposableRecoveryAcquisitionFixture(databaseUrl: string): Promise<DisposableRecoveryAcquisitionFixture> {
+  assertDisposableFixtureUrl(databaseUrl);
+  const { assertPostgres18PsqlTransportConfiguration } = await import("../reader-summary-publication-postgres18-regression");
+  assertPostgres18PsqlTransportConfiguration(databaseUrl, new URL(databaseUrl).username);
+  const probe = new Pool({ connectionString: databaseUrl, min: 0, max: 1, connectionTimeoutMillis: 5000 });
+  try {
+    const result = await probe.query<{ fixture_database: string; fixture_role: string;
+      server_version: string; database_owner: string; runtime_role_safe: boolean }>(
+      `SELECT current_database() AS fixture_database, current_user AS fixture_role,
+        current_setting('server_version_num') AS server_version,
+        pg_get_userbyid(d.datdba) AS database_owner,
+        (r.rolcanlogin AND NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole
+          AND NOT r.rolreplication AND NOT r.rolbypassrls) AS runtime_role_safe
+       FROM pg_database d JOIN pg_roles r ON r.rolname = current_user
+       WHERE d.datname = current_database()`,
+    );
+    const url = new URL(databaseUrl);
+    const row = result.rows[0];
+    if (row?.fixture_database !== url.pathname.slice(1) || row.fixture_role !== url.username ||
+      row.server_version !== "180006" ||
+      row.database_owner !== row.fixture_role || row.runtime_role_safe !== true || result.rows.length !== 1) {
+      throw new Error("Synthetic recovery database is not the disposable PostgreSQL 18.6 fixture");
+    }
+  } finally {
+    await probe.end();
+  }
+  const connection = await PrismaIngestionWorkerConnection.createForProcess(databaseUrl, "daily-runner");
+  const state = { connection, closed: false };
+  const fixture = Object.freeze({ close: async () => {
+    if (state.closed) return;
+    state.closed = true;
+    await connection.close();
+  } }) as DisposableRecoveryAcquisitionFixture;
+  disposableFixtures.set(fixture, state);
+  return fixture;
+}
+
 /** A failed pass/feed leaves a partial sample; it cannot close a recovery plan. */
 export function requireCompleteRecoveryScan(provider: SourceProviderPort): SourceProviderPort {
   return {
@@ -155,12 +217,27 @@ export async function executeRecoveryAcquisition(input: RecoveryAcquisitionInput
   return executeRecoveryAcquisitionWithPermit(input, assertRecoveryAcquisitionPermit);
 }
 
-/** Synthetic PostgreSQL checks must name their disposable journal and inject their provider. */
+/** Synthetic PostgreSQL checks require a fixture-owned connection and synthetic provider. */
 export async function executeRecoveryAcquisitionInDisposableJournalForTest(
-  input: RecoveryAcquisitionInput & { provider: SourceProviderPort }, directory: string,
+  input: Omit<RecoveryAcquisitionInput, "connection" | "provider"> & {
+    fixture: DisposableRecoveryAcquisitionFixture; syntheticWarning?: string;
+  }, directory: string,
 ): ReturnType<typeof executeRecoveryAcquisition> {
-  if (input.provider === undefined) throw new Error("Synthetic recovery acquisition requires an injected provider");
-  return executeRecoveryAcquisitionWithPermit(input, (permit, scope, identity) =>
+  const state = disposableFixtures.get(input.fixture);
+  if (state === undefined || state.closed || "connection" in input || "provider" in input) {
+    throw new Error("Synthetic recovery requires its fixture-owned connection and provider");
+  }
+  const { syntheticRecoveryProvider } = await import("./hn-rss-recovery-synthetic-provider");
+  const baseProvider = syntheticRecoveryProvider(input.providerKey, input.sourceBindingId);
+  const warning = input.syntheticWarning;
+  const provider: SourceProviderPort = warning === undefined ? baseProvider : {
+    key: () => baseProvider.key(), capabilityProfile: () => baseProvider.capabilityProfile(),
+    validateBinding: (query) => baseProvider.validateBinding(query),
+    planScan: (query, context) => baseProvider.planScan(query, context),
+    classifyError: (error, context) => baseProvider.classifyError(error, context),
+    scan: async (plan, context) => ({ ...await baseProvider.scan(plan, context), warnings: [warning] }),
+  };
+  return executeRecoveryAcquisitionWithPermit({ ...input, connection: state.connection, provider }, (permit, scope, identity) =>
     assertRecoveryAcquisitionPermitInDisposableJournalForTest(permit, scope, identity, directory));
 }
 
