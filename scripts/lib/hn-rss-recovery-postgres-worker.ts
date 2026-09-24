@@ -1,13 +1,12 @@
-/** Child process used only by the disposable PostgreSQL recovery contract. */
-import { executeRecoveryAcquisitionInDisposableJournalForTest, openDisposableRecoveryAcquisitionFixture } from "./hn-rss-recovery-acquisition";
+/** Child process used only by the provisioned disposable PostgreSQL recovery contract. */
+import { executeRecoveryAcquisitionInDisposableJournalForTest, openDisposableRecoveryAcquisitionFixtureFromParentIpc } from "./hn-rss-recovery-acquisition";
 import { parseRecoveryArgs } from "./hn-rss-recovery-plan";
 import { readBindingFromDatabase, runRecoveryInDisposableJournalForTest } from "../run-hn-rss-recovery";
 
 async function main(): Promise<void> {
   const mode = process.argv[2];
-  const databaseUrl = process.env.HN_RSS_RECOVERY_SYNTHETIC_RUNTIME_URL;
-  if ((mode !== "run" && mode !== "crash") || databaseUrl === undefined) throw new Error("Synthetic worker setup missing");
-  const fixture = await openDisposableRecoveryAcquisitionFixture(databaseUrl);
+  if (mode !== "run" && mode !== "crash") throw new Error("Synthetic worker setup missing");
+  const { fixture, databaseUrl } = await openDisposableRecoveryAcquisitionFixtureFromParentIpc();
   try {
     const request = parseRecoveryArgs(process.argv.slice(3), new Date());
     const result = await runRecoveryInDisposableJournalForTest(request, {
@@ -27,6 +26,7 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify({ status: result.status })}\n`);
   } finally {
     await fixture.close();
+    if (process.connected) process.disconnect();
   }
 }
 

@@ -1,6 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer } from "node:net";
+import type { AddressInfo } from "node:net";
+import { spawn } from "node:child_process";
 
 import { IsolatedScanCursorRepository } from "@social-monitor/ingestion/adapters/persistence/isolated-scan-cursor.repository";
 import { InMemoryFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
@@ -19,11 +22,12 @@ import type { PrismaIngestionWorkerConnection } from "../../apps/ingestion-worke
 
 import {
   FakeScanAttemptRepository, FakeScanExecutionReporter,
-  FakeScanFailureQueue, FakeScanLease, FakeSourceItemRepository, SequenceIdGenerator,
+  FakeConversationProjection, FakeScanFailureQueue, FakeScanLease, FakeSourceItemRepository, SequenceIdGenerator,
 } from "../../libs/ingestion/features/execute-scan/execute-scan.use-case.spec-support";
 import { CleanRealDaySourceConfigReader } from "./clean-real-day-source-config-reader";
 import { executeRecoveryAcquisition, executeRecoveryAcquisitionInDisposableJournalForTest, openDisposableRecoveryAcquisitionFixture, requireCompleteRecoveryFetch, requireCompleteRecoveryScan, validateRecoveryWindow, type RecoveryBinding } from "./hn-rss-recovery-acquisition";
 import { parseRecoveryArgs } from "./hn-rss-recovery-plan";
+import { disposablePublicationFixtureRuntimeUrl, registerPublicationFixtureRevocation, withProvisionedPublicationFixture } from "./reader-summary-publication-disposable-fixture";
 import { runRecoveryInDisposableJournalForTest } from "../run-hn-rss-recovery";
 
 const tenant = "00000000-0000-7000-8000-000000000301";
@@ -57,12 +61,61 @@ describe("HN/RSS recovery injected acquisition path", () => {
   beforeEach(() => { directory = mkdtempSync(join(tmpdir(), "hn-rss-acq-test-")); });
   afterEach(() => { rmSync(directory, { recursive: true, force: true }); });
 
-  it("rejects production-like and remote database URLs before issuing a synthetic capability", async () => {
-    await expect(openDisposableRecoveryAcquisitionFixture("postgresql://runtime@127.0.0.1:5432/social_monitor_production"))
-      .rejects.toThrow("disposable local PostgreSQL fixture");
+  it("rejects arbitrary URLs and a forged active-looking fixture before issuing a synthetic capability", async () => {
+    await expect(openDisposableRecoveryAcquisitionFixture("postgresql://runtime@127.0.0.1:5432/social_monitor_production" as never))
+      .rejects.toThrow("active provisioned fixture");
     await expect(openDisposableRecoveryAcquisitionFixture(
-      "postgresql://social_monitor_publication_test_0123456789abcdef0123@db.example.test:5432/reader_summary_publication_test_0123456789abcdef0123",
-    )).rejects.toThrow("disposable local PostgreSQL fixture");
+      "postgresql://social_monitor_publication_test_0123456789abcdef0123@db.example.test:5432/reader_summary_publication_test_0123456789abcdef0123" as never,
+    )).rejects.toThrow("active provisioned fixture");
+    await expect(openDisposableRecoveryAcquisitionFixture({
+      databaseName: "reader_summary_publication_test_0123456789abcdef0123",
+      runtimeDatabaseUrl: "postgresql://social_monitor_publication_test_0123456789abcdef0123@127.0.0.1:5432/reader_summary_publication_test_0123456789abcdef0123",
+      auditorDatabaseUrl: "",
+    })).rejects.toThrow("active provisioned fixture");
+  });
+
+  it("revokes fixture provenance and owned resources when the provisioning callback exits", async () => {
+    const supplied = { databaseName: "reader_summary_publication_test_0123456789abcdef0123",
+      runtimeDatabaseUrl: "synthetic-fixture-url", auditorDatabaseUrl: "synthetic-auditor-url" };
+    let issued: typeof supplied | undefined;
+    let closes = 0;
+    await expect(withProvisionedPublicationFixture(supplied, async (fixture) => {
+      issued = fixture;
+      expect(fixture).not.toBe(supplied);
+      expect(disposablePublicationFixtureRuntimeUrl(fixture)).toBe(supplied.runtimeDatabaseUrl);
+      registerPublicationFixtureRevocation(fixture, async () => { closes += 1; });
+      throw new Error("synthetic callback failure");
+    })).rejects.toThrow("synthetic callback failure");
+    expect(closes).toBe(1);
+    expect(() => disposablePublicationFixtureRuntimeUrl(issued as typeof supplied)).toThrow("active provisioned fixture");
+  });
+
+  it("does not contact a fake loopback PostgreSQL peer even with fixture-shaped URL and role", async () => {
+    let connections = 0;
+    const server = createServer((socket) => { connections += 1; socket.end(); });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const port = (server.address() as AddressInfo).port;
+      const suffix = "0123456789abcdef0123";
+      const url = `postgresql://social_monitor_publication_test_${suffix}@127.0.0.1:${port}/reader_summary_publication_test_${suffix}`;
+      await expect(openDisposableRecoveryAcquisitionFixture(url as never)).rejects.toThrow("active provisioned fixture");
+      const child = await new Promise<{ code: number | null; output: string }>((resolve, reject) => {
+        const script = "require('./scripts/lib/hn-rss-recovery-acquisition').openDisposableRecoveryAcquisitionFixtureFromParentIpc().then(() => process.exit(0), (error) => { process.stderr.write(error.message); process.exit(2); })";
+        const worker = spawn(process.execPath, ["-r", "ts-node/register/transpile-only", "-r", "tsconfig-paths/register", "-e", script], {
+          cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe", "ipc"],
+          env: { ...process.env, TS_NODE_PROJECT: join(process.cwd(), "tsconfig.build.json") },
+        });
+        let output = "";
+        worker.stderr?.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+        worker.once("message", () => worker.send({ databaseName: `reader_summary_publication_test_${suffix}`, runtimeDatabaseUrl: url }));
+        worker.once("error", reject);
+        worker.once("close", (code) => resolve({ code, output }));
+      });
+      expect(child).toEqual({ code: 2, output: "Synthetic recovery requires a provisioned private PostgreSQL 18 socket fixture" });
+      expect(connections).toBe(0);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 
   it("rejects a forged fixture and a real HTTP provider before any provider effect", async () => {
@@ -330,15 +383,18 @@ describe("HN/RSS recovery injected acquisition path", () => {
 
     const sourceItems = new FakeSourceItemRepository();
     const feedItems = new InMemoryFeedItemReadRepository();
+    const conversationProjection = new FakeConversationProjection();
     const scan = new ExecuteScanUseCase(
       requireCompleteRecoveryFetch(fetcher), sourceItems, new InMemoryFeedProjectionAdapter(feedItems),
       new FakeScanAttemptRepository(), new IsolatedScanCursorRepository({ tenantId: tenantId(tenant), workspaceId: workspaceId(workspace), sourceBindingId: bindingId }),
       new FakeScanExecutionReporter(), new FakeScanFailureQueue(), new FakeScanLease(), new SequenceIdGenerator(), new FixedClock(observed),
+      undefined, undefined, conversationProjection,
     );
     const result = await scan.execute({ ...command, interestId, scanPolicyId: policyId, causationId: "synthetic-attempt", retryBudget: 0 });
     expect(result.ok).toBe(true);
     expect(sourceItems.all().map((item) => item.toSnapshot().externalId)).toEqual(["hn:12345", "hn:12347"]);
     expect(feedItems.all()).toHaveLength(2);
+    expect(conversationProjection.commands[0]?.conversationUnits).toHaveLength(1);
   });
 
   it("bounds base and expanded RSS reads before the provider is called", () => {

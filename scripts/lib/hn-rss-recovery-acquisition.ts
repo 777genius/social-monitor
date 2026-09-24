@@ -23,7 +23,6 @@ import { PrismaScanJobRepository } from "@social-monitor/monitoring/adapters/per
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import { CryptoIdGenerator, SystemClock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
-import { Pool } from "pg";
 
 import { PrismaIngestionWorkerConnection } from "../../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
 import { cleanRealDayFeedProjectionClient } from "./clean-real-day-provider-acquisition";
@@ -32,6 +31,8 @@ import { composeCollectionScanExecution } from "./collection-scan-execution";
 import { assertRecoveryAcquisitionPermit, assertRecoveryAcquisitionPermitInDisposableJournalForTest, type RecoveryAcquisitionPermit } from "./hn-rss-recovery-journal";
 import { canonicalRecoveryUuid, sha256, type RecoveryProvider } from "./hn-rss-recovery-plan";
 import { ProductionCollectionScanJobReporter } from "./production-collection-scan-job-reporter";
+import { disposablePublicationFixtureRuntimeUrl, registerPublicationFixtureRevocation, type ProvisionedPublicationFixture } from "./reader-summary-publication-disposable-fixture";
+import { assertPostgres18PsqlTransportConfiguration } from "../reader-summary-publication-postgres18-regression";
 
 export type RecoveryBinding = Readonly<{
   interestId: string;
@@ -128,47 +129,63 @@ const disposableFixtures = new WeakMap<DisposableRecoveryAcquisitionFixture, {
   connection: PrismaIngestionWorkerConnection; closed: boolean;
 }>();
 
-function assertDisposableFixtureUrl(databaseUrl: string): void {
-  let url: URL;
-  try { url = new URL(databaseUrl); } catch { throw new Error("Synthetic recovery requires a disposable local PostgreSQL fixture"); }
-  const database = url.pathname.slice(1);
-  const user = url.username;
-  const suffix = /^reader_summary_publication_test_([0-9a-f]{20})$/.exec(database)?.[1];
-  const socketMode = url.searchParams.has("host");
-  if (url.protocol !== "postgresql:" || !["127.0.0.1", "localhost"].includes(url.hostname) ||
-    url.port === "" || (url.search !== "" && !(socketMode && url.searchParams.size === 1)) || url.hash !== "" || suffix === undefined ||
-    user !== `social_monitor_publication_test_${suffix}`) {
-    throw new Error("Synthetic recovery requires a disposable local PostgreSQL fixture");
+/** The only accepted provenance is the active disposable provisioning callback. */
+export async function openDisposableRecoveryAcquisitionFixture(provisioned: ProvisionedPublicationFixture): Promise<DisposableRecoveryAcquisitionFixture> {
+  const databaseUrl = disposablePublicationFixtureRuntimeUrl(provisioned);
+  const fixture = await openSocketFixtureConnection(databaseUrl, provisioned.databaseName);
+  try { registerPublicationFixtureRevocation(provisioned, fixture.close); }
+  catch (error) { await fixture.close(); throw error; }
+  return fixture;
+}
+
+/** A spawned fixture worker receives its URL only across its parent's private IPC channel. */
+export async function openDisposableRecoveryAcquisitionFixtureFromParentIpc(): Promise<Readonly<{
+  fixture: DisposableRecoveryAcquisitionFixture; databaseUrl: string;
+}>> {
+  if (typeof process.send !== "function" || !process.connected) {
+    throw new Error("Synthetic recovery requires fixture parent IPC");
+  }
+  const grant = await new Promise<unknown>((resolve, reject) => {
+    const disconnected = () => { process.off("message", received); reject(new Error("Synthetic fixture parent disconnected")); };
+    const received = (message: unknown) => { process.off("disconnect", disconnected); resolve(message); };
+    process.once("disconnect", disconnected);
+    process.once("message", received);
+    process.send?.({ fixtureGrantRequest: true }, (error) => { if (error) disconnected(); });
+  });
+  if (grant === null || typeof grant !== "object" || Array.isArray(grant) ||
+    Object.keys(grant).sort().join(",") !== "databaseName,runtimeDatabaseUrl") {
+    throw new Error("Synthetic recovery fixture IPC grant is invalid");
+  }
+  const value = grant as Record<string, unknown>;
+  if (typeof value.databaseName !== "string" || typeof value.runtimeDatabaseUrl !== "string") {
+    throw new Error("Synthetic recovery fixture IPC grant is invalid");
+  }
+  let fixture: DisposableRecoveryAcquisitionFixture | undefined;
+  let disconnected = false;
+  const revoke = () => { disconnected = true; if (fixture !== undefined) void fixture.close(); };
+  process.once("disconnect", revoke);
+  try {
+    fixture = await openSocketFixtureConnection(value.runtimeDatabaseUrl, value.databaseName);
+    if (disconnected || !process.connected) {
+      await fixture.close();
+      throw new Error("Synthetic fixture parent disconnected");
+    }
+    return { fixture, databaseUrl: value.runtimeDatabaseUrl };
+  } catch (error) {
+    process.off("disconnect", revoke);
+    throw error;
   }
 }
 
-/** Issue a process-local capability only for the isolated PostgreSQL 18 fixture role and database. */
-export async function openDisposableRecoveryAcquisitionFixture(databaseUrl: string): Promise<DisposableRecoveryAcquisitionFixture> {
-  assertDisposableFixtureUrl(databaseUrl);
-  const { assertPostgres18PsqlTransportConfiguration } = await import("../reader-summary-publication-postgres18-regression");
-  assertPostgres18PsqlTransportConfiguration(databaseUrl, new URL(databaseUrl).username);
-  const probe = new Pool({ connectionString: databaseUrl, min: 0, max: 1, connectionTimeoutMillis: 5000 });
-  try {
-    const result = await probe.query<{ fixture_database: string; fixture_role: string;
-      server_version: string; database_owner: string; runtime_role_safe: boolean }>(
-      `SELECT current_database() AS fixture_database, current_user AS fixture_role,
-        current_setting('server_version_num') AS server_version,
-        pg_get_userbyid(d.datdba) AS database_owner,
-        (r.rolcanlogin AND NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole
-          AND NOT r.rolreplication AND NOT r.rolbypassrls) AS runtime_role_safe
-       FROM pg_database d JOIN pg_roles r ON r.rolname = current_user
-       WHERE d.datname = current_database()`,
-    );
-    const url = new URL(databaseUrl);
-    const row = result.rows[0];
-    if (row?.fixture_database !== url.pathname.slice(1) || row.fixture_role !== url.username ||
-      row.server_version !== "180006" ||
-      row.database_owner !== row.fixture_role || row.runtime_role_safe !== true || result.rows.length !== 1) {
-      throw new Error("Synthetic recovery database is not the disposable PostgreSQL 18.6 fixture");
-    }
-  } finally {
-    await probe.end();
+async function openSocketFixtureConnection(databaseUrl: string, databaseName: string): Promise<DisposableRecoveryAcquisitionFixture> {
+  const url = new URL(databaseUrl);
+  const suffix = /^reader_summary_publication_test_([0-9a-f]{20})$/.exec(databaseName)?.[1];
+  if (suffix === undefined || url.pathname.slice(1) !== databaseName ||
+    url.username !== `social_monitor_publication_test_${suffix}` || !url.searchParams.has("host") ||
+    process.env.READER_SUMMARY_PUBLICATION_TEST_PG18_SOCKET_TRANSPORT === undefined) {
+    throw new Error("Synthetic recovery requires a provisioned private PostgreSQL 18 socket fixture");
   }
+  assertPostgres18PsqlTransportConfiguration(databaseUrl, url.username);
   const connection = await PrismaIngestionWorkerConnection.createForProcess(databaseUrl, "daily-runner");
   const state = { connection, closed: false };
   const fixture = Object.freeze({ close: async () => {

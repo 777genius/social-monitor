@@ -73,6 +73,7 @@ import {
   runReaderSummaryPublicationBootstrapSql,
 } from "./reader-summary-publication-postgres-privileges";
 import { assertReaderSummaryPublicationRuntimeGuard } from "./reader-summary-publication-postgres-runtime-guard";
+import { withProvisionedPublicationFixture } from "./lib/reader-summary-publication-disposable-fixture";
 import { assertPostgres18PsqlTransportConfiguration } from "./reader-summary-publication-postgres18-regression";
 const serverAdminDatabaseUrl = requiredReaderSummaryPublicationAdminDatabaseUrl(
   process.env,
@@ -249,11 +250,12 @@ export const runReaderSummaryPublicationPostgresContract = async (
     }
     assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
     if (testFixtureCallback) {
-      await testFixtureCallback({
+      const fixture = Object.freeze({
         databaseName,
         runtimeDatabaseUrl,
         auditorDatabaseUrl: targetDatabaseUrl,
       });
+      await withProvisionedPublicationFixture(fixture, testFixtureCallback);
       return;
     }
     if (contract === "feed-promotion") {

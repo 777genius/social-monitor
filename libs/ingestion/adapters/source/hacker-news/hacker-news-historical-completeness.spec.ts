@@ -185,6 +185,53 @@ describe('Hacker News historical completeness', () => {
     expect(result.warnings).toEqual([expect.stringContaining('comment was not projectable (comment:10)')]);
   });
 
+  it('rejects an Algolia markup-only comment before retaining its supporting root', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = jest.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('/search_by_date')) {
+          return new Response(JSON.stringify({
+            hits: [{ objectID: '10', story_id: 1, parent_id: 1,
+              story_title: 'Synthetic story', comment_text: '<p> </p>',
+              created_at_i: second('2026-09-23T16:30:00Z') }],
+            nbHits: 1, nbPages: 1, page: 0, exhaustiveNbHits: true,
+          }), { status: 200 });
+        }
+        if (url.endsWith('/item/1.json')) return new Response(JSON.stringify({
+          id: 1, type: 'story', title: 'Synthetic story', time: second('2026-09-22T16:00:00Z'),
+        }), { status: 200 });
+        throw new Error(`Unexpected synthetic URL: ${url}`);
+      }) as unknown as typeof fetch;
+
+      const provider = new HackerNewsSourceProvider(new HttpHackerNewsClient(), new FixedClock(to));
+      const scope = context(commentPassConfig);
+      const result = await provider.scan(provider.planScan({ mode: 'search', query: 'synthetic' }, scope), scope);
+
+      expect(result.items).toEqual([]);
+      expect(result.conversationUnits).toEqual([]);
+      expect(result.warnings).toEqual([expect.stringContaining('comment was not projectable (comment:10)')]);
+      await expect(requireCompleteRecoveryScan(provider).scan(
+        provider.planScan({ mode: 'search', query: 'synthetic' }, scope), scope,
+      )).rejects.toThrow('partial acquisition');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('marks a markup-only expanded comment as incomplete in a historical window', async () => {
+    const client = new WindowClient();
+    client.comments = [{ ...comment(10, 1), text: '<p> </p>' }];
+    const provider = new HackerNewsSourceProvider(client, new FixedClock(to));
+    const scope = context({ includeComments: true });
+
+    const result = await provider.scan(provider.planScan({ mode: 'search', query: 'boundary' }, scope), scope);
+
+    expect(result.items.map((item) => item.externalId)).toEqual(['hn:1']);
+    expect(result.conversationUnits).toEqual([]);
+    expect(result.warnings).toEqual([expect.stringContaining('comment was not projectable (comment:10)')]);
+  });
+
   it('marks a nonprojectable expanded comment as incomplete for a historical window', async () => {
     const client = new WindowClient();
     client.comments = [{ ...comment(10, 1), text: undefined }];

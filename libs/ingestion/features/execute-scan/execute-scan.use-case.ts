@@ -293,8 +293,8 @@ export class ExecuteScanUseCase {
             },
             sourceItems: sourceItemsForFullProjection,
           });
-      if (sourceItemsForFullProjection.length > 0) {
-        await this.conversationProjection.project({
+      if (sourceItemsForFullProjection.length > 0 || (fetched.conversationUnits?.length ?? 0) > 0) {
+        const conversationResult = await this.conversationProjection.project({
           tenantId: command.tenantId,
           workspaceId: command.workspaceId,
           interestId: sourceBinding.interestId,
@@ -306,6 +306,23 @@ export class ExecuteScanUseCase {
           ),
           projectedFeedItems: projectionResult.projectedItems,
         });
+        if (
+          fetched.telemetry?.targetPublishedWindowStartedAt !== undefined &&
+          fetched.telemetry.targetPublishedWindowEndedAt !== undefined &&
+          (conversationResult.skippedInvalid > 0 || conversationResult.skippedOrphans > 0)
+        ) {
+          const incompleteProjection = new DomainError(
+            "external.dependency_unavailable",
+            `Historical conversation projection incomplete: ${conversationResult.skippedInvalid} invalid and ${conversationResult.skippedOrphans} orphan units skipped`,
+            {
+              skippedInvalid: conversationResult.skippedInvalid,
+              skippedOrphans: conversationResult.skippedOrphans,
+            },
+          );
+          throw incompleteProjection;
+        }
+      }
+      if (sourceItemsForFullProjection.length > 0) {
         await this.sourceItemMetadataProjection.project({
           tenantId: command.tenantId,
           workspaceId: command.workspaceId,

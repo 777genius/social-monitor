@@ -57,31 +57,41 @@ async function seedBinding(auditor: Pool, scope: { tenantId: string; workspaceId
   return { ...scope, sourceBindingId, providerKey };
 }
 
-async function child(mode: "run" | "crash", runtimeUrl: string, request: RecoveryRequest): Promise<{ code: number | null; output: string }> {
+async function child(mode: "run" | "crash", provisioned: Parameters<typeof openDisposableRecoveryAcquisitionFixture>[0], request: RecoveryRequest): Promise<{ code: number | null; output: string }> {
   return new Promise((resolve, reject) => {
     const processArgs = [...args(request, request.journalDir, request.from, request.to), "--apply", "--plan-sha256", request.planSha256 ?? ""];
     const worker = spawn(process.execPath, ["-r", "ts-node/register/transpile-only", "-r", "tsconfig-paths/register",
       join(__dirname, "lib/hn-rss-recovery-postgres-worker.ts"), mode, ...processArgs], {
-      cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"],
+      cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe", "ipc"],
       env: { PATH: process.env.PATH ?? "", TZ: "UTC", NODE_ENV: "production", TS_NODE_PROJECT: join(process.cwd(), "tsconfig.build.json"),
-        HN_RSS_RECOVERY_SYNTHETIC_RUNTIME_URL: runtimeUrl,
         ...(process.env.READER_SUMMARY_PUBLICATION_TEST_PG18_SOCKET_TRANSPORT === undefined ? {} : {
           READER_SUMMARY_PUBLICATION_TEST_PG18_SOCKET_TRANSPORT: process.env.READER_SUMMARY_PUBLICATION_TEST_PG18_SOCKET_TRANSPORT,
-        }) },
+        }),
+      },
     });
     let output = "";
-    worker.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
-    worker.stderr.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    worker.stdout?.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    worker.stderr?.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    worker.once("message", (message: unknown) => {
+      if (message === null || typeof message !== "object" || (message as { fixtureGrantRequest?: unknown }).fixtureGrantRequest !== true) {
+        worker.kill();
+        reject(new Error("Synthetic worker requested an invalid fixture grant"));
+        return;
+      }
+      worker.send({ databaseName: provisioned.databaseName, runtimeDatabaseUrl: provisioned.runtimeDatabaseUrl });
+    });
     worker.on("error", reject);
     worker.on("close", (code) => resolve({ code, output }));
   });
 }
 
-async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
+async function proof(provisioned: Parameters<typeof openDisposableRecoveryAcquisitionFixture>[0], runtimeUrl: string, auditorUrl: string): Promise<void> {
   const journal = mkdtempSync(join(tmpdir(), "hn-rss-pg18-proof-"));
   const auditor = new Pool({ connectionString: auditorUrl, min: 0, max: 2 });
-  const fixture = await openDisposableRecoveryAcquisitionFixture(runtimeUrl);
+  const fixture = await openDisposableRecoveryAcquisitionFixture(provisioned);
   try {
+    const server = await auditor.query<{ version: string }>("SELECT current_setting('server_version_num') AS version");
+    assert(server.rows[0]?.version === "180006", "Disposable recovery proof requires PostgreSQL 18.6");
     const fixtureScope = { tenantId: randomUUID(), workspaceId: randomUUID() };
     const seedClient = await auditor.connect();
     try { await provisionReaderSummaryPublicationFixtureScope(seedClient, fixtureScope); }
@@ -134,7 +144,7 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
       return { ...request, apply: true, planSha256: String(result.planSha256) };
     };
     const firstPlan = await plan(hn, ...hnWindow);
-    const arbitraryWorker = await child("run", "postgresql://synthetic@127.0.0.1:5432/social_monitor_production", firstPlan);
+    const arbitraryWorker = await child("run", { ...provisioned, runtimeDatabaseUrl: "postgresql://synthetic@127.0.0.1:5432/social_monitor_production" }, firstPlan);
     assert(arbitraryWorker.code === 2 && !arbitraryWorker.output.includes("SYNTHETIC_ACQUIRE"),
       "Synthetic worker accepted a production-like database URL");
     assert(acquisitions === 0 && readdirSync(journal).length === 0, "Plan mode acquired or reserved");
@@ -217,7 +227,7 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
 
     const samePlanBinding = await seedBinding(auditor, fixtureScope, "hacker-news");
     const samePlan = await plan(samePlanBinding, ...hnWindow);
-    const [sameA, sameB] = await Promise.all([child("run", runtimeUrl, samePlan), child("run", runtimeUrl, samePlan)]);
+    const [sameA, sameB] = await Promise.all([child("run", provisioned, samePlan), child("run", provisioned, samePlan)]);
     const sameStatuses = [sameA, sameB].map((result) => {
       if (result.code !== 0) return result.output.includes("SYNTHETIC_RESERVATION_REFUSED") ? "REFUSED" : "FAILED";
       return (JSON.parse(result.output.trim().split("\n").at(-1) ?? "{}") as { status: string }).status;
@@ -298,7 +308,7 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
 
     const crashBinding = await seedBinding(auditor, fixtureScope, "hacker-news");
     const crashPlan = await plan(crashBinding, ...hnWindow);
-    const crashed = await child("crash", runtimeUrl, crashPlan);
+    const crashed = await child("crash", provisioned, crashPlan);
     const startedPath = join(journal, `${crashPlan.planSha256}.started.json`);
     const completedPath = join(journal, `${crashPlan.planSha256}.completed.json`);
     process.stdout.write(`${JSON.stringify({ evidence: "synthetic_pg18_crash_process_snapshot",
@@ -334,5 +344,5 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
 }
 
 void runReaderSummaryPublicationPostgresContract("publication", async (fixture) => {
-  await proof(fixture.runtimeDatabaseUrl, fixture.auditorDatabaseUrl);
+  await proof(fixture, fixture.runtimeDatabaseUrl, fixture.auditorDatabaseUrl);
 }).finally(closeReaderSummaryPublicationPostgresContract);

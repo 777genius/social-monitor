@@ -214,7 +214,7 @@ const normalizeStoriesWithCommentExpansion = async (params: {
         params.sourceKey,
         params.searchQuery,
       );
-      if (units.length === 0 && params.targetWindow !== undefined) {
+      if (units.length === 0) {
         warnings.push(`Hacker News comment coverage incomplete: comment was not projectable (comment:${comment.id}).`);
       }
       conversationUnits.push(...units);
