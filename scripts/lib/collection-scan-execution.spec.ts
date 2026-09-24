@@ -53,6 +53,6 @@ describe("collection scan execution composition", () => {
         workspaceId: workspaceId("workspace-a"),
         sourceBindingId: "binding-a",
       }),
-    } as CollectionScanExecution)).toThrow("boundary is incomplete");
+    } as unknown as CollectionScanExecution)).toThrow("boundary is incomplete");
   });
 });
