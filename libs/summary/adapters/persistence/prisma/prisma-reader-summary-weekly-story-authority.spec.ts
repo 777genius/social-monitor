@@ -1,5 +1,6 @@
 import {
   canonicalizeReaderSummaryWeeklyJson,
+  canonicalizeReaderSummaryWeeklyV3PublicationJson,
   readerSummaryWeeklyDailyPeriod,
 } from "../../../domain/value-objects/reader-summary-weekly-canonical-json";
 import {
@@ -69,9 +70,12 @@ describe("PrismaReaderSummaryWeeklyStoryAuthority", () => {
     expect(prisma.calls[0]?.sql).toContain(
       'FROM "reader_summary_weekly_publication_evidence"',
     );
-    expect(prisma.calls[0]?.sql).toContain('"tenant_id" = ?::uuid');
-    expect(prisma.calls[0]?.sql).toContain('"workspace_id" = ?::uuid');
-    expect(prisma.calls[0]?.sql).toContain('"publication_id" = ?::uuid');
+    expect(prisma.calls[0]?.sql).toContain('job."id" = evidence."reader_summary_job_id"');
+    expect(prisma.calls[0]?.sql).toContain('job."tenant_id" = evidence."tenant_id"');
+    expect(prisma.calls[0]?.sql).toContain('job."workspace_id" = evidence."workspace_id"');
+    expect(prisma.calls[0]?.sql).toContain('evidence."tenant_id" = ?::uuid');
+    expect(prisma.calls[0]?.sql).toContain('evidence."workspace_id" = ?::uuid');
+    expect(prisma.calls[0]?.sql).toContain('evidence."publication_id" = ?::uuid');
   });
 
   it("returns null when the exact append-only row does not exist", async () => {
@@ -113,6 +117,9 @@ describe("PrismaReaderSummaryWeeklyStoryAuthority", () => {
     ["report identity", { reportId: "reader-summary-report:forged" }],
     ["proof identity", { proofId: "reader-summary-proof:forged" }],
     ["scope identity", { scopeKey: "interest:forged" }],
+    ["joined job identity", { jobId: "10000000-0000-4000-8000-000000000099" }],
+    ["joined job tenant", { jobTenantId: "00000000-0000-4000-8000-000000000099" }],
+    ["joined job workspace", { jobWorkspaceId: "00000000-0000-4000-8000-000000000099" }],
     [
       "recorded timestamp",
       { recordedAt: new Date("2026-07-05T12:00:00.001Z") },
@@ -123,8 +130,54 @@ describe("PrismaReaderSummaryWeeklyStoryAuthority", () => {
     ]);
 
     await expect(authorityAdapter(prisma).load(query)).rejects.toThrow(
-      "persisted identity or scope diverged",
+      /persisted identity or scope diverged|escaped exact tenant/,
     );
+  });
+
+  it("loads V3 27k source and report above 4 MiB", async () => {
+    const row = largeV3PublicationRow();
+    expect(canonicalizeReaderSummaryWeeklyV3PublicationJson(row.report).byteLength)
+      .toBeGreaterThan(4 * 1_048_576);
+    expect(canonicalizeReaderSummaryWeeklyV3PublicationJson(row.exactProof).byteLength)
+      .toBeGreaterThan(1_048_576);
+    expect(canonicalizeReaderSummaryWeeklyV3PublicationJson(row.providerEvidence).byteLength)
+      .toBeGreaterThan(1_048_576);
+    expect(row.canonicalBytes.byteLength).toBeGreaterThan(1_048_576);
+    // The GitHub seal contains at most ten references and no source bodies.
+    expect(canonicalizeReaderSummaryWeeklyJson(row.githubEvidence).byteLength)
+      .toBeLessThan(1_048_576);
+    const adapter = authorityAdapter(new FakeAuthorityPrisma([row]));
+    const binding = adapter.readVerifiedBinding((await adapter.load(query))!);
+    expect(binding.reportSha256).toBe(row.reportSha256);
+    expect(binding.providerEvidenceSha256).toBe(row.providerEvidenceSha256);
+  });
+
+  it("keeps V2 long-string and byte bounds", async () => {
+    const longSource = publicationRow();
+    const artifactPayload = {
+      schemaVersion: "reader_summary.artifact.v1",
+      qualityFlags: [],
+      content: { topReads: [{ capturedSource: { title: "Source", body: "s".repeat(27_000) } }] },
+    };
+    longSource.report = { ...longSource.report, artifactPayload };
+    await expect(authorityAdapter(new FakeAuthorityPrisma([longSource])).load(query))
+      .rejects.toThrow("string length limit");
+
+    const row = largeV3PublicationRow();
+    row.selectionStrategy = "jev_primary_v2";
+    await expect(authorityAdapter(new FakeAuthorityPrisma([row])).load(query))
+      .rejects.toThrow("canonical byte limit");
+  });
+
+  it("rejects V3 digest and joined scope tampering", async () => {
+    const digest = largeV3PublicationRow();
+    digest.reportSha256 = "f".repeat(64);
+    await expect(authorityAdapter(new FakeAuthorityPrisma([digest])).load(query))
+      .rejects.toThrow("persisted hash diverged");
+    const scope = largeV3PublicationRow();
+    scope.jobWorkspaceId = "00000000-0000-4000-8000-000000000099";
+    await expect(authorityAdapter(new FakeAuthorityPrisma([scope])).load(query))
+      .rejects.toThrow("escaped exact tenant, workspace, or publication scope");
   });
 
   it("rejects caller trust fields before issuing SQL", async () => {
@@ -550,7 +603,7 @@ const publicationRow = (
       sourceItemId: item.sourceItemId,
     })),
   };
-  const exactProof = { publication: "exact" };
+  const exactProof: Record<string, unknown> = { publication: "exact" };
   const githubEvidence = historicalGitHubEvidence(requestedUtcDate);
   const publicationId = uuidWithSuffix("2", identitySuffix);
   const jobId = uuidWithSuffix("1", identitySuffix);
@@ -604,6 +657,10 @@ const publicationRow = (
     periodTimezone: "UTC",
     requestedUtcDate: new Date(`${requestedUtcDate}T00:00:00.000Z`),
     readerSummaryJobId: body.jobId,
+    jobId: body.jobId,
+    jobTenantId: body.tenantId,
+    jobWorkspaceId: body.workspaceId,
+    selectionStrategy: null as string | null,
     readerSummaryArtifactId: publicationId,
     reportId: body.reportId,
     proofId: body.proofId,
@@ -623,6 +680,54 @@ const publicationRow = (
       `${readerSummaryWeeklyPublicationEvidenceSchemaVersion}:${canonical.sha256}`,
     recordedAt: new Date(body.publishedAt),
   };
+};
+
+const largeV3PublicationRow = (): MutablePublicationRow => {
+  const row = publicationRow();
+  row.selectionStrategy = "jev_primary_v3";
+  const sourceBody = "s".repeat(27_000);
+  const artifactPayload = {
+    schemaVersion: "reader_summary.artifact.v1",
+    qualityFlags: [],
+    promotionAttestations: [{
+      schemaVersion: "reader_post_promotion_attestation.v3",
+    }],
+    content: { topReads: [{ capturedSource: { title: "Source", body: sourceBody } }] },
+    details: Array.from({ length: 72 }, () => "d".repeat(60_000)),
+  };
+  row.report = { ...row.report, artifactPayload };
+  row.exactProof = { entries: Array.from({ length: 20 }, () => "p".repeat(60_000)) };
+  row.providerEvidence = Array.from({ length: 40 }, (_, index) => ({
+    ...providerEvidenceItem(
+      "2026-07-05", "rss", `citation-${String(index).padStart(3, "0")}`,
+      `source-${String(index).padStart(3, "0")}`, "b".repeat(64),
+    ),
+    sourceText: sourceBody,
+  }));
+  row.reportSha256 = canonicalizeReaderSummaryWeeklyV3PublicationJson(row.report).sha256;
+  row.proofSha256 = canonicalizeReaderSummaryWeeklyV3PublicationJson(row.exactProof).sha256;
+  row.artifactPayloadSha256 =
+    canonicalizeReaderSummaryWeeklyV3PublicationJson(artifactPayload).sha256;
+  row.providerEvidenceSha256 =
+    canonicalizeReaderSummaryWeeklyV3PublicationJson(row.providerEvidence).sha256;
+  row.canonicalRecord = {
+    ...(row.canonicalRecord as Record<string, unknown>),
+    reportSha256: row.reportSha256,
+    proofSha256: row.proofSha256,
+    artifactPayloadSha256: row.artifactPayloadSha256,
+    providerEvidenceSha256: row.providerEvidenceSha256,
+    providerEvidence: row.providerEvidence,
+    providerCounts: readerSummaryWeeklyCanonicalProviderKeys.map((providerKey) => ({
+      providerKey,
+      count: row.providerEvidence.filter((item) => item.providerKey === providerKey).length,
+    })),
+  };
+  const canonical = canonicalizeReaderSummaryWeeklyV3PublicationJson(row.canonicalRecord);
+  row.canonicalRecord = JSON.parse(canonical.json) as unknown;
+  row.canonicalBytes = Buffer.from(canonical.toBytes());
+  row.canonicalSha256 = canonical.sha256;
+  row.identity = `${readerSummaryWeeklyPublicationEvidenceSchemaVersion}:${canonical.sha256}`;
+  return row;
 };
 
 const recanonicalizeEvidenceRow = (row: MutablePublicationRow): void => {

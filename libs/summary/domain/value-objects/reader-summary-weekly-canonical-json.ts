@@ -49,6 +49,19 @@ export const readerSummaryWeeklyHistoricalArtifactCanonicalJsonLimits =
     maxTotalArrayElements: 5_000,
     maxNodes: 18_000,
   });
+// Mirrors reader_summary_v3_publication_canonical_json in the V3 source
+// publication migration. Only a trusted persisted job may select this profile.
+export const readerSummaryWeeklyV3PublicationCanonicalJsonLimits =
+  Object.freeze({
+    maxDepth: 32,
+    maxBytes: 16_777_216,
+    maxObjectKeys: 128,
+    maxTotalObjectKeys: 20_000,
+    maxArrayElements: 1_024,
+    maxTotalArrayElements: 20_000,
+    maxStringLength: 64_000,
+    maxNodes: 25_000,
+  });
 export type ReaderSummaryWeeklyCanonicalJson = Readonly<{
   json: string;
   sha256: string;
@@ -126,6 +139,15 @@ export const canonicalizeReaderSummaryWeeklyHistoricalArtifactJson = (
     value,
     `Reader summary weekly ${label}`,
     readerSummaryWeeklyHistoricalArtifactCanonicalJsonLimits,
+  );
+export const canonicalizeReaderSummaryWeeklyV3PublicationJson = (
+  value: unknown,
+  label = "V3 publication value",
+): ReaderSummaryWeeklyCanonicalJson =>
+  canonicalizeReaderSummaryJsonWithLimits(
+    value,
+    `Reader summary weekly ${label}`,
+    readerSummaryWeeklyV3PublicationCanonicalJsonLimits,
   );
 
 const canonicalizeReaderSummaryJsonWithLimits = (
@@ -212,6 +234,7 @@ export function assertReaderSummaryWeeklyPlainObject(
 export function assertReaderSummaryWeeklyDenseArray(
   value: unknown,
   label: string,
+  maxElements = readerSummaryWeeklyCanonicalJsonLimits.maxArrayElements,
 ): asserts value is readonly unknown[] {
   if (
     !Array.isArray(value) ||
@@ -223,7 +246,7 @@ export function assertReaderSummaryWeeklyDenseArray(
       `Reader summary weekly ${label} must be a dense data array`,
     );
   }
-  if (value.length > readerSummaryWeeklyCanonicalJsonLimits.maxArrayElements) {
+  if (value.length > maxElements) {
     throw new Error(
       `Reader summary weekly ${label} exceeds the array element limit`,
     );
@@ -383,7 +406,7 @@ const writeCanonicalValue = (
     return;
   }
   if (Array.isArray(value)) {
-    assertReaderSummaryWeeklyDenseArray(value, path);
+    assertReaderSummaryWeeklyDenseArray(value, path, writer.limits.maxArrayElements);
     assertUnvisited(value, path, writer.visited);
     writer.arrayElements += value.length;
     if (

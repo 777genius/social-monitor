@@ -2,15 +2,36 @@ import {
   assertReaderSummaryWeeklyExactObject,
   canonicalizeReaderSummaryWeeklyHistoricalArtifactJson,
   canonicalizeReaderSummaryWeeklyJson,
+  canonicalizeReaderSummaryWeeklyV3PublicationJson,
   deepFreezeReaderSummaryWeekly,
   exactReaderSummaryWeeklyHttpsUrl,
   exactReaderSummaryWeeklyProviderItemId,
   readerSummaryWeeklyCanonicalJsonLimits,
   readerSummaryWeeklyHistoricalArtifactCanonicalJsonLimits,
+  readerSummaryWeeklyV3PublicationCanonicalJsonLimits,
   readerSummaryWeeklySha256,
 } from "./reader-summary-weekly-canonical-json";
 
 describe("reader summary weekly canonical JSON", () => {
+  it("uses the finite SQL V3 profile without changing legacy bytes or bounds", () => {
+    const longSource = "s".repeat(27_000);
+    expect(canonicalizeReaderSummaryWeeklyV3PublicationJson({ body: longSource }).sha256)
+      .toMatch(/^[0-9a-f]{64}$/u);
+    expect(() => canonicalizeReaderSummaryWeeklyJson({ body: longSource }))
+      .toThrow("string length limit");
+    expect(() => canonicalizeReaderSummaryWeeklyV3PublicationJson(
+      "s".repeat(readerSummaryWeeklyV3PublicationCanonicalJsonLimits.maxStringLength + 1),
+    )).toThrow("string length limit");
+    expect(canonicalizeReaderSummaryWeeklyV3PublicationJson(
+      Array.from({ length: 1_024 }, (_, index) => index),
+    ).sha256).toMatch(/^[0-9a-f]{64}$/u);
+    expect(() => canonicalizeReaderSummaryWeeklyV3PublicationJson(
+      Array.from({ length: 1_025 }, (_, index) => index),
+    )).toThrow("array element limit");
+    const small = { same: "canonical bytes" };
+    expect(canonicalizeReaderSummaryWeeklyV3PublicationJson(small).json)
+      .toBe(canonicalizeReaderSummaryWeeklyJson(small).json);
+  });
   it("accepts bounded long HTTPS URLs without widening identifier limits", () => {
     const url = `https://news.google.com/rss/articles/${"a".repeat(700)}`;
 
