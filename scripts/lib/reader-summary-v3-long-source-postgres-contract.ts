@@ -8,6 +8,8 @@ import { assertPostgres as assert, assertPostgresRejects as assertRejects,
   "./reader-summary-publication-postgres-assertions";
 
 type Payload = Record<string, unknown> & {
+  tenantId: string; workspaceId: string; reportCanonical: string;
+  reportSha256: string;
   periodStartedAt: string; periodEndedAt: string; periodTimezone: string;
   periodKey: string; readerSummaryArtifactId: string;
   report: { artifactPayload: { citationMap: Array<{ sourceItemId: string }> } };
@@ -147,4 +149,72 @@ export const assertV3LongSourcePostgresContract = async (params: {
   } finally {
     await params.adminClient.query("ROLLBACK");
   }
+  await assertUtcDailyV3LargeReport(params);
+};
+
+const assertUtcDailyV3LargeReport = async (
+  params: Parameters<typeof assertV3LongSourcePostgresContract>[0],
+): Promise<void> => {
+  // Escaped controls make a bounded captured source large on the wire. The
+  // fixture also carries source-sized editorial risks to exercise aggregate
+  // report growth without changing its signed capture or PostgreSQL limits.
+  const body = "\u001f".repeat(63_984) + "Captured source.";
+  assert(body.length === 64_000, "large V3 capture must meet its UTF-16 bound");
+  const fixture = await params.createFixture("COMPLETED", 28, {
+    publicationInterestId: randomUUID(), providerEvidence: "rss",
+    providerPublishedAt: "2026-06-28T09:00:00.123456Z",
+    providerObservedAt: "2026-06-28T09:01:00.123456Z",
+    payloadTransform: async (source) => {
+      const payload = source as Payload;
+      const sourceItemId = payload.report.artifactPayload.citationMap[0]?.sourceItemId;
+      assert(sourceItemId !== undefined, "large V3 fixture needs a source item");
+      await params.client.query("UPDATE source_items SET body=$2 WHERE id=$1::uuid",
+        [sourceItemId, body]);
+      return params.build(source);
+    },
+  });
+  const payload = fixture.payload as Payload;
+  assert(payload.periodTimezone === "UTC", "large V3 fixture must be UTC daily");
+  const reportBytes = Buffer.byteLength(payload.reportCanonical, "utf8");
+  assert(reportBytes > 4_194_304 && reportBytes < 16_777_216,
+    `large V3 report must cross only the legacy 4 MiB limit: ${reportBytes}`);
+  const command = {
+    schemaVersion: "reader_summary.publication_command.v2",
+    tenantId: fixture.payload.tenantId,
+    workspaceId: fixture.payload.workspaceId,
+    readerSummaryJobId: fixture.jobId,
+    readerSummaryArtifactId: fixture.artifactId,
+  };
+  const initial = (await params.client.query<{ readonly strategy: string | null }>(
+    `SELECT selection_strategy AS strategy FROM reader_summary_jobs
+      WHERE id=$1::uuid`, [fixture.jobId])).rows[0];
+  assert(initial?.strategy === null,
+    "large report must begin with the legacy job selection strategy");
+  await assertRejectsContaining(() => params.client.query(
+    "SELECT outcome FROM public.publish_reader_summary($1::jsonb)",
+    [JSON.stringify(command)]),
+  "daily publication report exceeds byte bounds",
+  "legacy UTC-daily publication must keep the 4 MiB bound");
+  const afterRejection = (await params.client.query<{
+    readonly status: string; readonly publications: string }>(
+    `SELECT j.status::text, (SELECT count(*) FROM reader_summary_publications p
+      WHERE p.reader_summary_job_id=j.id)::text AS publications
+      FROM reader_summary_jobs j WHERE j.id=$1::uuid`, [fixture.jobId])).rows[0];
+  assert(afterRejection !== undefined && afterRejection.status === "RUNNING" &&
+    afterRejection.publications === "0",
+    "legacy bound rejection must leave the candidate unpublished");
+  await params.advance(fixture);
+  assert(await params.publish(fixture, command) === "published",
+    "UTC-daily V3 report above 4 MiB must publish through pre-evidence");
+  assert(await params.publish(fixture, command) === "replayed",
+    "UTC-daily V3 report above 4 MiB must replay through evidence");
+  const stored = (await params.client.query<{ readonly body: string;
+    readonly report_sha256: string }>(
+    `SELECT a.artifact_payload #>> '{content,topReads,0,capturedSource,body}' AS body,
+      p.report_sha256 FROM reader_summary_publications p
+      JOIN reader_summary_artifacts a ON a.id=p.reader_summary_artifact_id
+      WHERE p.reader_summary_job_id=$1::uuid`, [fixture.jobId])).rows[0];
+  assert(stored !== undefined && stored.body === body &&
+    stored.report_sha256 === payload.reportSha256,
+    "large V3 publication must retain the signed source and report digest");
 };

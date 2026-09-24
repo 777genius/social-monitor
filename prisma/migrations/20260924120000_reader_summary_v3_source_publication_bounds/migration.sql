@@ -177,6 +177,19 @@ BEGIN
   END IF;
   EXECUTE replace(v_definition, v_needle,
     'public.reader_summary_v3_publication_canonical_json(v_report, v_job."selection_strategy", ''report'')');
+
+  -- The V2 UTC-daily branch delegates its first publication to this function.
+  -- It independently rebuilds and hashes the same report before evidence runs.
+  v_function := 'public.publish_reader_summary_pre_evidence(jsonb)'::REGPROCEDURE;
+  SELECT pg_get_functiondef(v_function) INTO STRICT v_definition;
+  v_needle := '"reader_summary_daily_canonical_recovery_v4_report_canonical_json"(v_report)';
+  v_count := (length(v_definition) - length(replace(v_definition, v_needle, '')))
+    / length(v_needle);
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'V3 pre-evidence report canonical call diverged: %', v_count;
+  END IF;
+  EXECUTE replace(v_definition, v_needle,
+    'public.reader_summary_v3_publication_canonical_json(v_report, v_job."selection_strategy", ''report'')');
 END;
 $rewrite_v3_publication$;
 
