@@ -35,10 +35,14 @@ class SyntheticHnClient implements HackerNewsClientPort {
   readonly calls: { query: string; limit: number; options?: HackerNewsSearchOptions }[] = [];
   async searchStories(query: string, limit: number, options?: HackerNewsSearchOptions): Promise<readonly HackerNewsStory[]> {
     this.calls.push({ query, limit, options });
-    return [
+    const stories: readonly HackerNewsStory[] = [
       { id: 12345, kind: "story", title: "Synthetic HN item", url: "https://example.test/hn/12345", by: "synthetic", time: Date.parse("2026-09-23T16:45:00Z") / 1000, score: 4 },
       { id: 12346, kind: "story", title: "Outside synthetic window", url: "https://example.test/hn/12346", by: "synthetic", time: Date.parse("2026-09-23T19:00:00Z") / 1000, score: 4 },
     ];
+    return stories.filter((story) =>
+      (options?.from === undefined || (story.time ?? 0) * 1000 >= options.from.getTime()) &&
+      (options?.to === undefined || (story.time ?? 0) * 1000 < options.to.getTime()),
+    ).slice(0, limit);
   }
   async searchComments(): Promise<readonly HackerNewsStory[]> { return []; }
   async getStory(): Promise<HackerNewsStory | null> { return null; }
@@ -82,6 +86,7 @@ describe("HN/RSS recovery injected acquisition path", () => {
           correlationId: identity.runId, causationId: identity.attemptId, retryBudget: 0,
         });
         if (!result.ok) throw result.error;
+        expect(result.value.warnings).toEqual([]);
         return { fetched: result.value.fetched, inserted: result.value.inserted, projected: result.value.projected, skippedDuplicates: result.value.skippedDuplicates, warningCount: result.value.warnings.length };
       },
     };
@@ -156,7 +161,7 @@ describe("HN/RSS recovery injected acquisition path", () => {
         key: () => provider.key(), capabilityProfile: () => provider.capabilityProfile(),
         validateBinding: (query) => provider.validateBinding(query),
         planScan: (query, context) => provider.planScan(query, context),
-        classifyError: (error, context) => provider.classifyError(error, context),
+        classifyError: (error) => provider.classifyError(error),
         scan: async () => ({ items: [], warnings: [warning] }),
       });
       const context = { tenantId: tenantId(tenant), workspaceId: workspaceId(workspace), sourceBindingId: bindingId, scanJobId: "synthetic", correlationId: "synthetic", config: {} };
