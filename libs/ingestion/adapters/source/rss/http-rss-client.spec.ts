@@ -145,13 +145,25 @@ describe('HttpRssClient', () => {
     await expect(new HttpRssClient().readFeed('https://example.test/feed.xml', 10)).rejects.toThrow(/malformed XML|invalid RSS or Atom envelope/);
   });
 
-  it.each(['<rss version="2.0"><channel/></rss>', '<feed xmlns="http://www.w3.org/2005/Atom"/>'])
-    ('accepts a valid empty RSS or Atom feed', async (body) => {
+  it.each(['<rss version="2.0"><channel/></rss>', '<feed xmlns="http://www.w3.org/2005/Atom"/>'])('accepts a valid empty RSS or Atom feed', async (body) => {
       globalThis.fetch = jest.fn(async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
       await expect(new HttpRssClient().readFeed('https://example.test/feed.xml', 10)).resolves.toEqual({
         items: [], etag: undefined, lastModified: undefined,
       });
     });
+
+  it.each([
+    ['RSS item', '<rss><channel><item/></channel></rss>'],
+    ['Atom entry', '<feed><entry/></feed>'],
+  ])('retains rejection evidence for an empty parsed %s', async (_kind, body) => {
+    globalThis.fetch = jest.fn(async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
+    await expect(new HttpRssClient().readFeed('https://example.test/feed.xml', 10, {
+      targetPublishedWindow: {
+        startInclusive: new Date('2026-06-05T10:00:00.000Z'),
+        endExclusive: new Date('2026-06-05T11:00:00.000Z'),
+      },
+    })).resolves.toEqual({ items: [], rejectedEntries: 1, etag: undefined, lastModified: undefined });
+  });
 
   it('rejects redirects to private or local network URLs', async () => {
     const response = new Response('<rss />', { status: 200 });

@@ -23,6 +23,8 @@ export type RssReadFeedOptions = {
 
 export type RssReadFeedResult = {
   readonly items: readonly RssFeedItem[];
+  /** Feed entries the XML parser could not normalize into an item. */
+  readonly rejectedEntries?: number;
   readonly etag?: string;
   readonly lastModified?: string;
   readonly notModified?: boolean;

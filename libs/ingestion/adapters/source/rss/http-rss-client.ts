@@ -56,7 +56,7 @@ export class HttpRssClient implements RssClientPort {
       throw new Error('RSS provider returned an invalid RSS or Atom envelope');
     }
 
-    const entries = parseFeedItems(parsed);
+    const { items: entries, rejectedEntries } = parseFeedItems(parsed);
     const window = options.targetPublishedWindow;
     const matching = window === undefined ? entries : entries.filter((item) =>
       item.publishedAt === undefined ||
@@ -66,6 +66,7 @@ export class HttpRssClient implements RssClientPort {
 
     return {
       items: matching.slice(0, boundedLimit),
+      ...(rejectedEntries > 0 ? { rejectedEntries } : {}),
       ...(window !== undefined && matching.length > boundedLimit ? { truncated: true } : {}),
       etag,
       lastModified,
@@ -90,18 +91,26 @@ const requestHeaders = (options: RssReadFeedOptions): Record<string, string> => 
   return headers;
 };
 
-const parseFeedItems = (parsed: unknown): readonly RssFeedItem[] => {
+const parseFeedItems = (parsed: unknown): { readonly items: readonly RssFeedItem[]; readonly rejectedEntries: number } => {
   if (!isRecord(parsed)) {
-    return [];
+    return { items: [], rejectedEntries: 0 };
   }
 
   const rssItems = arrayFromPath(parsed, ['rss', 'channel', 'item']);
   if (rssItems.length > 0) {
-    return rssItems.flatMap((item) => normalizeRssItem(item));
+    return normalizeEntries(rssItems, normalizeRssItem);
   }
 
-  return arrayFromPath(parsed, ['feed', 'entry']).flatMap((entry) => normalizeAtomEntry(entry));
+  return normalizeEntries(arrayFromPath(parsed, ['feed', 'entry']), normalizeAtomEntry);
 };
+
+const normalizeEntries = (
+  entries: readonly unknown[],
+  normalize: (entry: Readonly<Record<string, unknown>>) => RssFeedItem,
+): { readonly items: readonly RssFeedItem[]; readonly rejectedEntries: number } => ({
+  items: entries.filter(isRecord).map(normalize),
+  rejectedEntries: entries.filter((entry) => !isRecord(entry)).length,
+});
 
 const hasFeedEnvelope = (parsed: unknown): boolean => {
   if (!isRecord(parsed)) return false;
@@ -114,37 +123,25 @@ const hasFeedEnvelope = (parsed: unknown): boolean => {
   return roots[0] === 'feed' && (isRecord(parsed.feed) || parsed.feed === '');
 };
 
-const normalizeRssItem = (item: unknown): readonly RssFeedItem[] => {
-  if (!isRecord(item)) {
-    return [];
-  }
+const normalizeRssItem = (item: Readonly<Record<string, unknown>>): RssFeedItem => ({
+  guid: readText(item.guid),
+  link: readText(item.link),
+  title: readText(item.title),
+  content: readText(item['content:encoded']) ?? readText(item.description),
+  author: readText(item.author) ?? readText(item['dc:creator']),
+  ...rssMediaFields(item),
+  publishedAt: parseDate(readText(item.pubDate) ?? readText(item['dc:date'])),
+});
 
-  return [{
-    guid: readText(item.guid),
-    link: readText(item.link),
-    title: readText(item.title),
-    content: readText(item['content:encoded']) ?? readText(item.description),
-    author: readText(item.author) ?? readText(item['dc:creator']),
-    ...rssMediaFields(item),
-    publishedAt: parseDate(readText(item.pubDate) ?? readText(item['dc:date'])),
-  }];
-};
-
-const normalizeAtomEntry = (entry: unknown): readonly RssFeedItem[] => {
-  if (!isRecord(entry)) {
-    return [];
-  }
-
-  return [{
-    guid: readText(entry.id),
-    link: readAtomLink(entry.link),
-    title: readText(entry.title),
-    content: readText(entry.content) ?? readText(entry.summary),
-    author: readAtomAuthor(entry.author),
-    ...atomMediaFields(entry),
-    publishedAt: parseDate(readText(entry.published) ?? readText(entry.updated)),
-  }];
-};
+const normalizeAtomEntry = (entry: Readonly<Record<string, unknown>>): RssFeedItem => ({
+  guid: readText(entry.id),
+  link: readAtomLink(entry.link),
+  title: readText(entry.title),
+  content: readText(entry.content) ?? readText(entry.summary),
+  author: readAtomAuthor(entry.author),
+  ...atomMediaFields(entry),
+  publishedAt: parseDate(readText(entry.published) ?? readText(entry.updated)),
+});
 
 const rssMediaFields = (
   item: Readonly<Record<string, unknown>>,

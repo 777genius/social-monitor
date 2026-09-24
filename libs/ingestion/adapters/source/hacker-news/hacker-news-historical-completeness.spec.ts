@@ -119,6 +119,19 @@ describe('Hacker News historical completeness', () => {
     expect(failed.warnings).toEqual(expect.arrayContaining([expect.stringContaining('comment enrichment degraded')]));
   });
 
+  it('passes the Algolia comment count into historical expansion', async () => {
+    const client = new WindowClient();
+    client.stories = [{ ...story(1), comments: 1 }];
+    const provider = new HackerNewsSourceProvider(client, new FixedClock(to));
+    const scope = context({ includeComments: true });
+
+    await provider.scan(provider.planScan({ mode: 'search', query: 'boundary' }, scope), scope);
+
+    expect(client.commentRequests).toEqual([expect.objectContaining({
+      storyId: 1, expectedComments: 1, requireComplete: true,
+    })]);
+  });
+
   it('resolves a null story_id through a deleted parent and dedupes repeated hits and lookups', async () => {
     const client = new WindowClient();
     client.comments = [comment(10, 20), comment(10, 20), comment(11, 20)];
@@ -394,6 +407,87 @@ describe('Hacker News historical completeness', () => {
           const scope = context(binding.config);
           const result = await provider.scan(provider.planScan({ mode: 'search', query: 'synthetic' }, scope), scope);
           return { fetched: result.items.length, inserted: 0, projected: 0, skippedDuplicates: 0, warningCount: result.warnings.length };
+        },
+      };
+      const plan = await runRecoveryInDisposableJournalForTest(parseRecoveryArgs(argv, to), dependencies);
+      await expect(runRecoveryInDisposableJournalForTest(
+        parseRecoveryArgs([...argv, '--apply', '--plan-sha256', String(plan.planSha256)], to), dependencies,
+      )).rejects.toThrow('partial acquisition');
+      expect(readdirSync(directory).some((name) => name.endsWith('.completed.json'))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    {
+      label: 'Algolia reports a comment but Firebase omits kids and descendants',
+      hit: { objectID: '100', title: 'Synthetic story', story_text: 'Synthetic discussion',
+        created_at_i: second('2026-09-23T16:30:00Z'), points: 4, num_comments: 1 },
+      includeComments: true,
+      firebaseRoot: { id: 100, type: 'story' },
+      expectedItems: 1,
+      expectedWarning: 'comment enrichment degraded',
+    },
+    {
+      label: 'Algolia comment count conflicts with Firebase zero',
+      hit: { objectID: '100', title: 'Synthetic story', story_text: 'Synthetic discussion',
+        created_at_i: second('2026-09-23T16:30:00Z'), points: 4, num_comments: 1 },
+      includeComments: true,
+      firebaseRoot: { id: 100, type: 'story', descendants: 0 },
+      expectedItems: 1,
+      expectedWarning: 'comment enrichment degraded',
+    },
+    {
+      label: 'matching dated Algolia story has no title',
+      hit: { objectID: '100', story_text: 'Synthetic discussion',
+        created_at_i: second('2026-09-23T16:30:00Z'), points: 4 },
+      includeComments: false,
+      firebaseRoot: { id: 100, type: 'story' },
+      expectedItems: 0,
+      expectedWarning: 'historical story coverage incomplete: story was not projectable (story:100)',
+    },
+  ])('refuses a completion receipt when $label', async ({ hit, includeComments, firebaseRoot, expectedItems, expectedWarning }) => {
+    const directory = mkdtempSync(join(tmpdir(), 'hn-incomplete-story-'));
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = jest.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('/search_by_date')) return new Response(JSON.stringify({
+          hits: [hit], nbHits: 1, nbPages: 1, page: 0, exhaustiveNbHits: true,
+        }), { status: 200 });
+        if (url.endsWith('/item/100.json')) return new Response(JSON.stringify(firebaseRoot), { status: 200 });
+        throw new Error(`Unexpected synthetic URL: ${url}`);
+      }) as unknown as typeof fetch;
+
+      const rawProvider = new HackerNewsSourceProvider(new HttpHackerNewsClient(), new FixedClock(to));
+      const scope = context({ maxItems: 10, includeComments });
+      const query = { mode: 'search' as const, query: 'synthetic' };
+      const result = await rawProvider.scan(rawProvider.planScan(query, scope), scope);
+      expect(result.items).toHaveLength(expectedItems);
+      expect(result.warnings).toEqual([expect.stringContaining(expectedWarning)]);
+
+      const provider = requireCompleteRecoveryScan(rawProvider);
+      const argv = [
+        '--tenant-id', '00000000-0000-7000-8000-000000000101',
+        '--workspace-id', '00000000-0000-7000-8000-000000000102',
+        '--source-binding-id', '00000000-0000-7000-8000-000000000103',
+        '--provider', 'hacker-news', '--from', from.toISOString(), '--to', to.toISOString(),
+        '--journal-dir', directory,
+      ];
+      const binding = {
+        interestId: '00000000-0000-7000-8000-000000000104',
+        scanPolicyId: '00000000-0000-7000-8000-000000000105',
+        interestQuery: 'synthetic',
+        config: { mode: 'search', query: 'synthetic', maxItems: 10, includeComments },
+      };
+      const dependencies = {
+        readBinding: async () => binding,
+        acquire: async () => {
+          const result = await provider.scan(provider.planScan(query, scope), scope);
+          return { fetched: result.items.length, inserted: 0, projected: 0,
+            skippedDuplicates: 0, warningCount: result.warnings.length };
         },
       };
       const plan = await runRecoveryInDisposableJournalForTest(parseRecoveryArgs(argv, to), dependencies);

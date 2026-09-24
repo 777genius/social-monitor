@@ -143,6 +143,45 @@ describe('HttpHackerNewsClient', () => {
       .rejects.toThrow('depth limit');
   });
 
+  it.each([
+    { label: 'unknown Firebase coverage', root: { id: 1, type: 'story' },
+      expectedComments: undefined, reason: 'child coverage unknown' },
+    { label: 'Algolia count conflicts with missing Firebase detail', root: { id: 1, type: 'story' },
+      expectedComments: 1, reason: 'children unavailable' },
+    { label: 'Algolia count conflicts with Firebase zero', root: { id: 1, type: 'story', descendants: 0 },
+      expectedComments: 1, reason: 'children unavailable' },
+    { label: 'Algolia count conflicts with empty Firebase kids', root: { id: 1, type: 'story', kids: [] },
+      expectedComments: 1, reason: 'children unavailable' },
+  ])('refuses historical expansion with $label', async ({ root, expectedComments, reason }) => {
+    globalThis.fetch = jest.fn(async () => jsonResponse(root)) as unknown as typeof fetch;
+    const client = new HttpHackerNewsClient();
+
+    await expect(client.listStoryComments({ storyId: 1, limit: 10, depth: 2,
+      expectedComments, requireComplete: true })).rejects.toThrow(reason);
+    await expect(client.listStoryComments({ storyId: 1, limit: 10, depth: 2,
+      expectedComments })).resolves.toEqual([]);
+  });
+
+  it('accepts confirmed Firebase zero during historical expansion', async () => {
+    globalThis.fetch = jest.fn(async () => jsonResponse({ id: 1, type: 'story', descendants: 0 })) as unknown as typeof fetch;
+    await expect(new HttpHackerNewsClient().listStoryComments({
+      storyId: 1, limit: 10, depth: 2, requireComplete: true,
+    })).resolves.toEqual([]);
+  });
+
+  it('refuses historical expansion when fewer children are found than Algolia reported', async () => {
+    globalThis.fetch = jest.fn(async (rawUrl: string) => {
+      const id = Number(rawUrl.match(/item\/(\d+)\.json$/u)?.[1]);
+      return jsonResponse(id === 1
+        ? { id: 1, type: 'story', kids: [2] }
+        : { id: 2, type: 'comment', parent: 1, time: 1_782_230_000, text: 'Synthetic comment' });
+    }) as unknown as typeof fetch;
+
+    await expect(new HttpHackerNewsClient().listStoryComments({
+      storyId: 1, limit: 10, depth: 2, expectedComments: 2, requireComplete: true,
+    })).rejects.toThrow('fewer children than expected count');
+  });
+
   it('maps HN Algolia hit points and num_comments into story metrics', async () => {
     const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
       expectAlgoliaSearchUrl(url, {

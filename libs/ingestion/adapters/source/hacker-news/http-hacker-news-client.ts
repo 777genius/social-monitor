@@ -79,11 +79,17 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
     if (request.requireComplete === true && root === null) {
       throw new Error('Hacker News comment expansion incomplete: root unavailable');
     }
-    const rootKids = root?.kids ?? [];
+    const rootKids = root?.kids;
 
-    if (rootKids.length === 0) {
-      if (request.requireComplete === true && (root?.comments ?? 0) > 0) {
-        throw new Error('Hacker News comment expansion incomplete: children unavailable');
+    if (rootKids === undefined || rootKids.length === 0) {
+      if (request.requireComplete === true) {
+        const expectedComments = Math.max(root?.comments ?? 0, request.expectedComments ?? 0);
+        if (expectedComments > 0) {
+          throw new Error('Hacker News comment expansion incomplete: children unavailable');
+        }
+        if (rootKids === undefined && root?.comments !== 0) {
+          throw new Error('Hacker News comment expansion incomplete: child coverage unknown');
+        }
       }
       return [];
     }
@@ -99,6 +105,11 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
 
     if (request.requireComplete === true && comments.length >= normalizeLimit(request.limit)) {
       throw new Error('Hacker News comment expansion incomplete: comment limit');
+    }
+
+    if (request.requireComplete === true &&
+        Math.max(root?.comments ?? 0, request.expectedComments ?? 0) > comments.length) {
+      throw new Error('Hacker News comment expansion incomplete: fewer children than expected count');
     }
 
     return comments.map((comment, index) => ({

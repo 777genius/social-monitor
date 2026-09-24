@@ -31,6 +31,8 @@ export type HackerNewsListStoryCommentsRequest = {
   readonly storyId: number;
   readonly limit: number;
   readonly depth: number;
+  /** Search-hit count, when known; used to detect conflicting historical coverage. */
+  readonly expectedComments?: number;
   readonly requireComplete?: boolean;
 };
 

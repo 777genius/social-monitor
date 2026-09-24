@@ -180,6 +180,12 @@ const normalizeStoriesWithCommentExpansion = async (params: {
     );
     items.push(...rootItems);
 
+    if (rootItems.length === 0 && params.targetWindow !== undefined &&
+        !story.deleted && !story.dead && story.kind !== 'comment' &&
+        story.time !== undefined && Number.isFinite(story.time) && story.time > 0) {
+      warnings.push(`Hacker News historical story coverage incomplete: story was not projectable (story:${story.id}).`);
+    }
+
     const rootItem = rootItems[0];
     if (rootItem === undefined || params.expansion === undefined) {
       continue;
@@ -196,6 +202,7 @@ const normalizeStoriesWithCommentExpansion = async (params: {
         storyId: story.id,
         limit: params.expansion.maxCommentsPerPost ?? 5,
         depth: params.expansion.commentDepth,
+        expectedComments: story.comments,
         requireComplete: params.targetWindow !== undefined,
       });
     } catch (error) {

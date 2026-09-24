@@ -130,6 +130,7 @@ export class RssSourceProvider implements SourceProviderPort {
         nextCursor: encodeCursor(feed, plan.cursor),
         warnings: [
           ...(feed.truncated ? ["RSS recovery window exceeds maxItems; acquisition is incomplete."] : []),
+          ...rssHistoricalRejectionWarnings(feed.rejectedEntries, filteredItems, targetWindow !== undefined),
           ...rssWarnings(feed.items),
           ...rssRecencyWarnings(
             feed.items,
@@ -196,6 +197,11 @@ export class RssSourceProvider implements SourceProviderPort {
       warnings: [
         ...(feeds.some(({ feed }) => feed.truncated) || normalizedItems.length > plan.maxItems
           ? ["RSS recovery window exceeds maxItems; acquisition is incomplete."] : []),
+        ...rssHistoricalRejectionWarnings(
+          feeds.reduce((count, { feed }) => count + (feed.rejectedEntries ?? 0), 0),
+          filteredItems,
+          targetWindow !== undefined,
+        ),
         ...feedReadWarnings,
         ...rssWarnings(allItems),
         ...rssRecencyWarnings(
@@ -349,6 +355,17 @@ const rssWarnings = (items: readonly RssFeedItem[]): readonly string[] => [
     ? ["Some RSS items had no canonical link; they were skipped."]
     : []),
 ];
+
+const rssHistoricalRejectionWarnings = (
+  rejectedEntries: number | undefined,
+  items: readonly RssFeedItem[],
+  historical: boolean,
+): readonly string[] => historical ? [
+  ...((rejectedEntries ?? 0) > 0
+    ? ["Some RSS entries could not be parsed; historical acquisition is incomplete."] : []),
+  ...(items.some((item) => !hasReadableContent(item))
+    ? ["Some RSS entries had no readable title or content; historical acquisition is incomplete."] : []),
+] : [];
 
 const rssRecencyWarnings = (
   originalItems: readonly RssFeedItem[],
