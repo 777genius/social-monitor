@@ -1,6 +1,6 @@
 /** Child process used only by the disposable PostgreSQL recovery contract. */
 import { PrismaIngestionWorkerConnection } from "../../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
-import { executeRecoveryAcquisition } from "./hn-rss-recovery-acquisition";
+import { executeRecoveryAcquisitionInDisposableJournalForTest } from "./hn-rss-recovery-acquisition";
 import { parseRecoveryArgs } from "./hn-rss-recovery-plan";
 import { syntheticRecoveryProvider } from "./hn-rss-recovery-synthetic-provider";
 import { readBindingFromDatabase, runRecoveryInDisposableJournalForTest } from "../run-hn-rss-recovery";
@@ -16,9 +16,9 @@ async function main(): Promise<void> {
       process.stdout.write("SYNTHETIC_ACQUIRE\n");
       const connection = await PrismaIngestionWorkerConnection.createForProcess(databaseUrl, "daily-runner");
       try {
-        return await executeRecoveryAcquisition({ connection, tenantId: value.tenantId, workspaceId: value.workspaceId,
+        return await executeRecoveryAcquisitionInDisposableJournalForTest({ connection, tenantId: value.tenantId, workspaceId: value.workspaceId,
           sourceBindingId: value.sourceBindingId, providerKey: value.providerKey, from: value.from, to: value.to,
-          binding, ...identity, provider: syntheticRecoveryProvider(value.providerKey, value.sourceBindingId) });
+          binding, ...identity, provider: syntheticRecoveryProvider(value.providerKey, value.sourceBindingId) }, value.journalDir);
       } finally {
         await connection.close();
         if (mode === "crash") process.exit(77);

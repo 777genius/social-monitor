@@ -17,13 +17,24 @@ type Receipt = Readonly<{ schema: "hn-rss-acquisition.v1"; status: "COMPLETED"; 
 
 /** An acquisition permit exists only after this process made a durable STARTED reservation. */
 export type RecoveryAcquisitionPermit = Readonly<{ readonly __recoveryPermit: unique symbol }>;
-const permits = new WeakMap<object, { directory: string; reservation: Reservation }>();
+const permits = new WeakMap<object, { directory: string; reservation: Reservation; disposable: boolean }>();
 
 export function assertRecoveryAcquisitionPermit(permit: RecoveryAcquisitionPermit | undefined, scope: Reservation["scope"], identity: Pick<Reservation, "runId" | "attemptId" | "scanJobId">): void {
+  assertRecoveryPermit(permit, scope, identity, recoveryCliJournalDir, false);
+}
+
+/** Only the synthetic acquisition entrypoint may consume a disposable reservation. */
+export function assertRecoveryAcquisitionPermitInDisposableJournalForTest(permit: RecoveryAcquisitionPermit | undefined, scope: Reservation["scope"], identity: Pick<Reservation, "runId" | "attemptId" | "scanJobId">, directory: string): void {
+  if (directory === recoveryCliJournalDir) throw new Error("Disposable journal must differ from the authoritative journal");
+  assertRecoveryPermit(permit, scope, identity, directory, true);
+}
+
+function assertRecoveryPermit(permit: RecoveryAcquisitionPermit | undefined, scope: Reservation["scope"], identity: Pick<Reservation, "runId" | "attemptId" | "scanJobId">, expectedDirectory: string, disposable: boolean): void {
   const issued = permit === undefined ? undefined : permits.get(permit);
   if (issued === undefined) throw new Error("Recovery acquisition requires a durable journal reservation");
   const { directory, reservation } = issued;
-  assertAuthoritativeJournalDir(directory);
+  if (!disposable) assertAuthoritativeJournalDir(directory);
+  if (directory !== expectedDirectory || issued.disposable !== disposable) throw new Error("Recovery acquisition permit journal does not match request");
   assertPrivateJournalDir(directory);
   const stored = readPrivate(file(directory, reservation.planSha256, "started"));
   if (!isReservation(stored, reservation.planSha256) || JSON.stringify(stored) !== JSON.stringify(reservation) ||
@@ -97,7 +108,7 @@ export function reserveRecovery(directory: string, digest: string, scope: Reserv
   | { readonly kind: "reserved"; readonly reservation: Reservation; readonly permit: RecoveryAcquisitionPermit }
   | { readonly kind: "completed"; readonly receipt: Receipt } {
   assertAuthoritativeJournalDir(directory);
-  return reserveRecoveryInJournal(directory, digest, scope);
+  return reserveRecoveryInJournal(directory, digest, scope, false);
 }
 
 /** Disposable reservations support synthetic effects; their permits cannot authorize production acquisition. */
@@ -105,10 +116,10 @@ export function reserveRecoveryInDisposableJournalForTest(directory: string, dig
   | { readonly kind: "reserved"; readonly reservation: Reservation; readonly permit: RecoveryAcquisitionPermit }
   | { readonly kind: "completed"; readonly receipt: Receipt } {
   if (directory === recoveryCliJournalDir) throw new Error("Disposable journal must differ from the authoritative journal");
-  return reserveRecoveryInJournal(directory, digest, scope);
+  return reserveRecoveryInJournal(directory, digest, scope, true);
 }
 
-function reserveRecoveryInJournal(directory: string, digest: string, scope: Reservation["scope"]):
+function reserveRecoveryInJournal(directory: string, digest: string, scope: Reservation["scope"], disposable: boolean):
   | { readonly kind: "reserved"; readonly reservation: Reservation; readonly permit: RecoveryAcquisitionPermit }
   | { readonly kind: "completed"; readonly receipt: Receipt } {
   assertPrivateJournalDir(directory);
@@ -127,7 +138,7 @@ function reserveRecoveryInJournal(directory: string, digest: string, scope: Rese
   const reservation: Reservation = { schema: "hn-rss-acquisition.v1", status: "STARTED", planSha256: digest, runId: randomUUID(), attemptId: randomUUID(), scanJobId: randomUUID(), scope };
   writeExclusive(directory, started, reservation);
   const permit = {} as RecoveryAcquisitionPermit;
-  permits.set(permit, { directory, reservation });
+  permits.set(permit, { directory, reservation, disposable });
   return { kind: "reserved", reservation, permit };
 }
 

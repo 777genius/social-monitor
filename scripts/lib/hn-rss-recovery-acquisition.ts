@@ -28,7 +28,7 @@ import type { PrismaIngestionWorkerConnection } from "../../apps/ingestion-worke
 import { cleanRealDayFeedProjectionClient } from "./clean-real-day-provider-acquisition";
 import { CleanRealDaySourceConfigReader } from "./clean-real-day-source-config-reader";
 import { composeCollectionScanExecution } from "./collection-scan-execution";
-import { assertRecoveryAcquisitionPermit, type RecoveryAcquisitionPermit } from "./hn-rss-recovery-journal";
+import { assertRecoveryAcquisitionPermit, assertRecoveryAcquisitionPermitInDisposableJournalForTest, type RecoveryAcquisitionPermit } from "./hn-rss-recovery-journal";
 import { canonicalRecoveryUuid, sha256, type RecoveryProvider } from "./hn-rss-recovery-plan";
 import { ProductionCollectionScanJobReporter } from "./production-collection-scan-job-reporter";
 
@@ -152,12 +152,26 @@ export function requireCompleteRecoveryFetch(fetcher: SourceFetcherPort): Source
 export async function executeRecoveryAcquisition(input: RecoveryAcquisitionInput): Promise<Readonly<{
   fetched: number; inserted: number; projected: number; skippedDuplicates: number; warningCount: number;
 }>> {
+  return executeRecoveryAcquisitionWithPermit(input, assertRecoveryAcquisitionPermit);
+}
+
+/** Synthetic PostgreSQL checks must name their disposable journal and inject their provider. */
+export async function executeRecoveryAcquisitionInDisposableJournalForTest(
+  input: RecoveryAcquisitionInput & { provider: SourceProviderPort }, directory: string,
+): ReturnType<typeof executeRecoveryAcquisition> {
+  if (input.provider === undefined) throw new Error("Synthetic recovery acquisition requires an injected provider");
+  return executeRecoveryAcquisitionWithPermit(input, (permit, scope, identity) =>
+    assertRecoveryAcquisitionPermitInDisposableJournalForTest(permit, scope, identity, directory));
+}
+
+async function executeRecoveryAcquisitionWithPermit(input: RecoveryAcquisitionInput,
+  assertPermit: typeof assertRecoveryAcquisitionPermit): ReturnType<typeof executeRecoveryAcquisition> {
   const clock = new SystemClock();
   validateRecoveryWindow(input.providerKey, input.binding.config, input.from, input.to, clock.now());
   const canonicalTenantId = canonicalRecoveryUuid(input.tenantId);
   const canonicalWorkspaceId = canonicalRecoveryUuid(input.workspaceId);
   const canonicalSourceBindingId = canonicalRecoveryUuid(input.sourceBindingId);
-  assertRecoveryAcquisitionPermit(input.reservationPermit, {
+  assertPermit(input.reservationPermit, {
     tenantId: canonicalTenantId, workspaceId: canonicalWorkspaceId,
     sourceBindingId: canonicalSourceBindingId, interestId: input.binding.interestId,
     scanPolicyId: input.binding.scanPolicyId, providerKey: input.providerKey,

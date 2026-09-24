@@ -27,6 +27,7 @@ export type NormalizedHackerNewsStoriesResult = {
 };
 
 type TargetWindow = { readonly startInclusive: Date; readonly endExclusive: Date };
+const maxCommentParentHops = 32;
 
 const commentInWindow = (comment: HackerNewsStory, window: TargetWindow): boolean =>
   comment.time !== undefined &&
@@ -98,14 +99,22 @@ export const normalizeHackerNewsCommentSearchPass = async (params: {
       if (comment.time === undefined) warnings.push(`Hacker News comment missing timestamp (${comment.id}); comment skipped.`);
       continue;
     }
-    if (comment.kind !== "comment" || comment.storyId === undefined) {
+    if (comment.kind !== "comment") {
       continue;
     }
+
+    const storyId = comment.storyId ?? await resolveHackerNewsCommentRootId({
+      client: params.client,
+      itemsById: params.rootStoriesById,
+      comment,
+      warnings,
+    });
+    if (storyId === null) continue;
 
     const rootStory = await readHackerNewsRootStory({
       client: params.client,
       rootStoriesById: params.rootStoriesById,
-      storyId: comment.storyId,
+      storyId,
       commentId: comment.id,
       warnings,
     });
@@ -121,7 +130,7 @@ export const normalizeHackerNewsCommentSearchPass = async (params: {
     );
     if (rootItems.length === 0) {
       warnings.push(
-        `Hacker News comment root story was not projectable (comment:${comment.id}); comment skipped.`,
+        `Hacker News comment coverage incomplete: root story was not projectable (comment:${comment.id}).`,
       );
       continue;
     }
@@ -207,6 +216,56 @@ const normalizeStoriesWithCommentExpansion = async (params: {
   return { items, conversationUnits, warnings };
 };
 
+const resolveHackerNewsCommentRootId = async (params: {
+  readonly client: HackerNewsClientPort;
+  readonly itemsById: Map<number, HackerNewsStory | null>;
+  readonly comment: HackerNewsStory;
+  readonly warnings: string[];
+}): Promise<number | null> => {
+  const visited = new Set<number>([params.comment.id]);
+  let parentId = params.comment.parentId;
+
+  for (let hops = 0; hops < maxCommentParentHops; hops += 1) {
+    if (parentId === undefined || !Number.isSafeInteger(parentId) || parentId <= 0) {
+      params.warnings.push(`Hacker News comment coverage incomplete: parent unavailable (comment:${params.comment.id}).`);
+      return null;
+    }
+    if (visited.has(parentId)) {
+      params.warnings.push(`Hacker News comment coverage incomplete: parent cycle (comment:${params.comment.id}).`);
+      return null;
+    }
+    visited.add(parentId);
+
+    let parent = params.itemsById.get(parentId);
+    if (!params.itemsById.has(parentId)) {
+      try {
+        parent = await params.client.getStory(parentId);
+        params.itemsById.set(parentId, parent);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown Hacker News parent lookup error";
+        params.warnings.push(`Hacker News comment coverage incomplete: parent lookup failed (comment:${params.comment.id}): ${redactSensitiveText(message)}`);
+        return null;
+      }
+    }
+    if (parent === null || parent === undefined || parent.id !== parentId) {
+      params.warnings.push(`Hacker News comment coverage incomplete: parent unavailable (comment:${params.comment.id}).`);
+      return null;
+    }
+    if (parent.kind === "comment") {
+      parentId = parent.parentId;
+      continue;
+    }
+    if (parent.kind === "story" || (parent.kind === undefined && parent.title !== undefined)) {
+      return parent.id;
+    }
+    params.warnings.push(`Hacker News comment coverage incomplete: parent type unknown (comment:${params.comment.id}).`);
+    return null;
+  }
+
+  params.warnings.push(`Hacker News comment coverage incomplete: parent depth exceeded (comment:${params.comment.id}).`);
+  return null;
+};
+
 const readHackerNewsRootStory = async (params: {
   readonly client: HackerNewsClientPort;
   readonly rootStoriesById: Map<number, HackerNewsStory | null>;
@@ -223,7 +282,7 @@ const readHackerNewsRootStory = async (params: {
     params.rootStoriesById.set(params.storyId, rootStory);
     if (rootStory === null) {
       params.warnings.push(
-        `Hacker News comment root story was unavailable (comment:${params.commentId}); comment skipped.`,
+        `Hacker News comment coverage incomplete: root story was unavailable (comment:${params.commentId}).`,
       );
     }
 
@@ -235,7 +294,7 @@ const readHackerNewsRootStory = async (params: {
         ? error.message
         : "Unknown Hacker News root story lookup error";
     params.warnings.push(
-      `Hacker News comment root story lookup degraded (comment:${params.commentId}): ${redactSensitiveText(message)}`,
+      `Hacker News comment coverage incomplete: root story lookup failed (comment:${params.commentId}): ${redactSensitiveText(message)}`,
     );
 
     return null;

@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { Pool } from "pg";
 import type { SourceProviderPort } from "@social-monitor/ingestion/ports";
 import { PrismaIngestionWorkerConnection } from "../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
-import { executeRecoveryAcquisition } from "./lib/hn-rss-recovery-acquisition";
+import { executeRecoveryAcquisitionInDisposableJournalForTest } from "./lib/hn-rss-recovery-acquisition";
 import { parseRecoveryArgs, type RecoveryProvider, type RecoveryRequest } from "./lib/hn-rss-recovery-plan";
 import { syntheticHnIdForBinding, syntheticRecoveryProvider, syntheticRssGuidForBinding } from "./lib/hn-rss-recovery-synthetic-provider";
 import { provisionReaderSummaryPublicationFixtureScope } from "./lib/reader-summary-publication-postgres-fixture-scope";
@@ -108,9 +108,9 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
       readBinding: (request) => readBindingFromDatabase(request, runtimeUrl),
       acquire: async (request, binding, identity) => {
         acquisitions += 1;
-        return executeRecoveryAcquisition({ connection: activeConnection, tenantId: request.tenantId, workspaceId: request.workspaceId,
+        return executeRecoveryAcquisitionInDisposableJournalForTest({ connection: activeConnection, tenantId: request.tenantId, workspaceId: request.workspaceId,
           sourceBindingId: request.sourceBindingId, providerKey: request.providerKey, from: request.from, to: request.to,
-          binding, ...identity, provider: syntheticRecoveryProvider(request.providerKey, request.sourceBindingId) });
+          binding, ...identity, provider: syntheticRecoveryProvider(request.providerKey, request.sourceBindingId) }, request.journalDir);
       },
     };
     const plan = async (scope: Scope, from: string, to: string): Promise<RecoveryRequest> => {
@@ -272,9 +272,9 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
     };
     await runRecoveryInDisposableJournalForTest(warningPlan, {
       readBinding: dependencies.readBinding,
-      acquire: (request, binding, identity) => executeRecoveryAcquisition({ connection: activeConnection,
+      acquire: (request, binding, identity) => executeRecoveryAcquisitionInDisposableJournalForTest({ connection: activeConnection,
         tenantId: request.tenantId, workspaceId: request.workspaceId, sourceBindingId: request.sourceBindingId,
-        providerKey: request.providerKey, from: request.from, to: request.to, binding, ...identity, provider: warningProvider }),
+        providerKey: request.providerKey, from: request.from, to: request.to, binding, ...identity, provider: warningProvider }, request.journalDir),
     }).then(() => { throw new Error("Partial provider completed"); }, () => undefined);
     assert(existsSync(join(journal, `${warningPlan.planSha256}.started.json`)) &&
       !existsSync(join(journal, `${warningPlan.planSha256}.completed.json`)) && await cursorBytes() === beforeCursor,

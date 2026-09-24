@@ -3,8 +3,9 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { assertPrivateJournalDir, assertRecoveryAcquisitionPermit, completeRecoveryInDisposableJournalForTest, reserveRecovery, reserveRecoveryInDisposableJournalForTest } from "./hn-rss-recovery-journal";
-import { executeRecoveryAcquisition } from "./hn-rss-recovery-acquisition";
+import { assertPrivateJournalDir, assertRecoveryAcquisitionPermit, assertRecoveryAcquisitionPermitInDisposableJournalForTest, completeRecoveryInDisposableJournalForTest, reserveRecovery, reserveRecoveryInDisposableJournalForTest } from "./hn-rss-recovery-journal";
+import { executeRecoveryAcquisition, executeRecoveryAcquisitionInDisposableJournalForTest } from "./hn-rss-recovery-acquisition";
+import * as recoveryPlanModule from "./hn-rss-recovery-plan";
 import { parseRecoveryArgs, parseRecoveryCliArgs, recoveryCliJournalDir, recoveryPlan, sha256 } from "./hn-rss-recovery-plan";
 import { runRecovery, runRecoveryInDisposableJournalForTest } from "../run-hn-rss-recovery";
 
@@ -185,6 +186,9 @@ describe("HN/RSS recovery plan and journal", () => {
 
   it("refuses a second real acquisition after STARTED in A when the same digest is reserved in B", async () => {
     const other = mkdtempSync(join(tmpdir(), "hn-rss-other-journal-"));
+    const actualAuthority = recoveryPlanModule.recoveryCliJournalDir;
+    // Give this test a private canonical A; the production entrypoint still uses its real authority in every other test.
+    Object.defineProperty(recoveryPlanModule, "recoveryCliJournalDir", { value: directory, configurable: true });
     try {
       const request = parseRecoveryArgs(args(directory), now);
       const plan = recoveryPlan(request, binding);
@@ -192,10 +196,11 @@ describe("HN/RSS recovery plan and journal", () => {
       const scope = { tenantId, workspaceId, sourceBindingId, interestId: plan.interestId,
         scanPolicyId: plan.scanPolicyId, providerKey: plan.providerKey, from: plan.from, to: plan.to,
         configSha256: plan.configSha256, interestQuerySha256: plan.interestQuerySha256 };
-      const first = reserveRecoveryInDisposableJournalForTest(directory, digest, scope);
+      const first = reserveRecovery(directory, digest, scope);
       const second = reserveRecoveryInDisposableJournalForTest(other, digest, scope);
       if (first.kind !== "reserved" || second.kind !== "reserved") throw new Error("Expected two synthetic reservations");
       expect(first.reservation.scanJobId).not.toBe(second.reservation.scanJobId);
+      expect(() => assertRecoveryAcquisitionPermit(first.permit, scope, first.reservation)).not.toThrow();
       let providerCalls = 0;
       await expect(executeRecoveryAcquisition({
         connection: {} as never, tenantId, workspaceId, sourceBindingId,
@@ -205,9 +210,20 @@ describe("HN/RSS recovery plan and journal", () => {
         provider: { key: () => "hacker-news", validateBinding: () => { providerCalls += 1; return { ok: true }; } } as never,
       })).rejects.toThrow("authoritative journal directory");
       expect(providerCalls).toBe(0);
+      await expect(executeRecoveryAcquisitionInDisposableJournalForTest({
+        connection: {} as never, tenantId, workspaceId, sourceBindingId,
+        providerKey: "hacker-news", from: request.from, to: request.to, binding,
+        runId: second.reservation.runId, attemptId: second.reservation.attemptId,
+        scanJobId: second.reservation.scanJobId, reservationPermit: second.permit,
+        provider: { key: () => "hacker-news", validateBinding: () => { providerCalls += 1; return { ok: true }; } } as never,
+      }, directory)).rejects.toThrow("Disposable journal must differ from the authoritative journal");
+      expect(providerCalls).toBe(0);
+      expect(() => assertRecoveryAcquisitionPermitInDisposableJournalForTest(
+        second.permit, scope, second.reservation, other)).not.toThrow();
       expect(readdirSync(directory)).toEqual([`${digest}.started.json`]);
       expect(readdirSync(other)).toEqual([`${digest}.started.json`]);
     } finally {
+      Object.defineProperty(recoveryPlanModule, "recoveryCliJournalDir", { value: actualAuthority, configurable: true });
       rmSync(other, { recursive: true, force: true });
     }
   });
