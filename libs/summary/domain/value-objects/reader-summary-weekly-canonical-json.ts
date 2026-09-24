@@ -234,7 +234,7 @@ export function assertReaderSummaryWeeklyPlainObject(
 export function assertReaderSummaryWeeklyDenseArray(
   value: unknown,
   label: string,
-  maxElements = readerSummaryWeeklyCanonicalJsonLimits.maxArrayElements,
+  maxElements: number = readerSummaryWeeklyCanonicalJsonLimits.maxArrayElements,
 ): asserts value is readonly unknown[] {
   if (
     !Array.isArray(value) ||
