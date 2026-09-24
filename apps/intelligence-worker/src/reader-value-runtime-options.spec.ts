@@ -12,6 +12,8 @@ const configured = {
 describe('reader-value runtime options', () => {
   it('defaults to primary for all active interests with a bounded lookback and durable dependencies', () => {
     expect(() => resolveReaderValueRuntimeOptions({})).toThrow(/RELEVANCE_PERSISTENCE/u);
+    expect(resolveReaderValueRuntimeOptions({ NODE_ENV: 'test' })).toMatchObject({
+      mode: 'legacy_v2', scoringLoopEnabled: false });
     expect(resolveReaderValueRuntimeOptions({ RELEVANCE_PERSISTENCE: 'prisma',
       SUMMARY_PERSISTENCE: 'prisma' })).toMatchObject({ mode: 'jev_primary_v3',
       discoverAllActiveScopes: true, discoveryScopes: [], scoringLoopEnabled: true,

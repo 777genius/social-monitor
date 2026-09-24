@@ -18,7 +18,7 @@ export type ReaderValueRuntimeOptions = {
 
 /** Composition policy only; resolving options neither starts HTTP nor activates a V3 writer. */
 export function resolveReaderValueRuntimeOptions(env: NodeJS.ProcessEnv): ReaderValueRuntimeOptions {
-  const mode = env.READER_VALUE_MODE ?? 'jev_primary_v3';
+  const mode = env.READER_VALUE_MODE ?? (env.NODE_ENV === 'test' ? 'legacy_v2' : 'jev_primary_v3');
   if (mode !== 'legacy_v2' && mode !== 'jev_shadow' && mode !== 'jev_primary_v3') {
     throw new Error('READER_VALUE_MODE must be legacy_v2, jev_shadow or jev_primary_v3');
   }

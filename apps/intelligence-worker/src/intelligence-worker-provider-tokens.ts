@@ -91,7 +91,8 @@ export const resolveIntelligenceSummaryJobLoopOptions = (
   env: NodeJS.ProcessEnv,
 ): IntelligenceSummaryJobLoopOptions => {
   const defaultMode =
-    (env.READER_VALUE_MODE ?? "jev_primary_v3") === "jev_primary_v3" ||
+    (env.READER_VALUE_MODE ??
+      (env.NODE_ENV === "test" ? "legacy_v2" : "jev_primary_v3")) === "jev_primary_v3" ||
     (env.NODE_ENV !== "test" &&
       env.INTELLIGENCE_SUMMARY_QUEUE_READER !== "rabbitmq")
       ? "enabled" : "disabled";

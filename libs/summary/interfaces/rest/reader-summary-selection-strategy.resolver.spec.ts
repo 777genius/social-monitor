@@ -14,6 +14,8 @@ const base = { READER_VALUE_MODE: "jev_primary_v3",
 describe("reader summary selection strategy", () => {
   it("defaults to primary for all interest jobs when durable dependencies are configured", () => {
     expect(() => resolveReaderSummarySelectionStrategy({})).toThrow(/requires/u);
+    expect(resolveReaderSummarySelectionStrategy({ NODE_ENV: "test" }).resolve({
+      tenantId, workspaceId, interestId })).toBe("legacy_v2");
     const defaultPrimary = resolveReaderSummarySelectionStrategy({
       RELEVANCE_PERSISTENCE: "prisma", SUMMARY_PERSISTENCE: "prisma" });
     expect(defaultPrimary.resolve({ tenantId, workspaceId, interestId }))

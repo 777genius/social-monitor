@@ -33,7 +33,7 @@ implements ReaderSummarySelectionStrategyResolver {
 export const resolveReaderSummarySelectionStrategy = (
   env: NodeJS.ProcessEnv,
 ): ConfiguredReaderSummarySelectionStrategyResolver => {
-  const strategy = env.READER_VALUE_MODE ?? "jev_primary_v3";
+  const strategy = env.READER_VALUE_MODE ?? (env.NODE_ENV === "test" ? "legacy_v2" : "jev_primary_v3");
   if (strategy !== "legacy_v2" && strategy !== "jev_shadow" &&
       strategy !== "jev_primary_v3") {
     throw new Error("READER_VALUE_MODE must be legacy_v2, jev_shadow or jev_primary_v3");

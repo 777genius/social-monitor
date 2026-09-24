@@ -4,7 +4,7 @@ Owner direction on 2026-09-24 changed the rollout decision: `jev_primary_v3` is 
 
 ## Runtime contract
 
-- API and intelligence-worker default to `jev_primary_v3`. `legacy_v2` is an explicit rollback setting; `jev_shadow` still requires an explicit scope list and backfill start.
+- API and intelligence-worker default to `jev_primary_v3` outside `NODE_ENV=test`. The test process defaults to V2 so isolated in-memory composition tests do not require production services; tests that exercise primary set the mode explicitly. `legacy_v2` is an explicit deployment rollback setting; `jev_shadow` still requires an explicit scope list and backfill start.
 - Without `READER_VALUE_DISCOVERY_SCOPES`, the worker pages currently enabled interests that have an enabled source binding and visible feed items. Each discovery tick visits at most 25 scopes and 100 items. An explicit scope list still bounds the rollout when supplied.
 - Without `READER_VALUE_BACKFILL_FROM`, primary discovery uses a seven-day lookback anchored at worker startup. Set a UTC timestamp explicitly for a longer, deliberate backfill. Restart after more than seven days of downtime requires an explicit backfill start to avoid a gap.
 - Primary requires Prisma relevance and summary persistence, the scoring loop, the reader-summary due poller, and a non-empty `OPENROUTER_API_KEY` in the intelligence-worker. Startup fails when prerequisites are missing; it does not silently select V2. The agent-runtime service and its supported subscription auth must also be healthy for presentation and final summary generation.
