@@ -143,7 +143,12 @@ describe("PrismaReaderSummaryWeeklyStoryAuthority", () => {
     expect(canonicalizeReaderSummaryWeeklyV3PublicationJson(row.providerEvidence).byteLength)
       .toBeGreaterThan(1_048_576);
     expect(row.canonicalBytes.byteLength).toBeGreaterThan(1_048_576);
-    // The GitHub seal contains at most ten references and no source bodies.
+    // The GitHub seal has at most ten references. Its validated identity
+    // fields cap at 256 UTF-16 units and historical reason at 4,096. Even
+    // allowing six escaped UTF-8 bytes per unit plus generous fixed overhead
+    // leaves its canonical representation below the unchanged 1 MiB limit.
+    expect(10 * 8 * 256 * 6 + 4_096 * 6 + 100_000)
+      .toBeLessThan(1_048_576);
     expect(canonicalizeReaderSummaryWeeklyJson(row.githubEvidence).byteLength)
       .toBeLessThan(1_048_576);
     const adapter = authorityAdapter(new FakeAuthorityPrisma([row]));
@@ -163,8 +168,11 @@ describe("PrismaReaderSummaryWeeklyStoryAuthority", () => {
     await expect(authorityAdapter(new FakeAuthorityPrisma([longSource])).load(query))
       .rejects.toThrow("string length limit");
 
-    const row = largeV3PublicationRow();
+    const row = publicationRow();
     row.selectionStrategy = "jev_primary_v2";
+    row.exactProof = {
+      entries: Array.from({ length: 80 }, () => "p".repeat(15_000)),
+    };
     await expect(authorityAdapter(new FakeAuthorityPrisma([row])).load(query))
       .rejects.toThrow("canonical byte limit");
   });

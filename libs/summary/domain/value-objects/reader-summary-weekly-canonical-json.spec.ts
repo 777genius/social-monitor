@@ -15,6 +15,16 @@ import {
 describe("reader summary weekly canonical JSON", () => {
   it("uses the finite SQL V3 profile without changing legacy bytes or bounds", () => {
     const longSource = "s".repeat(27_000);
+    expect(readerSummaryWeeklyV3PublicationCanonicalJsonLimits).toMatchObject({
+      maxDepth: 32,
+      maxBytes: 16_777_216,
+      maxObjectKeys: 128,
+      maxTotalObjectKeys: 20_000,
+      maxArrayElements: 1_024,
+      maxTotalArrayElements: 20_000,
+      maxStringLength: 64_000,
+      maxNodes: 25_000,
+    });
     expect(canonicalizeReaderSummaryWeeklyV3PublicationJson({ body: longSource }).sha256)
       .toMatch(/^[0-9a-f]{64}$/u);
     expect(() => canonicalizeReaderSummaryWeeklyJson({ body: longSource }))
