@@ -25,7 +25,10 @@ import type {
   RssClientPort,
   RssFeedItem,
   RssReadFeedOptions,
+  RssReadFeedResult,
 } from "./rss-client.port";
+import { hasReadableFeedText } from "./rss-readable-content";
+import { RssEntityEvidenceError } from "./rss-xml-entity-evidence";
 import {
   feedUrlsForTargetWindow,
   filterItemsForWindow,
@@ -112,11 +115,18 @@ export class RssSourceProvider implements SourceProviderPort {
 
     if (feedUrls.length === 1) {
       const feedUrl = feedUrls[0] ?? plan.query.query;
-      const feed = await this.client.readFeed(
-        feedUrl,
-        plan.maxItems,
-        decodeCursor(plan.cursor),
-      );
+      let feed: RssReadFeedResult;
+      try {
+        feed = await this.client.readFeed(
+          feedUrl,
+          plan.maxItems,
+          { ...decodeCursor(plan.cursor), ...(targetWindow === undefined ? {} : { targetPublishedWindow: targetWindow }) },
+        );
+      } catch (error) {
+        if (targetWindow === undefined || !(error instanceof RssEntityEvidenceError)) throw error;
+        return { items: [], nextCursor: plan.cursor,
+          warnings: ["RSS XML entity references could not be safely resolved; historical acquisition is incomplete."] };
+      }
       const filteredItems = filterItemsForWindow(
         feed.items,
         maxItemAgeHours,
@@ -129,6 +139,8 @@ export class RssSourceProvider implements SourceProviderPort {
         ),
         nextCursor: encodeCursor(feed, plan.cursor),
         warnings: [
+          ...(feed.truncated ? ["RSS recovery window exceeds maxItems; acquisition is incomplete."] : []),
+          ...rssHistoricalRejectionWarnings(feed.rejectedEntries, filteredItems, targetWindow !== undefined),
           ...rssWarnings(feed.items),
           ...rssRecencyWarnings(
             feed.items,
@@ -150,7 +162,7 @@ export class RssSourceProvider implements SourceProviderPort {
           this.client,
           feedUrl,
           perFeedLimit,
-          feedCursor.get(feedUrl),
+          { ...feedCursor.get(feedUrl), ...(targetWindow === undefined ? {} : { targetPublishedWindow: targetWindow }) },
         ),
       ),
     );
@@ -180,18 +192,26 @@ export class RssSourceProvider implements SourceProviderPort {
     const allItems = sourcedItems.map(({ item }) => item);
     const filteredItems = filteredSourcedItems.map(({ item }) => item);
 
-    return {
-      items: filteredSourcedItems
+    const normalizedItems = filteredSourcedItems
         .flatMap(({ item, index, feedUrl }) =>
           normalizeItem(item, index, feedUrl),
         )
         .sort(
           (left, right) =>
             right.publishedAt.getTime() - left.publishedAt.getTime(),
-        )
-        .slice(0, plan.maxItems),
+        );
+
+    return {
+      items: normalizedItems.slice(0, plan.maxItems),
       nextCursor: encodeMultiFeedCursor(feeds, plan.cursor),
       warnings: [
+        ...(feeds.some(({ feed }) => feed.truncated) || normalizedItems.length > plan.maxItems
+          ? ["RSS recovery window exceeds maxItems; acquisition is incomplete."] : []),
+        ...rssHistoricalRejectionWarnings(
+          feeds.reduce((count, { feed }) => count + (feed.rejectedEntries ?? 0), 0),
+          filteredItems,
+          targetWindow !== undefined,
+        ),
         ...feedReadWarnings,
         ...rssWarnings(allItems),
         ...rssRecencyWarnings(
@@ -346,6 +366,17 @@ const rssWarnings = (items: readonly RssFeedItem[]): readonly string[] => [
     : []),
 ];
 
+const rssHistoricalRejectionWarnings = (
+  rejectedEntries: number | undefined,
+  items: readonly RssFeedItem[],
+  historical: boolean,
+): readonly string[] => historical ? [
+  ...((rejectedEntries ?? 0) > 0
+    ? ["Some RSS entries could not be parsed; historical acquisition is incomplete."] : []),
+  ...(items.some((item) => !hasReadableContent(item))
+    ? ["Some RSS entries had no readable title or content; historical acquisition is incomplete."] : []),
+] : [];
+
 const rssRecencyWarnings = (
   originalItems: readonly RssFeedItem[],
   filteredItems: readonly RssFeedItem[],
@@ -358,7 +389,12 @@ const rssRecencyWarnings = (
     : [];
 
 const hasReadableContent = (item: RssFeedItem): boolean =>
-  (item.title ?? "").trim().length + (item.content ?? "").trim().length > 0;
+  (item.titleType === 'xhtml'
+    ? item.title !== undefined && item.xhtmlReadability?.title === true
+    : hasReadableFeedText(item.title, item.titleType)) ||
+  (item.contentType === 'xhtml'
+    ? item.content !== undefined && item.xhtmlReadability?.content === true
+    : hasReadableFeedText(item.content, item.contentType));
 
 const canonicalLinkForItem = (item: RssFeedItem): string | undefined => {
   const link = item.link?.trim();
