@@ -1,4 +1,8 @@
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { err, tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { PrepareReaderValueSummaryUseCase } from
+  "@social-monitor/relevance/application/use-cases/prepare-reader-value-summary.use-case";
+import type { ReaderValuePreparationInventory } from
+  "@social-monitor/relevance/application/contracts/reader-value-inventory";
 
 import { ReaderSummaryJob, type ReaderSummaryPreparationManifest } from "../../domain";
 import type { ReaderSummaryV3PreparationSourcePort } from "../../ports";
@@ -6,8 +10,47 @@ import { InMemoryReaderSummaryJobRepository } from
   "./in-memory-reader-summary-job.repository";
 import { InMemoryReaderSummaryV3Preflight } from
   "./in-memory-reader-summary-v3-preflight";
+import { RelevanceReaderSummaryV3PreparationSource } from
+  "../evidence/relevance-reader-summary-v3-preparation-source";
 
 describe("InMemoryReaderSummaryV3Preflight", () => {
+  it("claims a default current-period interest request through V3 preparation", async () => {
+    const requestedAt = new Date("2026-09-20T12:00:00.123Z");
+    const original = requestedJob().toSnapshot();
+    const job = ReaderSummaryJob.rehydrate({ ...original, requestedAt,
+      period: { ...original.period,
+        startedAt: new Date("2026-09-20T00:00:00.000Z"),
+        endedAt: new Date("2026-09-21T00:00:00.000Z"),
+        periodKey: "daily:2026-09-20T00:00:00.000Z:2026-09-21T00:00:00.000Z:UTC" } });
+    const inventory: ReaderValuePreparationInventory = { readSnapshot: async (_scope, operation) =>
+      operation({ page: async (_from, _cursor, _limit, _budget, end) => {
+        expect(end).toBe("2026-09-20T12:00:00.123001Z");
+        return [];
+      } }) };
+    const preparation = new PrepareReaderValueSummaryUseCase(inventory,
+      { prepare: () => err("unsafe_source") },
+      { ensure: async () => null, pin: async () => true },
+      { generate: () => original.id },
+      { readCurrent: async () => ({ kind: "available", interest: {
+        tenantId: original.tenantId, workspaceId: original.workspaceId,
+        interestId: original.scope.type === "interest" ? original.scope.interestId : "",
+        query: "database methods" } }) });
+    const source = new RelevanceReaderSummaryV3PreparationSource(preparation,
+      { read: async () => [] });
+    const jobs = new InMemoryReaderSummaryJobRepository();
+    await jobs.save(job);
+
+    const result = await new InMemoryReaderSummaryV3Preflight(jobs, source).advance({
+      job, requestedAt, startedAt: new Date("2026-09-20T12:00:01.000Z"),
+    });
+
+    expect(result.kind).toBe("claimed");
+    if (result.kind !== "claimed") return;
+    expect(result.manifest.cutoffAt).toBe("2026-09-20T12:00:00.123000Z");
+    expect(result.job.toSnapshot()).toMatchObject({ status: "running",
+      preparationCutoffAt: "2026-09-20T12:00:00.123000Z" });
+  });
+
   it("returns already_running when a peer claims during configuration refresh", async () => {
     const jobs = new InMemoryReaderSummaryJobRepository();
     const requested = requestedJob();

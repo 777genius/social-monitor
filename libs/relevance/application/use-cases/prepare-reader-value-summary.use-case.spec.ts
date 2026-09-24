@@ -14,6 +14,93 @@ import { ConservativeReaderValueInputBuilder } from
 import { SourceContentSafetyPolicy } from "../../domain/source-content-safety";
 
 describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
+  it.each([
+    ["day", "2026-09-20T00:00:00.000Z", "2026-09-21T00:00:00.000Z"],
+    ["week", "2026-09-14T00:00:00.000Z", "2026-09-21T00:00:00.000Z"],
+    ["month", "2026-09-01T00:00:00.000Z", "2026-10-01T00:00:00.000Z"],
+  ] as const)("prepares a default current %s V3 request at frozen requestedAt",
+    async (_cadence, periodStartedAt, periodEndedAt) => {
+      const requestedAt = new Date("2026-09-20T12:00:00.123Z");
+      const cutoffAt = requestedAt.toISOString().replace(/\.(\d{3})Z$/u, ".$1000Z");
+      const row = item({ publishedAt: cutoffAt, observedAt: cutoffAt,
+        sourceUpdatedAt: cutoffAt, availableAt: cutoffAt });
+      const inventory: ReaderValuePreparationInventory = { readSnapshot: async (_scope, operation) =>
+        operation({ page: async (from, _cursor, _limit, _budget, end) => {
+          expect(from).toBe(periodStartedAt);
+          expect(end).toBe("2026-09-20T12:00:00.123001Z");
+          return [row];
+        } }) };
+      const fixture = setupWithInventory(inventory);
+      const actual = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy());
+      fixture.builder.prepare.mockImplementation((source, revision) => actual.prepare(source, revision));
+      fixture.store.ensure.mockResolvedValue({ id: ids.assessment } as never);
+      const command = { tenantId: ids.tenant, workspaceId: ids.workspace,
+        interestId: ids.interest, jobId: ids.job,
+        periodStartedAt, periodEndedAt, cutoffAt };
+
+      const configured = await fixture.subject.configuration(command);
+      expect(configured.ok).toBe(true);
+      if (!configured.ok) throw new Error("current-period configuration unavailable");
+      const result = await fixture.subject.prepare(command, configured.config);
+
+      expect(result).toMatchObject({ ok: true, manifest: { cutoffAt,
+        candidates: [{ candidateId: ids.feed, publishedAt: cutoffAt,
+          observedAt: cutoffAt }] } });
+      expect(fixture.store.ensure).toHaveBeenCalledTimes(1);
+      expect(fixture.store.pin).toHaveBeenCalledTimes(1);
+    });
+
+  it("rejects a wholly future period before V3 preparation", async () => {
+    const fixture = setup(item({}));
+    const valid = { tenantId: ids.tenant, workspaceId: ids.workspace,
+      interestId: ids.interest, jobId: ids.job,
+      periodStartedAt: "2026-09-20T00:00:00.000Z",
+      periodEndedAt: "2026-09-21T00:00:00.000Z",
+      cutoffAt: "2026-09-20T12:00:00.000Z" };
+    const configured = await fixture.subject.configuration(valid);
+    if (!configured.ok) throw new Error("fixture configuration unavailable");
+    const future = { ...valid, periodStartedAt: "2026-09-21T00:00:00.000Z",
+      periodEndedAt: "2026-09-22T00:00:00.000Z" };
+
+    await expect(fixture.subject.configuration(future)).resolves.toEqual({
+      ok: false, code: "config_unavailable",
+    });
+    await expect(fixture.subject.prepare(future, configured.config)).resolves.toEqual({
+      ok: false, code: "config_unavailable",
+    });
+    await expect(fixture.subject.configuration({ ...valid,
+      periodEndedAt: valid.periodStartedAt })).resolves.toEqual({
+      ok: false, code: "config_unavailable",
+    });
+    expect(fixture.builder.prepare).not.toHaveBeenCalled();
+    expect(fixture.store.pin).not.toHaveBeenCalled();
+  });
+
+  it("does not prepare a row published after an active-period cutoff", async () => {
+    const row = item({ publishedAt: "2026-09-20T12:00:00.123457Z",
+      observedAt: "2026-09-20T11:00:00.000000Z",
+      sourceUpdatedAt: "2026-09-20T11:00:00.000000Z",
+      availableAt: "2026-09-20T11:00:00.000000Z" });
+    const inventory: ReaderValuePreparationInventory = { readSnapshot: async (_scope, operation) =>
+      operation({ page: async (_from, _cursor, _limit, _budget, end) => {
+        expect(end).toBe("2026-09-20T12:00:00.123457Z");
+        return [row];
+      } }) };
+    const fixture = setupWithInventory(inventory);
+    const command = { tenantId: ids.tenant, workspaceId: ids.workspace,
+      interestId: ids.interest, jobId: ids.job,
+      periodStartedAt: "2026-09-20T00:00:00.000000Z",
+      periodEndedAt: "2026-09-21T00:00:00.000000Z",
+      cutoffAt: "2026-09-20T12:00:00.123456Z" };
+    const configured = await fixture.subject.configuration(command);
+    if (!configured.ok) throw new Error("fixture configuration unavailable");
+
+    await expect(fixture.subject.prepare(command, configured.config)).resolves.toMatchObject({
+      ok: true, manifest: { candidates: [] },
+    });
+    expect(fixture.builder.prepare).not.toHaveBeenCalled();
+  });
+
   it("keeps one 32 MiB materialization budget across skipped pages", async () => {
     const body = "x".repeat(700_000);
     const pages = [0, 1].map((page) => Array.from({ length: 25 }, (_, index) => ({

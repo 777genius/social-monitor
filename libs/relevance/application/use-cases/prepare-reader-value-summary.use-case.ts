@@ -82,6 +82,7 @@ implements ReaderValueSummaryPreparation {
       return { ok: false, code: "config_unavailable" };
     }
     const scope = { tenantId: command.tenantId, workspaceId: command.workspaceId };
+    const inventoryEnd = exclusiveInventoryEnd(command);
     let scan: InventoryScan;
     try {
       scan = await this.inventory.readSnapshot({ ...scope, interestId: command.interestId },
@@ -94,9 +95,9 @@ implements ReaderValueSummaryPreparation {
           const prepared: PreparedCandidate[] = [];
           do {
             const page = await snapshot.page(command.periodStartedAt, cursor, 25,
-              sourceByteCeiling - sourceBytes, command.periodEndedAt);
+              sourceByteCeiling - sourceBytes, inventoryEnd);
             if (page.length === 0) break;
-            // The inventory has already enforced [periodStartedAt, periodEndedAt), so
+            // The inventory has already enforced [periodStartedAt, inventoryEnd), so
             // every materialized row belongs to this frozen window. Charge the page
             // before any later cutoff/source-kind skip can discard it.
             sourceBytes += page.reduce((sum, item) => sum +
@@ -110,6 +111,7 @@ implements ReaderValueSummaryPreparation {
             for (const item of page) {
               cursor = item.cursor;
               if (item.source.interestId !== command.interestId) continue;
+              if (compareTimestamp(item.cursor.publishedAt, command.cutoffAt) > 0) continue;
               // A SourceItem may predate the cutoff while its FeedItem projection does not.
               // The frozen inventory admits observations exactly on, but never after, cutoff.
               if (compareTimestamp(item.observedAt, command.cutoffAt) > 0) continue;
@@ -239,7 +241,21 @@ const validWindow = (command: PrepareReaderValueSummaryCommand): boolean =>
   [command.periodStartedAt, command.periodEndedAt, command.cutoffAt]
     .every((value) => readerValueTimestampMicros(value) !== undefined) &&
   compareTimestamp(command.periodStartedAt, command.periodEndedAt) < 0 &&
-  compareTimestamp(command.periodEndedAt, command.cutoffAt) <= 0;
+  compareTimestamp(command.periodStartedAt, command.cutoffAt) <= 0;
+
+// The inventory accepts an exclusive published-at bound. Advance the inclusive
+// frozen cutoff by one PostgreSQL microsecond so active periods never scan rows
+// published after the request while admitting a row exactly at the cutoff.
+const exclusiveInventoryEnd = (command: PrepareReaderValueSummaryCommand): string => {
+  const end = readerValueTimestampMicros(command.periodEndedAt)!;
+  const cutoff = readerValueTimestampMicros(command.cutoffAt)!;
+  if (end <= cutoff + 1n) return command.periodEndedAt;
+  const next = cutoff + 1n;
+  const milliseconds = next >= 0n ? next / 1_000n : (next - 999n) / 1_000n;
+  const microseconds = next - milliseconds * 1_000n;
+  return `${new Date(Number(milliseconds)).toISOString().slice(0, -1)}` +
+    `${String(microseconds).padStart(3, "0")}Z`;
+};
 
 const compareTimestamp = (left: string, right: string): number => {
   return compareReaderValueTimestamps(left, right);
