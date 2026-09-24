@@ -355,6 +355,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-feed-promotion-keyset-plan-postgres.ts:Pool
       scripts/check-feed-promotion-keyset-plan-postgres.ts:PrismaPg
       scripts/check-github-repo-radar-prisma-live-e2e.ts:Pool
+      scripts/check-hn-rss-recovery-local-postgres.ts:Pool
       scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
       scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
       scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
@@ -430,6 +431,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
+      scripts/run-hn-rss-recovery.ts:Pool
       scripts/run-reader-promotion-v2-production-canary.ts:Pool
       scripts/run-reader-summary-clean-real-day-collection.ts:Pool
       scripts/run-reader-summary-promotion-v2-rollback.ts:Pool
@@ -486,6 +488,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-feed-promotion-index-recovery.ts
       scripts/check-feed-promotion-keyset-plan-postgres.ts
       scripts/check-github-repo-radar-prisma-live-e2e.ts
+      scripts/check-hn-rss-recovery-local-postgres.ts
       scripts/check-reader-summary-daily-delivery-c1-postgres.ts
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts
       scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts
@@ -573,6 +576,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres-runtime-guard.ts
       scripts/reader-summary-publication-postgres18-regression.spec.ts
       scripts/reader-summary-publication-postgres18-regression.ts
+      scripts/run-hn-rss-recovery.ts
       scripts/run-reader-promotion-v2-production-canary.ts
       scripts/run-reader-summary-clean-real-day-collection.ts
       scripts/run-reader-summary-promotion-v2-rollback.ts
