@@ -3,10 +3,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { activeReaderSummaryReasoningEffort } from "./subscription-runtime-purpose-model-policy";
+import { resolveStrictGrpcAdmission, type StrictGrpcAdmission } from "./strict-grpc-admission";
 
 export type AgentRuntimeSettings = {
   readonly bindAddress: string;
   readonly serviceToken?: string;
+  readonly strictAdmission?: StrictGrpcAdmission;
   readonly cli: {
     readonly command: string;
     readonly stateRoot?: string;
@@ -24,6 +26,7 @@ export const resolveAgentRuntimeSettings = (
 ): AgentRuntimeSettings => ({
   bindAddress: nonEmptyOrFallback(env.AGENT_RUNTIME_GRPC_BIND, "0.0.0.0:50052"),
   serviceToken: nonEmptyOptional(env.AGENT_RUNTIME_SERVICE_TOKEN),
+  strictAdmission: resolveStrictGrpcAdmission(env),
   cli: {
     command: nonEmptyOrFallback(
       env.AGENT_RUNTIME_CLI_PATH,

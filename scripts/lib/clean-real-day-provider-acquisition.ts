@@ -3,7 +3,6 @@ import { PrismaConversationUnitRepository } from "@social-monitor/conversation/a
 import { PrismaFeedProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-projection.adapter";
 import { PrismaSourceEngagementProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-projection.adapter";
 import { PrismaScanAttemptRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-attempt.repository";
-import { PrismaScanCursorRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-cursor.repository";
 import { PrismaScanFailureQueueAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter";
 import { PrismaScanLeaseAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter";
 import { PrismaSourceItemRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-item.repository";
@@ -33,7 +32,6 @@ import {
   type SourceQuery,
   type SourceRuntimeConfig,
 } from "@social-monitor/ingestion/ports";
-import { PrismaScanJobRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-scan-job.repository";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import {
@@ -50,6 +48,10 @@ import type {
 } from "./clean-real-day-collection-report";
 import { CleanRealDaySourceConfigReader } from "./clean-real-day-source-config-reader";
 import {
+  composeCollectionScanExecution,
+  type CollectionScanExecution,
+} from "./collection-scan-execution";
+import {
   configuredProviderCollectionTargetItemCount,
   durableSnapshotReuseProviderCollectionObservation,
   providerCollectionFreshnessReferenceAt,
@@ -58,7 +60,6 @@ import {
 } from "./provider-collection-observability";
 import { selectPreferredProviderScanResult } from "./provider-scan-result-selection";
 import { providerMeetsProductionBlockingPolicy } from "./production-collection-quality-policy";
-import { ProductionCollectionScanJobReporter } from "./production-collection-scan-job-reporter";
 import { runTargetedProviderCollection } from "./targeted-provider-collection";
 import {
   fingerprint,
@@ -159,6 +160,7 @@ export const executeCleanRealDayProviderAcquisition = async (params: {
   readonly targetWindowEndedAt: Date;
   readonly runStartedAt: Date;
   readonly waitForXReadiness: boolean;
+  readonly scanExecution?: CollectionScanExecution;
 }): Promise<CleanRealDayCollectionReport["scans"]> => {
   const closedRequestedUtcDay = requestedUtcDayIsClosed(
     params.runStartedAt,
@@ -178,6 +180,7 @@ export const executeCleanRealDayProviderAcquisition = async (params: {
           connection: params.connection,
           targets: params.targets,
           includeGitHub: !closedRequestedUtcDay,
+          scanExecution: params.scanExecution,
         });
 
   return runCleanRealDayProviderAcquisitionPlan({
@@ -192,8 +195,8 @@ export const executeCleanRealDayProviderAcquisition = async (params: {
         executeLiveTargetScan(
           target,
           liveRuntime.executeScan,
-          liveRuntime.scanJobReporter,
           freshnessReferenceAt,
+          liveRuntime.scanExecution,
         ),
       );
     },
@@ -272,20 +275,19 @@ const acquireDurableGitHubSnapshot = async (params: {
   }
 };
 
-const buildLiveRuntime = (params: {
+export const buildLiveRuntime = (params: {
   readonly connection: PrismaIngestionWorkerConnection;
   readonly targets: readonly CleanRealDaySourceBindingTarget[];
   readonly includeGitHub: boolean;
+  readonly scanExecution?: CollectionScanExecution;
 }): {
   readonly executeScan: ExecuteScanUseCase;
-  readonly scanJobReporter: ProductionCollectionScanJobReporter;
+  readonly scanExecution: CollectionScanExecution;
 } => {
   const clock = new SystemClock();
   const ids = new CryptoIdGenerator();
-  const scanJobReporter = new ProductionCollectionScanJobReporter(
-    new PrismaScanJobRepository(params.connection),
-    ids,
-    clock,
+  const scanExecution = composeCollectionScanExecution(
+    params.connection, ids, clock, params.scanExecution,
   );
   const executeScan = new ExecuteScanUseCase(
     new CircuitBreakerSourceFetcherAdapter(
@@ -306,8 +308,8 @@ const buildLiveRuntime = (params: {
       ids,
     ),
     new PrismaScanAttemptRepository(params.connection),
-    new PrismaScanCursorRepository(params.connection, ids),
-    scanJobReporter,
+    scanExecution.scanCursors,
+    scanExecution.reporter,
     new PrismaScanFailureQueueAdapter(
       params.connection,
       new InMemoryMetricsRecorder(),
@@ -325,7 +327,7 @@ const buildLiveRuntime = (params: {
     new PrismaSourceCandidateMemoryRepository(params.connection, ids),
     new PrismaSourceEngagementProjectionAdapter(params.connection, ids),
   );
-  return { executeScan, scanJobReporter };
+  return { executeScan, scanExecution };
 };
 
 export const runCleanRealDayLiveTargetWithDatabaseAccess = <Result>(
@@ -349,8 +351,8 @@ export const cleanRealDayFeedProjectionClient = (
 const executeLiveTargetScan = async (
   target: CleanRealDaySourceBindingTarget,
   executeScan: ExecuteScanUseCase,
-  scanJobReporter: ProductionCollectionScanJobReporter,
   targetWindowEndedAt: Date,
+  scanExecution: CollectionScanExecution,
 ): Promise<ProviderScanResult> => {
   const bindingFingerprint = fingerprint(target.sourceBindingId);
   if (target.providerKey === "x-twitter" && !xCollectorConfigured()) {
@@ -374,7 +376,7 @@ const executeLiveTargetScan = async (
       failureFingerprint: fingerprint("x_collector_not_configured"),
     };
   }
-  const scanJobId = scanJobReporter.beginAttempt({
+  const scanJobId = scanExecution.scanJobIdForAttempt({
     tenantId: tenantId(target.tenantId),
     workspaceId: workspaceId(target.workspaceId),
     sourceBindingId: target.sourceBindingId,
@@ -390,8 +392,8 @@ const executeLiveTargetScan = async (
     providerKey: target.providerKey,
     sourceQuery: target.sourceQuery,
     interestQuerySnapshot: target.interestQuery,
-    correlationId: "reader-summary-clean-real-day-collection",
-    causationId: "manual-clean-real-day-proof",
+    correlationId: scanExecution.correlationId,
+    causationId: scanExecution.causationId,
     retryBudget: 0,
     leaseTtlSeconds: 600,
   });

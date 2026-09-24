@@ -15,8 +15,8 @@ import {
   POSTGRES_RUNTIME_POOL_LIMITS,
   PRODUCTION_POSTGRES_RUNTIME_INVENTORY,
   assertDeploymentPostgresBudget,
-  type DeploymentPostgresBudgetConfiguration,
 } from './postgres-runtime-pool-budget';
+import { productionBudgetFixture } from './postgres-runtime-pool-budget-test-fixture';
 import {
   BOUNDED_POSTGRES_TEST_ONLY_FILES,
   BOUNDED_POSTGRES_TEST_POOL_MAXIMUMS,
@@ -442,7 +442,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       test/feed-reader-summary-coverage-pool.integration.spec.ts:PrismaPg
     `));
   });
-
   it('keeps the historical refresh race writer reachable only from its native test gate', () => {
     const helper = 'scripts/lib/reader-summary-new-input-refresh-native-concurrency.ts';
     const consumers = completeDatabaseSourceFiles.filter((path) =>
@@ -451,7 +450,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     );
     expect(consumers).toEqual(['scripts/check-reader-summary-new-input-refresh-postgres.ts']);
   });
-
   it('fails on every future raw database-client dependency bypass', () => {
     const rawDependencyFiles = completeDatabaseSourceFiles
       .filter((path) => {
@@ -473,6 +471,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // exact paths even though they construct no runtime pools.
     // The replay dispatch spec imports pg only to assert its throwing mock stays unused.
     // Cursor cleanup helper imports only the Pool type; its spec exercises the installed Pool lifecycle.
+    // The socket regression spec and publication helper import only client types.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts
       libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts
@@ -537,6 +536,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-promotion-v2-rollback-lifecycle-fixture.spec.ts
       scripts/lib/reader-summary-promotion-v2-rollback-lifecycle-fixture.ts
       scripts/lib/reader-summary-promotion-v2-rollback-postgres-contract.ts
+      scripts/lib/reader-summary-publication-postgres-publish.ts
       scripts/lib/reader-summary-publication-postgres-running-fixture.ts
       scripts/lib/reader-summary-quality-dashboard-collection-strategy.ts
       scripts/lib/reader-summary-quality-dashboard-feedback-shadow.ts
@@ -583,6 +583,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres-legacy.ts
       scripts/reader-summary-publication-postgres-privileges.ts
       scripts/reader-summary-publication-postgres-runtime-guard.ts
+      scripts/reader-summary-publication-postgres18-regression.spec.ts
       scripts/reader-summary-publication-postgres18-regression.ts
       scripts/run-reader-promotion-v2-production-canary.ts
       scripts/run-reader-summary-clean-real-day-collection.ts
@@ -715,14 +716,15 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       );
     // The disposable successor bootstrap reuses protected-role provisioning.
     // Keep this exact importer inventoried without exempting its pool caps.
+    // The callback spec isolates mocked privilege helpers without constructing pools.
     expect(productionImporters).toEqual([
+      'scripts/check-reader-summary-publication-postgres.spec.ts',
       'scripts/lib/reader-summary-successor-fixture-migrations.ts',
     ]);
     expect(readSource('package.json')).toContain(
       'check:reader-summary-publication-postgres',
     );
   });
-
   it('keeps the production daily dispatcher sequential and within its budget', () => {
     const dispatcher = readSource(
       'scripts/run-reader-summary-production-day.ts',
@@ -817,9 +819,19 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     expect(dailyRunner).toMatch(/deploy:\s*\n\s+replicas: 1/);
 
     const deploy = readSource('ops/deploy/social-monitor-production-deploy.sh');
+    const composeScopeChecker = readSource(
+      'ops/deploy/production-compose-scope-check.py',
+    );
+    const serviceAllowlist = composeScopeChecker.match(/expected_services = \{([^}]+)\}/)?.[1];
     for (const externallyComposedService of ['daily-runner', 'x-collector']) {
-      expect(deploy).toContain(`"${externallyComposedService}"`);
+      expect(serviceAllowlist).toContain(`"${externallyComposedService}"`);
     }
+    expect(composeScopeChecker).toContain('if set(services) != expected_services:');
+    expect(deploy).toContain(
+      'local scope_checker=$REPO/ops/deploy/production-compose-scope-check.py',
+    );
+    expect(deploy).toContain('python3 "$scope_checker" \\');
+    expect(deploy).toContain('"$rendered" "$ROOT" "$REPO" "$CONTROL"');
     expect(deploy).toContain('exec 8>"$POSTGRES_ADMISSION_LOCK"');
     expect(deploy).toContain(
       'acquire_postgres_admission_with_daily_priority 8',
@@ -960,41 +972,5 @@ function envelope(
     temporaryConnections,
     totalConnections,
     providerReserve: 22 - totalConnections,
-  };
-}
-
-function productionBudgetFixture(): DeploymentPostgresBudgetConfiguration {
-  return {
-    providerCapacityFacts: {
-      serverMaxConnections: 25,
-      superuserReservedConnections: 3,
-      reservedConnections: 0,
-      roleConnectionLimit: -1,
-      databaseConnectionLimit: -1,
-      externalConnectionOccupancy: 0,
-      stoppedRuntimeConnectionOccupancy: 0,
-      capturePhase: 'post-old-container-stop-pre-new-start',
-    },
-    runtimes: [
-      topology('api-gateway', 2),
-      topology('ingestion-worker', 2),
-      topology('intelligence-worker', 2),
-      topology('delivery-service', 1),
-      topology('event-relay', 1),
-      topology('daily-runner', 2),
-    ],
-    replacementOverlapConnections: 0,
-  };
-}
-
-function topology(
-  processId: DeploymentPostgresBudgetConfiguration['runtimes'][number]['processId'],
-  poolMax: DeploymentPostgresBudgetConfiguration['runtimes'][number]['poolMax'],
-): DeploymentPostgresBudgetConfiguration['runtimes'][number] {
-  return {
-    processId,
-    poolMin: 0,
-    poolMax,
-    replicas: 1,
   };
 }

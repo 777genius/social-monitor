@@ -118,12 +118,14 @@ grep -F 'backend-gate=postgres-pool-release deferred-to-bounded-repair' \
 grep -F -A3 'bash ops/deploy/verify-production-shellcheck-baseline.sh \' "$workflow" | \
   grep -F '"${deploy_shell_files[@]}"' >/dev/null || \
   fail 'workflow ShellCheck verifier does not cover the full deploy closure'
-grep -F 'ops/deploy/social-monitor-production-deploy.sh:42:2034:PUBLIC_LINK' \
-  "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not pin the PUBLIC_LINK finding'
-grep -F 'ops/deploy/social-monitor-production-deploy.sh:43:2034:ADMIN_LINK' \
-  "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not pin the ADMIN_LINK finding'
-grep -F 'findings.length !== expected.size || actual.size !== expected.size' \
-  "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not reject additional warnings'
+! grep -F '2034:PUBLIC_LINK' "$SHELLCHECK_VERIFIER" >/dev/null || \
+  fail 'verifier still allows the removed PUBLIC_LINK warning'
+! grep -F '2034:ADMIN_LINK' "$SHELLCHECK_VERIFIER" >/dev/null || \
+  fail 'verifier still allows the removed ADMIN_LINK warning'
+grep -F 'actual.size !== findings.length' "$SHELLCHECK_VERIFIER" >/dev/null || \
+  fail 'verifier does not reject duplicate warnings'
+grep -F '[...actual].some((finding) => !expected.has(finding))' \
+  "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not reject new warnings'
 ! grep -F 'shellcheck -S warning -x -e' "$SHELLCHECK_VERIFIER" >/dev/null || \
   fail 'verifier still relies on a non-portable broad warning exclusion'
 grep -F -A1 'bash ops/deploy/verify-production-shellcheck-baseline.sh \' \

@@ -1,114 +1,51 @@
-import {
-  FixedClock,
-  type IdGenerator,
-  causationId,
-  correlationId,
-  eventId,
-  tenantId,
-  workspaceId,
-} from '@social-monitor/shared-kernel';
-
-import type { RealtimeEvent } from '../../domain';
-import type {
-  ListRealtimeEventsQuery,
-  ListRealtimeEventsResult,
-  RealtimeEventRepositoryPort,
-} from '../../ports';
-import { RecordRealtimeEventUseCase } from '../record-realtime-event/record-realtime-event.use-case';
+import { causationId, correlationId, eventId, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { RealtimeEvent } from '../../domain';
+import type { SummaryReadyProjection } from '../../application/contracts/summary-ready-projection-store';
 import { ProjectSummaryReadyEventUseCase } from './project-summary-ready-event.use-case';
 
-class SequenceIdGenerator implements IdGenerator {
-  private nextId = 1;
-
-  generate(): string {
-    const id = `realtime-event-${this.nextId}`;
-    this.nextId += 1;
-    return id;
-  }
-}
-
-class FakeRealtimeEvents implements RealtimeEventRepositoryPort {
-  private readonly events = new Map<string, RealtimeEvent[]>();
-
-  async nextSequence(params: Parameters<RealtimeEventRepositoryPort['nextSequence']>[0]): Promise<number> {
-    return (this.events.get(scopeKey(params))?.length ?? 0) + 1;
-  }
-
-  async append(event: RealtimeEvent): Promise<void> {
-    const snapshot = event.toSnapshot();
-    const key = scopeKey(snapshot);
-
-    this.events.set(key, [...(this.events.get(key) ?? []), event]);
-  }
-
-  async list(query: ListRealtimeEventsQuery): Promise<ListRealtimeEventsResult> {
-    return {
-      events: this.events.get(scopeKey(query)) ?? [],
-      nextCursor: undefined,
-      resyncRequired: false,
-    };
-  }
-}
-
 describe('ProjectSummaryReadyEventUseCase', () => {
-  it('projects summary.ready into an interest summary status realtime event', async () => {
-    const repository = new FakeRealtimeEvents();
-    const result = await new ProjectSummaryReadyEventUseCase(
-      new RecordRealtimeEventUseCase(
-        repository,
-        new SequenceIdGenerator(),
-        new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
-      ),
-    ).execute({
-      event: {
-        eventId: eventId('summary-ready-event-1'),
-        eventType: 'summary.ready',
-        schemaVersion: 1,
-        occurredAt: new Date('2026-06-06T00:00:00.000Z'),
-        tenantId: tenantId('tenant-1'),
-        workspaceId: workspaceId('workspace-1'),
-        correlationId: correlationId('correlation-1'),
-        causationId: causationId('summary-job-1'),
-        payload: {
-          tenantId: tenantId('tenant-1'),
-          workspaceId: workspaceId('workspace-1'),
-          interestId: 'interest-1',
-          summaryJobId: 'summary-job-1',
-          summaryId: 'summary-1',
-          status: 'no_signal',
-        },
-      },
-    });
-    const replay = await repository.list({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      channel: 'interest:interest-1:summary-status',
-      limit: 20,
-    });
+  const event = {
+    eventId: eventId('summary-ready-event-1'), eventType: 'summary.ready', schemaVersion: 1,
+    occurredAt: new Date('2026-09-23T00:00:00.000Z'), tenantId: tenantId('tenant-1'),
+    workspaceId: workspaceId('workspace-1'), correlationId: correlationId('correlation-1'),
+    causationId: causationId('summary-job-1'), payload: { tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'), interestId: 'interest-1', summaryJobId: 'summary-job-1',
+      summaryId: 'summary-1', status: 'completed' as const },
+  };
 
-    expect(result).toEqual({
-      ok: true,
-      value: {
-        realtimeEventId: 'realtime-event-1',
-        channel: 'interest:interest-1:summary-status',
-        sequence: 1,
-      },
+  it('maps a valid summary event to the delivery projection contract and fanout', async () => {
+    const project = jest.fn(async (projection: SummaryReadyProjection) => {
+      const { sourceEventId, sourceIdentityHash, ...props } = projection;
+      expect(sourceEventId).toBe(event.eventId);
+      expect(sourceIdentityHash).toMatch(/^[a-f0-9]{64}$/);
+      return RealtimeEvent.create({ ...props, id: 'realtime-1', sequence: 1, replayCursor: 'v1:1' });
     });
-    expect(replay.events[0]?.toSnapshot()).toMatchObject({
-      eventType: 'summary.status.changed.v1',
-      resourceType: 'summary',
-      resourceId: 'summary-1',
-      payload: {
-        summaryJobId: 'summary-job-1',
-        summaryId: 'summary-1',
-        tenantId: tenantId('tenant-1'),
-        workspaceId: workspaceId('workspace-1'),
-        interestId: 'interest-1',
-        status: 'no_signal',
-      },
-    });
+    const publish = jest.fn(async () => undefined);
+    const result = await new ProjectSummaryReadyEventUseCase({ project }, { publish }).execute({ event });
+    expect(result).toMatchObject({ ok: true, value: { realtimeEventId: 'realtime-1', sequence: 1 } });
+    expect(project).toHaveBeenCalledWith({ sourceEventId: event.eventId,
+      sourceIdentityHash: expect.stringMatching(/^[a-f0-9]{64}$/), protocolVersion: 1,
+      eventType: 'summary.status.changed.v1', tenantId: event.tenantId, workspaceId: event.workspaceId,
+      channel: 'interest:interest-1:summary-status', resourceType: 'summary', resourceId: 'summary-1',
+      correlationId: event.correlationId, occurredAt: event.occurredAt,
+      payload: { summaryJobId: 'summary-job-1', summaryId: 'summary-1', tenantId: event.tenantId,
+        workspaceId: event.workspaceId, interestId: 'interest-1', status: 'completed' } });
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ toSnapshot: expect.any(Function) }));
+  });
+
+  it('returns typed validation failures without touching persistence', async () => {
+    const project = jest.fn();
+    const useCase = new ProjectSummaryReadyEventUseCase({ project }, { publish: jest.fn() });
+    for (const changed of [
+      { ...event, eventType: 'other.ready' },
+      { ...event, schemaVersion: 2 },
+      { ...event, tenantId: tenantId('different') },
+      { ...event, workspaceId: workspaceId('different') },
+      { ...event, payload: { ...event.payload, status: 'invalid' as 'completed' } },
+      { ...event, occurredAt: new Date('invalid') },
+    ]) {
+      expect(await useCase.execute({ event: changed })).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    }
+    expect(project).not.toHaveBeenCalled();
   });
 });
-
-const scopeKey = (params: { readonly tenantId: string; readonly workspaceId: string; readonly channel: string }): string =>
-  `${params.tenantId}:${params.workspaceId}:${params.channel}`;

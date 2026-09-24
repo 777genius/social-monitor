@@ -23,6 +23,14 @@ printf '%s\n' "$sha" > "$TEST_ROOT/control/deploy-state/backend.sha"
 cp "$REPO/ops/deploy/production-runtime/reader-summary-scheduler-hold-common.sh" \
   "$REPO/ops/deploy/production-runtime/reader-summary-scheduler-hold-status.sh" \
   "$TEST_ROOT/control/postgres-runtime-current/"
+cp "$REPO/ops/deploy/production-runtime/x-launch-guard.py" \
+  "$TEST_ROOT/control/postgres-runtime-current/"
+SOCIAL_MONITOR_X_LAUNCH_TEST_MODE=1 \
+SOCIAL_MONITOR_X_LAUNCH_TEST_ROOT=$TEST_ROOT \
+  python3 "$TEST_ROOT/control/postgres-runtime-current/x-launch-guard.py" init
+SOCIAL_MONITOR_X_LAUNCH_TEST_MODE=1 \
+SOCIAL_MONITOR_X_LAUNCH_TEST_ROOT=$TEST_ROOT \
+  python3 "$TEST_ROOT/control/postgres-runtime-current/x-launch-guard.py" allow
 touch "$TEST_ROOT/secrets/production.env"
 touch "$TEST_ROOT/secrets/db/ca-certificate.crt"
 ln -s "$REPO" "$TEST_ROOT/integration"

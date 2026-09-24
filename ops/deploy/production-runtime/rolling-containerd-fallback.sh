@@ -2,10 +2,36 @@
 set -euo pipefail
 
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-ROOT=${SOCIAL_MONITOR_ROOT:-/var/data/social-monitor}
-CTR=${SOCIAL_MONITOR_CTR_COMMAND:-ctr}
-DOCKER=${SOCIAL_MONITOR_DOCKER_COMMAND:-docker}
-SYSTEMCTL=${SOCIAL_MONITOR_SYSTEMCTL_COMMAND:-systemctl}
+if [[ ${SOCIAL_MONITOR_X_LAUNCH_TEST_MODE:-} == 1 && \
+      ${BASH_SOURCE[0]} == /var/data/social-monitor/* ]]; then
+  echo 'installed fallback cannot use test mode' >&2
+  exit 75
+fi
+if [[ ${SOCIAL_MONITOR_X_LAUNCH_TEST_MODE:-} == 1 ]]; then
+  ROOT=${SOCIAL_MONITOR_X_LAUNCH_TEST_ROOT:?test root required}
+  ROOT=$(realpath -e -- "$ROOT" 2>/dev/null) || exit 64
+  [[ -d $ROOT && $ROOT == /tmp/* ]] || exit 64
+  CTR=${SOCIAL_MONITOR_X_LAUNCH_TEST_CTR:?test ctr required}
+  DOCKER=${SOCIAL_MONITOR_X_LAUNCH_TEST_DOCKER:?test Docker required}
+  SYSTEMCTL=${SOCIAL_MONITOR_X_LAUNCH_TEST_SYSTEMCTL:?test systemctl required}
+else
+  ROOT=/var/data/social-monitor
+  CTR=ctr
+  DOCKER=docker
+  SYSTEMCTL=systemctl
+  unset SOCIAL_MONITOR_ROOT SOCIAL_MONITOR_CTR_COMMAND \
+    SOCIAL_MONITOR_DOCKER_COMMAND SOCIAL_MONITOR_SYSTEMCTL_COMMAND \
+    SOCIAL_MONITOR_X_LAUNCH_TEST_ROOT SOCIAL_MONITOR_X_LAUNCH_TEST_CTR \
+    SOCIAL_MONITOR_X_LAUNCH_TEST_DOCKER SOCIAL_MONITOR_X_LAUNCH_TEST_SYSTEMCTL
+fi
+X_LAUNCH_GUARD=$ROOT/control/postgres-runtime-current/x-launch-guard.py
+guard_owner=0
+[[ ${SOCIAL_MONITOR_X_LAUNCH_TEST_MODE:-} != 1 ]] || guard_owner=$(id -u)
+[[ -f $X_LAUNCH_GUARD && ! -L $X_LAUNCH_GUARD && \
+   $(stat -c '%a:%u' "$X_LAUNCH_GUARD" 2>/dev/null) == "644:$guard_owner" ]] || {
+  echo 'X launch guard is missing or unsafe' >&2
+  exit 75
+}
 X_TASK_ID=social-monitor-x-host-fallback
 AGENT_TASK_ID=social-monitor-agent-runtime-host-fallback
 MODE=${1:-run}
@@ -17,6 +43,9 @@ case "$MODE" in
     exit 64
     ;;
 esac
+if [[ $MODE == run ]]; then
+  python3 "$X_LAUNCH_GUARD" check || exit 75
+fi
 
 # The normal systemd timer remains authoritative whenever its manager answers.
 # This makes the cron fallback self-disabling after a host recovery or reboot.
@@ -55,14 +84,17 @@ start_host_network_x_collector() (
     grep -v '^X_COLLECTOR_GRPC_BIND=' > "$runtime_env"
   printf '%s\n' 'X_COLLECTOR_GRPC_BIND=0.0.0.0:50051' >> "$runtime_env"
 
-  "$CTR" -n moby run -d --null-io --net-host --user 1000:1000 \
+  python3 "$X_LAUNCH_GUARD" run "$CTR" -n moby run -d --null-io --net-host --user 1000:1000 \
     --cwd /app/apps/x-collector \
     --env-file "$runtime_env" \
     --mount type=bind,src="$ROOT/runtime/x-collector",dst=/var/lib/social-monitor-x,options=rbind:rw \
     --mount type=bind,src="$ROOT/secrets/x-collector",dst=/run/social-monitor-x,options=rbind:ro \
+    --mount type=bind,src="$ROOT/control/deploy-state",dst=/run/social-monitor-x-launch-state,options=rbind:ro \
+    --mount type=bind,src="$X_LAUNCH_GUARD",dst=/run/social-monitor-x-launch-guard.py,options=rbind:ro \
     --label social-monitor.project=social-monitor \
     --label social-monitor.purpose=x-collector-host-network-fallback \
-    docker.io/library/social-monitor-prod-x-collector:latest "$X_TASK_ID"
+    docker.io/library/social-monitor-prod-x-collector:latest "$X_TASK_ID" \
+    python /run/social-monitor-x-launch-guard.py container-exec python -m x_collector
 )
 
 start_host_network_agent_runtime() (

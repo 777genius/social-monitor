@@ -3,6 +3,7 @@ import {
   type sendUnaryData,
   type ServerUnaryCall,
 } from "@grpc/grpc-js";
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   AgentRuntimeHealthStatus,
   AgentRuntimeProvider,
@@ -20,9 +21,11 @@ import type {
   AgentRuntimeExecutionResult,
   AgentRuntimeExecutorPort,
 } from "./agent-runtime-executor.port";
+import { admitStrictCwd, type StrictGrpcAdmission } from "./strict-grpc-admission";
 
 export type AgentRuntimeGrpcServiceOptions = {
   readonly serviceToken?: string;
+  readonly strictAdmission?: StrictGrpcAdmission;
 };
 
 const schemaVersion = 1;
@@ -35,7 +38,7 @@ export const createAgentRuntimeGrpcService = (
     call: ServerUnaryCall<AgentRuntimeTaskRequest, AgentRuntimeTaskResponse>,
     callback: sendUnaryData<AgentRuntimeTaskResponse>,
   ): void {
-    if (!isAuthorized(call, options.serviceToken)) {
+    if (!isAuthorized(call, options)) {
       callback(serviceError(status.UNAUTHENTICATED, "Unauthorized"), null);
       return;
     }
@@ -43,11 +46,16 @@ export const createAgentRuntimeGrpcService = (
     let request: AgentRuntimeExecutionRequest;
     try {
       request = toExecutionRequest(call.request);
+      if (options.strictAdmission !== undefined) {
+        request = { ...request, cwd: admitStrictCwd(call.request.cwd, options.strictAdmission) };
+      }
     } catch (error) {
       callback(
         serviceError(
           status.INVALID_ARGUMENT,
-          error instanceof Error ? error.message : "Invalid agent task request",
+          options.strictAdmission !== undefined
+            ? "Invalid agent task request or untrusted cwd"
+            : error instanceof Error ? error.message : "Invalid agent task request",
         ),
         null,
       );
@@ -84,7 +92,7 @@ export const createAgentRuntimeGrpcService = (
     >,
     callback: sendUnaryData<AgentRuntimeHealthResponse>,
   ): void {
-    if (!isAuthorized(call, options.serviceToken)) {
+    if (!isAuthorized(call, options)) {
       callback(serviceError(status.UNAUTHENTICATED, "Unauthorized"), null);
       return;
     }
@@ -257,14 +265,16 @@ const toGrpcTaskStatus = (
 
 const isAuthorized = (
   call: ServerUnaryCall<unknown, unknown>,
-  serviceToken: string | undefined,
+  options: AgentRuntimeGrpcServiceOptions,
 ): boolean => {
-  if (serviceToken === undefined) {
-    return true;
-  }
-
+  const serviceToken = options.serviceToken;
+  if (serviceToken === undefined) return options.strictAdmission === undefined;
   const authorization = call.metadata.get("authorization");
-  return authorization.includes(`Bearer ${serviceToken}`);
+  const candidate = authorization[0];
+  if (authorization.length !== 1 || typeof candidate !== "string") return false;
+  const expected = createHash("sha256").update(`Bearer ${serviceToken}`).digest();
+  const received = createHash("sha256").update(candidate).digest();
+  return timingSafeEqual(expected, received);
 };
 
 const serviceError = (

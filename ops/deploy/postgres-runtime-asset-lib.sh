@@ -106,6 +106,10 @@ postgres_runtime_control_launchers_for_scope() {
 postgres_runtime_reader_summary_asset_specs() {
   printf '%s\n' \
     '644 compose.agent-runtime-model.yml' \
+    '644 compose.x-launch-guard.yml' \
+    '644 x-launch-guard.py' \
+    '755 x-launch-docker-compose.sh' \
+    '755 x-launch-docker-up.sh' \
     '644 compose.daily-artifacts.yml' \
     '755 reader-summary-one-shot.sh' \
     '644 reader-summary-scheduler-hold-common.sh' \

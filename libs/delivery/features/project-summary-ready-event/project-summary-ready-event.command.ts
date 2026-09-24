@@ -6,6 +6,8 @@ export type SummaryReadyProjectionPayload = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly interestId: string;
+  readonly userId?: string;
+  readonly subscriptionId?: string;
   readonly status: 'completed' | 'no_signal';
 };
 

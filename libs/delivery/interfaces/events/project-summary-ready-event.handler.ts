@@ -119,11 +119,14 @@ const parseEvent = (
     correlationId: correlationId(readString(event, "correlationId")),
     causationId: causationId(readString(event, "causationId")),
     payload: {
+      ...payload,
       summaryJobId: readString(payload, "summaryJobId"),
       summaryId: readString(payload, "summaryId"),
       tenantId: payloadTenantId,
       workspaceId: payloadWorkspaceId,
       interestId: readString(payload, "interestId"),
+      userId: readOptionalString(payload, "userId"),
+      subscriptionId: readOptionalString(payload, "subscriptionId"),
       status: readSummaryReadyStatus(payload, "status"),
     },
   };
@@ -167,6 +170,11 @@ const readDate = (value: unknown, field: string): Date => {
 
   return date;
 };
+
+const readOptionalString = (
+  payload: Readonly<Record<string, unknown>>,
+  field: string,
+): string | undefined => payload[field] === undefined ? undefined : readString(payload, field);
 
 const readPositiveInteger = (
   payload: Readonly<Record<string, unknown>>,

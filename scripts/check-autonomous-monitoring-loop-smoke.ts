@@ -6,6 +6,7 @@ import { InMemoryDeliveryAttemptRepository } from "@social-monitor/delivery/adap
 import { InMemoryDigestRepository } from "@social-monitor/delivery/adapters/persistence/in-memory-digest.repository";
 import { InMemoryDigestScheduleRepository } from "@social-monitor/delivery/adapters/persistence/in-memory-digest-schedule.repository";
 import { InMemoryRealtimeEventRepository } from "@social-monitor/delivery/adapters/persistence/in-memory-realtime-event.repository";
+import { InMemorySummaryReadyProjectionStore } from "@social-monitor/delivery/adapters/persistence/in-memory-summary-ready-projection.store";
 import { InMemoryDigestSourceReader } from "@social-monitor/delivery/adapters/source/in-memory-digest-source.reader";
 import { AssembleDigestUseCase } from "@social-monitor/delivery/features/assemble-digest/assemble-digest.use-case";
 import { CreateDigestScheduleUseCase } from "@social-monitor/delivery/features/create-digest-schedule/create-digest-schedule.use-case";
@@ -14,7 +15,6 @@ import { GetDigestUseCase } from "@social-monitor/delivery/features/get-digest/g
 import { ListRealtimeEventsUseCase } from "@social-monitor/delivery/features/list-realtime-events/list-realtime-events.use-case";
 import { ProjectSummaryReadyEventUseCase } from "@social-monitor/delivery/features/project-summary-ready-event/project-summary-ready-event.use-case";
 import { QueueDeliveryAttemptUseCase } from "@social-monitor/delivery/features/queue-delivery-attempt/queue-delivery-attempt.use-case";
-import { RecordRealtimeEventUseCase } from "@social-monitor/delivery/features/record-realtime-event/record-realtime-event.use-case";
 import { ScheduleDueDigestsUseCase } from "@social-monitor/delivery/features/schedule-due-digests/schedule-due-digests.use-case";
 import { SendDeliveryAttemptUseCase } from "@social-monitor/delivery/features/send-delivery-attempt/send-delivery-attempt.use-case";
 import { SendDeliveryAttemptCommandHandler } from "@social-monitor/delivery/interfaces/queue/send-delivery-attempt-command.handler";
@@ -645,7 +645,8 @@ async function main(): Promise<void> {
   assertSummaryReadyEvent(summaryReadyEvent);
   const realtimeProjection = unwrap(
     await new ProjectSummaryReadyEventUseCase(
-      new RecordRealtimeEventUseCase(realtimeEvents, ids, clock),
+      new InMemorySummaryReadyProjectionStore(realtimeEvents),
+      { publish: async () => undefined },
     ).execute({ event: summaryReadyEvent }),
     "project autonomous summary realtime event",
   );

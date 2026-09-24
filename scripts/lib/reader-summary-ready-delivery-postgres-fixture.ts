@@ -24,6 +24,10 @@ export async function withReaderDeliveryPostgresFixture(
   let created = false;
   let roleCreated = false;
   let systemCreated = false;
+  const errors: unknown[] = [];
+  const cleanup = async (action: () => Promise<unknown>): Promise<void> => {
+    try { await action(); } catch (error) { errors.push(error); }
+  };
   try {
     await admin.query(`CREATE DATABASE "${name}"`);
     created = true;
@@ -38,12 +42,31 @@ export async function withReaderDeliveryPostgresFixture(
     url.username = role;
     url.password = password;
     await operation({ adminUrl, runtimeUrl: url.toString(), database });
+  } catch (error) {
+    errors.push(error);
   } finally {
-    await database?.end();
-    if (created) await admin.query(`DROP DATABASE "${name}" WITH (FORCE)`);
-    if (roleCreated) await admin.query(`DROP ROLE "${role}"`);
-    if (systemCreated) await admin.query(`DROP ROLE "${systemRole}"`);
-    await admin.end();
+    const fixtureDatabase = database;
+    if (fixtureDatabase) await cleanup(() => fixtureDatabase.end());
+    if (created) await cleanup(async () => {
+      await waitForFixtureConnectionsToDrain(admin, name);
+      await admin.query(`DROP DATABASE "${name}"`);
+    });
+    if (roleCreated) await cleanup(() => admin.query(`DROP ROLE "${role}"`));
+    if (systemCreated) await cleanup(() => admin.query(`DROP ROLE "${systemRole}"`));
+    await cleanup(() => admin.end());
+  }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, 'Reader delivery fixture operation and cleanup failed');
+}
+
+async function waitForFixtureConnectionsToDrain(admin: Pool, name: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (true) {
+    const result = await admin.query<{ connections: number }>(
+      'SELECT count(*)::int AS connections FROM pg_stat_activity WHERE datname = $1', [name]);
+    if (result.rows[0]?.connections === 0) return;
+    if (Date.now() >= deadline) throw new Error(`Timed out waiting for fixture database connections to drain: ${name}`);
+    await new Promise<void>(resolve => setTimeout(resolve, 100));
   }
 }
 

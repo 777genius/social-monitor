@@ -24,7 +24,17 @@ CONTROL=$ROOT/control
 STATE=$CONTROL/deploy-state
 SINGLETON_LOCK=$CONTROL/daily-run-singleton.lock
 ADMISSION_LOCK=$CONTROL/daily-run.lock
-install -d "$CONTROL/postgres-runtime-current" "$STATE" "$ROOT/runtime"
+install -d -m 0755 "$CONTROL" "$CONTROL/postgres-runtime-current" \
+  "$STATE" "$ROOT/runtime"
+install -m 0644 "$SCRIPT_DIR/production-runtime/x-launch-guard.py" \
+  "$CONTROL/postgres-runtime-current/x-launch-guard.py"
+(
+  umask 022
+  export SOCIAL_MONITOR_X_LAUNCH_TEST_MODE=1
+  export SOCIAL_MONITOR_X_LAUNCH_TEST_ROOT=$ROOT
+  python3 "$CONTROL/postgres-runtime-current/x-launch-guard.py" init
+  python3 "$CONTROL/postgres-runtime-current/x-launch-guard.py" allow
+)
 cp "$SCRIPT_DIR/production-runtime/reader-summary-scheduler-hold-common.sh" \
   "$SCRIPT_DIR/production-runtime/reader-summary-scheduler-hold-status.sh" \
   "$CONTROL/postgres-runtime-current/"

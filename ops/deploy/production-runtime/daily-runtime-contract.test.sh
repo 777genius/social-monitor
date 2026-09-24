@@ -45,7 +45,16 @@ prepare_case() {
     "$case_root/control/deploy-state"
   cp "$SCRIPT_DIR/reader-summary-scheduler-hold-common.sh" \
     "$SCRIPT_DIR/reader-summary-scheduler-hold-status.sh" \
+    "$SCRIPT_DIR/x-launch-guard.py" \
     "$case_root/control/postgres-runtime-current/"
+  local guard=$case_root/control/postgres-runtime-current/x-launch-guard.py
+  chmod 0644 "$guard"
+  SOCIAL_MONITOR_X_LAUNCH_TEST_MODE=1 \
+  SOCIAL_MONITOR_X_LAUNCH_TEST_ROOT="$case_root" \
+    python3 "$guard" init
+  SOCIAL_MONITOR_X_LAUNCH_TEST_MODE=1 \
+  SOCIAL_MONITOR_X_LAUNCH_TEST_ROOT="$case_root" \
+    python3 "$guard" allow
   cat >"$case_root/flock" <<EOF
 #!/usr/bin/env bash
 printf '%s\\n' "\$*" >>'$case_root/flock.calls'

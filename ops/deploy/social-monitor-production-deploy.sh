@@ -6,10 +6,18 @@ LC_ALL=C
 export PATH LC_ALL
 
 if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
+  [[ ${BASH_SOURCE[0]} != /var/data/social-monitor/* ]] || {
+    echo 'deploy-error: installed deploy entrypoint cannot use test mode' >&2
+    exit 1
+  }
   ROOT=${SOCIAL_MONITOR_DEPLOY_ROOT:?test root is required}
   REPO=${SOCIAL_MONITOR_DEPLOY_REPO:?test repo is required}
   CONTROL=${SOCIAL_MONITOR_DEPLOY_CONTROL:?test control root is required}
-  [[ $ROOT == /tmp/* ]] || {
+  ROOT=$(realpath -e -- "$ROOT" 2>/dev/null) || {
+    echo 'deploy-error: test root is unavailable' >&2
+    exit 1
+  }
+  [[ -d $ROOT && $ROOT == /tmp/* ]] || {
     echo 'deploy-error: test root must be below /tmp' >&2
     exit 1
   }
@@ -39,8 +47,6 @@ OTEL_COLLECTOR_IMAGE=$PINNED_OTEL_COLLECTOR_IMAGE
 OTEL_COLLECTOR_CONFIG_PATH=$REPO/ops/observability/otel-collector.yml
 export OTEL_COLLECTOR_IMAGE OTEL_COLLECTOR_CONFIG_PATH
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
-PUBLIC_LINK=$ROOT/runtime/frontend-public-web
-ADMIN_LINK=$ROOT/runtime/frontend-admin-web
 DEPLOY_LOCK=$CONTROL/production-deploy.lock
 # Deployment, the control-owned daily runner, and every manual production DB
 # command use this admission lock. Daily separately owns a singleton lock so it
@@ -84,6 +90,7 @@ BACKEND_PATHS=(
   apps/event-relay
   apps/x-collector
   ops/deploy/production-runtime/x-collector.Dockerfile
+  ops/deploy/production-runtime/x-launch-guard.py
   ops/deploy/production-runtime/rolling-summary-container-run.sh
   ops/deploy/production-runtime/rolling-summary-receipt.mjs
   ops/deploy/production-runtime/compose.agent-runtime-model.yml
@@ -115,6 +122,11 @@ CONTROL_PATHS=(
   ops/recovery/backup-restore-contract.json
 )
 RUNTIME_CONTROL_PATHS=(
+  ops/deploy/production-runtime/compose.x-launch-guard.yml
+  ops/deploy/production-runtime/x-launch-guard.py
+  ops/deploy/production-runtime/x-launch-docker-compose.sh
+  ops/deploy/production-runtime/x-launch-docker-up.sh
+  ops/deploy/production-compose-scope-check.py
   ops/deploy/production-runtime/daily-c1-runtime.sh
   ops/deploy/production-runtime/daily-run.sh
   ops/deploy/production-runtime/rolling-run.sh
@@ -139,12 +151,18 @@ RUNTIME_CONTROL_PATHS=(
   ops/deploy/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf
   ops/deploy/production-runtime/social-monitor-weekly.service ops/deploy/production-runtime/social-monitor-weekly.timer
 )
+if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
+  compose_command=(docker compose)
+else
+  compose_command=("$POSTGRES_RUNTIME_CURRENT/x-launch-docker-compose.sh")
+fi
 COMPOSE=(
-  docker compose -p "$PROJECT"
+  "${compose_command[@]}" -p "$PROJECT"
   --env-file "$ROOT/secrets/production.env"
   -f "$REPO/docker-compose.yml"
   -f "$CONTROL/compose.production.yml"
   -f "$CONTROL/compose.managed-db.yml"
+  -f "$POSTGRES_RUNTIME_CURRENT/compose.x-launch-guard.yml"
 )
 if [[ -f $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml ]]; then
   COMPOSE+=(
@@ -309,6 +327,7 @@ initialize_deploy_control_bridge
 declare -F production_transition_install_compatibility_overrides >/dev/null && production_transition_install_compatibility_overrides
 verify_compose_scope() (
   local rendered=$STATE/rendered-compose.$$.json
+  local scope_checker=$REPO/ops/deploy/production-compose-scope-check.py
   trap 'rm -f "$rendered"' EXIT
   if ! declare -F ensure_system_database_url_deploy_contract >/dev/null; then
     load_reader_summary_publication_deploy_library
@@ -321,127 +340,11 @@ verify_compose_scope() (
       verify_effective_postgres_daily_topology
     fi
   fi
-  python3 - "$rendered" "$ROOT" "$REPO" "$CONTROL" <<'PY'
-import json
-import pathlib
-import sys
-rendered_path, root, repo, control = sys.argv[1:]
-with open(rendered_path, encoding="utf-8") as handle:
-    config = json.load(handle)
-expected_services = {
-    "agent-runtime", "api", "caddy", "daily-runner", "delivery-service",
-    "event-relay", "frontend", "ingestion-worker", "intelligence-worker",
-    "migrate", "otel-collector", "rabbitmq", "redis", "x-collector",
-}
-services = config.get("services", {})
-if set(services) != expected_services:
-    raise SystemExit("rendered Compose service allowlist mismatch")
-model_route = {
-    "agent-runtime": {
-        "AGENT_RUNTIME_PROVIDER": "codex",
-        "AGENT_RUNTIME_MODEL": "gpt-5.6-sol",
-        "AGENT_RUNTIME_REASONING_EFFORT": "high",
-    },
-    "daily-runner": {
-        "READER_SUMMARY_MODEL_PROVIDER": "agent-runtime",
-        "AGENT_RUNTIME_READER_SUMMARY_MODEL": "gpt-5.6-sol",
-        "AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT": "high",
-    },
-}
-for service_name, expected_environment in model_route.items():
-    environment = services[service_name].get("environment", {})
-    if any(environment.get(key) != value for key, value in expected_environment.items()):
-        raise SystemExit(f"exact production model route mismatch for {service_name}")
-expected_images = {
-    "caddy": "caddy:2.11.4-alpine",
-    "frontend": "nginx:1.29-alpine",
-    "otel-collector": "otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6",
-    "rabbitmq": "rabbitmq:4.3-management",
-    "redis": "redis:8-alpine",
-}
-expected_dockerfiles = {
-    "daily-runner": f"{control}/daily-runner.Dockerfile",
-    "x-collector": f"{control}/x-collector.Dockerfile",
-}
-for name, service in services.items():
-    forbidden = {
-        "privileged": service.get("privileged"),
-        "pid": service.get("pid"),
-        "ipc": service.get("ipc"),
-        "network_mode": service.get("network_mode"),
-        "devices": service.get("devices"),
-        "cap_add": service.get("cap_add"),
-        "security_opt": service.get("security_opt"),
-        "configs": service.get("configs"),
-        "secrets": service.get("secrets"),
-        "volumes_from": service.get("volumes_from"),
-    }
-    unexpected = sorted(key for key, value in forbidden.items() if value)
-    if unexpected:
-        raise SystemExit(f"forbidden Compose settings for {name}: {unexpected}")
-    service_networks = service.get("networks") or {}
-    if set(service_networks) != {"default"}:
-        raise SystemExit(f"unexpected networks for {name}")
-    image = service.get("image")
-    build = service.get("build")
-    if name in expected_images:
-        if image != expected_images[name] or build is not None:
-            raise SystemExit(f"unexpected image/build policy for {name}")
-    elif image is not None:
-        raise SystemExit(f"build service {name} must use the project-generated image name")
-    elif not isinstance(build, dict) or build.get("context") != repo:
-        raise SystemExit(f"unexpected build context for {name}")
-    elif build.get("dockerfile") != expected_dockerfiles.get(name, "Dockerfile"):
-        raise SystemExit(f"unexpected Dockerfile for {name}")
-    elif not set(build).issubset({"args", "context", "dockerfile"}):
-        raise SystemExit(f"unexpected build options for {name}")
-expected_ports = {
-    "api": {("127.0.0.1", "13000", 3000, "tcp")},
-    "frontend": {("127.0.0.1", "13080", 80, "tcp")},
-    "caddy": {
-        ("", "80", 80, "tcp"),
-        ("", "443", 443, "tcp"),
-        ("", "443", 443, "udp"),
-    },
-}
-for name, service in services.items():
-    actual = {
-        (
-            str(port.get("host_ip", "")),
-            str(port.get("published", "")),
-            int(port.get("target", 0)),
-            str(port.get("protocol", "tcp")),
-        )
-        for port in service.get("ports") or []
-    }
-    if actual != expected_ports.get(name, set()):
-        raise SystemExit(f"unexpected published ports for {name}: {sorted(actual)}")
-    for volume in service.get("volumes") or []:
-        volume_type = volume.get("type")
-        source = str(volume.get("source", ""))
-        if volume_type == "bind":
-            try:
-                resolved = pathlib.Path(source).resolve(strict=True)
-                root_path = pathlib.Path(root).resolve(strict=True)
-                resolved.relative_to(root_path)
-            except (FileNotFoundError, RuntimeError, ValueError):
-                raise SystemExit(f"bind mount escapes project root for {name}")
-        elif volume_type == "volume":
-            if source not in {"rabbitmq-data", "redis-data"}:
-                raise SystemExit(f"unexpected named volume for {name}")
-        else:
-            raise SystemExit(f"unexpected volume type for {name}")
-networks = config.get("networks", {})
-if set(networks) != {"default"} or networks["default"].get("external") is True:
-    raise SystemExit("unexpected or external Compose network")
-if config.get("configs") or config.get("secrets"):
-    raise SystemExit("top-level Compose configs or secrets are forbidden")
-volumes = config.get("volumes", {})
-if set(volumes) != {"rabbitmq-data", "redis-data"}:
-    raise SystemExit("top-level Compose volume allowlist mismatch")
-if any(value.get("external") is True for value in volumes.values()):
-    raise SystemExit("external Compose volumes are forbidden")
-PY
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 && ! -f $scope_checker ]]; then
+    scope_checker=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/production-compose-scope-check.py
+  fi
+  python3 "$scope_checker" \
+    "$rendered" "$ROOT" "$REPO" "$CONTROL"
 )
 marker_value() {
   local component=$1
