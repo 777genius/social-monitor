@@ -116,6 +116,22 @@ describe('HttpRssClient', () => {
     });
   });
 
+  it.each([
+    ['mixed content', '<p>Do <b>not</b> deploy <i>today</i>.</p>'],
+    ['nested mixed content', '<p>Read <span>this <b>carefully</b> now</span>, please.</p>'],
+    ['entities', '<p>Research &amp; deploy <b>only</b> after &#x41; &lt; B.</p>'],
+  ])('preserves Atom XHTML %s in its original readable order', async (_kind, content) => {
+    const markup = `<div xmlns="http://www.w3.org/1999/xhtml">${content}</div>`;
+    const xml = `<feed><entry><id>first</id><content type="xhtml">${markup}</content></entry>` +
+      '<entry><id>second</id><content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">After</div></content></entry></feed>';
+    globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
+
+    const result = await new HttpRssClient().readFeed('https://example.test/atom.xml', 10);
+    expect(result.items[0]).toEqual(expect.objectContaining({ guid: 'first', content: markup, contentType: 'xhtml' }));
+    expect(result.items[1]).toEqual(expect.objectContaining({ guid: 'second',
+      content: '<div xmlns="http://www.w3.org/1999/xhtml">After</div>', contentType: 'xhtml' }));
+  });
+
   it('returns notModified without parsing body for HTTP 304', async () => {
     globalThis.fetch = jest.fn(async () =>
       new Response(null, {

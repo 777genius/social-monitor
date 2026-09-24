@@ -6,6 +6,8 @@ describe('RSS and Atom visible text', () => {
     '<!-- hidden',
     '<script>hidden',
     '<style>p{color:red}',
+    '<x:script>hidden</x:script>',
+    '<x:style>p{color:red}</x:style>',
     '&ThickSpace;',
     '&NoBreak;',
     '\uFE0F',

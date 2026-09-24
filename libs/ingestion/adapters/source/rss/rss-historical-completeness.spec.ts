@@ -68,6 +68,10 @@ describe('RSS historical completeness', () => {
     ['Atom HTML title', '<feed><entry><id>html-title</id><link href="https://example.test/html-title"/><title type="html">&lt;script&gt;hidden&lt;/script&gt;</title><published>2026-06-05T10:30:00Z</published></entry></feed>'],
     ['Atom HTML summary', '<feed><entry><id>html-summary</id><link href="https://example.test/html-summary"/><summary type="html">&lt;style&gt;hidden&lt;/style&gt;</summary><published>2026-06-05T10:30:00Z</published></entry></feed>'],
     ['Atom XHTML markup-only title', '<feed><entry><id>xhtml-empty</id><link href="https://example.test/xhtml-empty"/><title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><br/></div></title><published>2026-06-05T10:30:00Z</published></entry></feed>'],
+    ...(['script', 'style'] as const).map((tag) => [
+      `Atom XHTML prefixed ${tag}`,
+      `<feed><entry><id>xhtml-hidden-${tag}</id><link href="https://example.test/xhtml-hidden-${tag}"/><content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml" xmlns:x="urn:example"><x:${tag}>hidden</x:${tag}></div></content><published>2026-06-05T10:30:00Z</published></entry></feed>`,
+    ]),
     ['Atom non-text content', '<feed><entry><id>binary</id><link href="https://example.test/binary"/><content type="image/png">aGVsbG8=</content><published>2026-06-05T10:30:00Z</published></entry></feed>'],
   ])('rejects in-window %s as unreadable through the recovery scan wrapper', async (_kind, xml) => {
     globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
@@ -94,12 +98,24 @@ describe('RSS historical completeness', () => {
     ['Atom literal text summary', '<feed><entry><id>literal-summary</id><link href="https://example.test/literal-summary"/><summary type="text">&lt;script&gt;</summary><published>2026-06-05T10:30:00Z</published></entry></feed>', 'literal-summary'],
     ['Atom XHTML title', '<feed><entry><id>xhtml-title</id><link href="https://example.test/xhtml-title"/><title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Readable</p></div></title><published>2026-06-05T10:30:00Z</published></entry></feed>', 'xhtml-title'],
     ['Atom XHTML literal escaped title', '<feed><entry><id>xhtml-literal</id><link href="https://example.test/xhtml-literal"/><title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">&lt;script&gt;</div></title><published>2026-06-05T10:30:00Z</published></entry></feed>', 'xhtml-literal'],
+    ['Atom XHTML mixed content', '<feed><entry><id>xhtml-mixed</id><link href="https://example.test/xhtml-mixed"/><content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Do <b>not</b> deploy <i>today</i>.</p></div></content><published>2026-06-05T10:30:00Z</published></entry></feed>', 'xhtml-mixed'],
   ])('accepts in-window %s', async (_kind, xml, id) => {
     globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
     const provider = requireCompleteRecoveryScan(new RssSourceProvider(new HttpRssClient()));
     const context = scope();
     const result = await provider.scan(provider.planScan(query, context), context);
     expect(result.items.map((item) => item.externalId)).toEqual([id]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('retains ordered XHTML body in a complete dated recovery scan', async () => {
+    const body = '<div xmlns="http://www.w3.org/1999/xhtml"><p>Do <b>not</b> deploy <i>today</i>.</p></div>';
+    const xml = `<feed><entry><id>ordered</id><link href="https://example.test/ordered"/><content type="xhtml">${body}</content><published>2026-06-05T10:30:00Z</published></entry></feed>`;
+    globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
+    const provider = requireCompleteRecoveryScan(new RssSourceProvider(new HttpRssClient()));
+    const context = scope();
+    const result = await provider.scan(provider.planScan(query, context), context);
+    expect(result.items).toEqual([expect.objectContaining({ externalId: 'ordered', body })]);
     expect(result.warnings).toEqual([]);
   });
 

@@ -24,6 +24,6 @@ export const hasReadableFeedText = (value: string | undefined, type: RssTextType
 const visibleHtmlText = (node: Node): string => {
   if (node.nodeType === 3) return node.nodeValue ?? '';
   if (node.nodeType === 8) return '';
-  if (node.nodeType === 1 && /^(script|style|template)$/iu.test((node as Element).localName)) return '';
+  if (node.nodeType === 1 && /^(?:[^:]+:)?(?:script|style|template)$/iu.test((node as Element).localName)) return '';
   return Array.from(node.childNodes, visibleHtmlText).join('');
 };

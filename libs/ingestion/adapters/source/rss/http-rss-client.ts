@@ -9,7 +9,21 @@ const parser = new XMLParser({
   textNodeName: '#text',
   trimValues: true,
 });
-const xhtmlBuilder = new XMLBuilder({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+const orderedXhtmlParser = new XMLParser({
+  preserveOrder: true,
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+  trimValues: false,
+  processEntities: false,
+});
+const orderedXhtmlBuilder = new XMLBuilder({
+  preserveOrder: true,
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+  processEntities: false,
+});
+type AtomConstructName = 'title' | 'content' | 'summary';
+type XhtmlConstructs = Partial<Record<AtomConstructName, string>>;
 
 export class HttpRssClient implements RssClientPort {
   constructor(private readonly timeoutMs = 10_000) {}
@@ -57,7 +71,7 @@ export class HttpRssClient implements RssClientPort {
       throw new Error('RSS provider returned an invalid RSS or Atom envelope');
     }
 
-    const { items: entries, rejectedEntries } = parseFeedItems(parsed);
+    const { items: entries, rejectedEntries } = parseFeedItems(parsed, body);
     const window = options.targetPublishedWindow;
     const matching = window === undefined ? entries : entries.filter((item) =>
       item.publishedAt === undefined ||
@@ -92,7 +106,7 @@ const requestHeaders = (options: RssReadFeedOptions): Record<string, string> => 
   return headers;
 };
 
-const parseFeedItems = (parsed: unknown): { readonly items: readonly RssFeedItem[]; readonly rejectedEntries: number } => {
+const parseFeedItems = (parsed: unknown, xml: string): { readonly items: readonly RssFeedItem[]; readonly rejectedEntries: number } => {
   if (!isRecord(parsed)) {
     return { items: [], rejectedEntries: 0 };
   }
@@ -102,14 +116,19 @@ const parseFeedItems = (parsed: unknown): { readonly items: readonly RssFeedItem
     return normalizeEntries(rssItems, normalizeRssItem);
   }
 
-  return normalizeEntries(arrayFromPath(parsed, ['feed', 'entry']), normalizeAtomEntry);
+  const entries = arrayFromPath(parsed, ['feed', 'entry']);
+  const xhtml = entries.some((entry) => isRecord(entry) &&
+    (['title', 'content', 'summary'] as const).some((name) => isXhtmlConstruct(entry[name])))
+    ? readXhtmlConstructs(xml)
+    : [];
+  return normalizeEntries(entries, (entry, index) => normalizeAtomEntry(entry, xhtml[index]));
 };
 
 const normalizeEntries = (
   entries: readonly unknown[],
-  normalize: (entry: Readonly<Record<string, unknown>>) => RssFeedItem,
+  normalize: (entry: Readonly<Record<string, unknown>>, index: number) => RssFeedItem,
 ): { readonly items: readonly RssFeedItem[]; readonly rejectedEntries: number } => ({
-  items: entries.filter(isRecord).map(normalize),
+  items: entries.flatMap((entry, index) => isRecord(entry) ? [normalize(entry, index)] : []),
   rejectedEntries: entries.filter((entry) => !isRecord(entry)).length,
 });
 
@@ -134,9 +153,9 @@ const normalizeRssItem = (item: Readonly<Record<string, unknown>>): RssFeedItem 
   publishedAt: parseDate(readText(item.pubDate) ?? readText(item['dc:date'])),
 });
 
-const normalizeAtomEntry = (entry: Readonly<Record<string, unknown>>): RssFeedItem => {
-  const title = readAtomConstruct(entry.title);
-  const content = readAtomConstruct(entry.content) ?? readAtomConstruct(entry.summary);
+const normalizeAtomEntry = (entry: Readonly<Record<string, unknown>>, xhtml: XhtmlConstructs = {}): RssFeedItem => {
+  const title = readAtomConstruct(entry.title, xhtml.title);
+  const content = readAtomConstruct(entry.content, xhtml.content) ?? readAtomConstruct(entry.summary, xhtml.summary);
   return {
     guid: readText(entry.id),
     link: readAtomLink(entry.link),
@@ -150,7 +169,34 @@ const normalizeAtomEntry = (entry: Readonly<Record<string, unknown>>): RssFeedIt
   };
 };
 
-const readAtomConstruct = (value: unknown): { readonly text: string; readonly type: RssTextType } | undefined => {
+const isXhtmlType = (value: unknown): boolean =>
+  /^(xhtml|application\/xhtml\+xml)$/iu.test(readText(value) ?? '');
+
+const isXhtmlConstruct = (value: unknown): boolean =>
+  isRecord(value) && isXhtmlType(value['@_type']);
+
+const orderedElements = (nodes: unknown, name: string): readonly Readonly<Record<string, unknown>>[] =>
+  Array.isArray(nodes) ? nodes.filter((node: unknown): node is Readonly<Record<string, unknown>> =>
+    isRecord(node) && Array.isArray(node[name])) : [];
+
+/** Parse only when Atom uses XHTML, keeping its original text nodes and entity spelling. */
+const readXhtmlConstructs = (xml: string): readonly XhtmlConstructs[] => {
+  const feed = orderedElements(orderedXhtmlParser.parse(xml), 'feed')[0];
+  return orderedElements(feed?.feed, 'entry')
+    .map((entry) => {
+      const constructs: XhtmlConstructs = {};
+      for (const name of ['title', 'content', 'summary'] as const) {
+        const element = orderedElements(entry.entry, name)
+          .find((node) => isRecord(node[':@']) && isXhtmlType(node[':@']['@_type']));
+        if (element !== undefined) {
+          constructs[name] = orderedXhtmlBuilder.build(element[name]);
+        }
+      }
+      return constructs;
+    });
+};
+
+const readAtomConstruct = (value: unknown, xhtmlMarkup?: string): { readonly text: string; readonly type: RssTextType } | undefined => {
   const declaredType = isRecord(value) ? readText(value['@_type'])?.toLowerCase() : undefined;
   const type: RssTextType = declaredType === 'html' || declaredType === 'text/html'
     ? 'html'
@@ -159,16 +205,11 @@ const readAtomConstruct = (value: unknown): { readonly text: string; readonly ty
       : declaredType === undefined || declaredType === 'text' || declaredType === 'text/plain'
         ? 'text'
         : 'unsupported';
-  const text = type === 'xhtml' ? serializeXhtml(value) : readText(value);
+  if (type === 'xhtml' && xhtmlMarkup === undefined) {
+    throw new Error('Atom XHTML construct could not be recovered from XML');
+  }
+  const text = type === 'xhtml' ? xhtmlMarkup?.trim() || undefined : readText(value);
   return text === undefined ? undefined : { text, type };
-};
-
-/** Retain XHTML markup for storage; the separate visible-text check parses it. */
-const serializeXhtml = (value: unknown): string | undefined => {
-  if (!isRecord(value)) return readText(value);
-  const children = Object.fromEntries(Object.entries(value).filter(([key]) => !key.startsWith('@_')));
-  const markup = xhtmlBuilder.build(children).trim();
-  return markup.length > 0 ? markup : undefined;
 };
 
 const rssMediaFields = (
