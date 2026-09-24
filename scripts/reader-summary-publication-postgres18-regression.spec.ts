@@ -1,9 +1,10 @@
 import type { PathLike, Stats } from "node:fs";
 import type { Pool } from "pg";
 
+import type * as Regression from "./reader-summary-publication-postgres18-regression";
 import type { Postgres18SocketTransport } from "./reader-summary-publication-postgres18-regression";
 
-type RegressionModule = typeof import("./reader-summary-publication-postgres18-regression");
+type RegressionModule = typeof Regression;
 
 const directory = "/tmp/social-monitor-pg18-0123456789ab/socket";
 const socket: Postgres18SocketTransport = {
@@ -75,7 +76,7 @@ beforeEach(() => {
     realpathSync: Object.assign(jest.fn(), { native: realpath }),
   }));
   jest.isolateModules(() => {
-    regression = require("./reader-summary-publication-postgres18-regression") as RegressionModule;
+    regression = jest.requireActual<RegressionModule>("./reader-summary-publication-postgres18-regression");
   });
 });
 

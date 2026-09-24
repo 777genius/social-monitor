@@ -1,5 +1,8 @@
 // These mocks verify fixture orchestration only. They provide no PostgreSQL proof.
-type ContractModule = typeof import("./check-reader-summary-publication-postgres");
+import type * as Contract from "./check-reader-summary-publication-postgres";
+import type * as Privileges from "./reader-summary-publication-postgres-privileges";
+
+type ContractModule = typeof Contract;
 const socketDirectory = "/tmp/social-monitor-pg18-0123456789ab/socket";
 const socketTransport = {
   socketDirectory, socketDevice: 31, socketInode: 47,
@@ -19,7 +22,7 @@ const loadContract = (events: string[], socketMode = false) => {
     }] };
   });
   const poolEnd = jest.fn(async () => undefined);
-  const spawn = jest.fn((_command: string, _args?: readonly string[]) => {
+  const spawn = jest.fn<{ status: number; stderr: string }, [command: string, args?: readonly string[]]>(() => {
     if (!socketMode) events.push("feed subprocess assertion");
     return { status: 0, stderr: "" };
   });
@@ -93,7 +96,7 @@ const loadContract = (events: string[], socketMode = false) => {
   jest.doMock("./reader-summary-publication-postgres-privileges", () => generic({
     ...(socketMode ? {
       createPublicationFixtureRuntimeRole:
-        jest.requireActual<typeof import("./reader-summary-publication-postgres-privileges")>(
+        jest.requireActual<typeof Privileges>(
           "./reader-summary-publication-postgres-privileges",
         ).createPublicationFixtureRuntimeRole,
     } : {}),
@@ -119,7 +122,7 @@ const loadContract = (events: string[], socketMode = false) => {
   }));
   let contract!: ContractModule;
   jest.isolateModules(() => {
-    contract = require("./check-reader-summary-publication-postgres") as ContractModule;
+    contract = jest.requireActual<ContractModule>("./check-reader-summary-publication-postgres");
   });
   return { contract, drop, parity, poolEnd, poolQuery, removeWorkspace, spawn };
 };
