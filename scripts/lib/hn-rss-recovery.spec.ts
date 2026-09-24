@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { assertPrivateJournalDir, assertRecoveryAcquisitionPermit, completeRecovery, reserveRecovery } from "./hn-rss-recovery-journal";
+import { assertPrivateJournalDir, assertRecoveryAcquisitionPermit, completeRecoveryInDisposableJournalForTest, reserveRecovery, reserveRecoveryInDisposableJournalForTest } from "./hn-rss-recovery-journal";
 import { executeRecoveryAcquisition } from "./hn-rss-recovery-acquisition";
 import { parseRecoveryArgs, parseRecoveryCliArgs, recoveryCliJournalDir, recoveryPlan, sha256 } from "./hn-rss-recovery-plan";
 import { runRecovery, runRecoveryInDisposableJournalForTest } from "../run-hn-rss-recovery";
@@ -79,12 +79,15 @@ describe("HN/RSS recovery plan and journal", () => {
     }
   });
 
-  it("rejects journal path aliases and symlinks before reservation", () => {
+  it("rejects journal path aliases and symlinks before reservation", async () => {
     const alias = `${directory}-alias`;
     symlinkSync(directory, alias, "dir");
     try {
       expect(() => assertPrivateJournalDir(alias)).toThrow("canonical absolute path");
       expect(() => assertPrivateJournalDir(`${directory}/../${directory.split("/").at(-1) ?? ""}`)).toThrow("canonical absolute path");
+      await expect(runRecoveryInDisposableJournalForTest({ ...parseRecoveryArgs(args(directory), now), journalDir: alias }, {
+        readBinding: async () => binding, acquire: async () => counts,
+      })).rejects.toThrow("canonical absolute path");
       const base = withoutJournalDir(args(directory));
       expect(() => parseRecoveryCliArgs([...base, "--journal-dir", alias], now)).toThrow("--journal-dir is not accepted");
       expect(readdirSync(directory)).toEqual([]);
@@ -152,15 +155,13 @@ describe("HN/RSS recovery plan and journal", () => {
 
   it("rejects arbitrary journals at the production executor and direct acquisition without a reservation", async () => {
     const request = parseRecoveryArgs(args(directory), now);
-    const previousNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
-    try {
-      await expect(runRecovery(request, { readBinding: async () => binding, acquire: async () => counts }))
-        .rejects.toThrow("authoritative journal directory");
-    } finally {
-      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = previousNodeEnv;
-    }
+    await expect(runRecovery(request, { readBinding: async () => binding, acquire: async () => counts }))
+      .rejects.toThrow("authoritative journal directory");
+    const absent = join(directory, "absent");
+    await expect(runRecovery({ ...request, journalDir: absent }, {
+      readBinding: async () => binding, acquire: async () => counts,
+    })).rejects.toThrow("authoritative journal directory");
+    expect(existsSync(absent)).toBe(false);
     await expect(executeRecoveryAcquisition({
       connection: {} as never, tenantId, workspaceId, sourceBindingId,
       providerKey: "hacker-news", from: request.from, to: request.to, binding,
@@ -169,19 +170,46 @@ describe("HN/RSS recovery plan and journal", () => {
     expect(readdirSync(directory)).toEqual([]);
   });
 
-  it("uses each durable acquisition permit once and binds it to the exact scope", () => {
+  it("rejects disposable acquisition permits even when their scope matches", () => {
     const request = parseRecoveryArgs(args(directory), now);
     const plan = recoveryPlan(request, binding);
     const scope = { tenantId, workspaceId, sourceBindingId, interestId: plan.interestId,
       scanPolicyId: plan.scanPolicyId, providerKey: plan.providerKey, from: plan.from, to: plan.to,
       configSha256: plan.configSha256, interestQuerySha256: plan.interestQuerySha256 };
-    const reserved = reserveRecovery(directory, sha256(plan), scope);
+    const reserved = reserveRecoveryInDisposableJournalForTest(directory, sha256(plan), scope);
     if (reserved.kind !== "reserved") throw new Error("Expected reservation");
-    expect(() => assertRecoveryAcquisitionPermit(reserved.permit, { ...scope, sourceBindingId: "malformed" }, reserved.reservation))
-      .toThrow("does not match request");
-    expect(() => assertRecoveryAcquisitionPermit(reserved.permit, scope, reserved.reservation)).not.toThrow();
     expect(() => assertRecoveryAcquisitionPermit(reserved.permit, scope, reserved.reservation))
-      .toThrow("requires a durable journal reservation");
+      .toThrow("authoritative journal directory");
+    expect(() => reserveRecovery(directory, sha256(plan), scope)).toThrow("authoritative journal directory");
+  });
+
+  it("refuses a second real acquisition after STARTED in A when the same digest is reserved in B", async () => {
+    const other = mkdtempSync(join(tmpdir(), "hn-rss-other-journal-"));
+    try {
+      const request = parseRecoveryArgs(args(directory), now);
+      const plan = recoveryPlan(request, binding);
+      const digest = sha256(plan);
+      const scope = { tenantId, workspaceId, sourceBindingId, interestId: plan.interestId,
+        scanPolicyId: plan.scanPolicyId, providerKey: plan.providerKey, from: plan.from, to: plan.to,
+        configSha256: plan.configSha256, interestQuerySha256: plan.interestQuerySha256 };
+      const first = reserveRecoveryInDisposableJournalForTest(directory, digest, scope);
+      const second = reserveRecoveryInDisposableJournalForTest(other, digest, scope);
+      if (first.kind !== "reserved" || second.kind !== "reserved") throw new Error("Expected two synthetic reservations");
+      expect(first.reservation.scanJobId).not.toBe(second.reservation.scanJobId);
+      let providerCalls = 0;
+      await expect(executeRecoveryAcquisition({
+        connection: {} as never, tenantId, workspaceId, sourceBindingId,
+        providerKey: "hacker-news", from: request.from, to: request.to, binding,
+        runId: second.reservation.runId, attemptId: second.reservation.attemptId,
+        scanJobId: second.reservation.scanJobId, reservationPermit: second.permit,
+        provider: { key: () => "hacker-news", validateBinding: () => { providerCalls += 1; return { ok: true }; } } as never,
+      })).rejects.toThrow("authoritative journal directory");
+      expect(providerCalls).toBe(0);
+      expect(readdirSync(directory)).toEqual([`${digest}.started.json`]);
+      expect(readdirSync(other)).toEqual([`${digest}.started.json`]);
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+    }
   });
 
   it("rejects unsupported binding config during plan validation", async () => {
@@ -214,21 +242,21 @@ describe("HN/RSS recovery plan and journal", () => {
     const plan = recoveryPlan(request, binding);
     const digest = sha256(plan);
     const scope = { tenantId, workspaceId, sourceBindingId, interestId: plan.interestId, scanPolicyId: plan.scanPolicyId, providerKey: "hacker-news", from: request.from, to: request.to, configSha256: plan.configSha256, interestQuerySha256: plan.interestQuerySha256 };
-    expect(reserveRecovery(directory, digest, scope).kind).toBe("reserved");
-    expect(() => reserveRecovery(directory, digest, scope)).toThrow("uncertain STARTED");
+    expect(reserveRecoveryInDisposableJournalForTest(directory, digest, scope).kind).toBe("reserved");
+    expect(() => reserveRecoveryInDisposableJournalForTest(directory, digest, scope)).toThrow("uncertain STARTED");
     const otherScope = { ...scope, from: "2026-09-23T15:00:00.000Z" };
     const otherDigest = sha256({ ...plan, from: otherScope.from });
-    const [left, right] = [() => reserveRecovery(directory, otherDigest, otherScope), () => reserveRecovery(directory, otherDigest, otherScope)];
+    const [left, right] = [() => reserveRecoveryInDisposableJournalForTest(directory, otherDigest, otherScope), () => reserveRecoveryInDisposableJournalForTest(directory, otherDigest, otherScope)];
     expect(left().kind).toBe("reserved");
     expect(right).toThrow("uncertain STARTED");
     writeFileSync(join(directory, `${digest}.completed.json`), "{bad", { mode: 0o600 });
-    expect(() => reserveRecovery(directory, digest, scope)).toThrow();
-    expect(() => reserveRecovery(directory, digest, { ...scope, workspaceId: "other" })).toThrow("digest does not match scope");
+    expect(() => reserveRecoveryInDisposableJournalForTest(directory, digest, scope)).toThrow();
+    expect(() => reserveRecoveryInDisposableJournalForTest(directory, digest, { ...scope, workspaceId: "other" })).toThrow("digest does not match scope");
     for (const status of ["FAILED", "UNKNOWN"]) {
       const path = join(directory, `${otherDigest}.started.json`);
       const started = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
       writeFileSync(path, JSON.stringify({ ...started, status }), { mode: 0o600 });
-      expect(() => reserveRecovery(directory, otherDigest, otherScope)).toThrow("inconsistent");
+      expect(() => reserveRecoveryInDisposableJournalForTest(directory, otherDigest, otherScope)).toThrow("inconsistent");
     }
   });
 
@@ -304,15 +332,15 @@ describe("HN/RSS recovery plan and journal", () => {
     const scope = { tenantId, workspaceId, sourceBindingId, interestId: plan.interestId, scanPolicyId: plan.scanPolicyId,
       providerKey: "hacker-news", from: request.from, to: request.to, configSha256: plan.configSha256,
       interestQuerySha256: plan.interestQuerySha256 };
-    const reserved = reserveRecovery(directory, digest, scope);
+    const reserved = reserveRecoveryInDisposableJournalForTest(directory, digest, scope);
     expect(reserved.kind).toBe("reserved");
     if (reserved.kind !== "reserved") throw new Error("Expected synthetic reservation");
-    expect(() => completeRecovery(directory, reserved.reservation, { ...counts, warningCount: 1 })).toThrow("incomplete");
-    expect(() => completeRecovery(directory, reserved.reservation, { ...counts, fetched: undefined as unknown as number })).toThrow("invalid");
+    expect(() => completeRecoveryInDisposableJournalForTest(directory, reserved.reservation, { ...counts, warningCount: 1 })).toThrow("incomplete");
+    expect(() => completeRecoveryInDisposableJournalForTest(directory, reserved.reservation, { ...counts, fetched: undefined as unknown as number })).toThrow("invalid");
     const startedPath = join(directory, `${digest}.started.json`);
     const started = JSON.parse(readFileSync(startedPath, "utf8")) as Record<string, unknown>;
     writeFileSync(startedPath, JSON.stringify({ ...started, scanJobId: "00000000-0000-7000-8000-000000000999" }), { mode: 0o600 });
-    expect(() => completeRecovery(directory, reserved.reservation, counts)).toThrow("inconsistent");
+    expect(() => completeRecoveryInDisposableJournalForTest(directory, reserved.reservation, counts)).toThrow("inconsistent");
     expect(readdirSync(directory)).toEqual([`${digest}.started.json`]);
   });
 });

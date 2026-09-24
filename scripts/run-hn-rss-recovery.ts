@@ -2,7 +2,7 @@ import { Pool, type PoolClient } from "pg";
 
 import { PrismaIngestionWorkerConnection } from "../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
 import { executeRecoveryAcquisition, recoverySourceQuery, validateRecoveryWindow, type RecoveryBinding } from "./lib/hn-rss-recovery-acquisition";
-import { assertPrivateJournalDir, completeRecovery, reserveRecovery } from "./lib/hn-rss-recovery-journal";
+import { assertPrivateJournalDir, completeRecovery, completeRecoveryInDisposableJournalForTest, reserveRecovery, reserveRecoveryInDisposableJournalForTest } from "./lib/hn-rss-recovery-journal";
 import { canonicalRecoveryRequest, parseRecoveryCliArgs, recoveryCliJournalDir, recoveryPlan, sha256, type RecoveryRequest } from "./lib/hn-rss-recovery-plan";
 import type { RecoveryAcquisitionPermit } from "./lib/hn-rss-recovery-journal";
 
@@ -12,20 +12,20 @@ export type RecoveryDependencies = Readonly<{
 }>;
 
 export async function runRecovery(request: RecoveryRequest, dependencies: RecoveryDependencies): Promise<Readonly<Record<string, unknown>>> {
-  // Legacy focused Jest acquisition coverage calls this export with a disposable directory.
-  // The CLI and every non-Jest execution fail closed on the single authority.
-  if (request.journalDir !== recoveryCliJournalDir && (process.env.NODE_ENV !== "test" || process.env.JEST_WORKER_ID === undefined)) {
+  if (request.journalDir !== recoveryCliJournalDir) {
     throw new Error("Recovery execution requires the authoritative journal directory");
   }
-  return runRecoveryWithJournal(request, dependencies);
+  return runRecoveryWithJournal(request, dependencies, reserveRecovery, completeRecovery);
 }
 
 /** Disposable journal injection is reserved for deterministic tests and synthetic local checks. */
 export async function runRecoveryInDisposableJournalForTest(request: RecoveryRequest, dependencies: RecoveryDependencies): Promise<Readonly<Record<string, unknown>>> {
-  return runRecoveryWithJournal(request, dependencies);
+  if (request.journalDir === recoveryCliJournalDir) throw new Error("Disposable journal must differ from the authoritative journal");
+  return runRecoveryWithJournal(request, dependencies, reserveRecoveryInDisposableJournalForTest, completeRecoveryInDisposableJournalForTest);
 }
 
-async function runRecoveryWithJournal(rawRequest: RecoveryRequest, dependencies: RecoveryDependencies): Promise<Readonly<Record<string, unknown>>> {
+async function runRecoveryWithJournal(rawRequest: RecoveryRequest, dependencies: RecoveryDependencies,
+  reserve: typeof reserveRecovery, complete: typeof completeRecovery): Promise<Readonly<Record<string, unknown>>> {
   const request = canonicalRecoveryRequest(rawRequest);
   assertPrivateJournalDir(request.journalDir);
   const binding = await dependencies.readBinding(request);
@@ -49,7 +49,7 @@ async function runRecoveryWithJournal(rawRequest: RecoveryRequest, dependencies:
     configSha256: plan.configSha256,
     interestQuerySha256: plan.interestQuerySha256,
   };
-  const reserved = reserveRecovery(request.journalDir, planSha256, scope);
+  const reserved = reserve(request.journalDir, planSha256, scope);
   if (reserved.kind === "completed") return { ...reserved.receipt, status: "ALREADY_COMPLETED", completeness: request.providerKey === "rss" ? "unknown_retained_feed_only" : "bounded_algolia_reachability_unknown" };
   const { reservation } = reserved;
   const result = await dependencies.acquire(request, binding, {
@@ -59,7 +59,7 @@ async function runRecoveryWithJournal(rawRequest: RecoveryRequest, dependencies:
     reservationPermit: reserved.permit,
   });
   if (result.warningCount !== 0) throw new Error("Recovery acquisition was incomplete");
-  const receipt = completeRecovery(request.journalDir, reservation, result);
+  const receipt = complete(request.journalDir, reservation, result);
   return { ...receipt, completeness: request.providerKey === "rss" ? "unknown_retained_feed_only" : "bounded_algolia_reachability_unknown" };
 }
 

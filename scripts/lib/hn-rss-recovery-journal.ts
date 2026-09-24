@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, lstatSync, openSync, readFileSync, realpathSync, writeSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 
-import { recoverySchema, sha256 } from "./hn-rss-recovery-plan";
+import { recoveryCliJournalDir, recoverySchema, sha256 } from "./hn-rss-recovery-plan";
 
 type Reservation = Readonly<{
   schema: "hn-rss-acquisition.v1";
@@ -23,6 +23,7 @@ export function assertRecoveryAcquisitionPermit(permit: RecoveryAcquisitionPermi
   const issued = permit === undefined ? undefined : permits.get(permit);
   if (issued === undefined) throw new Error("Recovery acquisition requires a durable journal reservation");
   const { directory, reservation } = issued;
+  assertAuthoritativeJournalDir(directory);
   assertPrivateJournalDir(directory);
   const stored = readPrivate(file(directory, reservation.planSha256, "started"));
   if (!isReservation(stored, reservation.planSha256) || JSON.stringify(stored) !== JSON.stringify(reservation) ||
@@ -42,6 +43,10 @@ export function assertPrivateJournalDir(path: string): void {
   if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || (typeof process.getuid === "function" && stat.uid !== process.getuid())) {
     throw new Error("Journal directory must be owned, private and not a symlink");
   }
+}
+
+function assertAuthoritativeJournalDir(directory: string): void {
+  if (directory !== recoveryCliJournalDir) throw new Error("Recovery acquisition requires the authoritative journal directory");
 }
 
 const file = (directory: string, digest: string, kind: "started" | "completed"): string => {
@@ -91,6 +96,21 @@ function isReceipt(value: unknown, reservation: Reservation): value is Receipt {
 export function reserveRecovery(directory: string, digest: string, scope: Reservation["scope"]):
   | { readonly kind: "reserved"; readonly reservation: Reservation; readonly permit: RecoveryAcquisitionPermit }
   | { readonly kind: "completed"; readonly receipt: Receipt } {
+  assertAuthoritativeJournalDir(directory);
+  return reserveRecoveryInJournal(directory, digest, scope);
+}
+
+/** Disposable reservations support synthetic effects; their permits cannot authorize production acquisition. */
+export function reserveRecoveryInDisposableJournalForTest(directory: string, digest: string, scope: Reservation["scope"]):
+  | { readonly kind: "reserved"; readonly reservation: Reservation; readonly permit: RecoveryAcquisitionPermit }
+  | { readonly kind: "completed"; readonly receipt: Receipt } {
+  if (directory === recoveryCliJournalDir) throw new Error("Disposable journal must differ from the authoritative journal");
+  return reserveRecoveryInJournal(directory, digest, scope);
+}
+
+function reserveRecoveryInJournal(directory: string, digest: string, scope: Reservation["scope"]):
+  | { readonly kind: "reserved"; readonly reservation: Reservation; readonly permit: RecoveryAcquisitionPermit }
+  | { readonly kind: "completed"; readonly receipt: Receipt } {
   assertPrivateJournalDir(directory);
   if (sha256({ schema: recoverySchema, ...scope }) !== digest) throw new Error("Recovery journal plan digest does not match scope");
   const started = file(directory, digest, "started");
@@ -112,6 +132,17 @@ export function reserveRecovery(directory: string, digest: string, scope: Reserv
 }
 
 export function completeRecovery(directory: string, reservation: Reservation, counts: Pick<Receipt, "fetched" | "inserted" | "projected" | "skippedDuplicates" | "warningCount">): Receipt {
+  assertAuthoritativeJournalDir(directory);
+  return completeRecoveryInJournal(directory, reservation, counts);
+}
+
+/** Complete only a synthetic reservation in its disposable journal. */
+export function completeRecoveryInDisposableJournalForTest(directory: string, reservation: Reservation, counts: Pick<Receipt, "fetched" | "inserted" | "projected" | "skippedDuplicates" | "warningCount">): Receipt {
+  if (directory === recoveryCliJournalDir) throw new Error("Disposable journal must differ from the authoritative journal");
+  return completeRecoveryInJournal(directory, reservation, counts);
+}
+
+function completeRecoveryInJournal(directory: string, reservation: Reservation, counts: Pick<Receipt, "fetched" | "inserted" | "projected" | "skippedDuplicates" | "warningCount">): Receipt {
   assertPrivateJournalDir(directory);
   const started = readPrivate(file(directory, reservation.planSha256, "started"));
   if (!isReservation(started, reservation.planSha256) || JSON.stringify(started) !== JSON.stringify(reservation)) {

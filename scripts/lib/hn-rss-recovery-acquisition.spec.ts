@@ -24,7 +24,7 @@ import {
 import { CleanRealDaySourceConfigReader } from "./clean-real-day-source-config-reader";
 import { executeRecoveryAcquisition, requireCompleteRecoveryFetch, requireCompleteRecoveryScan, validateRecoveryWindow, type RecoveryBinding } from "./hn-rss-recovery-acquisition";
 import { parseRecoveryArgs } from "./hn-rss-recovery-plan";
-import { runRecovery } from "../run-hn-rss-recovery";
+import { runRecoveryInDisposableJournalForTest } from "../run-hn-rss-recovery";
 
 const tenant = "00000000-0000-7000-8000-000000000301";
 const workspace = "00000000-0000-7000-8000-000000000302";
@@ -119,8 +119,8 @@ describe("HN/RSS recovery injected acquisition path", () => {
     const execute = async (from: string, to: string) => {
       const argv = ["--tenant-id", tenant, "--workspace-id", workspace, "--source-binding-id", bindingId, "--provider", "hacker-news", "--from", from, "--to", to, "--journal-dir", directory];
       const request = parseRecoveryArgs(argv, observed);
-      const plan = await runRecovery(request, deps);
-      return runRecovery(parseRecoveryArgs([...argv, "--apply", "--plan-sha256", String(plan.planSha256)], observed), deps);
+      const plan = await runRecoveryInDisposableJournalForTest(request, deps);
+      return runRecoveryInDisposableJournalForTest(parseRecoveryArgs([...argv, "--apply", "--plan-sha256", String(plan.planSha256)], observed), deps);
     };
     const first = await execute("2026-09-23T16:00:00.000Z", "2026-09-23T17:00:00.000Z");
     const second = await execute("2026-09-23T16:30:00.000Z", "2026-09-23T17:30:00.000Z");
