@@ -73,6 +73,7 @@ import {
   runReaderSummaryPublicationBootstrapSql,
 } from "./reader-summary-publication-postgres-privileges";
 import { assertReaderSummaryPublicationRuntimeGuard } from "./reader-summary-publication-postgres-runtime-guard";
+import { assertPostgres18PsqlTransportConfiguration } from "./reader-summary-publication-postgres18-regression";
 const serverAdminDatabaseUrl = requiredReaderSummaryPublicationAdminDatabaseUrl(
   process.env,
 );
@@ -121,6 +122,12 @@ export type ReaderSummaryPublicationPostgresContract =
   | "weekly-projection"
   | "weekly-review-manifest";
 
+export type ReaderSummaryPublicationPostgresFixture = Readonly<{
+  databaseName: string;
+  runtimeDatabaseUrl: string;
+  auditorDatabaseUrl: string;
+}>;
+
 export const closeReaderSummaryPublicationPostgresContract = async (
 ): Promise<void> => {
   await serverAdmin.end();
@@ -128,11 +135,20 @@ export const closeReaderSummaryPublicationPostgresContract = async (
 
 export const runReaderSummaryPublicationPostgresContract = async (
   contract: ReaderSummaryPublicationPostgresContract = "publication",
+  testFixtureCallback?: (
+    fixture: ReaderSummaryPublicationPostgresFixture,
+  ) => Promise<void> | void,
 ): Promise<void> => {
   assert(
     /^reader_summary_publication_test_[0-9a-f]{20}$/.test(databaseName),
     "temporary publication database name must be bounded",
   );
+  try {
+    assertPostgres18PsqlTransportConfiguration(serverAdminDatabaseUrl, runtimeRole);
+  } catch (error) {
+    removeReaderSummaryPublicationMigrationWorkspace(migrationWorkspace);
+    throw error;
+  }
   const protectedRoles = await publicationProtectedRolePresence(serverAdmin);
   ownerRolePreexisting = protectedRoles.owner;
   capabilityRolePreexisting = protectedRoles.capability;
@@ -228,10 +244,18 @@ export const runReaderSummaryPublicationPostgresContract = async (
       adminDatabaseUrl,
       runtimeRole,
     );
-    if (contract === "promotion-v2-ownership") {
+    if (!testFixtureCallback && contract === "promotion-v2-ownership") {
       await assertReceiptOwnerAuditsRejectDrift();
     }
     assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
+    if (testFixtureCallback) {
+      await testFixtureCallback({
+        databaseName,
+        runtimeDatabaseUrl,
+        auditorDatabaseUrl: targetDatabaseUrl,
+      });
+      return;
+    }
     if (contract === "feed-promotion") {
       await assertFeedPromotionOwnerOrder();
       runFeedPromotionRepositoryCheck();
