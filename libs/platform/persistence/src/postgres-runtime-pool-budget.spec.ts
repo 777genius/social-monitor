@@ -471,7 +471,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // exact paths even though they construct no runtime pools.
     // The replay dispatch spec imports pg only to assert its throwing mock stays unused.
     // Cursor cleanup helper imports only the Pool type; its spec exercises the installed Pool lifecycle.
-    // The socket regression spec and publication helper import only client types.
+    // The socket regression spec and publication helpers import only client types.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts
       libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts
@@ -558,6 +558,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-successor-native-support.ts
       scripts/lib/reader-summary-successor-publication-github.spec.ts
       scripts/lib/reader-summary-successor-publication-github.ts
+      scripts/lib/reader-summary-v3-long-source-postgres-contract.ts
       scripts/lib/reader-summary-v3-migration-integration.spec.ts
       scripts/lib/reader-summary-v3-postgres-assessment-lifecycle.ts
       scripts/lib/reader-summary-v3-postgres-contract.ts
