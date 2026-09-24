@@ -25,8 +25,10 @@ import type {
   RssClientPort,
   RssFeedItem,
   RssReadFeedOptions,
+  RssReadFeedResult,
 } from "./rss-client.port";
 import { hasReadableFeedText } from "./rss-readable-content";
+import { RssEntityEvidenceError } from "./rss-xml-entity-evidence";
 import {
   feedUrlsForTargetWindow,
   filterItemsForWindow,
@@ -113,11 +115,18 @@ export class RssSourceProvider implements SourceProviderPort {
 
     if (feedUrls.length === 1) {
       const feedUrl = feedUrls[0] ?? plan.query.query;
-      const feed = await this.client.readFeed(
-        feedUrl,
-        plan.maxItems,
-        { ...decodeCursor(plan.cursor), ...(targetWindow === undefined ? {} : { targetPublishedWindow: targetWindow }) },
-      );
+      let feed: RssReadFeedResult;
+      try {
+        feed = await this.client.readFeed(
+          feedUrl,
+          plan.maxItems,
+          { ...decodeCursor(plan.cursor), ...(targetWindow === undefined ? {} : { targetPublishedWindow: targetWindow }) },
+        );
+      } catch (error) {
+        if (targetWindow === undefined || !(error instanceof RssEntityEvidenceError)) throw error;
+        return { items: [], nextCursor: plan.cursor,
+          warnings: ["RSS XML entity references could not be safely resolved; historical acquisition is incomplete."] };
+      }
       const filteredItems = filterItemsForWindow(
         feed.items,
         maxItemAgeHours,

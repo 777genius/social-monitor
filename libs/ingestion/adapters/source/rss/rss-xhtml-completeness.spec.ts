@@ -53,6 +53,109 @@ describe('Atom XHTML recovery completeness', () => {
     },
   );
 
+  it.each(['&#160;', '&#32;', '&#9;', '&#x200B;', '&#xFE0F;', '&other;', '<script>hidden</script>'])(
+    'fails closed for unresolved DOCTYPE replacement %s', async (replacement) => {
+      const declaration = replacement === '&other;'
+        ? '<!ENTITY other "&#160;"><!ENTITY blank "&other;">'
+        : `<!ENTITY blank "${replacement}">`;
+      respond(`<!DOCTYPE feed [${declaration}]>` + entry(`<content type="xhtml">${xhtml('&blank;')}</content>`));
+      const client = new HttpRssClient();
+      await expect(client.readFeed(feedUrl, 10)).rejects.toThrow('entity references could not be safely resolved');
+      const provider = new RssSourceProvider(client);
+      const result = await scan(provider);
+      expect(result.items.map((item) => item.externalId)).toEqual([]);
+      expect(result.warnings).toEqual([expect.stringContaining('historical acquisition is incomplete')]);
+      await expect(complete(provider)).rejects.toThrow('partial acquisition');
+    },
+  );
+
+  it.each(['&unknown;', '&nbsp;', '&recursive;'])(
+    'fails closed for %s', async (reference) => {
+      const declaration = reference === '&recursive;' ? '<!DOCTYPE feed [<!ENTITY recursive "&recursive;">]>' : '';
+      respond(declaration + entry(`<content type="xhtml">${xhtml(reference)}</content>`));
+      await expect(new HttpRssClient().readFeed(feedUrl, 10)).rejects.toThrow('entity references could not be safely resolved');
+      const provider = new RssSourceProvider(new HttpRssClient());
+      expect((await scan(provider)).warnings).toEqual([expect.stringContaining('historical acquisition is incomplete')]);
+      await expect(complete(provider)).rejects.toThrow('partial acquisition');
+    },
+  );
+
+  it.each(['&unknown', '&#xZZ;'])(
+    'reports a partial acquisition for malformed entity reference %s', async (reference) => {
+      respond(entry(`<content type="xhtml">${xhtml(reference)}</content>`));
+      await expect(new HttpRssClient().readFeed(feedUrl, 10)).rejects.toThrow('entity references could not be safely resolved');
+      const provider = new RssSourceProvider(new HttpRssClient());
+      expect((await scan(provider)).warnings).toEqual([expect.stringContaining('historical acquisition is incomplete')]);
+      await expect(complete(provider)).rejects.toThrow('partial acquisition');
+    },
+  );
+
+  it.each([
+    ['<!ENTITY ext SYSTEM "file:///no-such-file">', '&ext;'],
+    [`<!ENTITY giant "${'A'.repeat(8193)}">`, '&giant;'],
+  ])('fails closed for unsupported or oversized DTD entity declaration %s', async (declaration, reference) => {
+    respond(`<!DOCTYPE feed [${declaration}]>` + entry(`<content type="xhtml">${xhtml(reference)}</content>`));
+    await expect(new HttpRssClient().readFeed(feedUrl, 10)).rejects.toThrow('entity references could not be safely resolved');
+    const provider = new RssSourceProvider(new HttpRssClient());
+    expect((await scan(provider)).warnings).toEqual([expect.stringContaining('historical acquisition is incomplete')]);
+    await expect(complete(provider)).rejects.toThrow('partial acquisition');
+  });
+
+  it.each(['<![CDATA[&blank;]]>', '&amp;blank;'])(
+    'keeps literal %s readable with a DOCTYPE declaration', async (literal) => {
+      const body = xhtml(literal);
+      respond('<!DOCTYPE feed [<!ENTITY blank "&#160;">]>' + entry(`<content type="xhtml">${body}</content>`));
+      const client = new HttpRssClient();
+      expect((await client.readFeed(feedUrl, 10)).items).toEqual([expect.objectContaining({ guid: 'target', content: body })]);
+      const result = await complete(new RssSourceProvider(client));
+      expect(result.items).toEqual([expect.objectContaining({ externalId: 'target', body })]);
+      expect(result.warnings).toEqual([]);
+    },
+  );
+
+  it('keeps a safely resolved declared word with its exact raw XHTML body', async () => {
+    const body = xhtml('&word;');
+    respond('<!DOCTYPE feed [<!ENTITY word "Readable">]>' + entry(`<content type="xhtml">${body}</content>`));
+    const client = new HttpRssClient();
+    expect((await client.readFeed(feedUrl, 10)).items).toEqual([expect.objectContaining({
+      guid: 'target', content: body, contentType: 'xhtml',
+      xhtmlReadability: { title: false, content: true },
+    })]);
+    const result = await complete(new RssSourceProvider(client));
+    expect(result.items).toEqual([expect.objectContaining({ externalId: 'target', body })]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it.each([' \n ', '<![CDATA[ \n ]]>', '&#32;'])(
+    'uses a readable summary for semantically blank XHTML %s', async (blank) => {
+      const body = xhtml(blank);
+      for (const title of ['', '<title>Readable title</title>']) {
+        respond(entry(`${title}<content type="xhtml">${body}</content><summary type="text">Readable summary</summary>`));
+        const client = new HttpRssClient();
+        expect((await client.readFeed(feedUrl, 10)).items).toEqual([expect.objectContaining({
+          guid: 'target', content: 'Readable summary', contentType: 'text',
+        })]);
+        const result = await complete(new RssSourceProvider(client));
+        expect(result.items).toEqual([expect.objectContaining({ externalId: 'target', body: 'Readable summary' })]);
+        expect(result.warnings).toEqual([]);
+      }
+    },
+  );
+
+  it('retains the exact XHTML summary and its readability decision after blank primary content', async () => {
+    const summary = ` \n${xhtml('Readable <b>summary</b> &amp; more')} \t`;
+    respond(entry(`<content type="xhtml">${xhtml(' \n ')}</content>` +
+      `<summary type="xhtml">${summary}</summary>`));
+    const client = new HttpRssClient();
+    expect((await client.readFeed(feedUrl, 10)).items).toEqual([expect.objectContaining({
+      guid: 'target', content: summary, contentType: 'xhtml',
+      xhtmlReadability: { title: false, content: true },
+    })]);
+    const result = await complete(new RssSourceProvider(client));
+    expect(result.items).toEqual([expect.objectContaining({ externalId: 'target', body: summary })]);
+    expect(result.warnings).toEqual([]);
+  });
+
   // On r20 the normal XML tree converted these text nodes to booleans, which visibility skipped.
   it.each(['title', 'content', 'summary'] as const)(
     'accepts boolean XHTML text in %s, including CDATA false', async (name) => {

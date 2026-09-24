@@ -1,7 +1,8 @@
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 
 import { validateFeedUrl } from './feed-url-policy';
-import { hasReadableXmlText } from './rss-readable-content';
+import { hasReadableFeedText, hasReadableXmlText } from './rss-readable-content';
+import { assertResolvedXmlEntities, RssEntityEvidenceError } from './rss-xml-entity-evidence';
 import type { RssClientPort, RssFeedItem, RssReadFeedOptions, RssReadFeedResult, RssTextType } from './rss-client.port';
 
 const parser = new XMLParser({
@@ -10,6 +11,10 @@ const parser = new XMLParser({
   textNodeName: '#text',
   trimValues: true,
   htmlEntities: true,
+  processEntities: {
+    maxEntitySize: 8192, maxEntityCount: 128, maxTotalExpansions: 10_000,
+    maxExpandedLength: 1_000_000,
+  },
 });
 const rawXhtmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -58,9 +63,15 @@ export class HttpRssClient implements RssClientPort {
     }
 
     const body = await response.text();
-    if (XMLValidator.validate(body) !== true) {
+    if (body.length > 16_000_000) throw new Error('RSS provider returned an oversized feed');
+    const validation = XMLValidator.validate(body);
+    if (validation !== true) {
+      if (validation.err.code === 'InvalidChar' && validation.err.msg.includes("'&'")) {
+        throw new RssEntityEvidenceError();
+      }
       throw new Error('RSS provider returned malformed XML');
     }
+    assertResolvedXmlEntities(body);
     const parsed: unknown = parser.parse(body);
     if (!hasFeedEnvelope(parsed)) {
       throw new Error('RSS provider returned an invalid RSS or Atom envelope');
@@ -152,8 +163,11 @@ const normalizeAtomEntry = (entry: Readonly<Record<string, unknown>>, rawEntry: 
   const raw = isRecord(rawEntry) ? rawEntry : {};
   const title = readAtomConstruct(entry.title, raw.title);
   const primaryContent = readAtomConstruct(entry.content, raw.content);
-  const contentName = primaryContent === undefined ? 'summary' : 'content';
-  const content = primaryContent ?? readAtomConstruct(entry.summary, raw.summary);
+  const summary = readAtomConstruct(entry.summary, raw.summary);
+  const primaryReadable = isReadableAtomConstruct(primaryContent, entry.content);
+  const summaryReadable = isReadableAtomConstruct(summary, entry.summary);
+  const contentName = primaryReadable ? 'content' : 'summary';
+  const content = primaryReadable ? primaryContent : summaryReadable ? summary : primaryContent ?? summary;
   const common = {
     guid: readText(entry.id),
     link: readAtomLink(entry.link),
@@ -175,6 +189,13 @@ const normalizeAtomEntry = (entry: Readonly<Record<string, unknown>>, rawEntry: 
   }
   return { ...common, titleType: title?.type, contentType: content?.type };
 };
+
+const isReadableAtomConstruct = (
+  construct: { readonly text: string; readonly type: RssTextType } | undefined,
+  parsed: unknown,
+): boolean => construct !== undefined && (construct.type === 'xhtml'
+  ? hasReadableXmlText(parsed)
+  : hasReadableFeedText(construct.text, construct.type));
 
 const isXhtmlType = (value: unknown): boolean =>
   /^(xhtml|application\/xhtml\+xml)$/iu.test(readText(value) ?? '');
