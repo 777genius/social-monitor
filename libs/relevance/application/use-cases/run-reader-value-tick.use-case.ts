@@ -34,27 +34,42 @@ export class RunReaderValueTickUseCase {
     const result = (health: ReaderValueTickHealth, fatalFailureCode: ReaderValueTickResult['fatalFailureCode'] = null): ReaderValueTickResult =>
       ({ ...counts, health, fatalFailureCode });
     if (this.assessment.isPaused()) return result('provider_paused', this.assessment.pauseCode());
+    let discoveryFailure: 'configuration_invalid' | 'persistence_unavailable' | null = null;
     try {
       if (this.options.backfillFrom !== null) {
         if (this.options.discoverAllActiveScopes && !this.discoveryScopes) {
-          return result('configuration_invalid', 'configuration_invalid');
-        }
-        const scopes = this.options.discoverAllActiveScopes
-          ? await this.discoveryScopes!.nextDiscoverable(this.discoveryCursor,
-            this.options.backfillFrom, 1)
-          : this.options.discoveryScopes;
-        if (this.options.discoverAllActiveScopes && scopes.length > 1) {
-          return result('persistence_unavailable', 'persistence_unavailable');
-        }
-        const discovered = await this.discovery.execute({ scopes, backfillFrom: this.options.backfillFrom });
-        const diagnostics = discovered.ok ? discovered.value : discovered.diagnostics;
-        if (diagnostics) Object.assign(counts, diagnostics);
-        if (!discovered.ok) {
-          const code = discovered.error === 'configuration_invalid' ? 'configuration_invalid' : 'persistence_unavailable';
-          return result(code, code);
-        }
-        if (this.options.discoverAllActiveScopes) {
-          this.discoveryCursor = scopes[0];
+          discoveryFailure = 'configuration_invalid';
+        } else {
+          let selectedScopes: readonly ReaderValueDiscoveryScope[] | null = null;
+          try {
+            const scopes = this.options.discoverAllActiveScopes
+              ? await this.discoveryScopes!.nextDiscoverable(this.discoveryCursor,
+                this.options.backfillFrom, 1)
+              : this.options.discoveryScopes;
+            selectedScopes = scopes;
+            if (this.options.discoverAllActiveScopes && scopes.length > 1) {
+              discoveryFailure = 'persistence_unavailable';
+            } else {
+              const discovered = await this.discovery.execute({ scopes, backfillFrom: this.options.backfillFrom });
+              const diagnostics = discovered.ok ? discovered.value : discovered.diagnostics;
+              if (diagnostics) Object.assign(counts, diagnostics);
+              if (!discovered.ok) {
+                discoveryFailure = discovered.error === 'configuration_invalid'
+                  ? 'configuration_invalid' : 'persistence_unavailable';
+              }
+              if (this.options.discoverAllActiveScopes &&
+                  (discovered.ok || discovered.error === 'persistence_unavailable')) {
+                // Keep the failed scope's item cursor for its next turn, but do
+                // not let one oversized or unavailable source starve the rest.
+                this.discoveryCursor = scopes[0];
+              }
+            }
+          } catch {
+            discoveryFailure = 'persistence_unavailable';
+            if (this.options.discoverAllActiveScopes && selectedScopes?.length === 1) {
+              this.discoveryCursor = selectedScopes[0];
+            }
+          }
         }
       }
       // Four scopes, 25 reservations each; persistent rows, disposable fair cursor.
@@ -76,7 +91,7 @@ export class RunReaderValueTickUseCase {
         if (!assessed.ok) return result('persistence_unavailable', diagnostics?.fatalFailureCode ?? 'persistence_unavailable');
         if (assessed.value.paused) return result('provider_paused', assessed.value.fatalFailureCode);
       }
-      return result('ok');
+      return result(discoveryFailure ?? 'ok', discoveryFailure);
     } catch { return result('persistence_unavailable', 'persistence_unavailable'); }
   }
 }
