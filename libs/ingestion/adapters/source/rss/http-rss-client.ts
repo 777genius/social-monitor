@@ -1,4 +1,4 @@
-import { XMLParser } from 'fast-xml-parser';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
 
 import { validateFeedUrl } from './feed-url-policy';
 import type { RssClientPort, RssFeedItem, RssReadFeedOptions, RssReadFeedResult } from './rss-client.port';
@@ -47,7 +47,14 @@ export class HttpRssClient implements RssClientPort {
       throw new Error(`RSS provider returned HTTP ${response.status}`);
     }
 
-    const parsed = parser.parse(await response.text());
+    const body = await response.text();
+    if (XMLValidator.validate(body) !== true) {
+      throw new Error('RSS provider returned malformed XML');
+    }
+    const parsed: unknown = parser.parse(body);
+    if (!hasFeedEnvelope(parsed)) {
+      throw new Error('RSS provider returned an invalid RSS or Atom envelope');
+    }
 
     const entries = parseFeedItems(parsed);
     const window = options.targetPublishedWindow;
@@ -94,6 +101,17 @@ const parseFeedItems = (parsed: unknown): readonly RssFeedItem[] => {
   }
 
   return arrayFromPath(parsed, ['feed', 'entry']).flatMap((entry) => normalizeAtomEntry(entry));
+};
+
+const hasFeedEnvelope = (parsed: unknown): boolean => {
+  if (!isRecord(parsed)) return false;
+  const roots = Object.keys(parsed).filter((key) => !key.startsWith('?'));
+  if (roots.length !== 1) return false;
+  if (roots[0] === 'rss') {
+    return isRecord(parsed.rss) &&
+      (isRecord(parsed.rss.channel) || parsed.rss.channel === '');
+  }
+  return roots[0] === 'feed' && (isRecord(parsed.feed) || parsed.feed === '');
 };
 
 const normalizeRssItem = (item: unknown): readonly RssFeedItem[] => {

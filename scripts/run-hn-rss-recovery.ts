@@ -3,14 +3,30 @@ import { Pool, type PoolClient } from "pg";
 import { PrismaIngestionWorkerConnection } from "../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
 import { executeRecoveryAcquisition, recoverySourceQuery, validateRecoveryWindow, type RecoveryBinding } from "./lib/hn-rss-recovery-acquisition";
 import { assertPrivateJournalDir, completeRecovery, reserveRecovery } from "./lib/hn-rss-recovery-journal";
-import { parseRecoveryCliArgs, recoveryPlan, sha256, type RecoveryRequest } from "./lib/hn-rss-recovery-plan";
+import { canonicalRecoveryRequest, parseRecoveryCliArgs, recoveryCliJournalDir, recoveryPlan, sha256, type RecoveryRequest } from "./lib/hn-rss-recovery-plan";
+import type { RecoveryAcquisitionPermit } from "./lib/hn-rss-recovery-journal";
 
 export type RecoveryDependencies = Readonly<{
   readBinding: (request: RecoveryRequest) => Promise<RecoveryBinding>;
-  acquire: (request: RecoveryRequest, binding: RecoveryBinding, identity: { runId: string; attemptId: string; scanJobId: string }) => Promise<{ fetched: number; inserted: number; projected: number; skippedDuplicates: number; warningCount: number }>;
+  acquire: (request: RecoveryRequest, binding: RecoveryBinding, identity: { runId: string; attemptId: string; scanJobId: string; reservationPermit: RecoveryAcquisitionPermit }) => Promise<{ fetched: number; inserted: number; projected: number; skippedDuplicates: number; warningCount: number }>;
 }>;
 
 export async function runRecovery(request: RecoveryRequest, dependencies: RecoveryDependencies): Promise<Readonly<Record<string, unknown>>> {
+  // Legacy focused Jest acquisition coverage calls this export with a disposable directory.
+  // The CLI and every non-Jest execution fail closed on the single authority.
+  if (request.journalDir !== recoveryCliJournalDir && (process.env.NODE_ENV !== "test" || process.env.JEST_WORKER_ID === undefined)) {
+    throw new Error("Recovery execution requires the authoritative journal directory");
+  }
+  return runRecoveryWithJournal(request, dependencies);
+}
+
+/** Disposable journal injection is reserved for deterministic tests and synthetic local checks. */
+export async function runRecoveryInDisposableJournalForTest(request: RecoveryRequest, dependencies: RecoveryDependencies): Promise<Readonly<Record<string, unknown>>> {
+  return runRecoveryWithJournal(request, dependencies);
+}
+
+async function runRecoveryWithJournal(rawRequest: RecoveryRequest, dependencies: RecoveryDependencies): Promise<Readonly<Record<string, unknown>>> {
+  const request = canonicalRecoveryRequest(rawRequest);
   assertPrivateJournalDir(request.journalDir);
   const binding = await dependencies.readBinding(request);
   recoverySourceQuery(request.providerKey, binding.config);
@@ -40,6 +56,7 @@ export async function runRecovery(request: RecoveryRequest, dependencies: Recove
     runId: reservation.runId,
     attemptId: reservation.attemptId,
     scanJobId: reservation.scanJobId,
+    reservationPermit: reserved.permit,
   });
   if (result.warningCount !== 0) throw new Error("Recovery acquisition was incomplete");
   const receipt = completeRecovery(request.journalDir, reservation, result);

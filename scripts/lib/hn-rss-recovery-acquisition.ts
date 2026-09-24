@@ -28,7 +28,8 @@ import type { PrismaIngestionWorkerConnection } from "../../apps/ingestion-worke
 import { cleanRealDayFeedProjectionClient } from "./clean-real-day-provider-acquisition";
 import { CleanRealDaySourceConfigReader } from "./clean-real-day-source-config-reader";
 import { composeCollectionScanExecution } from "./collection-scan-execution";
-import type { RecoveryProvider } from "./hn-rss-recovery-plan";
+import { assertRecoveryAcquisitionPermit, type RecoveryAcquisitionPermit } from "./hn-rss-recovery-journal";
+import { canonicalRecoveryUuid, sha256, type RecoveryProvider } from "./hn-rss-recovery-plan";
 import { ProductionCollectionScanJobReporter } from "./production-collection-scan-job-reporter";
 
 export type RecoveryBinding = Readonly<{
@@ -113,6 +114,7 @@ export type RecoveryAcquisitionInput = Readonly<{
   runId: string;
   attemptId: string;
   scanJobId: string;
+  reservationPermit?: RecoveryAcquisitionPermit;
   provider?: SourceProviderPort;
 }>;
 
@@ -152,9 +154,19 @@ export async function executeRecoveryAcquisition(input: RecoveryAcquisitionInput
 }>> {
   const clock = new SystemClock();
   validateRecoveryWindow(input.providerKey, input.binding.config, input.from, input.to, clock.now());
+  const canonicalTenantId = canonicalRecoveryUuid(input.tenantId);
+  const canonicalWorkspaceId = canonicalRecoveryUuid(input.workspaceId);
+  const canonicalSourceBindingId = canonicalRecoveryUuid(input.sourceBindingId);
+  assertRecoveryAcquisitionPermit(input.reservationPermit, {
+    tenantId: canonicalTenantId, workspaceId: canonicalWorkspaceId,
+    sourceBindingId: canonicalSourceBindingId, interestId: input.binding.interestId,
+    scanPolicyId: input.binding.scanPolicyId, providerKey: input.providerKey,
+    from: input.from, to: input.to, configSha256: sha256(input.binding.config),
+    interestQuerySha256: sha256(input.binding.interestQuery),
+  }, input);
   const sourceQuery = recoverySourceQuery(input.providerKey, input.binding.config);
   const ids = new CryptoIdGenerator();
-  const scope = { tenantId: tenantId(input.tenantId), workspaceId: workspaceId(input.workspaceId), sourceBindingId: input.sourceBindingId };
+  const scope = { tenantId: tenantId(canonicalTenantId), workspaceId: workspaceId(canonicalWorkspaceId), sourceBindingId: canonicalSourceBindingId };
   const reporter = new ProductionCollectionScanJobReporter(new PrismaScanJobRepository(input.connection), ids, clock);
   reporter.beginReservedAttempt(input.scanJobId, { ...scope, scanPolicyId: input.binding.scanPolicyId });
   const execution = composeCollectionScanExecution(input.connection, ids, clock, {
@@ -178,7 +190,7 @@ export async function executeRecoveryAcquisition(input: RecoveryAcquisitionInput
   const executeScan = new ExecuteScanUseCase(
     requireCompleteRecoveryFetch(new RegistrySourceFetcherAdapter(
       new InMemorySourceProviderRegistry([requireCompleteRecoveryScan(provider)], []),
-      new CleanRealDaySourceConfigReader([{ sourceBindingId: input.sourceBindingId, config }]),
+      new CleanRealDaySourceConfigReader([{ sourceBindingId: canonicalSourceBindingId, config }]),
     )),
     new PrismaSourceItemRepository(input.connection),
     new PrismaFeedProjectionAdapter(cleanRealDayFeedProjectionClient(input.connection), ids),
@@ -198,7 +210,7 @@ export async function executeRecoveryAcquisition(input: RecoveryAcquisitionInput
     workspaceId: scope.workspaceId,
     scanJobId: execution.scanJobIdForAttempt({ ...scope, scanPolicyId: input.binding.scanPolicyId }),
     interestId: input.binding.interestId,
-    sourceBindingId: input.sourceBindingId,
+    sourceBindingId: canonicalSourceBindingId,
     scanPolicyId: input.binding.scanPolicyId,
     providerKey: input.providerKey,
     sourceQuery,

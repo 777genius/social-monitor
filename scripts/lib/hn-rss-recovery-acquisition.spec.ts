@@ -6,6 +6,7 @@ import { IsolatedScanCursorRepository } from "@social-monitor/ingestion/adapters
 import { InMemoryFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
 import { InMemoryFeedProjectionAdapter } from "../../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter";
 import { HackerNewsSourceProvider } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-source.provider";
+import { HttpHackerNewsClient } from "@social-monitor/ingestion/adapters/source/hacker-news/http-hacker-news-client";
 import type { HackerNewsClientPort, HackerNewsSearchOptions, HackerNewsStory } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-client.port";
 import { InMemorySourceProviderRegistry } from "@social-monitor/ingestion/adapters/source/in-memory-source-provider.registry";
 import { RegistrySourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter";
@@ -55,6 +56,30 @@ describe("HN/RSS recovery injected acquisition path", () => {
   let directory: string;
   beforeEach(() => { directory = mkdtempSync(join(tmpdir(), "hn-rss-acq-test-")); });
   afterEach(() => { rmSync(directory, { recursive: true, force: true }); });
+
+  it("refuses a complete Algolia window whose eleventh valid hit exceeds maxItems", async () => {
+    const originalFetch = globalThis.fetch;
+    const hits = Array.from({ length: 11 }, (_, index) => ({
+      objectID: String(6000 + index), title: "Synthetic HN historical item",
+      created_at_i: Date.parse("2026-09-23T16:30:00Z") / 1000, points: 4,
+    }));
+    globalThis.fetch = jest.fn(async () => new Response(JSON.stringify({
+      hits, nbHits: 11, nbPages: 1, page: 0, exhaustiveNbHits: true,
+    }), { status: 200 })) as unknown as typeof fetch;
+    try {
+      const provider = requireCompleteRecoveryScan(new HackerNewsSourceProvider(new HttpHackerNewsClient(), new FixedClock(observed)));
+      const scope = {
+        tenantId: tenantId(tenant), workspaceId: workspaceId(workspace), sourceBindingId: bindingId,
+        scanJobId: "synthetic", correlationId: "synthetic", config: { maxItems: 10, targetPublishedWindow: {
+          startInclusive: "2026-09-23T16:00:00.000Z", endExclusive: "2026-09-23T17:00:00.000Z",
+        } },
+      };
+      await expect(provider.scan(provider.planScan({ mode: "search", query: "synthetic" }, scope), scope))
+        .rejects.toThrow("partial acquisition");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 
   it("uses bounded HN search, canonical ids, isolated per-run cursors and overlap dedupe", async () => {
     const clock = new FixedClock(observed);

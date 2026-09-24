@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, lstatSync, openSync, readFileSync, realpathSync, writeSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 
+import { recoverySchema, sha256 } from "./hn-rss-recovery-plan";
+
 type Reservation = Readonly<{
   schema: "hn-rss-acquisition.v1";
   status: "STARTED";
@@ -12,6 +14,25 @@ type Reservation = Readonly<{
   scope: Readonly<{ tenantId: string; workspaceId: string; sourceBindingId: string; interestId: string; scanPolicyId: string; providerKey: string; from: string; to: string; configSha256: string; interestQuerySha256: string }>;
 }>;
 type Receipt = Readonly<{ schema: "hn-rss-acquisition.v1"; status: "COMPLETED"; planSha256: string; runId: string; attemptId: string; scanJobId: string; fetched: number; inserted: number; projected: number; skippedDuplicates: number; warningCount: number }>;
+
+/** An acquisition permit exists only after this process made a durable STARTED reservation. */
+export type RecoveryAcquisitionPermit = Readonly<{ readonly __recoveryPermit: unique symbol }>;
+const permits = new WeakMap<object, { directory: string; reservation: Reservation }>();
+
+export function assertRecoveryAcquisitionPermit(permit: RecoveryAcquisitionPermit | undefined, scope: Reservation["scope"], identity: Pick<Reservation, "runId" | "attemptId" | "scanJobId">): void {
+  const issued = permit === undefined ? undefined : permits.get(permit);
+  if (issued === undefined) throw new Error("Recovery acquisition requires a durable journal reservation");
+  const { directory, reservation } = issued;
+  assertPrivateJournalDir(directory);
+  const stored = readPrivate(file(directory, reservation.planSha256, "started"));
+  if (!isReservation(stored, reservation.planSha256) || JSON.stringify(stored) !== JSON.stringify(reservation) ||
+    JSON.stringify(reservation.scope) !== JSON.stringify(scope) ||
+    existsSync(file(directory, reservation.planSha256, "completed")) ||
+    reservation.runId !== identity.runId || reservation.attemptId !== identity.attemptId || reservation.scanJobId !== identity.scanJobId) {
+    throw new Error("Recovery acquisition reservation does not match request");
+  }
+  if (permit !== undefined) permits.delete(permit);
+}
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -68,9 +89,10 @@ function isReceipt(value: unknown, reservation: Reservation): value is Receipt {
 
 /** Existing uncertain reservations are never resumed automatically. */
 export function reserveRecovery(directory: string, digest: string, scope: Reservation["scope"]):
-  | { readonly kind: "reserved"; readonly reservation: Reservation }
+  | { readonly kind: "reserved"; readonly reservation: Reservation; readonly permit: RecoveryAcquisitionPermit }
   | { readonly kind: "completed"; readonly receipt: Receipt } {
   assertPrivateJournalDir(directory);
+  if (sha256({ schema: recoverySchema, ...scope }) !== digest) throw new Error("Recovery journal plan digest does not match scope");
   const started = file(directory, digest, "started");
   const completed = file(directory, digest, "completed");
   if (existsSync(started) || existsSync(completed)) {
@@ -84,7 +106,9 @@ export function reserveRecovery(directory: string, digest: string, scope: Reserv
   }
   const reservation: Reservation = { schema: "hn-rss-acquisition.v1", status: "STARTED", planSha256: digest, runId: randomUUID(), attemptId: randomUUID(), scanJobId: randomUUID(), scope };
   writeExclusive(directory, started, reservation);
-  return { kind: "reserved", reservation };
+  const permit = {} as RecoveryAcquisitionPermit;
+  permits.set(permit, { directory, reservation });
+  return { kind: "reserved", reservation, permit };
 }
 
 export function completeRecovery(directory: string, reservation: Reservation, counts: Pick<Receipt, "fetched" | "inserted" | "projected" | "skippedDuplicates" | "warningCount">): Receipt {

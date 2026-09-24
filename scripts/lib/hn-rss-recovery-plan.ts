@@ -28,6 +28,19 @@ export function parseRecoveryCliArgs(args: readonly string[], now: Date): Recove
 }
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function canonicalRecoveryUuid(value: string): string {
+  if (!uuid.test(value)) throw new Error("Recovery scope requires UUIDs");
+  return value.toLowerCase();
+}
+
+export function canonicalRecoveryRequest(request: RecoveryRequest): RecoveryRequest {
+  return {
+    ...request,
+    tenantId: canonicalRecoveryUuid(request.tenantId),
+    workspaceId: canonicalRecoveryUuid(request.workspaceId),
+    sourceBindingId: canonicalRecoveryUuid(request.sourceBindingId),
+  };
+}
 const instant = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/;
 const maxWindowMs = 24 * 60 * 60 * 1000;
 
@@ -52,10 +65,9 @@ export function parseRecoveryArgs(args: readonly string[], now: Date): RecoveryR
     if (value === undefined) throw new Error(`Missing ${name}`);
     return value;
   };
-  const tenantId = required("--tenant-id");
-  const workspaceId = required("--workspace-id");
-  const sourceBindingId = required("--source-binding-id");
-  if (![tenantId, workspaceId, sourceBindingId].every((value) => uuid.test(value))) throw new Error("Recovery scope requires UUIDs");
+  const tenantId = canonicalRecoveryUuid(required("--tenant-id"));
+  const workspaceId = canonicalRecoveryUuid(required("--workspace-id"));
+  const sourceBindingId = canonicalRecoveryUuid(required("--source-binding-id"));
   const provider = required("--provider");
   if (provider !== "hacker-news" && provider !== "rss") throw new Error("Recovery provider is not allowed");
   const from = required("--from");
@@ -99,11 +111,12 @@ export function recoveryPlan(request: RecoveryRequest, binding: {
   configSha256: string;
   interestQuerySha256: string;
 }> {
+  const scope = canonicalRecoveryRequest(request);
   return {
     schema: recoverySchema,
-    tenantId: request.tenantId,
-    workspaceId: request.workspaceId,
-    sourceBindingId: request.sourceBindingId,
+    tenantId: scope.tenantId,
+    workspaceId: scope.workspaceId,
+    sourceBindingId: scope.sourceBindingId,
     providerKey: request.providerKey,
     from: request.from,
     to: request.to,

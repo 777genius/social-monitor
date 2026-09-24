@@ -3,9 +3,10 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { assertPrivateJournalDir, completeRecovery, reserveRecovery } from "./hn-rss-recovery-journal";
+import { assertPrivateJournalDir, assertRecoveryAcquisitionPermit, completeRecovery, reserveRecovery } from "./hn-rss-recovery-journal";
+import { executeRecoveryAcquisition } from "./hn-rss-recovery-acquisition";
 import { parseRecoveryArgs, parseRecoveryCliArgs, recoveryCliJournalDir, recoveryPlan, sha256 } from "./hn-rss-recovery-plan";
-import { runRecovery } from "../run-hn-rss-recovery";
+import { runRecovery, runRecoveryInDisposableJournalForTest } from "../run-hn-rss-recovery";
 
 const now = new Date("2026-09-24T00:00:00.000Z");
 const tenantId = "00000000-0000-7000-8000-000000000101";
@@ -32,7 +33,8 @@ const runSyntheticProcess = (script: string, values: readonly string[]): Promise
   new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["-r", "ts-node/register/transpile-only", "-r", "tsconfig-paths/register", script, ...values], {
       cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"],
-      env: { PATH: process.env.PATH ?? "", TZ: "UTC", TS_NODE_PROJECT: join(process.cwd(), "tsconfig.build.json") },
+      env: { PATH: process.env.PATH ?? "", TZ: "UTC", TS_NODE_PROJECT: join(process.cwd(), "tsconfig.build.json"),
+        ...(process.env.NODE_PATH === undefined ? {} : { NODE_PATH: process.env.NODE_PATH }) },
     });
     let output = "";
     let error = "";
@@ -98,12 +100,12 @@ describe("HN/RSS recovery plan and journal", () => {
       acquire: async () => { calls += 1; return counts; },
     };
     const request = parseRecoveryArgs(args(directory), now);
-    const plan = await runRecovery(request, dependencies);
+    const plan = await runRecoveryInDisposableJournalForTest(request, dependencies);
     expect(plan.status).toBe("PLAN");
     expect(calls).toBe(0);
     const apply = parseRecoveryArgs(args(directory, ["--apply", "--plan-sha256", String(plan.planSha256)]), now);
-    const first = await runRecovery(apply, dependencies);
-    const again = await runRecovery(apply, dependencies);
+    const first = await runRecoveryInDisposableJournalForTest(apply, dependencies);
+    const again = await runRecoveryInDisposableJournalForTest(apply, dependencies);
     expect(first.status).toBe("COMPLETED");
     expect(again.status).toBe("ALREADY_COMPLETED");
     expect(calls).toBe(1);
@@ -117,18 +119,78 @@ describe("HN/RSS recovery plan and journal", () => {
     const request = parseRecoveryArgs(args(directory), now);
     const digest = sha256(recoveryPlan(request, binding));
     const apply = parseRecoveryArgs(args(directory, ["--apply", "--plan-sha256", digest]), now);
-    await expect(runRecovery(apply, { readBinding: async () => ({ ...binding, config: { ...binding.config, maxItems: 9 } }), acquire: async () => counts })).rejects.toThrow("Plan changed");
+    await expect(runRecoveryInDisposableJournalForTest(apply, { readBinding: async () => ({ ...binding, config: { ...binding.config, maxItems: 9 } }), acquire: async () => counts })).rejects.toThrow("Plan changed");
     const other = { ...request, workspaceId: "00000000-0000-7000-8000-000000000202" };
     expect(sha256(recoveryPlan(other, binding))).not.toBe(digest);
   });
 
+  it("canonicalizes UUID scope before hashing and acquisition, and refuses case-variant uncertain retries", async () => {
+    const lower = parseRecoveryArgs(args(directory), now);
+    const upper = { ...lower, tenantId: tenantId.toUpperCase(), workspaceId: workspaceId.toUpperCase(), sourceBindingId: sourceBindingId.toUpperCase() };
+    const digest = sha256(recoveryPlan(lower, binding));
+    expect(sha256(recoveryPlan(upper, binding))).toBe(digest);
+    let calls = 0;
+    const dependencies = {
+      readBinding: async (request: typeof lower) => {
+        expect(request.tenantId).toBe(tenantId);
+        expect(request.workspaceId).toBe(workspaceId);
+        expect(request.sourceBindingId).toBe(sourceBindingId);
+        return binding;
+      },
+      acquire: async (request: typeof lower) => {
+        expect(request.tenantId).toBe(tenantId);
+        calls += 1;
+        throw new Error("uncertain synthetic effect");
+      },
+    };
+    await expect(runRecoveryInDisposableJournalForTest({ ...upper, apply: true, planSha256: digest }, dependencies)).rejects.toThrow("uncertain synthetic effect");
+    await expect(runRecoveryInDisposableJournalForTest({ ...lower, apply: true, planSha256: digest }, dependencies)).rejects.toThrow("uncertain STARTED");
+    expect(calls).toBe(1);
+    expect(() => recoveryPlan({ ...lower, tenantId: "malformed" }, binding)).toThrow("UUIDs");
+    await expect(runRecoveryInDisposableJournalForTest({ ...lower, sourceBindingId: "malformed" }, dependencies)).rejects.toThrow("UUIDs");
+  });
+
+  it("rejects arbitrary journals at the production executor and direct acquisition without a reservation", async () => {
+    const request = parseRecoveryArgs(args(directory), now);
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      await expect(runRecovery(request, { readBinding: async () => binding, acquire: async () => counts }))
+        .rejects.toThrow("authoritative journal directory");
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+    await expect(executeRecoveryAcquisition({
+      connection: {} as never, tenantId, workspaceId, sourceBindingId,
+      providerKey: "hacker-news", from: request.from, to: request.to, binding,
+      runId: "synthetic", attemptId: "synthetic", scanJobId: "synthetic",
+    })).rejects.toThrow("requires a durable journal reservation");
+    expect(readdirSync(directory)).toEqual([]);
+  });
+
+  it("uses each durable acquisition permit once and binds it to the exact scope", () => {
+    const request = parseRecoveryArgs(args(directory), now);
+    const plan = recoveryPlan(request, binding);
+    const scope = { tenantId, workspaceId, sourceBindingId, interestId: plan.interestId,
+      scanPolicyId: plan.scanPolicyId, providerKey: plan.providerKey, from: plan.from, to: plan.to,
+      configSha256: plan.configSha256, interestQuerySha256: plan.interestQuerySha256 };
+    const reserved = reserveRecovery(directory, sha256(plan), scope);
+    if (reserved.kind !== "reserved") throw new Error("Expected reservation");
+    expect(() => assertRecoveryAcquisitionPermit(reserved.permit, { ...scope, sourceBindingId: "malformed" }, reserved.reservation))
+      .toThrow("does not match request");
+    expect(() => assertRecoveryAcquisitionPermit(reserved.permit, scope, reserved.reservation)).not.toThrow();
+    expect(() => assertRecoveryAcquisitionPermit(reserved.permit, scope, reserved.reservation))
+      .toThrow("requires a durable journal reservation");
+  });
+
   it("rejects unsupported binding config during plan validation", async () => {
     const request = parseRecoveryArgs(args(directory), now);
-    await expect(runRecovery(request, { readBinding: async () => ({ ...binding, config: { mode: "listing", query: "top" } }), acquire: async () => counts })).rejects.toThrow("requires configured scan passes");
+    await expect(runRecoveryInDisposableJournalForTest(request, { readBinding: async () => ({ ...binding, config: { mode: "listing", query: "top" } }), acquire: async () => counts })).rejects.toThrow("requires configured scan passes");
     const tooManyPasses = Array.from({ length: 29 }, () => ({ mode: "search", target: "story", query: "synthetic" }));
-    await expect(runRecovery(request, { readBinding: async () => ({ ...binding, config: { ...binding.config, scanPasses: tooManyPasses } }), acquire: async () => counts })).rejects.toThrow("exceed provider bound");
+    await expect(runRecoveryInDisposableJournalForTest(request, { readBinding: async () => ({ ...binding, config: { ...binding.config, scanPasses: tooManyPasses } }), acquire: async () => counts })).rejects.toThrow("exceed provider bound");
     const rssRequest = { ...request, providerKey: "rss" as const };
-    await expect(runRecovery(rssRequest, { readBinding: async () => ({ ...binding, config: { feedUrl: "http://127.0.0.1/private.xml" } }), acquire: async () => counts })).rejects.toThrow();
+    await expect(runRecoveryInDisposableJournalForTest(rssRequest, { readBinding: async () => ({ ...binding, config: { feedUrl: "http://127.0.0.1/private.xml" } }), acquire: async () => counts })).rejects.toThrow();
     expect(readdirSync(directory)).toEqual([]);
   });
 
@@ -137,12 +199,12 @@ describe("HN/RSS recovery plan and journal", () => {
     const request = { ...parseRecoveryArgs(args(directory), now), providerKey: "rss" as const };
     const acquire = async () => { acquisitionCalls += 1; return counts; };
     const google = "https://news.google.com/rss/search?q=synthetic%20when%3A1d";
-    await expect(runRecovery(request, { readBinding: async () => ({ ...binding, config: { feedUrl: google } }), acquire })).rejects.toThrow("full UTC day");
+    await expect(runRecoveryInDisposableJournalForTest(request, { readBinding: async () => ({ ...binding, config: { feedUrl: google } }), acquire })).rejects.toThrow("full UTC day");
     const day = { ...request, from: "2026-09-23T00:00:00.000Z", to: "2026-09-24T00:00:00.000Z" };
-    await expect(runRecovery(day, { readBinding: async () => ({ ...binding, config: { feedUrl: "https://example.test/feed.xml", extraFeedUrls: Array.from({ length: 12 }, (_, index) => `https://example.test/${index}.xml`) } }), acquire })).rejects.toThrow("exceed 12");
+    await expect(runRecoveryInDisposableJournalForTest(day, { readBinding: async () => ({ ...binding, config: { feedUrl: "https://example.test/feed.xml", extraFeedUrls: Array.from({ length: 12 }, (_, index) => `https://example.test/${index}.xml`) } }), acquire })).rejects.toThrow("exceed 12");
     const thirteenTerms = Array.from({ length: 13 }, (_, index) => `term${index}`).join("%20OR%20");
-    await expect(runRecovery(day, { readBinding: async () => ({ ...binding, config: { feedUrl: `https://news.google.com/rss/search?q=${thirteenTerms}` } }), acquire })).rejects.toThrow("exceed 12");
-    await expect(runRecovery(day, { readBinding: async () => ({ ...binding, config: { feedUrl: "https://news.google.com/rss/search?q=when%3A1d" } }), acquire })).rejects.toThrow("search term");
+    await expect(runRecoveryInDisposableJournalForTest(day, { readBinding: async () => ({ ...binding, config: { feedUrl: `https://news.google.com/rss/search?q=${thirteenTerms}` } }), acquire })).rejects.toThrow("exceed 12");
+    await expect(runRecoveryInDisposableJournalForTest(day, { readBinding: async () => ({ ...binding, config: { feedUrl: "https://news.google.com/rss/search?q=when%3A1d" } }), acquire })).rejects.toThrow("search term");
     expect(acquisitionCalls).toBe(0);
     expect(readdirSync(directory)).toEqual([]);
   });
@@ -154,18 +216,19 @@ describe("HN/RSS recovery plan and journal", () => {
     const scope = { tenantId, workspaceId, sourceBindingId, interestId: plan.interestId, scanPolicyId: plan.scanPolicyId, providerKey: "hacker-news", from: request.from, to: request.to, configSha256: plan.configSha256, interestQuerySha256: plan.interestQuerySha256 };
     expect(reserveRecovery(directory, digest, scope).kind).toBe("reserved");
     expect(() => reserveRecovery(directory, digest, scope)).toThrow("uncertain STARTED");
-    const otherDigest = "a".repeat(64);
-    const [left, right] = [() => reserveRecovery(directory, otherDigest, scope), () => reserveRecovery(directory, otherDigest, scope)];
+    const otherScope = { ...scope, from: "2026-09-23T15:00:00.000Z" };
+    const otherDigest = sha256({ ...plan, from: otherScope.from });
+    const [left, right] = [() => reserveRecovery(directory, otherDigest, otherScope), () => reserveRecovery(directory, otherDigest, otherScope)];
     expect(left().kind).toBe("reserved");
     expect(right).toThrow("uncertain STARTED");
     writeFileSync(join(directory, `${digest}.completed.json`), "{bad", { mode: 0o600 });
     expect(() => reserveRecovery(directory, digest, scope)).toThrow();
-    expect(() => reserveRecovery(directory, digest, { ...scope, workspaceId: "other" })).toThrow("inconsistent");
+    expect(() => reserveRecovery(directory, digest, { ...scope, workspaceId: "other" })).toThrow("digest does not match scope");
     for (const status of ["FAILED", "UNKNOWN"]) {
       const path = join(directory, `${otherDigest}.started.json`);
       const started = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
       writeFileSync(path, JSON.stringify({ ...started, status }), { mode: 0o600 });
-      expect(() => reserveRecovery(directory, otherDigest, scope)).toThrow("inconsistent");
+      expect(() => reserveRecovery(directory, otherDigest, otherScope)).toThrow("inconsistent");
     }
   });
 
@@ -219,15 +282,15 @@ describe("HN/RSS recovery plan and journal", () => {
     const digest = sha256(recoveryPlan(request, binding));
     const apply = parseRecoveryArgs(args(directory, ["--apply", "--plan-sha256", digest]), now);
     const dependencies = { readBinding: async () => binding, acquire: async () => { throw new Error("synthetic effect uncertainty"); } };
-    await expect(runRecovery(apply, dependencies)).rejects.toThrow("synthetic effect uncertainty");
-    await expect(runRecovery(apply, dependencies)).rejects.toThrow("uncertain STARTED");
+    await expect(runRecoveryInDisposableJournalForTest(apply, dependencies)).rejects.toThrow("synthetic effect uncertainty");
+    await expect(runRecoveryInDisposableJournalForTest(apply, dependencies)).rejects.toThrow("uncertain STARTED");
   });
 
   it("never completes a reservation carrying any provider warning", async () => {
     const request = parseRecoveryArgs(args(directory), now);
     const digest = sha256(recoveryPlan(request, binding));
     const apply = { ...request, apply: true, planSha256: digest };
-    await expect(runRecovery(apply, {
+    await expect(runRecoveryInDisposableJournalForTest(apply, {
       readBinding: async () => binding,
       acquire: async () => ({ ...counts, warningCount: 1 }),
     })).rejects.toThrow("incomplete");

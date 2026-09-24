@@ -3,14 +3,14 @@ import { PrismaIngestionWorkerConnection } from "../../apps/ingestion-worker/src
 import { executeRecoveryAcquisition } from "./hn-rss-recovery-acquisition";
 import { parseRecoveryArgs } from "./hn-rss-recovery-plan";
 import { syntheticRecoveryProvider } from "./hn-rss-recovery-synthetic-provider";
-import { readBindingFromDatabase, runRecovery } from "../run-hn-rss-recovery";
+import { readBindingFromDatabase, runRecoveryInDisposableJournalForTest } from "../run-hn-rss-recovery";
 
 async function main(): Promise<void> {
   const mode = process.argv[2];
   const databaseUrl = process.env.HN_RSS_RECOVERY_SYNTHETIC_RUNTIME_URL;
   if ((mode !== "run" && mode !== "crash") || databaseUrl === undefined) throw new Error("Synthetic worker setup missing");
   const request = parseRecoveryArgs(process.argv.slice(3), new Date());
-  const result = await runRecovery(request, {
+  const result = await runRecoveryInDisposableJournalForTest(request, {
     readBinding: (value) => readBindingFromDatabase(value, databaseUrl),
     acquire: async (value, binding, identity) => {
       process.stdout.write("SYNTHETIC_ACQUIRE\n");

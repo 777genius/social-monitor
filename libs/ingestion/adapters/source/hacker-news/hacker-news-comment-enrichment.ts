@@ -26,6 +26,13 @@ export type NormalizedHackerNewsStoriesResult = {
   readonly warnings: readonly string[];
 };
 
+type TargetWindow = { readonly startInclusive: Date; readonly endExclusive: Date };
+
+const commentInWindow = (comment: HackerNewsStory, window: TargetWindow): boolean =>
+  comment.time !== undefined &&
+  comment.time * 1000 >= window.startInclusive.getTime() &&
+  comment.time * 1000 < window.endExclusive.getTime();
+
 export const commentExpansionForHackerNewsPass = (params: {
   readonly pass: HackerNewsScanPass;
   readonly fallbackIncludeComments: boolean;
@@ -58,6 +65,7 @@ export const normalizeHackerNewsStoriesWithOptionalComments = async (params: {
   readonly maxCommentedStories: number | undefined;
   readonly maxCommentsPerPost: number | undefined;
   readonly commentDepth: number;
+  readonly targetWindow?: TargetWindow;
 }): Promise<NormalizedHackerNewsStoriesResult> => {
   const expansion = params.includeComments
     ? {
@@ -79,12 +87,17 @@ export const normalizeHackerNewsCommentSearchPass = async (params: {
   readonly comments: readonly HackerNewsStory[];
   readonly sourceKey: string;
   readonly searchQuery: string | undefined;
+  readonly targetWindow?: TargetWindow;
 }): Promise<NormalizedHackerNewsStoriesResult> => {
   const items: FetchedSourceItem[] = [];
   const conversationUnits = new Map<string, FetchedConversationUnit>();
   const warnings: string[] = [];
 
   for (const comment of params.comments) {
+    if (params.targetWindow !== undefined && !commentInWindow(comment, params.targetWindow)) {
+      if (comment.time === undefined) warnings.push(`Hacker News comment missing timestamp (${comment.id}); comment skipped.`);
+      continue;
+    }
     if (comment.kind !== "comment" || comment.storyId === undefined) {
       continue;
     }
@@ -137,6 +150,7 @@ const normalizeStoriesWithCommentExpansion = async (params: {
   readonly sourceKey: string;
   readonly searchQuery: string | undefined;
   readonly expansion: HackerNewsCommentExpansion | undefined;
+  readonly targetWindow?: TargetWindow;
 }): Promise<NormalizedHackerNewsStoriesResult> => {
   const items: FetchedSourceItem[] = [];
   const conversationUnits: FetchedConversationUnit[] = [];
@@ -152,12 +166,11 @@ const normalizeStoriesWithCommentExpansion = async (params: {
     items.push(...rootItems);
 
     const rootItem = rootItems[0];
-    if (
-      rootItem === undefined ||
-      params.expansion === undefined ||
-      commentedStoryCount >=
-        (params.expansion.maxCommentedStories ?? Number.POSITIVE_INFINITY)
-    ) {
+    if (rootItem === undefined || params.expansion === undefined) {
+      continue;
+    }
+    if (commentedStoryCount >= (params.expansion.maxCommentedStories ?? Number.POSITIVE_INFINITY)) {
+      if (params.targetWindow !== undefined) warnings.push('Hacker News comment expansion incomplete: maxCommentedStories exceeded');
       continue;
     }
     commentedStoryCount += 1;
@@ -168,14 +181,19 @@ const normalizeStoriesWithCommentExpansion = async (params: {
         storyId: story.id,
         limit: params.expansion.maxCommentsPerPost ?? 5,
         depth: params.expansion.commentDepth,
+        requireComplete: params.targetWindow !== undefined,
       });
     } catch (error) {
       warnings.push(formatCommentEnrichmentWarning(rootItem, error));
       continue;
     }
 
+    const boundedComments = params.targetWindow === undefined ? comments : comments.filter((comment) => {
+      if (comment.time === undefined) warnings.push(`Hacker News comment missing timestamp (${comment.id}); comment skipped.`);
+      return commentInWindow(comment, params.targetWindow!);
+    });
     conversationUnits.push(
-      ...comments.flatMap((comment) =>
+      ...boundedComments.flatMap((comment) =>
         normalizeHackerNewsCommentConversationUnit(
           comment,
           story,

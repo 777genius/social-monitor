@@ -27,11 +27,18 @@ export type AlgoliaHit = {
 
 type AlgoliaSearchResponse = {
   readonly hits?: readonly AlgoliaHit[];
+  readonly nbHits?: number;
+  readonly nbPages?: number;
+  readonly page?: number;
+  readonly exhaustiveNbHits?: boolean;
 };
 
 const firebaseBaseUrl = 'https://hacker-news.firebaseio.com/v0';
 const algoliaBaseUrl = 'https://hn.algolia.com/api/v1';
 const algoliaOverfetchMultiplier = 2;
+const historicalPageSize = 100;
+const historicalPageCeiling = 10;
+const historicalRequestBudget = 512;
 const minAlgoliaStoryPoints = 2;
 const listingEndpoints: Readonly<Record<HackerNewsListing, string>> = {
   top: 'topstories',
@@ -69,9 +76,15 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
     request: HackerNewsListStoryCommentsRequest,
   ): Promise<readonly HackerNewsStory[]> {
     const root = await this.getStory(request.storyId);
+    if (request.requireComplete === true && root === null) {
+      throw new Error('Hacker News comment expansion incomplete: root unavailable');
+    }
     const rootKids = root?.kids ?? [];
 
     if (rootKids.length === 0) {
+      if (request.requireComplete === true && (root?.comments ?? 0) > 0) {
+        throw new Error('Hacker News comment expansion incomplete: children unavailable');
+      }
       return [];
     }
 
@@ -81,7 +94,12 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
       limit: normalizeLimit(request.limit),
       maxDepth: normalizeCommentDepth(request.depth),
       currentDepth: 0,
+      requireComplete: request.requireComplete === true,
     });
+
+    if (request.requireComplete === true && comments.length >= normalizeLimit(request.limit)) {
+      throw new Error('Hacker News comment expansion incomplete: comment limit');
+    }
 
     return comments.map((comment, index) => ({
       ...comment,
@@ -95,6 +113,7 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
     readonly limit: number;
     readonly maxDepth: number;
     readonly currentDepth: number;
+    readonly requireComplete: boolean;
   }): Promise<readonly HackerNewsStory[]> {
     const comments: HackerNewsStory[] = [];
 
@@ -105,6 +124,7 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
 
       const item = await this.getStory(id);
       if (item?.kind !== 'comment') {
+        if (params.requireComplete) throw new Error('Hacker News comment expansion incomplete: child unavailable');
         continue;
       }
 
@@ -114,6 +134,10 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
         depth: params.currentDepth,
       };
       comments.push(comment);
+
+      if (params.requireComplete && params.currentDepth >= params.maxDepth && (item.kids?.length ?? 0) > 0) {
+        throw new Error('Hacker News comment expansion incomplete: depth limit');
+      }
 
       if (
         comments.length >= params.limit ||
@@ -131,6 +155,7 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
           limit: params.limit - comments.length,
           maxDepth: params.maxDepth,
           currentDepth: params.currentDepth + 1,
+          requireComplete: params.requireComplete,
         })),
       );
     }
@@ -161,11 +186,78 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
       url.searchParams.set('numericFilters', numericFilters);
     }
 
+    if (options?.requireComplete === true) {
+      if (options.from === undefined || options.to === undefined) {
+        throw new Error('Hacker News historical search requires a bounded window');
+      }
+      const hits = await this.searchCompleteWindow(url, options.from, options.to);
+      return filterAlgoliaHits(hits, kind, normalizedQuery)
+        .flatMap((hit) => normalizeAlgoliaHit(hit, kind));
+    }
+
     const response = await this.fetchJson<AlgoliaSearchResponse>(url.toString());
-    const hits = filterAlgoliaHits(response.hits ?? [], kind, normalizedQuery)
-      .slice(0, normalizedLimit);
+    const hits = filterAlgoliaHits(response.hits ?? [], kind, normalizedQuery).slice(0, normalizedLimit);
 
     return hits.flatMap((hit) => normalizeAlgoliaHit(hit, kind));
+  }
+
+  private async searchCompleteWindow(
+    baseUrl: URL,
+    from: Date,
+    to: Date,
+  ): Promise<readonly AlgoliaHit[]> {
+    const startSecond = Math.ceil(from.getTime() / 1000);
+    const endSecond = Math.ceil(to.getTime() / 1000);
+    if (startSecond >= endSecond) return [];
+    let requests = 0;
+    const fetchPage = async (url: URL): Promise<AlgoliaSearchResponse> => {
+      if (requests >= historicalRequestBudget) {
+        throw new Error('Hacker News historical search incomplete: request budget exhausted');
+      }
+      requests += 1;
+      return this.fetchJson<AlgoliaSearchResponse>(url.toString());
+    };
+    const searchInterval = async (start: number, end: number): Promise<readonly AlgoliaHit[]> => {
+      const url = new URL(baseUrl);
+      url.searchParams.set('numericFilters', `created_at_i>${start - 1},created_at_i<${end}`);
+      url.searchParams.set('hitsPerPage', String(historicalPageSize));
+      url.searchParams.set('page', '0');
+      const first = await fetchPage(url);
+      const count = first.nbHits;
+      const pages = first.nbPages;
+      if (!Number.isSafeInteger(count) || count === undefined || count < 0 ||
+          !Number.isSafeInteger(pages) || pages === undefined || pages < 0 || first.page !== 0 ||
+          !Array.isArray(first.hits)) {
+        throw new Error('Hacker News historical search incomplete: unknown Algolia coverage');
+      }
+      if (count > historicalPageSize * historicalPageCeiling || pages > historicalPageCeiling) {
+        const middle = start + Math.floor((end - start) / 2);
+        if (middle <= start || middle >= end) {
+          throw new Error('Hacker News historical search incomplete: provider pagination ceiling');
+        }
+        return [...await searchInterval(start, middle), ...await searchInterval(middle, end)];
+      }
+      if (first.exhaustiveNbHits !== true || pages !== Math.ceil(count / historicalPageSize)) {
+        throw new Error('Hacker News historical search incomplete: unknown Algolia coverage');
+      }
+      const hits = [...first.hits];
+      for (let page = 1; page < pages; page += 1) {
+        url.searchParams.set('page', String(page));
+        const response = await fetchPage(url);
+        if (response.exhaustiveNbHits !== true || response.nbHits !== count || response.nbPages !== pages ||
+            response.page !== page || !Array.isArray(response.hits)) {
+          throw new Error('Hacker News historical search incomplete: inconsistent Algolia page');
+        }
+        hits.push(...response.hits);
+      }
+      if (hits.length !== count || new Set(hits.map((hit) => hit.objectID)).size !== count ||
+          hits.some((hit) => hit.objectID === undefined || !Number.isInteger(Number(hit.objectID)) ||
+            !Number.isInteger(hit.created_at_i) || hit.created_at_i! < start || hit.created_at_i! >= end)) {
+        throw new Error('Hacker News historical search incomplete: missing, duplicate or unbounded hits');
+      }
+      return hits;
+    };
+    return searchInterval(startSecond, endSecond);
   }
 
   async listStories(listing: HackerNewsListing, limit: number): Promise<readonly HackerNewsStory[]> {

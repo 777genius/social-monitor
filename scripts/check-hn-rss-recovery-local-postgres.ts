@@ -13,7 +13,7 @@ import { parseRecoveryArgs, type RecoveryProvider, type RecoveryRequest } from "
 import { syntheticHnIdForBinding, syntheticRecoveryProvider, syntheticRssGuidForBinding } from "./lib/hn-rss-recovery-synthetic-provider";
 import { provisionReaderSummaryPublicationFixtureScope } from "./lib/reader-summary-publication-postgres-fixture-scope";
 import { closeReaderSummaryPublicationPostgresContract, runReaderSummaryPublicationPostgresContract } from "./check-reader-summary-publication-postgres";
-import { readBindingFromDatabase, runRecovery, type RecoveryDependencies } from "./run-hn-rss-recovery";
+import { readBindingFromDatabase, runRecoveryInDisposableJournalForTest, type RecoveryDependencies } from "./run-hn-rss-recovery";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -115,7 +115,7 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
     };
     const plan = async (scope: Scope, from: string, to: string): Promise<RecoveryRequest> => {
       const request = parseRecoveryArgs(args(scope, journal, from, to), new Date());
-      const result = await runRecovery(request, dependencies);
+      const result = await runRecoveryInDisposableJournalForTest(request, dependencies);
       assert(result.status === "PLAN", "Plan mode failed");
       return { ...request, apply: true, planSha256: String(result.planSha256) };
     };
@@ -125,29 +125,29 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
       { ...firstPlan, tenantId: randomUUID() }, { ...firstPlan, workspaceId: randomUUID() },
       { ...firstPlan, providerKey: "rss" as const },
     ]) {
-      await runRecovery(mismatch, dependencies).then(() => { throw new Error("Mismatched lookup accepted"); }, () => undefined);
+      await runRecoveryInDisposableJournalForTest(mismatch, dependencies).then(() => { throw new Error("Mismatched lookup accepted"); }, () => undefined);
     }
     await auditor.query("UPDATE source_bindings SET status='PAUSED' WHERE id=$1", [hn.sourceBindingId]);
-    await runRecovery(firstPlan, dependencies).then(() => { throw new Error("Disabled binding accepted"); }, () => undefined);
+    await runRecoveryInDisposableJournalForTest(firstPlan, dependencies).then(() => { throw new Error("Disabled binding accepted"); }, () => undefined);
     await auditor.query("UPDATE source_bindings SET status='ENABLED' WHERE id=$1", [hn.sourceBindingId]);
     assert(acquisitions === 0 && readdirSync(journal).length === 0, "Rejected lookup reached acquisition");
 
     const acquisitionNotBefore = new Date();
-    const first = await runRecovery(firstPlan, dependencies);
+    const first = await runRecoveryInDisposableJournalForTest(firstPlan, dependencies);
     assert(first.status === "COMPLETED" && first.fetched === 1 && first.inserted === 1 && first.projected === 1, "HN first result incorrect");
-    assert((await runRecovery(firstPlan, dependencies)).status === "ALREADY_COMPLETED" && acquisitions === 1, "Repeated plan reacquired");
-    const overlap = await runRecovery(await plan(hn, "2026-09-23T16:15:00.000Z", "2026-09-23T17:15:00.000Z"), dependencies);
+    assert((await runRecoveryInDisposableJournalForTest(firstPlan, dependencies)).status === "ALREADY_COMPLETED" && Number(acquisitions) === 1, "Repeated plan reacquired");
+    const overlap = await runRecoveryInDisposableJournalForTest(await plan(hn, "2026-09-23T16:15:00.000Z", "2026-09-23T17:15:00.000Z"), dependencies);
     assert(overlap.status === "COMPLETED" && overlap.fetched === 1 && overlap.inserted === 0 && overlap.skippedDuplicates === 1, "HN overlap counts incorrect");
     assert(await cursorBytes() === beforeCursor, "Success or overlap changed durable cursor");
-    await runRecovery(parseRecoveryArgs(args(rss, journal, ...hnWindow), new Date()), dependencies)
+    await runRecoveryInDisposableJournalForTest(parseRecoveryArgs(args(rss, journal, ...hnWindow), new Date()), dependencies)
       .then(() => { throw new Error("Intraday Google News accepted"); }, () => undefined);
-    await runRecovery(parseRecoveryArgs(args(rss, journal,
+    await runRecoveryInDisposableJournalForTest(parseRecoveryArgs(args(rss, journal,
       "2026-09-23T20:00:00.000Z", "2026-09-23T21:00:00.000Z"), new Date()), dependencies)
       .then(() => { throw new Error("Second intraday Google News slot accepted"); }, () => undefined);
     const rssPlan = await plan(rss, ...rssWindow);
-    const rssResult = await runRecovery(rssPlan, dependencies);
+    const rssResult = await runRecoveryInDisposableJournalForTest(rssPlan, dependencies);
     assert(rssResult.status === "COMPLETED" && rssResult.fetched === 1 && rssResult.inserted === 1, "RSS full-day result incorrect");
-    assert((await runRecovery(rssPlan, dependencies)).status === "ALREADY_COMPLETED", "RSS repeated plan reacquired");
+    assert((await runRecoveryInDisposableJournalForTest(rssPlan, dependencies)).status === "ALREADY_COMPLETED", "RSS repeated plan reacquired");
 
     const sources = await auditor.query<{ provider_key: string; provider_item_id: string; source_binding_id: string; observed_at: Date; count: string }>(
       `SELECT provider_key,provider_item_id,source_binding_id::text,min(observed_at) AS observed_at,count(*)::text AS count
@@ -194,7 +194,7 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
     const ordinaryRss = await seedBinding(auditor, fixtureScope, "rss");
     await auditor.query("UPDATE source_bindings SET config=$2::jsonb WHERE id=$1",
       [ordinaryRss.sourceBindingId, JSON.stringify({ feedUrl: "https://example.test/ordinary-feed.xml", maxItems: 10 })]);
-    const ordinaryRssResult = await runRecovery(await plan(ordinaryRss, ...hnWindow), dependencies);
+    const ordinaryRssResult = await runRecoveryInDisposableJournalForTest(await plan(ordinaryRss, ...hnWindow), dependencies);
     assert(ordinaryRssResult.status === "COMPLETED" && ordinaryRssResult.inserted === 1 &&
       await cursorBytes() === beforeCursor, "Ordinary RSS intraday support or cursor isolation failed");
 
@@ -218,7 +218,7 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
       plan(concurrentBinding, ...hnWindow),
       plan(concurrentBinding, "2026-09-23T16:15:00.000Z", "2026-09-23T17:15:00.000Z"),
     ]);
-    const concurrentResults = await Promise.allSettled(concurrentPlans.map((request) => runRecovery(request, dependencies)));
+    const concurrentResults = await Promise.allSettled(concurrentPlans.map((request) => runRecoveryInDisposableJournalForTest(request, dependencies)));
     assert(concurrentResults.some((result) => result.status === "fulfilled" && result.value.status === "COMPLETED"),
       "Concurrent overlapping plans had no completed acquisition");
     for (const [index, result] of concurrentResults.entries()) {
@@ -251,7 +251,7 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
         return dependencies.acquire(request, binding, identity);
       },
     };
-    await runRecovery(leasePlan, leaseConflictDependencies)
+    await runRecoveryInDisposableJournalForTest(leasePlan, leaseConflictDependencies)
       .then(() => { throw new Error("Explicit lease conflict completed"); }, () => undefined);
     assert(existsSync(join(journal, `${leasePlan.planSha256}.started.json`)) &&
       !existsSync(join(journal, `${leasePlan.planSha256}.completed.json`)) && await cursorBytes() === beforeCursor,
@@ -270,7 +270,7 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
       classifyError: (error, context) => baseProvider.classifyError(error, context),
       scan: async (scanPlan, context) => ({ ...await baseProvider.scan(scanPlan, context), warnings: ["synthetic comment enrichment degraded"] }),
     };
-    await runRecovery(warningPlan, {
+    await runRecoveryInDisposableJournalForTest(warningPlan, {
       readBinding: dependencies.readBinding,
       acquire: (request, binding, identity) => executeRecoveryAcquisition({ connection: activeConnection,
         tenantId: request.tenantId, workspaceId: request.workspaceId, sourceBindingId: request.sourceBindingId,
@@ -308,7 +308,7 @@ async function proof(runtimeUrl: string, auditorUrl: string): Promise<void> {
     assert(committed.rows[0]?.status === "SUCCEEDED" && committedItems.rows[0]?.source_count === "1" &&
       committedItems.rows[0]?.feed_count === "1", "Crash did not follow actual DB commit");
     const callsBeforeRetry = acquisitions;
-    await runRecovery(crashPlan, dependencies).then(() => { throw new Error("Uncertain retry reacquired"); }, () => undefined);
+    await runRecoveryInDisposableJournalForTest(crashPlan, dependencies).then(() => { throw new Error("Uncertain retry reacquired"); }, () => undefined);
     assert(acquisitions === callsBeforeRetry && !existsSync(completedPath) && await cursorBytes() === beforeCursor &&
       await oldJobBytes() === beforeOldJob,
       "Uncertain retry acquired or changed durable state");

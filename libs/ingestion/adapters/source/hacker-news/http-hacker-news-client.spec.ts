@@ -126,6 +126,23 @@ describe('HttpHackerNewsClient', () => {
     ]);
   });
 
+  it('refuses historical comment expansion when a local limit or depth hides children', async () => {
+    globalThis.fetch = jest.fn(async (rawUrl: string) => {
+      const id = Number(rawUrl.match(/item\/(\d+)\.json$/u)?.[1]);
+      return jsonResponse({
+        1: { id: 1, type: 'story', kids: [2, 3] },
+        2: { id: 2, type: 'comment', parent: 1, kids: [4], time: 1_782_230_000, text: 'child' },
+        3: { id: 3, type: 'comment', parent: 1, time: 1_782_230_001, text: 'sibling' },
+        4: { id: 4, type: 'comment', parent: 2, time: 1_782_230_002, text: 'reply' },
+      }[id]);
+    }) as unknown as typeof fetch;
+    const client = new HttpHackerNewsClient();
+    await expect(client.listStoryComments({ storyId: 1, limit: 1, depth: 2, requireComplete: true }))
+      .rejects.toThrow('comment limit');
+    await expect(client.listStoryComments({ storyId: 1, limit: 10, depth: 0, requireComplete: true }))
+      .rejects.toThrow('depth limit');
+  });
+
   it('maps HN Algolia hit points and num_comments into story metrics', async () => {
     const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
       expectAlgoliaSearchUrl(url, {
@@ -491,6 +508,73 @@ describe('HttpHackerNewsClient', () => {
     });
     expect(before.map((story) => story.id)).toEqual([501]);
     expect(after.map((story) => story.id)).toEqual([502]);
+  });
+
+  it('exhausts historical pages, preserving the eleventh hit beyond maxItems', async () => {
+    const start = Date.parse('2026-09-23T16:00:00Z') / 1000;
+    const hits = Array.from({ length: 101 }, (_, index) => ({
+      objectID: String(1000 + index), title: 'Boundary story', created_at_i: start + index, points: 4,
+    }));
+    const requested: number[] = [];
+    globalThis.fetch = jest.fn(async (rawUrl: string) => {
+      const url = new URL(rawUrl);
+      const page = Number(url.searchParams.get('page'));
+      requested.push(page);
+      return jsonResponse({ hits: hits.slice(page * 100, (page + 1) * 100),
+        nbHits: 101, nbPages: 2, page, exhaustiveNbHits: true });
+    }) as unknown as typeof fetch;
+    const result = await new HttpHackerNewsClient().searchStories('boundary', 10, {
+      from: new Date('2026-09-23T16:00:00Z'), to: new Date('2026-09-23T17:00:00Z'), requireComplete: true,
+    });
+    expect(result).toHaveLength(101);
+    expect(result.at(-1)?.id).toBe(1100);
+    expect(requested).toEqual([0, 1]);
+  });
+
+  it('subdivides a capped interval into disjoint seconds', async () => {
+    const start = Date.parse('2026-09-23T16:00:00Z') / 1000;
+    const seen: string[] = [];
+    globalThis.fetch = jest.fn(async (rawUrl: string) => {
+      const filters = new URL(rawUrl).searchParams.get('numericFilters') ?? '';
+      seen.push(filters);
+      const lower = Number(filters.match(/created_at_i>(\d+)/u)?.[1]) + 1;
+      const upper = Number(filters.match(/created_at_i<(\d+)/u)?.[1]);
+      if (upper - lower > 1) return jsonResponse({ hits: [], nbHits: 1001, nbPages: 11, page: 0, exhaustiveNbHits: true });
+      return jsonResponse({ hits: [{ objectID: String(lower), title: 'Boundary', created_at_i: lower, points: 4 }],
+        nbHits: 1, nbPages: 1, page: 0, exhaustiveNbHits: true });
+    }) as unknown as typeof fetch;
+    const result = await new HttpHackerNewsClient().searchStories('boundary', 1, {
+      from: new Date(start * 1000), to: new Date((start + 2) * 1000), requireComplete: true,
+    });
+    expect(result.map((story) => story.id)).toEqual([start, start + 1]);
+    expect(seen).toHaveLength(3);
+  });
+
+  it('rejects unknown counts, duplicate pages, provider errors and unsplittable ceilings', async () => {
+    const start = Date.parse('2026-09-23T16:00:00Z') / 1000;
+    const options = { from: new Date(start * 1000), to: new Date((start + 1) * 1000), requireComplete: true };
+    const client = new HttpHackerNewsClient();
+    globalThis.fetch = jest.fn(async () => jsonResponse({ hits: [], nbHits: 0, nbPages: 0, page: 0 })) as unknown as typeof fetch;
+    await expect(client.searchStories('boundary', 10, options)).rejects.toThrow('unknown Algolia coverage');
+    globalThis.fetch = jest.fn(async () => jsonResponse({ hits: [], nbHits: 1001, nbPages: 11, page: 0, exhaustiveNbHits: true })) as unknown as typeof fetch;
+    await expect(client.searchStories('boundary', 10, options)).rejects.toThrow('provider pagination ceiling');
+    globalThis.fetch = jest.fn(async () => new Response('', { status: 503 })) as unknown as typeof fetch;
+    await expect(client.searchStories('boundary', 10, options)).rejects.toThrow('HTTP 503');
+    globalThis.fetch = jest.fn(async (rawUrl: string) => {
+      const page = Number(new URL(rawUrl).searchParams.get('page'));
+      if (page === 1) return new Response('', { status: 503 });
+      return jsonResponse({ hits: Array.from({ length: 100 }, (_, index) => ({
+        objectID: String(index + 1), title: 'Boundary', created_at_i: start, points: 4,
+      })), nbHits: 101, nbPages: 2, page: 0, exhaustiveNbHits: true });
+    }) as unknown as typeof fetch;
+    await expect(client.searchStories('boundary', 10, options)).rejects.toThrow('HTTP 503');
+    globalThis.fetch = jest.fn(async (rawUrl: string) => {
+      const page = Number(new URL(rawUrl).searchParams.get('page'));
+      const hit = { objectID: '1', title: 'Boundary', created_at_i: start, points: 4 };
+      return jsonResponse({ hits: page === 0 ? Array.from({ length: 100 }, () => hit) : [hit],
+        nbHits: 101, nbPages: 2, page, exhaustiveNbHits: true });
+    }) as unknown as typeof fetch;
+    await expect(client.searchStories('boundary', 10, options)).rejects.toThrow('duplicate');
   });
 });
 
