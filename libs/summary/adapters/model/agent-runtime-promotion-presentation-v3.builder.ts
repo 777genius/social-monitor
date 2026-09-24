@@ -1,6 +1,7 @@
 import type { ReaderDisplayHeadline } from "../../domain";
 import {
   READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES,
+  readerPostPresentationV3InputDigest,
   sealReaderPostPresentationV3,
   type PromotionPresentationBuilder,
   type ReaderPostPresentationV3Input,
@@ -8,7 +9,7 @@ import {
 } from "../../domain/services/reader-post-presentation-v3";
 import type { AgentRuntimeClientPort, AgentRuntimeProvider } from "../../ports";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
-import { promotionPayloadDigest } from
+import { canonicalPromotionPayload, promotionPayloadDigest } from
   "../../domain/services/reader-post-promotion-attestation";
 import {
   buildAgentRuntimeRequestId,
@@ -78,24 +79,33 @@ implements PromotionPresentationBuilder {
         ...await this.build(inputs.slice(split))];
     }
     const first = inputs[0]!;
+    const prompt = JSON.stringify({ candidates: inputs.map((input) => ({
+      candidateId: input.candidateId, title: input.title, sourceText: input.body,
+    })) });
+    const requestDigest = promotionPayloadDigest(canonicalPromotionPayload({
+      purpose: activeReaderSummaryPurposes.promotionPresentation,
+      inputs: inputs.map(readerPostPresentationV3InputDigest),
+      systemPrompt: instructions, prompt, outputSchema: schema,
+      provider: this.provider, providerInstanceId: this.providerInstanceId ?? null,
+      model: this.model, reasoningEffort: this.reasoningEffort,
+      maxOutputTokens: this.maxOutputTokens,
+    }));
     const result = await this.client.runTask({
       requestId: buildAgentRuntimeRequestId(
         "reader-summary-promotion-presentation", first.tenantId,
-        first.workspaceId, first.candidateId, new Date(0),
+        first.workspaceId, requestDigest, new Date(0),
       ),
       tenantId: tenantId(first.tenantId),
       workspaceId: workspaceId(first.workspaceId),
       correlationId: buildAgentRuntimeRequestId(
         "reader-summary-promotion-presentation-correlation", first.tenantId,
-        first.workspaceId, first.candidateId, new Date(0),
+        first.workspaceId, requestDigest, new Date(0),
       ),
       provider: this.provider,
       providerInstanceId: this.providerInstanceId,
       purpose: activeReaderSummaryPurposes.promotionPresentation,
       systemPrompt: instructions,
-      prompt: JSON.stringify({ candidates: inputs.map((input) => ({
-        candidateId: input.candidateId, title: input.title, sourceText: input.body,
-      })) }),
+      prompt,
       outputSchema: schema,
       controls: {
         interactive: false,

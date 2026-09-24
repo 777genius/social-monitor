@@ -23,12 +23,14 @@ function shadow() {
 }
 
 describe('reader-value worker composition', () => {
-  it('keeps the default legacy worker free of a paid scorer dependency', async () => {
+  it('keeps an explicit legacy rollback free of a paid scorer dependency', async () => {
+    process.env.READER_VALUE_MODE = 'legacy_v2';
     const module = await compile();
     expect(module.get(RunReaderValueTickUseCase)).toBeNull();
     await module.close();
   });
   it('wires independent cleanup with scoring disabled and no credential', async () => {
+    process.env.READER_VALUE_MODE = 'legacy_v2';
     process.env.RELEVANCE_PERSISTENCE = 'prisma';
     const module = await compile({ client: {} });
     expect(module.get(RunReaderValueTickUseCase)).toBeNull();

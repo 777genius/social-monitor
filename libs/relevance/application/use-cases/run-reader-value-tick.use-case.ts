@@ -1,5 +1,5 @@
 import type { ReaderValueAssessmentStore, ReaderValueDiscoveryScope } from '../contracts/reader-value-assessment-store';
-import type { ReaderValueMaintenanceScopes } from '../contracts/reader-value-maintenance-scopes';
+import type { ReaderValueDiscoveryScopes, ReaderValueMaintenanceScopes } from '../contracts/reader-value-maintenance-scopes';
 import type { ReaderValueFailureCode } from '../../domain/reader-value/reader-value-failure';
 import type { AssessReaderValueBatchUseCase } from './assess-reader-value-batch.use-case';
 import type { DiscoverReaderValueBatchUseCase } from './discover-reader-value-batch.use-case';
@@ -19,11 +19,13 @@ export type ReaderValueTickResult = {
 };
 export class RunReaderValueTickUseCase {
   private cursor: ReaderValueDiscoveryScope | undefined;
+  private discoveryCursor: ReaderValueDiscoveryScope | undefined;
   constructor(private readonly discovery: DiscoverReaderValueBatchUseCase,
     private readonly assessment: AssessReaderValueBatchUseCase, private readonly scopes: ReaderValueMaintenanceScopes,
     private readonly options: { readonly discoveryScopes: readonly ReaderValueDiscoveryScope[]; readonly backfillFrom: string | null;
-      readonly modelConfigVersion: string; readonly pinnedOnly: boolean },
-    private readonly store: Pick<ReaderValueAssessmentStore, 'backlogAgeMs'>) {}
+      readonly modelConfigVersion: string; readonly pinnedOnly: boolean; readonly discoverAllActiveScopes?: boolean },
+    private readonly store: Pick<ReaderValueAssessmentStore, 'backlogAgeMs'>,
+    private readonly discoveryScopes?: ReaderValueDiscoveryScopes) {}
 
   async execute(): Promise<ReaderValueTickResult> {
     const counts = { discovered: 0, retained: 0, assessedCacheHits: 0, unsupportedKind: 0, emptyInput: 0, invalidInput: 0,
@@ -34,12 +36,22 @@ export class RunReaderValueTickUseCase {
     if (this.assessment.isPaused()) return result('provider_paused', this.assessment.pauseCode());
     try {
       if (this.options.backfillFrom !== null) {
-        const discovered = await this.discovery.execute({ scopes: this.options.discoveryScopes, backfillFrom: this.options.backfillFrom });
+        if (this.options.discoverAllActiveScopes && !this.discoveryScopes) {
+          return result('configuration_invalid', 'configuration_invalid');
+        }
+        const scopes = this.options.discoverAllActiveScopes
+          ? await this.discoveryScopes!.nextDiscoverable(this.discoveryCursor,
+            this.options.backfillFrom, 25)
+          : this.options.discoveryScopes;
+        const discovered = await this.discovery.execute({ scopes, backfillFrom: this.options.backfillFrom });
         const diagnostics = discovered.ok ? discovered.value : discovered.diagnostics;
         if (diagnostics) Object.assign(counts, diagnostics);
         if (!discovered.ok) {
           const code = discovered.error === 'configuration_invalid' ? 'configuration_invalid' : 'persistence_unavailable';
           return result(code, code);
+        }
+        if (this.options.discoverAllActiveScopes) {
+          this.discoveryCursor = scopes.length < 25 ? undefined : scopes[scopes.length - 1];
         }
       }
       // Four scopes, 25 reservations each; persistent rows, disposable fair cursor.
@@ -47,7 +59,7 @@ export class RunReaderValueTickUseCase {
         const scope = await this.scopes.next(this.cursor);
         if (!scope) { this.cursor = undefined; break; }
         this.cursor = scope;
-        const allowed = this.options.discoveryScopes.some((item) => item.tenantId === scope.tenantId &&
+        const allowed = this.options.discoverAllActiveScopes || this.options.discoveryScopes.some((item) => item.tenantId === scope.tenantId &&
           item.workspaceId === scope.workspaceId && item.interestId === scope.interestId);
         const pinnedOnly = this.options.pinnedOnly || !allowed;
         counts.backlogAgeMs = Math.max(counts.backlogAgeMs, await this.store.backlogAgeMs(scope, this.options.modelConfigVersion, pinnedOnly));

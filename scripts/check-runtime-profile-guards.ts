@@ -479,7 +479,13 @@ assert(resolveDeliverySummaryReadyEventQueueOptions(rabbitMqEnv).routingKey === 
 
 console.log('Runtime profile guards OK');
 
-assert(resolveReaderValueRuntimeOptions({}).mode === 'legacy_v2', 'reader value defaults to legacy publication');
+assertThrows(() => resolveReaderValueRuntimeOptions({}),
+  'primary reader value default requires durable persistence');
+assert(resolveReaderValueRuntimeOptions({ RELEVANCE_PERSISTENCE: 'prisma',
+  SUMMARY_PERSISTENCE: 'prisma' }).mode === 'jev_primary_v3',
+  'reader value defaults to Jev primary publication');
+assert(resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'legacy_v2' }).mode === 'legacy_v2',
+  'legacy reader value remains an explicit rollback mode');
 assertThrows(() => resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'jev_shadow' }),
   'reader value scoring requires durable bounded scope');
 assertThrows(() => resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'jev_primary_v3', RELEVANCE_PERSISTENCE: 'prisma', READER_VALUE_SCORING_LOOP: 'enabled',

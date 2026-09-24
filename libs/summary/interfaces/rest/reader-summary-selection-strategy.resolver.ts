@@ -8,20 +8,23 @@ type Scope = { readonly tenantId: string; readonly workspaceId: string;
 export class ConfiguredReaderSummarySelectionStrategyResolver
 implements ReaderSummarySelectionStrategyResolver {
   private readonly scopes: ReadonlySet<string>;
+  private readonly allActiveScopes: boolean;
 
   constructor(
     private readonly strategy: ReaderSummarySelectionStrategy,
     scopes: readonly Scope[],
+    allActiveScopes = false,
   ) {
     this.scopes = new Set(scopes.map(scopeKey));
-    if (strategy !== "legacy_v2" && this.scopes.size === 0) {
-      throw new Error("Jev summary strategy requires an explicit scope allowlist");
+    this.allActiveScopes = allActiveScopes;
+    if (strategy !== "legacy_v2" && !allActiveScopes && this.scopes.size === 0) {
+      throw new Error("Jev summary strategy scope override must not be empty");
     }
   }
 
   resolve(params: Scope): ReaderSummarySelectionStrategy {
     return this.strategy === "legacy_v2" || params.interestId === undefined ||
-      !this.scopes.has(scopeKey(params))
+      (!this.allActiveScopes && !this.scopes.has(scopeKey(params)))
       ? "legacy_v2"
       : this.strategy;
   }
@@ -30,7 +33,7 @@ implements ReaderSummarySelectionStrategyResolver {
 export const resolveReaderSummarySelectionStrategy = (
   env: NodeJS.ProcessEnv,
 ): ConfiguredReaderSummarySelectionStrategyResolver => {
-  const strategy = env.READER_VALUE_MODE ?? "legacy_v2";
+  const strategy = env.READER_VALUE_MODE ?? "jev_primary_v3";
   if (strategy !== "legacy_v2" && strategy !== "jev_shadow" &&
       strategy !== "jev_primary_v3") {
     throw new Error("READER_VALUE_MODE must be legacy_v2, jev_shadow or jev_primary_v3");
@@ -38,13 +41,24 @@ export const resolveReaderSummarySelectionStrategy = (
   if (strategy === "jev_primary_v3" &&
       (env.RELEVANCE_PERSISTENCE !== "prisma" ||
        env.SUMMARY_PERSISTENCE !== "prisma" ||
-       env.READER_VALUE_SCORING_LOOP !== "enabled" ||
-       env.INTELLIGENCE_READER_SUMMARY_JOB_LOOP !== "enabled")) {
+       (env.READER_VALUE_SCORING_LOOP ?? "enabled") !== "enabled" ||
+       (env.INTELLIGENCE_READER_SUMMARY_JOB_LOOP ?? "enabled") !== "enabled")) {
     throw new Error("jev_primary_v3 requires durable relevance/summary persistence, assessment loop, and due poller");
+  }
+  const scopes = parseScopes(env.READER_VALUE_DISCOVERY_SCOPES);
+  const pollerTenant = env.INTELLIGENCE_READER_SUMMARY_JOB_LOOP_TENANT_ID?.toLowerCase();
+  const pollerWorkspace = env.INTELLIGENCE_READER_SUMMARY_JOB_LOOP_WORKSPACE_ID?.toLowerCase();
+  if (strategy === "jev_primary_v3" && (pollerTenant !== undefined || pollerWorkspace !== undefined) &&
+      (pollerTenant === undefined || pollerWorkspace === undefined ||
+       env.READER_VALUE_DISCOVERY_SCOPES === undefined ||
+       scopes.some((scope) => scope.tenantId !== pollerTenant ||
+         scope.workspaceId !== pollerWorkspace))) {
+    throw new Error("jev_primary_v3 due poller must cover every discovery scope");
   }
   return new ConfiguredReaderSummarySelectionStrategyResolver(
     strategy,
-    parseScopes(env.READER_VALUE_DISCOVERY_SCOPES),
+    scopes,
+    strategy === "jev_primary_v3" && env.READER_VALUE_DISCOVERY_SCOPES === undefined,
   );
 };
 

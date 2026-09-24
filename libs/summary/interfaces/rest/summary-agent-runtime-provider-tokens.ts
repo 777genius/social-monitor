@@ -75,7 +75,7 @@ export const summaryAgentRuntimeClientOptionsProvider: Provider<SummaryAgentRunt
           summaryMode === "agent-runtime" ||
           readerSummaryMode === "agent-runtime" ||
           topicLabelerMode === "agent-runtime" ||
-          process.env.READER_VALUE_MODE === "jev_primary_v3",
+          (process.env.READER_VALUE_MODE ?? "jev_primary_v3") === "jev_primary_v3",
       }),
     inject: [
       SUMMARY_MODEL_PROVIDER_MODE,

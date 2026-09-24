@@ -33,14 +33,16 @@ import { READER_VALUE_CLEANUP_OPTIONS, resolveReaderValueCleanupOptions, type Re
       const key = process.env.OPENROUTER_API_KEY;
       if (!connection || !key?.trim()) throw new Error('Enabled reader value scorer requires persistence and OPENROUTER_API_KEY');
       const store = new PrismaReaderValueAssessmentStore(connection.client);
+      const scopes = new PrismaReaderValueMaintenanceScopes(connection.client);
       const ids = new CryptoIdGenerator();
       return new RunReaderValueTickUseCase(
         new DiscoverReaderValueBatchUseCase(new PrismaReaderValueInventory(connection.client),
           new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy()), store, ids, new SystemClock()),
         new AssessReaderValueBatchUseCase(store, new OpenRouterReaderValueScorer(key, new SystemClock()), ids),
-        new PrismaReaderValueMaintenanceScopes(connection.client),
+        scopes,
         { discoveryScopes: options.discoveryScopes, backfillFrom: options.backfillFrom,
-          modelConfigVersion: READER_VALUE_MODEL_CONFIG, pinnedOnly: options.mode === 'legacy_v2' }, store);
+          modelConfigVersion: READER_VALUE_MODEL_CONFIG, pinnedOnly: options.mode === 'legacy_v2',
+          discoverAllActiveScopes: options.discoverAllActiveScopes }, store, scopes);
     }, inject: [PrismaReaderValueConnection] },
     ReaderValueScoringLoop,
     ReaderValueCleanupLoop,

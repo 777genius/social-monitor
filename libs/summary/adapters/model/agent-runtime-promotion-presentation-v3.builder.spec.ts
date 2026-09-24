@@ -32,6 +32,25 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       AGENT_RUNTIME_PROVIDER: "openai",
     }, new PresentationRuntimeClient())).toThrow();
   });
+
+  it("keeps exact retries idempotent but isolates changed batches and source revisions", async () => {
+    const client = new PresentationRuntimeClient();
+    const builder = new AgentRuntimePromotionPresentationV3Builder({ client });
+    const first = fixtureInput();
+    const second = { ...fixtureInput(), candidateId: "00000000-0000-4000-8000-000000000007" };
+
+    await builder.build([first]);
+    await builder.build([first]);
+    await builder.build([first, second]);
+    await builder.build([{ ...first, sourceSnapshotSha256: "2".repeat(64) }]);
+
+    expect(client.commands[0]?.requestId).toBe(client.commands[1]?.requestId);
+    expect(client.commands[0]?.requestId).not.toBe(client.commands[2]?.requestId);
+    expect(client.commands[0]?.requestId).not.toBe(client.commands[3]?.requestId);
+    expect(client.commands[0]?.correlationId).not.toBe(client.commands[2]?.correlationId);
+    expect(client.commands.every((command) => !command.requestId.includes(first.trustedIntent)))
+      .toBe(true);
+  });
 });
 
 class PresentationRuntimeClient implements AgentRuntimeClientPort {
@@ -39,10 +58,11 @@ class PresentationRuntimeClient implements AgentRuntimeClientPort {
 
   async runTask(command: AgentRuntimeTaskCommand) {
     this.commands.push(command);
+    const parsed = JSON.parse(command.prompt) as { candidates: { candidateId: string }[] };
     return {
       status: "completed" as const,
-      structuredOutput: { presentations: [{
-        candidateId: fixtureInput().candidateId,
+      structuredOutput: { presentations: parsed.candidates.map(({ candidateId }) => ({
+        candidateId,
         status: "available",
         kind: "claim",
         text: "Useful database method",
@@ -50,7 +70,7 @@ class PresentationRuntimeClient implements AgentRuntimeClientPort {
         qualifications: [],
         confidence: 0.9,
         qualificationJudgment: "none",
-      }] },
+      })) },
       warnings: [],
     };
   }

@@ -60,4 +60,29 @@ describe('reader-value worker tick', () => {
     const f = setup(); f.next.mockRejectedValue(new Error('private database details'));
     expect(await f.runner.execute()).toMatchObject({ health: 'persistence_unavailable', fatalFailureCode: 'persistence_unavailable', ...discoveryCounts });
   });
+  it('discovers active scopes in bounded pages and retries the same page after failure', async () => {
+    const page = Array.from({ length: 25 }, (_, index) => ({ ...scope,
+      interestId: `interest-${index}` }));
+    const nextDiscoverable = jest.fn().mockResolvedValueOnce(page)
+      .mockResolvedValueOnce(page).mockResolvedValueOnce([scope]);
+    const discover = jest.fn().mockResolvedValueOnce({ ok: false, error: 'persistence_unavailable' })
+      .mockResolvedValue(ok(discoveryCounts));
+    const assess = jest.fn().mockResolvedValue(ok(scoringCounts));
+    const runner = new RunReaderValueTickUseCase(
+      { execute: discover } as unknown as DiscoverReaderValueBatchUseCase,
+      { execute: assess, isPaused: () => false, pauseCode: () => null } as unknown as AssessReaderValueBatchUseCase,
+      { next: async () => scope },
+      { discoveryScopes: [], discoverAllActiveScopes: true,
+        backfillFrom: '2026-09-01T00:00:00Z', modelConfigVersion: 'version', pinnedOnly: false },
+      { backlogAgeMs: async () => 0 }, { nextDiscoverable });
+
+    expect(await runner.execute()).toMatchObject({ health: 'persistence_unavailable' });
+    await runner.execute();
+    await runner.execute();
+    expect(nextDiscoverable.mock.calls.map((call) => call[0]))
+      .toEqual([undefined, undefined, page[24]]);
+    expect(discover).toHaveBeenLastCalledWith({ scopes: [scope],
+      backfillFrom: '2026-09-01T00:00:00Z' });
+    expect(assess).toHaveBeenCalledWith(expect.objectContaining({ pinnedOnly: false }));
+  });
 });

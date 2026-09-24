@@ -12,9 +12,14 @@ const base = { READER_VALUE_MODE: "jev_primary_v3",
     interestId }]) };
 
 describe("reader summary selection strategy", () => {
-  it("defaults to legacy and freezes primary only for supported interest jobs", () => {
-    expect(resolveReaderSummarySelectionStrategy({}).resolve({ tenantId,
-      workspaceId, interestId })).toBe("legacy_v2");
+  it("defaults to primary for all interest jobs when durable dependencies are configured", () => {
+    expect(() => resolveReaderSummarySelectionStrategy({})).toThrow(/requires/u);
+    const defaultPrimary = resolveReaderSummarySelectionStrategy({
+      RELEVANCE_PERSISTENCE: "prisma", SUMMARY_PERSISTENCE: "prisma" });
+    expect(defaultPrimary.resolve({ tenantId, workspaceId, interestId }))
+      .toBe("jev_primary_v3");
+    expect(defaultPrimary.resolve({ tenantId, workspaceId }))
+      .toBe("legacy_v2");
     const primary = resolveReaderSummarySelectionStrategy(base);
     expect(primary.resolve({ tenantId, workspaceId, interestId }))
       .toBe("jev_primary_v3");
@@ -28,9 +33,25 @@ describe("reader summary selection strategy", () => {
   });
 
   it.each(["RELEVANCE_PERSISTENCE", "SUMMARY_PERSISTENCE",
-    "READER_VALUE_SCORING_LOOP", "INTELLIGENCE_READER_SUMMARY_JOB_LOOP"])(
+    ])(
     "rejects primary without %s", (key) => {
       expect(() => resolveReaderSummarySelectionStrategy({ ...base,
         [key]: undefined })).toThrow(/requires/u);
     });
+  it.each(["READER_VALUE_SCORING_LOOP", "INTELLIGENCE_READER_SUMMARY_JOB_LOOP"])(
+    "rejects explicitly disabled primary dependency %s", (key) => {
+      expect(() => resolveReaderSummarySelectionStrategy({ ...base,
+        [key]: "disabled" })).toThrow(/requires/u);
+    });
+  it("rejects a restricted due poller when primary covers all interests", () => {
+    expect(() => resolveReaderSummarySelectionStrategy({ ...base,
+      READER_VALUE_DISCOVERY_SCOPES: undefined,
+      INTELLIGENCE_READER_SUMMARY_JOB_LOOP_TENANT_ID: tenantId,
+      INTELLIGENCE_READER_SUMMARY_JOB_LOOP_WORKSPACE_ID: workspaceId,
+    })).toThrow(/cover every/u);
+  });
+  it("keeps shadow rollout explicitly scoped", () => {
+    expect(() => resolveReaderSummarySelectionStrategy({
+      READER_VALUE_MODE: "jev_shadow" })).toThrow(/scope/u);
+  });
 });

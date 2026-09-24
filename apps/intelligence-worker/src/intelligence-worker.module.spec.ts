@@ -23,9 +23,9 @@ afterEach(() => {
 });
 
 describe("IntelligenceWorkerModule", () => {
-  it("starts with the default legacy_v2 mode and disabled reader-summary polling", async () => {
+  it("supports an explicit legacy_v2 rollback with disabled reader-summary polling", async () => {
     process.env.NODE_ENV = "test";
-    delete process.env.READER_VALUE_MODE;
+    process.env.READER_VALUE_MODE = "legacy_v2";
     delete process.env.INTELLIGENCE_READER_SUMMARY_JOB_LOOP;
     delete process.env.INTELLIGENCE_SUMMARY_QUEUE_READER;
     process.env.AGENT_RUNTIME_GRPC_ADDRESS = "127.0.0.1:1";

@@ -10,9 +10,12 @@ const configured = {
 };
 
 describe('reader-value runtime options', () => {
-  it('defaults to legacy, with no discovery or implicit in-memory paid work', () => {
-    expect(resolveReaderValueRuntimeOptions({})).toMatchObject({ mode: 'legacy_v2', discoveryScopes: [],
-      scoringLoopEnabled: false, backfillFrom: null });
+  it('defaults to primary for all active interests with a bounded lookback and durable dependencies', () => {
+    expect(() => resolveReaderValueRuntimeOptions({})).toThrow(/RELEVANCE_PERSISTENCE/u);
+    expect(resolveReaderValueRuntimeOptions({ RELEVANCE_PERSISTENCE: 'prisma',
+      SUMMARY_PERSISTENCE: 'prisma' })).toMatchObject({ mode: 'jev_primary_v3',
+      discoverAllActiveScopes: true, discoveryScopes: [], scoringLoopEnabled: true,
+      backfillFrom: expect.any(String) });
   });
   it('retains bounded durable drain after rollback without discovering new scope', () => {
     expect(resolveReaderValueRuntimeOptions({ ...configured, READER_VALUE_MODE: 'legacy_v2' })).toMatchObject({
@@ -24,7 +27,7 @@ describe('reader-value runtime options', () => {
     expect(resolveReaderValueRuntimeOptions(configured).discoveryScopes).toEqual(scopes);
     for (const patch of [
       { RELEVANCE_PERSISTENCE: 'in-memory' }, { READER_VALUE_SCORING_LOOP: 'disabled' },
-      { READER_VALUE_DISCOVERY_SCOPES: undefined }, { READER_VALUE_BACKFILL_FROM: undefined },
+      { READER_VALUE_DISCOVERY_SCOPES: '[]' },
       { READER_VALUE_BACKFILL_FROM: '2026-02-30T00:00:00.000Z' }, { READER_VALUE_MODE: 'unknown' },
     ]) expect(() => resolveReaderValueRuntimeOptions({ ...configured, ...patch })).toThrow();
   });
@@ -32,9 +35,16 @@ describe('reader-value runtime options', () => {
     const boundary = '2026-09-01T00:00:00.123456Z';
     expect(resolveReaderValueRuntimeOptions({ ...configured, READER_VALUE_BACKFILL_FROM: boundary }).backfillFrom).toBe(boundary);
   });
+  it('keeps shadow discovery explicitly scoped despite the primary all-interest default', () => {
+    expect(() => resolveReaderValueRuntimeOptions({ ...configured,
+      READER_VALUE_DISCOVERY_SCOPES: undefined })).toThrow(/shadow/u);
+    expect(() => resolveReaderValueRuntimeOptions({ ...configured,
+      READER_VALUE_BACKFILL_FROM: undefined })).toThrow(/shadow/u);
+  });
   it('rejects queue-only primary and a poller restricted to another scope', () => {
     const primary = { ...configured, READER_VALUE_MODE: 'jev_primary_v3', INTELLIGENCE_SUMMARY_QUEUE_READER: 'rabbitmq' };
-    expect(() => resolveReaderValueRuntimeOptions(primary)).toThrow(/poller/u);
+    expect(() => resolveReaderValueRuntimeOptions({ ...primary,
+      INTELLIGENCE_READER_SUMMARY_JOB_LOOP: 'disabled' })).toThrow(/poller/u);
     expect(() => resolveReaderValueRuntimeOptions({ ...primary,
       SUMMARY_PERSISTENCE: 'in-memory',
       INTELLIGENCE_READER_SUMMARY_JOB_LOOP: 'enabled' })).toThrow(/SUMMARY_PERSISTENCE/u);
