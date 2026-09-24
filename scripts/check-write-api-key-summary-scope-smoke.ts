@@ -16,6 +16,8 @@ const assert = (condition: unknown, message: string): void => {
 };
 
 async function main(): Promise<void> {
+  // This isolated in-memory smoke does not provision the durable Jev V3 loop.
+  process.env.READER_VALUE_MODE = 'legacy_v2';
   process.env.SUMMARY_MODEL_PROVIDER = 'deterministic';
   process.env.READER_SUMMARY_MODEL_PROVIDER = 'deterministic';
   process.env.READER_SUMMARY_TOPIC_LABELER = 'deterministic';
