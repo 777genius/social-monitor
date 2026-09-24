@@ -327,6 +327,52 @@ jobs:
           npm run check:reader-summary-weekly-review-manifest-postgres18
           npm run check:reader-summary-recovery-candidate-staging-postgres
 
+  reader_value_v3_postgres18:
+    name: Reader Value V3 PostgreSQL 18 contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_USER: assessment_test_admin
+          POSTGRES_PASSWORD: social_monitor_local_password
+          POSTGRES_DB: assessment_test_admin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U assessment_test_admin -d assessment_test_admin"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Check out the review commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Generate the pinned Prisma client
+        run: npm run prisma:generate
+
+      - name: Prove Jev assessment, V3 publication and capture contracts
+        env:
+          READER_VALUE_TEST_ADMIN_DATABASE_URL: postgresql://assessment_test_admin:social_monitor_local_password@127.0.0.1:5432/assessment_test_admin
+          READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL: postgresql://assessment_test_admin:social_monitor_local_password@127.0.0.1:5432/assessment_test_admin
+          INGESTION_CAPTURE_TEST_DATABASE_URL: postgresql://assessment_test_admin:social_monitor_local_password@127.0.0.1:5432/assessment_test_admin
+        run: |
+          set -euo pipefail
+          npm run check:reader-value-assessments-postgres
+          npm run check:reader-summary-v3-postgres
+          npx jest --config jest.config.ts --runInBand --runTestsByPath libs/ingestion/adapters/persistence/prisma/prisma-article-capture.postgres.spec.ts
+
   production_runtime:
     name: Production container and deploy lifecycle
     runs-on: ubuntu-latest

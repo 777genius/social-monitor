@@ -28,6 +28,7 @@ Map<String, Object?> displayParityFixture({
   String body = 'Synthetic context.',
   String? displayTitle,
   String kind = 'claim',
+  String? qualificationJudgment,
   required List<Map<String, Object?>> support,
   List<Map<String, Object?>> qualifications = const [],
 }) {
@@ -71,11 +72,11 @@ Map<String, Object?> displayParityFixture({
     'wholeInput': {
       'titleLength': title.length,
       'bodyLength': body.length,
-      'qualificationJudgment': kind == 'subject_label'
+      'qualificationJudgment': qualificationJudgment ?? (kind == 'subject_label'
           ? 'subject_only'
           : qualifications.isEmpty
           ? 'none'
-          : 'preserved',
+          : 'preserved'),
     },
   });
   (fixture['seal']! as Map<String, Object?>)['capturedSourceDigest'] = _digest(
@@ -108,6 +109,26 @@ List<DisplayParityCase> displayParityCases() {
   }
 
   add('valid-control', true, readerDisplayFixture());
+  add(
+    'claim-with-subject-only-judgment',
+    false,
+    displayParityFixture(
+      support: [displayReference('Synthetic')],
+      qualificationJudgment: 'subject_only',
+    ),
+  );
+  add(
+    'subject-label-with-claim-judgment',
+    false,
+    displayParityFixture(
+      kind: 'subject_label',
+      support: [
+        displayReference('Orion', field: 'title'),
+        displayReference('model', start: 6, field: 'title'),
+      ],
+      qualificationJudgment: 'none',
+    ),
+  );
   add(
     'partial-subject-tokens',
     false,

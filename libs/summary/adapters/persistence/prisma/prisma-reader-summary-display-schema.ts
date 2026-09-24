@@ -35,6 +35,37 @@ export const assertDisplayHeadlineSealPayload = (value: unknown): void => {
     references(qualification.evidence);
   }
 };
+
+/** V3 is public: plaintext workspace interest never crosses this boundary. */
+export const assertV3PublicDisplayHeadlineSealPayload = (value: unknown): void => {
+  const seal = record(value);
+  keys(seal, ["headline", "capturedSourceDigest"]);
+  if (typeof seal.capturedSourceDigest !== "string" || !/^[a-f0-9]{64}$/.test(seal.capturedSourceDigest)) invalid();
+  const headline = record(seal.headline);
+  keys(headline, ["status", "kind", "text", "binding", "support", "qualifications", "confidence", "wholeInput"]);
+  if (headline.status !== "accepted" || !["claim", "subject_label"].includes(String(headline.kind)) ||
+      !isConciseDisplayText(headline.text) || typeof headline.confidence !== "number" ||
+      !Number.isFinite(headline.confidence) || headline.confidence < 0.8 || headline.confidence > 1) invalid();
+  const binding = record(headline.binding);
+  keys(binding, ["candidateId", "providerKey", "tenantId", "workspaceId", "interestId", "sourceBindingId",
+    "sourceItemId", "interestDigest", "availability", "reviewedInputDigest"]);
+  if (Object.values(binding).some((item) => typeof item !== "string" || !item.trim()) ||
+      !["title_only", "body_present"].includes(String(binding.availability)) ||
+      !/^[a-f0-9]{64}$/.test(String(binding.interestDigest)) ||
+      !/^[a-f0-9]{64}$/.test(String(binding.reviewedInputDigest))) invalid();
+  const whole = record(headline.wholeInput);
+  keys(whole, ["titleLength", "bodyLength", "qualificationJudgment"]);
+  if (![whole.titleLength, whole.bodyLength].every((item) => typeof item === "number" && Number.isSafeInteger(item) && item >= 0) ||
+      !["none", "preserved", "subject_only"].includes(String(whole.qualificationJudgment))) invalid();
+  references(headline.support);
+  if (!Array.isArray(headline.qualifications) || headline.qualifications.length > 8) invalid();
+  for (const raw of headline.qualifications as unknown[]) {
+    const qualification = record(raw);
+    keys(qualification, ["phrase", "evidence"]);
+    if (!isConciseDisplayText(qualification.phrase)) invalid();
+    references(qualification.evidence);
+  }
+};
 const references = (value: unknown): void => {
   if (!Array.isArray(value) || value.length === 0 || value.length > 8) invalid();
   for (const raw of value as unknown[]) {

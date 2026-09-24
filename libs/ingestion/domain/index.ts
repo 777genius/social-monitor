@@ -13,3 +13,13 @@ export * from "./value-objects/source-item-content-fingerprint";
 export * from "./policies/source-engagement-observation-policy";
 export * from "./value-objects/github-repository-trend";
 export * from "./value-objects/github-trending-page";
+export {
+  CONTENT_CAPTURE_VERSION,
+  ARTICLE_REPRESENTATION_VERSION,
+  SOURCE_STORAGE_CHARACTERS,
+  PRESENTATION_BODY_CHARACTERS,
+  readContentCapture,
+  type CaptureSegment,
+  type SourceContentCapture,
+} from './value-objects/source-content-capture';
+export { legacySourceSnapshotSha256 } from './value-objects/legacy-source-capture';

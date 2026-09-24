@@ -4,6 +4,15 @@ import type { ReaderSummaryJobRepositoryPort } from "../../ports";
 export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
   private readonly jobsById = new Map<string, ReaderSummaryJob>();
   private readonly jobsByIdempotencyKey = new Map<string, ReaderSummaryJob>();
+  private mutationTail = Promise.resolve();
+
+  async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.mutationTail;
+    let release = (): void => undefined;
+    this.mutationTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try { return await operation(); } finally { release(); }
+  }
 
   async save(job: ReaderSummaryJob): Promise<void> {
     const snapshot = job.toSnapshot();
@@ -51,7 +60,10 @@ export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobRepos
           (params.tenantId === undefined ||
             snapshot.tenantId === params.tenantId) &&
           (params.workspaceId === undefined ||
-            snapshot.workspaceId === params.workspaceId)
+            snapshot.workspaceId === params.workspaceId) &&
+          (params.now === undefined ||
+            snapshot.preparationNextCheckAt === undefined ||
+            snapshot.preparationNextCheckAt.getTime() <= params.now.getTime())
         );
       })
       .sort(compareRequestedJobs)
@@ -73,6 +85,7 @@ export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobRepos
       snapshot.startedAt !== undefined &&
       snapshot.startedAt < params.staleRunningStartedBefore;
     if (
+      (snapshot.status === "failed" && snapshot.terminalFailureCode !== undefined) ||
       snapshot.status !== "requested" &&
       snapshot.status !== "failed" &&
       !staleRunning

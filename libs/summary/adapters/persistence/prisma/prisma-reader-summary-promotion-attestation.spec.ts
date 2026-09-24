@@ -15,6 +15,9 @@ import {
 describe("normalizePromotionAttestations", () => {
   it("rehydrates immutable GitHub promotion observation windows", () => {
     const [attestation] = normalizePromotionAttestations(serializedFixture());
+    if (attestation?.schemaVersion === "reader_post_promotion_attestation.v3") {
+      throw new Error("Expected legacy fixture");
+    }
 
     expect(attestation?.publishedAt).toEqual(
       new Date("2026-08-14T00:00:00.000Z"),

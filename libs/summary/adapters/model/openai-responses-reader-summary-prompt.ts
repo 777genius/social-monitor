@@ -59,6 +59,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Every evidence item contains an original title and a baseline bodyPreview. Items marked expanded_candidate also contain sourceContent selected deterministically from the original source, never an LLM paraphrase.",
     "For sourceContent mode full_social_post or full_source_text, use the complete provided text. For rss_relevant_fragments or relevant_fragments, treat the 2-3 fragments as separate original excerpts from the same source.",
     "Prefer sourceContent over bodyPreview when resolving exact model variants, modes, tiers, limits, benchmark values and other material qualifiers.",
+    "For V3 evidence, acceptedReaderPresentation is backend-verified authority for the reader headline and its exact support and qualification spans. Preserve every listed qualification whenever restating that headline; never restate its claim without those qualifications.",
     "Treat evidencePack.confidence as a ceiling for claim confidence, not as permission to generalize every selected item.",
     "RSS is a delivery mechanism, not proof of source authority. Do not treat an RSS mirror of a Hacker News item as independent confirmation.",
     "Do not turn a single source title into a confirmed product, model, launch, benchmark, pricing or availability claim.",

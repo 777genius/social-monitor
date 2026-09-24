@@ -12,7 +12,7 @@ bool verify(Map<String, Object?> fixture, {String title = 'Orion model discussio
   verifyReaderDisplayHeadline(payload: fixture['payload']! as Map<String, Object?>,
     headline: fixture['headline'], source: fixture['source'], outerSeal: fixture['seal'],
     title: title, providerKey: 'reddit', tenantId: 'tenant-fixture',
-    workspaceId: workspaceId, sourceItemId: sourceItemId, sourceCandidateId: 'candidate-fixture');
+    workspaceId: workspaceId, sourceItemId: sourceItemId, sourceCandidateId: '44444444-4444-4444-8444-444444444444');
 
 void main() {
   test('exact accepted text and full Unicode source survive verification and mapping', () {
@@ -73,7 +73,7 @@ void main() {
       'seal': seal,
       'payload': <String, Object?>{
         'schemaVersion': 'reader_post_promotion_attestation.v2',
-        'candidateId': 'candidate-fixture',
+        'candidateId': '44444444-4444-4444-8444-444444444444',
         'displayHeadline': seal,
       },
     };
@@ -107,7 +107,7 @@ void main() {
       verifyReaderDisplayHeadline(
         payload: {
           'schemaVersion': 'reader_post_promotion_attestation.v2',
-          'candidateId': 'candidate-fixture',
+          'candidateId': '44444444-4444-4444-8444-444444444444',
           'displayHeadline': sealJson,
         },
         headline: headlineJson,
@@ -118,7 +118,7 @@ void main() {
         tenantId: 'tenant-fixture',
         workspaceId: 'workspace-fixture',
         sourceItemId: 'source-fixture',
-        sourceCandidateId: 'candidate-fixture',
+        sourceCandidateId: '44444444-4444-4444-8444-444444444444',
       ),
       isTrue,
     );

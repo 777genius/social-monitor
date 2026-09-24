@@ -337,7 +337,10 @@
     "start:delivery": "ts-node -r tsconfig-paths/register apps/delivery-service/src/main.ts",
     "start:event-relay": "ts-node -r tsconfig-paths/register apps/event-relay/src/main.ts",
     "start:ingestion": "ts-node -r tsconfig-paths/register apps/ingestion-worker/src/main.ts",
-    "start:intelligence": "ts-node -r tsconfig-paths/register apps/intelligence-worker/src/main.ts"
+    "start:intelligence": "ts-node -r tsconfig-paths/register apps/intelligence-worker/src/main.ts",
+    "check:reader-value-assessments-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-value-assessments-postgres.ts",
+    "check:reader-summary-v3-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-v3-postgres.ts",
+    "reader-summary:cancel-jobs": "ts-node -r tsconfig-paths/register scripts/reader-summary-operator-cancel.ts"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.12.1",

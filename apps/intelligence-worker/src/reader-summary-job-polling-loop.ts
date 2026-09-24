@@ -15,9 +15,10 @@ import {
 } from "@social-monitor/summary/ports";
 import { ExecuteReaderSummaryJobCommandHandler } from "@social-monitor/summary/interfaces/queue/execute-reader-summary-job-command.handler";
 import { READER_SUMMARY_JOB_REPOSITORY } from "@social-monitor/summary/interfaces/rest/summary-provider-tokens";
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { type Clock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
+  INTELLIGENCE_READER_SUMMARY_JOB_LOOP_CLOCK,
   INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS,
   type IntelligenceReaderSummaryJobLoopOptions,
 } from "./intelligence-worker-provider-tokens";
@@ -40,6 +41,8 @@ export class ReaderSummaryJobPollingLoop
     @Inject(INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS)
     private readonly options: IntelligenceReaderSummaryJobLoopOptions,
     private readonly commandIds: WorkerCommandIdFactory = WorkerCommandIdFactory.system(),
+    @Inject(INTELLIGENCE_READER_SUMMARY_JOB_LOOP_CLOCK)
+    private readonly clock: Clock,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -104,6 +107,7 @@ export class ReaderSummaryJobPollingLoop
     try {
       const jobs = await this.readerSummaryJobs.findRequested({
         limit: this.options.limit,
+        now: this.clock.now(),
         ...(this.options.tenantId === undefined
           ? {}
           : {
@@ -113,12 +117,14 @@ export class ReaderSummaryJobPollingLoop
       });
       let completed = 0;
       let failed = 0;
+      let deferred = 0;
+      let inProgress = 0;
 
       for (const job of jobs) {
         const snapshot = job.toSnapshot();
 
         try {
-          await this.handler.handle({
+          const result = await this.handler.handle({
             commandId: this.commandIds.next("readerSummary-job-poller", [
               snapshot.id,
             ]),
@@ -133,7 +139,15 @@ export class ReaderSummaryJobPollingLoop
               readerSummaryJobId: snapshot.id,
             },
           });
-          completed += 1;
+          if (result.status === "completed" || result.status === "no_signal") {
+            completed += 1;
+          } else if (result.status === "requested") {
+            deferred += 1;
+          } else if (result.status === "running") {
+            inProgress += 1;
+          } else {
+            failed += 1;
+          }
         } catch (error) {
           failed += 1;
           this.logger.error("readerSummary job polling loop item failed", {
@@ -150,6 +164,8 @@ export class ReaderSummaryJobPollingLoop
         evaluated: jobs.length,
         completed,
         failed,
+        deferred,
+        inProgress,
         worker: "intelligence-worker",
       });
     } catch (error) {

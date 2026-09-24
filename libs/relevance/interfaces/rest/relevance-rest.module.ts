@@ -267,6 +267,7 @@ import {
     RELEVANCE_MEMORY_PROJECTOR,
     RELEVANCE_MEMORY_GUIDANCE_READER,
     SOURCE_CONTENT_QUALITY_REVIEWER,
+    CONFIGURED_INTEREST_READER,
     InMemoryUserRelevanceProfileRepository,
     InMemoryRelevanceFeedbackRepository,
     InMemoryRelevanceMemoryProjectionRepository,

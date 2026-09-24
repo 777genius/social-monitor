@@ -10,6 +10,50 @@ import {
   type PrismaFeedItemRecord,
 } from "./prisma-feed-records";
 
+describe("PrismaFeedItemReadRepository bounded list", () => {
+  it.each([
+    [999, true],
+    [1_000, true],
+    [1_001, false],
+  ] as const)(
+    "reports candidate-window exhaustion for %i matching rows",
+    async (total, expectedExhausted) => {
+      const records = Array.from({ length: total }, (_, index) =>
+        record(`list-${String(index).padStart(4, "0")}`, index));
+      const findMany = jest.fn(async (
+        args: Parameters<PrismaFeedClient["feedItem"]["findMany"]>[0],
+      ) => records.slice(0, args.take));
+      const repository = new PrismaFeedItemReadRepository({
+        feedItem: { findMany },
+      } as unknown as PrismaFeedClient);
+      const items = [] as ReturnType<typeof feedItemFromPrisma>[];
+      let cursor: string | undefined;
+      let finalResult: Awaited<ReturnType<
+        PrismaFeedItemReadRepository["list"]
+      >>;
+      do {
+        finalResult = await repository.list({
+          tenantId: tenantId("tenant-1"),
+          workspaceId: workspaceId("workspace-1"),
+          limit: 200,
+          cursor,
+        });
+        items.push(...finalResult.items);
+        cursor = finalResult.nextCursor;
+      } while (cursor !== undefined);
+
+      expect(items).toHaveLength(Math.min(total, 1_000));
+      expect(finalResult).toMatchObject({
+        nextCursor: undefined,
+        candidateWindowExhausted: expectedExhausted,
+      });
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+        take: 1_001,
+      }));
+    },
+  );
+});
+
 describe("PrismaFeedItemReadRepository promotion snapshot", () => {
   it("uses one repeatable-read transaction for all physical pages", async () => {
     const records = Array.from({ length: 201 }, (_, index) =>

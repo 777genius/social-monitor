@@ -18,6 +18,7 @@ export interface ReaderSummaryJobRepositoryPort {
     readonly tenantId?: TenantId;
     readonly workspaceId?: WorkspaceId;
     readonly limit: number;
+    readonly now?: Date;
   }): Promise<readonly ReaderSummaryJob[]>;
   /** Claim REQUESTED/FAILED or RUNNING started strictly before the stale boundary. */
   claimForExecution(params: {

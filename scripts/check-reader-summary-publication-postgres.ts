@@ -73,6 +73,7 @@ import {
   runReaderSummaryPublicationBootstrapSql,
 } from "./reader-summary-publication-postgres-privileges";
 import { assertReaderSummaryPublicationRuntimeGuard } from "./reader-summary-publication-postgres-runtime-guard";
+import { publish, reverseObject } from "./lib/reader-summary-publication-postgres-publish";
 import { assertPostgres18PsqlTransportConfiguration } from "./reader-summary-publication-postgres18-regression";
 const serverAdminDatabaseUrl = requiredReaderSummaryPublicationAdminDatabaseUrl(
   process.env,
@@ -116,6 +117,7 @@ export type ReaderSummaryPublicationPostgresContract =
   | "feed-promotion"
   | "promotion-v2-ownership"
   | "promotion-v2-rollback"
+  | "promotion-v3"
   | "publication"
   | "weekly-certification-seal"
   | "weekly-atomic-publication"
@@ -312,6 +314,18 @@ export const runReaderSummaryPublicationPostgresContract = async (
               createRunningFixture(first, status, day, overrides),
             publish: (payload) => publish(first, payload),
           });
+          return;
+        }
+        if (contract === "promotion-v3") {
+          const { assertReaderSummaryV3PostgresContract } = await import(
+            "./lib/reader-summary-v3-postgres-contract"
+          );
+          await assertReaderSummaryV3PostgresContract({ client: first,
+            adminClient,
+            concurrentClient: second,
+            createFixture: (status, day, overrides) =>
+              createRunningFixture(first, status, day, overrides),
+            publish: (client, payload) => publish(client, payload) });
           return;
         }
         if (
@@ -967,23 +981,6 @@ const assertPublishedExactlyOnce = async (
     `${status} must retain one proof, outbox event, and public artifact`,
   );
 };
-const publish = async (
-  client: PoolClient,
-  payload: Readonly<Record<string, unknown>>,
-): Promise<string> => {
-  const result = await client.query<{ readonly outcome: string }>(
-    `SELECT outcome FROM publish_reader_summary($1::jsonb)`,
-    [JSON.stringify(payload)],
-  );
-  const outcome = result.rows[0]?.outcome;
-  assert(outcome !== undefined, "publication function returned no outcome");
-  return outcome;
-};
-const reverseObject = (
-  value: Readonly<Record<string, unknown>>,
-): Readonly<Record<string, unknown>> =>
-  Object.fromEntries(Object.entries(value).reverse());
-
 if (require.main === module) {
   void runReaderSummaryPublicationPostgresContract()
     .catch((error: unknown) => {

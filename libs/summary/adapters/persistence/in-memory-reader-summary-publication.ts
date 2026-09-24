@@ -24,7 +24,6 @@ export class InMemoryReaderSummaryPublication
 {
   private readonly proofByJobId = new Map<string, StoredPublicationProof>();
   private readonly currentBySlot = new Map<string, CurrentPublication>();
-  private publicationTail = Promise.resolve();
 
   constructor(
     private readonly jobs: InMemoryReaderSummaryJobRepository,
@@ -35,17 +34,7 @@ export class InMemoryReaderSummaryPublication
   async publish(
     command: ReaderSummaryPublicationCommand,
   ): Promise<ReaderSummaryPublicationOutcome> {
-    const previous = this.publicationTail;
-    let release = (): void => undefined;
-    this.publicationTail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await previous;
-    try {
-      return await this.publishLocked(command);
-    } finally {
-      release();
-    }
+    return this.jobs.runExclusive(() => this.publishLocked(command));
   }
 
   private async publishLocked(
@@ -61,6 +50,26 @@ export class InMemoryReaderSummaryPublication
         throw new Error("Reader summary publication idempotency conflict");
       }
       return "replayed";
+    }
+    const durableJob = await this.jobs.findById({
+      tenantId: command.finalJob.toSnapshot().tenantId,
+      workspaceId: command.finalJob.toSnapshot().workspaceId,
+      readerSummaryJobId: command.finalJob.toSnapshot().id,
+    });
+    const durable = durableJob?.toSnapshot();
+    const artifactSnapshot = command.artifact.toSnapshot();
+    const attestations = artifactSnapshot.promotionAttestations ?? [];
+    const isNoSignal = artifactSnapshot.qualityFlags.includes("no_signal");
+    if (durable?.selectionStrategy === "jev_primary_v3" && (
+      durable.status !== "running" || durable.terminalFailureCode !== undefined ||
+      durable.preparationManifest === undefined ||
+      durable.startedAt?.getTime() !== command.finalJob.toSnapshot().startedAt?.getTime() ||
+      attestations.some((attestation) =>
+        attestation.schemaVersion !== "reader_post_promotion_attestation.v3") ||
+      (!isNoSignal && attestations.length === 0) ||
+      (isNoSignal && attestations.length !== 0)
+    )) {
+      throw new Error("Reader summary V3 publication guard rejected the execution fence");
     }
 
     const slotKey = [

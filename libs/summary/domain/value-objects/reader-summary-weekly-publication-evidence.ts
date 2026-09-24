@@ -2,6 +2,7 @@ import {
   assertReaderSummaryWeeklyDailyPeriod,
   assertReaderSummaryWeeklyExactObject,
   canonicalizeReaderSummaryWeeklyJson,
+  canonicalizeReaderSummaryWeeklyV3PublicationJson,
   canonicalReaderSummaryWeeklyScope,
   deepFreezeReaderSummaryWeekly,
   exactReaderSummaryWeeklyIdentity,
@@ -257,7 +258,11 @@ export const deriveReaderSummaryWeeklyPublicationEvidence = (
 
 export function assertReaderSummaryWeeklyCanonicalPublicationEvidence(
   input: unknown,
+  profile: "legacy" | "v3" = "legacy",
 ): asserts input is ReaderSummaryWeeklyCanonicalPublicationEvidence {
+  const canonicalize = profile === "v3"
+    ? canonicalizeReaderSummaryWeeklyV3PublicationJson
+    : canonicalizeReaderSummaryWeeklyJson;
   assertReaderSummaryWeeklyExactObject(
     input,
     canonicalPublicationEvidenceKeys,
@@ -291,10 +296,11 @@ export function assertReaderSummaryWeeklyCanonicalPublicationEvidence(
   }
   const providerEvidence = canonicalProviderEvidence(
     evidence.providerEvidence,
+    profile,
   );
   assertGitHubProviderBinding(providerEvidence, evidence.githubEvidence);
   if (
-    canonicalizeReaderSummaryWeeklyJson(providerEvidence).sha256 !==
+    canonicalize(providerEvidence).sha256 !==
     exactReaderSummaryWeeklySha256(
       evidence.providerEvidenceSha256,
       "publication provider evidence hash",
@@ -310,7 +316,7 @@ export function assertReaderSummaryWeeklyCanonicalPublicationEvidence(
     evidence.providerCounts,
     evidence.githubEvidence,
   );
-  const canonical = canonicalizeReaderSummaryWeeklyJson(
+  const canonical = canonicalize(
     persistedBody,
     "persisted publication evidence",
   );
@@ -355,7 +361,7 @@ export function assertReaderSummaryWeeklyCanonicalPublicationEvidence(
     evidence.canonicalJson !== canonical.json ||
     !(bytes instanceof Uint8Array) ||
     Buffer.from(bytes).compare(Buffer.from(canonical.toBytes())) !== 0 ||
-    canonicalizeReaderSummaryWeeklyJson(
+    canonicalize(
       publicationEvidenceBody(evidence),
       "publication evidence body",
     ).json !== canonical.json

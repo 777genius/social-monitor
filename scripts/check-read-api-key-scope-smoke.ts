@@ -23,6 +23,8 @@ const assert = (condition: unknown, message: string): void => {
 
 async function main(): Promise<void> {
   process.env.SOURCE_CONFIG_ENCRYPTION_KEY ??= Buffer.alloc(32, 1).toString('base64');
+  // This in-memory auth smoke does not provision the durable Jev V3 pipeline.
+  process.env.READER_VALUE_MODE = 'legacy_v2';
   process.env.SUMMARY_MODEL_PROVIDER = 'deterministic';
   process.env.READER_SUMMARY_MODEL_PROVIDER = 'deterministic';
   process.env.READER_SUMMARY_TOPIC_LABELER = 'deterministic';

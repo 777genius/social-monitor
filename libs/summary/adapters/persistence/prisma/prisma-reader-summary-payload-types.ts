@@ -10,6 +10,7 @@ export type SerializedReaderSummarySourceWindow = {
   readonly periodStartedAt?: unknown;
   readonly periodEndedAt?: unknown;
   readonly ingestionCutoff?: unknown;
+  readonly exactIngestionCutoff?: unknown;
   readonly selectedFeedItemIds?: unknown;
   readonly storyClusterIds?: unknown;
 };

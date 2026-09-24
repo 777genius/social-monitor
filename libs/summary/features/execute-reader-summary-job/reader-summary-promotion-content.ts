@@ -37,6 +37,7 @@ export const buildReaderSummaryDraftWithPromotionContent = (
     sourceWindow: evidence.sourceWindow,
     selectedEvidence: evidence.selectedEvidence,
     editorialSlate: evidence.editorialSlate,
+    promotionV3: evidence.promotionV3,
     qualityFlags: draft.qualityFlags,
     noSignalReason: draft.noSignalReason,
   });

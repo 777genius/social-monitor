@@ -69,6 +69,7 @@ export const assertReaderDisplayIdentity = (
 /** Detach nested annotations from external references before artifact storage. */
 export const immutableDisplayValue = <T>(value: T): T => {
   if (Array.isArray(value)) return Object.freeze(value.map(immutableDisplayValue)) as T;
+  if (value instanceof Date) return Object.freeze(new Date(value)) as T;
   if (value !== null && typeof value === "object") {
     return Object.freeze(Object.fromEntries(Object.entries(value).map(
       ([key, child]) => [key, immutableDisplayValue(child)],

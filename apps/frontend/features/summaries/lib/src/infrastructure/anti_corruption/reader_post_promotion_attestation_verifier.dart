@@ -8,6 +8,8 @@ import 'reader_display_headline_verifier.dart';
 part 'reader_post_promotion_attestation_schema.dart';
 part 'reader_post_promotion_attestation_semantics.dart';
 part 'reader_post_promotion_attestation_v2_schema.dart';
+part 'reader_post_promotion_attestation_v3_schema.dart';
+part 'reader_post_promotion_attestation_v3_assessment.dart';
 
 const readerPostPromotionAttestationSchemaV1 =
     'reader_post_promotion_attestation.v1';
@@ -19,6 +21,10 @@ const readerPromotionEditorialSlatePolicyVersion = 'reader_promotion_policy.v2';
 const readerPostPromotionDigestV1 = 'reader_post_promotion_digest.sha256.v1';
 const readerPostPromotionDigestVersion =
     'reader_post_promotion_digest.sha256.v2';
+const readerPostPromotionAttestationSchemaV3 =
+    'reader_post_promotion_attestation.v3';
+const readerPostPromotionPolicyV3 = 'reader_post_promotion.v3';
+const readerPostPromotionDigestV3 = 'reader_post_promotion_digest.sha256.v3';
 
 ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
   required String? schemaVersion,
@@ -36,6 +42,7 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
   required DateTime enclosingPeriodStart,
   required DateTime enclosingPeriodEnd,
   required DateTime? enclosingIngestionCutoff,
+  String? enclosingExactIngestionCutoff,
   required int slot,
   required String? decision,
   required List<String> citationIds,
@@ -61,6 +68,16 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
   String? cardStoryClusterId,
   DateTime? cardPublishedAt,
   List<String>? cardCitationIds,
+  Object? outerProvider,
+  Object? outerStoryId,
+  Object? outerPublishedAt,
+  Object? outerPeriodStartedAt,
+  Object? outerPeriodEndedAt,
+  Object? outerIngestionCutoff,
+  Object? outerExactIngestionCutoff,
+  Object? outerAssessment,
+  Object? outerComparator,
+  Object? outerPresentation,
 }) {
   final normalizedCandidateId = candidateId.trim();
   final normalizedCanonicalIdentity = canonicalIdentity.trim();
@@ -75,10 +92,14 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
       schemaVersion == readerPostPromotionAttestationSchemaVersion &&
       policyVersion == readerPostPromotionPolicyVersion &&
       digestVersion == readerPostPromotionDigestVersion;
-  if ((!isV1 && !isV2) ||
+  final isV3Transport =
+      schemaVersion == readerPostPromotionAttestationSchemaV3 &&
+      policyVersion == readerPostPromotionPolicyV3 &&
+      digestVersion == readerPostPromotionDigestV3;
+  if ((!isV1 && !isV2 && !isV3Transport) ||
       normalizedCandidateId.isEmpty ||
       normalizedCanonicalIdentity.isEmpty ||
-      slot < (isV2 ? 1 : 0) ||
+      slot < (isV1 ? 0 : 1) ||
       (placement != 'top' && placement != 'additional')) {
     return null;
   }
@@ -95,6 +116,53 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
     return null;
   }
   if (decoded is! Map<String, Object?>) return null;
+  final canonicalSchema = decoded['schemaVersion'];
+  final isV3 = canonicalSchema == readerPostPromotionAttestationSchemaV3;
+  if (isV3) {
+    if (!isV3Transport) {
+      return null;
+    }
+    return _verifyReaderPostPromotionAttestationV3(
+      decoded: decoded,
+      digest: digest,
+      canonicalPayload: canonicalPayload,
+      candidateId: candidateId,
+      canonicalIdentity: canonicalIdentity,
+      artifactId: artifactId,
+      sourceWindowId: sourceWindowId,
+      enclosingArtifactId: enclosingArtifactId,
+      enclosingSourceWindowId: enclosingSourceWindowId,
+      enclosingPeriodStart: enclosingPeriodStart,
+      enclosingPeriodEnd: enclosingPeriodEnd,
+      enclosingIngestionCutoff: enclosingIngestionCutoff,
+      enclosingExactIngestionCutoff: enclosingExactIngestionCutoff,
+      placement: placement,
+      slot: slot,
+      decision: decision,
+      citationIds: citationIds,
+      displayHeadline: displayHeadline,
+      capturedSource: capturedSource,
+      cardTitle: cardTitle,
+      tenantId: tenantId,
+      workspaceId: workspaceId,
+      sourceItemId: sourceItemId,
+      sourceCandidateId: sourceCandidateId,
+      cardProviderKey: cardProviderKey,
+      cardStoryClusterId: cardStoryClusterId,
+      cardPublishedAt: cardPublishedAt,
+      cardCitationIds: cardCitationIds,
+      outerProvider: outerProvider,
+      outerStoryId: outerStoryId,
+      outerPublishedAt: outerPublishedAt,
+      outerPeriodStartedAt: outerPeriodStartedAt,
+      outerPeriodEndedAt: outerPeriodEndedAt,
+      outerIngestionCutoff: outerIngestionCutoff,
+      outerExactIngestionCutoff: outerExactIngestionCutoff,
+      outerAssessment: outerAssessment,
+      outerComparator: outerComparator,
+      outerPresentation: outerPresentation,
+    );
+  }
   if (!_validCanonicalBody(decoded, isV2: isV2)) return null;
   if (!_validPromotionSemantics(decoded)) return null;
   if (!verifyReaderDisplayHeadline(
@@ -326,73 +394,3 @@ const _bodyV2RequiredKeys = <String>{
   'slateDigest',
   'evidenceLineage',
 };
-
-bool _validCanonicalBody(Map<String, Object?> body, {required bool isV2}) {
-  if (!_exactKeys(
-        body,
-        {..._bodyRequiredKeys, if (isV2) ..._bodyV2RequiredKeys},
-        {
-          ..._bodyOptionalKeys,
-          if (isV2) 'displayHeadline',
-          if (isV2) 'displaySummary',
-        },
-      ) ||
-      !_isoDate(body['periodStartedAt']) ||
-      !_isoDate(body['periodEndedAt']) ||
-      !_isoDate(body['ingestionCutoff']) ||
-      !_isoDate(body['publishedAt']) ||
-      !_isoDate(body['observedAt']) ||
-      !_validOptionalExactPromotionTimestamps(body) ||
-      (body.containsKey('checkedAt') && !_isoDate(body['checkedAt'])) ||
-      !_nonEmptyStrings(body, const {
-        'artifactId',
-        'sourceWindowId',
-        'candidateId',
-        'provider',
-        'canonicalIdentity',
-        'citationId',
-        'reason',
-      }) ||
-      !_integer(body['slot']) ||
-      !_integer(body['providerCount']) ||
-      !_unit(body['confidence']) ||
-      !_unit(body['qualityScore']) ||
-      !_unit(body['relevanceScore']) ||
-      !_unit(body['integrityScore']) ||
-      body['freshnessValid'] is! bool ||
-      body['qualityValid'] is! bool ||
-      body['safetyValid'] is! bool ||
-      body['citationValid'] is! bool ||
-      body['metricsState'] != 'observed' ||
-      body['canonicalDedupeOutcome'] != 'retained' ||
-      body['capOutcome'] != 'selected' ||
-      body['tier'] != body['placement'] ||
-      (body['placement'] == 'top'
-          ? body['decision'] != 'promote_top'
-          : body['decision'] != 'promote_additional') ||
-      !_validContentKind(body['contentKind']) ||
-      !_validMetrics(body['metrics'], body['provider']) ||
-      !_validUsefulness(body['usefulnessComponents']) ||
-      !_validAuthority(body['authorityAttestation']) ||
-      !_validRelation(body['relationTrace']) ||
-      !_validSupportFacts(body['supportFacts']) ||
-      (isV2 && !_validV2CanonicalFields(body))) {
-    return false;
-  }
-  final citations = _stringList(body['citationIds']);
-  final supports = (body['supportFacts'] as List<Object?>)
-      .cast<Map<String, Object?>>();
-  final expectedCitations = <String>{
-    body['citationId']! as String,
-    ...supports.map((fact) => fact['citationId']! as String),
-  }.toList()..sort();
-  return citations != null &&
-      _sameOrderedStrings(citations, expectedCitations) &&
-      body['providerCount'] ==
-          <String>{
-            _providerFamily(body['provider']! as String)!,
-            ...supports.map(
-              (fact) => _providerFamily(fact['provider']! as String)!,
-            ),
-          }.length;
-}

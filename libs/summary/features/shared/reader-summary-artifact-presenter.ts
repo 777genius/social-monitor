@@ -8,18 +8,18 @@ import type {
   ReaderInterestSection,
   ReaderSummaryTopicMap,
   ReaderPostPromotionAttestation,
+  ReaderPostPromotionAttestationAny,
   ReaderPostPromotionInput,
   StoryCluster,
   TopRead,
 } from "../../domain";
+import { presentPromotionAttestationV3,
+  type ReaderPostPromotionAttestationV3View } from
+  "./reader-summary-v3-artifact-presenter";
 import { buildReaderSummary, emptyReaderSummaryTopicMap } from "../../domain";
-import type { ReaderSummaryFreshness } from "../../ports";
-import type { ReaderSummaryCollectedFeedItemCoverage } from "../../ports";
-import {
-  buildReaderSummaryCoverageView,
-  type ReaderSummaryCoverageView,
-} from "./reader-summary-coverage-presenter";
-
+import type { ReaderSummaryCollectedFeedItemCoverage,
+  ReaderSummaryFreshness } from "../../ports";
+import { buildReaderSummaryCoverageView, type ReaderSummaryCoverageView } from "./reader-summary-coverage-presenter";
 export type {
   ReaderSummaryCoverageView,
   ReaderSummaryProviderCollectionHealthView,
@@ -48,7 +48,7 @@ export type ReaderSummaryStoryClusterView = Omit<
   };
 };
 
-export type ReaderSummaryTopReadView = Omit<TopRead, "publishedAt"> & {
+export type ReaderSummaryTopReadView = Omit<TopRead, "publishedAt" | "exactPublishedAt"> & {
   readonly publishedAt?: string;
 };
 
@@ -167,7 +167,9 @@ export type ReaderSummaryArtifactView = Omit<
   };
   readonly storyClusters: readonly ReaderSummaryStoryClusterView[];
   readonly contextArtifacts: readonly ReaderSummaryContextArtifactView[];
-  readonly promotionAttestations: readonly ReaderPostPromotionAttestationView[];
+  readonly promotionAttestations: readonly (
+    ReaderPostPromotionAttestationView | ReaderPostPromotionAttestationV3View
+  )[];
   readonly citations: readonly ReaderSummaryCitationView[];
   readonly coverage: ReaderSummaryCoverageView;
   readonly freshness: ReaderSummaryFreshnessView;
@@ -242,12 +244,12 @@ export const presentReaderSummaryArtifact = (
       ...(snapshot.sourceWindow.periodStartedAt === undefined
         ? {}
         : { periodStartedAt: snapshot.sourceWindow.periodStartedAt.toISOString() }),
-      ...(snapshot.sourceWindow.periodEndedAt === undefined
-        ? {}
+      ...(snapshot.sourceWindow.periodEndedAt === undefined ? {}
         : { periodEndedAt: snapshot.sourceWindow.periodEndedAt.toISOString() }),
-      ...(snapshot.sourceWindow.ingestionCutoff === undefined
-        ? {}
-        : { ingestionCutoff: snapshot.sourceWindow.ingestionCutoff.toISOString() }),
+      ...(snapshot.sourceWindow.ingestionCutoff === undefined ? {}
+        : { ingestionCutoff: snapshot.sourceWindow.ingestionCutoff.toISOString(),
+          ...(snapshot.sourceWindow.exactIngestionCutoff === undefined ? {} :
+            { exactIngestionCutoff: snapshot.sourceWindow.exactIngestionCutoff }) }),
     },
     storyClusters: snapshot.storyClusters.map((cluster) => ({
       ...cluster,
@@ -284,8 +286,11 @@ export const presentReaderSummaryArtifact = (
 };
 
 export const presentPromotionAttestation = (
-  attestation: ReaderPostPromotionAttestation,
-): ReaderPostPromotionAttestationView => {
+  attestation: ReaderPostPromotionAttestationAny,
+): ReaderPostPromotionAttestationView | ReaderPostPromotionAttestationV3View => {
+  if (attestation.schemaVersion === "reader_post_promotion_attestation.v3") {
+    return presentPromotionAttestationV3(attestation);
+  }
   const {
     metrics,
     publishedAt,
@@ -421,13 +426,13 @@ const readerSummaryOpenQuestionsForPresentation = (
   return ["Which claims need more confirmation before acting on this summary?"];
 };
 
-const sanitizeTopReadForPresentation = (
-  item: TopRead,
-): ReaderSummaryTopReadView => ({
-  ...item,
-  publishedAt: presentTopReadPublishedAt(item.publishedAt),
-  matchedRules: publicReaderSummaryMatchedRules(item.matchedRules),
-});
+const sanitizeTopReadForPresentation = (item: TopRead): ReaderSummaryTopReadView => {
+  const { exactPublishedAt, ...publicItem } = item;
+  return { ...publicItem,
+    publishedAt: exactPublishedAt ?? presentTopReadPublishedAt(item.publishedAt),
+    matchedRules: publicReaderSummaryMatchedRules(item.matchedRules),
+  };
+};
 
 const presentTopReadPublishedAt = (
   value: TopRead["publishedAt"] | string | undefined,

@@ -261,6 +261,7 @@ const rssItemMetadata = (item: RssFeedItem, feedUrl: string) => {
 
   return {
     kind: "rss_item",
+    ...(item.contentComplete === true ? { nativeContentComplete: true } : {}),
     feedUrl,
     ...(searchQuery === undefined ? {} : { searchQuery }),
     ...(item.mediaThumbnailUrl === undefined

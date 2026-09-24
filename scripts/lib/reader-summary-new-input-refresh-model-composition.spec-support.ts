@@ -50,7 +50,9 @@ export function topicCommand(related: boolean): BuildReaderSummaryTopicMapComman
   }));
   return { tenantId: tenantId(m.tenantId), workspaceId: workspaceId(m.workspaceId), scope: { type: "workspace" },
     period: { cadence: "daily", startedAt: new Date(m.startedAt), endedAt: new Date(m.endedAt), timezone: "UTC", periodKey: m.date },
-    requestedAt: refreshNow, selectedEvidence, topStories: [],
+    requestedAt: refreshNow,
+    evidenceAdmission: { selectionStrategy: "legacy_v2" },
+    selectedEvidence, topStories: [],
     clusters: selectedEvidence.map((item, index) => ({ id: `story:${index}`, storyKey: `synthetic-${index}`,
       representativeFeedItemId: item.feedItemId, duplicateFeedItemIds: [], interestIds: [item.interestId], providerKeys: [item.providerKey],
       score: item.score, observedAtRange: { startedAt: refreshNow, endedAt: refreshNow }, whyImportant: item.whyImportant })),

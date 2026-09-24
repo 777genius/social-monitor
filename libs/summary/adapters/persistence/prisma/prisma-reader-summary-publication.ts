@@ -15,7 +15,8 @@ import {
 } from "../reader-summary-weekly-publication-evidence";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
-import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
+import { requireSerializableReaderSummaryTransactions,
+  runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
 import {
   configureReaderSummaryPublicationDeadline,
   readerSummaryPublicationTimeoutMs,
@@ -29,7 +30,8 @@ const publicationTransactionOptions = Object.freeze({
 export type ReaderSummaryPublicationTransactionGuard = (
   client: PrismaReaderSummaryClient,
   command: ReaderSummaryPublicationCommand,
-) => Promise<void>;
+) => Promise<void | { readonly allowed: true } | { readonly allowed: false;
+  readonly reason: string }>;
 
 export class PrismaReaderSummaryPublication implements ReaderSummaryPublicationPort {
   constructor(
@@ -40,26 +42,37 @@ export class PrismaReaderSummaryPublication implements ReaderSummaryPublicationP
   async publish(
     command: ReaderSummaryPublicationCommand,
   ): Promise<ReaderSummaryPublicationOutcome> {
+    if (command.finalJob.toSnapshot().selectionStrategy === "jev_primary_v3") {
+      requireSerializableReaderSummaryTransactions(this.prisma);
+    }
     const usesDbOwnedWeeklyEvidence =
       readerSummaryPublicationHasWeeklyDailyEvidence(command);
     const request = usesDbOwnedWeeklyEvidence
       ? buildReaderSummaryPublicationRequestV2(command)
       : buildReaderSummaryPublicationPayload(command);
     const serialized = JSON.stringify(request);
-    const rows = await withPrismaWriteRetry(() =>
+    const transactionResult = await withPrismaWriteRetry(() =>
       runSerializableReaderSummaryTransaction(
         this.prisma,
         async (prisma) => {
           await configureReaderSummaryPublicationDeadline(prisma);
-          await this.transactionGuard?.(prisma, command);
-          return prisma.$queryRaw<readonly ReaderSummaryPublicationSqlRow[]>`
+          const guard = await this.transactionGuard?.(prisma, command);
+          if (guard !== undefined && guard.allowed === false) {
+            return { guard } as const;
+          }
+          const rows = await prisma.$queryRaw<readonly ReaderSummaryPublicationSqlRow[]>`
             SELECT *
             FROM "publish_reader_summary"(${serialized}::jsonb)
           `;
+          return { rows } as const;
         },
         publicationTransactionOptions,
       ),
     );
+    if ("guard" in transactionResult && transactionResult.guard !== undefined) {
+      throw new Error(`Reader summary publication rejected: ${transactionResult.guard.reason}`);
+    }
+    const rows = transactionResult.rows;
     const row = rows[0];
     if (rows.length !== 1 || row === undefined) {
       throw new Error("PostgreSQL publication returned no exact outcome");

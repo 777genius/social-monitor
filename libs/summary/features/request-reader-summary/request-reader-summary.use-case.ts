@@ -13,6 +13,7 @@ import {
   readerSummaryScopeKey,
   resolveReaderSummaryPeriod,
   type ReaderSummaryJobProps,
+  type ReaderSummarySelectionStrategy,
 } from "../../domain";
 import type {
   ReaderSummaryJobQueuePort,
@@ -24,6 +25,18 @@ import type { RequestReaderSummaryResult } from "./request-reader-summary.result
 
 type RequestReaderSummaryFailure = DomainError | Error;
 
+export interface ReaderSummarySelectionStrategyResolver {
+  resolve(params: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly interestId?: string;
+  }): ReaderSummarySelectionStrategy;
+}
+
+const legacyReaderSummarySelectionStrategy: ReaderSummarySelectionStrategyResolver = {
+  resolve: () => "legacy_v2",
+};
+
 export class RequestReaderSummaryUseCase {
   constructor(
     private readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort,
@@ -31,6 +44,8 @@ export class RequestReaderSummaryUseCase {
     private readonly summaryQuota: SummaryQuotaPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly selectionStrategy: ReaderSummarySelectionStrategyResolver =
+      legacyReaderSummarySelectionStrategy,
   ) {}
 
   async execute(
@@ -151,6 +166,13 @@ export class RequestReaderSummaryUseCase {
       subscriptionId,
       idempotencyKey,
       requestedAt: this.clock.now(),
+      selectionStrategy: this.selectionStrategy.resolve({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        interestId: command.scope.type === "interest"
+          ? command.scope.interestId
+          : undefined,
+      }),
     });
     await this.readerSummaryJobs.save(job);
     await this.readerSummaryJobQueue.enqueue(queueCommand);

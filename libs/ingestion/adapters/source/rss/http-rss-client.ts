@@ -1,6 +1,8 @@
+import { guardedContentGet } from '../../http/guarded-content-http';
 import { XMLParser } from 'fast-xml-parser';
 
 import { validateFeedUrl } from './feed-url-policy';
+import { atomXhtmlContents } from './atom-xhtml-content';
 import type { RssClientPort, RssFeedItem, RssReadFeedOptions, RssReadFeedResult } from './rss-client.port';
 
 const parser = new XMLParser({
@@ -19,17 +21,10 @@ export class HttpRssClient implements RssClientPort {
       throw new Error(validated.reason);
     }
 
-    const response = await fetch(validated.url.toString(), {
-      headers: requestHeaders(options),
-      redirect: 'follow',
-      signal: AbortSignal.timeout(this.timeoutMs),
+    const response = await guardedContentGet({
+      url: validated.url.toString(), timeoutMs: this.timeoutMs,
+      maxBytes: 5 * 1024 * 1024, headers: requestHeaders(options),
     });
-    if (response.url.trim().length > 0) {
-      const finalUrl = validateFeedUrl(response.url);
-      if (!finalUrl.ok) {
-        throw new Error(`Feed URL redirect rejected: ${finalUrl.reason}`);
-      }
-    }
 
     const etag = response.headers.get('etag') ?? options.etag;
     const lastModified = response.headers.get('last-modified') ?? options.lastModified;
@@ -43,14 +38,15 @@ export class HttpRssClient implements RssClientPort {
       };
     }
 
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       throw new Error(`RSS provider returned HTTP ${response.status}`);
     }
 
-    const parsed = parser.parse(await response.text());
+    const xml = response.body;
+    const parsed = parser.parse(xml);
 
     return {
-      items: parseFeedItems(parsed).slice(0, normalizeLimit(limit)),
+      items: parseFeedItems(parsed, xml).slice(0, normalizeLimit(limit)),
       etag,
       lastModified,
     };
@@ -74,7 +70,7 @@ const requestHeaders = (options: RssReadFeedOptions): Record<string, string> => 
   return headers;
 };
 
-const parseFeedItems = (parsed: unknown): readonly RssFeedItem[] => {
+const parseFeedItems = (parsed: unknown, xml: string): readonly RssFeedItem[] => {
   if (!isRecord(parsed)) {
     return [];
   }
@@ -84,7 +80,11 @@ const parseFeedItems = (parsed: unknown): readonly RssFeedItem[] => {
     return rssItems.flatMap((item) => normalizeRssItem(item));
   }
 
-  return arrayFromPath(parsed, ['feed', 'entry']).flatMap((entry) => normalizeAtomEntry(entry));
+  const entries = arrayFromPath(parsed, ['feed', 'entry']);
+  const hasXhtml = entries.some((entry) => isRecord(entry) &&
+    [entry.content, entry.summary].some((value) => isRecord(value) && value['@_type'] === 'xhtml'));
+  const xhtml = hasXhtml ? atomXhtmlContents(xml) : [];
+  return entries.flatMap((entry, index) => normalizeAtomEntry(entry, xhtml[index]));
 };
 
 const normalizeRssItem = (item: unknown): readonly RssFeedItem[] => {
@@ -103,7 +103,7 @@ const normalizeRssItem = (item: unknown): readonly RssFeedItem[] => {
   }];
 };
 
-const normalizeAtomEntry = (entry: unknown): readonly RssFeedItem[] => {
+const normalizeAtomEntry = (entry: unknown, xhtml?: string): readonly RssFeedItem[] => {
   if (!isRecord(entry)) {
     return [];
   }
@@ -112,7 +112,7 @@ const normalizeAtomEntry = (entry: unknown): readonly RssFeedItem[] => {
     guid: readText(entry.id),
     link: readAtomLink(entry.link),
     title: readText(entry.title),
-    content: readText(entry.content) ?? readText(entry.summary),
+    content: xhtml ?? readText(entry.content) ?? readText(entry.summary),
     author: readAtomAuthor(entry.author),
     ...atomMediaFields(entry),
     publishedAt: parseDate(readText(entry.published) ?? readText(entry.updated)),

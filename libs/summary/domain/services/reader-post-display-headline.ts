@@ -82,6 +82,14 @@ export const readerPostPublishedHeadline = (
 
 export const validDisplayHeadlineSource = (
   value: unknown, source: ReaderCapturedSource,
+): value is Extract<ReaderDisplayHeadline, { status: "accepted" }> =>
+  validDisplayHeadlineContract(value, source, 12_000);
+
+/** Shared producer/client semantic contract; callers select only the source-size envelope. */
+export const validDisplayHeadlineContract = (
+  value: unknown,
+  source: ReaderCapturedSource,
+  maxBodyUtf16: number,
 ): value is Extract<ReaderDisplayHeadline, { status: "accepted" }> => {
   if (!exact(value, ["status", "kind", "text", "binding", "support", "qualifications", "confidence", "wholeInput"]) ||
       value.status !== "accepted" || !["claim", "subject_label"].includes(String(value.kind)) ||
@@ -90,7 +98,8 @@ export const validDisplayHeadlineSource = (
       !exact(source, ["title", "body", "captureAvailability", "reviewAvailability"]) ||
       source.captureAvailability !== "available" || typeof source.title !== "string" ||
       typeof source.body !== "string" || !isDisplayRoundTripText(source.title) ||
-      !isDisplayRoundTripText(source.body) || source.title.length > 2_000 || source.body.length > 12_000) return false;
+      !isDisplayRoundTripText(source.body) || source.title.length > 2_000 ||
+      source.body.length > maxBodyUtf16) return false;
   const binding = value.binding;
   if (!exact(binding, ["candidateId", "providerKey", "tenantId", "workspaceId", "interestId",
     "sourceBindingId", "sourceItemId", "trustedIntent", "availability", "reviewedInputDigest"]) ||

@@ -35,7 +35,9 @@ export const recordReaderSummaryPromotionLifecycle = (params: {
   const attestations = snapshot.promotionAttestations ?? [];
   const admittedPromotionEvidenceIds = new Set(attestations.flatMap((item) => [
     item.candidateId,
-    ...item.supportFacts.map((fact) => fact.candidateId),
+    ...(item.schemaVersion === "reader_post_promotion_attestation.v3"
+      ? []
+      : item.supportFacts.map((fact) => fact.candidateId)),
   ]));
   params.control.metrics.record({
     candidateCount: attestations.length,

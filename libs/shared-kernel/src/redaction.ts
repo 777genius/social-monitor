@@ -1,3 +1,5 @@
+import { analyzeUrlFragment } from './url-fragment-redaction';
+
 export const REDACTED_VALUE = '[REDACTED]';
 
 export type RedactableMetadataValue = string | number | boolean | readonly string[] | undefined;
@@ -8,7 +10,7 @@ const basicPattern = /^basic\s+(?!client\b)[A-Za-z0-9._~+/-]{8,}=*/i;
 const generatedSecretPattern = /^(?:smk|whsec)_[A-Za-z0-9_-]+/;
 const urlWithPasswordPattern = /^[a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:[^@\s]+@/i;
 const inlineCredentialPattern =
-  /\b((?:access|refresh|id)?[_-]?token|api[_-]?key|client[_-]?secret|secret|credential|authorization|password|session|cookie|signature|private[_-]?key)\s*[:=]\s*([^\s'",<>{}]+)/gi;
+  /\b((?:access|refresh|id)?[_-]?token|api[_-]?key|client[_-]?secret|secret|credential|authorization|password|session|cookie|signature|private[_-]?key)\s*[:=]\s*([^\s'",<>{}&?#]+)/gi;
 const inlineJsonCredentialPattern =
   /"((?:access|refresh|id)?[_-]?token|api[_-]?key|client[_-]?secret|secret|credential|authorization|password|session|cookie|signature|private[_-]?key)"\s*:\s*"[^"]+"/gi;
 const inlineBearerPattern = /\b(?:bearer|basic)\s+(?!jwt\b|client\b)[A-Za-z0-9._~+/-]{8,}=*/gi;
@@ -22,6 +24,145 @@ const sensitiveTextFragmentPatterns = [
 
 export const isSensitiveKey = (key: string): boolean => sensitiveKeyPattern.test(key);
 
+const commonUrlCredentialKeys = new Set([
+  'access-token', 'access_token', 'accesstoken', 'api-key', 'api_key', 'apikey',
+  'auth', 'authorization', 'auth-token', 'auth_token', 'authtoken', 'client-secret',
+  'client_secret', 'clientsecret', 'cookie', 'credential', 'id-token', 'id_token', 'idtoken', 'jwt',
+  'oauth-token', 'oauth_token', 'password', 'refresh-token', 'refresh_token',
+  'refreshtoken', 'secret', 'session', 'signature', 'token',
+]);
+const credentialShapedRouteKeyPattern = /(?:^|[_-])(?:token|secret|credential|authorization|signature|api[_-]?key|private[_-]?key|session[_-]?id)(?:$|[_-])/i;
+const azureSignedUrlKeys = new Set([
+  'rscc', 'rscd', 'rsce', 'rscl', 'rsct', 'scid', 'se', 'ses', 'si', 'sig', 'sip',
+  'skoid', 'sks', 'skt', 'sktid', 'skv', 'sp', 'spr', 'sr', 'srt', 'ss', 'st', 'sv',
+]);
+const awsV4SignedUrlKeys = new Set([
+  'x-amz-algorithm', 'x-amz-content-sha256', 'x-amz-credential', 'x-amz-date',
+  'x-amz-expires', 'x-amz-security-token', 'x-amz-signature', 'x-amz-signedheaders',
+]);
+const googleV4SignedUrlKeys = new Set([
+  'x-goog-algorithm', 'x-goog-content-sha256', 'x-goog-credential', 'x-goog-date',
+  'x-goog-expires', 'x-goog-signature', 'x-goog-signedheaders',
+]);
+
+/**
+ * URL query credentials need more context than record keys. In particular,
+ * short Azure names such as `se` and `sv` are only credentials when the query
+ * also carries an Azure signature, while provider-prefixed AWS/Google keys are
+ * unambiguous on their own.
+ */
+export const isSensitiveUrlCredentialKey = (
+  key: string,
+  queryKeys: readonly string[] = [key],
+): boolean => isSensitiveNormalizedUrlCredentialKey(
+  key.toLowerCase(),
+  new Set(queryKeys.map((entry) => entry.toLowerCase())),
+);
+
+const isSensitiveNormalizedUrlCredentialKey = (
+  normalized: string,
+  normalizedKeys: ReadonlySet<string>,
+): boolean => {
+  if (isSensitiveKey(normalized)) return true;
+  if (commonUrlCredentialKeys.has(normalized)) return true;
+  if (awsV4SignedUrlKeys.has(normalized) || googleV4SignedUrlKeys.has(normalized)) return true;
+  if (['awsaccesskeyid', 'googleaccessid', 'key-pair-id'].includes(normalized)) return true;
+  if (normalized === 'expires' && ['awsaccesskeyid', 'googleaccessid', 'key-pair-id']
+    .some((companion) => normalizedKeys.has(companion))) return true;
+  if (normalized === 'policy' && normalizedKeys.has('key-pair-id')) return true;
+  return azureSignedUrlKeys.has(normalized) && normalizedKeys.has('sig');
+};
+
+const isCredentialRoutePrefix = (key: string): boolean =>
+  commonUrlCredentialKeys.has(key) || credentialShapedRouteKeyPattern.test(key);
+
+export const urlContainsCredentials = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    const queryKeys = [...url.searchParams.keys()];
+    const normalizedQueryKeys = new Set(queryKeys.map((key) => key.toLowerCase()));
+    const fragment = analyzeUrlFragment(
+      url.hash.slice(1), isSensitiveNormalizedUrlCredentialKey, isCredentialRoutePrefix,
+    );
+    return url.username.length > 0 || url.password.length > 0 ||
+      queryKeys.some((key) => isSensitiveNormalizedUrlCredentialKey(
+        key.toLowerCase(), normalizedQueryKeys,
+      )) || fragment.hasCredentials;
+  } catch {
+    return false;
+  }
+};
+
+/** Parse first so one credential value can never consume a following URL parameter. */
+export const sanitizeUrlCredentials = (value: string): string => {
+  try {
+    const normalizedValue = normalizeWhatwgUrlInput(value);
+    const url = new URL(normalizedValue);
+    const queryKeys = [...url.searchParams.keys()];
+    const normalizedQueryKeys = new Set(queryKeys.map((key) => key.toLowerCase()));
+    const fragmentStart = normalizedValue.indexOf('#');
+    const rawFragment = fragmentStart >= 0 ? normalizedValue.slice(fragmentStart + 1) : '';
+    const queryStart = normalizedValue.indexOf('?');
+    const hasQuery = queryStart >= 0 && (fragmentStart < 0 || queryStart < fragmentStart);
+    const queryEnd = fragmentStart < 0 ? normalizedValue.length : fragmentStart;
+    const retained = hasQuery
+      ? retainSafeUrlParameterComponents(
+        normalizedValue.slice(queryStart + 1, queryEnd), normalizedQueryKeys,
+      )
+      : [];
+    const withoutSensitiveQuery = hasQuery
+      ? `${normalizedValue.slice(0, queryStart)}${retained.length > 0 ? `?${retained.join('&')}` : ''}${normalizedValue.slice(queryEnd)}`
+      : normalizedValue;
+    const sanitizedFragment = fragmentStart >= 0
+      ? analyzeUrlFragment(
+        rawFragment, isSensitiveNormalizedUrlCredentialKey, isCredentialRoutePrefix,
+      ).sanitized
+      : rawFragment;
+    const hasSanitizedFragment = rawFragment.length === 0 || sanitizedFragment.length > 0;
+    const withoutSensitiveFragment = fragmentStart >= 0
+      ? `${withoutSensitiveQuery.slice(0, withoutSensitiveQuery.indexOf('#'))}${hasSanitizedFragment ? `#${sanitizedFragment}` : ''}`
+      : withoutSensitiveQuery;
+    return url.username.length > 0 || url.password.length > 0
+      ? removeRawUrlUserInfo(withoutSensitiveFragment)
+      : withoutSensitiveFragment;
+  } catch {
+    return redactSensitiveTextFallback(value);
+  }
+};
+
+// The URL parser removes ASCII tabs/newlines anywhere and trims leading or
+// trailing C0 controls and spaces before parsing. Apply that preprocessing to
+// the raw representation too so credential detection and removal see the same
+// bytes while retained components otherwise remain unchanged.
+const normalizeWhatwgUrlInput = (value: string): string => {
+  const withoutAsciiTabOrNewline = value.replace(/[\t\n\r]/g, '');
+  let start = 0;
+  let end = withoutAsciiTabOrNewline.length;
+  while (start < end && withoutAsciiTabOrNewline.charCodeAt(start) <= 0x20) start += 1;
+  while (end > start && withoutAsciiTabOrNewline.charCodeAt(end - 1) <= 0x20) end -= 1;
+  return withoutAsciiTabOrNewline.slice(start, end);
+};
+
+const retainSafeUrlParameterComponents = (
+  rawParameters: string,
+  normalizedKeys: ReadonlySet<string>,
+): string[] => rawParameters.split('&').filter((component) => {
+  const key = new URLSearchParams(component).keys().next().value ?? '';
+  return !isSensitiveNormalizedUrlCredentialKey(key.toLowerCase(), normalizedKeys);
+});
+
+const removeRawUrlUserInfo = (value: string): string => {
+  const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(value);
+  if (!scheme) return value;
+  const authorityStart = scheme[0].length;
+  const authorityLength = value.slice(authorityStart).search(/[/?#]/);
+  const end = authorityLength < 0 ? value.length : authorityStart + authorityLength;
+  const userInfoEnd = value.lastIndexOf('@', end);
+  return userInfoEnd < authorityStart
+    ? value
+    : `${value.slice(0, authorityStart)}${value.slice(userInfoEnd + 1)}`;
+};
+
 export const isSensitiveString = (value: string): boolean =>
   bearerPattern.test(value) ||
   basicPattern.test(value) ||
@@ -29,11 +170,24 @@ export const isSensitiveString = (value: string): boolean =>
   urlWithPasswordPattern.test(value);
 
 export const redactSensitiveText = (value: string): string =>
+  redactUrlPasswords(redactEmbeddedUrlCredentials(value)
+    .replace(inlineJsonCredentialPattern, (_match, key: string) => `"${key}":"${REDACTED_VALUE}"`)
+    .replace(inlineBearerPattern, REDACTED_VALUE)
+    .replace(inlineCredentialPattern, (_match, key: string) => `${key}=${REDACTED_VALUE}`)
+    .replace(inlineGeneratedSecretPattern, REDACTED_VALUE));
+
+const redactSensitiveTextFallback = (value: string): string =>
   redactUrlPasswords(value
     .replace(inlineJsonCredentialPattern, (_match, key: string) => `"${key}":"${REDACTED_VALUE}"`)
     .replace(inlineBearerPattern, REDACTED_VALUE)
     .replace(inlineCredentialPattern, (_match, key: string) => `${key}=${REDACTED_VALUE}`)
     .replace(inlineGeneratedSecretPattern, REDACTED_VALUE));
+
+const redactEmbeddedUrlCredentials = (value: string): string =>
+  !/[?#]/.test(value) ? value : value.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>{}]+/gi, (candidate) => {
+    if (!/[?#]/.test(candidate) || !urlContainsCredentials(candidate)) return candidate;
+    return sanitizeUrlCredentials(candidate);
+  });
 
 export const countSensitiveTextFragments = (value: string): number =>
   sensitiveTextFragmentPatterns.reduce(

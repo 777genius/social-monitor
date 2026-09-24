@@ -192,6 +192,8 @@ const readerSummaryReaderItemView = (
 type ReaderCardRestAuthority = Readonly<{
   artifactId: string;
   sourceWindowId: string;
+  ingestionCutoff?: string;
+  exactIngestionCutoff?: string;
   citations: ReadonlyMap<string, ReaderSummaryCitationView>;
   clusters: ReadonlyMap<
     string,
@@ -272,6 +274,8 @@ const buildReaderCardRestAuthority = (
     return {
       artifactId: view.readerSummaryId,
       sourceWindowId: view.sourceWindow.windowId,
+      ingestionCutoff: view.sourceWindow.ingestionCutoff,
+      exactIngestionCutoff: view.sourceWindow.exactIngestionCutoff,
       citations,
       clusters: clusterById,
       promotionAttestations,
@@ -300,18 +304,23 @@ const promotionAttestationView = (
       candidateId.length === 0 || canonicalIdentity === undefined ||
       canonicalIdentity.length === 0) return undefined;
   const attestation = authority.promotionAttestations.get(candidateId);
+  const isV3 = attestation?.schemaVersion ===
+    "reader_post_promotion_attestation.v3";
   if (attestation === undefined ||
       item.promotionPolicyVersion !== attestation.policyVersion ||
       attestation.candidateId !== candidateId ||
       attestation.canonicalIdentity !== canonicalIdentity ||
       attestation.artifactId !== authority.artifactId ||
       attestation.sourceWindowId !== authority.sourceWindowId ||
+      (isV3 && (attestation.ingestionCutoff !== authority.ingestionCutoff ||
+        attestation.exactIngestionCutoff !== authority.exactIngestionCutoff)) ||
       attestation.placement !== placement ||
       attestation.slot !== restPromotionSlot(attestation, slot) ||
       !sameOrderedStrings(attestation.citationIds, item.citationIds) ||
-      attestation.tier !== placement || attestation.decision !== decision ||
-      attestation.canonicalDedupeOutcome !== "retained" ||
-      attestation.capOutcome !== "selected" ||
+      (!isV3 && (attestation.tier !== placement ||
+        attestation.canonicalDedupeOutcome !== "retained" ||
+        attestation.capOutcome !== "selected")) ||
+      attestation.decision !== decision ||
       !validRestPromotionVersion(attestation) ||
       readerPostPromotionDigest(attestation.canonicalPayload) !==
         attestation.digest) return undefined;
@@ -322,6 +331,10 @@ const promotionAttestationView = (
   if (v2 !== undefined && !validV2RestCardBinding(v2, item, placement, slot)) {
     return undefined;
   }
+  if (isV3 && (attestation.storyId !== item.storyClusterId ||
+      attestation.presentation.displayHeadline.headline.status !== "accepted" ||
+      canonicalPromotionPayload(attestation.presentation.displayHeadline.headline) !==
+        canonicalPromotionPayload(item.displayHeadline))) return undefined;
   return {
     schemaVersion: attestation.schemaVersion,
     policyVersion: attestation.policyVersion,
@@ -336,6 +349,18 @@ const promotionAttestationView = (
     placement,
     decision,
     citationIds: [...attestation.citationIds],
+    ...(isV3 ? {
+      provider: attestation.provider,
+      storyId: attestation.storyId,
+      publishedAt: attestation.publishedAt,
+      periodStartedAt: attestation.periodStartedAt,
+      periodEndedAt: attestation.periodEndedAt,
+      ingestionCutoff: attestation.ingestionCutoff,
+      exactIngestionCutoff: attestation.exactIngestionCutoff,
+      assessment: attestation.assessment,
+      comparator: attestation.comparator,
+      presentation: attestation.presentation,
+    } : {}),
     ...(v2 === undefined ? {} : {
       ...(v2.displayHeadline === undefined ? {} : { displayHeadline: v2.displayHeadline }),
       ...(v2.displaySummary === undefined ? {} : { displaySummary: v2.displaySummary }),
@@ -362,7 +387,10 @@ const validRestPromotionVersion = (
     "reader_post_promotion_attestation.v1"
   ? attestation.policyVersion === "reader_post_promotion.v1" &&
     attestation.digestVersion === "reader_post_promotion_digest.sha256.v1"
-  : attestation.schemaVersion ===
+  : attestation.schemaVersion === "reader_post_promotion_attestation.v3"
+    ? attestation.policyVersion === "reader_post_promotion.v3" &&
+      attestation.digestVersion === "reader_post_promotion_digest.sha256.v3"
+    : attestation.schemaVersion ===
       READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION &&
     attestation.policyVersion === "reader_post_promotion.v2" &&
     attestation.digestVersion === READER_POST_PROMOTION_DIGEST_VERSION;
@@ -371,7 +399,8 @@ const restPromotionSlot = (
   attestation: ReaderSummaryArtifactView["promotionAttestations"][number],
   zeroBasedIndex: number,
 ): number => attestation.schemaVersion ===
-    READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION
+    READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION ||
+    attestation.schemaVersion === "reader_post_promotion_attestation.v3"
   ? zeroBasedIndex + 1
   : zeroBasedIndex;
 

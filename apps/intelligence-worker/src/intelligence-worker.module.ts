@@ -21,6 +21,7 @@ import { SystemClock } from "@social-monitor/shared-kernel";
 
 import {
   INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS,
+  INTELLIGENCE_READER_SUMMARY_JOB_LOOP_CLOCK,
   INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS,
   INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS,
   INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_READER_OPTIONS,
@@ -58,6 +59,7 @@ import { SummaryJobPollingLoop } from "./summary-job-polling-loop";
 import { AutoSummarySchedulerLoop } from "./auto-summary-scheduler-loop";
 import { PeriodicReaderSummarySchedulerLoop } from "./periodic-reader-summary-scheduler-loop";
 import { RelevanceMemoryProjectionLoop } from "./relevance-memory-projection-loop";
+import { ReaderValueModule } from "./reader-value.module";
 
 const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
   "INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL",
@@ -69,6 +71,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
     WorkerRuntimeModule.register({ serviceName: "intelligence-worker" }),
     SummaryRestModule,
     RelevanceRestModule,
+    ReaderValueModule,
   ],
   providers: [
     {
@@ -78,6 +81,10 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
     {
       provide: INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS,
       useFactory: () => resolveIntelligenceReaderSummaryJobLoopOptions(process.env),
+    },
+    {
+      provide: INTELLIGENCE_READER_SUMMARY_JOB_LOOP_CLOCK,
+      useFactory: () => new SystemClock(),
     },
     {
       provide: INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS,

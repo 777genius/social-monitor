@@ -52,8 +52,8 @@ export class PrismaFeedItemReadRepository implements
   async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
     assertValidFeedItemListQuery(query);
     const offset = parseFeedOffsetCursor(query.cursor);
-    const candidates = await this.listSignalCandidates(query);
-    const sorted = sortFeedItems(candidates);
+    const candidateWindow = await this.readSignalCandidateWindow(query);
+    const sorted = sortFeedItems(candidateWindow.items);
     const items = sorted.slice(offset, offset + query.limit);
     const nextOffset = offset + items.length;
     return {
@@ -61,19 +61,30 @@ export class PrismaFeedItemReadRepository implements
       nextCursor: nextOffset < sorted.length
         ? encodeFeedOffsetCursor(nextOffset)
         : undefined,
+      candidateWindowExhausted: candidateWindow.exhausted,
     };
   }
 
   async listSignalCandidates(
     query: ListFeedItemSignalCandidatesQuery,
   ): Promise<readonly FeedItem[]> {
+    return (await this.readSignalCandidateWindow(query)).items;
+  }
+
+  private async readSignalCandidateWindow(
+    query: ListFeedItemSignalCandidatesQuery,
+  ): Promise<SignalCandidateWindow> {
     const records = await this.prisma.feedItem.findMany({
       where: commonWhere(query),
       orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
-      take: PROVIDER_SIGNAL_SCAN_LIMIT,
+      take: PROVIDER_SIGNAL_SCAN_LIMIT + 1,
     });
-    return records.map(feedItemFromPrisma)
-      .filter((item) => matchesFeedItemReadFilters(item, query));
+    return {
+      items: records.slice(0, PROVIDER_SIGNAL_SCAN_LIMIT)
+        .map(feedItemFromPrisma)
+        .filter((item) => matchesFeedItemReadFilters(item, query)),
+      exhausted: records.length <= PROVIDER_SIGNAL_SCAN_LIMIT,
+    };
   }
 
   async findLatestSignalCandidate(
@@ -158,6 +169,11 @@ export class PrismaFeedItemReadRepository implements
         }]);
   }
 }
+
+type SignalCandidateWindow = {
+  readonly items: readonly FeedItem[];
+  readonly exhausted: boolean;
+};
 
 const scanPromotionSnapshot = async (
   transaction: PrismaFeedClient,

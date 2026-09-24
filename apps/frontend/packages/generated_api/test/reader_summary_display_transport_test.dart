@@ -4,6 +4,24 @@ import 'package:social_monitor_generated_api/social_monitor_generated_api.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('generated binding accepts a V3 interest digest without plaintext', () {
+    final binding = ReaderSummaryHeadlineBindingDto.fromJson({
+      'candidateId': 'candidate-fixture',
+      'providerKey': 'reddit',
+      'tenantId': 'tenant-fixture',
+      'workspaceId': 'workspace-fixture',
+      'interestId': 'interest-fixture',
+      'sourceBindingId': 'binding-fixture',
+      'sourceItemId': 'source-fixture',
+      'interestDigest': List.filled(64, 'a').join(),
+      'availability': 'body_present',
+      'reviewedInputDigest': List.filled(64, 'b').join(),
+    });
+
+    expect(binding.interestDigest, List.filled(64, 'a').join());
+    expect(binding.trustedIntent, isNull);
+  });
+
   test(
     'generated reader contract preserves exact display and captured source',
     () {
@@ -141,17 +159,11 @@ void main() {
     final encoded =
         jsonDecode(jsonEncode(item.toJson())) as Map<String, Object?>;
     expect(encoded['title'], title);
-    expect(
-      encoded['displayHeadline'],
-      containsPair('status', 'unavailable'),
-    );
+    expect(encoded['displayHeadline'], containsPair('status', 'unavailable'));
     expect(
       (encoded['displayHeadline']! as Map<String, Object?>)['reasonCode'],
       'not_assessed',
     );
-    expect(
-      (encoded['capturedSource']! as Map<String, Object?>)['body'],
-      title,
-    );
+    expect((encoded['capturedSource']! as Map<String, Object?>)['body'], title);
   });
 }

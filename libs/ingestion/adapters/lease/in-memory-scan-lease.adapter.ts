@@ -1,5 +1,15 @@
 import type { AcquireScanLeaseCommand, ScanLease, ScanLeasePort } from '../../ports';
 
+// Process-local leases are handles, not authority conferred by a copied token.
+// The owner lookup lets other in-memory persistence adapters check revocation
+// synchronously with their write, without sharing one global lease store.
+const leaseOwners = new WeakMap<ScanLease, InMemoryScanLeaseAdapter>();
+
+export const isCurrentInMemoryScanLease = (lease: ScanLease, now: Date): boolean => {
+  const current = leaseOwners.get(lease)?.current(lease);
+  return current === lease && current.expiresAt > now;
+};
+
 export class InMemoryScanLeaseAdapter implements ScanLeasePort {
   private readonly leases = new Map<string, ScanLease>();
 
@@ -21,6 +31,7 @@ export class InMemoryScanLeaseAdapter implements ScanLeasePort {
       expiresAt: new Date(command.leasedAt.getTime() + command.ttlSeconds * 1000),
     };
     this.leases.set(key, lease);
+    leaseOwners.set(lease, this);
 
     return lease;
   }

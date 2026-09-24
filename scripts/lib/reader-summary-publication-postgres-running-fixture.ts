@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
+import type { ReaderSummaryArtifact } from "../../libs/summary/domain";
 
 import { readerSummaryPublicationFixtureScope } from "./reader-summary-publication-postgres-fixture-scope";
 import {
@@ -13,7 +14,14 @@ import {
 } from "./reader-summary-weekly-publication-evidence-postgres-contract";
 
 export type ReaderSummaryPublicationRunningFixture =
-  ReaderSummaryPublicationEvidenceFixture;
+  ReaderSummaryPublicationEvidenceFixture & Readonly<{
+    applicationArtifact?: ReaderSummaryArtifact;
+  }>;
+
+type PublicationPayloadTransformResult = Readonly<{
+  payload: Readonly<Record<string, unknown>>;
+  applicationArtifact?: ReaderSummaryArtifact;
+}>;
 
 export const createReaderSummaryPublicationRunningFixture = async (
   client: PoolClient,
@@ -22,6 +30,9 @@ export const createReaderSummaryPublicationRunningFixture = async (
   overrides: {
     readonly requestedAt?: string;
     readonly modelVersion?: string;
+    readonly payloadTransform?: (
+      payload: Readonly<Record<string, unknown>>,
+    ) => PublicationPayloadTransformResult | Promise<PublicationPayloadTransformResult>;
   } & EvidenceFixtureOverrides = {},
 ): Promise<ReaderSummaryPublicationRunningFixture> => {
   const { tenantId, workspaceId } = readerSummaryPublicationFixtureScope;
@@ -170,7 +181,7 @@ export const createReaderSummaryPublicationRunningFixture = async (
     reportSha256,
   });
   const proofCanonical = stableJson(exactProof);
-  const payload = canonicalObject({
+  const basePayload = canonicalObject({
     schemaVersion: "reader_summary.publication.v1",
     tenantId,
     workspaceId,
@@ -215,6 +226,9 @@ export const createReaderSummaryPublicationRunningFixture = async (
       },
     },
   });
+  const transformed = await overrides.payloadTransform?.(basePayload);
+  const payload = transformed?.payload ?? basePayload;
+  const publicationReport = payload.report as Readonly<Record<string, unknown>>;
   await client.query(
     `INSERT INTO reader_summary_artifacts (
        id, tenant_id, workspace_id, scope_type, scope_key, interest_id, cadence,
@@ -239,10 +253,10 @@ export const createReaderSummaryPublicationRunningFixture = async (
       periodKey,
       modelVersion,
       promptVersion,
-      report.headline,
-      report.summaryText,
-      JSON.stringify(report.artifactPayload),
-      JSON.stringify(report.citations),
+      publicationReport.headline,
+      publicationReport.summaryText,
+      JSON.stringify(publicationReport.artifactPayload),
+      JSON.stringify(publicationReport.citations),
       JSON.stringify(persistedQualitySignals),
       requestedAt,
     ],
@@ -252,6 +266,9 @@ export const createReaderSummaryPublicationRunningFixture = async (
     artifactId,
     eventId,
     payload,
+    ...(transformed?.applicationArtifact === undefined
+      ? {}
+      : { applicationArtifact: transformed.applicationArtifact }),
     ...(evidenceAuthority.githubSourceBindingId === undefined
       ? {}
       : { githubSourceBindingId: evidenceAuthority.githubSourceBindingId }),

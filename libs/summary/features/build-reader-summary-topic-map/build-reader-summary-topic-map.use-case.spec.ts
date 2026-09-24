@@ -138,6 +138,34 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
     expect(publicationAudit.rejections).toEqual([]);
   });
 
+  it("uses typed V3 admission when legacy numeric quality scores are absent", async () => {
+    const labeler = new CapturingTopicLabeler();
+    const base = command();
+    const result = await new BuildReaderSummaryTopicMapUseCase({
+      mode: "agent-runtime",
+      labeler,
+    }).execute({
+      ...base,
+      evidenceAdmission: {
+        selectionStrategy: "jev_primary_v3",
+        admittedCandidateIds: ["feed-runtime"],
+      },
+      selectedEvidence: base.selectedEvidence.map(({ contentQuality, ...item }) => {
+        void contentQuality;
+        return item;
+      }),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(labeler.inputs).toHaveLength(1);
+    expect(labeler.inputs[0]?.selectedEvidence[0]).not.toHaveProperty(
+      "contentQuality",
+    );
+    expect(result.value.nodes).toHaveLength(1);
+    expect(result.value.generatedBy).toBe("agent-runtime");
+  });
+
   it("fails instead of silently downgrading when agent-runtime labeling fails", async () => {
     const labeler = new FailingTopicLabeler();
     const result = await new BuildReaderSummaryTopicMapUseCase({
@@ -686,6 +714,7 @@ const command = () => ({
     periodKey: "2026-06-01",
   },
   requestedAt: new Date("2026-06-02T01:00:00.000Z"),
+  evidenceAdmission: { selectionStrategy: "legacy_v2" as const },
   clusters: [
     {
       id: "story:runtime",

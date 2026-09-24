@@ -81,6 +81,12 @@ extension on SummaryMapper {
     final promotionBoardValid = _validPromotionBoard(
       mappedTopReads,
       mappedSelectedPosts,
+      authoritativeStoryClusterIds: storyClusterIds,
+      hasReaderItems: readerItems.isNotEmpty,
+      hasCitations: citationsById.isNotEmpty,
+      noSignal:
+          dto.qualityState.status == 'no_signal' ||
+          dto.qualityState.flags.contains('no_signal'),
     );
     return ReaderSummaryContent(
       headline: _nonEmpty(dto.headline, fallback: 'Workspace summary'),
@@ -148,23 +154,52 @@ extension on SummaryMapper {
   }
 }
 
-bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
+bool _validPromotionBoard(
+  List<TopRead> topReads,
+  List<TopRead> selectedPosts, {
+  required Set<String> authoritativeStoryClusterIds,
+  required bool hasReaderItems,
+  required bool hasCitations,
+  required bool noSignal,
+}) {
   if (topReads.length > 8 || selectedPosts.length > 8) return false;
   final all = [...topReads, ...selectedPosts];
+  if (all.isEmpty) {
+    return noSignal &&
+        !hasReaderItems &&
+        !hasCitations &&
+        authoritativeStoryClusterIds.isEmpty;
+  }
   final attestations = all
       .map((item) => item.promotionAttestation)
       .whereType<ReaderPostPromotionAttestation>()
       .toList(growable: false);
+  final schemaVersions = attestations
+      .map((value) => value.schemaVersion)
+      .toSet();
   if (attestations.length != all.length ||
       attestations.map((value) => value.candidateId).toSet().length !=
           all.length ||
       attestations.map((value) => value.canonicalIdentity).toSet().length !=
           all.length ||
-      (attestations.any((value) => value.isV2) &&
-          !attestations.every((value) => value.isV2)) ||
+      schemaVersions.length != 1 ||
+      schemaVersions.any(
+        (value) => !const {
+          'reader_post_promotion_attestation.v1',
+          'reader_post_promotion_attestation.v2',
+          'reader_post_promotion_attestation.v3',
+        }.contains(value),
+      ) ||
       (attestations.isNotEmpty &&
           attestations.every((value) => value.isV2) &&
-          !_validV2PromotionSlate(attestations))) {
+          !_validV2PromotionSlate(attestations)) ||
+      (attestations.isNotEmpty &&
+          attestations.every((value) => value.isV3) &&
+          !_validV3PromotionSlate(
+            topReads,
+            selectedPosts,
+            authoritativeStoryClusterIds,
+          ))) {
     return false;
   }
   bool laneIsExact(
@@ -178,7 +213,8 @@ bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
     return item.cardKind == cardKind &&
         attestation != null &&
         attestation.placement == placement &&
-        attestation.slot == index + (attestation.isV2 ? 1 : 0) &&
+        attestation.slot ==
+            index + (attestation.isV2 || attestation.isV3 ? 1 : 0) &&
         attestation.decision == decision;
   });
   return laneIsExact(
@@ -193,6 +229,79 @@ bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
         ReaderPostPromotionPlacement.additional,
         'promote_additional',
       );
+}
+
+bool _validV3PromotionSlate(
+  List<TopRead> topReads,
+  List<TopRead> selectedPosts,
+  Set<String> authoritativeStoryClusterIds,
+) {
+  bool validLane(List<TopRead> items) {
+    final attestations = items
+        .map((item) => item.promotionAttestation!)
+        .toList();
+    if (attestations.any(
+      (value) =>
+          value.providerKey == null ||
+          value.storyId == null ||
+          value.exactPublishedAt == null ||
+          value.assessment == null ||
+          value.comparator == null ||
+          value.presentation == null,
+    )) {
+      return false;
+    }
+    for (var index = 1; index < attestations.length; index += 1) {
+      if (_compareV3Attestation(attestations[index - 1], attestations[index]) >
+          0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  if (!validLane(topReads) || !validLane(selectedPosts)) return false;
+  final orderedStoryIds = [...topReads, ...selectedPosts]
+      .map((item) => item.promotionAttestation!.storyId!)
+      .toList(growable: false);
+  final authoritativeOrder = authoritativeStoryClusterIds.toList(
+    growable: false,
+  );
+  return orderedStoryIds.length == authoritativeOrder.length &&
+      List.generate(
+        orderedStoryIds.length,
+        (index) => index,
+      ).every((index) => orderedStoryIds[index] == authoritativeOrder[index]);
+}
+
+int _compareV3Attestation(
+  ReaderPostPromotionAttestation left,
+  ReaderPostPromotionAttestation right,
+) {
+  const usefulness = {'important': 3, 'useful': 2};
+  const relevance = {'central': 3, 'relevant': 2};
+  final leftUsefulness = left.comparator?['usefulness'];
+  final rightUsefulness = right.comparator?['usefulness'];
+  final leftRelevance = left.comparator?['relevance'];
+  final rightRelevance = right.comparator?['relevance'];
+  if (!usefulness.containsKey(leftUsefulness) ||
+      !usefulness.containsKey(rightUsefulness) ||
+      !relevance.containsKey(leftRelevance) ||
+      !relevance.containsKey(rightRelevance)) {
+    return 1;
+  }
+  final semantic =
+      usefulness[rightUsefulness]! - usefulness[leftUsefulness]! != 0
+      ? usefulness[rightUsefulness]! - usefulness[leftUsefulness]!
+      : relevance[rightRelevance]! - relevance[leftRelevance]!;
+  if (semantic != 0) return semantic;
+  final leftPublishedAt = DateTime.tryParse(left.exactPublishedAt!);
+  final rightPublishedAt = DateTime.tryParse(right.exactPublishedAt!);
+  if (leftPublishedAt == null || rightPublishedAt == null) return 1;
+  final published = rightPublishedAt.compareTo(leftPublishedAt);
+  return published != 0
+      ? published
+      : left.candidateId.compareTo(right.candidateId);
 }
 
 bool _validV2PromotionSlate(List<ReaderPostPromotionAttestation> attestations) {
@@ -247,81 +356,4 @@ bool _validV2PromotionSlate(List<ReaderPostPromotionAttestation> attestations) {
         digestInputs.cast<String>(),
         attestations.map((value) => value.slateEntryDigestInput!).toList(),
       );
-}
-
-SummaryReliabilityReport _summaryReliabilityToDomain(
-  SummaryMapper mapper,
-  SummaryReliabilityReportApiDto dto,
-) {
-  return SummaryReliabilityReport(
-    mode: mapper._nonEmpty(dto.mode, fallback: 'shadow'),
-    policyVersion: mapper._nonEmpty(
-      dto.policyVersion,
-      fallback: 'reader_summary_reliability_shadow_v1',
-    ),
-    riskLevel: mapper._readerItemConfidenceLevel(dto.riskLevel),
-    riskScore: mapper._boundedScore(dto.riskScore),
-    risks: dto.risks
-        .map(
-          (risk) => SummaryReliabilityRisk(
-            kind: mapper._nonEmpty(
-              risk.kind,
-              fallback: 'low_evidence_diversity',
-            ),
-            level: mapper._readerItemConfidenceLevel(risk.level),
-            score: mapper._boundedScore(risk.score),
-            description: mapper._safeText(
-              risk.description,
-              fallback: 'Evidence quality needs review.',
-            ),
-          ),
-        )
-        .toList(growable: false),
-  );
-}
-
-SummaryClaim _summaryClaimToDomain(
-  SummaryMapper mapper,
-  SummaryClaimApiDto dto,
-) {
-  return SummaryClaim(
-    id: mapper._nonEmptyOrNull(dto.id),
-    claim: mapper._safeText(dto.claim, fallback: 'Unlabeled claim'),
-    evidence: dto.evidence
-        .map(
-          (evidence) => SummaryClaimEvidence(
-            title: mapper._safeText(evidence.title, fallback: dto.claim),
-            providerKey: mapper._nonEmpty(
-              evidence.providerKey,
-              fallback: 'unknown',
-            ),
-            citationId: mapper._nonEmpty(
-              evidence.citationId,
-              fallback: 'unknown',
-            ),
-            canonicalUrl: mapper._safeUrl(evidence.canonicalUrl),
-          ),
-        )
-        .toList(growable: false),
-    confidence: TopReadConfidence(
-      level: mapper._readerItemConfidenceLevel(dto.confidence.level),
-      score: mapper._boundedScore(dto.confidence.score),
-      rationale: mapper._safeText(
-        dto.confidence.rationale,
-        fallback: 'Confidence inferred from cited evidence.',
-      ),
-    ),
-    risks: dto.risks
-        .map(
-          (risk) => SummaryClaimRisk(
-            kind: mapper._nonEmpty(risk.kind, fallback: 'unresolved'),
-            description: mapper._safeText(
-              risk.description,
-              fallback: 'Needs confirmation.',
-            ),
-          ),
-        )
-        .toList(growable: false),
-    citationIds: mapper._safeTextList(dto.citationIds),
-  );
 }

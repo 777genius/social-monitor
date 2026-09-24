@@ -10,6 +10,15 @@ export const normalizeReaderSummarySourceWindow = (
     throw new Error("Reader summary artifact source window payload is invalid");
   }
   const sourceWindow = value as SerializedReaderSummarySourceWindow;
+  const ingestionCutoff = optionalDate(
+    "ingestionCutoff",
+    sourceWindow.ingestionCutoff,
+    "Reader summary promotion ingestion cutoff",
+  );
+  const exactIngestionCutoff = optionalExactIngestionCutoff(
+    sourceWindow.exactIngestionCutoff,
+    ingestionCutoff.ingestionCutoff,
+  );
   return {
     windowId: requireString(
       sourceWindow.windowId,
@@ -33,11 +42,8 @@ export const normalizeReaderSummarySourceWindow = (
       sourceWindow.periodEndedAt,
       "Reader summary promotion period end",
     ),
-    ...optionalDate(
-      "ingestionCutoff",
-      sourceWindow.ingestionCutoff,
-      "Reader summary promotion ingestion cutoff",
-    ),
+    ...ingestionCutoff,
+    ...exactIngestionCutoff,
     selectedFeedItemIds: requireStringArray(
       sourceWindow.selectedFeedItemIds,
       "Reader summary source window selected feed ids",
@@ -47,6 +53,20 @@ export const normalizeReaderSummarySourceWindow = (
       "Reader summary source window story cluster ids",
     ),
   };
+};
+
+const optionalExactIngestionCutoff = (
+  value: unknown,
+  ingestionCutoff: Date | undefined,
+): Pick<ReaderSummaryArtifactProps["sourceWindow"], "exactIngestionCutoff"> | Record<string, never> => {
+  if (value === undefined) return {};
+  if (typeof value !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u.test(value) ||
+      !Number.isFinite(Date.parse(value)) || ingestionCutoff === undefined ||
+      Date.parse(value) !== ingestionCutoff.getTime()) {
+    throw new Error("Reader summary exact ingestion cutoff is invalid");
+  }
+  return { exactIngestionCutoff: value };
 };
 
 const optionalDate = <TKey extends keyof Pick<

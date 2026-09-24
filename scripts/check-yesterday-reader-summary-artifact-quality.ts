@@ -296,7 +296,9 @@ async function buildReport(): Promise<ArtifactQualityReport> {
     const promotedFeedItemIds = uniqueStrings(
       view.promotionAttestations.flatMap((attestation) => [
         attestation.candidateId,
-        ...attestation.supportFacts.map((fact) => fact.candidateId),
+        ...(attestation.schemaVersion === "reader_post_promotion_attestation.v3"
+          ? []
+          : attestation.supportFacts.map((fact) => fact.candidateId)),
       ]),
     );
     const selectedFeedItemProvenance =
@@ -339,7 +341,9 @@ async function buildReport(): Promise<ArtifactQualityReport> {
       attestedQualityByCandidateId: new Map(
         view.promotionAttestations.map((attestation) => [
           attestation.candidateId,
-          attestation.qualityValid,
+          attestation.schemaVersion === "reader_post_promotion_attestation.v3"
+            ? true
+            : attestation.qualityValid,
         ] as const),
       ),
     });

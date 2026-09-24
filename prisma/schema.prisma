@@ -235,7 +235,9 @@ model Interest {
   updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz(6)
   workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  readerValueAssessments ReaderValueAssessment[]
 
+  @@unique([tenantId, workspaceId, id], map: "interests_tenant_workspace_id_key")
   @@unique([tenantId, workspaceId, name], map: "interests_tenant_id_workspace_id_name_key")
   @@index([tenantId, workspaceId, status, createdAt], map: "interests_tenant_id_workspace_id_status_created_at_idx")
   @@map("interests")
@@ -433,12 +435,64 @@ model SourceItem {
   engagementSnapshot     SourceItemEngagementSnapshot?
   engagementObservations SourceItemEngagementObservation[]
   engagementDailyRollups SourceItemEngagementDailyRollup[]
+  readerValueAssessments ReaderValueAssessment[]
 
   @@unique([tenantId, workspaceId, providerKey, providerItemId], map: "source_items_tenant_workspace_provider_item_key")
   @@unique([tenantId, workspaceId, id], map: "source_items_tenant_workspace_id_key")
   @@unique([tenantId, workspaceId, id, providerKey], map: "source_items_scope_id_provider_key")
   @@index([tenantId, workspaceId, sourceBindingId, observedAt])
   @@map("source_items")
+}
+
+model ReaderValueAssessment {
+  id                   String @id @db.Uuid
+  tenantId             String @map("tenant_id") @db.Uuid
+  workspaceId          String @map("workspace_id") @db.Uuid
+  interestId           String @map("interest_id") @db.Uuid
+  sourceItemId         String @map("source_item_id") @db.Uuid
+  sourceRevisionKey    String @map("source_revision_key")
+  sourceSnapshotSha256 String @map("source_snapshot_sha256") @db.Char(64)
+  interestSha256       String @map("interest_sha256") @db.Char(64)
+  rubricVersion        String @map("rubric_version")
+  rubricSha256         String @map("rubric_sha256") @db.Char(64)
+  inputBuilderVersion  String @map("input_builder_version")
+  modelConfigVersion   String @map("model_config_version")
+  inputSha256          String @map("input_sha256") @db.Char(64)
+  requestSha256        String @map("request_sha256") @db.Char(64)
+  inputSnapshot        Json @map("input_snapshot")
+  requestBody          String @map("request_body")
+  state                String @default("pending")
+  attempts             Int @default(0)
+  attemptHistory       Json @default("[]") @map("attempt_history")
+  nextAttemptAt        DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  leaseUntil           DateTime? @map("lease_until") @db.Timestamptz(6)
+  leaseToken           String? @map("lease_token") @db.Uuid
+  errorCode            String? @map("error_code")
+  usefulness           String?
+  relevance            String?
+  contextSufficiency   String? @map("context_sufficiency")
+  evidenceBasis        String? @map("evidence_basis")
+  result               Json?
+  requestedModel       String @map("requested_model")
+  resolvedModel        String? @map("resolved_model")
+  provider             String?
+  requestId            String? @map("request_id")
+  assessedAt           DateTime? @map("assessed_at") @db.Timestamptz(6)
+  latencyMs            Int? @map("latency_ms")
+  inputTokens          Int? @map("input_tokens")
+  outputTokens         Int? @map("output_tokens")
+  costUsd              Decimal? @map("cost_usd") @db.Decimal(20, 10)
+  usageUnknown         Boolean @default(false) @map("usage_unknown")
+  pinnedJobIds         String[] @default([]) @map("pinned_job_ids") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt            DateTime @map("expires_at") @db.Timestamptz(6)
+  sourceItem           SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "reader_value_assessments_source_fkey")
+  interest             Interest @relation(fields: [tenantId, workspaceId, interestId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "reader_value_assessments_interest_fkey")
+
+  @@unique([tenantId, workspaceId, interestId, sourceItemId, sourceSnapshotSha256, interestSha256, inputSha256, rubricSha256, modelConfigVersion], map: "reader_value_assessments_exact_key")
+  @@index([tenantId, workspaceId, state, nextAttemptAt, leaseUntil], map: "reader_value_assessments_runnable_idx")
+  @@index([tenantId, workspaceId, expiresAt, id], map: "reader_value_assessments_retention_idx")
+  @@map("reader_value_assessments")
 }
 
 model SourceCandidateMemory {
@@ -963,6 +1017,15 @@ model ReaderSummaryJob {
   failedAt                DateTime?                     @map("failed_at") @db.Timestamptz(6)
   readerSummaryArtifactId String?                       @map("reader_summary_artifact_id") @db.Uuid
   failureReason           String?                       @map("failure_reason")
+  terminalFailureCode     String?                       @map("terminal_failure_code")
+  selectionStrategy       String?                       @map("selection_strategy")
+  preparationConfig       Json?                         @map("preparation_config")
+  preparationManifest     Json?                         @map("preparation_manifest")
+  preparationManifestSha256 String?                     @map("preparation_manifest_sha256") @db.Char(64)
+  preparationCutoffAt     DateTime?                     @map("preparation_cutoff_at") @db.Timestamptz(6)
+  preparationDeadlineAt   DateTime?                     @map("preparation_deadline_at") @db.Timestamptz(6)
+  preparationNextCheckAt  DateTime?                     @map("preparation_next_check_at") @db.Timestamptz(6)
+  preparationReadyAt      DateTime?                     @map("preparation_ready_at") @db.Timestamptz(6)
   createdAt               DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
   publication             ReaderSummaryPublication?
@@ -975,6 +1038,7 @@ model ReaderSummaryJob {
   @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_jobs_period_lookup_idx")
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
   @@index([tenantId, workspaceId, userId, scopeKey, createdAt])
+  @@index([status, preparationNextCheckAt, requestedAt, id], map: "reader_summary_jobs_preparation_due_idx")
   @@map("reader_summary_jobs")
 }
 

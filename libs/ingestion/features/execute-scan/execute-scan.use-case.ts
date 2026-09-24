@@ -1,3 +1,4 @@
+import { persistScannedSourceItems } from './persist-scanned-source-items';
 import {
   type Clock,
   DomainError,
@@ -12,7 +13,6 @@ import {
   createSourceBinding,
   githubTrendingSnapshotBatchObservedAt,
   ScanAttempt,
-  SourceItem,
 } from "../../domain";
 import {
   noopConversationProjection,
@@ -37,10 +37,6 @@ import {
 import type { ExecuteScanCommand } from "./execute-scan.command";
 import type { ExecuteScanResult } from "./execute-scan.result";
 import {
-  mergeEnrichedSourceCandidates,
-  rehydratePersistedSourceItems,
-} from "./execute-scan-persisted-source-items";
-import {
   failedScanCollectionExecutionMetadata,
   successfulScanCollectionExecutionMetadata,
 } from "./scan-collection-execution-metadata";
@@ -53,8 +49,8 @@ import {
   shouldEnqueueScanRetry,
 } from "./scan-execution-failure";
 import {
+  sanitizeAndPrepareLiveArticleFetchUrls,
   sanitizeFetchedConversationUnit,
-  sanitizeFetchedSourceItem,
   sanitizeSourceWarnings,
 } from "./scan-source-sanitization";
 import {
@@ -182,9 +178,11 @@ export class ExecuteScanUseCase {
       const scanWarnings = [...sanitizeSourceWarnings(fetched.warnings)];
 
       const ingestedAt = this.clock.now();
-      const sanitizedFetchedItems = fetched.items.map(
-        sanitizeFetchedSourceItem,
-      );
+      const { sanitizedFetchedItems, liveArticleFetchUrls } =
+        sanitizeAndPrepareLiveArticleFetchUrls(
+          sourceBinding.providerKey,
+          fetched.items,
+        );
       const candidateScreening = await screenSourceCandidates({
         memory: this.candidateMemory,
         scope: {
@@ -202,56 +200,14 @@ export class ExecuteScanUseCase {
       if (candidateScreening.warning !== undefined) {
         scanWarnings.push(candidateScreening.warning);
       }
-      const enriched = candidateScreening.itemsToEnrich.length === 0
-        ? { items: [], enriched: 0, skipped: 0, failed: 0 }
-        : await this.sourceItemEnrichment.enrich({
-            tenantId: command.tenantId,
-            workspaceId: command.workspaceId,
-            sourceBindingId: sourceBinding.sourceBindingId,
-            scanJobId: command.scanJobId,
-            providerKey: sourceBinding.providerKey,
-            correlationId: command.correlationId,
-            items: candidateScreening.itemsToEnrich,
-          });
-      const fetchedItemsForPersistence = mergeEnrichedSourceCandidates({
-        fetchedItems: sanitizedFetchedItems,
-        itemsRequiringEnrichment: candidateScreening.itemsToEnrich,
-        enrichedItems: enriched.items.map(sanitizeFetchedSourceItem),
+      const { enriched, saveResult, persistedItems } = await persistScannedSourceItems({
+        scope: { tenantId: command.tenantId, workspaceId: command.workspaceId,
+          sourceBindingId: sourceBinding.sourceBindingId, providerKey: sourceBinding.providerKey },
+        repository: this.sourceItems, enrichment: this.sourceItemEnrichment,
+        items: sanitizedFetchedItems, screening: candidateScreening, capturedAt: ingestedAt,
+        clock: this.clock, ids: this.ids, lease, correlationId: command.correlationId,
+        liveArticleFetchUrls,
       });
-      const items = fetchedItemsForPersistence.map((item) =>
-        SourceItem.ingest({
-          id: this.ids.generate(),
-          tenantId: command.tenantId,
-          workspaceId: command.workspaceId,
-          sourceBindingId: sourceBinding.sourceBindingId,
-          externalId: item.externalId,
-          canonicalUrl: item.canonicalUrl,
-          title: item.title,
-          body: item.body,
-          authorHandle: item.authorHandle,
-          publishedAt: item.publishedAt,
-          ingestedAt,
-          metadata: item.metadata,
-        }),
-      );
-
-      const saveResult = items.length === 0
-        ? {
-            inserted: 0,
-            contentUpdated: 0,
-            skippedDuplicates: 0,
-            items: [],
-          }
-        : await this.sourceItems.saveBatch({
-            tenantId: command.tenantId,
-            workspaceId: command.workspaceId,
-            providerKey: sourceBinding.providerKey,
-            items,
-          });
-      const persistedItems = rehydratePersistedSourceItems(
-        items,
-        saveResult.items,
-      );
       const projectionObservedAt =
         githubTrendingSnapshotBatchObservedAt({
           providerKey: sourceBinding.providerKey,

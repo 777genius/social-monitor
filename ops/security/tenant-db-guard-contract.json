@@ -17,7 +17,8 @@
     "prisma/migrations/20260803174000_reader_summary_daily_execution_tenant_rls/migration.sql",
     "prisma/migrations/20260804130000_reader_summary_daily_v4_ambiguity_retry_schema/migration.sql",
     "prisma/migrations/20260831120000_reader_summary_promotion_v2_rollback/migration.sql",
-    "prisma/migrations/20260907170000_reader_summary_new_input_refresh_reconciliation/migration.sql"
+    "prisma/migrations/20260907170000_reader_summary_new_input_refresh_reconciliation/migration.sql",
+    "prisma/migrations/20260920120000_reader_value_assessments/migration.sql"
   ],
   "forwardRlsCoverage": [
     {
@@ -109,6 +110,11 @@
       "table": "reader_summary_new_input_refresh_reconciliation_counters",
       "migrationPath": "prisma/migrations/20260907170000_reader_summary_new_input_refresh_reconciliation/migration.sql",
       "ownerRole": "social_monitor_public_schema_owner"
+    },
+    {
+      "table": "reader_value_assessments",
+      "migrationPath": "prisma/migrations/20260920120000_reader_value_assessments/migration.sql",
+      "ownerRole": "social_monitor_public_schema_owner"
     }
   ],
   "tenantRootTables": [
@@ -175,7 +181,8 @@
     "users",
     "webhook_endpoints",
     "webhook_secrets",
-    "workspaces"
+    "workspaces",
+    "reader_value_assessments"
   ],
   "tenantScopedSystemTables": [
     {

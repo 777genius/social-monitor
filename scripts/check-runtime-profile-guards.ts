@@ -9,6 +9,7 @@ import {
   resolveDeliverySummaryReadyEventQueueOptions,
 } from '../apps/delivery-service/src/delivery-service-provider-tokens';
 import { resolveEventRelayLoopOptions } from '../apps/event-relay/src/event-relay-provider-tokens';
+import { resolveReaderValueRuntimeOptions } from '../apps/intelligence-worker/src/reader-value-runtime-options';
 import {
   resolveIngestionRabbitMqScanQueueReaderOptions,
   resolveIngestionScanQueueReaderMode,
@@ -477,6 +478,20 @@ assert(resolveDeliverySummaryReadyEventQueueOptions(rabbitMqEnv).routingKey === 
   'shared queue must retain legacy summary.ready alongside the explicit reader binding');
 
 console.log('Runtime profile guards OK');
+
+assertThrows(() => resolveReaderValueRuntimeOptions({}),
+  'primary reader value default requires durable persistence');
+assert(resolveReaderValueRuntimeOptions({ RELEVANCE_PERSISTENCE: 'prisma',
+  SUMMARY_PERSISTENCE: 'prisma' }).mode === 'jev_primary_v3',
+  'reader value defaults to Jev primary publication');
+assert(resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'legacy_v2' }).mode === 'legacy_v2',
+  'legacy reader value remains an explicit rollback mode');
+assertThrows(() => resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'jev_shadow' }),
+  'reader value scoring requires durable bounded scope');
+assertThrows(() => resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'jev_primary_v3', RELEVANCE_PERSISTENCE: 'prisma', READER_VALUE_SCORING_LOOP: 'enabled',
+  READER_VALUE_DISCOVERY_SCOPES: '[{"tenantId":"11111111-1111-4111-8111-111111111111","workspaceId":"22222222-2222-4222-8222-222222222222","interestId":"44444444-4444-4444-8444-444444444444"}]',
+  READER_VALUE_BACKFILL_FROM: '2026-09-01T00:00:00.000Z', INTELLIGENCE_READER_SUMMARY_JOB_LOOP: 'disabled',
+}), 'primary reader value mode cannot strand deferred work with a disabled poller');
 
 assert(resolveRelevanceContentQualityReviewerMode({
   ...betaEnv, AGENT_RUNTIME_GRPC_ADDRESS: 'synthetic-runtime:50051',

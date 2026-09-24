@@ -22,6 +22,12 @@ export const serializeReaderSummaryArtifact = (
         ...snapshot.sourceWindow,
         startedAt: snapshot.sourceWindow.startedAt.toISOString(),
         endedAt: snapshot.sourceWindow.endedAt.toISOString(),
+        ...(snapshot.sourceWindow.ingestionCutoff === undefined ? {} : {
+          ingestionCutoff: snapshot.sourceWindow.ingestionCutoff.toISOString(),
+          ...(snapshot.sourceWindow.exactIngestionCutoff === undefined ? {} : {
+            exactIngestionCutoff: snapshot.sourceWindow.exactIngestionCutoff,
+          }),
+        }),
       },
       storyClusters: snapshot.storyClusters.map((cluster) => ({
         ...cluster,

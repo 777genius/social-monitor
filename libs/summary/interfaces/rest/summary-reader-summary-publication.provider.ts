@@ -5,6 +5,8 @@ import { InMemoryReaderSummaryJobRepository } from "../../adapters/persistence/i
 import { InMemoryReaderSummaryPublication } from "../../adapters/persistence/in-memory-reader-summary-publication";
 import type { PrismaSummaryClient } from "../../adapters/persistence/prisma/prisma-summary-client";
 import { PrismaReaderSummaryPublication } from "../../adapters/persistence/prisma/prisma-reader-summary-publication";
+import { readerSummaryV3PublicationGuard } from
+  "../../adapters/persistence/prisma/prisma-reader-summary-v3-publication-guard";
 import type {
   ReaderSummaryPublicationPort,
   SummaryEventPublisherPort,
@@ -27,7 +29,10 @@ export const readerSummaryPublicationProvider: Provider = {
     events: SummaryEventPublisherPort,
   ): ReaderSummaryPublicationPort =>
     mode === "prisma"
-      ? new PrismaReaderSummaryPublication(requirePrismaSummaryClient(prisma))
+      ? new PrismaReaderSummaryPublication(
+          requirePrismaSummaryClient(prisma),
+          readerSummaryV3PublicationGuard,
+        )
       : new InMemoryReaderSummaryPublication(
           inMemoryJobs,
           inMemoryArtifacts,

@@ -1,4 +1,6 @@
 import { readerDisplayIdentityMatches } from "../../domain/services/reader-post-display-identity";
+import { readerPostPresentationV3MatchesCard } from
+  "../../domain/services/reader-post-presentation-v3";
 import { canonicalPromotionPayload } from "../../domain/services/reader-post-promotion-attestation";
 import type { ReaderSummaryArtifactView } from "../../features/shared/reader-summary-artifact-presenter";
 
@@ -12,7 +14,10 @@ export const validReaderDisplayRestBinding = (
   view: Pick<ReaderSummaryArtifactView, "tenantId" | "workspaceId" | "citations">,
 ): boolean => {
   const seal = attestation.schemaVersion === "reader_post_promotion_attestation.v2"
-    ? attestation.displayHeadline : undefined;
+    ? attestation.displayHeadline
+    : attestation.schemaVersion === "reader_post_promotion_attestation.v3"
+      ? attestation.presentation.displayHeadline
+      : undefined;
   const sealedSummary = attestation.schemaVersion === "reader_post_promotion_attestation.v2"
     ? attestation.displaySummary : undefined;
   let payload: Record<string, unknown>;
@@ -26,20 +31,36 @@ export const validReaderDisplayRestBinding = (
     // Preserve historical source presentations without granting new authority.
     return !Object.hasOwn(payload, "displayHeadline");
   }
-  if (canonicalPromotionPayload(payload.displayHeadline) !== canonicalPromotionPayload(seal) ||
+  const v3 = attestation.schemaVersion === "reader_post_promotion_attestation.v3";
+  const payloadSeal = v3 && payload.presentation !== null &&
+      typeof payload.presentation === "object"
+    ? (payload.presentation as Record<string, unknown>).displayHeadline
+    : payload.displayHeadline;
+  if (canonicalPromotionPayload(payloadSeal) !== canonicalPromotionPayload(seal) ||
       payload.displaySummary !== sealedSummary ||
-      !readerDisplayIdentityMatches(card, seal, view, sealedSummary)) return false;
+      (v3
+        ? !readerPostPresentationV3MatchesCard({
+            title: card.title,
+            providerKey: card.providerKey,
+            candidateId: card.promotionCandidateId,
+            capturedSource: card.capturedSource,
+            headline: card.displayHeadline,
+            seal: seal!,
+            tenantId: view.tenantId,
+            workspaceId: view.workspaceId,
+          })
+        : !readerDisplayIdentityMatches(card, seal, view, sealedSummary))) return false;
   if (seal?.headline.status === "accepted") {
     const binding = seal.headline.binding;
     return view.citations.some((citation) =>
-      citation.citationId === attestation.citationId &&
+      attestation.citationIds.includes(citation.citationId) &&
       card.citationIds.includes(citation.citationId) &&
       citation.feedItemId === binding.candidateId &&
       citation.sourceItemId === binding.sourceItemId &&
       citation.providerKey === binding.providerKey);
   }
   return view.citations.some((citation) =>
-    citation.citationId === attestation.citationId &&
+    attestation.citationIds.includes(citation.citationId) &&
     card.citationIds.includes(citation.citationId) &&
     citation.feedItemId === attestation.candidateId);
 };

@@ -18,6 +18,12 @@ final class ReaderPostPromotionAttestationApiDto {
     this.slateDigestInput,
     this.slateDigest,
     this.evidenceLineage,
+    this.assessment,
+    this.comparator,
+    this.presentation,
+    this.providerKey,
+    this.storyId,
+    this.exactPublishedAt,
   });
 
   final String schemaVersion;
@@ -36,6 +42,12 @@ final class ReaderPostPromotionAttestationApiDto {
   final String? slateDigestInput;
   final String? slateDigest;
   final ReaderPostPromotionEvidenceLineageApiDto? evidenceLineage;
+  final Map<String, Object?>? assessment;
+  final Map<String, Object?>? comparator;
+  final Map<String, Object?>? presentation;
+  final String? providerKey;
+  final String? storyId;
+  final String? exactPublishedAt;
 }
 
 final class ReaderPostPromotionScoreComponentsApiDto {

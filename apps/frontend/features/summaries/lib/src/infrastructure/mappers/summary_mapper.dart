@@ -12,6 +12,7 @@ import 'reader_display_source_mapper.dart';
 
 part 'summary_mapper_coverage.dart';
 part 'summary_mapper_reader_content.dart';
+part 'summary_mapper_reader_content_support.dart';
 part 'summary_mapper_reader_item.dart';
 part 'summary_mapper_reader_item_context.dart';
 part 'summary_mapper_reader_authority.dart';

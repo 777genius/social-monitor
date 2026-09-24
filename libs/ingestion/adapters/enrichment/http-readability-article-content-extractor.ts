@@ -1,6 +1,7 @@
-import { Readability } from '@mozilla/readability';
-import { validateOutboundUrl } from '@social-monitor/shared-kernel';
-import { JSDOM } from 'jsdom';
+import { performance } from 'node:perf_hooks';
+import { guardedContentGet } from '../http/guarded-content-http';
+import { parseReadableArticleInWorker } from './readability-worker';
+import { redactSensitiveText, validateOutboundUrl } from '@social-monitor/shared-kernel';
 
 import type {
   ArticleContentExtractionResult,
@@ -10,8 +11,10 @@ import type {
 import {
   articleContentHash,
   countWords,
+  exactArticleTextHash,
   normalizeArticleText,
   semanticFingerprintForArticle,
+  truncateArticleText,
 } from './article-content-normalization';
 
 export type HttpReadabilityArticleContentExtractorOptions = {
@@ -26,7 +29,7 @@ export type HttpReadabilityArticleContentExtractorOptions = {
 const defaultTimeoutMs = 10_000;
 const defaultMaxRedirects = 3;
 const defaultMaxBytes = 1_500_000;
-const defaultMaxTextCharacters = 30_000;
+const defaultMaxTextCharacters = 64_000;
 const defaultMinTextCharacters = 300;
 const defaultUserAgent = 'social-monitor-article-enrichment/0.1';
 
@@ -48,24 +51,51 @@ export class HttpReadabilityArticleContentExtractor implements ArticleContentExt
   }
 
   async extract(command: ExtractArticleContentCommand): Promise<ArticleContentExtractionResult> {
+    const started = performance.now();
+    const budgetMs = Math.min(this.timeoutMs, command.remainingBudgetMs ?? this.timeoutMs);
+    if (!Number.isFinite(budgetMs) || budgetMs <= 0) throw new Error('Article extraction deadline exceeded');
     const sourceUrl = command.url.trim();
     const validated = validateArticleUrl(sourceUrl);
     if (!validated.ok) {
-      return { ok: false, sourceUrl, reason: validated.reason };
+      return { ok: false, sourceUrl, reason: validated.reason, reasonCode: 'invalid_url', retryable: false };
     }
 
-    const response = await this.fetchWithSafeRedirects(validated.url, command.correlationId);
+    const response = await guardedContentGet({
+      url: validated.url.toString(), timeoutMs: Math.ceil(budgetMs),
+      maxBytes: this.maxBytes, maxRedirects: this.maxRedirects, signal: command.signal,
+      headers: { accept: 'text/html, application/xhtml+xml;q=0.9', 'user-agent': this.userAgent },
+    });
+    if (response.status < 200 || response.status >= 300) {
+      return { ok: false, sourceUrl, reason: `Article content fetch returned HTTP ${response.status}`,
+        reasonCode: `http_${response.status}`, retryable: response.status === 408 || response.status === 429 || response.status >= 500,
+        ...(response.status === 429 && response.headers.get('retry-after') !== null ? { retryAfter: response.headers.get('retry-after')! } : {}),
+      };
+    }
     const contentType = response.headers.get('content-type') ?? '';
 
     if (!isHtmlContentType(contentType)) {
-      return { ok: false, sourceUrl, reason: 'article content is not HTML' };
+      return { ok: false, sourceUrl, reason: 'article content is not HTML', reasonCode: 'non_html', retryable: false };
     }
 
-    const finalUrl = response.url.trim().length > 0 ? response.url : validated.url.toString();
-    const html = await readTextWithLimit(response, this.maxBytes);
-    const parsed = parseReadableArticle(html, finalUrl, this.maxTextCharacters);
+    const finalUrl = response.finalUrl;
+    const html = response.body;
+    const article = await parseReadableArticleInWorker(
+      html, finalUrl, budgetMs - (performance.now() - started), command.signal,
+    );
+    // The extractor's representation is persisted by ingestion. Redact before
+    // calculating its length, digest or truncation so those fields describe the
+    // exact safe representation rather than discarded raw credentials.
+    const fullText = redactSensitiveText(normalizeArticleText(article.text, Number.MAX_SAFE_INTEGER));
+    const parsed = {
+      title: normalizeTitle(article.title),
+      text: truncateArticleText(fullText, this.maxTextCharacters),
+      originalTextLength: fullText.length,
+      fullTextSha256: exactArticleTextHash(fullText),
+    };
+    command.signal?.throwIfAborted();
+    if (performance.now() - started >= budgetMs) throw new Error('Article extraction deadline exceeded');
     if (parsed.text.length < this.minTextCharacters) {
-      return { ok: false, sourceUrl, reason: 'article content was too short' };
+      return { ok: false, sourceUrl, reason: 'article content was too short', reasonCode: 'empty_extraction', retryable: false };
     }
 
     return {
@@ -75,50 +105,16 @@ export class HttpReadabilityArticleContentExtractor implements ArticleContentExt
       title: parsed.title,
       text: parsed.text,
       textLength: parsed.text.length,
+      originalTextLength: parsed.originalTextLength,
+      truncated: parsed.text.length < parsed.originalTextLength,
+      fullTextSha256: parsed.fullTextSha256,
+      extractionVersion: 'readability.text.v2',
       wordCount: countWords(parsed.text),
       contentHash: articleContentHash(parsed.text),
       semanticFingerprint: semanticFingerprintForArticle(parsed.title, parsed.text),
     };
   }
 
-  private async fetchWithSafeRedirects(initialUrl: URL, correlationId: string): Promise<Response> {
-    let currentUrl = initialUrl;
-
-    for (let redirectCount = 0; redirectCount <= this.maxRedirects; redirectCount += 1) {
-      const response = await fetch(currentUrl.toString(), {
-        headers: {
-          accept: 'text/html, application/xhtml+xml;q=0.9, */*;q=0.1',
-          'user-agent': this.userAgent,
-          'x-correlation-id': correlationId,
-        },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-
-      if (!isRedirectStatus(response.status)) {
-        if (!response.ok) {
-          throw new Error(`Article content fetch returned HTTP ${response.status}`);
-        }
-
-        return response;
-      }
-
-      const location = response.headers.get('location');
-      if (location === null) {
-        throw new Error('Article redirect had no location');
-      }
-
-      const nextUrl = new URL(location, currentUrl);
-      const validation = validateArticleUrl(nextUrl.toString());
-      if (!validation.ok) {
-        throw new Error(validation.reason);
-      }
-
-      currentUrl = validation.url;
-    }
-
-    throw new Error('Article content redirect limit exceeded');
-  }
 }
 
 const validateArticleUrl = (value: string) =>
@@ -133,65 +129,6 @@ const isHtmlContentType = (contentType: string): boolean => {
   return normalized.length === 0
     || normalized.includes('text/html')
     || normalized.includes('application/xhtml+xml');
-};
-
-const isRedirectStatus = (status: number): boolean => [301, 302, 303, 307, 308].includes(status);
-
-const readTextWithLimit = async (response: Response, maxBytes: number): Promise<string> => {
-  const contentLength = response.headers.get('content-length');
-  if (contentLength !== null && Number(contentLength) > maxBytes) {
-    throw new Error('Article content exceeded byte limit');
-  }
-
-  if (response.body === null) {
-    return '';
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    if (value !== undefined) {
-      received += value.byteLength;
-      if (received > maxBytes) {
-        throw new Error('Article content exceeded byte limit');
-      }
-      chunks.push(value);
-    }
-  }
-
-  return new TextDecoder('utf-8', { fatal: false }).decode(Buffer.concat(chunks));
-};
-
-const parseReadableArticle = (
-  html: string,
-  url: string,
-  maxTextCharacters: number,
-): { readonly title?: string; readonly text: string } => {
-  const dom = new JSDOM(html, { url });
-
-  try {
-    const headingTitle = normalizeTitle(dom.window.document.querySelector('article h1, main h1, h1')?.textContent);
-    const article = new Readability(dom.window.document).parse();
-    const text = normalizeArticleText(
-      article?.textContent ?? dom.window.document.body?.textContent ?? '',
-      maxTextCharacters,
-    );
-    const title = normalizeTitle(
-      headingTitle
-      ?? article?.title
-      ?? dom.window.document.title,
-    );
-
-    return { title, text };
-  } finally {
-    dom.window.close();
-  }
 };
 
 const normalizeTitle = (value: string | undefined): string | undefined => {

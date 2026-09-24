@@ -48,7 +48,8 @@ export type TopRead = {
   readonly promotionMarker?: "reader_post_promotion";
   readonly promotionPolicyVersion?:
     | "reader_post_promotion.v1"
-    | "reader_post_promotion.v2";
+    | "reader_post_promotion.v2"
+    | "reader_post_promotion.v3";
   readonly promotionTier?: "top" | "additional";
   readonly promotionCandidateId?: string;
   readonly promotionCanonicalIdentity?: string;
@@ -77,6 +78,8 @@ export type TopRead = {
   readonly whyImportant: readonly string[];
   readonly whyNow: string;
   readonly publishedAt?: Date;
+  /** Exact six-digit UTC value retained for V3 signed ordering and API transport. */
+  readonly exactPublishedAt?: string;
   readonly canonicalUrl?: string;
   readonly previewMedia?: PreviewMedia;
   readonly citationIds: readonly string[];

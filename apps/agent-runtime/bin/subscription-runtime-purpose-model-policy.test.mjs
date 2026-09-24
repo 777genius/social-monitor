@@ -188,6 +188,26 @@ test("active v2 admits high and rejects xhigh and every legacy reader-summary pu
   }
 });
 
+test("V3 promotion presentation admits only the active structured default", () => {
+  const accepted = admitSubscriptionRuntimeWrapperRequest({
+    ...standardGoldenInput(
+      "social_monitor.reader_summary.promotion_presentation.v3",
+      "structured_output",
+    ),
+    model: "gpt-5.6-sol",
+    reasoningEffort: "high",
+  });
+  assert.equal(accepted.profile.reasoningEffort, "high");
+  assert.throws(() => admitSubscriptionRuntimeWrapperRequest({
+    ...standardGoldenInput(
+      "social_monitor.reader_summary.promotion_presentation.v3",
+      "structured_output",
+    ),
+    model: "gpt-5.6-sol",
+    reasoningEffort: "xhigh",
+  }), /runtime reasoning effort conflicts with purpose policy/u);
+});
+
 test("Codex subprocess environment admits only safe execution basics", () => {
   const safeEnvironment = {
     PATH: "/usr/local/bin:/usr/bin:/bin",
@@ -273,6 +293,7 @@ const standardCanonicalGoldens = [
   ["social_monitor.reader_summary.topic_map.label.v2", "high"],
   ["social_monitor.reader_summary.topic_map.verify_relations.v2", "high"],
   ["social_monitor.reader_summary.verify_story_relations.v2", "high"],
+  ["social_monitor.reader_summary.promotion_presentation.v3", "high"],
   ["social_monitor.reader_summary.weekly.review.v2", "high"],
 ].map(([purpose, effort]) => ({
   purpose,

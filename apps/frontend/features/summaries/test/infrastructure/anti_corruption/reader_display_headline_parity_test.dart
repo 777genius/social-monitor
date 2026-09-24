@@ -22,7 +22,7 @@ void main() {
           tenantId: 'tenant-fixture',
           workspaceId: 'workspace-fixture',
           sourceItemId: 'source-fixture',
-          sourceCandidateId: 'candidate-fixture',
+          sourceCandidateId: '44444444-4444-4444-8444-444444444444',
         ),
         example.accepted,
       );

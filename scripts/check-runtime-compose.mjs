@@ -31,6 +31,13 @@ const runtimeServices = [
   ["event-relay", "event-relay"],
 ];
 
+for (const name of ["READER_VALUE_DISCOVERY_SCOPES", "READER_VALUE_BACKFILL_FROM"]) {
+  if (!compose.includes(`    ${name}:\n`) ||
+      envExample.includes(`${name}=`)) {
+    violations.push(`${name} must pass through only when explicitly set`);
+  }
+}
+
 const migrateBlock = serviceBlock("migrate");
 if (migrateBlock.length === 0) {
   violations.push("docker-compose.yml missing runtime service migrate");

@@ -1,5 +1,8 @@
-export const PUBLICATION_POSTGRES_TEST_ONLY_FILES = new Set([
+export const BOUNDED_POSTGRES_TEST_ONLY_FILES = new Set([
+  'libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts',
   'libs/platform/persistence/src/postgres-runtime-pool-budget-test-inventory.ts',
+  'scripts/lib/reader-summary-v3-migration-integration.spec.ts',
+  'scripts/lib/reader-value-postgres-fixture.ts',
   'scripts/check-reader-summary-daily-execution-cursor-postgres.ts',
   'scripts/check-reader-summary-daily-delivery-c1-postgres.ts',
   'scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts',
@@ -14,10 +17,15 @@ export const PUBLICATION_POSTGRES_TEST_ONLY_FILES = new Set([
   'scripts/reader-summary-publication-postgres-runtime-guard.ts',
 ]);
 
-export const PUBLICATION_POSTGRES_TEST_POOL_MAXIMUMS = new Map<
+export const BOUNDED_POSTGRES_TEST_POOL_MAXIMUMS = new Map<
   string,
   readonly number[]
 >([
+  [
+    'libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts',
+    [4],
+  ],
+  ['scripts/lib/reader-value-postgres-fixture.ts', [1, 2, 2]],
   [
     'scripts/check-reader-summary-daily-execution-cursor-postgres.ts',
     [1, 1, 1, 1],

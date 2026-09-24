@@ -111,6 +111,10 @@ const assertParity = (params: ReturnType<typeof fixture>, retained: boolean) => 
   assert.deepEqual(actual.attestedEvidenceFacts.map((item) => item.candidateId).sort(), evidenceIds);
   assert.equal(actual.attestations.length, leadIds.length);
   const attestation = actual.attestations.find((item) => item.candidateId === "feed-publication-2")!;
+  assert.notEqual(attestation.schemaVersion, "reader_post_promotion_attestation.v3");
+  if (attestation.schemaVersion === "reader_post_promotion_attestation.v3") {
+    throw new Error("Legacy support fixture unexpectedly produced V3");
+  }
   assert.equal(attestation.placement, params.placement);
   assert.equal(attestation.providerCount, retained ? 2 : 1);
   assert.equal(attestation.confidence, target.confidence.score);
