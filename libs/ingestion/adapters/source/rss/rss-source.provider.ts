@@ -380,7 +380,8 @@ const rssRecencyWarnings = (
     : [];
 
 const hasReadableContent = (item: RssFeedItem): boolean =>
-  hasReadableFeedText(item.title, item.titleType) || hasReadableFeedText(item.content, item.contentType);
+  (item.xhtmlReadability?.title ?? hasReadableFeedText(item.title, item.titleType)) ||
+  (item.xhtmlReadability?.content ?? hasReadableFeedText(item.content, item.contentType));
 
 const canonicalLinkForItem = (item: RssFeedItem): string | undefined => {
   const link = item.link?.trim();

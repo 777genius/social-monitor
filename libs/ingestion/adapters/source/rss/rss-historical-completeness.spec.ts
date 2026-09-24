@@ -119,6 +119,41 @@ describe('RSS historical completeness', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it.each([
+    ['inherited Unicode prefix', '<feed xmlns:é="urn:example"><entry><id>visible</id><link href="https://example.test/visible"/><content type="xhtml"><div><é:p>Readable</é:p></div></content><published>2026-06-05T10:30:00Z</published></entry></feed>', 'visible'],
+    ['DOCTYPE comment with bracket', '<!DOCTYPE feed [<!-- [ -->]><feed><entry><id>visible</id><link href="https://example.test/visible"/><content type="xhtml"><div>Readable</div></content><published>2026-06-05T10:30:00Z</published></entry></feed>', 'visible'],
+    ['declared entity', '<!DOCTYPE feed [<!ENTITY word "Readable">]><feed><entry><id>visible</id><link href="https://example.test/visible"/><content type="xhtml"><div>&word;</div></content><published>2026-06-05T10:30:00Z</published></entry></feed>', 'visible'],
+    ...(['title', 'content', 'summary'] as const).map((name) => [
+      `CDATA literal in ${name}`,
+      `<feed><entry><id>visible</id><link href="https://example.test/visible"/><${name} type="xhtml"><div><![CDATA[<script>visible</script>]]></div></${name}><published>2026-06-05T10:30:00Z</published></entry></feed>`,
+      'visible',
+    ]),
+  ])('completes a recovery scan for %s', async (_case, xml, id) => {
+    globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
+    const provider = requireCompleteRecoveryScan(new RssSourceProvider(new HttpRssClient()));
+    const context = scope();
+    const result = await provider.scan(provider.planScan(query, context), context);
+    expect(result.items.map((item) => item.externalId)).toEqual([id]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it.each([
+    ['processing instruction', '<content type="xhtml"><div><script>hidden</script></div></content><?note > <content>INJECTED</content> ?>'],
+    ['nested prefixed script', '<content type="xhtml"><div xmlns:x="urn:example"><x:script><p>hidden</p></x:script></div></content>'],
+    ['nested prefixed style', '<content type="xhtml"><div xmlns:x="urn:example"><x:style><p>hidden</p></x:style></div></content>'],
+    ['nested prefixed template', '<content type="xhtml"><div xmlns:x="urn:example"><x:template><p>hidden</p></x:template></div></content>'],
+  ])('rejects unreadable XHTML with %s without inventing a post', async (_case, construct) => {
+    const xml = `<feed><entry><id>hidden</id><link href="https://example.test/hidden"/>${construct}<published>2026-06-05T10:30:00Z</published></entry></feed>`;
+    globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
+    const provider = new RssSourceProvider(new HttpRssClient());
+    const context = scope();
+    const result = await provider.scan(provider.planScan(query, context), context);
+    expect(result.items).toEqual([]);
+    expect(result.warnings).toEqual([expect.stringContaining('no readable title or content')]);
+    await expect(requireCompleteRecoveryScan(provider).scan(provider.planScan(query, context), context))
+      .rejects.toThrow('partial acquisition');
+  });
+
   it('retains a literal Atom text title without a body in ordinary ingestion', async () => {
     const xml = '<feed><entry><id>literal-title</id><link href="https://example.test/literal-title"/><title type="text">&lt;script&gt;</title><published>2026-06-05T10:30:00Z</published></entry></feed>';
     globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;

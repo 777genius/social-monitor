@@ -132,6 +132,43 @@ describe('HttpRssClient', () => {
       content: '<div xmlns="http://www.w3.org/1999/xhtml">After</div>', contentType: 'xhtml' }));
   });
 
+  it('keeps XHTML whitespace, entity spelling and CDATA literal across entries', async () => {
+    const first = ' \n<div xmlns="http://www.w3.org/1999/xhtml">Do <b>not</b> deploy &amp; &#x41; <![CDATA[<script>visible</script>]]></div> \t';
+    const second = '<div xmlns="http://www.w3.org/1999/xhtml">After</div>';
+    const xml = `<feed><entry><id>first</id><content type="xhtml">${first}</content></entry>` +
+      `<entry><id>second</id><summary type="xhtml">${second}</summary></entry></feed>`;
+    globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
+
+    const result = await new HttpRssClient().readFeed('https://example.test/atom.xml', 10);
+    expect(result.items).toEqual([
+      expect.objectContaining({ guid: 'first', content: first, contentType: 'xhtml' }),
+      expect.objectContaining({ guid: 'second', content: second, contentType: 'xhtml' }),
+    ]);
+  });
+
+  it('uses an Atom summary when an XHTML content construct is empty', async () => {
+    const xml = '<feed><entry><id>summary</id><content type="xhtml"/><summary type="text">Readable fallback</summary></entry></feed>';
+    globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
+
+    const result = await new HttpRssClient().readFeed('https://example.test/atom.xml', 10);
+    expect(result.items).toEqual([expect.objectContaining({
+      guid: 'summary', content: 'Readable fallback', contentType: 'text',
+    })]);
+  });
+
+  it('preserves raw XHTML title and summary constructs', async () => {
+    const title = ' <div xmlns="http://www.w3.org/1999/xhtml">Do <b>not</b> deploy &amp; wait</div> ';
+    const summary = '\n<div xmlns="http://www.w3.org/1999/xhtml"><![CDATA[<script>visible</script>]]></div>\n';
+    const xml = `<feed><entry><id>constructs</id><title type="xhtml">${title}</title>` +
+      `<summary type="xhtml">${summary}</summary></entry></feed>`;
+    globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
+
+    const result = await new HttpRssClient().readFeed('https://example.test/atom.xml', 10);
+    expect(result.items).toEqual([expect.objectContaining({
+      guid: 'constructs', title, titleType: 'xhtml', content: summary, contentType: 'xhtml',
+    })]);
+  });
+
   it('returns notModified without parsing body for HTTP 304', async () => {
     globalThis.fetch = jest.fn(async () =>
       new Response(null, {

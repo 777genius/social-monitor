@@ -8,6 +8,11 @@ export type RssFeedItem = {
   readonly titleType?: RssTextType;
   readonly content?: string;
   readonly contentType?: RssTextType;
+  /** Semantic visibility of Atom XHTML constructs, computed from the parsed feed. */
+  readonly xhtmlReadability?: {
+    readonly title?: boolean;
+    readonly content?: boolean;
+  };
   readonly author?: string;
   readonly mediaThumbnailUrl?: string;
   readonly mediaContentUrl?: string;

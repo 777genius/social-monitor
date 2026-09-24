@@ -27,3 +27,25 @@ const visibleHtmlText = (node: Node): string => {
   if (node.nodeType === 1 && /^(?:[^:]+:)?(?:script|style|template)$/iu.test((node as Element).localName)) return '';
   return Array.from(node.childNodes, visibleHtmlText).join('');
 };
+
+/** The normal feed parse has expanded XML entities and kept CDATA as literal text. */
+export const hasReadableXmlText = (construct: unknown): boolean => {
+  const visible: string[] = [];
+  const visit = (value: unknown): void => {
+    if (typeof value === 'string' || typeof value === 'number') {
+      visible.push(String(value));
+    } else if (Array.isArray(value)) {
+      value.forEach(visit);
+    } else if (typeof value === 'object' && value !== null) {
+      for (const [key, child] of Object.entries(value)) {
+        if (key.startsWith('@_') || key.startsWith('?') ||
+          /^(?:script|style|template)$/iu.test(key.slice(key.lastIndexOf(':') + 1))) continue;
+        visit(child);
+      }
+    }
+  };
+  visit(construct);
+  return visible.join('')
+    .replace(/[\u0080-\u009f]/gu, (character) => htmlC1Replacements[character.codePointAt(0) ?? 0] ?? character)
+    .replace(/[\p{Default_Ignorable_Code_Point}\p{White_Space}\p{Cc}]/gu, '').length > 0;
+};
