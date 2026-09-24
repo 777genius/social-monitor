@@ -10,6 +10,7 @@ import type { HackerNewsClientPort, HackerNewsSearchOptions, HackerNewsStory } f
 import { InMemorySourceProviderRegistry } from "@social-monitor/ingestion/adapters/source/in-memory-source-provider.registry";
 import { RegistrySourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter";
 import { RssSourceProvider } from "@social-monitor/ingestion/adapters/source/rss/rss-source.provider";
+import { HttpRssClient } from "@social-monitor/ingestion/adapters/source/rss/http-rss-client";
 import type { RssClientPort } from "@social-monitor/ingestion/adapters/source/rss/rss-client.port";
 import { ExecuteScanUseCase } from "@social-monitor/ingestion/features/execute-scan/execute-scan.use-case";
 import { FixedClock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
@@ -20,7 +21,7 @@ import {
   FakeScanFailureQueue, FakeScanLease, FakeSourceItemRepository, SequenceIdGenerator,
 } from "../../libs/ingestion/features/execute-scan/execute-scan.use-case.spec-support";
 import { CleanRealDaySourceConfigReader } from "./clean-real-day-source-config-reader";
-import { executeRecoveryAcquisition, requireCompleteRecoveryScan, validateRecoveryWindow, type RecoveryBinding } from "./hn-rss-recovery-acquisition";
+import { executeRecoveryAcquisition, requireCompleteRecoveryFetch, requireCompleteRecoveryScan, validateRecoveryWindow, type RecoveryBinding } from "./hn-rss-recovery-acquisition";
 import { parseRecoveryArgs } from "./hn-rss-recovery-plan";
 import { runRecovery } from "../run-hn-rss-recovery";
 
@@ -127,6 +128,84 @@ describe("HN/RSS recovery injected acquisition path", () => {
     expect(result.items.map((item) => item.externalId)).toEqual(["synthetic-guid-1"]);
   });
 
+  it("recovers the eleventh XML entry after ten newer entries and rejects in-window overflow", async () => {
+    const originalFetch = globalThis.fetch;
+    const item = (id: string, hour: number) => `<item><guid>${id}</guid><link>https://example.test/${id}</link><title>${id}</title><pubDate>Wed, 23 Sep 2026 ${hour}:30:00 GMT</pubDate></item>`;
+    const newer = Array.from({ length: 10 }, (_, index) => item(`new-${index}`, 18)).join("");
+    let xml = `<rss><channel>${newer}${item("historical", 16)}</channel></rss>`;
+    globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
+    try {
+      const provider = requireCompleteRecoveryScan(new RssSourceProvider(new HttpRssClient()));
+      const context = {
+        tenantId: tenantId(tenant), workspaceId: workspaceId(workspace), sourceBindingId: bindingId,
+        scanJobId: "synthetic", correlationId: "synthetic", config: { targetPublishedWindow: {
+          startInclusive: "2026-09-23T16:00:00.000Z", endExclusive: "2026-09-23T17:00:00.000Z",
+        } },
+      };
+      const plan = provider.planScan({ mode: "url", query: "https://example.test/feed.xml" }, context);
+      const bounded = { ...plan, maxItems: 10 };
+      const result = await provider.scan(bounded, context);
+      expect(result.items.map((entry) => entry.externalId)).toEqual(["historical"]);
+      expect(result.warnings).toEqual([]);
+      xml = `<rss><channel>${newer}${Array.from({ length: 11 }, (_, index) => item(`historical-${index}`, 16)).join("")}</channel></rss>`;
+      await expect(provider.scan(bounded, context)).rejects.toThrow("partial acquisition");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("persists the eleventh in-window XML entry through a complete RSS recovery scan", async () => {
+    const originalFetch = globalThis.fetch;
+    const item = (id: string, hour: number) => `<item><guid>${id}</guid><link>https://example.test/${id}</link><title>${id}</title><pubDate>Wed, 23 Sep 2026 ${hour}:30:00 GMT</pubDate></item>`;
+    const newer = Array.from({ length: 10 }, (_, index) => item(`new-${index}`, 18)).join("");
+    globalThis.fetch = jest.fn(async () => new Response(`<rss><channel>${newer}${item("historical", 16)}</channel></rss>`, { status: 200 })) as unknown as typeof fetch;
+    try {
+      const config = { feedUrl: "https://example.test/feed.xml", maxItems: 10, targetPublishedWindow: {
+        startInclusive: "2026-09-23T16:00:00.000Z", endExclusive: "2026-09-23T17:00:00.000Z",
+      } };
+      const fetcher = requireCompleteRecoveryFetch(new RegistrySourceFetcherAdapter(
+        new InMemorySourceProviderRegistry([requireCompleteRecoveryScan(new RssSourceProvider(new HttpRssClient()))], []),
+        new CleanRealDaySourceConfigReader([{ sourceBindingId: bindingId, config }]),
+      ));
+      const sourceItems = new FakeSourceItemRepository();
+      const feedItems = new InMemoryFeedItemReadRepository();
+      const scan = new ExecuteScanUseCase(
+        fetcher, sourceItems, new InMemoryFeedProjectionAdapter(feedItems),
+        new FakeScanAttemptRepository(), new IsolatedScanCursorRepository({ tenantId: tenantId(tenant), workspaceId: workspaceId(workspace), sourceBindingId: bindingId }),
+        new FakeScanExecutionReporter(), new FakeScanFailureQueue(), new FakeScanLease(), new SequenceIdGenerator(), new FixedClock(observed),
+      );
+      const result = await scan.execute({
+        tenantId: tenantId(tenant), workspaceId: workspaceId(workspace), sourceBindingId: bindingId,
+        scanJobId: "synthetic-rss-scan", providerKey: "rss", sourceQuery: { mode: "url", query: config.feedUrl },
+        interestId, scanPolicyId: policyId, correlationId: "synthetic-run", causationId: "synthetic-attempt", retryBudget: 0,
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.warnings).toEqual([]);
+      expect(sourceItems.all().map((entry) => entry.toSnapshot().externalId)).toEqual(["historical"]);
+      expect(feedItems.all()).toHaveLength(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("rejects RSS results truncated while merging historical feeds", async () => {
+    const provider = requireCompleteRecoveryScan(new RssSourceProvider({
+      readFeed: async (feedUrl) => ({ items: [{
+        guid: feedUrl, link: feedUrl, title: "Synthetic historical entry",
+        publishedAt: new Date("2026-09-23T16:30:00.000Z"),
+      }] }),
+    }));
+    const context = {
+      tenantId: tenantId(tenant), workspaceId: workspaceId(workspace), sourceBindingId: bindingId,
+      scanJobId: "synthetic", correlationId: "synthetic", config: {
+        feedUrls: ["https://example.test/second.xml"],
+        targetPublishedWindow: { startInclusive: "2026-09-23T16:00:00.000Z", endExclusive: "2026-09-23T17:00:00.000Z" },
+      },
+    };
+    await expect(provider.scan({ query: { mode: "url", query: "https://example.test/first.xml" }, maxItems: 1 }, context))
+      .rejects.toThrow("partial acquisition");
+  });
+
   it("refuses partial HN pass and RSS feed results", async () => {
     const hnClient = new SyntheticHnClient();
     const search = hnClient.searchStories.bind(hnClient);
@@ -167,6 +246,50 @@ describe("HN/RSS recovery injected acquisition path", () => {
       const context = { tenantId: tenantId(tenant), workspaceId: workspaceId(workspace), sourceBindingId: bindingId, scanJobId: "synthetic", correlationId: "synthetic", config: {} };
       await expect(wrapped.scan(wrapped.planScan({ mode: "search", query: "synthetic" }, context), context)).rejects.toThrow("partial acquisition");
     }
+  });
+
+  it("rejects a registry window warning before source or feed persistence", async () => {
+    const client = new SyntheticHnClient();
+    client.searchComments = async () => [{
+      id: 12348, kind: "comment", storyId: 12347, parentId: 12347,
+      text: "synthetic", time: Date.parse("2026-09-23T16:46:00Z") / 1000,
+    }];
+    client.getStory = async () => ({
+      id: 12347, kind: "story", title: "Older synthetic root", url: "https://example.test/hn/12347",
+      by: "synthetic", time: Date.parse("2026-09-22T16:00:00Z") / 1000, score: 4,
+    });
+    const config = { maxItems: 10, targetPublishedWindow: {
+      startInclusive: "2026-09-23T16:00:00.000Z", endExclusive: "2026-09-23T17:00:00.000Z",
+    }, scanPasses: [
+      { mode: "search", target: "story", query: "synthetic" },
+      { mode: "search", target: "comment", query: "synthetic" },
+    ] };
+    const provider = requireCompleteRecoveryScan(new HackerNewsSourceProvider(client, new FixedClock(observed)));
+    const fetcher = new RegistrySourceFetcherAdapter(
+      new InMemorySourceProviderRegistry([provider], []),
+      new CleanRealDaySourceConfigReader([{ sourceBindingId: bindingId, config }]),
+    );
+    const command = {
+      tenantId: tenantId(tenant), workspaceId: workspaceId(workspace), sourceBindingId: bindingId,
+      scanJobId: "synthetic-scan", providerKey: "hacker-news", sourceQuery: { mode: "search" as const, query: "synthetic" },
+      correlationId: "synthetic-run",
+    };
+    const raw = await fetcher.fetch(command);
+    expect(raw.items.map((item) => item.externalId)).toEqual(["hn:12345"]);
+    expect(raw.warnings).toEqual(["target_published_window.filtered;kept=1;dropped=1"]);
+
+    const sourceItems = new FakeSourceItemRepository();
+    const feedItems = new InMemoryFeedItemReadRepository();
+    const scan = new ExecuteScanUseCase(
+      requireCompleteRecoveryFetch(fetcher), sourceItems, new InMemoryFeedProjectionAdapter(feedItems),
+      new FakeScanAttemptRepository(), new IsolatedScanCursorRepository({ tenantId: tenantId(tenant), workspaceId: workspaceId(workspace), sourceBindingId: bindingId }),
+      new FakeScanExecutionReporter(), new FakeScanFailureQueue(), new FakeScanLease(), new SequenceIdGenerator(), new FixedClock(observed),
+    );
+    const result = await scan.execute({ ...command, interestId, scanPolicyId: policyId, causationId: "synthetic-attempt", retryBudget: 0 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain("partial acquisition");
+    expect(sourceItems.all()).toHaveLength(0);
+    expect(feedItems.all()).toHaveLength(0);
   });
 
   it("bounds base and expanded RSS reads before the provider is called", () => {

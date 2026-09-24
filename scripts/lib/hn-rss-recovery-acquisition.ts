@@ -6,7 +6,6 @@ import { PrismaScanAttemptRepository } from "@social-monitor/ingestion/adapters/
 import { PrismaScanFailureQueueAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter";
 import { PrismaScanLeaseAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter";
 import { PrismaSourceItemRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-item.repository";
-import { PrismaSourceCandidateMemoryRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-candidate-memory.repository";
 import { IsolatedScanCursorRepository } from "@social-monitor/ingestion/adapters/persistence/isolated-scan-cursor.repository";
 import { HackerNewsSourceProvider } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-source.provider";
 import { HttpHackerNewsClient } from "@social-monitor/ingestion/adapters/source/hacker-news/http-hacker-news-client";
@@ -19,7 +18,7 @@ import { readFeedUrls, readPositiveInteger as readRssLimit } from "@social-monit
 import { feedUrlsForTargetWindow } from "@social-monitor/ingestion/adapters/source/rss/rss-source-window";
 import { RssSourceProvider } from "@social-monitor/ingestion/adapters/source/rss/rss-source.provider";
 import { ExecuteScanUseCase } from "@social-monitor/ingestion/features/execute-scan/execute-scan.use-case";
-import type { SourceProviderPort, SourceQuery, SourceRuntimeConfig } from "@social-monitor/ingestion/ports";
+import { NOOP_SOURCE_CANDIDATE_MEMORY, type SourceFetcherPort, type SourceProviderPort, type SourceQuery, type SourceRuntimeConfig } from "@social-monitor/ingestion/ports";
 import { PrismaScanJobRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-scan-job.repository";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
@@ -135,6 +134,19 @@ export function requireCompleteRecoveryScan(provider: SourceProviderPort): Sourc
   };
 }
 
+/** The registry can add window warnings after the provider has returned. Reject them before persistence. */
+export function requireCompleteRecoveryFetch(fetcher: SourceFetcherPort): SourceFetcherPort {
+  return {
+    fetch: async (command) => {
+      const result = await fetcher.fetch(command);
+      if ((result.warnings?.length ?? 0) > 0) {
+        throw new Error("Recovery fetch returned a partial acquisition");
+      }
+      return result;
+    },
+  };
+}
+
 export async function executeRecoveryAcquisition(input: RecoveryAcquisitionInput): Promise<Readonly<{
   fetched: number; inserted: number; projected: number; skippedDuplicates: number; warningCount: number;
 }>> {
@@ -164,10 +176,10 @@ export async function executeRecoveryAcquisition(input: RecoveryAcquisitionInput
     throw new Error("Recovery provider binding validation failed");
   }
   const executeScan = new ExecuteScanUseCase(
-    new RegistrySourceFetcherAdapter(
+    requireCompleteRecoveryFetch(new RegistrySourceFetcherAdapter(
       new InMemorySourceProviderRegistry([requireCompleteRecoveryScan(provider)], []),
       new CleanRealDaySourceConfigReader([{ sourceBindingId: input.sourceBindingId, config }]),
-    ),
+    )),
     new PrismaSourceItemRepository(input.connection),
     new PrismaFeedProjectionAdapter(cleanRealDayFeedProjectionClient(input.connection), ids),
     new PrismaScanAttemptRepository(input.connection),
@@ -177,7 +189,8 @@ export async function executeRecoveryAcquisition(input: RecoveryAcquisitionInput
     new PrismaScanLeaseAdapter(input.connection, ids),
     ids, clock, undefined, undefined,
     new ConversationUnitProjectionAdapter(new PrismaConversationUnitRepository(input.connection, ids), ids),
-    new PrismaSourceCandidateMemoryRepository(input.connection, ids),
+    // Durable source-item upserts handle overlap; candidate memory can warn only after projection writes.
+    NOOP_SOURCE_CANDIDATE_MEMORY,
     new PrismaSourceEngagementProjectionAdapter(input.connection, ids),
   );
   const result = await runWithTenantDatabaseAccess(scope, () => executeScan.execute({

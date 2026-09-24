@@ -3,7 +3,7 @@ import { Pool, type PoolClient } from "pg";
 import { PrismaIngestionWorkerConnection } from "../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
 import { executeRecoveryAcquisition, recoverySourceQuery, validateRecoveryWindow, type RecoveryBinding } from "./lib/hn-rss-recovery-acquisition";
 import { assertPrivateJournalDir, completeRecovery, reserveRecovery } from "./lib/hn-rss-recovery-journal";
-import { parseRecoveryArgs, recoveryPlan, sha256, type RecoveryRequest } from "./lib/hn-rss-recovery-plan";
+import { parseRecoveryCliArgs, recoveryPlan, sha256, type RecoveryRequest } from "./lib/hn-rss-recovery-plan";
 
 export type RecoveryDependencies = Readonly<{
   readBinding: (request: RecoveryRequest) => Promise<RecoveryBinding>;
@@ -81,7 +81,7 @@ export async function readBindingFromDatabase(request: RecoveryRequest, database
 }
 
 async function main(): Promise<void> {
-  const request = parseRecoveryArgs(process.argv.slice(2), new Date());
+  const request = parseRecoveryCliArgs(process.argv.slice(2), new Date());
   const databaseUrl = process.env.HN_RSS_RECOVERY_DATABASE_URL;
   if (databaseUrl === undefined || databaseUrl.length === 0) throw new Error("HN_RSS_RECOVERY_DATABASE_URL is required");
   const result = await runRecovery(request, {

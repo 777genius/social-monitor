@@ -148,4 +148,25 @@ describe('HttpRssClient', () => {
       'Feed URL redirect rejected: Feed URL must not target private or local networks.',
     );
   });
+
+  it('filters the parsed XML by historical window before applying the item limit', async () => {
+    const newer = Array.from({ length: 10 }, (_, index) =>
+      `<item><guid>new-${index}</guid><link>https://example.test/new-${index}</link><title>New</title><pubDate>Wed, 23 Sep 2026 18:00:00 GMT</pubDate></item>`,
+    ).join('');
+    const historical = '<item><guid>in-window</guid><link>https://example.test/old</link><title>Old</title><pubDate>Wed, 23 Sep 2026 16:30:00 GMT</pubDate></item>';
+    globalThis.fetch = jest.fn(async () => new Response(`<rss><channel>${newer}${historical}</channel></rss>`, { status: 200 })) as unknown as typeof fetch;
+    const client = new HttpRssClient();
+    const options = { targetPublishedWindow: {
+      startInclusive: new Date('2026-09-23T16:00:00.000Z'),
+      endExclusive: new Date('2026-09-23T17:00:00.000Z'),
+    } };
+    const read = await client.readFeed('https://example.test/feed.xml', 10, options);
+    expect(read.items.map((item) => item.guid)).toEqual(['in-window']);
+    expect(read.truncated).toBeUndefined();
+
+    const overflow = await client.readFeed('https://example.test/feed.xml', 1, {
+      targetPublishedWindow: { startInclusive: options.targetPublishedWindow.startInclusive, endExclusive: new Date('2026-09-23T19:00:00.000Z') },
+    });
+    expect(overflow.truncated).toBe(true);
+  });
 });

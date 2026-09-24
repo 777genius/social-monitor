@@ -245,14 +245,12 @@ const numericFiltersForSearchOptions = (
   const filters = [
     options?.from === undefined
       ? undefined
-      : `created_at_i>${unixTimestamp(options.from)}`,
-    options?.to === undefined ? undefined : `created_at_i<${unixTimestamp(options.to)}`,
+      : `created_at_i>${Math.ceil(options.from.getTime() / 1000) - 1}`,
+    options?.to === undefined ? undefined : `created_at_i<${Math.ceil(options.to.getTime() / 1000)}`,
   ].filter((filter): filter is string => filter !== undefined);
 
   return filters.length === 0 ? undefined : filters.join(',');
 };
-
-const unixTimestamp = (date: Date): number => Math.floor(date.getTime() / 1000);
 
 const filterAlgoliaHits = (
   hits: readonly AlgoliaHit[],

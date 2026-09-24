@@ -16,6 +16,17 @@ export type RecoveryRequest = Readonly<{
   planSha256?: string;
 }>;
 
+// The real CLI uses one durable authority for every plan digest. Operators must
+// provision this directory as owned, private, canonical and persistent storage.
+// Disposable journal directories are accepted only by parseRecoveryArgs, which
+// is used by the synthetic test harness.
+export const recoveryCliJournalDir = "/var/lib/social-monitor/hn-rss-recovery-journal";
+
+export function parseRecoveryCliArgs(args: readonly string[], now: Date): RecoveryRequest {
+  if (args.includes("--journal-dir")) throw new Error("--journal-dir is not accepted by the recovery CLI");
+  return parseRecoveryArgs([...args, "--journal-dir", recoveryCliJournalDir], now);
+}
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const instant = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/;
 const maxWindowMs = 24 * 60 * 60 * 1000;

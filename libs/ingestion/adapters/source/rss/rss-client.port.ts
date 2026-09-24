@@ -15,6 +15,10 @@ export type RssFeedItem = {
 export type RssReadFeedOptions = {
   readonly etag?: string;
   readonly lastModified?: string;
+  readonly targetPublishedWindow?: {
+    readonly startInclusive: Date;
+    readonly endExclusive: Date;
+  };
 };
 
 export type RssReadFeedResult = {
@@ -22,6 +26,8 @@ export type RssReadFeedResult = {
   readonly etag?: string;
   readonly lastModified?: string;
   readonly notModified?: boolean;
+  /** More matching entries existed than the requested item limit. */
+  readonly truncated?: boolean;
 };
 
 export interface RssClientPort {

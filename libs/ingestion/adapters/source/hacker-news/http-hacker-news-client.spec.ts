@@ -258,7 +258,7 @@ describe('HttpHackerNewsClient', () => {
         tags: 'story',
         hitsPerPage: '20',
         optionalWords: 'agents',
-        numericFilters: 'created_at_i>1782230000,created_at_i<1782316400',
+        numericFilters: 'created_at_i>1782229999,created_at_i<1782316400',
       });
       expect(new URL(url).searchParams.get('numericFilters')).not.toContain('points');
 
@@ -445,6 +445,52 @@ describe('HttpHackerNewsClient', () => {
         score: 2,
       },
     ]);
+  });
+
+  it('requests an inclusive start and exclusive end at whole and fractional seconds', async () => {
+    const urls: URL[] = [];
+    globalThis.fetch = jest.fn(async (rawUrl: string) => {
+      urls.push(new URL(rawUrl));
+      return jsonResponse({ hits: [] });
+    }) as unknown as typeof fetch;
+    const client = new HttpHackerNewsClient();
+    await client.searchStories('boundary', 10, {
+      from: new Date('2026-09-23T16:00:00.000Z'),
+      to: new Date('2026-09-23T17:00:00.000Z'),
+    });
+    await client.searchStories('boundary', 10, {
+      from: new Date('2026-09-23T16:00:00.500Z'),
+      to: new Date('2026-09-23T17:00:00.500Z'),
+    });
+    const start = Date.parse('2026-09-23T16:00:00.000Z') / 1000;
+    const end = Date.parse('2026-09-23T17:00:00.000Z') / 1000;
+    expect(urls.map((url) => url.searchParams.get('numericFilters'))).toEqual([
+      `created_at_i>${start - 1},created_at_i<${end}`,
+      `created_at_i>${start},created_at_i<${end + 1}`,
+    ]);
+  });
+
+  it('assigns exact-second hits to only the adjacent recovery window that starts there', async () => {
+    const boundary = Date.parse('2026-09-23T17:00:00.000Z') / 1000;
+    const hits = [
+      { objectID: '501', title: 'Boundary story before', created_at_i: boundary - 1, points: 4 },
+      { objectID: '502', title: 'Boundary story exact', created_at_i: boundary, points: 4 },
+    ];
+    globalThis.fetch = jest.fn(async (rawUrl: string) => {
+      const filters = new URL(rawUrl).searchParams.get('numericFilters') ?? '';
+      const from = Number(filters.match(/created_at_i>(\d+)/u)?.[1]);
+      const to = Number(filters.match(/created_at_i<(\d+)/u)?.[1]);
+      return jsonResponse({ hits: hits.filter((hit) => hit.created_at_i > from && hit.created_at_i < to) });
+    }) as unknown as typeof fetch;
+    const client = new HttpHackerNewsClient();
+    const before = await client.searchStories('boundary', 10, {
+      from: new Date('2026-09-23T16:00:00.000Z'), to: new Date('2026-09-23T17:00:00.000Z'),
+    });
+    const after = await client.searchStories('boundary', 10, {
+      from: new Date('2026-09-23T17:00:00.000Z'), to: new Date('2026-09-23T18:00:00.000Z'),
+    });
+    expect(before.map((story) => story.id)).toEqual([501]);
+    expect(after.map((story) => story.id)).toEqual([502]);
   });
 });
 

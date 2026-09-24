@@ -49,8 +49,17 @@ export class HttpRssClient implements RssClientPort {
 
     const parsed = parser.parse(await response.text());
 
+    const entries = parseFeedItems(parsed);
+    const window = options.targetPublishedWindow;
+    const matching = window === undefined ? entries : entries.filter((item) =>
+      item.publishedAt === undefined ||
+      (item.publishedAt >= window.startInclusive && item.publishedAt < window.endExclusive),
+    );
+    const boundedLimit = normalizeLimit(limit);
+
     return {
-      items: parseFeedItems(parsed).slice(0, normalizeLimit(limit)),
+      items: matching.slice(0, boundedLimit),
+      ...(window !== undefined && matching.length > boundedLimit ? { truncated: true } : {}),
       etag,
       lastModified,
     };

@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { completeRecovery, reserveRecovery } from "./hn-rss-recovery-journal";
-import { parseRecoveryArgs, recoveryPlan, sha256 } from "./hn-rss-recovery-plan";
+import { assertPrivateJournalDir, completeRecovery, reserveRecovery } from "./hn-rss-recovery-journal";
+import { parseRecoveryArgs, parseRecoveryCliArgs, recoveryCliJournalDir, recoveryPlan, sha256 } from "./hn-rss-recovery-plan";
 import { runRecovery } from "../run-hn-rss-recovery";
 
 const now = new Date("2026-09-24T00:00:00.000Z");
@@ -24,6 +24,23 @@ const binding = {
   config: { mode: "search", query: "synthetic monitoring", maxItems: 10 },
 };
 const counts = { fetched: 1, inserted: 1, projected: 1, skippedDuplicates: 0, warningCount: 0 };
+const withoutJournalDir = (values: readonly string[]): string[] => {
+  const index = values.indexOf("--journal-dir");
+  return values.filter((_, position) => position !== index && position !== index + 1);
+};
+const runSyntheticProcess = (script: string, values: readonly string[]): Promise<{ code: number | null; signal: NodeJS.Signals | null; output: string; error: string }> =>
+  new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["-r", "ts-node/register/transpile-only", "-r", "tsconfig-paths/register", script, ...values], {
+      cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"],
+      env: { PATH: process.env.PATH ?? "", TZ: "UTC", TS_NODE_PROJECT: join(process.cwd(), "tsconfig.build.json") },
+    });
+    let output = "";
+    let error = "";
+    child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    child.stderr.on("data", (chunk: Buffer) => { error += chunk.toString(); });
+    child.on("error", reject);
+    child.on("close", (code, signal) => resolve({ code, signal, output: output.trim(), error: error.trim() }));
+  });
 
 describe("HN/RSS recovery plan and journal", () => {
   let directory: string;
@@ -40,6 +57,38 @@ describe("HN/RSS recovery plan and journal", () => {
     expect(() => parseRecoveryArgs(args(directory).map((value) => value === "2026-09-23T17:00:00.000Z" ? "2026-09-25T00:00:00.000Z" : value), now)).toThrow("interval");
     expect(() => parseRecoveryArgs(args(directory).map((value) => value === "2026-09-23T16:00:00.000Z" ? "2026-09-22T16:00:00.000Z" : value), now)).toThrow("interval");
     expect(() => parseRecoveryArgs(args(directory).concat(["--provider", "rss"]), now)).toThrow("duplicate");
+  });
+
+  it("binds every real CLI invocation to the same authority and rejects directory switches", () => {
+    const other = mkdtempSync(join(tmpdir(), "hn-rss-other-journal-"));
+    try {
+      const base = withoutJournalDir(args(directory));
+      const plan = parseRecoveryCliArgs(base, now);
+      const apply = parseRecoveryCliArgs([...base, "--apply", "--plan-sha256", "a".repeat(64)], now);
+      expect(plan.journalDir).toBe(recoveryCliJournalDir);
+      expect(apply.journalDir).toBe(plan.journalDir);
+      expect(() => parseRecoveryCliArgs(args(directory), now)).toThrow("--journal-dir is not accepted");
+      expect(() => parseRecoveryCliArgs(args(other), now)).toThrow("--journal-dir is not accepted");
+      expect(() => parseRecoveryCliArgs([...base, "--journal-dir", other, "--apply", "--plan-sha256", "a".repeat(64)], now)).toThrow("--journal-dir is not accepted");
+      expect(readdirSync(directory)).toEqual([]);
+      expect(readdirSync(other)).toEqual([]);
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects journal path aliases and symlinks before reservation", () => {
+    const alias = `${directory}-alias`;
+    symlinkSync(directory, alias, "dir");
+    try {
+      expect(() => assertPrivateJournalDir(alias)).toThrow("canonical absolute path");
+      expect(() => assertPrivateJournalDir(`${directory}/../${directory.split("/").at(-1) ?? ""}`)).toThrow("canonical absolute path");
+      const base = withoutJournalDir(args(directory));
+      expect(() => parseRecoveryCliArgs([...base, "--journal-dir", alias], now)).toThrow("--journal-dir is not accepted");
+      expect(readdirSync(directory)).toEqual([]);
+    } finally {
+      rmSync(alias);
+    }
   });
 
   it("plans without acquisition, completes once, then treats the same completed plan as a no-op", async () => {
@@ -125,20 +174,44 @@ describe("HN/RSS recovery plan and journal", () => {
     const plan = recoveryPlan(request, binding);
     const digest = sha256(plan);
     const scope = { tenantId, workspaceId, sourceBindingId, interestId: plan.interestId, scanPolicyId: plan.scanPolicyId, providerKey: "hacker-news", from: request.from, to: request.to, configSha256: plan.configSha256, interestQuerySha256: plan.interestQuerySha256 };
-    const worker = () => new Promise<string>((resolve, reject) => {
-      const child = spawn(process.execPath, ["-r", "ts-node/register/transpile-only", "-r", "tsconfig-paths/register",
-        join(__dirname, "hn-rss-recovery-reserve-worker.ts"), directory, digest, JSON.stringify(scope)], {
-        cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"],
-        env: { PATH: process.env.PATH ?? "", TZ: "UTC", TS_NODE_PROJECT: join(process.cwd(), "tsconfig.build.json") },
-      });
-      let output = "";
-      let failure = "";
-      child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
-      child.stderr.on("data", (chunk: Buffer) => { failure += chunk.toString(); });
-      child.on("error", reject);
-      child.on("close", (code) => code === 0 ? resolve(output.trim()) : reject(new Error(`Synthetic reservation worker failed: ${failure}`)));
-    });
-    expect((await Promise.all([worker(), worker()])).sort()).toEqual(["REFUSED", "RESERVED"]);
+    const worker = () => runSyntheticProcess(join(__dirname, "hn-rss-recovery-reserve-worker.ts"), [directory, digest, JSON.stringify(scope)]);
+    const raced = await Promise.all([worker(), worker()]);
+    expect(raced.map((value) => value.code)).toEqual([0, 0]);
+    expect(raced.map((value) => value.output).sort()).toEqual(["REFUSED", "RESERVED"]);
+    expect((await worker()).output).toBe("REFUSED");
+  });
+
+  it("keeps a committed effect uncertain across a process crash and rejects another CLI journal directory", async () => {
+    const other = mkdtempSync(join(tmpdir(), "hn-rss-replay-dir-"));
+    const effects = mkdtempSync(join(tmpdir(), "hn-rss-synthetic-effect-"));
+    try {
+      const request = parseRecoveryArgs(args(directory), now);
+      const plan = recoveryPlan(request, binding);
+      const digest = sha256(plan);
+      const scope = { tenantId, workspaceId, sourceBindingId, interestId: plan.interestId, scanPolicyId: plan.scanPolicyId,
+        providerKey: "hacker-news", from: request.from, to: request.to, configSha256: plan.configSha256,
+        interestQuerySha256: plan.interestQuerySha256 };
+      const effectPath = join(effects, "committed.txt");
+      const crashed = await runSyntheticProcess(join(__dirname, "hn-rss-recovery-reserve-worker.ts"),
+        [directory, digest, JSON.stringify(scope), effectPath]);
+      expect(crashed.signal).toBe("SIGKILL");
+      expect(readFileSync(effectPath, "utf8")).toBe("committed\n");
+      expect(existsSync(join(directory, `${digest}.started.json`))).toBe(true);
+      expect(existsSync(join(directory, `${digest}.completed.json`))).toBe(false);
+      const retry = await runSyntheticProcess(join(__dirname, "hn-rss-recovery-reserve-worker.ts"),
+        [directory, digest, JSON.stringify(scope)]);
+      expect(retry.output).toBe("REFUSED");
+      const realCli = join(__dirname, "../run-hn-rss-recovery.ts");
+      const switched = await Promise.all([directory, other].map((journalDir) => runSyntheticProcess(realCli,
+        args(journalDir, ["--apply", "--plan-sha256", digest]))));
+      expect(switched.map((value) => value.code)).toEqual([2, 2]);
+      expect(switched.every((value) => value.error.includes("REFUSED_OR_UNCERTAIN"))).toBe(true);
+      expect(readdirSync(other)).toEqual([]);
+      expect(readFileSync(effectPath, "utf8")).toBe("committed\n");
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+      rmSync(effects, { recursive: true, force: true });
+    }
   });
 
   it("leaves failed acquisition reserved for manual reconciliation", async () => {

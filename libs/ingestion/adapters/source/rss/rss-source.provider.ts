@@ -115,7 +115,7 @@ export class RssSourceProvider implements SourceProviderPort {
       const feed = await this.client.readFeed(
         feedUrl,
         plan.maxItems,
-        decodeCursor(plan.cursor),
+        { ...decodeCursor(plan.cursor), ...(targetWindow === undefined ? {} : { targetPublishedWindow: targetWindow }) },
       );
       const filteredItems = filterItemsForWindow(
         feed.items,
@@ -129,6 +129,7 @@ export class RssSourceProvider implements SourceProviderPort {
         ),
         nextCursor: encodeCursor(feed, plan.cursor),
         warnings: [
+          ...(feed.truncated ? ["RSS recovery window exceeds maxItems; acquisition is incomplete."] : []),
           ...rssWarnings(feed.items),
           ...rssRecencyWarnings(
             feed.items,
@@ -150,7 +151,7 @@ export class RssSourceProvider implements SourceProviderPort {
           this.client,
           feedUrl,
           perFeedLimit,
-          feedCursor.get(feedUrl),
+          { ...feedCursor.get(feedUrl), ...(targetWindow === undefined ? {} : { targetPublishedWindow: targetWindow }) },
         ),
       ),
     );
@@ -180,18 +181,21 @@ export class RssSourceProvider implements SourceProviderPort {
     const allItems = sourcedItems.map(({ item }) => item);
     const filteredItems = filteredSourcedItems.map(({ item }) => item);
 
-    return {
-      items: filteredSourcedItems
+    const normalizedItems = filteredSourcedItems
         .flatMap(({ item, index, feedUrl }) =>
           normalizeItem(item, index, feedUrl),
         )
         .sort(
           (left, right) =>
             right.publishedAt.getTime() - left.publishedAt.getTime(),
-        )
-        .slice(0, plan.maxItems),
+        );
+
+    return {
+      items: normalizedItems.slice(0, plan.maxItems),
       nextCursor: encodeMultiFeedCursor(feeds, plan.cursor),
       warnings: [
+        ...(feeds.some(({ feed }) => feed.truncated) || normalizedItems.length > plan.maxItems
+          ? ["RSS recovery window exceeds maxItems; acquisition is incomplete."] : []),
         ...feedReadWarnings,
         ...rssWarnings(allItems),
         ...rssRecencyWarnings(
