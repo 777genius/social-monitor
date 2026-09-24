@@ -29,6 +29,44 @@ describe('RSS recovery r23 reference and body evidence', () => {
   afterEach(() => { globalThis.fetch = originalFetch; });
 
   it.each([
+    ['space', ' '], ['tab', '\t'], ['newline', '\n'], ['invisible character', '\u200B'],
+  ])('accepts a declared %s beside readable XHTML text', async (_case, whitespace) => {
+    respond(`<!DOCTYPE feed [<!ENTITY blank "${whitespace}">]>` + atom('Readable &blank;'));
+    expect((await complete(new HttpRssClient())).items).toEqual([
+      expect.objectContaining({ externalId: 'target', body: '<div>Readable &blank;</div>' }),
+    ]);
+  });
+
+  it('uses a readable summary when a declared space leaves the XHTML body blank', async () => {
+    respond('<!DOCTYPE feed [<!ENTITY blank " ">]>' +
+      '<feed><entry><id>target</id><link href="https://example.test/target"/>' +
+      '<content type="xhtml"><div>&blank;</div></content>' +
+      '<summary type="text">Readable summary</summary>' +
+      '<published>2026-06-05T10:30:00Z</published></entry></feed>');
+    expect((await complete(new HttpRssClient())).items).toEqual([
+      expect.objectContaining({ externalId: 'target', body: 'Readable summary' }),
+    ]);
+  });
+
+  it('accepts a declared space in an attribute of a readable XHTML item', async () => {
+    respond('<!DOCTYPE feed [<!ENTITY blank " ">]>' + atom('<p data-note="&blank;">Readable</p>'));
+    expect((await complete(new HttpRssClient())).items).toEqual([
+      expect.objectContaining({ externalId: 'target', body: '<div><p data-note="&blank;">Readable</p></div>' }),
+    ]);
+  });
+
+  it('keeps a declared space-only XHTML body without summary incomplete', async () => {
+    respond('<!DOCTYPE feed [<!ENTITY blank " ">]>' + atom('&blank;'));
+    expect((await new HttpRssClient().readFeed(feedUrl, 10)).items).toEqual([
+      expect.objectContaining({
+        guid: 'target', content: '<div>&blank;</div>',
+        xhtmlReadability: { title: false, content: false },
+      }),
+    ]);
+    await expect(complete(new HttpRssClient())).rejects.toThrow('partial acquisition');
+  });
+
+  it.each([
     ['numeric and escaped literal', '&#65; &amp;#65;'],
     ['declared word and escaped literal', '&word; &amp;word;'],
     ['declared word and escaped less-than', '&word; &lt;'],

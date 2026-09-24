@@ -1,7 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
 
-import { hasReadableFeedText } from './rss-readable-content';
-
 // These parses inspect parser-tokenized text and attributes. CDATA stays in its
 // own node, so a literal reference inside CDATA is never treated as an entity.
 const options = {
@@ -106,7 +104,7 @@ export const assertResolvedXmlEntities = (xml: string): void => {
       typeof value[0] === 'object' && value[0] !== null
       ? (value[0] as Record<string, unknown>)['#text'] : undefined;
     if (typeof text !== 'string' || text === token || /[<>]/u.test(text) ||
-        unresolvedReference.test(text) || !hasReadableFeedText(text, 'text')) {
+        unresolvedReference.test(text)) {
       throw new RssEntityEvidenceError();
     }
     expansions.set(token, text);
