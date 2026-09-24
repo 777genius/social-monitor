@@ -12,7 +12,7 @@ const socket: Postgres18SocketTransport = {
   socketInode: 47,
 };
 const database = "reader_summary_publication_test_00000000000000000000";
-const socketUrl = `postgresql://fixture_user:synthetic_password_123@127.0.0.1:5432/${database}?host=${encodeURIComponent(directory)}`;
+const socketUrl = `postgresql://fixture_user:social_monitor_local_password@127.0.0.1:5432/${database}?host=${encodeURIComponent(directory)}`;
 const catalog = {
   rows: [{
     protected_membership_valid: true,
@@ -103,7 +103,7 @@ test("socket mode uses only the pinned cached image and exact private bind", asy
   expect(script).toContain("exit 90");
   expect(script).toContain("--file=\"$query_file\"");
   expect(script).toContain('[ "$result" = "$runtime_role" ]');
-  expect(options?.input).toBe("*:5432:" + database + ":fixture_user:synthetic_password_123\n");
+  expect(options?.input).toBe("*:5432:" + database + ":fixture_user:social_monitor_local_password\n");
 });
 
 test("explicit test environment configures the regression without a parameter", async () => {
@@ -129,7 +129,7 @@ test.each([
   ["duplicate host", `${socketUrl}&host=${encodeURIComponent(directory)}`],
   ["URL fragment", `${socketUrl}#ignored`],
   ["wrong host override", socketUrl.replace(encodeURIComponent(directory), "%2Ftmp%2Fother")],
-  ["short password", socketUrl.replace("synthetic_password_123", "short")],
+  ["short password", socketUrl.replace("social_monitor_local_password", "short")],
 ])("rejects %s before catalog or Docker", async (_label, url) => {
   await expect(run(url, socket)).rejects.toThrow();
   expect(query).not.toHaveBeenCalled();
@@ -194,12 +194,12 @@ test("catalog failure never runs Docker; psql failure never reports a fixture pa
   query.mockResolvedValueOnce({ rows: [{ ...catalog.rows[0], protected_membership_valid: false }] });
   await expect(run(socketUrl, socket)).rejects.toThrow("protected creator membership");
   expect(docker).not.toHaveBeenCalled();
-  docker.mockReturnValueOnce({ status: 1, stderr: "synthetic_password_123" });
+  docker.mockReturnValueOnce({ status: 1, stderr: "social_monitor_local_password" });
   await expect(run(socketUrl, socket)).rejects.toThrow(/^real psql catalog-variable regression failed$/);
 });
 
 test("default TCP Docker argv and image remain unchanged", async () => {
-  await run("postgresql://fixture_user:synthetic_password_123@127.0.0.1:5432/postgres");
+  await run("postgresql://fixture_user:social_monitor_local_password@127.0.0.1:5432/postgres");
   const [command, args, options] = docker.mock.calls[0]!;
   expect(command).toBe("docker");
   expect(args).toEqual([
@@ -208,5 +208,5 @@ test("default TCP Docker argv and image remain unchanged", async () => {
     "sh", "-c", expect.any(String), "_", "127.0.0.1", "5432", "postgres",
     "fixture_user", "fixture_runtime",
   ]);
-  expect(options?.input).toBe("127.0.0.1:5432:postgres:fixture_user:synthetic_password_123\n");
+  expect(options?.input).toBe("127.0.0.1:5432:postgres:fixture_user:social_monitor_local_password\n");
 });

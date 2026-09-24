@@ -80,7 +80,7 @@ const loadContract = (events: string[], socketMode = false) => {
   }
   jest.doMock("./lib/reader-summary-publication-postgres-fixture-scope", () => generic({
     requiredReaderSummaryPublicationAdminDatabaseUrl: () => {
-      const url = new URL("postgresql://fixture_admin:synthetic_password_123@127.0.0.1:5432/postgres");
+      const url = new URL("postgresql://fixture_admin:social_monitor_local_password@127.0.0.1:5432/postgres");
       if (socketMode) url.searchParams.set("host", socketDirectory);
       return url.toString();
     },
