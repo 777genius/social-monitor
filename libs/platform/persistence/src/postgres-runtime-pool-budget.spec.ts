@@ -4,7 +4,6 @@ import {
   POSTGRES_RUNTIME_POOL_LIMITS,
   PRODUCTION_POSTGRES_RUNTIME_INVENTORY,
 } from './postgres-runtime-pool-budget';
-import { productionBudgetFixture } from './postgres-runtime-pool-budget-test-fixture';
 import {
   BOUNDED_POSTGRES_TEST_ONLY_FILES,
   BOUNDED_POSTGRES_TEST_POOL_MAXIMUMS,
