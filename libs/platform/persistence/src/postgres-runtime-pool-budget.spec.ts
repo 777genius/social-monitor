@@ -439,7 +439,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       test/feed-reader-summary-coverage-pool.integration.spec.ts:PrismaPg
     `));
   });
-
   it('keeps the historical refresh race writer reachable only from its native test gate', () => {
     const helper = 'scripts/lib/reader-summary-new-input-refresh-native-concurrency.ts';
     const consumers = completeDatabaseSourceFiles.filter((path) =>
@@ -448,7 +447,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     );
     expect(consumers).toEqual(['scripts/check-reader-summary-new-input-refresh-postgres.ts']);
   });
-
   it('fails on every future raw database-client dependency bypass', () => {
     const rawDependencyFiles = completeDatabaseSourceFiles
       .filter((path) => {
@@ -470,6 +468,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // exact paths even though they construct no runtime pools.
     // The replay dispatch spec imports pg only to assert its throwing mock stays unused.
     // Cursor cleanup helper imports only the Pool type; its spec exercises the installed Pool lifecycle.
+    // The socket regression spec imports only the Pool type for its mocked client.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts
@@ -572,6 +571,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres-legacy.ts
       scripts/reader-summary-publication-postgres-privileges.ts
       scripts/reader-summary-publication-postgres-runtime-guard.ts
+      scripts/reader-summary-publication-postgres18-regression.spec.ts
       scripts/reader-summary-publication-postgres18-regression.ts
       scripts/run-reader-promotion-v2-production-canary.ts
       scripts/run-reader-summary-clean-real-day-collection.ts
@@ -704,14 +704,15 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       );
     // The disposable successor bootstrap reuses protected-role provisioning.
     // Keep this exact importer inventoried without exempting its pool caps.
+    // The callback spec isolates mocked privilege helpers without constructing pools.
     expect(productionImporters).toEqual([
+      'scripts/check-reader-summary-publication-postgres.spec.ts',
       'scripts/lib/reader-summary-successor-fixture-migrations.ts',
     ]);
     expect(readSource('package.json')).toContain(
       'check:reader-summary-publication-postgres',
     );
   });
-
   it('keeps the production daily dispatcher sequential and within its budget', () => {
     const dispatcher = readSource(
       'scripts/run-reader-summary-production-day.ts',
