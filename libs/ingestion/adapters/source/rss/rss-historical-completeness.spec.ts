@@ -59,6 +59,44 @@ describe('RSS historical completeness', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it.each([
+    ['RSS CDATA markup', '<rss><channel><item><guid>empty-rss</guid><link>https://example.test/empty-rss</link><description><![CDATA[<p><br/></p>]]></description><pubDate>Fri, 05 Jun 2026 10:30:00 GMT</pubDate></item></channel></rss>'],
+    ['Atom HTML content', '<feed><entry><id>empty-atom</id><link href="https://example.test/empty-atom"/><content type="html">&lt;p&gt;&lt;br/&gt;&lt;/p&gt;</content><published>2026-06-05T10:30:00Z</published></entry></feed>'],
+    ['RSS whitespace entities', '<rss><channel><item><guid>empty-entities</guid><link>https://example.test/empty-entities</link><description><![CDATA[<p>&nbsp;&#160;&#x2003;&ZeroWidthSpace;</p>]]></description><pubDate>Fri, 05 Jun 2026 10:30:00 GMT</pubDate></item></channel></rss>'],
+  ])('rejects in-window %s as unreadable through the recovery scan wrapper', async (_kind, xml) => {
+    globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
+    const provider = new RssSourceProvider(new HttpRssClient());
+    const context = scope();
+    const plan = provider.planScan(query, context);
+    const result = await provider.scan(plan, context);
+    expect(result.items).toEqual([]);
+    expect(result.warnings).toEqual([expect.stringContaining('no readable title or content')]);
+    await expect(requireCompleteRecoveryScan(provider).scan(plan, context))
+      .rejects.toThrow('partial acquisition');
+  });
+
+  it.each([
+    ['RSS text inside markup', '<rss><channel><item><guid>rss-text</guid><link>https://example.test/rss-text</link><description><![CDATA[<p>Readable <strong>story</strong></p>]]></description><pubDate>Fri, 05 Jun 2026 10:30:00 GMT</pubDate></item></channel></rss>', 'rss-text'],
+    ['Atom text inside HTML', '<feed><entry><id>atom-text</id><link href="https://example.test/atom-text"/><content type="html">&lt;p&gt;Readable &lt;strong&gt;story&lt;/strong&gt;&lt;/p&gt;</content><published>2026-06-05T10:30:00Z</published></entry></feed>', 'atom-text'],
+    ['RSS visible entity', '<rss><channel><item><guid>rss-entity</guid><link>https://example.test/rss-entity</link><description><![CDATA[<p>&#65;&nbsp;</p>]]></description><pubDate>Fri, 05 Jun 2026 10:30:00 GMT</pubDate></item></channel></rss>', 'rss-entity'],
+  ])('accepts in-window %s', async (_kind, xml, id) => {
+    globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
+    const provider = requireCompleteRecoveryScan(new RssSourceProvider(new HttpRssClient()));
+    const context = scope();
+    const result = await provider.scan(provider.planScan(query, context), context);
+    expect(result.items.map((item) => item.externalId)).toEqual([id]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it.each(['<rss><channel/></rss>', '<feed/>'])('accepts a genuinely empty feed: %s', async (xml) => {
+    globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
+    const provider = requireCompleteRecoveryScan(new RssSourceProvider(new HttpRssClient()));
+    const context = scope();
+    const result = await provider.scan(provider.planScan(query, context), context);
+    expect(result.items).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
   it('propagates empty parsed item rejection across feeds without losing valid results or cursors', async () => {
     const secondary = 'https://feeds.example.test/second.xml';
     globalThis.fetch = jest.fn(async (url: string) => new Response(
@@ -82,10 +120,13 @@ describe('RSS historical completeness', () => {
   it.each([
     ['identified contentless item', '<item><guid>contentless</guid><link>https://example.test/contentless</link><pubDate>Fri, 05 Jun 2026 10:30:00 GMT</pubDate></item>'],
     ['empty parsed item', '<item/>'],
+    ['RSS markup-only item beside a valid item', '<item><guid>empty-rss</guid><link>https://example.test/empty-rss</link><description><![CDATA[<p><br/></p>]]></description><pubDate>Fri, 05 Jun 2026 10:30:00 GMT</pubDate></item><item><guid>valid</guid><link>https://example.test/valid</link><title>Valid item</title><pubDate>Fri, 05 Jun 2026 10:31:00 GMT</pubDate></item>'],
+    ['Atom HTML-only entry', '<feed><entry><id>empty-atom</id><link href="https://example.test/empty-atom"/><content type="html">&lt;p&gt;&lt;br/&gt;&lt;/p&gt;</content><published>2026-06-05T10:30:00Z</published></entry></feed>'],
   ])('refuses a completed recovery receipt for an %s', async (_case, item) => {
     const directory = mkdtempSync(join(tmpdir(), 'rss-completeness-'));
     try {
-      globalThis.fetch = jest.fn(async () => new Response(`<rss><channel>${item}</channel></rss>`, { status: 200 })) as unknown as typeof fetch;
+      const xml = item.startsWith('<feed>') ? item : `<rss><channel>${item}</channel></rss>`;
+      globalThis.fetch = jest.fn(async () => new Response(xml, { status: 200 })) as unknown as typeof fetch;
       const fetcher = requireCompleteRecoveryFetch(new RegistrySourceFetcherAdapter(
         new InMemorySourceProviderRegistry([requireCompleteRecoveryScan(new RssSourceProvider(new HttpRssClient()))], []),
         { async readConfig() { return { feedUrl, targetPublishedWindow }; } },

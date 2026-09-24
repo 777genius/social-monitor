@@ -26,6 +26,7 @@ import type {
   RssFeedItem,
   RssReadFeedOptions,
 } from "./rss-client.port";
+import { hasReadableFeedText } from "./rss-readable-content";
 import {
   feedUrlsForTargetWindow,
   filterItemsForWindow,
@@ -379,7 +380,7 @@ const rssRecencyWarnings = (
     : [];
 
 const hasReadableContent = (item: RssFeedItem): boolean =>
-  (item.title ?? "").trim().length + (item.content ?? "").trim().length > 0;
+  hasReadableFeedText(item.title) || hasReadableFeedText(item.content);
 
 const canonicalLinkForItem = (item: RssFeedItem): string | undefined => {
   const link = item.link?.trim();
