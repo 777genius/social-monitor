@@ -1,7 +1,7 @@
-import { XMLParser, XMLValidator } from 'fast-xml-parser';
+import { XMLBuilder, XMLParser, XMLValidator } from 'fast-xml-parser';
 
 import { validateFeedUrl } from './feed-url-policy';
-import type { RssClientPort, RssFeedItem, RssReadFeedOptions, RssReadFeedResult } from './rss-client.port';
+import type { RssClientPort, RssFeedItem, RssReadFeedOptions, RssReadFeedResult, RssTextType } from './rss-client.port';
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -9,6 +9,7 @@ const parser = new XMLParser({
   textNodeName: '#text',
   trimValues: true,
 });
+const xhtmlBuilder = new XMLBuilder({ ignoreAttributes: false, attributeNamePrefix: '@_' });
 
 export class HttpRssClient implements RssClientPort {
   constructor(private readonly timeoutMs = 10_000) {}
@@ -133,15 +134,42 @@ const normalizeRssItem = (item: Readonly<Record<string, unknown>>): RssFeedItem 
   publishedAt: parseDate(readText(item.pubDate) ?? readText(item['dc:date'])),
 });
 
-const normalizeAtomEntry = (entry: Readonly<Record<string, unknown>>): RssFeedItem => ({
-  guid: readText(entry.id),
-  link: readAtomLink(entry.link),
-  title: readText(entry.title),
-  content: readText(entry.content) ?? readText(entry.summary),
-  author: readAtomAuthor(entry.author),
-  ...atomMediaFields(entry),
-  publishedAt: parseDate(readText(entry.published) ?? readText(entry.updated)),
-});
+const normalizeAtomEntry = (entry: Readonly<Record<string, unknown>>): RssFeedItem => {
+  const title = readAtomConstruct(entry.title);
+  const content = readAtomConstruct(entry.content) ?? readAtomConstruct(entry.summary);
+  return {
+    guid: readText(entry.id),
+    link: readAtomLink(entry.link),
+    title: title?.text,
+    titleType: title?.type,
+    content: content?.text,
+    contentType: content?.type,
+    author: readAtomAuthor(entry.author),
+    ...atomMediaFields(entry),
+    publishedAt: parseDate(readText(entry.published) ?? readText(entry.updated)),
+  };
+};
+
+const readAtomConstruct = (value: unknown): { readonly text: string; readonly type: RssTextType } | undefined => {
+  const declaredType = isRecord(value) ? readText(value['@_type'])?.toLowerCase() : undefined;
+  const type: RssTextType = declaredType === 'html' || declaredType === 'text/html'
+    ? 'html'
+    : declaredType === 'xhtml' || declaredType === 'application/xhtml+xml'
+      ? 'xhtml'
+      : declaredType === undefined || declaredType === 'text' || declaredType === 'text/plain'
+        ? 'text'
+        : 'unsupported';
+  const text = type === 'xhtml' ? serializeXhtml(value) : readText(value);
+  return text === undefined ? undefined : { text, type };
+};
+
+/** Retain XHTML markup for storage; the separate visible-text check parses it. */
+const serializeXhtml = (value: unknown): string | undefined => {
+  if (!isRecord(value)) return readText(value);
+  const children = Object.fromEntries(Object.entries(value).filter(([key]) => !key.startsWith('@_')));
+  const markup = xhtmlBuilder.build(children).trim();
+  return markup.length > 0 ? markup : undefined;
+};
 
 const rssMediaFields = (
   item: Readonly<Record<string, unknown>>,
