@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { defaultPostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
@@ -19,6 +19,7 @@ export async function assessmentPostgresFixture() {
   const suffix = randomUUID().replaceAll('-','');
   const databaseName = `reader_value_test_${suffix}`;
   const runtimeRole = `reader_value_test_${suffix}`;
+  const runtimePassword = randomBytes(24).toString('base64url');
   const ownerRole = 'social_monitor_public_schema_owner';
   const capability = 'social_monitor_tenant_system_runtime';
   const createdRoles: string[] = [];
@@ -36,7 +37,7 @@ export async function assessmentPostgresFixture() {
   try {
     for (const role of [ownerRole,capability,'social_monitor_reader_summary_publication_owner',runtimeRole]) {
       if ((await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[role])).rowCount === 0) {
-        await admin.query(`CREATE ROLE "${role}" ${role===runtimeRole ? 'LOGIN' : 'NOLOGIN'} NOSUPERUSER NOBYPASSRLS`);
+        await admin.query(`CREATE ROLE "${role}" ${role===runtimeRole ? `LOGIN PASSWORD '${runtimePassword}'` : 'NOLOGIN'} NOSUPERUSER NOBYPASSRLS`);
         createdRoles.push(role);
       }
     }
@@ -64,7 +65,7 @@ export async function assessmentPostgresFixture() {
       GRANT SELECT ON ALL TABLES IN SCHEMA public TO "${runtimeRole}";
       GRANT DELETE ON source_items,interests,feed_items TO "${runtimeRole}";
       GRANT UPDATE(status) ON reader_summary_jobs TO "${runtimeRole}"`);
-    url.username=runtimeRole; url.password='';
+    url.username=runtimeRole; url.password=runtimePassword;
     runtime=new Pool({connectionString:url.toString(),min:0,max:2});
     runtimeConnection = await PrismaReaderValueConnection.create(defaultPostgresRuntimePoolConfig(url.toString(), 'intelligence-worker'));
     const client = new PgAssessmentClient(runtimeConnection.client);
