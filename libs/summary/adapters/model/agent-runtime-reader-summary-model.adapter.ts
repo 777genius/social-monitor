@@ -46,7 +46,7 @@ import {
   usageFromAgentRuntime,
 } from "./agent-runtime-model-support";
 import {
-  activeReaderSummaryProvider,
+  type activeReaderSummaryProvider,
   activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
   parseActiveReaderSummaryReasoningEffort,
