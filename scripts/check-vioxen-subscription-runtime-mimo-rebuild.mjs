@@ -11,11 +11,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const commit = "06065a90beca00ec91436684df2b33677078aa00";
-const bundleSha = "0ec1c9e9149aa10563b528d1cb7782f0f2c7622ba6e5c76a8703ed19116dd5f4";
-const archiveSha = "f1414428f543a8605ff8c5094d4483271ad2762e4bbd27c29bd8121ee73ab4c2";
-const version = "0.1.0-main.40-sm-mimo.4";
-const bundle = join(root, "vendor/vioxen-subscription-runtime-06065a90.bundle");
+const commit = "55ec157feb34980a21d9574bcc361344cfa09fd9";
+const bundleSha = "c25be61be2596ad94b77677763cc2132e327565c1743d410b967442f0a18bc4a";
+const archiveSha = "d7b3698fdc189cff118cc15464e48db999fd19f6ae8286701dec896ab5e63525";
+const version = "0.1.0-main.40-sm-mimo.5";
+const bundle = join(root, "vendor/vioxen-subscription-runtime-55ec157f.bundle");
 const archive = join(root, `vendor/vioxen-subscription-runtime-${version}.tgz`);
 const buildArchive = process.argv.includes("--build-archive");
 const scratch = await mkdtemp(join(tmpdir(), "social-monitor-mimo-rebuild-"));

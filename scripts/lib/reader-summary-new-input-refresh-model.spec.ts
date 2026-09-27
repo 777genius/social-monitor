@@ -22,7 +22,7 @@ describe("refresh exact canonical request binding", () => {
       delegate: refreshTestRuntimeClient(execute), assertLocal: () => undefined,
       assertCurrent: async () => undefined, record: jest.fn() });
     await expect(runtime.runTask(generation)).resolves.toMatchObject({ status: "completed",
-      executionAttestation: { model: "mimo-v2.6-pro", runtimePackageVersion: "0.1.0-main.40-sm-mimo.4" } });
+      executionAttestation: { model: "mimo-v2.6-pro", runtimePackageVersion: "0.1.0-main.40-sm-mimo.5" } });
     for (const [purpose, taskRole, schemaName, schemaVersion, required] of [
       [purposes.topicLabel, "topic_label", "social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1", ["nodeLabels", "groups"]],
       [purposes.topicRelations, "topic_relation", "social_monitor_reader_summary_topic_relations", "reader_summary.topic_relation.v1", ["decisions"]],
@@ -40,7 +40,7 @@ describe("refresh exact canonical request binding", () => {
         attempt: "primary", normalizedOutput: direct.structuredOutput })).resolves.toBeUndefined();
       await expect(runtime.runTask(command)).resolves.toMatchObject({
         status: "completed", executionAttestation: {
-          purpose, model: "mimo-v2.6-pro", runtimePackageVersion: "0.1.0-main.40-sm-mimo.4",
+          purpose, model: "mimo-v2.6-pro", runtimePackageVersion: "0.1.0-main.40-sm-mimo.5",
         },
       });
     }

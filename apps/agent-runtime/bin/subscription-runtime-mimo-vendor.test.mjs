@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const version = "0.1.0-main.40-sm-mimo.4";
+const version = "0.1.0-main.40-sm-mimo.5";
 const archivePath = `vendor/vioxen-subscription-runtime-${version}.tgz`;
 
 test("the scoped MiMo runtime is pinned and exposes the app-server-goal backend", async () => {
