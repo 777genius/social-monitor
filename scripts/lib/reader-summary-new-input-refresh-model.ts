@@ -1,5 +1,5 @@
 import { sourceContentAssessmentPurpose, refreshAssessmentBudget, refreshAssessmentLimits, verifyRefreshAssessmentExecution } from "./reader-summary-new-input-refresh-assessment-runtime";
-import { activeReaderSummaryPurposes, mimoReaderSummaryBackend, mimoReaderSummaryModel } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+import { activeReaderSummaryPurposes, mimoReaderSummaryBackend, mimoReaderSummaryModel, verifyAndRecordMimoDailyExecution } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { admitSubscriptionRuntimeRequest } from "../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy";
 import { approvedMimoRuntimePackageVersion } from "../../apps/agent-runtime/src/subscription-runtime-installation";
@@ -147,7 +147,7 @@ export function guardedRefreshRuntime(input: {
   const expectedReasoningEffort = (purpose: string) =>
     purpose === sourceContentAssessmentPurpose ? "low" : "high";
   const admittedModel = (command: AgentRuntimeTaskCommand): boolean =>
-    command.purpose === activeReaderSummaryPurposes.generate &&
+    command.purpose !== sourceContentAssessmentPurpose &&
       command.controls.modelBackend === mimoReaderSummaryBackend
       ? command.controls.model === mimoReaderSummaryModel
       : command.controls.model === "gpt-5.6-sol" &&
@@ -224,6 +224,9 @@ export function guardedRefreshRuntime(input: {
         // above also covers failures in the real parsers and normalizers.
         if (command.purpose === sourceContentAssessmentPurpose) {
           verifyRefreshAssessmentExecution(command, result);
+        } else if (command.controls.modelBackend === mimoReaderSummaryBackend && taskRole !== "summary") {
+          return verifyAndRecordMimoDailyExecution({ command, result, taskRole,
+            attempt: "primary", normalizedOutput: result.structuredOutput });
         } else {
           return verifyAndRecordReaderSummaryExecution({ command, result, taskRole,
             attempt: "primary", normalizedOutput: result.structuredOutput });

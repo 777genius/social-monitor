@@ -79,7 +79,7 @@ describe("reader summary current serving authority", () => {
     });
   });
 
-  it("reports MiMo for generation while topic and relation authority stays Codex", async () => {
+  it("reports MiMo for generation and daily topic/relation authority", async () => {
     const authority = await resolveReaderSummaryServingAuthority({
       summaryModelMode: "agent-runtime",
       topicLabelerMode: "agent-runtime",
@@ -90,9 +90,9 @@ describe("reader summary current serving authority", () => {
       agentRuntimeClient: { checkHealth: servingHealth() }, checkedAt,
     });
     expect(authority.summaryGenerator).toMatchObject({ provider: "codex", physicalModel: "mimo-v2.6-pro" });
-    expect(authority.topicLabeler.physicalModel).toBe("gpt-5.6-sol");
-    expect(authority.topicRelationVerifier.physicalModel).toBe("gpt-5.6-sol");
-    expect(authority.storyRelationVerifier.physicalModel).toBe("gpt-5.6-sol");
+    expect(authority.topicLabeler.physicalModel).toBe("mimo-v2.6-pro");
+    expect(authority.topicRelationVerifier.physicalModel).toBe("mimo-v2.6-pro");
+    expect(authority.storyRelationVerifier.physicalModel).toBe("mimo-v2.6-pro");
   });
 
   it("rejects an unknown generation backend", async () => {

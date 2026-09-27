@@ -1,5 +1,5 @@
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
-import { activeReaderSummaryPurposes as purposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+import { activeReaderSummaryPurposes as purposes, verifyAndRecordMimoDailyExecution } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import type { AgentRuntimeTaskCommand, ReaderSummaryPublicationCommand } from "@social-monitor/summary/ports";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import { admitSubscriptionRuntimeRequest } from "../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy";
@@ -13,7 +13,7 @@ const admittedPurposes = [purposes.generate, purposes.storyRelations, purposes.t
   purposes.topicRelations, purposes.relatedTopicRelations];
 
 describe("refresh exact canonical request binding", () => {
-  it("admits MiMo generation with its attested package and retains Codex topic admission", async () => {
+  it("admits MiMo generation and all four daily topic/relation purposes", async () => {
     const generation = { ...refreshModelCommand(purposes.generate), controls: {
       model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high",
     } };
@@ -23,19 +23,33 @@ describe("refresh exact canonical request binding", () => {
       assertCurrent: async () => undefined, record: jest.fn() });
     await expect(runtime.runTask(generation)).resolves.toMatchObject({ status: "completed",
       executionAttestation: { model: "mimo-v2.6-pro", runtimePackageVersion: "0.1.0-main.40-sm-mimo.3" } });
-    await expect(runtime.runTask(refreshModelCommand(purposes.topicLabel))).resolves.toMatchObject({
-      status: "completed", executionAttestation: { model: "gpt-5.6-sol" },
-    });
-    expect(execute).toHaveBeenCalledTimes(2);
+    for (const [purpose, taskRole, schemaName, schemaVersion, required] of [
+      [purposes.topicLabel, "topic_label", "social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1", ["nodeLabels", "groups"]],
+      [purposes.topicRelations, "topic_relation", "social_monitor_reader_summary_topic_relations", "reader_summary.topic_relation.v1", ["decisions"]],
+      [purposes.storyRelations, "story_relation", "social_monitor_reader_summary_story_relations", "reader_summary.story_relation.v1", ["decisions"]],
+      [purposes.relatedTopicRelations, "related_topic_relation", "social_monitor_reader_summary_related_topic_relations", "reader_summary.related_topic_relation.v1", ["decisions"]],
+    ] as const) {
+      const base = refreshModelCommand(purpose);
+      const command = { ...base, controls: { ...base.controls,
+        model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan" as const,
+        outputSchemaName: schemaName, schemaVersion },
+      outputSchema: { type: "object", additionalProperties: false, required,
+        properties: Object.fromEntries(required.map((key) => [key, { type: "array" }])) } };
+      const direct = await completedRefreshModelRequest(command);
+      await expect(verifyAndRecordMimoDailyExecution({ command, result: direct, taskRole,
+        attempt: "primary", normalizedOutput: direct.structuredOutput })).resolves.toBeUndefined();
+      await expect(runtime.runTask(command)).resolves.toMatchObject({
+        status: "completed", executionAttestation: {
+          purpose, model: "mimo-v2.6-pro", runtimePackageVersion: "0.1.0-main.40-sm-mimo.3",
+        },
+      });
+    }
+    expect(execute).toHaveBeenCalledTimes(5);
   });
 
-  it("rejects MiMo on topic and MiMo generation without its exact backend before delegation", async () => {
-    for (const command of [
-      { ...refreshModelCommand(purposes.topicLabel), controls: { model: "mimo-v2.6-pro",
-        modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high" } },
-      { ...refreshModelCommand(purposes.generate), controls: { model: "mimo-v2.6-pro",
-        reasoningEffort: "high" } },
-    ]) {
+  it("rejects MiMo generation without its exact backend before delegation", async () => {
+    for (const command of [{ ...refreshModelCommand(purposes.generate), controls: {
+      model: "mimo-v2.6-pro", reasoningEffort: "high" } }]) {
       const runTask = jest.fn();
       const runtime = guardedRefreshRuntime({ manifest: refreshManifest(),
         delegate: { runTask, checkHealth: jest.fn() }, assertLocal: () => undefined,
