@@ -220,14 +220,29 @@ Strict startup requires all of these explicit values:
 - `AGENT_RUNTIME_STATE_ROOT`: existing absolute directory on an operator-managed
   durable volume; `AGENT_RUNTIME_EPHEMERAL` must be disabled.
 - `AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT` and
-  `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`: existing absolute pool directory and
-  manifest inside it with at least one account reference. Single-account auth
-  paths are rejected in strict mode.
+  `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`: required for the default Codex strict
+  service. The pool is an existing absolute directory with a manifest inside it
+  and at least one account reference. Single-account auth paths are rejected.
 - `AGENT_RUNTIME_CLI_PATH`: existing absolute executable regular file with no
   symlink or traversal components. Startup also checks the pinned installation
   bytes and package identity.
 
-The workspace, state and pool roots must be separate. The CLI must sit outside
+For a MiMo-only strict service, explicitly set
+`AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS=xiaomi-mimo-token-plan` and
+`AGENT_RUNTIME_MIMO_API_KEY_FILE` to an absolute root-controlled key file.
+Do not configure either Codex pool variable, `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`,
+or `CODEX_AUTH_JSON_PATH`; startup rejects even empty values. The key must be a
+regular file with no symlink or traversal components, 1 to 4096 bytes, and no
+group or world permissions. Every parent directory must be free of group or
+world write access. The key must be outside the workspace and state roots.
+Startup checks metadata only and verifies the pinned MiMo runtime installation;
+the worker reads the key only for an admitted MiMo task. This mode rejects
+Codex and legacy purpose requests before installation inspection or execution.
+The setting is accepted only with strict admission. Its only known values are
+`openai-chatgpt` and `xiaomi-mimo-token-plan`, comma-separated without duplicates.
+When unset, the established Codex-pool strict behavior remains available.
+
+The workspace, state and configured pool roots must be separate. The CLI must sit outside
 the task workspace and state roots so admitted tasks cannot rewrite runtime
 state, auth references or launcher bytes through their workspace.
 

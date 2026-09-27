@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { admitModelBackend, isMimoOnly, type AllowedModelBackend } from "./backend-admission-policy";
 
 import {
   NestStructuredLogger,
@@ -44,6 +45,7 @@ export type SubscriptionRuntimeCliExecutorOptions = {
   readonly localEncryptionKey?: string;
   readonly codexAuthJsonPath?: string;
   readonly mimoApiKeyFile?: string;
+  readonly allowedModelBackends?: readonly AllowedModelBackend[];
   readonly claudeTokenEnv?: string;
   readonly model?: string;
   readonly reasoningEffort?: typeof activeReaderSummaryReasoningEffort;
@@ -84,6 +86,9 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         request,
         this.options.readerPromotionV2CanaryActivationCapability,
       );
+      if (this.options.allowedModelBackends !== undefined) {
+        admitModelBackend(admission.profile.modelBackend, this.options.allowedModelBackends);
+      }
       if (admission.profile.modelBackend === "xiaomi-mimo-token-plan" &&
         this.options.mimoApiKeyFile === undefined) {
         this.logger.error("agent runtime MiMo key file is not configured", {
@@ -252,9 +257,21 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       };
     }
     try {
+      const mimoOnly = this.options.allowedModelBackends !== undefined &&
+        isMimoOnly(this.options.allowedModelBackends);
       const installation = await this.installationInspector.inspect(
         this.options.command,
+        mimoOnly ? "xiaomi-mimo-token-plan" : undefined,
       );
+      if (mimoOnly) {
+        return {
+          healthy: true,
+          runtimeEngine: "subscription-runtime-cli",
+          runtimeVersion: installation.mimoRuntimePackageVersion ?? installation.runtimePackageVersion,
+          launcherSha256: installation.launcherSha256,
+          warnings: [],
+        };
+      }
       const probe = await runCli({
         command: installation.executablePath,
         args: ["--provider", "codex"],

@@ -7,6 +7,40 @@ import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port
 import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-executor";
 
 describe("SubscriptionRuntimeCliExecutor", () => {
+  it("rejects Codex and legacy purposes in a MiMo-only service before installation or process execution", async () => {
+    const inspect = jest.fn(async () => { throw new Error("must not inspect an installation"); });
+    const executor = new SubscriptionRuntimeCliExecutor({
+      command: "/synthetic/never-executed",
+      ephemeral: false,
+      mimoApiKeyFile: "/synthetic/key",
+      allowedModelBackends: ["xiaomi-mimo-token-plan"],
+      installationInspector: { inspect },
+    });
+    for (const request of [
+      validExecutionRequest(),
+      validExecutionRequest({ purpose: "social_monitor.reader_summary.generate.v2" }),
+      validExecutionRequest({ purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2" }),
+    ]) {
+      expect(await executor.execute(request)).toMatchObject({ status: "failed", failure: { code: "agent_runtime.execution_attestation_invalid" } });
+    }
+    expect(inspect).not.toHaveBeenCalled();
+  });
+
+  it("inspects the selected MiMo installation for health without a Codex CLI probe", async () => {
+    const inspect = jest.fn(async (command: string, backend?: "xiaomi-mimo-token-plan") => {
+      expect(command).toBe("/synthetic/never-executed");
+      expect(backend).toBe("xiaomi-mimo-token-plan");
+      return { ...installation(command), mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.5" };
+    });
+    const executor = new SubscriptionRuntimeCliExecutor({
+      command: "/synthetic/never-executed",
+      ephemeral: false,
+      allowedModelBackends: ["xiaomi-mimo-token-plan"],
+      installationInspector: { inspect },
+    });
+    expect(await executor.checkHealth()).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.5" });
+    expect(inspect).toHaveBeenCalledTimes(1);
+  });
   it("rejects MiMo without a key file before installation or execution", async () => {
     const executor = new SubscriptionRuntimeCliExecutor({
       command: "/synthetic/not-executed",
@@ -49,6 +83,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
         command: cliPath,
         ephemeral: true,
         mimoApiKeyFile: "/run/synthetic/mimo-key",
+        allowedModelBackends: ["xiaomi-mimo-token-plan"],
         codexAuthJsonPath: "/run/synthetic/codex-auth",
         installationInspector,
       });
@@ -131,6 +166,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       command: cliPath,
       ephemeral: true,
       codexAuthJsonPath: "/redacted/account-auth.json",
+      allowedModelBackends: ["openai-chatgpt", "xiaomi-mimo-token-plan"],
       claudeTokenEnv: "CLAUDE_CODE_OAUTH_TOKEN",
       installationInspector,
     });

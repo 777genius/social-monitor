@@ -1,5 +1,5 @@
 import { Metadata, status } from "@grpc/grpc-js";
-import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, mkdtemp, realpath, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -52,6 +52,86 @@ describe("opt-in strict gRPC admission", () => {
     expect(resolveAgentRuntimeSettings({}).strictAdmission).toBeUndefined();
     expect(resolveAgentRuntimeSettings({}).bindAddress).toBe("0.0.0.0:50052");
     expect(resolveAgentRuntimeSettings(env).strictAdmission?.workspaceRoot).toBe(workspace);
+    expect(resolveAgentRuntimeSettings(env).cli.allowedModelBackends).toEqual([
+      "openai-chatgpt", "xiaomi-mimo-token-plan",
+    ]);
+  });
+
+  it("admits a MiMo-only strict service without a Codex pool and rejects stray Codex settings", async () => {
+    const trustedRoot = await realpath(await mkdtemp(join(process.cwd(), ".mimo-strict-fixture-")));
+    try {
+      const project = join(trustedRoot, "project");
+      const state = join(trustedRoot, "state");
+      const key = join(trustedRoot, "mimo-key");
+      await mkdir(project);
+      await mkdir(state);
+      await writeFile(key, "synthetic-key");
+      await chmod(key, 0o600);
+      const { AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: _pool, AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: _manifest, ...withoutPool } = env;
+      const mimoEnv = {
+        ...withoutPool,
+        AGENT_RUNTIME_PROJECT_WORKSPACE_ROOT: project,
+        AGENT_RUNTIME_STATE_ROOT: state,
+        AGENT_RUNTIME_MIMO_API_KEY_FILE: key,
+        AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS: "xiaomi-mimo-token-plan",
+      };
+      const settings = resolveAgentRuntimeSettings(mimoEnv);
+      expect(settings.strictAdmission?.allowedModelBackends).toEqual(["xiaomi-mimo-token-plan"]);
+      expect(settings.cli.mimoApiKeyFile).toBe(key);
+      expect(settings.cli.ephemeral).toBe(false);
+      expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, AGENT_RUNTIME_MIMO_API_KEY_FILE: undefined })).toThrow();
+      for (const name of ["AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT", "AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST",
+        "AGENT_RUNTIME_CODEX_AUTH_JSON_PATH", "CODEX_AUTH_JSON_PATH"] as const) {
+        expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, [name]: "" })).toThrow(name);
+      }
+      for (const [label, override] of [
+        ["relative", { AGENT_RUNTIME_MIMO_API_KEY_FILE: "mimo-key" }],
+        ["traversal", { AGENT_RUNTIME_MIMO_API_KEY_FILE: `${trustedRoot}/project/../mimo-key` }],
+        ["workspace", { AGENT_RUNTIME_MIMO_API_KEY_FILE: join(project, "inside-key") }],
+      ] as const) {
+        if (label === "workspace") {
+          await writeFile(join(project, "inside-key"), "synthetic");
+          await chmod(join(project, "inside-key"), 0o600);
+        }
+        expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, ...override })).toThrow();
+      }
+      const alias = join(trustedRoot, "key-alias");
+      await symlink(key, alias);
+      expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, AGENT_RUNTIME_MIMO_API_KEY_FILE: alias })).toThrow();
+      const stateKey = join(state, "inside-key");
+      await writeFile(stateKey, "synthetic");
+      await chmod(stateKey, 0o600);
+      expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, AGENT_RUNTIME_MIMO_API_KEY_FILE: stateKey })).toThrow();
+      const parentAlias = join(trustedRoot, "parent-alias");
+      await symlink(trustedRoot, parentAlias);
+      expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, AGENT_RUNTIME_MIMO_API_KEY_FILE: join(parentAlias, "mimo-key") })).toThrow();
+      await chmod(key, 0o640);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("owner-only");
+      await chmod(key, 0o000);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("owner-only");
+      await chmod(key, 0o600);
+      const hardlink = join(trustedRoot, "key-hardlink");
+      await link(key, hardlink);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("owner-only");
+      await rm(hardlink);
+      await truncate(key, 0);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("owner-only");
+      await truncate(key, 4097);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("owner-only");
+      await truncate(key, 1);
+      await chmod(trustedRoot, 0o770);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("trusted parent");
+    } finally {
+      await rm(trustedRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects unknown or duplicate backend selections and a selection outside strict mode", () => {
+    for (const value of ["", "codex", "xiaomi-mimo-token-plan,openai-chatgpt,legacy",
+      "xiaomi-mimo-token-plan,xiaomi-mimo-token-plan", " xiaomi-mimo-token-plan"]) {
+      expect(() => resolveAgentRuntimeSettings({ ...env, AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS: value })).toThrow();
+    }
+    expect(() => resolveAgentRuntimeSettings({ AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS: "xiaomi-mimo-token-plan" })).toThrow("requires strict");
   });
 
   it("keeps tokenless default Health compatible", async () => {
