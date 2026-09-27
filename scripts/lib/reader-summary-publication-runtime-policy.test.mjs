@@ -52,6 +52,13 @@ test("MiMo attestation admits only the active purpose and pinned runtime", () =>
   delete unknownRole.attestation.purpose;
   assert.throws(() => validatePublicationAttestationRecord(unknownRole, true),
     /malformed or mismatched/u);
+  const coercedRole = mimoRecord();
+  coercedRole.taskRole = ["topic_relation"];
+  coercedRole.attempt = "0";
+  coercedRole.attestation.purpose =
+    "social_monitor.reader_summary.topic_map.verify_relations.v2";
+  assert.throws(() => validatePublicationAttestationRecord(coercedRole, false),
+    /malformed or mismatched/u);
 });
 
 const mimoProvenance = () => ({

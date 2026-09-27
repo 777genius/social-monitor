@@ -49,6 +49,7 @@ export function validatePublicationAttestationRecord(record, allowLegacy) {
       ? "xhigh"
       : undefined;
   if (
+    typeof record.taskRole !== "string" ||
     (record.taskRole !== "summary" &&
       !Object.hasOwn(activePurposes, record.taskRole)) ||
     (record.taskRole === "summary" && activeSummaryPurpose === undefined) ||

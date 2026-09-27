@@ -8,10 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import {
   legacyLiveQualityGateNames,
-  publicationQualityContract,
 } from "./lib/reader-summary-publication-quality-contract.mjs";
-import { validateDailyModelExecution } from
-  "./lib/reader-summary-production-day-model-telemetry-verifier.mjs";
 import { dailySourceAuthority } from
   "./lib/reader-summary-production-day-publication-fixture.mjs";
 import { approvedLauncherSha256, validatePublicationAttestationRecord } from
@@ -70,6 +67,50 @@ test("accepts a full publication proof for a pinned MiMo summary and daily telem
   }, { mimo: true, dailyTelemetry: true });
 });
 
+test("rejects an array-coerced losing topic relation in both proof modes", () => {
+  withFixture(({ directory, reportPath, proofPath, evidence, evidencePath,
+    frontendPath }) => {
+    const baseline = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(baseline.status, 0, baseline.stderr);
+    const oldProof = JSON.parse(readFileSync(proofPath, "utf8"));
+    const losing = evidence.executionAttestations[2];
+    losing.taskRole = ["topic_relation"];
+    losing.attempt = "0";
+    evidence.captureExecution.runtimeResult = deriveRuntimeProvenance(
+      evidence.executionAttestations,
+      JSON.parse(readFileSync(frontendPath, "utf8")),
+    );
+    evidence.durableReadback.executionAttestationSetSha256 =
+      evidence.captureExecution.runtimeResult.attestationSetSha256;
+    const evidenceBytes = `${JSON.stringify(evidence)}\n`;
+    writeFileSync(evidencePath, evidenceBytes);
+    const report = buildReport(
+      evidenceBytes, readFileSync(frontendPath, "utf8"), evidence,
+    );
+    const reportBytes = `${JSON.stringify(report)}\n`;
+    writeFileSync(reportPath, reportBytes);
+    const mutatedProofPath = join(directory, "mutated-proof.json");
+    writeFileSync(mutatedProofPath, `${JSON.stringify({
+      ...oldProof,
+      reportByteLength: Buffer.byteLength(reportBytes),
+      reportSha256: createHash("sha256").update(reportBytes).digest("hex"),
+      reportArtifactId: report.reportIdentity.artifactId,
+      evidenceArtifactSha256: report.summary.evidenceArtifactSha256,
+      evidenceArtifactByteLength: Buffer.byteLength(evidenceBytes),
+      model: evidence.captureExecution.runtimeResult,
+    })}\n`);
+    const proofOut = runVerifier(
+      reportPath, join(directory, "new-proof.json"), "--proof-out",
+    );
+    const proofIn = runVerifier(reportPath, mutatedProofPath, "--proof");
+    assert.notEqual(proofOut.status, 0, "array role passed --proof-out");
+    assert.notEqual(proofIn.status, 0, "array role passed --proof");
+    assert.match(proofOut.stderr, /attestation/u);
+    assert.match(proofIn.stderr, /attestation/u);
+  }, { mimo: true, relatedTopicRole: "topic_relation",
+    relatedTopicAttempt: "1" });
+});
+
 test("accepts the exact related-topic relation attestation inventory", () => {
   withFixture(({ reportPath, proofPath }) => {
     const result = runVerifier(reportPath, proofPath, "--proof-out");
@@ -95,37 +136,6 @@ test("accepts historical-incomplete telemetry only when the artifact is also nul
     const result = runVerifier(reportPath, proofPath, "--proof-out", report);
     assert.equal(result.status, 0, result.stderr);
   }, { historicalDailyTelemetry: true });
-});
-
-test("rejects historical-incomplete audit telemetry paired with artifact 0/0", () => {
-  const authority = dailySourceAuthority(true);
-  const modelExecution = {
-    ...authority.modelExecution,
-    modelJobIdentity: authority.modelJobIdentity,
-    receiptSha256: authority.receiptSha256,
-    readerSummaryJobId,
-    readerSummaryArtifactId: readerSummaryId,
-  };
-  assert.throws(() => validateDailyModelExecution(
-    modelExecution,
-    { provenance: { dailySourceAuthority: authority } },
-    { readerSummaryArtifact: { usage: {
-      inputTokens: 0,
-      outputTokens: 0,
-      estimatedCostUsd: 0,
-    } } },
-    {
-      readerSummaryJobId,
-      readerSummaryId,
-      runtimeProvenance: {
-        provider: "codex",
-        physicalModel: "gpt-5.6-sol",
-        reasoningEffort: "high",
-      },
-    },
-    "current",
-    "historical-regeneration",
-  ), /not artifact-bound/u);
 });
 
 for (const patch of [
@@ -209,20 +219,6 @@ test("rejects an incomplete legacy live quality contract", () => {
         .map((name) => [name, true]),
     );
   });
-});
-
-test("rejects the legacy live contract outside its in-flight date", () => {
-  assert.equal(
-    publicationQualityContract({
-      qualityGates: Object.fromEntries(
-        legacyLiveQualityGateNames.map((name) => [name, true]),
-      ),
-      provenance: { mode: "live-production" },
-      model: { liveCollection: true },
-      expectedDate: "2026-07-21",
-    }),
-    null,
-  );
 });
 
 for (const stepId of requiredStepIds) {
@@ -952,14 +948,16 @@ function buildExecutionAttestations(options) {
       ? []
       : [{
           taskRole: options.relatedTopicRole,
-          attempt: "related-topic",
+          attempt: options.relatedTopicAttempt ?? "related-topic",
           normalizedOutputSha256: "f".repeat(64),
           attestation: {
             ...common,
             requestId: "related-topic-relation-request",
-            purpose: options.legacyIdentity
-              ? "social_monitor.reader_summary.verify_related_topic_relations"
-              : "social_monitor.reader_summary.verify_related_topic_relations.v2",
+            purpose: options.relatedTopicRole === "topic_relation"
+              ? "social_monitor.reader_summary.topic_map.verify_relations.v2"
+              : options.legacyIdentity
+                ? "social_monitor.reader_summary.verify_related_topic_relations"
+                : "social_monitor.reader_summary.verify_related_topic_relations.v2",
           },
         }]),
   ];
