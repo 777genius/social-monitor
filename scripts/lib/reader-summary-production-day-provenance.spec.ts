@@ -11,6 +11,11 @@ import {
   reportIdentityMatches,
   summaryBindingMatches,
 } from "./reader-summary-production-day-provenance";
+import {
+  approvedMimoRuntimePackageVersion,
+  approvedSubscriptionRuntimeLauncherSha256,
+  approvedSubscriptionRuntimePackageVersion,
+} from "../../apps/agent-runtime/src/subscription-runtime-installation";
 
 const collectionDate = "2026-07-15";
 const readerSummaryId = "11111111-1111-4111-8111-111111111111";
@@ -70,6 +75,41 @@ describe("production-day evidence provenance", () => {
 
     artifact.executionAttestations[0]!.attestation.reasoningEffort = "xhigh";
     expect(inspect(artifact, frontend).binding).toBeNull();
+  });
+
+  it("accepts MiMo execution attested by the pinned runtime while health reports the pinned launcher package", () => {
+    const frontend = frontendArtifact();
+    frontend.readerSummaryArtifact.lineage.modelVersion =
+      "codex:mimo-v2.6-pro:high";
+    const health = {
+      ...runtimeHealth,
+      runtimeVersion: approvedSubscriptionRuntimePackageVersion,
+      launcherSha256: approvedSubscriptionRuntimeLauncherSha256,
+    };
+    const artifact = evidence(frontend, health, (raw) => {
+      for (const record of raw.executionAttestations) {
+        record.attestation.purpose = `${record.attestation.purpose}.v2`;
+        record.attestation.model = "mimo-v2.6-pro";
+        record.attestation.reasoningEffort = "high";
+        record.attestation.runtimePackageVersion =
+          approvedMimoRuntimePackageVersion;
+        record.attestation.launcherSha256 =
+          approvedSubscriptionRuntimeLauncherSha256;
+      }
+    });
+
+    expect(inspect(artifact, frontend).binding?.runtimeProvenance).toMatchObject({
+      physicalModel: "mimo-v2.6-pro",
+      runtimeVersion: approvedMimoRuntimePackageVersion,
+    });
+    const wrongHealth = {
+      ...artifact,
+      captureExecution: {
+        ...artifact.captureExecution,
+        runtimeHealth: { ...health, runtimeVersion: "0.1.0-main.42-sm.2" },
+      },
+    };
+    expect(inspect(wrongHealth, frontend).binding).toBeNull();
   });
 
   it.each([

@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import {
+  approvedMimoRuntimePackageVersion,
+  approvedSubscriptionRuntimeLauncherSha256,
+  approvedSubscriptionRuntimePackageVersion,
+} from "../../apps/agent-runtime/src/subscription-runtime-installation";
 
 import {
   isProductionSubscriptionRuntimeProvenance,
@@ -302,8 +307,15 @@ export function inspectDurableEvidenceArtifact(params: {
     capture !== null &&
     runtimeProvenance?.execution === "attested" &&
     (capture.runtimeHealth.runtimeEngine !== runtimeProvenance.runtime ||
-      capture.runtimeHealth.runtimeVersion !==
-        runtimeProvenance.runtimeVersion ||
+      (runtimeProvenance.physicalModel === "mimo-v2.6-pro"
+        ? capture.runtimeHealth.runtimeVersion !==
+            approvedSubscriptionRuntimePackageVersion ||
+          runtimeProvenance.runtimeVersion !==
+            approvedMimoRuntimePackageVersion ||
+          capture.runtimeHealth.launcherSha256 !==
+            approvedSubscriptionRuntimeLauncherSha256
+        : capture.runtimeHealth.runtimeVersion !==
+          runtimeProvenance.runtimeVersion) ||
       capture.runtimeHealth.launcherSha256 !== runtimeProvenance.launcherSha256)
   ) {
     violations.push(
