@@ -1,6 +1,63 @@
 export const activeReaderSummaryProvider = "codex" as const;
 export const activeReaderSummaryModel = "gpt-5.6-sol" as const;
 export const activeReaderSummaryReasoningEffort = "high" as const;
+export const mimoReaderSummaryBackend = "xiaomi-mimo-token-plan" as const;
+export const mimoReaderSummaryModel = "mimo-v2.6-pro" as const;
+
+export type ReaderSummaryGenerationBackend =
+  | "openai-chatgpt"
+  | typeof mimoReaderSummaryBackend;
+
+export const resolveReaderSummaryGenerationIdentity = (input: {
+  readonly provider?: string;
+  readonly model?: string;
+  readonly backend?: ReaderSummaryGenerationBackend;
+  readonly legacyRecovery?: boolean;
+}): { readonly provider: typeof activeReaderSummaryProvider; readonly model: string;
+  readonly backend: ReaderSummaryGenerationBackend } => {
+  const provider = assertActiveReaderSummaryProvider(input.provider) ??
+    activeReaderSummaryProvider;
+  if (input.backend === mimoReaderSummaryBackend) {
+    if (input.legacyRecovery ||
+      (input.model !== undefined && input.model !== mimoReaderSummaryModel)) {
+      throw new Error("MiMo reader summary model conflicts with purpose policy");
+    }
+    return { provider, model: mimoReaderSummaryModel, backend: mimoReaderSummaryBackend };
+  }
+  return {
+    provider,
+    model: parseActiveReaderSummaryModel(input.model) ?? activeReaderSummaryModel,
+    backend: "openai-chatgpt",
+  };
+};
+
+export const resolveReaderSummaryGenerationIdentityFromEnv = (
+  env: NodeJS.ProcessEnv,
+): { readonly provider: typeof activeReaderSummaryProvider; readonly model: string;
+  readonly backend: ReaderSummaryGenerationBackend } => {
+  // This historic setting is also used by topic and relation workflows.
+  // Keep its Codex contract while the generation-only setting selects MiMo.
+  const sharedModel = parseActiveReaderSummaryModel(
+    env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+  );
+  const generationModel =
+    env.AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL?.trim() || undefined;
+  const backend = env.AGENT_RUNTIME_READER_SUMMARY_BACKEND?.trim();
+  if (backend === undefined || backend === "" || backend === "openai-chatgpt") {
+    return resolveReaderSummaryGenerationIdentity({
+      provider: env.AGENT_RUNTIME_PROVIDER,
+      model: generationModel ?? sharedModel,
+    });
+  }
+  if (backend !== mimoReaderSummaryBackend) {
+    throw new Error("AGENT_RUNTIME_READER_SUMMARY_BACKEND must be openai-chatgpt or xiaomi-mimo-token-plan");
+  }
+  return resolveReaderSummaryGenerationIdentity({
+    provider: env.AGENT_RUNTIME_PROVIDER,
+    backend,
+    model: generationModel,
+  });
+};
 
 export const activeReaderSummaryPurposes = Object.freeze({
   generate: "social_monitor.reader_summary.generate.v2",

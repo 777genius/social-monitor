@@ -43,6 +43,7 @@ export type SubscriptionRuntimeCliExecutorOptions = {
   readonly ephemeral: boolean;
   readonly localEncryptionKey?: string;
   readonly codexAuthJsonPath?: string;
+  readonly mimoApiKeyFile?: string;
   readonly claudeTokenEnv?: string;
   readonly model?: string;
   readonly reasoningEffort?: typeof activeReaderSummaryReasoningEffort;
@@ -83,6 +84,24 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         request,
         this.options.readerPromotionV2CanaryActivationCapability,
       );
+      if (admission.profile.modelBackend === "xiaomi-mimo-token-plan" &&
+        this.options.mimoApiKeyFile === undefined) {
+        this.logger.error("agent runtime MiMo key file is not configured", {
+          ...taskFields(request), stage: "credential_configuration",
+        });
+        return {
+          status: "failed",
+          warnings: [],
+          failure: {
+            code: "agent_runtime.mimo_key_unavailable",
+            safeMessage: "MiMo Token Plan credential is unavailable",
+            retryable: false,
+            reconnectRequired: false,
+            causeCategory: "credential_configuration",
+            details: {},
+          },
+        };
+      }
     } catch (error) {
       this.logFailure(request, "admission", error);
       return invalidAttestationResult();
@@ -91,6 +110,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     try {
       admittedInstallation = await this.installationInspector.inspect(
         this.options.command,
+        admission.profile.modelBackend,
       );
     } catch (error) {
       this.logFailure(request, "installation", error);
@@ -380,6 +400,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     }
     if (
       request.provider === "codex" &&
+      profile.modelBackend === undefined &&
       this.options.codexAuthJsonPath !== undefined
     ) {
       args.push("--codex-auth-json", this.options.codexAuthJsonPath);
@@ -404,6 +425,10 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         this.options.localEncryptionKey;
     }
     patch.AGENT_RUNTIME_REASONING_EFFORT = profile.reasoningEffort;
+    if (profile.modelBackend === "xiaomi-mimo-token-plan" &&
+      this.options.mimoApiKeyFile !== undefined) {
+      patch.AGENT_RUNTIME_MIMO_API_KEY_FILE = this.options.mimoApiKeyFile;
+    }
     return patch;
   }
 }

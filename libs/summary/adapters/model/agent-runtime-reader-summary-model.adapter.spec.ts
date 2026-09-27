@@ -8,7 +8,12 @@ import type {
   AgentRuntimeTaskResult,
   ReaderSummaryModelInput,
 } from "../../ports";
-import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
+import {
+  AgentRuntimeReaderSummaryModelAdapter,
+  resolveAgentRuntimeReaderSummaryModelOptions,
+} from "./agent-runtime-reader-summary-model.adapter";
+import { resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions } from
+  "./agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { frozenLegacyReaderSummaryRecoveryContract } from "./active-reader-summary-generation-profile";
 import {
   eligiblePromotionQuality,
@@ -19,6 +24,62 @@ import type { VerifiedReaderSummaryExecutionAttestation } from "./reader-summary
 import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
 
 describe("AgentRuntimeReaderSummaryModelAdapter", () => {
+  it("selects MiMo only through the explicit reader summary backend", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: validReaderProviderDraft(),
+      warnings: [],
+    });
+    const options = resolveAgentRuntimeReaderSummaryModelOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+      AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "mimo-v2.6-pro",
+    }, client);
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter(options);
+    const input = readerSummaryInput();
+    const route = adapter.route(input, {
+      preferredProvider: "agent-runtime",
+      maxInputTokens: 24_000,
+      maxOutputTokens: 16_000,
+      maxEstimatedCostUsd: 1,
+    }, { remainingTokens: 40_000, remainingCostUsd: 1 });
+
+    await adapter.generate(input, route);
+
+    expect(route.model).toBe("codex:mimo-v2.6-pro:high");
+    expect(client.commands[0]).toMatchObject({
+      provider: "codex",
+      purpose: "social_monitor.reader_summary.generate.v2",
+      controls: { model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high" },
+    });
+    const sharedEnv = {
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+    };
+    expect(resolveAgentRuntimeReaderSummaryModelOptions(sharedEnv, client).model)
+      .toBe("mimo-v2.6-pro");
+    expect(resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(
+      sharedEnv, client,
+    ).model).toBe("gpt-5.6-sol");
+    expect(() => resolveAgentRuntimeReaderSummaryModelOptions({
+      ...sharedEnv,
+      AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "gpt-5.6-sol",
+    }, client)).toThrow("MiMo reader summary model conflicts with purpose policy");
+    expect(() => resolveAgentRuntimeReaderSummaryModelOptions({
+      AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "mimo-v2.6-pro",
+    }, client)).toThrow("AGENT_RUNTIME_READER_SUMMARY_MODEL must be gpt-5.6-sol");
+    expect(() => resolveAgentRuntimeReaderSummaryModelOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "mimo-v2.6-pro",
+    }, client)).toThrow("AGENT_RUNTIME_READER_SUMMARY_MODEL must be gpt-5.6-sol");
+    expect(() => new AgentRuntimeReaderSummaryModelAdapter({
+      client,
+      modelBackend: "xiaomi-mimo-token-plan",
+      model: "mimo-v2.6-pro",
+      legacyRecoveryContract: frozenLegacyReaderSummaryRecoveryContract,
+    })).toThrow("MiMo reader summary model conflicts with purpose policy");
+  });
+
   it("renders the canonical narrative when the duplicate executive summary is empty", async () => {
     const providerDraft = validReaderProviderDraft();
     providerDraft.executiveSummary = "";

@@ -31,6 +31,38 @@ const legacyReaderSummaryPurposes = [
 ] as const;
 
 describe("subscription runtime purpose policy", () => {
+  it("admits MiMo only for reader summary generation and repair", () => {
+    for (const purpose of [
+      "social_monitor.reader_summary.generate.v2",
+      "social_monitor.reader_summary.repair.v2",
+    ]) {
+      const admitted = admitSubscriptionRuntimeRequest(request({
+        purpose,
+        controlsJson: '{"model":"mimo-v2.6-pro","modelBackend":"xiaomi-mimo-token-plan"}',
+      }));
+      expect(admitted.profile).toMatchObject({
+        provider: "codex",
+        model: "mimo-v2.6-pro",
+        modelBackend: "xiaomi-mimo-token-plan",
+        reasoningEffort: "high",
+        outputKind: "structured_output",
+      });
+    }
+    for (const purpose of [
+      "social_monitor.relevance.assess_source_content.v1",
+      "social_monitor.reader_summary.topic_map.label.v2",
+      "social_monitor.summary.generate",
+    ]) {
+      expect(() => admitSubscriptionRuntimeRequest(request({
+        purpose,
+        controlsJson: '{"modelBackend":"xiaomi-mimo-token-plan"}',
+      }))).toThrow("modelBackend conflicts with purpose policy");
+    }
+    expect(() => admitSubscriptionRuntimeRequest(request({
+      controlsJson: '{"model":"gpt-5.6-sol","modelBackend":"xiaomi-mimo-token-plan"}',
+    }))).toThrow("model conflicts with purpose policy");
+  });
+
   it("requires the exact high production service default", () => {
     expect(configuredSubscriptionRuntimeDefaultsAreSafe({})).toBe(true);
     expect(configuredSubscriptionRuntimeDefaultsAreSafe({

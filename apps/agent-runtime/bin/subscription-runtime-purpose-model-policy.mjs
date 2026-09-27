@@ -37,6 +37,21 @@ const activeReaderSummaryStructuredProfile = Object.freeze({
   responseFormat: "json",
 });
 
+const mimoReaderSummaryStructuredProfile = Object.freeze({
+  provider: "codex",
+  model: "mimo-v2.6-pro",
+  modelBackend: "xiaomi-mimo-token-plan",
+  reasoningEffort: "high",
+  outputKind: "structured_output",
+  responseFormat: "json",
+  retryMode: "never",
+});
+
+const mimoSummaryPurposes = new Set([
+  "social_monitor.reader_summary.generate.v2",
+  "social_monitor.reader_summary.repair.v2",
+]);
+
 const activeReaderSummaryTextProfile = Object.freeze({
   provider: "codex",
   model: "gpt-5.6-sol",
@@ -96,10 +111,13 @@ export const admitSubscriptionRuntimeWrapperRequest = (
   const controls = optionalRecord(task.controls, "request.task.controls") ?? {};
   const metadata = optionalRecord(task.metadata, "request.task.metadata") ?? {};
   const purpose = nonEmptyString(context.purpose, "request.context.purpose");
-  const profile = profilesByPurpose[purpose] ??
-    (activationCapability === readerPromotionV2CanaryActivationCapability
-      ? capabilityProfilesByPurpose[purpose]
-      : undefined);
+  const profile = controls.modelBackend === "xiaomi-mimo-token-plan" &&
+    mimoSummaryPurposes.has(purpose)
+    ? mimoReaderSummaryStructuredProfile
+    : profilesByPurpose[purpose] ??
+      (activationCapability === readerPromotionV2CanaryActivationCapability
+        ? capabilityProfilesByPurpose[purpose]
+        : undefined);
   if (profile === undefined) {
     throw new Error("Agent runtime purpose is not admitted");
   }
@@ -109,6 +127,16 @@ export const admitSubscriptionRuntimeWrapperRequest = (
 
   assertOptionalExactString(input.model, profile.model, "CLI model");
   assertOptionalExactString(controls.model, profile.model, "model");
+  assertOptionalExactString(
+    controls.modelBackend,
+    profile.modelBackend ?? "openai-chatgpt",
+    "modelBackend",
+  );
+  assertOptionalExactString(
+    metadata.modelBackend,
+    profile.modelBackend ?? "openai-chatgpt",
+    "metadata.modelBackend",
+  );
   assertOptionalExactString(metadata.model, profile.model, "metadata.model");
   assertOptionalExactString(
     input.reasoningEffort,
@@ -171,6 +199,9 @@ export const admitSubscriptionRuntimeWrapperRequest = (
         controls: {
           ...preservedControls,
           model: profile.model,
+          ...(profile.modelBackend === undefined
+            ? {}
+            : { modelBackend: profile.modelBackend }),
           reasoningEffort: profile.reasoningEffort,
           responseFormat: profile.responseFormat,
         },

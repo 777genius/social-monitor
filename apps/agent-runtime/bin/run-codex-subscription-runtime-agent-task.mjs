@@ -14,6 +14,7 @@ import { withTrustedCodexWorkerUsage } from "./codex-worker-cli-usage.mjs";
 import { createAssessmentCliLifecycle } from "./assessment-cli-lifecycle.mjs";
 import { createAssessmentProgress } from "./assessment-cli-progress.mjs";
 import { subscriptionRuntimeFailureDetails } from "./subscription-runtime-failure-details.mjs";
+import { readMimoApiKeyFile } from "./mimo-key-file.mjs";
 
 import {
   admitSubscriptionRuntimeWrapperRequest,
@@ -58,6 +59,7 @@ const admission = admitSubscriptionRuntimeWrapperRequest({
 }, canaryActivationRequested
   ? readerPromotionV2CanaryActivationCapability
   : undefined);
+const isMimoSummary = admission.profile.modelBackend === "xiaomi-mimo-token-plan";
 const isSourceContentAssessment = admission.canonicalRequest.context.purpose === "social_monitor.relevance.assess_source_content.v1";
 lifecycle.configure(isSourceContentAssessment, admission.canonicalRequest.timeoutMs);
 if (isSourceContentAssessment) {
@@ -83,8 +85,18 @@ const { SubscriptionWorkerError } = await lifecycle.work(() => import(
 const { runSubscriptionAgentTaskCli } = await lifecycle.work(() => import(
   "../../../node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js"
 ));
+const mimoRuntime = isMimoSummary
+  ? await lifecycle.work(() => import("@vioxen/subscription-runtime-mimo/worker-codex"))
+  : undefined;
+if (isMimoSummary && typeof mimoRuntime?.createOneShotExecutor !== "function") {
+  throw new Error("MiMo Codex model backend is not installed");
+}
+const mimoApiKey = isMimoSummary
+  ? await lifecycle.work(() => readMimoApiKeyFile(process.env.AGENT_RUNTIME_MIMO_API_KEY_FILE))
+  : undefined;
 
-const authPool = await lifecycle.work(() => loadCodexAuthPoolFromEnv(process.env));
+const authPool = isMimoSummary ? undefined :
+  await lifecycle.work(() => loadCodexAuthPoolFromEnv(process.env));
 progress?.mark("setup", "completed");
 
 const createStrictCodexWorker = (input) => {
@@ -96,6 +108,10 @@ const createStrictCodexWorker = (input) => {
   const model = input.model?.trim() || admission.profile.model;
   if (model !== admission.profile.model) {
     throw new Error("Agent runtime model conflicts with purpose policy");
+  }
+
+  if (isMimoSummary) {
+    return createMimoSummaryWorker({ input, model });
   }
 
   if (authPool !== undefined) {
@@ -122,6 +138,108 @@ const createStrictCodexWorker = (input) => {
     ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
   });
 };
+
+function createMimoSummaryWorker({ input, model }) {
+  const summaryTask = admission.canonicalRequest.task;
+  const schemaName = summaryTask.outputSchemaName;
+  if (schemaName !== "social_monitor_reader_summary_artifact" ||
+      summaryTask.controls.outputSchemaName !== schemaName) {
+    throw new Error("MiMo reader summary requires its named output schema");
+  }
+  const outputSchemas = { [schemaName]: summaryTask.controls.outputSchema };
+  let executor;
+  return {
+    async start() {},
+    async seedCodexAuthJsonFile() {
+      throw new Error("MiMo reader summary rejects Codex auth.json");
+    },
+    async run(job) {
+      if (executor !== undefined || job.logicalThread !== undefined ||
+          job.recoveryPacket !== undefined) {
+        throw new Error("MiMo reader summary accepts one task without continuation");
+      }
+      const taskId = nonEmptyRunId(job.runId);
+      const taskHash = codexAuthPoolTaskHash(taskId);
+      const workspacePath = join(input.stateRootDir, "task-workspaces", taskHash);
+      await mkdir(workspacePath, { recursive: true, mode: 0o700 });
+      executor = mimoRuntime.createOneShotExecutor({
+        executorId: `social-monitor-mimo-summary:${taskHash}`,
+        stateRootDir: input.stateRootDir,
+        workspacePath,
+        requireGitWorkspace: false,
+        effectMode: "read_only",
+        maxAccountCycles: 1,
+        safeExecutionPolicy: {
+          ...codexAuthPoolExecutionPolicy,
+          maxAttempts: 1,
+          retryOnCapacity: false,
+          retryOnAccountUnavailable: false,
+          retryOnReconnectRequired: false,
+          retryUnknownCleanWorkspace: false,
+          continuationMode: "disabled",
+        },
+        outputSchemas,
+        accounts: [{ worker: {
+          providerInstanceId: "mimo:reader-summary",
+          stateRootDir: input.stateRootDir,
+          encryptionKey: input.encryptionKey,
+          codexBinaryPath: input.codexBinaryPath ?? resolvePinnedCodexBinaryPath(),
+          sourceEnv: {
+            ...subscriptionOnlyCodexEnvironment(input.env),
+            MIMO_TOKEN_PLAN_API_KEY: mimoApiKey,
+          },
+          model,
+          modelBackend: "xiaomi-mimo-token-plan",
+          mimoApiKeyEnvVarName: "MIMO_TOKEN_PLAN_API_KEY",
+          executionEngine: "app-server-goal",
+          boundedWorkspaceTools: { allowedTools: [], denyProjectInstructions: true },
+          warmupPrompt: false,
+          cleanThreadPrewarm: false,
+          reasoningEffort: admission.profile.reasoningEffort,
+          ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
+        } }],
+      });
+      let result;
+      try {
+        result = await executor.run({
+          ...job,
+          taskId,
+          originalPrompt: job.prompt,
+          effectMode: "read_only",
+          maxAccountCycles: 1,
+        });
+      } catch {
+        throw new SubscriptionWorkerError(
+          "subscription_worker_run_failed",
+          "MiMo reader summary did not complete",
+          { details: {} },
+        );
+      }
+      if (result.status === "completed") {
+        if (JSON.stringify(result.result ?? {}).includes(mimoApiKey)) {
+          throw new SubscriptionWorkerError(
+            "subscription_worker_run_failed",
+            "MiMo reader summary output was rejected",
+            { details: {} },
+          );
+        }
+        return result.result;
+      }
+      throw new SubscriptionWorkerError(
+        "subscription_worker_run_failed",
+        "MiMo reader summary did not complete",
+        { details: {} },
+      );
+    },
+    async dispose() {
+      try {
+        await executor?.dispose();
+      } catch {
+        throw new Error("MiMo reader summary cleanup failed");
+      }
+    },
+  };
+}
 
 function createReaderPromotionV2CanaryWorker({ input, model, authPool }) {
   const taskId = nonEmptyRunId(admission.canonicalRequest.runId);

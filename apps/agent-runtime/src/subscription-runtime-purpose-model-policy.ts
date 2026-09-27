@@ -11,6 +11,8 @@ import {
 export const productionAgentRuntimeModel = "gpt-5.6-sol";
 export const productionAgentRuntimeReasoningEffort = "xhigh";
 export const activeReaderSummaryReasoningEffort = "high";
+export const mimoSummaryModel = "mimo-v2.6-pro";
+export const mimoSummaryBackend = "xiaomi-mimo-token-plan";
 
 export type SubscriptionRuntimeOutputKind =
   | "structured_output"
@@ -19,7 +21,8 @@ export type SubscriptionRuntimeRetryMode = "standard" | "never";
 
 export type SubscriptionRuntimePurposeProfile = {
   readonly provider: "codex";
-  readonly model: "gpt-5.6-sol";
+  readonly model: "gpt-5.6-sol" | typeof mimoSummaryModel;
+  readonly modelBackend?: typeof mimoSummaryBackend;
   readonly reasoningEffort: "low" | "high" | "xhigh";
   readonly outputKind: SubscriptionRuntimeOutputKind;
   readonly responseFormat: "json" | "text";
@@ -57,6 +60,35 @@ const activeReaderSummaryStructuredProfile = Object.freeze({
   outputKind: "structured_output",
   responseFormat: "json",
 } as const satisfies SubscriptionRuntimePurposeProfile);
+
+const mimoReaderSummaryStructuredProfile = Object.freeze({
+  provider: "codex",
+  model: mimoSummaryModel,
+  modelBackend: mimoSummaryBackend,
+  reasoningEffort: activeReaderSummaryReasoningEffort,
+  outputKind: "structured_output",
+  responseFormat: "json",
+  retryMode: "never",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
+const mimoSummaryPurposes = new Set([
+  "social_monitor.reader_summary.generate.v2",
+  "social_monitor.reader_summary.repair.v2",
+]);
+
+const profileForRequest = (
+  purpose: string,
+  modelBackend: unknown,
+  activationCapability?: symbol,
+): SubscriptionRuntimePurposeProfile | undefined => {
+  if (modelBackend === mimoSummaryBackend && mimoSummaryPurposes.has(purpose)) {
+    return mimoReaderSummaryStructuredProfile;
+  }
+  return profilesByPurpose[purpose] ??
+    (activationCapability === readerPromotionV2CanaryActivationCapability
+      ? capabilityProfilesByPurpose[purpose]
+      : undefined);
+};
 
 const activeReaderSummaryTextProfile = Object.freeze({
   provider: "codex",
@@ -116,10 +148,15 @@ export const admitSubscriptionRuntimeRequest = (
   request: AgentRuntimeExecutionRequest,
   activationCapability?: symbol,
 ): AdmittedSubscriptionRuntimeRequest => {
-  const profile = profilesByPurpose[request.purpose] ??
-    (activationCapability === readerPromotionV2CanaryActivationCapability
-      ? capabilityProfilesByPurpose[request.purpose]
-      : undefined);
+  const controls = parseSubscriptionRuntimeJsonObject(
+    request.controlsJson,
+    "controls_json",
+  );
+  const profile = profileForRequest(
+    request.purpose,
+    controls.modelBackend,
+    activationCapability,
+  );
   if (profile === undefined) {
     throw new Error("Agent runtime purpose is not admitted");
   }
@@ -127,15 +164,21 @@ export const admitSubscriptionRuntimeRequest = (
     throw new Error("Agent runtime provider conflicts with purpose policy");
   }
 
-  const controls = parseSubscriptionRuntimeJsonObject(
-    request.controlsJson,
-    "controls_json",
-  );
   const outputSchema = parseSubscriptionRuntimeJsonObject(
     request.outputSchemaJson,
     "output_schema_json",
   );
   assertOptionalExactString(controls.model, profile.model, "model");
+  assertOptionalExactString(
+    controls.modelBackend,
+    profile.modelBackend ?? "openai-chatgpt",
+    "modelBackend",
+  );
+  assertOptionalExactString(
+    request.metadata.modelBackend,
+    profile.modelBackend ?? "openai-chatgpt",
+    "metadata.modelBackend",
+  );
   assertOptionalExactString(
     request.metadata.model,
     profile.model,
@@ -311,6 +354,9 @@ const canonicalControlsForProfile = (
   return {
     ...preserved,
     model: profile.model,
+    ...(profile.modelBackend === undefined
+      ? {}
+      : { modelBackend: profile.modelBackend }),
     reasoningEffort: profile.reasoningEffort,
     responseFormat: profile.responseFormat,
     ...(profile.outputKind === "structured_output"

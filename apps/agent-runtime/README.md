@@ -162,6 +162,47 @@ Important env:
 - `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`, manifest path inside the pool root
 - `AGENT_RUNTIME_CLAUDE_TOKEN_ENV`, default `CLAUDE_CODE_OAUTH_TOKEN`
 
+MiMo Token Plan admission is reserved for
+`social_monitor.reader_summary.generate.v2` and
+`social_monitor.reader_summary.repair.v2` with model `mimo-v2.6-pro`.
+The reader summary model adapter selects this route only when
+`AGENT_RUNTIME_READER_SUMMARY_BACKEND=xiaomi-mimo-token-plan`; its default
+remains the Codex ChatGPT backend. The optional
+`AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL` must be `mimo-v2.6-pro` on
+this route. The historic `AGENT_RUNTIME_READER_SUMMARY_MODEL` stays pinned to
+`gpt-5.6-sol` for topic and relation workflows, including when MiMo summary
+generation is enabled. MiMo uses the Codex provider transport.
+The summary route uses the isolated `@vioxen/subscription-runtime-mimo`
+package. The existing `main.42-sm.3` package still runs every other purpose.
+The MiMo package is built from upstream commit
+`1c6b43f2de66956f3f48a8aeb70d2889e5f8693a` in the checked-in source
+bundle. Run `npm run check:subscription-runtime-mimo-rebuild` to verify both
+the bundle and the exact vendored archive. The archived package reports
+`0.1.0-main.40-sm-mimo.1`; the runtime attestation uses this version for MiMo
+and the original package version for other purposes.
+
+Pass the existing root-only key file to the agent-runtime service using a
+systemd credential. An operator-owned unit drop-in can use these settings,
+with the actual root-only source path substituted during deployment:
+
+```ini
+[Service]
+LoadCredential=mimo-token-plan:/absolute/root-only/mimo-key-file
+Environment=AGENT_RUNTIME_MIMO_API_KEY_FILE=%d/mimo-token-plan
+```
+
+The service receives only the credential path. The wrapper opens a regular,
+owner-only file after exact summary admission and gives its contents only to
+the MiMo worker's child-process environment. It does not copy `auth.json` or
+put the key on argv or in the product process environment. Missing, linked,
+group-readable, multiline, or oversized files fail closed. The MiMo worker
+uses one read-only app-server-goal attempt, disables native tools and project
+instructions, binds the named reader-summary output schema, and never enters
+the Codex auth pool. Leave the summary backend
+selector on its Codex default until the integrated release, credential mount,
+and sandbox-only acceptance check are ready. No production key is needed for
+the source rebuild or focused tests.
+
 ## Opt-in strict gRPC admission
 
 Set `AGENT_RUNTIME_STRICT_PRODUCTION_ADMISSION=1` to enable strict admission.

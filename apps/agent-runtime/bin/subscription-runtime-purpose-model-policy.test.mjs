@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 /* global structuredClone */
@@ -185,6 +189,76 @@ test("active v2 admits high and rejects xhigh and every legacy reader-summary pu
       () => admitSubscriptionRuntimeWrapperRequest(request(purpose, "xhigh")),
       /purpose is not admitted/u,
     );
+  }
+});
+
+test("MiMo admission is limited to reader summary generation and repair", () => {
+  for (const purpose of [
+    "social_monitor.reader_summary.generate.v2",
+    "social_monitor.reader_summary.repair.v2",
+  ]) {
+    const input = standardGoldenInput(purpose, "structured_output");
+    input.request.task.controls.modelBackend = "xiaomi-mimo-token-plan";
+    input.model = "mimo-v2.6-pro";
+    const admitted = admitSubscriptionRuntimeWrapperRequest(input);
+    assert.equal(admitted.profile.provider, "codex");
+    assert.equal(admitted.profile.model, "mimo-v2.6-pro");
+    assert.equal(admitted.profile.modelBackend, "xiaomi-mimo-token-plan");
+    assert.equal(admitted.canonicalRequest.task.controls.model, "mimo-v2.6-pro");
+    const conflicting = structuredClone(input);
+    conflicting.request.task.metadata.modelBackend = "openai-chatgpt";
+    assert.throws(() => admitSubscriptionRuntimeWrapperRequest(conflicting),
+      /metadata\.modelBackend conflicts with purpose policy/u);
+  }
+  for (const purpose of [
+    "social_monitor.relevance.assess_source_content.v1",
+    "social_monitor.reader_summary.topic_map.label.v2",
+    "social_monitor.summary.generate",
+  ]) {
+    const input = standardGoldenInput(purpose, "structured_output");
+    input.request.task.controls.modelBackend = "xiaomi-mimo-token-plan";
+    assert.throws(() => admitSubscriptionRuntimeWrapperRequest(input),
+      /modelBackend conflicts with purpose policy/u);
+  }
+});
+
+test("MiMo launcher fails closed without a key file and never logs a synthetic token", () => {
+  const root = mkdtempSync(join(
+    process.env.TMPDIR ?? tmpdir(), "social-monitor-mimo-policy-",
+  ));
+  try {
+    const input = standardGoldenInput(
+      "social_monitor.reader_summary.generate.v2", "structured_output",
+    );
+    input.request.task.controls.modelBackend = "xiaomi-mimo-token-plan";
+    const inputPath = join(root, "request.json");
+    writeFileSync(inputPath, JSON.stringify(input.request));
+    const run = (extraEnv) => spawnSync(process.execPath, [
+      "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs",
+      "--provider", "codex", "--model", "mimo-v2.6-pro",
+      "--input", inputPath,
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH,
+        AGENT_RUNTIME_REASONING_EFFORT: "high",
+        ...extraEnv,
+      },
+    });
+    const missing = run({});
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /MiMo Token Plan key file is not configured/u);
+    const syntheticToken = "synthetic-token-never-log-this-value";
+    const unavailable = run({
+      AGENT_RUNTIME_MIMO_API_KEY_FILE: "/synthetic/key-file",
+      MIMO_TOKEN_PLAN_API_KEY: syntheticToken,
+    });
+    assert.notEqual(unavailable.status, 0);
+    assert.match(unavailable.stderr, /MiMo Token Plan key file is unavailable/u);
+    assert.equal(`${unavailable.stdout}${unavailable.stderr}`.includes(syntheticToken), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

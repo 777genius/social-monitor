@@ -13,8 +13,10 @@ import {
 
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.42-sm.3";
+export const approvedMimoRuntimePackageVersion =
+  "0.1.0-main.40-sm-mimo.1";
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "c5e8fb390dea5578e525092e6424464f6f620e1a022969afa4074e647e1028f9";
+  "edca0734a4eb9680413b21c6f54e2e9db25adf9ab2a9ef0b3fa2ecdb675f49ac";
 
 // Repository wrapper approval, separate from the vendored package provenance.
 // Pin the local import closure too: launcher bytes alone do not bind helpers.
@@ -28,6 +30,8 @@ const approvedSubscriptionRuntimeDependencies = Object.freeze({
     "77a32f1ed6f6429b11428c0501d0d5f1712cc8bd913c74027f4ad0204facfb21",
   "subscription-runtime-failure-details.mjs":
     "5c7e12660c4500a533cda147be44723019c8b223353f1e2d25c3483ff5a1484a",
+  "mimo-key-file.mjs":
+    "bbf162e60af77cfbd87efe636e5e5ee2aa15c1456d2aef84b56c2ff5ab128dcd",
   "codex-worker-cli-usage.mjs":
     "9a0c7d5f4f38d99eb9c91063c6773edda226884f98f9e611837015ddb2d325f9",
   "codex-auth-pool-manifest.mjs":
@@ -35,7 +39,7 @@ const approvedSubscriptionRuntimeDependencies = Object.freeze({
   "codex-auth-pool-routing.mjs":
     "5b76a13787a92852282488d5beec8ebb3bfd27f9dfbc059daa8bb521b5524c49",
   "subscription-runtime-purpose-model-policy.mjs":
-    "203f73ebb8bad9d268779db902150f987a61c0cbd93518c0d70101155df626bc",
+    "573cc9ad18fc3b20868f61e0aee623a17f0e3304553ebb9a9e5bda0906c6855a",
   "reader-promotion-v2-canary-contract.cjs":
     "13432d41d7999d15f22880017e73cbd943c209db62161b2a6a2bec6b0766775c",
 });
@@ -45,16 +49,19 @@ export type SubscriptionRuntimeInstallationIdentity = {
   readonly executablePath: string;
   readonly packageRootRealpath: string;
   readonly runtimePackageVersion: string;
+  readonly mimoRuntimePackageVersion?: string;
   readonly launcherSha256: string;
 };
 
 export interface SubscriptionRuntimeInstallationInspector {
-  inspect(command: string): Promise<SubscriptionRuntimeInstallationIdentity>;
+  inspect(command: string, modelBackend?: "xiaomi-mimo-token-plan"):
+    Promise<SubscriptionRuntimeInstallationIdentity>;
 }
 
 export class FileSubscriptionRuntimeInstallationInspector implements SubscriptionRuntimeInstallationInspector {
   async inspect(
     command: string,
+    modelBackend?: "xiaomi-mimo-token-plan",
   ): Promise<SubscriptionRuntimeInstallationIdentity> {
     const executablePath = await resolveSubscriptionRuntimeExecutable(command);
     const launcherBytes = await readFile(executablePath);
@@ -87,10 +94,19 @@ export class FileSubscriptionRuntimeInstallationInspector implements Subscriptio
     ) {
       throw new Error("Installed subscription runtime version is not approved");
     }
+    const mimoManifest = modelBackend === "xiaomi-mimo-token-plan"
+      ? await readInstalledManifest(executablePath, "@vioxen/subscription-runtime-mimo/package.json")
+      : undefined;
+    if (mimoManifest !== undefined &&
+        (mimoManifest.name !== "@vioxen/subscription-runtime" ||
+          mimoManifest.version !== approvedMimoRuntimePackageVersion)) {
+      throw new Error("Installed MiMo subscription runtime version is not approved");
+    }
     return {
       executablePath,
       packageRootRealpath: manifest.packageRootRealpath,
       runtimePackageVersion: manifest.version,
+      ...(mimoManifest === undefined ? {} : { mimoRuntimePackageVersion: mimoManifest.version }),
       launcherSha256,
     };
   }
@@ -131,6 +147,7 @@ export const resolveSubscriptionRuntimeExecutable = async (
 
 const readInstalledManifest = async (
   executablePath: string,
+  packageSpecifier = "@vioxen/subscription-runtime/package.json",
 ): Promise<{
   readonly name: string;
   readonly version: string;
@@ -138,7 +155,7 @@ const readInstalledManifest = async (
 }> => {
   const runtimeRequire = createRequire(executablePath);
   const manifestPath = await realpath(
-    runtimeRequire.resolve("@vioxen/subscription-runtime/package.json"),
+    runtimeRequire.resolve(packageSpecifier),
   );
   const parsed: unknown = JSON.parse(await readFile(manifestPath, "utf8"));
   if (!isRecord(parsed) || typeof parsed.name !== "string") {

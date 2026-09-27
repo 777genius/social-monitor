@@ -46,13 +46,13 @@ import {
   usageFromAgentRuntime,
 } from "./agent-runtime-model-support";
 import {
-  activeReaderSummaryModel,
   activeReaderSummaryProvider,
   activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
-  assertActiveReaderSummaryProvider,
-  parseActiveReaderSummaryModel,
   parseActiveReaderSummaryReasoningEffort,
+  resolveReaderSummaryGenerationIdentity,
+  resolveReaderSummaryGenerationIdentityFromEnv,
+  type ReaderSummaryGenerationBackend,
   frozenLegacyReaderSummaryRecoveryContract,
   type FrozenLegacyReaderSummaryRecoveryContract,
 } from "./active-reader-summary-generation-profile";
@@ -62,6 +62,7 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly agentProvider?: AgentRuntimeProvider;
   readonly providerInstanceId?: string;
   readonly model?: string;
+  readonly modelBackend?: ReaderSummaryGenerationBackend;
   readonly reasoningEffort?: "high" | "xhigh";
   readonly legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract;
   readonly evalDatasetVersion?: string;
@@ -72,8 +73,6 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
 };
 
 const provider = "agent-runtime";
-const defaultAgentProvider = activeReaderSummaryProvider;
-const defaultModel = activeReaderSummaryModel;
 const defaultReasoningEffort = activeReaderSummaryReasoningEffort;
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
 const defaultTimeoutMs = 600_000;
@@ -85,6 +84,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   private readonly agentProvider: typeof activeReaderSummaryProvider;
   private readonly providerInstanceId?: string;
   private readonly model: string;
+  private readonly modelBackend: ReaderSummaryGenerationBackend;
   private readonly reasoningEffort: "high" | "xhigh";
   private readonly legacyRecovery: boolean;
   private readonly evalDatasetVersion: string;
@@ -95,11 +95,16 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 
   constructor(options: AgentRuntimeReaderSummaryModelAdapterOptions) {
     this.client = options.client;
-    this.agentProvider =
-      assertActiveReaderSummaryProvider(options.agentProvider) ??
-      defaultAgentProvider;
+    const generationIdentity = resolveReaderSummaryGenerationIdentity({
+      provider: options.agentProvider,
+      model: options.model,
+      backend: options.modelBackend,
+      legacyRecovery: options.legacyRecoveryContract !== undefined,
+    });
+    this.agentProvider = generationIdentity.provider;
+    this.modelBackend = generationIdentity.backend;
     this.providerInstanceId = options.providerInstanceId;
-    this.model = parseActiveReaderSummaryModel(options.model) ?? defaultModel;
+    this.model = generationIdentity.model;
     this.legacyRecovery = options.legacyRecoveryContract !== undefined;
     if (
       options.legacyRecoveryContract !== undefined &&
@@ -284,6 +289,9 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
         outputSchemaName: "social_monitor_reader_summary_artifact",
         schemaVersion: selectedRoute.schemaVersion,
         model: this.model,
+        ...(this.modelBackend === "xiaomi-mimo-token-plan"
+          ? { modelBackend: this.modelBackend }
+          : {}),
         reasoningEffort: this.reasoningEffort,
         toolsEnabled: false,
         toolPolicy: "none",
@@ -413,13 +421,13 @@ export const resolveAgentRuntimeReaderSummaryModelOptions = (
     value: env.AGENT_RUNTIME_READER_SUMMARY_PROMPT_VERSION,
   });
 
+  const generationIdentity = resolveReaderSummaryGenerationIdentityFromEnv(env);
   return {
     client,
-    agentProvider: parseAgentRuntimeProvider(env.AGENT_RUNTIME_PROVIDER),
+    agentProvider: generationIdentity.provider,
     providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-    model: parseActiveReaderSummaryModel(
-      env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-    ),
+    model: generationIdentity.model,
+    modelBackend: generationIdentity.backend,
     reasoningEffort: parseActiveReaderSummaryReasoningEffort(
       env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
         env.AGENT_RUNTIME_REASONING_EFFORT,
@@ -434,11 +442,6 @@ export const resolveAgentRuntimeReaderSummaryModelOptions = (
     ),
   };
 };
-
-const parseAgentRuntimeProvider = (
-  value: string | undefined,
-): typeof activeReaderSummaryProvider | undefined =>
-  assertActiveReaderSummaryProvider(value);
 
 const sumReaderSummaryUsage = (
   accumulated: ReaderSummaryModelEstimate | undefined,
