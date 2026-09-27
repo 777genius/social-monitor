@@ -15,6 +15,37 @@ const evidenceWith = (records: ReturnType<typeof productionExecutionAttestations
 });
 
 describe("production day purpose-specific executor identity", () => {
+  it("accepts pinned MiMo for every daily task role and the repair purpose", () => {
+    const records = productionExecutionAttestations();
+    const relationPurposes = [
+      ["topic_relation", "social_monitor.reader_summary.topic_map.verify_relations.v2"],
+      ["story_relation", "social_monitor.reader_summary.verify_story_relations.v2"],
+      ["related_topic_relation", "social_monitor.reader_summary.verify_related_topic_relations.v2"],
+    ] as const;
+    for (const [taskRole, purpose] of relationPurposes) {
+      records.push({ ...structuredClone(records[1]!), taskRole,
+        attestation: { ...records[1]!.attestation, requestId: `${taskRole}-request`, purpose } });
+    }
+    for (const record of records) {
+      record.attestation.model = "mimo-v2.6-pro";
+      record.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.2";
+    }
+    const violations: string[] = [];
+    const provenance = runtimeProvenanceFromExecutorAttestations(evidenceWith(records), violations);
+    expect(violations).toEqual([]);
+    expect(provenance).toMatchObject({ physicalModel: "mimo-v2.6-pro",
+      topicLabeler: { physicalModel: "mimo-v2.6-pro",
+        runtimeVersion: "0.1.0-main.40-sm-mimo.2" } });
+    expect(isCurrentProductionSubscriptionRuntimeProvenance(provenance)).toBe(true);
+
+    records[0]!.attempt = "repair";
+    records[0]!.attestation.purpose = "social_monitor.reader_summary.repair.v2";
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [])).not.toBeNull();
+
+    records[2]!.attestation.purpose = "social_monitor.reader_summary.verify_story_relations.v2";
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [])).toBeNull();
+  });
+
   it("accepts pinned MiMo generation with an independent Codex topic runtime identity", () => {
     const records = productionExecutionAttestations();
     records[0]!.attestation.model = "mimo-v2.6-pro";

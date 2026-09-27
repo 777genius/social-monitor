@@ -16,7 +16,7 @@ export const approvedSubscriptionRuntimePackageVersion =
 export const approvedMimoRuntimePackageVersion =
   "0.1.0-main.40-sm-mimo.2";
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "edca0734a4eb9680413b21c6f54e2e9db25adf9ab2a9ef0b3fa2ecdb675f49ac";
+  "30f7bcac89439ea0eecb3260ee79924fcfab25a87e51be237e289c51f2ccddc1";
 
 // Repository wrapper approval, separate from the vendored package provenance.
 // Pin the local import closure too: launcher bytes alone do not bind helpers.

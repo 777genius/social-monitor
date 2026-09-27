@@ -23,7 +23,7 @@ export type ProductionDayExecutedRuntimeProvenance = {
   readonly completedTaskCount: number;
   readonly topicLabeler: {
     readonly mode: "agent-runtime";
-    readonly physicalModel: "gpt-5.6-sol";
+    readonly physicalModel: "gpt-5.6-sol" | "mimo-v2.6-pro";
     readonly provider: "codex";
     readonly runtime: "subscription-runtime-cli";
     readonly runtimeVersion: string;
@@ -161,7 +161,10 @@ export const runtimeProvenanceFromExecutorAttestations = (
   if (identities.size !== 1 || (summaryIdentity && topicIdentity &&
     (summaryIdentity.launcherSha256 !== topicIdentity.launcherSha256 ||
       (summaryIdentity.model === "mimo-v2.6-pro" &&
-        topicIdentity.runtimePackageVersion !== approvedSubscriptionRuntimePackageVersion) ||
+        (topicIdentity.model === "mimo-v2.6-pro"
+          ? topicIdentity.runtimePackageVersion !== approvedMimoRuntimePackageVersion
+          : topicIdentity.model !== "gpt-5.6-sol" ||
+            topicIdentity.runtimePackageVersion !== approvedSubscriptionRuntimePackageVersion)) ||
       (summaryIdentity.model === "gpt-5.6-sol" &&
         [summaryIdentity.provider, summaryIdentity.model, summaryIdentity.reasoningEffort,
           summaryIdentity.runtimeEngine, summaryIdentity.runtimePackageVersion].join("\u0000") !==
@@ -205,7 +208,7 @@ export const runtimeProvenanceFromExecutorAttestations = (
     completedTaskCount: records.length,
     topicLabeler: {
       mode: "agent-runtime",
-      physicalModel: "gpt-5.6-sol",
+      physicalModel: labelIdentity.model,
       provider: "codex",
       runtime: "subscription-runtime-cli",
       runtimeVersion: labelIdentity.runtimePackageVersion,
@@ -312,26 +315,24 @@ const validateRecord = (
     violations.push(`${label} route is malformed`);
     return [];
   }
+  const expectedEffort = executionEffortForPurpose(taskRole, attempt, attestation.purpose);
   if (
     attestation.schemaVersion !== 1 ||
     !nonEmpty(attestation.requestId) ||
     !nonEmpty(attestation.purpose) ||
     !isSha256Hex(attestation.canonicalRequestSha256) ||
     attestation.provider !== "codex" ||
-    (taskRole === "summary" &&
-      (attestation.purpose === "social_monitor.reader_summary.generate.v2" ||
-        attestation.purpose === "social_monitor.reader_summary.repair.v2") &&
-      attestation.model === "mimo-v2.6-pro"
-      ? attestation.runtimePackageVersion !== approvedMimoRuntimePackageVersion
+    (attestation.model === "mimo-v2.6-pro"
+      ? expectedEffort !== "high" ||
+        attestation.runtimePackageVersion !== approvedMimoRuntimePackageVersion
       : attestation.model !== "gpt-5.6-sol") ||
-    attestation.reasoningEffort !==
-      executionEffortForPurpose(taskRole, attempt, attestation.purpose) ||
+    attestation.reasoningEffort !== expectedEffort ||
     attestation.runtimeEngine !== "subscription-runtime-cli" ||
     !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
     !isSha256Hex(attestation.launcherSha256) ||
     attestation.selectedOutputKind !== "structured_output" ||
     !isSha256Hex(attestation.selectedOutputSha256) ||
-    executionEffortForPurpose(taskRole, attempt, attestation.purpose) === null
+    expectedEffort === null
   ) {
     violations.push(`${label} is malformed or mismatched`);
     return [];
@@ -389,13 +390,15 @@ const validTopicIdentity = (
 ): boolean =>
   isRecord(value) &&
   value.mode === "agent-runtime" &&
-  value.physicalModel === "gpt-5.6-sol" &&
+  (value.physicalModel === "gpt-5.6-sol" || value.physicalModel === "mimo-v2.6-pro") &&
   value.provider === parent.provider &&
   value.runtime === parent.runtime &&
   isConcreteRuntimePackageVersion(value.runtimeVersion) &&
   (parent.physicalModel === "mimo-v2.6-pro"
-    ? value.runtimeVersion === approvedSubscriptionRuntimePackageVersion
-    : value.runtimeVersion === parent.runtimeVersion) &&
+    ? (value.physicalModel === "mimo-v2.6-pro"
+      ? value.runtimeVersion === approvedMimoRuntimePackageVersion
+      : value.runtimeVersion === approvedSubscriptionRuntimePackageVersion)
+    : value.physicalModel === "gpt-5.6-sol" && value.runtimeVersion === parent.runtimeVersion) &&
   (value.reasoningEffort === "high" || value.reasoningEffort === "xhigh") &&
   (parent.physicalModel === "mimo-v2.6-pro" || value.reasoningEffort === parent.reasoningEffort) &&
   value.launcherSha256 === parent.launcherSha256;
