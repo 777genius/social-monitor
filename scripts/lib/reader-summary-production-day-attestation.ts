@@ -158,7 +158,11 @@ export const runtimeProvenanceFromExecutorAttestations = (
   );
   const summaryIdentity = summaries[0]?.attestation;
   const topicIdentity = topicLabels[0]?.attestation;
-  if (identities.size !== 1 || (summaryIdentity && topicIdentity &&
+  if (identities.size !== 1 ||
+    (summaryIdentity?.model === "mimo-v2.6-pro" &&
+      topicRecords.some((value) =>
+        value.attestation.reasoningEffort !== "high")) ||
+    (summaryIdentity && topicIdentity &&
     (summaryIdentity.launcherSha256 !== topicIdentity.launcherSha256 ||
       (summaryIdentity.model === "mimo-v2.6-pro" &&
         (topicIdentity.model === "mimo-v2.6-pro"
@@ -399,7 +403,9 @@ const validTopicIdentity = (
       ? value.runtimeVersion === approvedMimoRuntimePackageVersion
       : value.runtimeVersion === approvedSubscriptionRuntimePackageVersion)
     : value.physicalModel === "gpt-5.6-sol" && value.runtimeVersion === parent.runtimeVersion) &&
-  (value.reasoningEffort === "high" || value.reasoningEffort === "xhigh") &&
+  (value.reasoningEffort === "high" ||
+    (parent.physicalModel !== "mimo-v2.6-pro" &&
+      value.reasoningEffort === "xhigh")) &&
   (parent.physicalModel === "mimo-v2.6-pro" || value.reasoningEffort === parent.reasoningEffort) &&
   value.launcherSha256 === parent.launcherSha256;
 

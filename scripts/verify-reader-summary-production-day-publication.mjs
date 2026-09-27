@@ -303,6 +303,9 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
         topicIdentity.runtimePackageVersion === approvedCodexRuntimeVersion);
   if (
     identities.size !== 1 ||
+    (summaryIdentity.model === "mimo-v2.6-pro" &&
+      topicRecords.some((record) =>
+        record.attestation.reasoningEffort !== "high")) ||
     summaryIdentity.launcherSha256 !== topicIdentity.launcherSha256 ||
     !(validMimoPair ||
       (summaryIdentity.model === "gpt-5.6-sol" && sameCodexIdentity))

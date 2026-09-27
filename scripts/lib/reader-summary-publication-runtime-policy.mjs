@@ -41,16 +41,23 @@ export function validatePublicationAttestationRecord(record, allowLegacy) {
   const activePurpose = record.taskRole === "summary"
     ? activeSummaryPurpose
     : activePurposes[record.taskRole];
-  const expectedEffort = attestation.purpose === activePurpose
+  const expectedEffort = activePurpose !== undefined &&
+    attestation.purpose === activePurpose
     ? "high"
-    : allowLegacy && attestation.purpose === legacyPurpose
+    : allowLegacy && legacyPurpose !== undefined &&
+      attestation.purpose === legacyPurpose
       ? "xhigh"
       : undefined;
   if (
+    (record.taskRole !== "summary" &&
+      !Object.hasOwn(activePurposes, record.taskRole)) ||
+    (record.taskRole === "summary" && activeSummaryPurpose === undefined) ||
     typeof record.attempt !== "string" || record.attempt.length === 0 ||
     !sha256(record.normalizedOutputSha256) ||
     expectedEffort === undefined ||
     attestation.schemaVersion !== 1 ||
+    typeof attestation.purpose !== "string" ||
+    attestation.purpose.trim().length === 0 ||
     typeof attestation.requestId !== "string" ||
     attestation.requestId.length === 0 ||
     !sha256(attestation.canonicalRequestSha256) ||
@@ -112,7 +119,8 @@ function validTopicIdentity(topic, parent, allowLegacy) {
       : topic.physicalModel === "gpt-5.6-sol" &&
         topic.runtimeVersion === parent.runtimeVersion) &&
     (topic.reasoningEffort === "high" ||
-      (allowLegacy && topic.reasoningEffort === "xhigh")) &&
+      (parent.physicalModel !== "mimo-v2.6-pro" && allowLegacy &&
+        topic.reasoningEffort === "xhigh")) &&
     (parent.physicalModel === "mimo-v2.6-pro" ||
       topic.reasoningEffort === parent.reasoningEffort) &&
     topic.launcherSha256 === parent.launcherSha256;

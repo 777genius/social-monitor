@@ -69,6 +69,15 @@ describe("production day purpose-specific executor identity", () => {
 
     records[2]!.attestation.runtimePackageVersion = "0.1.0-main.1";
     expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [])).toBeNull();
+
+    const legacyTopic = productionExecutionAttestations();
+    legacyTopic[0]!.attestation.model = "mimo-v2.6-pro";
+    legacyTopic[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.5";
+    legacyTopic[1]!.attestation.runtimePackageVersion = "0.1.0-main.42-sm.3";
+    legacyTopic[1]!.attestation.purpose = "social_monitor.reader_summary.topic_map.label";
+    legacyTopic[1]!.attestation.reasoningEffort = "xhigh";
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(legacyTopic), []))
+      .toBeNull();
   });
 
   it("rejects unpinned MiMo package and cross-purpose model substitution", () => {

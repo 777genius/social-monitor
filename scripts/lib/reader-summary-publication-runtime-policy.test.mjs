@@ -42,6 +42,16 @@ test("MiMo attestation admits only the active purpose and pinned runtime", () =>
     assert.throws(() => validatePublicationAttestationRecord(record, false),
       /malformed or mismatched/u);
   }
+  const missingPurpose = mimoRecord();
+  missingPurpose.attempt = "unadmitted";
+  delete missingPurpose.attestation.purpose;
+  assert.throws(() => validatePublicationAttestationRecord(missingPurpose, true),
+    /malformed or mismatched/u);
+  const unknownRole = mimoRecord();
+  unknownRole.taskRole = "unknown";
+  delete unknownRole.attestation.purpose;
+  assert.throws(() => validatePublicationAttestationRecord(unknownRole, true),
+    /malformed or mismatched/u);
 });
 
 const mimoProvenance = () => ({
@@ -78,4 +88,7 @@ test("MiMo publication provenance accepts the pinned mixed topic identity only",
   ]) {
     assert.equal(isPublicationRuntimeProvenance({ ...mimoProvenance(), ...patch }), false);
   }
+  assert.equal(isPublicationRuntimeProvenance({ ...mimoProvenance(),
+    topicLabeler: { ...mimoProvenance().topicLabeler, reasoningEffort: "xhigh" },
+  }, true), false);
 });
