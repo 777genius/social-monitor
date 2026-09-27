@@ -14,7 +14,7 @@ import {
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.42-sm.3";
 export const approvedMimoRuntimePackageVersion =
-  "0.1.0-main.40-sm-mimo.2";
+  "0.1.0-main.40-sm-mimo.3";
 export const approvedSubscriptionRuntimeLauncherSha256 =
   "30f7bcac89439ea0eecb3260ee79924fcfab25a87e51be237e289c51f2ccddc1";
 

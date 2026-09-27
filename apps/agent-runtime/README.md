@@ -181,7 +181,7 @@ The MiMo package is built from upstream commit
 `951aa18c060e6aa28006867dd124aa5a2905d951` in the checked-in source
 bundle. Run `npm run check:subscription-runtime-mimo-rebuild` to verify both
 the bundle and the exact vendored archive. The archived package reports
-`0.1.0-main.40-sm-mimo.2`; the runtime attestation uses this version for MiMo
+`0.1.0-main.40-sm-mimo.3`; the runtime attestation uses this version for MiMo
 and the original package version for other purposes.
 
 Pass the existing root-only key file to the agent-runtime service using a

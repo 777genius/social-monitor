@@ -22,7 +22,7 @@ describe("refresh exact canonical request binding", () => {
       delegate: refreshTestRuntimeClient(execute), assertLocal: () => undefined,
       assertCurrent: async () => undefined, record: jest.fn() });
     await expect(runtime.runTask(generation)).resolves.toMatchObject({ status: "completed",
-      executionAttestation: { model: "mimo-v2.6-pro", runtimePackageVersion: "0.1.0-main.40-sm-mimo.2" } });
+      executionAttestation: { model: "mimo-v2.6-pro", runtimePackageVersion: "0.1.0-main.40-sm-mimo.3" } });
     await expect(runtime.runTask(refreshModelCommand(purposes.topicLabel))).resolves.toMatchObject({
       status: "completed", executionAttestation: { model: "gpt-5.6-sol" },
     });
