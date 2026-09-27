@@ -51,7 +51,7 @@ describe("refresh exact canonical request binding", () => {
     } };
     const valid = await completedRefreshModelRequest(command);
     const altered = { ...valid, executionAttestation: {
-      ...valid.executionAttestation!, runtimePackageVersion: "0.1.0-main.40-sm-mimo.2",
+      ...valid.executionAttestation!, runtimePackageVersion: "0.1.0-main.40-sm-mimo.1",
     } };
     const runtime = guardedRefreshRuntime({ manifest: refreshManifest(),
       delegate: { runTask: async () => altered, checkHealth: jest.fn() },
