@@ -61,7 +61,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       };
       expect(result.status).toBe("completed");
       expect(result.executionAttestation?.model).toBe("mimo-v2.6-pro");
-      expect(result.executionAttestation?.runtimePackageVersion).toBe("0.1.0-main.40-sm-mimo.3");
+      expect(result.executionAttestation?.runtimePackageVersion).toBe("0.1.0-main.40-sm-mimo.4");
       expect(captured.path).toBe("/run/synthetic/mimo-key");
       expect(captured.hasToken).toBe(false);
       expect(captured.codexAuthPath).toBeUndefined();
@@ -610,7 +610,7 @@ const installationInspector = {
   inspect: async (command: string, modelBackend?: "xiaomi-mimo-token-plan") => ({
     ...installation(command),
     ...(modelBackend === "xiaomi-mimo-token-plan"
-      ? { mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.3" }
+      ? { mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.4" }
       : {}),
   }),
 };

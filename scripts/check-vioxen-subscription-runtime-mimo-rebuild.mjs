@@ -11,18 +11,21 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const commit = "e9f8ff56b2e997227f5c9762e79ce5bbf330920e";
-const bundleSha = "35226433766b59078e911aac4b7c73d5dbfd79a61f8b2e32b903bc58357634e3";
-const archiveSha = "9710bec139ce93aefbda6e86a533a12300946ab4cc5dc49bdb3408ee90d137bd";
-const version = "0.1.0-main.40-sm-mimo.3";
-const bundle = join(root, "vendor/vioxen-subscription-runtime-e9f8ff56.bundle");
+const commit = "06065a90beca00ec91436684df2b33677078aa00";
+const bundleSha = "0ec1c9e9149aa10563b528d1cb7782f0f2c7622ba6e5c76a8703ed19116dd5f4";
+const archiveSha = "f1414428f543a8605ff8c5094d4483271ad2762e4bbd27c29bd8121ee73ab4c2";
+const version = "0.1.0-main.40-sm-mimo.4";
+const bundle = join(root, "vendor/vioxen-subscription-runtime-06065a90.bundle");
 const archive = join(root, `vendor/vioxen-subscription-runtime-${version}.tgz`);
+const buildArchive = process.argv.includes("--build-archive");
 const scratch = await mkdtemp(join(tmpdir(), "social-monitor-mimo-rebuild-"));
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 try {
   assert.equal(sha(await readFile(bundle)), bundleSha, "MiMo source bundle changed");
-  assert.equal(sha(await readFile(archive)), archiveSha, "MiMo runtime archive changed");
+  if (!buildArchive) {
+    assert.equal(sha(await readFile(archive)), archiveSha, "MiMo runtime archive changed");
+  }
   const gitDir = join(scratch, "git");
   const source = join(scratch, "source");
   const stage = join(scratch, "stage");
@@ -106,8 +109,14 @@ try {
   await mkdir(output);
   run("npm", ["pack", "--ignore-scripts", "--pack-destination", output, "--json"],
     stage, { npm_config_cache: join(scratch, "npm-cache") });
-  assert.equal(sha(await readFile(join(output, `vioxen-subscription-runtime-${version}.tgz`))),
-    archiveSha, "MiMo archive does not rebuild from the reviewed source and pinned dependencies");
+  const rebuiltArchive = join(output, `vioxen-subscription-runtime-${version}.tgz`);
+  if (buildArchive) {
+    await cp(rebuiltArchive, archive);
+    process.stdout.write(`MiMo archive SHA256 ${sha(await readFile(archive))}\n`);
+  } else {
+    assert.equal(sha(await readFile(rebuiltArchive)),
+      archiveSha, "MiMo archive does not rebuild from the reviewed source and pinned dependencies");
+  }
   process.stdout.write(`MiMo runtime ${version} rebuilt from ${commit}\n`);
 } finally {
   await rm(scratch, { recursive: true, force: true });
