@@ -14,7 +14,7 @@ const summarySchemaName = "social_monitor_reader_summary_artifact";
 const summarySchema = { type: "object", properties: { summary: { type: "string" } } };
 const summaryAdmission = {
   profile: { reasoningEffort: "high" },
-  canonicalRequest: { task: {
+  canonicalRequest: { context: { purpose: "social_monitor.reader_summary.generate.v2" }, task: {
     outputSchemaName: summarySchemaName,
     controls: { outputSchemaName: summarySchemaName, outputSchema: summarySchema },
   } },
@@ -30,7 +30,7 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
       return {
         async run() {
           runs++;
-          return { status: "completed", result: { structuredOutput: { ok: true } } };
+          return { status: "completed", result: { structuredOutput: { headline: "Synthetic" } } };
         },
         async dispose() {},
       };
@@ -56,7 +56,7 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
     env: { OPENAI_API_KEY: "synthetic-ignored-openai-key" },
   }, model: "mimo-v2.6-pro" });
   const result = await worker.run({ runId: "synthetic-run", prompt: "Summarize." });
-  assert.deepEqual(result, { structuredOutput: { ok: true } });
+  assert.deepEqual(result, { structuredOutput: { headline: "Synthetic" } });
   assert.equal(runs, 1);
   assert.equal(options.accounts.length, 1);
   assert.equal(options.maxAccountCycles, 1);
@@ -110,4 +110,63 @@ test("MiMo summary factory rejects a synthetic key echoed by the model", async (
   await assert.rejects(worker.dispose(), (error) =>
     error.message === "MiMo reader summary cleanup failed" &&
     !String(error).includes(fakeKey));
+});
+
+test("MiMo worker binds each daily purpose to its schema and output family", async () => {
+  const cases = [
+    ["social_monitor.reader_summary.generate.v2", "social_monitor_reader_summary_artifact", { headline: "Synthetic" }],
+    ["social_monitor.reader_summary.repair.v2", "social_monitor_reader_summary_artifact", { headline: "Synthetic" }],
+    ["social_monitor.reader_summary.topic_map.label.v2", "social_monitor_reader_summary_topic_map_labels", { nodeLabels: [] }],
+    ["social_monitor.reader_summary.topic_map.verify_relations.v2", "social_monitor_reader_summary_topic_relations", { decisions: [] }],
+    ["social_monitor.reader_summary.verify_story_relations.v2", "social_monitor_reader_summary_story_relations", { decisions: [] }],
+    ["social_monitor.reader_summary.verify_related_topic_relations.v2", "social_monitor_reader_summary_related_topic_relations", { decisions: [] }],
+  ];
+  for (const [purpose, name, output] of cases) {
+    let schemas;
+    let workerOptions;
+    let returnedOutput = output;
+    const admission = { profile: { reasoningEffort: "high" }, canonicalRequest: {
+      context: { purpose }, task: {
+        outputSchemaName: name,
+        controls: { outputSchemaName: name, outputSchema: { type: "object" } },
+      },
+    } };
+    const dependencies = {
+      admission,
+      mimoRuntime: { createOneShotExecutor: (options) => {
+        schemas = options.outputSchemas;
+        workerOptions = options.accounts[0].worker;
+        return { async run() { return { status: "completed", result: { structuredOutput: returnedOutput } }; },
+          async dispose() {} };
+      } },
+      mimoApiKey: "synthetic-key",
+      codexAuthPoolExecutionPolicy: {},
+      codexAuthPoolTaskHash: () => "synthetic-hash",
+      nonEmptyRunId: (id) => id,
+      join, mkdir: async () => {},
+      resolvePinnedCodexBinaryPath: () => "/synthetic/codex",
+      subscriptionOnlyCodexEnvironment: () => ({}),
+      SubscriptionWorkerError: class extends Error {
+        constructor(code, message) { super(message); this.code = code; }
+      },
+    };
+    const factory = new Function(
+      ...Object.keys(dependencies), `${body}\nreturn createMimoSummaryWorker;`,
+    )(...Object.values(dependencies));
+    const input = { stateRootDir: "/synthetic/state", encryptionKey: "synthetic", env: {} };
+    const worker = factory({ input, model: "mimo-v2.6-pro" });
+    assert.deepEqual(await worker.run({ runId: "synthetic-run", prompt: "Synthetic." }),
+      { structuredOutput: output }, purpose);
+    assert.deepEqual(schemas, { [name]: { type: "object" } }, purpose);
+    assert.equal(workerOptions.sourceEnv.MIMO_TOKEN_PLAN_API_KEY, "synthetic-key", purpose);
+    assert.equal(workerOptions.modelBackend, "xiaomi-mimo-token-plan", purpose);
+    assert.deepEqual(workerOptions.boundedWorkspaceTools,
+      { allowedTools: [], denyProjectInstructions: true }, purpose);
+    admission.canonicalRequest.task.outputSchemaName = "wrong";
+    assert.throws(() => factory({ input, model: "mimo-v2.6-pro" }), /named output schema/u);
+    admission.canonicalRequest.task.outputSchemaName = name;
+    returnedOutput = { unrelated: true };
+    const rejected = factory({ input, model: "mimo-v2.6-pro" });
+    await assert.rejects(rejected.run({ runId: "synthetic-run" }), /output was rejected/u);
+  }
 });

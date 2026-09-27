@@ -7,7 +7,10 @@ import type {
   AgentRuntimeTaskResult,
   ReaderSummaryTopicRelationVerifierInput,
 } from "../../ports";
-import { AgentRuntimeReaderSummaryTopicRelationVerifier } from "./agent-runtime-reader-summary-topic-relation-verifier.adapter";
+import {
+  AgentRuntimeReaderSummaryTopicRelationVerifier,
+  resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions,
+} from "./agent-runtime-reader-summary-topic-relation-verifier.adapter";
 import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 
 describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
@@ -90,6 +93,36 @@ describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
     await expect(verifier.verify(input())).rejects.toThrow(
       "must decide every requested pair exactly once",
     );
+  });
+
+  it("routes topic relations through MiMo with strict schema and attestation", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: { decisions: [{ sourceNodeId: "node:a", targetNodeId: "node:b",
+        sameTopic: true, confidenceScore: 0.94, rationale: "Same synthetic topic." }] },
+      warnings: [],
+    });
+    const options = resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+    }, client);
+    await expect(new AgentRuntimeReaderSummaryTopicRelationVerifier(options).verify(input()))
+      .resolves.toHaveLength(1);
+    expect(client.commands[0]?.controls).toMatchObject({
+      model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan",
+      toolsEnabled: false, toolPolicy: "none",
+    });
+    const invalid = new CapturingAgentRuntimeClient({ status: "completed",
+      structuredOutput: { decisions: [{ sourceNodeId: "node:a", targetNodeId: "node:b",
+        sameTopic: "yes", confidenceScore: 2, rationale: "Synthetic." }] },
+      warnings: [] });
+    await expect(new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      ...options, client: invalid,
+    }).verify(input())).rejects.toMatchObject({ failure: { kind: "invalid_schema" } });
+    expect(() => resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL: "gpt-5.6-sol",
+    }, client)).toThrow("conflicts with purpose policy");
   });
 });
 

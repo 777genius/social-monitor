@@ -24,7 +24,7 @@ import type { VerifiedReaderSummaryExecutionAttestation } from "./reader-summary
 import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
 
 describe("AgentRuntimeReaderSummaryModelAdapter", () => {
-  it("selects MiMo only through the explicit reader summary backend", async () => {
+  it("selects MiMo daily work through the explicit reader summary backend", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",
       structuredOutput: validReaderProviderDraft(),
@@ -60,7 +60,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
       .toBe("mimo-v2.6-pro");
     expect(resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(
       sharedEnv, client,
-    ).model).toBe("gpt-5.6-sol");
+    ).model).toBe("mimo-v2.6-pro");
     expect(() => resolveAgentRuntimeReaderSummaryModelOptions({
       ...sharedEnv,
       AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "gpt-5.6-sol",

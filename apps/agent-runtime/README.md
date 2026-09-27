@@ -162,16 +162,19 @@ Important env:
 - `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`, manifest path inside the pool root
 - `AGENT_RUNTIME_CLAUDE_TOKEN_ENV`, default `CLAUDE_CODE_OAUTH_TOKEN`
 
-MiMo Token Plan admission is reserved for
-`social_monitor.reader_summary.generate.v2` and
-`social_monitor.reader_summary.repair.v2` with model `mimo-v2.6-pro`.
-The reader summary model adapter selects this route only when
+MiMo Token Plan admission is reserved for the daily reader-summary
+generate, repair, topic-map label, topic-map relation, story relation, and
+related-topic relation v2 purposes with model `mimo-v2.6-pro`. Each purpose
+requires its named structured-output schema and schema version. Weekly,
+canonical-recovery, generic summary, and relevance tasks remain on Codex.
+The reader summary adapters select this route only when
 `AGENT_RUNTIME_READER_SUMMARY_BACKEND=xiaomi-mimo-token-plan`; its default
 remains the Codex ChatGPT backend. The optional
 `AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL` must be `mimo-v2.6-pro` on
-this route. The historic `AGENT_RUNTIME_READER_SUMMARY_MODEL` stays pinned to
-`gpt-5.6-sol` for topic and relation workflows, including when MiMo summary
-generation is enabled. MiMo uses the Codex provider transport.
+this route. Optional purpose-specific topic and relation model overrides must
+also be `mimo-v2.6-pro` when MiMo is selected. The historic
+`AGENT_RUNTIME_READER_SUMMARY_MODEL` stays pinned to `gpt-5.6-sol` for the
+default Codex route. MiMo uses the Codex provider transport.
 The summary route uses the isolated `@vioxen/subscription-runtime-mimo`
 package. The existing `main.42-sm.3` package still runs every other purpose.
 The MiMo package is built from upstream commit

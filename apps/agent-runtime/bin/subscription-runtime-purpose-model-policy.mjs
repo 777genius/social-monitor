@@ -50,7 +50,28 @@ const mimoReaderSummaryStructuredProfile = Object.freeze({
 const mimoSummaryPurposes = new Set([
   "social_monitor.reader_summary.generate.v2",
   "social_monitor.reader_summary.repair.v2",
+  "social_monitor.reader_summary.topic_map.label.v2",
+  "social_monitor.reader_summary.topic_map.verify_relations.v2",
+  "social_monitor.reader_summary.verify_story_relations.v2",
+  "social_monitor.reader_summary.verify_related_topic_relations.v2",
 ]);
+
+const mimoSchemaMarkers = Object.freeze({
+  "social_monitor.reader_summary.generate.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+  "social_monitor.reader_summary.repair.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+  "social_monitor.reader_summary.topic_map.label.v2": ["social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1"],
+  "social_monitor.reader_summary.topic_map.verify_relations.v2": ["social_monitor_reader_summary_topic_relations", "reader_summary.topic_relation.v1"],
+  "social_monitor.reader_summary.verify_story_relations.v2": ["social_monitor_reader_summary_story_relations", "reader_summary.story_relation.v1"],
+  "social_monitor.reader_summary.verify_related_topic_relations.v2": ["social_monitor_reader_summary_related_topic_relations", "reader_summary.related_topic_relation.v1"],
+});
+const mimoRootProperties = Object.freeze({
+  "social_monitor.reader_summary.generate.v2": ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
+  "social_monitor.reader_summary.repair.v2": ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
+  "social_monitor.reader_summary.topic_map.label.v2": ["nodeLabels", "groups"],
+  "social_monitor.reader_summary.topic_map.verify_relations.v2": ["decisions"],
+  "social_monitor.reader_summary.verify_story_relations.v2": ["decisions"],
+  "social_monitor.reader_summary.verify_related_topic_relations.v2": ["decisions"],
+});
 
 const activeReaderSummaryTextProfile = Object.freeze({
   provider: "codex",
@@ -154,6 +175,17 @@ export const admitSubscriptionRuntimeWrapperRequest = (
     "metadata.reasoningEffort",
   );
   assertDedicatedRelatedTopicMarkers(purpose, controls, metadata);
+  if (profile.modelBackend === "xiaomi-mimo-token-plan") {
+    const markers = mimoSchemaMarkers[purpose];
+    if (markers === undefined) throw new Error("MiMo purpose is not admitted");
+    assertRequiredExactString(task.outputSchemaName, markers[0], "task.outputSchemaName");
+    assertRequiredExactString(controls.outputSchemaName, markers[0], "outputSchemaName");
+    assertRequiredExactString(controls.schemaVersion, markers[1], "schemaVersion");
+    assertOptionalExactString(controls.toolPolicy, "none", "toolPolicy");
+    if (controls.toolsEnabled !== undefined && controls.toolsEnabled !== false) {
+      throw new Error("toolsEnabled conflicts with purpose policy");
+    }
+  }
   assertReaderPromotionV2CanaryMarkers(purpose, task, controls);
   assertOptionalExactString(
     controls.responseFormat,
@@ -173,6 +205,9 @@ export const admitSubscriptionRuntimeWrapperRequest = (
   const outputSchema = controls.outputSchema;
   if (profile.outputKind === "structured_output") {
     record(outputSchema, "request.task.controls.outputSchema");
+    if (profile.modelBackend === "xiaomi-mimo-token-plan") {
+      assertMimoSchemaRoot(purpose, outputSchema);
+    }
   } else if (
     outputSchema !== undefined ||
     controls.outputSchemaJson !== undefined
@@ -214,6 +249,25 @@ export const admitSubscriptionRuntimeWrapperRequest = (
       },
     },
   };
+};
+
+const assertMimoSchemaRoot = (purpose, schema) => {
+  const expected = mimoRootProperties[purpose];
+  const properties = schema.properties;
+  const required = schema.required;
+  if (expected === undefined || schema.type !== "object" ||
+      schema.additionalProperties !== false ||
+      properties === null || typeof properties !== "object" || Array.isArray(properties) ||
+      !Array.isArray(required) || required.length !== expected.length ||
+      expected.some((key) => !required.includes(key) || !Object.hasOwn(properties, key))) {
+    throw new Error("outputSchema conflicts with MiMo purpose policy");
+  }
+  const firstProperty = properties[expected[0]];
+  const expectedType = expected[0] === "headline" ? "string" : "array";
+  if (firstProperty === null || typeof firstProperty !== "object" ||
+      Array.isArray(firstProperty) || firstProperty.type !== expectedType) {
+    throw new Error("outputSchema conflicts with MiMo purpose policy");
+  }
 };
 
 const assertReaderPromotionV2CanaryMarkers = (purpose, task, controls) => {

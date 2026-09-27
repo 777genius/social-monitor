@@ -192,14 +192,38 @@ test("active v2 admits high and rejects xhigh and every legacy reader-summary pu
   }
 });
 
-test("MiMo admission is limited to reader summary generation and repair", () => {
-  for (const purpose of [
-    "social_monitor.reader_summary.generate.v2",
-    "social_monitor.reader_summary.repair.v2",
-  ]) {
-    const input = standardGoldenInput(purpose, "structured_output");
-    input.request.task.controls.modelBackend = "xiaomi-mimo-token-plan";
-    input.model = "mimo-v2.6-pro";
+const mimoMarkers = {
+  "social_monitor.reader_summary.generate.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+  "social_monitor.reader_summary.repair.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+  "social_monitor.reader_summary.topic_map.label.v2": ["social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1"],
+  "social_monitor.reader_summary.topic_map.verify_relations.v2": ["social_monitor_reader_summary_topic_relations", "reader_summary.topic_relation.v1"],
+  "social_monitor.reader_summary.verify_story_relations.v2": ["social_monitor_reader_summary_story_relations", "reader_summary.story_relation.v1"],
+  "social_monitor.reader_summary.verify_related_topic_relations.v2": ["social_monitor_reader_summary_related_topic_relations", "reader_summary.related_topic_relation.v1"],
+};
+
+const mimoInput = (purpose) => {
+  const input = standardGoldenInput(purpose, "structured_output");
+  const [name, version] = mimoMarkers[purpose];
+  input.request.task.outputSchemaName = name;
+  input.request.task.controls.outputSchemaName = name;
+  input.request.task.controls.schemaVersion = version;
+  input.request.task.controls.modelBackend = "xiaomi-mimo-token-plan";
+  const required = purpose.includes("generate.v2") || purpose.includes("repair.v2")
+    ? ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"]
+    : purpose.includes("topic_map.label.v2") ? ["nodeLabels", "groups"] : ["decisions"];
+  input.request.task.controls.outputSchema = {
+    type: "object", additionalProperties: false, required,
+    properties: Object.fromEntries(required.map((key) => [key, {
+      type: key === "headline" ? "string" : "array",
+    }])),
+  };
+  input.model = "mimo-v2.6-pro";
+  return input;
+};
+
+test("MiMo admission covers only the six named daily summary purposes", () => {
+  for (const purpose of Object.keys(mimoMarkers)) {
+    const input = mimoInput(purpose);
     const admitted = admitSubscriptionRuntimeWrapperRequest(input);
     assert.equal(admitted.profile.provider, "codex");
     assert.equal(admitted.profile.model, "mimo-v2.6-pro");
@@ -209,10 +233,24 @@ test("MiMo admission is limited to reader summary generation and repair", () => 
     conflicting.request.task.metadata.modelBackend = "openai-chatgpt";
     assert.throws(() => admitSubscriptionRuntimeWrapperRequest(conflicting),
       /metadata\.modelBackend conflicts with purpose policy/u);
+    for (const mutate of [
+      (bad) => { bad.request.task.outputSchemaName = "wrong"; },
+      (bad) => { bad.request.task.controls.outputSchemaName = "wrong"; },
+      (bad) => { bad.request.task.controls.schemaVersion = "wrong"; },
+      (bad) => { bad.request.task.controls.toolsEnabled = true; },
+      (bad) => { bad.request.task.controls.outputSchema = { type: "object" }; },
+      (bad) => { bad.provider = "claude"; },
+    ]) {
+      const bad = structuredClone(input);
+      mutate(bad);
+      assert.throws(() => admitSubscriptionRuntimeWrapperRequest(bad),
+        /conflicts with (MiMo )?purpose policy/u);
+    }
   }
   for (const purpose of [
     "social_monitor.relevance.assess_source_content.v1",
-    "social_monitor.reader_summary.topic_map.label.v2",
+    "social_monitor.reader_summary.weekly.review.v2",
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
     "social_monitor.summary.generate",
   ]) {
     const input = standardGoldenInput(purpose, "structured_output");
@@ -227,10 +265,7 @@ test("MiMo launcher fails closed without a key file and never logs a synthetic t
     process.env.TMPDIR ?? tmpdir(), "social-monitor-mimo-policy-",
   ));
   try {
-    const input = standardGoldenInput(
-      "social_monitor.reader_summary.generate.v2", "structured_output",
-    );
-    input.request.task.controls.modelBackend = "xiaomi-mimo-token-plan";
+    const input = mimoInput("social_monitor.reader_summary.generate.v2");
     const inputPath = join(root, "request.json");
     writeFileSync(inputPath, JSON.stringify(input.request));
     const run = (extraEnv) => spawnSync(process.execPath, [

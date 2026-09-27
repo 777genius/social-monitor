@@ -7,7 +7,10 @@ import type {
   AgentRuntimeTaskResult,
   ReaderSummaryStoryRelationVerifierInput,
 } from "../../ports";
-import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "./agent-runtime-reader-summary-story-relation-verifier.adapter";
+import {
+  AgentRuntimeReaderSummaryStoryRelationVerifier,
+  resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions,
+} from "./agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 
 describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
@@ -232,6 +235,57 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       explicitTriStateRequired: true,
       relatedTopicIsNonTransitive: true,
     });
+  });
+
+  it("routes both story relation lanes through MiMo and rejects bad attestation", async () => {
+    const binary = { leftFeedItemId: "feed:hn", rightFeedItemId: "feed:rss",
+      sameStory: true, confidenceScore: 0.96, rationale: "Same synthetic story." };
+    const client = new CapturingAgentRuntimeClient({ status: "completed",
+      structuredOutput: { decisions: [binary] }, warnings: [] });
+    const options = resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+    }, client);
+    await expect(new AgentRuntimeReaderSummaryStoryRelationVerifier(options).verify(input()))
+      .resolves.toHaveLength(1);
+    expect(client.commands[0]?.controls).toMatchObject({
+      model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan",
+      toolsEnabled: false, toolPolicy: "none",
+    });
+    const triState = { leftFeedItemId: "feed:hn", rightFeedItemId: "feed:rss",
+      relation: "related_topic", confidenceScore: 0.98,
+      rationale: "Same synthetic topic." };
+    const relatedClient = new CapturingAgentRuntimeClient({ status: "completed",
+      structuredOutput: { decisions: [triState] }, warnings: [] });
+    const base = input();
+    await expect(new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      ...options, client: relatedClient,
+    }).verify({ ...base, verificationLane: "related_topic", candidates: [{
+      ...base.candidates[0]!, subjectFeedItemId: "feed:hn",
+      officialAnchorFeedItemId: "feed:rss", subjectStoryClusterId: "story:hn",
+      targetStoryClusterId: "story:rss",
+    }] })).resolves.toEqual([triState]);
+    expect(relatedClient.commands[0]).toMatchObject({
+      purpose: "social_monitor.reader_summary.verify_related_topic_relations.v2",
+      controls: { modelBackend: "xiaomi-mimo-token-plan",
+        outputSchemaName: "social_monitor_reader_summary_related_topic_relations" },
+    });
+    class WrongModelClient extends CapturingAgentRuntimeClient {
+      override async runTask(command: AgentRuntimeTaskCommand): Promise<AgentRuntimeTaskResult> {
+        const result = await super.runTask(command);
+        return { ...result, executionAttestation: {
+          ...result.executionAttestation!, model: "gpt-5.6-sol",
+        } };
+      }
+    }
+    await expect(new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      ...options, client: new WrongModelClient({ status: "completed",
+        structuredOutput: { decisions: [binary] }, warnings: [] }),
+    }).verify(input())).rejects.toThrow("execution attestation is invalid");
+    expect(() => resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_MODEL: "gpt-5.6-sol",
+    }, client)).toThrow("conflicts with purpose policy");
   });
 
   it("isolates shadow task identity and metadata from the production lane", async () => {

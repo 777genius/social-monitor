@@ -1,3 +1,16 @@
+import {
+  canonicalJsonSha256,
+  executionAttestationOutputMatches,
+  isConcreteRuntimePackageVersion,
+  isSha256Hex,
+  subscriptionRuntimeEngine,
+} from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../ports";
+import type {
+  ReaderSummaryAttestedTaskRole,
+  VerifiedReaderSummaryExecutionAttestationSink,
+} from "./reader-summary-execution-attestation";
+
 export const activeReaderSummaryProvider = "codex" as const;
 export const activeReaderSummaryModel = "gpt-5.6-sol" as const;
 export const activeReaderSummaryReasoningEffort = "high" as const;
@@ -35,8 +48,8 @@ export const resolveReaderSummaryGenerationIdentityFromEnv = (
   env: NodeJS.ProcessEnv,
 ): { readonly provider: typeof activeReaderSummaryProvider; readonly model: string;
   readonly backend: ReaderSummaryGenerationBackend } => {
-  // This historic setting is also used by topic and relation workflows.
-  // Keep its Codex contract while the generation-only setting selects MiMo.
+  // The historic shared model remains the Codex default for all daily
+  // workflows; MiMo selection uses the backend and purpose-specific models.
   const sharedModel = parseActiveReaderSummaryModel(
     env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
   );
@@ -59,6 +72,31 @@ export const resolveReaderSummaryGenerationIdentityFromEnv = (
   });
 };
 
+// Daily topic and relation calls share the summary backend, while their
+// individual model overrides remain purpose-specific.
+export const resolveReaderSummaryDailyTaskIdentityFromEnv = (
+  env: NodeJS.ProcessEnv,
+  purposeModel: string | undefined,
+): { readonly model: typeof activeReaderSummaryModel | typeof mimoReaderSummaryModel;
+  readonly modelBackend: ReaderSummaryGenerationBackend } => {
+  const backend = env.AGENT_RUNTIME_READER_SUMMARY_BACKEND?.trim();
+  if (backend === undefined || backend === "" || backend === "openai-chatgpt") {
+    return {
+      model: parseActiveReaderSummaryModel(
+        purposeModel ?? env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+      ) ?? activeReaderSummaryModel,
+      modelBackend: "openai-chatgpt",
+    };
+  }
+  if (backend !== mimoReaderSummaryBackend) {
+    throw new Error("AGENT_RUNTIME_READER_SUMMARY_BACKEND must be openai-chatgpt or xiaomi-mimo-token-plan");
+  }
+  if (purposeModel !== undefined && purposeModel.trim() !== mimoReaderSummaryModel) {
+    throw new Error("MiMo reader summary model conflicts with purpose policy");
+  }
+  return { model: mimoReaderSummaryModel, modelBackend: backend };
+};
+
 export const activeReaderSummaryPurposes = Object.freeze({
   generate: "social_monitor.reader_summary.generate.v2",
   repair: "social_monitor.reader_summary.repair.v2",
@@ -74,6 +112,55 @@ export const activeReaderSummaryPurposes = Object.freeze({
   weeklyReview: "social_monitor.reader_summary.weekly.review.v2",
   weeklyGenerate: "social_monitor.reader_summary.weekly.generate.v2",
 } as const);
+
+const mimoDailyPurposeByRole = Object.freeze({
+  topic_label: activeReaderSummaryPurposes.topicLabel,
+  topic_relation: activeReaderSummaryPurposes.topicRelations,
+  story_relation: activeReaderSummaryPurposes.storyRelations,
+  related_topic_relation: activeReaderSummaryPurposes.relatedTopicRelations,
+} as const);
+
+export const verifyAndRecordMimoDailyExecution = async (params: {
+  readonly command: AgentRuntimeTaskCommand;
+  readonly result: AgentRuntimeTaskResult;
+  readonly taskRole: ReaderSummaryAttestedTaskRole;
+  readonly attempt: string;
+  readonly normalizedOutput: unknown;
+  readonly sink?: VerifiedReaderSummaryExecutionAttestationSink;
+}): Promise<void> => {
+  const expectedPurpose = mimoDailyPurposeByRole[
+    params.taskRole as keyof typeof mimoDailyPurposeByRole
+  ];
+  const attestation = params.result.executionAttestation;
+  if (expectedPurpose === undefined ||
+    params.command.purpose !== expectedPurpose ||
+    params.command.provider !== activeReaderSummaryProvider ||
+    params.command.controls.model !== mimoReaderSummaryModel ||
+    params.command.controls.modelBackend !== mimoReaderSummaryBackend ||
+    params.result.status !== "completed" ||
+    attestation === undefined ||
+    attestation.schemaVersion !== 1 ||
+    attestation.requestId !== params.command.requestId ||
+    attestation.purpose !== expectedPurpose ||
+    attestation.provider !== activeReaderSummaryProvider ||
+    attestation.model !== mimoReaderSummaryModel ||
+    attestation.reasoningEffort !== activeReaderSummaryReasoningEffort ||
+    attestation.runtimeEngine !== subscriptionRuntimeEngine ||
+    !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
+    !isSha256Hex(attestation.canonicalRequestSha256) ||
+    !isSha256Hex(attestation.launcherSha256) ||
+    attestation.selectedOutputKind !== "structured_output" ||
+    !isSha256Hex(attestation.selectedOutputSha256) ||
+    !executionAttestationOutputMatches(attestation, params.result)) {
+    throw new Error("Reader summary execution attestation is invalid");
+  }
+  await params.sink?.record({
+    taskRole: params.taskRole,
+    attempt: params.attempt,
+    normalizedOutputSha256: canonicalJsonSha256(params.normalizedOutput),
+    attestation,
+  });
+};
 
 export const frozenLegacyReaderSummaryRecoveryContract = Object.freeze({
   recoveryOnly: true,

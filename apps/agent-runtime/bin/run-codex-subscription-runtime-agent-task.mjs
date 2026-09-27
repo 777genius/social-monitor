@@ -142,8 +142,19 @@ const createStrictCodexWorker = (input) => {
 function createMimoSummaryWorker({ input, model }) {
   const summaryTask = admission.canonicalRequest.task;
   const schemaName = summaryTask.outputSchemaName;
-  if (schemaName !== "social_monitor_reader_summary_artifact" ||
-      summaryTask.controls.outputSchemaName !== schemaName) {
+  const purpose = admission.canonicalRequest.context.purpose;
+  const schemaByPurpose = {
+    "social_monitor.reader_summary.generate.v2": ["social_monitor_reader_summary_artifact", "headline", "string"],
+    "social_monitor.reader_summary.repair.v2": ["social_monitor_reader_summary_artifact", "headline", "string"],
+    "social_monitor.reader_summary.topic_map.label.v2": ["social_monitor_reader_summary_topic_map_labels", "nodeLabels", "array"],
+    "social_monitor.reader_summary.topic_map.verify_relations.v2": ["social_monitor_reader_summary_topic_relations", "decisions", "array"],
+    "social_monitor.reader_summary.verify_story_relations.v2": ["social_monitor_reader_summary_story_relations", "decisions", "array"],
+    "social_monitor.reader_summary.verify_related_topic_relations.v2": ["social_monitor_reader_summary_related_topic_relations", "decisions", "array"],
+  };
+  const expected = Object.hasOwn(schemaByPurpose, purpose) ? schemaByPurpose[purpose] : undefined;
+  if (expected === undefined || schemaName !== expected[0] ||
+      summaryTask.controls.outputSchemaName !== schemaName ||
+      summaryTask.controls.outputSchema?.type !== "object") {
     throw new Error("MiMo reader summary requires its named output schema");
   }
   const outputSchemas = { [schemaName]: summaryTask.controls.outputSchema };
@@ -217,6 +228,17 @@ function createMimoSummaryWorker({ input, model }) {
       }
       if (result.status === "completed") {
         if (JSON.stringify(result.result ?? {}).includes(mimoApiKey)) {
+          throw new SubscriptionWorkerError(
+            "subscription_worker_run_failed",
+            "MiMo reader summary output was rejected",
+            { details: {} },
+          );
+        }
+        const output = result.result?.structuredOutput;
+        if (output === null || typeof output !== "object" || Array.isArray(output) ||
+            (expected[2] === "array"
+              ? !Array.isArray(output[expected[1]])
+              : typeof output[expected[1]] !== expected[2])) {
           throw new SubscriptionWorkerError(
             "subscription_worker_run_failed",
             "MiMo reader summary output was rejected",
