@@ -122,6 +122,7 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
     ["./application/codex-account-capacity-alias-store.js", { CodexAccountCapacityAliasStore: class { constructor({ store }) { return store; } } }],
     ["./application/codex-live-quota-capacity.js", { recordCodexAppServerRateLimitsSnapshot: () => { throw new Error("Unexpected quota write"); } }],
     ["./pinned-codex-native-binary.mjs", { resolvePinnedCodexBinaryPath: () => "/synthetic/forbidden" }],
+    ["./mimo-key-file.mjs", { readMimoApiKeyFile: async () => { throw new Error("MiMo key access forbidden"); } }],
     ["./codex-auth-pool-manifest.mjs", { loadCodexAuthPoolFromEnv: async () => ({ accounts: failures.map((_, i) => ({ id: `synthetic-${i}`, authJsonPath: `/synthetic/account-${i}` })) }) }],
     ["../../../node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js", {
       runSubscriptionAgentTaskCli: async (_argv, _io, factory) => {

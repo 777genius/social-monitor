@@ -10,6 +10,7 @@ import { createAgentRuntimeGrpcService } from "../../apps/agent-runtime/src/agen
 import type { AgentRuntimeExecutionRequest, AgentRuntimeExecutorPort } from "../../apps/agent-runtime/src/agent-runtime-executor.port";
 import { attachExecutorOwnedExecutionAttestation } from "../../apps/agent-runtime/src/subscription-runtime-execution-attestation";
 import { admitSubscriptionRuntimeRequest } from "../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy";
+import { approvedMimoRuntimePackageVersion } from "../../apps/agent-runtime/src/subscription-runtime-installation";
 import { sourceContentAssessmentPurpose } from "./reader-summary-new-input-refresh-assessment-runtime";
 import { refreshManifest, refreshNow } from "./reader-summary-new-input-refresh.spec-support";
 
@@ -55,7 +56,10 @@ export async function attestRefreshExecution(request: AgentRuntimeExecutionReque
   const admission = admitSubscriptionRuntimeRequest(request);
   const runtime = refreshManifest().runtime;
   const installation = { executablePath: "/synthetic/runtime", packageRootRealpath: "/synthetic",
-    runtimePackageVersion: runtime.packageVersion, launcherSha256: runtime.launcherSha256 };
+    runtimePackageVersion: runtime.packageVersion,
+    ...(admission.profile.modelBackend === "xiaomi-mimo-token-plan"
+      ? { mimoRuntimePackageVersion: approvedMimoRuntimePackageVersion } : {}),
+    launcherSha256: runtime.launcherSha256 };
   return attachExecutorOwnedExecutionAttestation({ command: installation.executablePath, request,
     ...admission, admittedInstallation: installation,
     installationInspector: { inspect: async () => installation },

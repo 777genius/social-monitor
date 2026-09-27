@@ -11,6 +11,7 @@ const commit = "c045beb60f0b02ea8ae6b264036bef88ada20b76";
 const helpers = [
   "run-codex-subscription-runtime-agent-task.mjs", "assessment-cli-progress.mjs",
   "assessment-cli-lifecycle.mjs", "pinned-codex-native-binary.mjs",
+  "mimo-key-file.mjs",
   "subscription-runtime-failure-details.mjs", "codex-worker-cli-usage.mjs",
   "codex-auth-pool-manifest.mjs", "codex-auth-pool-routing.mjs",
   "subscription-runtime-purpose-model-policy.mjs", "reader-promotion-v2-canary-contract.cjs",
@@ -49,7 +50,7 @@ test("builds a deterministic, extractable host release from a disposable synthet
   await mkdir(fakeBin);
   await put(source, "package.json", '{"name":"synthetic-agent-runtime","version":"1.0.0"}');
   await put(source, "package-lock.json", "synthetic lock\n");
-  for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz"]) {
+  for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz", "vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.5.tgz"]) {
     await put(source, `vendor/${name}`, "synthetic vendor archive\n");
   }
   const staleEntrypoint = "stale source dist entrypoint must never ship\n";
@@ -91,6 +92,9 @@ mkdirSync("node_modules/@vioxen/subscription-runtime", { recursive: true });
 writeFileSync("node_modules/@vioxen/subscription-runtime/package.json", JSON.stringify({ name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.3" }));
 mkdirSync("node_modules/@vioxen/subscription-runtime/dist/worker-local", { recursive: true });
 writeFileSync("node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js", "export {};\\n");
+mkdirSync("node_modules/@vioxen/subscription-runtime-mimo/dist/worker-codex", { recursive: true });
+writeFileSync("node_modules/@vioxen/subscription-runtime-mimo/package.json", JSON.stringify({ name: "@vioxen/subscription-runtime", version: "0.1.0-main.40-sm-mimo.5" }));
+writeFileSync("node_modules/@vioxen/subscription-runtime-mimo/dist/worker-codex/index.js", "export {};\\n");
 mkdirSync("node_modules/@openai/codex", { recursive: true });
 writeFileSync("node_modules/@openai/codex/package.json", "{}");
 mkdirSync("node_modules/@openai/codex-linux-${process.arch}", { recursive: true });

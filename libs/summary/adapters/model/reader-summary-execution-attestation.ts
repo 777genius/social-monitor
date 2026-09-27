@@ -16,6 +16,8 @@ import {
   activeReaderSummaryProvider,
   activeReaderSummaryPurposes,
   frozenLegacyReaderSummaryRecoveryContract,
+  mimoReaderSummaryBackend,
+  mimoReaderSummaryModel,
   type FrozenLegacyReaderSummaryRecoveryContract,
 } from "./active-reader-summary-generation-profile";
 
@@ -50,6 +52,14 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
   readonly sink?: VerifiedReaderSummaryExecutionAttestationSink;
 }): Promise<void> => {
   const attestation = params.result.executionAttestation;
+  const mimoGeneration = params.taskRole === "summary" &&
+    params.legacyRecoveryContract === undefined &&
+    (params.command.purpose === activeReaderSummaryPurposes.generate ||
+      params.command.purpose === activeReaderSummaryPurposes.repair) &&
+    params.command.controls.modelBackend === mimoReaderSummaryBackend;
+  const expectedModel = mimoGeneration
+    ? mimoReaderSummaryModel
+    : activeReaderSummaryModel;
   if (
     params.result.status !== "completed" ||
     attestation === undefined ||
@@ -58,7 +68,11 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
     attestation.purpose !== params.command.purpose ||
     attestation.provider !== params.command.provider ||
     attestation.provider !== activeReaderSummaryProvider ||
-    attestation.model !== activeReaderSummaryModel ||
+    attestation.model !== expectedModel ||
+    params.command.controls.model !== expectedModel ||
+    (params.command.controls.modelBackend !== undefined &&
+      params.command.controls.modelBackend !== "openai-chatgpt" &&
+      !mimoGeneration) ||
     attestation.reasoningEffort !== expectedReasoningEffort(
       params.legacyRecoveryContract,
     ) ||

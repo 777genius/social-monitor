@@ -7,6 +7,13 @@ import { validHistoricalRegenerationSourceAuthority } from
   "./lib/reader-summary-production-day-regeneration-source-authority.mjs";
 import { publicationQualityContract } from "./lib/reader-summary-publication-quality-contract.mjs";
 import { validateDailyModelExecution } from "./lib/reader-summary-production-day-model-telemetry-verifier.mjs";
+import {
+  approvedCodexRuntimeVersion,
+  approvedLauncherSha256,
+  approvedMimoRuntimeVersion,
+  isPublicationRuntimeProvenance,
+  validatePublicationAttestationRecord,
+} from "./lib/reader-summary-publication-runtime-policy.mjs";
 const reportArtifactFormat = "reader-summary-production-day-run-v1";
 const reportGeneratedBy = "npm run run:reader-summary-production-day";
 const evidenceArtifactId = "durable-reader-summary-postgres-evidence-v1";
@@ -160,7 +167,7 @@ function validateModel(model, runtimeProvenance, provenance, reportContract) {
     stableJson(runtimeFields(model, runtimeProvenance)) !==
       stableJson(runtimeProvenance) ||
     !validNotExecutedModelFields(model, runtimeProvenance) ||
-    !isProductionRuntimeProvenance(
+    !isPublicationRuntimeProvenance(
       runtimeProvenance,
       reportContract !== "current",
     ) ||
@@ -234,7 +241,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
     fail("not_executed is valid only for selected=0 and no_signal");
   }
   const records = evidence.executionAttestations;
-  for (const record of records) validateAttestationRecord(record, allowLegacy);
+  for (const record of records) validatePublicationAttestationRecord(record, allowLegacy);
   if (
     new Set(records.map((record) => record.attestation.requestId)).size !==
     records.length
@@ -266,8 +273,9 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
   ) {
     fail("duplicate execution task attempt");
   }
+  const topicRecords = records.filter((record) => record.taskRole !== "summary");
   const identities = new Set(
-    records.map((record) =>
+    topicRecords.map((record) =>
       [
         record.attestation.provider,
         record.attestation.model,
@@ -278,10 +286,33 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
       ].join("\0"),
     ),
   );
-  if (identities.size !== 1) {
+  const summaryIdentity = records.find(
+    (record) => record.taskRole === "summary",
+  ).attestation;
+  const topicIdentity = topicLabels[0].attestation;
+  const sameCodexIdentity = [
+    "provider", "model", "reasoningEffort", "runtimeEngine",
+    "runtimePackageVersion", "launcherSha256",
+  ].every((field) => summaryIdentity[field] === topicIdentity[field]);
+  const validMimoPair = summaryIdentity.model === "mimo-v2.6-pro" &&
+    summaryIdentity.runtimePackageVersion === approvedMimoRuntimeVersion &&
+    summaryIdentity.launcherSha256 === approvedLauncherSha256 &&
+    (topicIdentity.model === "mimo-v2.6-pro"
+      ? topicIdentity.runtimePackageVersion === approvedMimoRuntimeVersion
+      : topicIdentity.model === "gpt-5.6-sol" &&
+        topicIdentity.runtimePackageVersion === approvedCodexRuntimeVersion);
+  if (
+    identities.size !== 1 ||
+    (summaryIdentity.model === "mimo-v2.6-pro" &&
+      topicRecords.some((record) =>
+        record.attestation.reasoningEffort !== "high")) ||
+    summaryIdentity.launcherSha256 !== topicIdentity.launcherSha256 ||
+    !(validMimoPair ||
+      (summaryIdentity.model === "gpt-5.6-sol" && sameCodexIdentity))
+  ) {
     fail("observed executor attestations do not agree");
   }
-  const identity = records[0].attestation;
+  const identity = summaryIdentity;
   const readback = evidence.durableReadback;
   const attestationSetSha256 = sha256Hex(Buffer.from(stableJson(records)));
   if (
@@ -295,7 +326,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
   return {
     execution: "attested",
     summaryModel: "agent-runtime",
-    physicalModel: "gpt-5.6-sol",
+    physicalModel: identity.model,
     provider: "codex",
     runtime: "subscription-runtime-cli",
     runtimeVersion: identity.runtimePackageVersion,
@@ -307,79 +338,14 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
     completedTaskCount: records.length,
     topicLabeler: {
       mode: "agent-runtime",
-      physicalModel: "gpt-5.6-sol",
+      physicalModel: topicIdentity.model,
       provider: "codex",
       runtime: "subscription-runtime-cli",
-      runtimeVersion: identity.runtimePackageVersion,
-      reasoningEffort: identity.reasoningEffort,
-      launcherSha256: identity.launcherSha256,
+      runtimeVersion: topicIdentity.runtimePackageVersion,
+      reasoningEffort: topicIdentity.reasoningEffort,
+      launcherSha256: topicIdentity.launcherSha256,
     },
   };
-}
-
-function validateAttestationRecord(record, allowLegacy) {
-  assertObject(record, "execution attestation record");
-  assertObject(record.attestation, "execution attestation");
-  const attestation = record.attestation;
-  const legacyPurposes = {
-    topic_label: "social_monitor.reader_summary.topic_map.label",
-    topic_relation: "social_monitor.reader_summary.topic_map.verify_relations",
-    story_relation: "social_monitor.reader_summary.verify_story_relations",
-    related_topic_relation:
-      "social_monitor.reader_summary.verify_related_topic_relations",
-  };
-  const activePurposes = {
-    topic_label: "social_monitor.reader_summary.topic_map.label.v2",
-    topic_relation:
-      "social_monitor.reader_summary.topic_map.verify_relations.v2",
-    story_relation:
-      "social_monitor.reader_summary.verify_story_relations.v2",
-    related_topic_relation:
-      "social_monitor.reader_summary.verify_related_topic_relations.v2",
-  };
-  const legacySummaryPurpose =
-    record.attempt === "primary"
-      ? "social_monitor.reader_summary.generate"
-      : record.attempt === "repair"
-        ? "social_monitor.reader_summary.repair"
-        : undefined;
-  const activeSummaryPurpose =
-    record.attempt === "primary"
-      ? "social_monitor.reader_summary.generate.v2"
-      : record.attempt === "repair"
-        ? "social_monitor.reader_summary.repair.v2"
-        : undefined;
-  const legacyPurpose = record.taskRole === "summary"
-    ? legacySummaryPurpose
-    : legacyPurposes[record.taskRole];
-  const activePurpose = record.taskRole === "summary"
-    ? activeSummaryPurpose
-    : activePurposes[record.taskRole];
-  const expectedEffort = attestation.purpose === activePurpose
-    ? "high"
-    : allowLegacy && attestation.purpose === legacyPurpose
-      ? "xhigh"
-      : undefined;
-  if (
-    typeof record.attempt !== "string" ||
-    record.attempt.length === 0 ||
-    !isSha256(record.normalizedOutputSha256) ||
-    expectedEffort === undefined ||
-    attestation.schemaVersion !== 1 ||
-    typeof attestation.requestId !== "string" ||
-    attestation.requestId.length === 0 ||
-    !isSha256(attestation.canonicalRequestSha256) ||
-    attestation.provider !== "codex" ||
-    attestation.model !== "gpt-5.6-sol" ||
-    attestation.reasoningEffort !== expectedEffort ||
-    attestation.runtimeEngine !== "subscription-runtime-cli" ||
-    !isConcreteVersion(attestation.runtimePackageVersion) ||
-    !isSha256(attestation.launcherSha256) ||
-    attestation.selectedOutputKind !== "structured_output" ||
-    !isSha256(attestation.selectedOutputSha256)
-  ) {
-    fail("executor execution attestation is malformed or mismatched");
-  }
 }
 
 function validateFrontendRuntimeConsistency(frontend, runtimeProvenance) {
@@ -399,37 +365,6 @@ function validateFrontendRuntimeConsistency(frontend, runtimeProvenance) {
   ) {
     fail("frontend runtime fields contradict executor attestations");
   }
-}
-
-function isProductionRuntimeProvenance(value, allowLegacy = false) {
-  if (isObject(value) && value.execution === "not_executed") {
-    return value.reason === "no_signal";
-  }
-  return (
-    isObject(value) &&
-    isObject(value.topicLabeler) &&
-    value.execution === "attested" &&
-    value.summaryModel === "agent-runtime" &&
-    value.physicalModel === "gpt-5.6-sol" &&
-    value.provider === "codex" &&
-    value.runtime === "subscription-runtime-cli" &&
-    isConcreteVersion(value.runtimeVersion) &&
-    (value.reasoningEffort === "high" ||
-      (allowLegacy && value.reasoningEffort === "xhigh")) &&
-    isSha256(value.launcherSha256) &&
-    isSha256(value.summaryContentSha256) &&
-    isSha256(value.topicMapSha256) &&
-    isSha256(value.attestationSetSha256) &&
-    Number.isInteger(value.completedTaskCount) &&
-    value.completedTaskCount >= 2 &&
-    value.topicLabeler.mode === "agent-runtime" &&
-    value.topicLabeler.physicalModel === "gpt-5.6-sol" &&
-    value.topicLabeler.provider === "codex" &&
-    value.topicLabeler.runtime === "subscription-runtime-cli" &&
-    value.topicLabeler.runtimeVersion === value.runtimeVersion &&
-    value.topicLabeler.reasoningEffort === value.reasoningEffort &&
-    value.topicLabeler.launcherSha256 === value.launcherSha256
-  );
 }
 
 function validateCaptureTimestamps(
@@ -583,14 +518,18 @@ function validateEvidence(
     !isConcreteVersion(runtimeHealth.runtimeVersion) ||
     !isSha256(runtimeHealth.launcherSha256) ||
     (runtimeProvenance.execution === "attested" &&
-      (runtimeHealth.runtimeVersion !== runtimeProvenance.runtimeVersion ||
+      ((runtimeProvenance.physicalModel === "mimo-v2.6-pro"
+        ? runtimeHealth.runtimeVersion !== approvedCodexRuntimeVersion ||
+          runtimeProvenance.runtimeVersion !== approvedMimoRuntimeVersion ||
+          runtimeHealth.launcherSha256 !== approvedLauncherSha256
+        : runtimeHealth.runtimeVersion !== runtimeProvenance.runtimeVersion) ||
         runtimeHealth.launcherSha256 !== runtimeProvenance.launcherSha256)) ||
     frontendBinding.format !== frontendArtifactFormat ||
     frontendBinding.sha256 !== sha256Hex(frontendBytes) ||
     frontendBinding.byteLength !== frontendBytes.byteLength ||
     frontendBinding.generatedAt !== frontend.generatedAt ||
     stableJson(capture.runtimeResult) !== stableJson(runtimeProvenance) ||
-    !isProductionRuntimeProvenance(
+    !isPublicationRuntimeProvenance(
       runtimeProvenance,
       reportContract !== "current",
     )

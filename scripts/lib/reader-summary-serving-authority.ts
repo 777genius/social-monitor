@@ -1,4 +1,5 @@
 import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports";
+import { resolveReaderSummaryDailyTaskIdentityFromEnv, resolveReaderSummaryGenerationIdentityFromEnv } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 
 import { probeProductionRuntimeLiveIdentity } from "./reader-summary-runtime-live-identity";
 
@@ -67,6 +68,7 @@ const summaryAuthority = (
   agentProvider: string | null,
 ): ReaderSummaryServingAuthority["summaryGenerator"] => {
   if (input.summaryModelMode === "agent-runtime") {
+    const generation = resolveReaderSummaryGenerationIdentityFromEnv(input.env);
     const reasoningPolicy = configured(
       input.env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
         input.env.AGENT_RUNTIME_REASONING_EFFORT,
@@ -78,10 +80,7 @@ const summaryAuthority = (
     return Object.freeze({
       mode: input.summaryModelMode,
       provider: requiredAgentProvider(agentProvider),
-      physicalModel: activePhysicalModel(configured(
-        input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-        "gpt-5.6-sol",
-      )),
+      physicalModel: generation.model,
       reasoningPolicy,
     });
   }
@@ -112,11 +111,8 @@ const topicLabelerAuthority = (
     ? {
         mode: input.topicLabelerMode,
         provider: requiredAgentProvider(agentProvider),
-        physicalModel: activePhysicalModel(configured(
-          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL ??
-            input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-          "gpt-5.6-sol",
-        )),
+        physicalModel: dailyPhysicalModel(input.env,
+          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL),
         reasoningPolicy: "high",
       }
     : {
@@ -135,11 +131,8 @@ const topicRelationVerifierAuthority = (
     ? {
         mode: input.topicLabelerMode,
         provider: requiredAgentProvider(agentProvider),
-        physicalModel: activePhysicalModel(configured(
-          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL ??
-            input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-          "gpt-5.6-sol",
-        )),
+        physicalModel: dailyPhysicalModel(input.env,
+          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL),
         reasoningPolicy: "high",
       }
     : {
@@ -158,11 +151,8 @@ const storyRelationVerifierAuthority = (
     ? {
         mode: input.summaryModelMode,
         provider: requiredAgentProvider(agentProvider),
-        physicalModel: activePhysicalModel(configured(
-          input.env.AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_MODEL ??
-            input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-          "gpt-5.6-sol",
-        )),
+        physicalModel: dailyPhysicalModel(input.env,
+          input.env.AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_MODEL),
         reasoningPolicy: "high",
       }
     : {
@@ -202,12 +192,10 @@ const requiredAgentProvider = (provider: string | null): string => {
   return provider;
 };
 
-const activePhysicalModel = (model: string): "gpt-5.6-sol" => {
-  if (model !== "gpt-5.6-sol") {
-    throw new Error("Current reader-summary physical model must be gpt-5.6-sol");
-  }
-  return model;
-};
+const dailyPhysicalModel = (
+  env: Readonly<Record<string, string | undefined>>,
+  purposeModel: string | undefined,
+): string => resolveReaderSummaryDailyTaskIdentityFromEnv(env, purposeModel).model;
 
 const configured = (value: string | undefined, fallback: string): string => {
   const normalized = value?.trim();

@@ -36,6 +36,7 @@ const dependencyNames = [
   "assessment-cli-progress.mjs",
   "pinned-codex-native-binary.mjs",
   "subscription-runtime-failure-details.mjs",
+  "mimo-key-file.mjs",
   "codex-worker-cli-usage.mjs",
   "codex-auth-pool-manifest.mjs",
   "codex-auth-pool-routing.mjs",
@@ -64,6 +65,12 @@ describe("subscription runtime installation admission", () => {
     await promisify(execFile)("tar", [
       "-xzf", archive, "-C", packageRoot, "--strip-components=1",
     ], { timeout: 10_000 });
+    const mimoPackageRoot = join(modules, "@vioxen/subscription-runtime-mimo");
+    await mkdir(mimoPackageRoot, { recursive: true });
+    await promisify(execFile)("tar", [
+      "-xzf", join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.5.tgz"),
+      "-C", mimoPackageRoot, "--strip-components=1",
+    ], { timeout: 10_000 });
     // Reuse provided dependencies without installing or changing their bytes.
     const providedModules = await realpath(join(process.cwd(), "node_modules"));
     for (const name of await readdir(providedModules)) {
@@ -71,7 +78,7 @@ describe("subscription runtime installation admission", () => {
       await symlink(join(providedModules, name), join(modules, name));
     }
     for (const name of await readdir(join(providedModules, "@vioxen"))) {
-      if (name === "subscription-runtime") continue;
+      if (name === "subscription-runtime" || name === "subscription-runtime-mimo") continue;
       await symlink(join(providedModules, "@vioxen", name), join(modules, "@vioxen", name));
     }
     expect(JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"))).toMatchObject({
@@ -115,6 +122,36 @@ describe("subscription runtime installation admission", () => {
       runtimePackageVersion: approvedSubscriptionRuntimePackageVersion,
       launcherSha256: approvedSubscriptionRuntimeLauncherSha256,
     });
+  });
+
+  it("attests the isolated MiMo backend version for summary admission", async () => {
+    const command = join(await copyInstallation(), launcherName);
+    await expect(new FileSubscriptionRuntimeInstallationInspector().inspect(
+      command, "xiaomi-mimo-token-plan",
+    )).resolves.toMatchObject({
+      runtimePackageVersion: approvedSubscriptionRuntimePackageVersion,
+      mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.5",
+    });
+  });
+
+  it("rejects a changed MiMo package only when that backend is admitted", async () => {
+    const command = join(await copyInstallation(), launcherName);
+    await rm(join(root!, "node_modules"));
+    const modules = join(root!, "node_modules/@vioxen");
+    await mkdir(join(modules, "subscription-runtime"), { recursive: true });
+    await mkdir(join(modules, "subscription-runtime-mimo"), { recursive: true });
+    await writeFile(join(modules, "subscription-runtime/package.json"), JSON.stringify({
+      name: "@vioxen/subscription-runtime", version: approvedSubscriptionRuntimePackageVersion,
+    }));
+    await writeFile(join(modules, "subscription-runtime-mimo/package.json"), JSON.stringify({
+      name: "@vioxen/subscription-runtime", version: "0.0.0-synthetic-unapproved",
+    }));
+    const inspector = new FileSubscriptionRuntimeInstallationInspector();
+    await expect(inspector.inspect(command)).resolves.toMatchObject({
+      runtimePackageVersion: approvedSubscriptionRuntimePackageVersion,
+    });
+    await expect(inspector.inspect(command, "xiaomi-mimo-token-plan"))
+      .rejects.toThrow("Installed MiMo subscription runtime version is not approved");
   });
 
   // Copy bytes without executing the wrapper or accessing provider/auth state.

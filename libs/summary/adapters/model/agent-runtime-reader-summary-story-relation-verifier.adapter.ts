@@ -36,7 +36,11 @@ import {
   activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
   assertActiveReaderSummaryProvider,
-  parseActiveReaderSummaryModel,
+  mimoReaderSummaryBackend,
+  mimoReaderSummaryModel,
+  resolveReaderSummaryDailyTaskIdentityFromEnv,
+  type ReaderSummaryGenerationBackend,
+  verifyAndRecordMimoDailyExecution,
 } from "./active-reader-summary-generation-profile";
 
 import { assertStoryRelationResponseSchema } from "./story-relation-response-schema";
@@ -45,7 +49,8 @@ export type AgentRuntimeReaderSummaryStoryRelationVerifierOptions = Pick<
   AgentRuntimeReaderSummaryModelAdapterOptions,
   "client" | "agentProvider" | "providerInstanceId" | "verifiedAttestationSink"
 > & {
-  readonly model?: typeof activeReaderSummaryModel;
+  readonly model?: typeof activeReaderSummaryModel | typeof mimoReaderSummaryModel;
+  readonly modelBackend?: ReaderSummaryGenerationBackend;
   readonly promptVersion?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
@@ -65,6 +70,7 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
   private readonly provider: "codex";
   private readonly providerInstanceId?: string;
   private readonly model: string;
+  private readonly modelBackend: ReaderSummaryGenerationBackend;
   private readonly promptVersion: string;
   private readonly relatedTopicPromptVersion: string;
   private readonly relatedTopicTimeoutMs: number;
@@ -78,6 +84,10 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
       assertActiveReaderSummaryProvider(options.agentProvider) ?? "codex";
     this.providerInstanceId = options.providerInstanceId;
     this.model = options.model ?? defaultModel;
+    this.modelBackend = options.modelBackend ?? "openai-chatgpt";
+    if (this.modelBackend === mimoReaderSummaryBackend && this.model !== mimoReaderSummaryModel) {
+      throw new Error("MiMo reader summary model conflicts with purpose policy");
+    }
     this.promptVersion = nonEmptyOrFallback(
       options.promptVersion,
       defaultPromptVersion,
@@ -158,6 +168,9 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
           ? "reader_summary.related_topic_relation.v1"
           : "reader_summary.story_relation.v1",
         model: this.model,
+        ...(this.modelBackend === mimoReaderSummaryBackend
+          ? { modelBackend: this.modelBackend, toolsEnabled: false, toolPolicy: "none" }
+          : {}),
         reasoningEffort: activeReaderSummaryReasoningEffort,
         maxOutputTokens: this.maxOutputTokens,
       },
@@ -191,7 +204,9 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
     const decisions = relatedTopicLane
       ? readDecisionEnvelope(raw)
       : normalizeBinaryDecisions(raw);
-    await verifyAndRecordReaderSummaryExecution({
+    await (this.modelBackend === mimoReaderSummaryBackend
+      ? verifyAndRecordMimoDailyExecution
+      : verifyAndRecordReaderSummaryExecution)({
       command,
       result,
       taskRole: relatedTopicLane ? "related_topic_relation" : "story_relation",
@@ -215,9 +230,8 @@ export const resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions = (
     client,
     agentProvider: shared.agentProvider,
     providerInstanceId: shared.providerInstanceId,
-    model: parseActiveReaderSummaryModel(
-      env.AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_MODEL ??
-        env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+    ...resolveReaderSummaryDailyTaskIdentityFromEnv(
+      env, env.AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_MODEL,
     ),
     promptVersion:
       env.AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_PROMPT_VERSION,

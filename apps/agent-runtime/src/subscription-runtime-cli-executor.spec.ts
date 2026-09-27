@@ -7,6 +7,75 @@ import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port
 import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-executor";
 
 describe("SubscriptionRuntimeCliExecutor", () => {
+  it("rejects MiMo without a key file before installation or execution", async () => {
+    const executor = new SubscriptionRuntimeCliExecutor({
+      command: "/synthetic/not-executed",
+      ephemeral: true,
+      installationInspector: {
+        inspect: async () => { throw new Error("installation must not be inspected"); },
+      },
+    });
+    const result = await executor.execute(validExecutionRequest({
+      purpose: "social_monitor.reader_summary.generate.v2",
+      controlsJson: '{"modelBackend":"xiaomi-mimo-token-plan"}',
+    }));
+    expect(result).toMatchObject({
+      status: "failed",
+      failure: {
+        code: "agent_runtime.mimo_key_unavailable",
+        retryable: false,
+        details: {},
+      },
+    });
+  });
+
+  it("passes a MiMo key file path only for the admitted summary backend", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agent-runtime-mimo-env-test-"));
+    const priorCodexAuthPath = process.env.CODEX_AUTH_JSON_PATH;
+    const priorScopedCodexAuthPath = process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH;
+    try {
+      process.env.CODEX_AUTH_JSON_PATH = "/run/synthetic/ambient-codex-auth";
+      process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH = "/run/synthetic/ambient-scoped-codex-auth";
+      const capturePath = join(root, "capture.json");
+      const cliPath = join(root, "fake-cli.mjs");
+      await writeFile(cliPath, [
+        "#!/usr/bin/env node",
+        'import { writeFile } from "node:fs/promises";',
+        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ path: process.env.AGENT_RUNTIME_MIMO_API_KEY_FILE, codexAuthPath: process.env.CODEX_AUTH_JSON_PATH, scopedCodexAuthPath: process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH, hasToken: process.env.MIMO_TOKEN_PLAN_API_KEY !== undefined, argv: process.argv.slice(2) }));`,
+        'process.stdout.write(JSON.stringify({ status: "completed", structuredOutput: {}, warnings: [] }));',
+      ].join("\n"));
+      await chmod(cliPath, 0o755);
+      const executor = new SubscriptionRuntimeCliExecutor({
+        command: cliPath,
+        ephemeral: true,
+        mimoApiKeyFile: "/run/synthetic/mimo-key",
+        codexAuthJsonPath: "/run/synthetic/codex-auth",
+        installationInspector,
+      });
+      const result = await executor.execute(validExecutionRequest({
+        purpose: "social_monitor.reader_summary.generate.v2",
+        controlsJson: '{"model":"mimo-v2.6-pro","modelBackend":"xiaomi-mimo-token-plan"}',
+      }));
+      const captured = JSON.parse(await readFile(capturePath, "utf8")) as {
+        path?: string; codexAuthPath?: string; scopedCodexAuthPath?: string; hasToken: boolean; argv: string[];
+      };
+      expect(result.status).toBe("completed");
+      expect(result.executionAttestation?.model).toBe("mimo-v2.6-pro");
+      expect(result.executionAttestation?.runtimePackageVersion).toBe("0.1.0-main.40-sm-mimo.5");
+      expect(captured.path).toBe("/run/synthetic/mimo-key");
+      expect(captured.hasToken).toBe(false);
+      expect(captured.codexAuthPath).toBeUndefined();
+      expect(captured.scopedCodexAuthPath).toBeUndefined();
+      expect(captured.argv).not.toContain("--codex-auth-json");
+    } finally {
+      if (priorCodexAuthPath === undefined) delete process.env.CODEX_AUTH_JSON_PATH;
+      else process.env.CODEX_AUTH_JSON_PATH = priorCodexAuthPath;
+      if (priorScopedCodexAuthPath === undefined) delete process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH;
+      else process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH = priorScopedCodexAuthPath;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   let tempDir: string | undefined;
   let previousCodexThreadId: string | undefined;
   const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
@@ -538,7 +607,12 @@ const validExecutionRequest = (
 });
 
 const installationInspector = {
-  inspect: async (command: string) => installation(command),
+  inspect: async (command: string, modelBackend?: "xiaomi-mimo-token-plan") => ({
+    ...installation(command),
+    ...(modelBackend === "xiaomi-mimo-token-plan"
+      ? { mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.5" }
+      : {}),
+  }),
 };
 
 const installation = (command: string) => ({

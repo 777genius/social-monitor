@@ -203,7 +203,7 @@ test("missing pool fails closed for assessment while ordinary worker selection s
   const dependencies = {
     lifecycle: lifecycleFixture(),
     admission: { profile: { provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "low" } },
-    authPool: undefined, isReaderPromotionV2Canary: false,
+    authPool: undefined, isReaderPromotionV2Canary: false, isMimoSummary: false,
     FileBackendCodexWorker: class { constructor() { directStarts++; } },
     resolvePinnedCodexBinaryPath: () => "/synthetic/unused", subscriptionOnlyCodexEnvironment: () => ({}),
   };

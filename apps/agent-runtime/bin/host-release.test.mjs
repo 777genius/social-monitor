@@ -15,6 +15,7 @@ const native = `node_modules/@openai/codex-linux-${process.arch}/vendor/${
 }/bin/codex`;
 const helpers = [
   "assessment-cli-progress.mjs", "assessment-cli-lifecycle.mjs",
+  "mimo-key-file.mjs",
   "pinned-codex-native-binary.mjs", "subscription-runtime-failure-details.mjs",
   "codex-worker-cli-usage.mjs", "codex-auth-pool-manifest.mjs",
   "codex-auth-pool-routing.mjs", "subscription-runtime-purpose-model-policy.mjs",
@@ -49,6 +50,10 @@ async function fixture(t) {
     name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.3",
   }));
   await put(root, "node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js", "vendored");
+  await put(root, "node_modules/@vioxen/subscription-runtime-mimo/package.json", JSON.stringify({
+    name: "@vioxen/subscription-runtime", version: "0.1.0-main.40-sm-mimo.5",
+  }));
+  await put(root, "node_modules/@vioxen/subscription-runtime-mimo/dist/worker-codex/index.js", "mimo");
   await put(root, "node_modules/@openai/codex/package.json", "{}");
   await put(root, `node_modules/@openai/codex-linux-${process.arch}/package.json`, "{}");
   await put(root, native, "native");

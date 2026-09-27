@@ -15,6 +15,7 @@ export type AgentRuntimeSettings = {
     readonly ephemeral: boolean;
     readonly localEncryptionKey?: string;
     readonly codexAuthJsonPath?: string;
+    readonly mimoApiKeyFile?: string;
     readonly claudeTokenEnv?: string;
     readonly model: string;
     readonly reasoningEffort: typeof activeReaderSummaryReasoningEffort;
@@ -38,6 +39,7 @@ export const resolveAgentRuntimeSettings = (
     codexAuthJsonPath: nonEmptyOptional(
       env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH ?? env.CODEX_AUTH_JSON_PATH,
     ),
+    mimoApiKeyFile: nonEmptyOptional(env.AGENT_RUNTIME_MIMO_API_KEY_FILE),
     claudeTokenEnv: nonEmptyOrFallback(
       env.AGENT_RUNTIME_CLAUDE_TOKEN_ENV,
       "CLAUDE_CODE_OAUTH_TOKEN",

@@ -105,6 +105,7 @@ export const runCli = async (params: {
   readonly command: string;
   readonly args: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
+  readonly modelBackend?: "xiaomi-mimo-token-plan";
   readonly timeoutMs: number;
   readonly assessment?: { readonly onProgress: (record: AssessmentProgress) => void };
 }): Promise<{
@@ -124,6 +125,10 @@ export const runCli = async (params: {
       return;
     }
     const env = { ...subscriptionRuntimeChildBaseEnv(process.env), ...params.env };
+    if (params.modelBackend === "xiaomi-mimo-token-plan") {
+      delete env.CODEX_AUTH_JSON_PATH;
+      delete env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH;
+    }
     delete env.SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS;
     if (params.assessment) env.SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS = String(deadline);
     const progress = params.assessment && createAssessmentProgressParser(params.assessment.onProgress);

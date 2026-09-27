@@ -16,12 +16,15 @@ const entry = "dist/apps/agent-runtime/src/main.js";
 const cli = "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs";
 const verifier = "apps/agent-runtime/bin/host-release.mjs";
 const vendoredCliImport = "node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js";
+const mimoRuntimeManifest = "node_modules/@vioxen/subscription-runtime-mimo/package.json";
+const mimoRuntimeVersion = "0.1.0-main.40-sm-mimo.5";
 const target = Object.freeze({ platform: process.platform, arch: process.arch });
 const codexNativeBinary = `node_modules/@openai/codex-linux-${target.arch}/vendor/${
   target.arch === "x64" ? "x86_64-unknown-linux-musl" : "aarch64-unknown-linux-musl"
 }/bin/codex`;
 const helpers = [
   "assessment-cli-progress.mjs", "assessment-cli-lifecycle.mjs",
+  "mimo-key-file.mjs",
   "pinned-codex-native-binary.mjs", "subscription-runtime-failure-details.mjs",
   "codex-worker-cli-usage.mjs", "codex-auth-pool-manifest.mjs",
   "codex-auth-pool-routing.mjs", "subscription-runtime-purpose-model-policy.mjs",
@@ -220,6 +223,8 @@ export async function verify(args) {
   await requireFile(root, "package.json");
   await requireFile(root, "package-lock.json");
   await requireFile(root, "node_modules/@vioxen/subscription-runtime/package.json");
+  await requireFile(root, mimoRuntimeManifest);
+  await requireFile(root, "node_modules/@vioxen/subscription-runtime-mimo/dist/worker-codex/index.js");
   await requireFile(root, vendoredCliImport);
   await requireFile(root, "node_modules/@openai/codex/package.json");
   await requireFile(root, `node_modules/@openai/codex-linux-${target.arch}/package.json`);
@@ -235,6 +240,11 @@ export async function verify(args) {
   const runtime = JSON.parse(await readFile(join(root, "node_modules/@vioxen/subscription-runtime/package.json"), "utf8"));
   if (runtime.name !== "@vioxen/subscription-runtime" || runtime.version !== "0.1.0-main.42-sm.3") {
     throw new Error("Vendored runtime identity mismatch");
+  }
+  const mimoRuntime = JSON.parse(await readFile(join(root, mimoRuntimeManifest), "utf8"));
+  if (mimoRuntime.name !== "@vioxen/subscription-runtime" ||
+      mimoRuntime.version !== mimoRuntimeVersion) {
+    throw new Error("Vendored MiMo runtime identity mismatch");
   }
   process.stdout.write("Host release staging verified\n");
 }
@@ -285,7 +295,7 @@ async function build(args) {
       await copyFile(join(sourceRoot, name), join(install, name));
       await copyFile(join(sourceRoot, name), join(stage, name));
     }
-    for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz"]) {
+    for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz", `vioxen-subscription-runtime-${mimoRuntimeVersion}.tgz`]) {
       await copyFile(join(sourceRoot, "vendor", name), join(install, "vendor", name));
     }
     await run("npm", ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], install);
@@ -302,6 +312,7 @@ async function build(args) {
     await pruneForbidden(stage);
     await requireFile(stage, entry);
     await requireFile(stage, vendoredCliImport);
+    await requireFile(stage, mimoRuntimeManifest);
     await requireFile(stage, "node_modules/@openai/codex/package.json");
     await requireFile(stage, `node_modules/@openai/codex-linux-${target.arch}/package.json`);
     await requireFile(stage, codexNativeBinary);

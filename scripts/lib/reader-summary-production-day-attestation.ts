@@ -3,11 +3,15 @@ import {
   isConcreteRuntimePackageVersion,
   isSha256Hex,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import {
+  approvedMimoRuntimePackageVersion,
+  approvedSubscriptionRuntimePackageVersion,
+} from "../../apps/agent-runtime/src/subscription-runtime-installation";
 
 export type ProductionDayExecutedRuntimeProvenance = {
   readonly execution: "attested";
   readonly summaryModel: "agent-runtime";
-  readonly physicalModel: "gpt-5.6-sol";
+  readonly physicalModel: "gpt-5.6-sol" | "mimo-v2.6-pro";
   readonly provider: "codex";
   readonly runtime: "subscription-runtime-cli";
   readonly runtimeVersion: string;
@@ -19,7 +23,7 @@ export type ProductionDayExecutedRuntimeProvenance = {
   readonly completedTaskCount: number;
   readonly topicLabeler: {
     readonly mode: "agent-runtime";
-    readonly physicalModel: "gpt-5.6-sol";
+    readonly physicalModel: "gpt-5.6-sol" | "mimo-v2.6-pro";
     readonly provider: "codex";
     readonly runtime: "subscription-runtime-cli";
     readonly runtimeVersion: string;
@@ -51,7 +55,7 @@ type ValidAttestationRecord = {
     readonly purpose: string;
     readonly canonicalRequestSha256: string;
     readonly provider: "codex";
-    readonly model: "gpt-5.6-sol";
+    readonly model: "gpt-5.6-sol" | "mimo-v2.6-pro";
     readonly reasoningEffort: "high" | "xhigh";
     readonly runtimeEngine: "subscription-runtime-cli";
     readonly runtimePackageVersion: string;
@@ -139,8 +143,9 @@ export const runtimeProvenanceFromExecutorAttestations = (
   if (new Set(taskAttempts).size !== taskAttempts.length) {
     violations.push("execution attestations contain duplicate task attempts");
   }
+  const topicRecords = records.filter((value) => value.taskRole !== "summary");
   const identities = new Set(
-    records.map((value) =>
+    topicRecords.map((value) =>
       [
         value.attestation.provider,
         value.attestation.model,
@@ -151,7 +156,24 @@ export const runtimeProvenanceFromExecutorAttestations = (
       ].join("\u0000"),
     ),
   );
-  if (identities.size !== 1) {
+  const summaryIdentity = summaries[0]?.attestation;
+  const topicIdentity = topicLabels[0]?.attestation;
+  if (identities.size !== 1 ||
+    (summaryIdentity?.model === "mimo-v2.6-pro" &&
+      topicRecords.some((value) =>
+        value.attestation.reasoningEffort !== "high")) ||
+    (summaryIdentity && topicIdentity &&
+    (summaryIdentity.launcherSha256 !== topicIdentity.launcherSha256 ||
+      (summaryIdentity.model === "mimo-v2.6-pro" &&
+        (topicIdentity.model === "mimo-v2.6-pro"
+          ? topicIdentity.runtimePackageVersion !== approvedMimoRuntimePackageVersion
+          : topicIdentity.model !== "gpt-5.6-sol" ||
+            topicIdentity.runtimePackageVersion !== approvedSubscriptionRuntimePackageVersion)) ||
+      (summaryIdentity.model === "gpt-5.6-sol" &&
+        [summaryIdentity.provider, summaryIdentity.model, summaryIdentity.reasoningEffort,
+          summaryIdentity.runtimeEngine, summaryIdentity.runtimePackageVersion].join("\u0000") !==
+        [topicIdentity.provider, topicIdentity.model, topicIdentity.reasoningEffort,
+          topicIdentity.runtimeEngine, topicIdentity.runtimePackageVersion].join("\u0000"))))) {
     violations.push(
       "all observed summary, topic and relation tasks must agree",
     );
@@ -160,7 +182,8 @@ export const runtimeProvenanceFromExecutorAttestations = (
     return null;
   }
 
-  const identity = records[0]!.attestation;
+  const identity = summaryIdentity!;
+  const labelIdentity = topicIdentity!;
   const durableReadback = record(evidence.durableReadback);
   const attestationSetSha256 = canonicalJsonSha256(records);
   if (
@@ -177,7 +200,7 @@ export const runtimeProvenanceFromExecutorAttestations = (
   return {
     execution: "attested",
     summaryModel: "agent-runtime",
-    physicalModel: "gpt-5.6-sol",
+    physicalModel: identity.model,
     provider: "codex",
     runtime: "subscription-runtime-cli",
     runtimeVersion: identity.runtimePackageVersion,
@@ -189,12 +212,12 @@ export const runtimeProvenanceFromExecutorAttestations = (
     completedTaskCount: records.length,
     topicLabeler: {
       mode: "agent-runtime",
-      physicalModel: "gpt-5.6-sol",
+      physicalModel: labelIdentity.model,
       provider: "codex",
       runtime: "subscription-runtime-cli",
-      runtimeVersion: identity.runtimePackageVersion,
-      reasoningEffort: identity.reasoningEffort,
-      launcherSha256: identity.launcherSha256,
+      runtimeVersion: labelIdentity.runtimePackageVersion,
+      reasoningEffort: labelIdentity.reasoningEffort,
+      launcherSha256: labelIdentity.launcherSha256,
     },
   };
 };
@@ -241,10 +264,12 @@ export const isProductionSubscriptionRuntimeProvenance = (
   return (
     value.execution === "attested" &&
     value.summaryModel === "agent-runtime" &&
-    value.physicalModel === "gpt-5.6-sol" &&
+    (value.physicalModel === "gpt-5.6-sol" || value.physicalModel === "mimo-v2.6-pro") &&
     value.provider === "codex" &&
     value.runtime === "subscription-runtime-cli" &&
     isConcreteRuntimePackageVersion(value.runtimeVersion) &&
+    (value.physicalModel !== "mimo-v2.6-pro" ||
+      (value.runtimeVersion === approvedMimoRuntimePackageVersion && value.reasoningEffort === "high")) &&
     (value.reasoningEffort === "high" || value.reasoningEffort === "xhigh") &&
     isSha256Hex(value.launcherSha256) &&
     isSha256Hex(value.summaryContentSha256) &&
@@ -261,7 +286,8 @@ export const isCurrentProductionSubscriptionRuntimeProvenance = (
   value: unknown,
 ): value is ProductionDayRuntimeProvenance =>
   isProductionSubscriptionRuntimeProvenance(value) &&
-  (value.execution === "not_executed" || value.reasoningEffort === "high");
+  (value.execution === "not_executed" ||
+    (value.reasoningEffort === "high" && value.topicLabeler.reasoningEffort === "high"));
 
 export const runtimeProvenanceEqual = (
   value: unknown,
@@ -293,21 +319,24 @@ const validateRecord = (
     violations.push(`${label} route is malformed`);
     return [];
   }
+  const expectedEffort = executionEffortForPurpose(taskRole, attempt, attestation.purpose);
   if (
     attestation.schemaVersion !== 1 ||
     !nonEmpty(attestation.requestId) ||
     !nonEmpty(attestation.purpose) ||
     !isSha256Hex(attestation.canonicalRequestSha256) ||
     attestation.provider !== "codex" ||
-    attestation.model !== "gpt-5.6-sol" ||
-    attestation.reasoningEffort !==
-      executionEffortForPurpose(taskRole, attempt, attestation.purpose) ||
+    (attestation.model === "mimo-v2.6-pro"
+      ? expectedEffort !== "high" ||
+        attestation.runtimePackageVersion !== approvedMimoRuntimePackageVersion
+      : attestation.model !== "gpt-5.6-sol") ||
+    attestation.reasoningEffort !== expectedEffort ||
     attestation.runtimeEngine !== "subscription-runtime-cli" ||
     !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
     !isSha256Hex(attestation.launcherSha256) ||
     attestation.selectedOutputKind !== "structured_output" ||
     !isSha256Hex(attestation.selectedOutputSha256) ||
-    executionEffortForPurpose(taskRole, attempt, attestation.purpose) === null
+    expectedEffort === null
   ) {
     violations.push(`${label} is malformed or mismatched`);
     return [];
@@ -365,11 +394,19 @@ const validTopicIdentity = (
 ): boolean =>
   isRecord(value) &&
   value.mode === "agent-runtime" &&
-  value.physicalModel === parent.physicalModel &&
+  (value.physicalModel === "gpt-5.6-sol" || value.physicalModel === "mimo-v2.6-pro") &&
   value.provider === parent.provider &&
   value.runtime === parent.runtime &&
-  value.runtimeVersion === parent.runtimeVersion &&
-  value.reasoningEffort === parent.reasoningEffort &&
+  isConcreteRuntimePackageVersion(value.runtimeVersion) &&
+  (parent.physicalModel === "mimo-v2.6-pro"
+    ? (value.physicalModel === "mimo-v2.6-pro"
+      ? value.runtimeVersion === approvedMimoRuntimePackageVersion
+      : value.runtimeVersion === approvedSubscriptionRuntimePackageVersion)
+    : value.physicalModel === "gpt-5.6-sol" && value.runtimeVersion === parent.runtimeVersion) &&
+  (value.reasoningEffort === "high" ||
+    (parent.physicalModel !== "mimo-v2.6-pro" &&
+      value.reasoningEffort === "xhigh")) &&
+  (parent.physicalModel === "mimo-v2.6-pro" || value.reasoningEffort === parent.reasoningEffort) &&
   value.launcherSha256 === parent.launcherSha256;
 
 const isTaskRole = (

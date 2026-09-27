@@ -103,6 +103,7 @@ async function launch(t, { hold, neverStop = false, failedTask = false, parentLo
   };
   const namespaces = new Map([...pure, ["node:fs/promises", fs], ["node:path", path],
     ["./pinned-codex-native-binary.mjs", { resolvePinnedCodexBinaryPath: () => "/synthetic/not-executable" }],
+    ["./mimo-key-file.mjs", { readMimoApiKeyFile: async () => { throw new Error("MiMo key access forbidden"); } }],
     ["./codex-auth-pool-manifest.mjs", { loadCodexAuthPoolFromEnv: async () => {
       await pause("account-setup"); return { accounts: [{ id: "synthetic-account", authJsonPath: "/synthetic/account" },
         ...(admissionFailure ? [{ id: "synthetic-second", authJsonPath: "/synthetic/second" }] : []),
