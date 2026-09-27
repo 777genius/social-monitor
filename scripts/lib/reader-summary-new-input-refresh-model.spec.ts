@@ -3,6 +3,7 @@ import { activeReaderSummaryPurposes as purposes } from "@social-monitor/summary
 import type { AgentRuntimeTaskCommand, ReaderSummaryPublicationCommand } from "@social-monitor/summary/ports";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import { admitSubscriptionRuntimeRequest } from "../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy";
+import type { AgentRuntimeExecutionRequest } from "../../apps/agent-runtime/src/agent-runtime-executor.port";
 import { refreshPublicationGuard } from "./reader-summary-new-input-refresh-execution";
 import { guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 import { attestRefreshExecution, completedRefreshModelRequest, refreshModelCommand, refreshTestRuntimeClient } from "./reader-summary-new-input-refresh-model.spec-support";
@@ -12,6 +13,52 @@ const admittedPurposes = [purposes.generate, purposes.storyRelations, purposes.t
   purposes.topicRelations, purposes.relatedTopicRelations];
 
 describe("refresh exact canonical request binding", () => {
+  it("admits MiMo generation with its attested package and retains Codex topic admission", async () => {
+    const generation = { ...refreshModelCommand(purposes.generate), controls: {
+      model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high",
+    } };
+    const execute = jest.fn((request: AgentRuntimeExecutionRequest) => attestRefreshExecution(request));
+    const runtime = guardedRefreshRuntime({ manifest: refreshManifest(),
+      delegate: refreshTestRuntimeClient(execute), assertLocal: () => undefined,
+      assertCurrent: async () => undefined, record: jest.fn() });
+    await expect(runtime.runTask(generation)).resolves.toMatchObject({ status: "completed",
+      executionAttestation: { model: "mimo-v2.6-pro", runtimePackageVersion: "0.1.0-main.40-sm-mimo.1" } });
+    await expect(runtime.runTask(refreshModelCommand(purposes.topicLabel))).resolves.toMatchObject({
+      status: "completed", executionAttestation: { model: "gpt-5.6-sol" },
+    });
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects MiMo on topic and MiMo generation without its exact backend before delegation", async () => {
+    for (const command of [
+      { ...refreshModelCommand(purposes.topicLabel), controls: { model: "mimo-v2.6-pro",
+        modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high" } },
+      { ...refreshModelCommand(purposes.generate), controls: { model: "mimo-v2.6-pro",
+        reasoningEffort: "high" } },
+    ]) {
+      const runTask = jest.fn();
+      const runtime = guardedRefreshRuntime({ manifest: refreshManifest(),
+        delegate: { runTask, checkHealth: jest.fn() }, assertLocal: () => undefined,
+        assertCurrent: async () => undefined, record: jest.fn() });
+      await expect(runtime.runTask(command)).rejects.toThrow(/authority rejected/);
+      expect(runTask).not.toHaveBeenCalled();
+    }
+  });
+
+  it("requires the pinned MiMo package in the generation execution attestation", async () => {
+    const command = { ...refreshModelCommand(purposes.generate), controls: {
+      model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high",
+    } };
+    const valid = await completedRefreshModelRequest(command);
+    const altered = { ...valid, executionAttestation: {
+      ...valid.executionAttestation!, runtimePackageVersion: "0.1.0-main.40-sm-mimo.2",
+    } };
+    const runtime = guardedRefreshRuntime({ manifest: refreshManifest(),
+      delegate: { runTask: async () => altered, checkHealth: jest.fn() },
+      assertLocal: () => undefined, assertCurrent: async () => undefined, record: jest.fn() });
+    await expect(runtime.runTask(command)).rejects.toThrow(/ambiguous/);
+    expect(() => runtime.assertUsable()).toThrow(/reconciliation/);
+  });
   it.each(admittedPurposes)("rejects a well-formed digest for alternate prompt bytes: %s", async (purpose) => {
     const command = refreshModelCommand(purpose);
     const correct = await completedRefreshModelRequest(command);

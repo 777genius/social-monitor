@@ -138,6 +138,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
             this.options.ephemeral,
             admission.profile,
           ),
+          modelBackend: admission.profile.modelBackend,
           timeoutMs: request.timeoutMs,
           ...(request.purpose === "social_monitor.relevance.assess_source_content.v1" ? {
             assessment: { onProgress: (fields) => this.logger.info("agent runtime assessment progress", {
@@ -187,6 +188,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
           command: admittedInstallation.executablePath,
           args: this.buildArgs(request, inputPath, admission.profile, true),
           env: this.executionEnvPatch(true, admission.profile),
+          modelBackend: admission.profile.modelBackend,
           timeoutMs: remainingTimeoutMs,
         }),
       );

@@ -1,4 +1,5 @@
 import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports";
+import { resolveReaderSummaryGenerationIdentityFromEnv } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 
 import { probeProductionRuntimeLiveIdentity } from "./reader-summary-runtime-live-identity";
 
@@ -67,6 +68,7 @@ const summaryAuthority = (
   agentProvider: string | null,
 ): ReaderSummaryServingAuthority["summaryGenerator"] => {
   if (input.summaryModelMode === "agent-runtime") {
+    const generation = resolveReaderSummaryGenerationIdentityFromEnv(input.env);
     const reasoningPolicy = configured(
       input.env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
         input.env.AGENT_RUNTIME_REASONING_EFFORT,
@@ -78,10 +80,7 @@ const summaryAuthority = (
     return Object.freeze({
       mode: input.summaryModelMode,
       provider: requiredAgentProvider(agentProvider),
-      physicalModel: activePhysicalModel(configured(
-        input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-        "gpt-5.6-sol",
-      )),
+      physicalModel: generation.model,
       reasoningPolicy,
     });
   }

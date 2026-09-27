@@ -31,13 +31,17 @@ describe("SubscriptionRuntimeCliExecutor", () => {
 
   it("passes a MiMo key file path only for the admitted summary backend", async () => {
     const root = await mkdtemp(join(tmpdir(), "agent-runtime-mimo-env-test-"));
+    const priorCodexAuthPath = process.env.CODEX_AUTH_JSON_PATH;
+    const priorScopedCodexAuthPath = process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH;
     try {
+      process.env.CODEX_AUTH_JSON_PATH = "/run/synthetic/ambient-codex-auth";
+      process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH = "/run/synthetic/ambient-scoped-codex-auth";
       const capturePath = join(root, "capture.json");
       const cliPath = join(root, "fake-cli.mjs");
       await writeFile(cliPath, [
         "#!/usr/bin/env node",
         'import { writeFile } from "node:fs/promises";',
-        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ path: process.env.AGENT_RUNTIME_MIMO_API_KEY_FILE, hasToken: process.env.MIMO_TOKEN_PLAN_API_KEY !== undefined, argv: process.argv.slice(2) }));`,
+        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ path: process.env.AGENT_RUNTIME_MIMO_API_KEY_FILE, codexAuthPath: process.env.CODEX_AUTH_JSON_PATH, scopedCodexAuthPath: process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH, hasToken: process.env.MIMO_TOKEN_PLAN_API_KEY !== undefined, argv: process.argv.slice(2) }));`,
         'process.stdout.write(JSON.stringify({ status: "completed", structuredOutput: {}, warnings: [] }));',
       ].join("\n"));
       await chmod(cliPath, 0o755);
@@ -53,15 +57,21 @@ describe("SubscriptionRuntimeCliExecutor", () => {
         controlsJson: '{"model":"mimo-v2.6-pro","modelBackend":"xiaomi-mimo-token-plan"}',
       }));
       const captured = JSON.parse(await readFile(capturePath, "utf8")) as {
-        path?: string; hasToken: boolean; argv: string[];
+        path?: string; codexAuthPath?: string; scopedCodexAuthPath?: string; hasToken: boolean; argv: string[];
       };
       expect(result.status).toBe("completed");
       expect(result.executionAttestation?.model).toBe("mimo-v2.6-pro");
       expect(result.executionAttestation?.runtimePackageVersion).toBe("0.1.0-main.40-sm-mimo.1");
       expect(captured.path).toBe("/run/synthetic/mimo-key");
       expect(captured.hasToken).toBe(false);
+      expect(captured.codexAuthPath).toBeUndefined();
+      expect(captured.scopedCodexAuthPath).toBeUndefined();
       expect(captured.argv).not.toContain("--codex-auth-json");
     } finally {
+      if (priorCodexAuthPath === undefined) delete process.env.CODEX_AUTH_JSON_PATH;
+      else process.env.CODEX_AUTH_JSON_PATH = priorCodexAuthPath;
+      if (priorScopedCodexAuthPath === undefined) delete process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH;
+      else process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH = priorScopedCodexAuthPath;
       await rm(root, { recursive: true, force: true });
     }
   });

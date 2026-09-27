@@ -79,6 +79,30 @@ describe("reader summary current serving authority", () => {
     });
   });
 
+  it("reports MiMo for generation while topic and relation authority stays Codex", async () => {
+    const authority = await resolveReaderSummaryServingAuthority({
+      summaryModelMode: "agent-runtime",
+      topicLabelerMode: "agent-runtime",
+      env: {
+        AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+        AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "mimo-v2.6-pro",
+      },
+      agentRuntimeClient: { checkHealth: servingHealth() }, checkedAt,
+    });
+    expect(authority.summaryGenerator).toMatchObject({ provider: "codex", physicalModel: "mimo-v2.6-pro" });
+    expect(authority.topicLabeler.physicalModel).toBe("gpt-5.6-sol");
+    expect(authority.topicRelationVerifier.physicalModel).toBe("gpt-5.6-sol");
+    expect(authority.storyRelationVerifier.physicalModel).toBe("gpt-5.6-sol");
+  });
+
+  it("rejects an unknown generation backend", async () => {
+    await expect(resolveReaderSummaryServingAuthority({
+      summaryModelMode: "agent-runtime", topicLabelerMode: "agent-runtime",
+      env: { AGENT_RUNTIME_READER_SUMMARY_BACKEND: "other" },
+      agentRuntimeClient: { checkHealth: servingHealth() }, checkedAt,
+    })).rejects.toThrow(/BACKEND/);
+  });
+
   it("retains OpenAI summary authority when topic components use agent runtime", async () => {
     const authority = await resolveReaderSummaryServingAuthority({
       summaryModelMode: "openai-responses",
