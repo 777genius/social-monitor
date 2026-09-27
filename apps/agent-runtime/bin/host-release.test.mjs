@@ -51,7 +51,7 @@ async function fixture(t) {
   }));
   await put(root, "node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js", "vendored");
   await put(root, "node_modules/@vioxen/subscription-runtime-mimo/package.json", JSON.stringify({
-    name: "@vioxen/subscription-runtime", version: "0.1.0-main.40-sm-mimo.1",
+    name: "@vioxen/subscription-runtime", version: "0.1.0-main.40-sm-mimo.2",
   }));
   await put(root, "node_modules/@vioxen/subscription-runtime-mimo/dist/worker-codex/index.js", "mimo");
   await put(root, "node_modules/@openai/codex/package.json", "{}");

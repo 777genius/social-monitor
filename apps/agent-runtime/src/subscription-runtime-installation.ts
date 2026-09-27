@@ -14,7 +14,7 @@ import {
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.42-sm.3";
 export const approvedMimoRuntimePackageVersion =
-  "0.1.0-main.40-sm-mimo.1";
+  "0.1.0-main.40-sm-mimo.2";
 export const approvedSubscriptionRuntimeLauncherSha256 =
   "edca0734a4eb9680413b21c6f54e2e9db25adf9ab2a9ef0b3fa2ecdb675f49ac";
 
@@ -39,7 +39,7 @@ const approvedSubscriptionRuntimeDependencies = Object.freeze({
   "codex-auth-pool-routing.mjs":
     "5b76a13787a92852282488d5beec8ebb3bfd27f9dfbc059daa8bb521b5524c49",
   "subscription-runtime-purpose-model-policy.mjs":
-    "573cc9ad18fc3b20868f61e0aee623a17f0e3304553ebb9a9e5bda0906c6855a",
+    "cea9f7361b142779e3b4e674ec6ff3abed83c819998ec725e8fd4f78f3190ff7",
   "reader-promotion-v2-canary-contract.cjs":
     "13432d41d7999d15f22880017e73cbd943c209db62161b2a6a2bec6b0766775c",
 });

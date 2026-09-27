@@ -18,7 +18,7 @@ describe("production day purpose-specific executor identity", () => {
   it("accepts pinned MiMo generation with an independent Codex topic runtime identity", () => {
     const records = productionExecutionAttestations();
     records[0]!.attestation.model = "mimo-v2.6-pro";
-    records[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.1";
+    records[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.2";
     records[1]!.attestation.runtimePackageVersion = "0.1.0-main.42-sm.3";
     records.push({ ...structuredClone(records[1]!), taskRole: "topic_relation",
       attestation: { ...records[1]!.attestation, requestId: "topic-relation-request",
@@ -27,7 +27,7 @@ describe("production day purpose-specific executor identity", () => {
     const provenance = runtimeProvenanceFromExecutorAttestations(evidenceWith(records), violations);
     expect(violations).toEqual([]);
     expect(provenance).toMatchObject({
-      physicalModel: "mimo-v2.6-pro", runtimeVersion: "0.1.0-main.40-sm-mimo.1",
+      physicalModel: "mimo-v2.6-pro", runtimeVersion: "0.1.0-main.40-sm-mimo.2",
       topicLabeler: { physicalModel: "gpt-5.6-sol", runtimeVersion: "0.1.0-main.42-sm.3" },
     });
     expect(isCurrentProductionSubscriptionRuntimeProvenance(provenance)).toBe(true);
@@ -48,7 +48,7 @@ describe("production day purpose-specific executor identity", () => {
 
     const wrongRole = productionExecutionAttestations();
     wrongRole[1]!.attestation.model = "mimo-v2.6-pro";
-    wrongRole[1]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.1";
+    wrongRole[1]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.2";
     expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(wrongRole), [])).toBeNull();
   });
 });

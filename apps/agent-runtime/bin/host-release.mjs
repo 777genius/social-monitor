@@ -17,7 +17,7 @@ const cli = "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mj
 const verifier = "apps/agent-runtime/bin/host-release.mjs";
 const vendoredCliImport = "node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js";
 const mimoRuntimeManifest = "node_modules/@vioxen/subscription-runtime-mimo/package.json";
-const mimoRuntimeVersion = "0.1.0-main.40-sm-mimo.1";
+const mimoRuntimeVersion = "0.1.0-main.40-sm-mimo.2";
 const target = Object.freeze({ platform: process.platform, arch: process.arch });
 const codexNativeBinary = `node_modules/@openai/codex-linux-${target.arch}/vendor/${
   target.arch === "x64" ? "x86_64-unknown-linux-musl" : "aarch64-unknown-linux-musl"

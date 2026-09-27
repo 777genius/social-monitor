@@ -68,7 +68,7 @@ describe("subscription runtime installation admission", () => {
     const mimoPackageRoot = join(modules, "@vioxen/subscription-runtime-mimo");
     await mkdir(mimoPackageRoot, { recursive: true });
     await promisify(execFile)("tar", [
-      "-xzf", join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.1.tgz"),
+      "-xzf", join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.2.tgz"),
       "-C", mimoPackageRoot, "--strip-components=1",
     ], { timeout: 10_000 });
     // Reuse provided dependencies without installing or changing their bytes.
@@ -130,7 +130,7 @@ describe("subscription runtime installation admission", () => {
       command, "xiaomi-mimo-token-plan",
     )).resolves.toMatchObject({
       runtimePackageVersion: approvedSubscriptionRuntimePackageVersion,
-      mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.1",
+      mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.2",
     });
   });
 

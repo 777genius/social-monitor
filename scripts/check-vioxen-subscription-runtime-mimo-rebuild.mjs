@@ -11,11 +11,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const commit = "1c6b43f2de66956f3f48a8aeb70d2889e5f8693a";
-const bundleSha = "8a2151b520755b8b693079cef2bb8d51b7d3fcc5979f239227f8fece318c19be";
-const archiveSha = "adbe8005ada06c6b562943ec0b6fe11fd63c640d7fdf2b7facab0b506c11e5aa";
-const version = "0.1.0-main.40-sm-mimo.1";
-const bundle = join(root, "vendor/vioxen-subscription-runtime-1c6b43f.bundle");
+const commit = "951aa18c060e6aa28006867dd124aa5a2905d951";
+const bundleSha = "c7e57e5471299ddcb4290c8f145e97c16de167a0e6ea6b9839324d3713f6b42e";
+const archiveSha = "39ac5b044660d6cbc0ff7c14def392f1c9ddea6b18f872495be7d5c5bd1dd3ed";
+const version = "0.1.0-main.40-sm-mimo.2";
+const bundle = join(root, "vendor/vioxen-subscription-runtime-951aa18.bundle");
 const archive = join(root, `vendor/vioxen-subscription-runtime-${version}.tgz`);
 const scratch = await mkdtemp(join(tmpdir(), "social-monitor-mimo-rebuild-"));
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
