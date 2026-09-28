@@ -77,7 +77,7 @@ export class PrismaReaderValueAssessmentStore implements ReaderValueAssessmentSt
       scope.tenantId,scope.workspaceId,configVersion,leaseToken,pinnedOnly,
       scope.interestId ?? null);
       return mapFirst(rows);
-    });
+    }, 'ReadCommitted');
   }
 
   authorizeDispatch(claim: ReaderValueAssessment, pinnedOnly: boolean): Promise<boolean> {

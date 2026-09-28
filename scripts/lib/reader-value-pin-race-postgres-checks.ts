@@ -22,7 +22,7 @@ class ControlledCommitClient implements AssessmentSqlClient {
   $queryRawUnsafe<T>(): Promise<T> { throw new Error('Scoped transaction required'); }
   $executeRawUnsafe(): Promise<number> { throw new Error('Scoped transaction required'); }
   $transaction<T>(operation: (tx: AssessmentSqlTransaction) => Promise<T>,
-    options: {isolationLevel:'Serializable';maxWait:number;timeout:number}): Promise<T> {
+    options: {isolationLevel:'Serializable'|'ReadCommitted';maxWait:number;timeout:number}): Promise<T> {
     return this.client.$transaction(async (tx) => {
       const pause = this.first && this.hold; this.first=false;
       this.pid = (await tx.$queryRawUnsafe<{pid:number}[]>('SELECT pg_backend_pid() AS pid'))[0]!.pid;

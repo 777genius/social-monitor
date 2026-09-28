@@ -716,6 +716,7 @@ model FeedItem {
   @@index([tenantId, workspaceId, interestId, publishedAt(sort: Desc), id(sort: Desc)], map: "feed_items_interest_published_keyset_idx")
   @@index([tenantId, workspaceId, observedAt(sort: Desc), id(sort: Desc)], map: "feed_items_workspace_observed_keyset_idx")
   @@index([tenantId, workspaceId, interestId, observedAt(sort: Desc), id(sort: Desc)], map: "feed_items_interest_observed_keyset_idx")
+  @@index([tenantId, workspaceId, interestId, sourceItemId, status], map: "reader_value_live_source_lookup_idx")
   @@map("feed_items")
 }
 
