@@ -37,7 +37,7 @@ describe("opt-in strict gRPC admission", () => {
     env = {
       AGENT_RUNTIME_STRICT_PRODUCTION_ADMISSION: "1",
       AGENT_RUNTIME_GRPC_BIND: "127.0.0.1:50052",
-      AGENT_RUNTIME_SERVICE_TOKEN: "x",
+      AGENT_RUNTIME_SERVICE_TOKEN: "token-value",
       AGENT_RUNTIME_PROJECT_WORKSPACE_ROOT: workspace,
       AGENT_RUNTIME_STATE_ROOT: state,
       AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: pool,
@@ -67,7 +67,9 @@ describe("opt-in strict gRPC admission", () => {
       await mkdir(state);
       await writeFile(key, "synthetic-key");
       await chmod(key, 0o600);
-      const { AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: _pool, AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: _manifest, ...withoutPool } = env;
+      const withoutPool = { ...env };
+      delete withoutPool.AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT;
+      delete withoutPool.AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST;
       const mimoEnv = {
         ...withoutPool,
         AGENT_RUNTIME_PROJECT_WORKSPACE_ROOT: project,
@@ -84,9 +86,9 @@ describe("opt-in strict gRPC admission", () => {
       const service = createAgentRuntimeGrpcService({
         execute,
         checkHealth: async () => ({ healthy: true, runtimeEngine: "fixture", runtimeVersion: "1", warnings: [] }),
-      }, { serviceToken: "x", strictAdmission: settings.strictAdmission });
+      }, { serviceToken: "token-value", strictAdmission: settings.strictAdmission });
       const metadata = new Metadata();
-      metadata.set("authorization", "Bearer x");
+      metadata.set("authorization", "Bearer token-value");
       const run = (tenantId: string, workspaceId: string) => new Promise<status | undefined>((resolve) => {
         service.runAgentTask({ request: { ...request(project), tenantId, workspaceId }, metadata } as Parameters<typeof service.runAgentTask>[0],
           (error) => resolve(error?.code));
@@ -99,7 +101,7 @@ describe("opt-in strict gRPC admission", () => {
       const unboundService = createAgentRuntimeGrpcService({
         execute,
         checkHealth: async () => ({ healthy: true, runtimeEngine: "fixture", runtimeVersion: "1", warnings: [] }),
-      }, { serviceToken: "x", strictAdmission: { ...settings.strictAdmission!, allowedScope: undefined } });
+      }, { serviceToken: "token-value", strictAdmission: { ...settings.strictAdmission!, allowedScope: undefined } });
       expect(await new Promise<status | undefined>((resolve) => {
         unboundService.runAgentTask({ request: request(project), metadata } as Parameters<typeof service.runAgentTask>[0],
           (error) => resolve(error?.code));
@@ -198,11 +200,11 @@ describe("opt-in strict gRPC admission", () => {
       AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace",
     };
     const service = createAgentRuntimeGrpcService(executor, {
-      serviceToken: "x",
+      serviceToken: "token-value",
       strictAdmission: resolveAgentRuntimeSettings(scopedEnv).strictAdmission,
     });
     const metadata = new Metadata();
-    metadata.set("authorization", "Bearer x");
+    metadata.set("authorization", "Bearer token-value");
     const run = (tenantId: string, workspaceId: string) => new Promise<{ code?: status; message?: string }>((resolve) => {
       service.runAgentTask({ request: { ...request(workspace), tenantId, workspaceId }, metadata } as Parameters<typeof service.runAgentTask>[0],
         (error) => resolve({ code: error?.code, message: error ? (error as Error).message : undefined }));
@@ -307,7 +309,7 @@ describe("opt-in strict gRPC admission", () => {
       checkHealth: async () => { calls.push("health"); return { healthy: true, runtimeEngine: "fixture", runtimeVersion: "1", warnings: [] }; },
     };
     const service = createAgentRuntimeGrpcService(executor, {
-      serviceToken: "x",
+      serviceToken: "token-value",
       strictAdmission: resolveAgentRuntimeSettings(env).strictAdmission,
     });
     const invokeTask = (cwd: string, metadata: Metadata) => new Promise<status | undefined>((resolve) => {
