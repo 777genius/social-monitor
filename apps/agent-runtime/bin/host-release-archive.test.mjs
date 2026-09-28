@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { appendFile, chmod, copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { tmpdir } from "node:os";
+import { appendFile, chmod, copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -37,10 +37,41 @@ async function restoreWritableDirectories(dir) {
   for (const name of await readdir(dir)) await restoreWritableDirectories(join(dir, name));
 }
 
+async function safeScratchParent(parent, serviceUid) {
+  let childUid = process.getuid();
+  for (let path = resolve(parent); ; path = dirname(path)) {
+    const st = await lstat(path).catch(() => undefined);
+    if (!st?.isDirectory() || await realpath(path).catch(() => undefined) !== path ||
+        ![0, process.getuid()].includes(st.uid) || st.uid === serviceUid) {
+      return false;
+    }
+    if ((st.mode & 0o022) !== 0 && ((st.mode & 0o1000) === 0 || childUid !== 0)) {
+      return false;
+    }
+    if (path === dirname(path)) return true;
+    childUid = st.uid;
+  }
+}
+
+async function createScratch(serviceUid) {
+  // A non-root user's new child under /tmp fails the release ancestor check.
+  const checkout = await realpath(process.cwd());
+  for (const parent of [homedir(), tmpdir()]) {
+    if (resolve(parent) === checkout || resolve(parent).startsWith(`${checkout}/`)) continue;
+    if (!(await safeScratchParent(parent, serviceUid))) continue;
+    try {
+      return await mkdtemp(join(parent, "sm-host-archive-test-"));
+    } catch (error) {
+      if (!["EACCES", "ENOENT", "EROFS"].includes(error.code)) throw error;
+    }
+  }
+  throw new Error("No writable scratch parent satisfies the release ancestor policy");
+}
+
 test("builds a deterministic, extractable host release from a disposable synthetic checkout", {
   skip: process.platform !== "linux",
 }, async (t) => {
-  const temp = await mkdtemp(join(tmpdir(), "sm-host-archive-test-"));
+  const temp = await createScratch(process.getuid() + 1);
   t.after(async () => {
     await restoreWritableDirectories(temp);
     await rm(temp, { recursive: true, force: true });
