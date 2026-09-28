@@ -93,6 +93,16 @@ const immutablePoolPath = (root: string, path: string): void => {
   }
 };
 
+const systemdMimoKeyPath = /^\/run\/credentials\/[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}\.service\/mimo_key$/;
+const requireServiceUnwritable = (path: string, message: string): void => {
+  try {
+    accessSync(path, constants.W_OK);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EACCES") return;
+  }
+  throw new Error(message);
+};
+
 const mimoKeyFile = (value: string | undefined, workspaceRoot: string, stateRoot: string): void => {
   const label = "AGENT_RUNTIME_MIMO_API_KEY_FILE";
   const keyPath = file(value, label);
@@ -100,15 +110,39 @@ const mimoKeyFile = (value: string | undefined, workspaceRoot: string, stateRoot
     throw new Error(`${label} must be outside workspace and state roots`);
   }
   const metadata = statSync(keyPath);
+  const systemdCopy = systemdMimoKeyPath.test(keyPath);
+  const ownerOnly = (metadata.mode & 0o400) !== 0 && (metadata.mode & 0o077) === 0;
+  const systemdReadable = systemdCopy && metadata.uid === 0 && metadata.gid === 0 &&
+    (metadata.mode & 0o7777) === 0o440;
   if (metadata.size < 1 || metadata.size > 4096 ||
-      (metadata.mode & 0o400) === 0 || (metadata.mode & 0o077) !== 0 || metadata.nlink !== 1) {
+      (!ownerOnly && !systemdReadable) || metadata.nlink !== 1) {
     throw new Error(`${label} must be a bounded owner-only regular file`);
   }
   let parent = parse(keyPath).root;
+  if (systemdReadable) {
+    const rootMetadata = statSync(parent);
+    if (!rootMetadata.isDirectory() || rootMetadata.uid !== 0 || rootMetadata.gid !== 0 ||
+        (rootMetadata.mode & 0o022) !== 0) {
+      throw new Error(`${label} requires immutable trusted parent directories`);
+    }
+    requireServiceUnwritable(parent, `${label} requires immutable trusted parent directories`);
+  }
   for (const part of keyPath.slice(parent.length).split(sep).filter(Boolean).slice(0, -1)) {
     parent = join(parent, part);
-    if (!statSync(parent).isDirectory() || (statSync(parent).mode & 0o022) !== 0) {
+    const directoryMetadata = statSync(parent);
+    if (!directoryMetadata.isDirectory() || (directoryMetadata.mode & 0o022) !== 0 ||
+        (systemdReadable && (directoryMetadata.uid !== 0 || directoryMetadata.gid !== 0))) {
       throw new Error(`${label} requires immutable trusted parent directories`);
+    }
+    if (systemdReadable) requireServiceUnwritable(parent, `${label} requires immutable trusted parent directories`);
+  }
+  if (systemdReadable) {
+    try {
+      accessSync(keyPath, constants.R_OK);
+      requireServiceUnwritable(keyPath, `${label} must be readable and not writable by the service`);
+      return;
+    } catch {
+      throw new Error(`${label} must be readable and not writable by the service`);
     }
   }
 };

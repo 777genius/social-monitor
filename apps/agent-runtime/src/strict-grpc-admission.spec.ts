@@ -1,4 +1,5 @@
 import { Metadata, status } from "@grpc/grpc-js";
+import * as fs from "node:fs";
 import { chmod, link, mkdir, mkdtemp, realpath, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -164,6 +165,98 @@ describe("opt-in strict gRPC admission", () => {
       expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("trusted parent");
     } finally {
       await rm(trustedRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("admits only a root-owned, read-only systemd MiMo copy with trusted ancestors", () => {
+    const mutableFs = jest.requireActual<typeof fs>("node:fs");
+    const key = "/run/credentials/social-monitor-summary-agent.service/mimo_key";
+    const wrongUnitKey = "/run/credentials/unsafe.unit/mimo_key";
+    const parents = ["/", "/run", "/run/credentials", "/run/credentials/social-monitor-summary-agent.service"];
+    const realStat = fs.statSync;
+    const realLstat = fs.lstatSync;
+    const realRealpath = fs.realpathSync;
+    const realAccess = fs.accessSync;
+    const directory = { ...realStat(fixtureRoot), uid: 0, gid: 0, mode: 0o40755,
+      isDirectory: () => true, isSymbolicLink: () => false } as fs.Stats;
+    const credential = { ...realStat(env.AGENT_RUNTIME_CLI_PATH!), uid: 0, gid: 0,
+      mode: 0o100440, size: 20, nlink: 1, isFile: () => true, isSymbolicLink: () => false } as fs.Stats;
+    const directoryModes = new Map(parents.map((path) => [path, { ...directory }]));
+    directoryModes.set("/run/credentials/unsafe.unit", { ...directory });
+    const keyMetadata = { ...credential };
+    let readable = true;
+    let writable = false;
+    let writableParent = false;
+    let symlink = false;
+    jest.spyOn(mutableFs, "statSync").mockImplementation(((path: fs.PathLike) => {
+      const name = String(path);
+      if (name === key || name === wrongUnitKey) return keyMetadata;
+      if (directoryModes.has(name)) return directoryModes.get(name)!;
+      return realStat(path);
+    }) as typeof fs.statSync);
+    jest.spyOn(mutableFs, "lstatSync").mockImplementation(((path: fs.PathLike) => {
+      if (String(path) === key || String(path) === wrongUnitKey || directoryModes.has(String(path))) {
+        return { ...(String(path) === key || String(path) === wrongUnitKey ? keyMetadata : directoryModes.get(String(path))!),
+          isSymbolicLink: () => symlink && String(path) === parents[3] };
+      }
+      return realLstat(path);
+    }) as typeof fs.lstatSync);
+    jest.spyOn(mutableFs, "realpathSync").mockImplementation(((path: fs.PathLike) =>
+      String(path) === key || String(path) === wrongUnitKey ? String(path) :
+        realRealpath(path)) as typeof fs.realpathSync);
+    jest.spyOn(mutableFs, "accessSync").mockImplementation((path, mode) => {
+      if (directoryModes.has(String(path)) && mode === fs.constants.W_OK) {
+        if (writableParent) return;
+        throw Object.assign(new Error("denied"), { code: "EACCES" });
+      }
+      if (String(path) !== key) return realAccess(path, mode);
+      if (mode === fs.constants.R_OK && readable) return;
+      if (mode === fs.constants.W_OK && writable) return;
+      throw Object.assign(new Error("denied"), { code: "EACCES" });
+    });
+    const withoutPool = { ...env };
+    delete withoutPool.AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT;
+    delete withoutPool.AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST;
+    const mimoEnv = { ...withoutPool, AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_ALLOWED_TENANT_ID: "fixture-tenant", AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace",
+      AGENT_RUNTIME_MIMO_API_KEY_FILE: key };
+    const admits = (path = key) => resolveAgentRuntimeSettings({ ...mimoEnv, AGENT_RUNTIME_MIMO_API_KEY_FILE: path });
+    try {
+      expect(admits().strictAdmission).toBeDefined();
+      for (const mode of [0o640, 0o644]) {
+        keyMetadata.mode = 0o100000 | mode;
+        expect(admits).toThrow();
+      }
+      keyMetadata.mode = 0o100440;
+      keyMetadata.uid = 1;
+      expect(admits).toThrow();
+      keyMetadata.uid = 0;
+      keyMetadata.gid = 1;
+      expect(admits).toThrow();
+      keyMetadata.gid = 0;
+      keyMetadata.nlink = 2;
+      expect(admits).toThrow();
+      keyMetadata.nlink = 1;
+      directoryModes.get(parents[3]!)!.mode = 0o40775;
+      expect(admits).toThrow();
+      directoryModes.get(parents[3]!)!.mode = 0o40755;
+      directoryModes.get(parents[3]!)!.uid = 1;
+      expect(admits).toThrow();
+      directoryModes.get(parents[3]!)!.uid = 0;
+      writableParent = true;
+      expect(admits).toThrow();
+      writableParent = false;
+      symlink = true;
+      expect(admits).toThrow();
+      symlink = false;
+      readable = false;
+      expect(admits).toThrow();
+      readable = true;
+      writable = true;
+      expect(admits).toThrow();
+      expect(() => admits(wrongUnitKey)).toThrow();
+    } finally {
+      jest.restoreAllMocks();
     }
   });
 
