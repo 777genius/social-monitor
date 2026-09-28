@@ -1213,7 +1213,7 @@ async function verifyHackerNewsRuntime(): Promise<void> {
           hits: [
             {
               objectID: "2001",
-              title: "HN search story",
+              title: "HN monitoring search story",
               url: "https://example.com/hn-search",
               author: "algolia-user",
               created_at_i: 1_782_000_002,
