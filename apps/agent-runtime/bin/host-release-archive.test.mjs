@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { appendFile, chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, chmod, copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
+import ts from "typescript";
 import { verify, verifyArchive } from "./host-release.mjs";
 
 const commit = "c045beb60f0b02ea8ae6b264036bef88ada20b76";
@@ -38,7 +40,7 @@ async function restoreWritableDirectories(dir) {
 test("builds a deterministic, extractable host release from a disposable synthetic checkout", {
   skip: process.platform !== "linux",
 }, async (t) => {
-  const temp = await mkdtemp(join(dirname(fileURLToPath(import.meta.url)), ".sm-host-archive-test-"));
+  const temp = await mkdtemp(join(tmpdir(), "sm-host-archive-test-"));
   t.after(async () => {
     await restoreWritableDirectories(temp);
     await rm(temp, { recursive: true, force: true });
@@ -49,7 +51,13 @@ test("builds a deterministic, extractable host release from a disposable synthet
   const fakeBin = join(temp, "fake-bin");
   await mkdir(fakeBin);
   await put(source, "package.json", '{"name":"synthetic-agent-runtime","version":"1.0.0"}');
-  await put(source, "package-lock.json", "synthetic lock\n");
+  await put(source, "package-lock.json", JSON.stringify({
+    lockfileVersion: 3,
+    packages: {
+      "node_modules/json-schema-traverse": { version: "0.4.1", dev: true },
+      "node_modules/dev-only": { version: "1.0.0", dev: true },
+    },
+  }));
   for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz", "vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.5.tgz"]) {
     await put(source, `vendor/${name}`, "synthetic vendor archive\n");
   }
@@ -57,6 +65,9 @@ test("builds a deterministic, extractable host release from a disposable synthet
   await put(source, "dist/apps/agent-runtime/src/main.js", staleEntrypoint);
   await put(source, "dist/libs/stale.js", "stale source dist library must never ship\n");
   await put(source, "dist/apps/agent-runtime/stale.js", "stale source dist app must never ship\n");
+  await cp(join(process.cwd(), "node_modules/json-schema-traverse"),
+    join(source, "node_modules/json-schema-traverse"), { recursive: true });
+  await put(source, "node_modules/dev-only/package.json", '{"name":"dev-only","version":"1.0.0"}');
   for (const name of helpers) {
     const target = join(source, "apps/agent-runtime/bin", name);
     await mkdir(dirname(target), { recursive: true });
@@ -87,11 +98,11 @@ if (args[args.indexOf("-p") + 1] !== "tsconfig.build.json" || !args[args.indexOf
   const fakeNpm = await put(fakeBin, "npm", `#!/usr/bin/env node
 import { chmodSync, cpSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
 if (process.argv[2] === "run" && process.argv[3] === "prisma:generate") process.exit(0);
-if (process.argv[2] !== "ci") process.exit(2);
+if (process.argv[2] !== "ci" || !process.argv.includes("--omit=dev") || process.argv.includes("--include=dev")) process.exit(2);
 for (const name of [
   "@vioxen/subscription-runtime", "@vioxen/subscription-runtime-mimo",
   "@anthropic-ai/claude-agent-sdk", "@modelcontextprotocol/sdk", "ajv-formats",
-  "zod", "zod-to-json-schema", "fast-uri", "fast-deep-equal", "json-schema-traverse",
+  "zod", "zod-to-json-schema", "fast-uri", "fast-deep-equal",
 ]) {
   cpSync(process.env.SM_HOST_TEST_MODULES_ROOT + "/" + name, "node_modules/" + name, {
     recursive: true, verbatimSymlinks: true,
@@ -133,6 +144,21 @@ writeFileSync("node_modules/synthetic.test.js", "excluded");
   command("tar", ["-xzf", archive, "-C", extracted], { cwd: source });
   await verify(["--release-dir", extracted, ...args,
     "--service-uid", String(process.getuid() + 1)]);
+  const inspectorPath = join(temp, "compiled-inspector.mjs");
+  await writeFile(inspectorPath, ts.transpileModule(
+    await readFile(new URL("../src/subscription-runtime-installation.ts", import.meta.url), "utf8"),
+    { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } },
+  ).outputText);
+  const inspectorArgs = ["--input-type=module", "-e",
+    'const { FileSubscriptionRuntimeInstallationInspector } = await import(process.argv[1]); ' +
+      'await new FileSubscriptionRuntimeInstallationInspector().inspect(process.argv[2], "xiaomi-mimo-token-plan");',
+    pathToFileURL(inspectorPath).href, join(extracted, "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs"),
+  ];
+  const inspect = spawnSync(process.execPath, inspectorArgs, { encoding: "utf8", cwd: source });
+  assert.equal(inspect.status, 0, inspect.stderr);
+  assert.equal(JSON.parse(await readFile(join(extracted, "node_modules/json-schema-traverse/package.json"))).version, "0.4.1");
+  assert.equal(JSON.parse(await readFile(join(extracted,
+    "node_modules/@vioxen/subscription-runtime/node_modules/json-schema-traverse/package.json"))).version, "1.0.0");
   for (const path of [
     "node_modules/json-schema-traverse/spec/fixtures/schema.js",
     "node_modules/json-schema-traverse/spec/index.spec.js",
@@ -140,15 +166,6 @@ writeFileSync("node_modules/synthetic.test.js", "excluded");
     "node_modules/@vioxen/subscription-runtime-mimo/node_modules/@modelcontextprotocol/sdk/node_modules/json-schema-traverse/spec/index.spec.js",
     "node_modules/json-schema-traverse/LICENSE",
   ]) assert.equal((await stat(join(extracted, path))).isFile(), true, path);
-  const inspectorModule = new URL("../src/subscription-runtime-installation.ts", import.meta.url).href;
-  const inspectorArgs = ["--disable-warning=ExperimentalWarning",
-    "--experimental-transform-types", "--input-type=module", "-e",
-    'const { FileSubscriptionRuntimeInstallationInspector } = await import(process.argv[1]); ' +
-      'await new FileSubscriptionRuntimeInstallationInspector().inspect(process.argv[2], "xiaomi-mimo-token-plan");',
-    inspectorModule, join(extracted, "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs"),
-  ];
-  const inspect = spawnSync(process.execPath, inspectorArgs, { encoding: "utf8", cwd: source });
-  assert.equal(inspect.status, 0, inspect.stderr);
   const approvedSpec = join(extracted, "node_modules/json-schema-traverse/spec/index.spec.js");
   const approvedSpecBytes = await readFile(approvedSpec);
   await appendFile(approvedSpec, "\n// altered after packaging\n");
@@ -168,4 +185,5 @@ writeFileSync("node_modules/synthetic.test.js", "excluded");
   await assert.rejects(stat(join(extracted, "node_modules/test")), /ENOENT/);
   await assert.rejects(stat(join(extracted, "node_modules/.env")), /ENOENT/);
   await assert.rejects(stat(join(extracted, "node_modules/synthetic.test.js")), /ENOENT/);
+  await assert.rejects(stat(join(extracted, "node_modules/dev-only")), /ENOENT/);
 });

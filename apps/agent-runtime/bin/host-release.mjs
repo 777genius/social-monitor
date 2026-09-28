@@ -43,6 +43,10 @@ const approvedRuntimeDistributions = [
   "node_modules/ajv-formats", "node_modules/zod", "node_modules/zod-to-json-schema",
   "node_modules/fast-uri", "node_modules/fast-deep-equal", "node_modules/json-schema-traverse",
 ];
+// The inspector admits this exact root distribution. npm ci --omit=dev omits
+// it because the locked root copy is dev-only, while runtime copies are nested.
+const inspectedTraverse = "node_modules/json-schema-traverse";
+const inspectedTraverseSha256 = "e027afb34851b07a5cc5186b3a6d76b3273214474a35b13dacce9a15b0d309db";
 const inApprovedRuntimeDistribution = (rel) => approvedRuntimeDistributions.some(
   (root) => rel === root || rel.startsWith(`${root}/`),
 );
@@ -51,6 +55,23 @@ async function hashFile(path) {
   const digest = createHash("sha256");
   for await (const chunk of createReadStream(path)) digest.update(chunk);
   return digest.digest("hex");
+}
+
+async function distributionHash(root) {
+  if (!(await lstat(root)).isDirectory()) throw new Error("Inspected distribution root is not a directory");
+  const entries = [];
+  async function walk(dir, prefix = "") {
+    for (const name of await readdir(dir)) {
+      const rel = prefix ? `${prefix}/${name}` : name;
+      const path = join(dir, name);
+      const st = await lstat(path);
+      if (st.isDirectory()) await walk(path, rel);
+      else if (st.isFile()) entries.push(`${rel}\0${await hashFile(path)}\n`);
+      else throw new Error(`Inspected distribution contains a non-regular entry: ${rel}`);
+    }
+  }
+  await walk(root);
+  return sha(Buffer.from(entries.sort().join("")));
 }
 
 function option(args, flag) {
@@ -291,6 +312,11 @@ async function build(args) {
     if (await gitOutput(["status", "--porcelain", "--untracked-files=all"])) {
       throw new Error("Host release requires a clean product checkout");
     }
+    const lockedTraverse = JSON.parse(await readFile(join(sourceRoot, "package-lock.json"), "utf8"))
+      .packages?.[inspectedTraverse];
+    if (lockedTraverse?.version !== "0.4.1" || lockedTraverse.dev !== true) {
+      throw new Error("Inspected json-schema-traverse distribution is not the locked dev-only root");
+    }
     await assertPinnedHelperClosure(join(sourceRoot, "apps/agent-runtime/bin"));
     await run("npm", ["run", "prisma:generate"], sourceRoot, {
       DATABASE_URL: "postgresql://agent_runtime_build:token-value@127.0.0.1:1/agent_runtime_build",
@@ -324,12 +350,19 @@ async function build(args) {
     await cp(join(install, "node_modules"), join(stage, "node_modules"), {
       recursive: true, verbatimSymlinks: true,
     });
+    const traverseStage = join(stage, inspectedTraverse);
+    if (!(await lstat(traverseStage).catch(() => undefined))) {
+      await cp(join(sourceRoot, inspectedTraverse), traverseStage, { recursive: true });
+    }
     await mkdir(join(stage, "apps/agent-runtime/bin"), { recursive: true });
     for (const name of [basename(cli), basename(verifier), ...helpers]) {
       await copyFile(join(sourceRoot, "apps/agent-runtime/bin", name), join(stage, "apps/agent-runtime/bin", name));
     }
     await chmod(join(stage, cli), 0o755);
     await pruneForbidden(stage);
+    if (await distributionHash(traverseStage) !== inspectedTraverseSha256) {
+      throw new Error("Staged json-schema-traverse distribution bytes are not approved");
+    }
     await requireFile(stage, entry);
     await requireFile(stage, vendoredCliImport);
     await requireFile(stage, mimoRuntimeManifest);
