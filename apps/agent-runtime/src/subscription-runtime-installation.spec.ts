@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import {
   appendFile,
   chmod,
@@ -34,6 +35,11 @@ import {
 } from "./subscription-runtime-installation";
 
 const launcherName = "run-codex-subscription-runtime-agent-task.mjs";
+// Inventories traverse real installed bytes. Keep the admitted fixture immutable;
+// writable variants use copy-on-write where the filesystem supports it.
+const cloneInstalledPackage = (source: string, destination: string) =>
+  cp(source, destination, { recursive: true, mode: constants.COPYFILE_FICLONE });
+const distributionIoTimeoutMs = 30_000;
 const dependencyNames = [
   "assessment-cli-lifecycle.mjs",
   "mimo-app-server-custody.mjs", "installed-runtime-modules.mjs",
@@ -67,9 +73,10 @@ const mimoRequest = (): AgentRuntimeExecutionRequest => ({
 describe("subscription runtime installation admission", () => {
   let root: string | undefined;
   let installationRoot: string;
+  let installationSetup: Promise<void> | undefined;
   let previousPath: string | undefined;
 
-  beforeAll(async () => {
+  const setupInstallation = async () => {
     const rootManifest = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8"));
     expect(rootManifest.dependencies["@vioxen/subscription-runtime"]).toBe(
       `file:vendor/vioxen-subscription-runtime-${approvedSubscriptionRuntimePackageVersion}.tgz`,
@@ -112,9 +119,16 @@ describe("subscription runtime installation admission", () => {
     expect(JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"))).toMatchObject({
       name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.3",
     });
-  }, 15_000);
+  };
+
+  beforeAll(() => {
+    installationSetup = setupInstallation();
+    return installationSetup;
+  }, distributionIoTimeoutMs);
 
   afterAll(async () => {
+    // Jest's timeout does not cancel filesystem work started by beforeAll.
+    await installationSetup?.catch(() => undefined);
     if (installationRoot !== undefined) {
       await rm(installationRoot, { recursive: true, force: true });
     }
@@ -167,7 +181,7 @@ describe("subscription runtime installation admission", () => {
       allowedModelBackends: ["xiaomi-mimo-token-plan"],
     }).checkHealth();
     expect(health).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.5" });
-  });
+  }, distributionIoTimeoutMs);
 
   it("rejects the base archive without its locked installed dependency completion", async () => {
     const command = join(await copyInstallation(), launcherName);
@@ -267,15 +281,14 @@ describe("subscription runtime installation admission", () => {
     await symlink(join(installationRoot, "node_modules/@vioxen/subscription-runtime"),
       join(modules, "subscription-runtime"));
     const selected = join(modules, "subscription-runtime-mimo");
-    await cp(join(installationRoot, "node_modules/@vioxen/subscription-runtime-mimo"), selected,
-      { recursive: true });
+    await cloneInstalledPackage(join(installationRoot, "node_modules/@vioxen/subscription-runtime-mimo"), selected);
     const factory = join(selected, "dist/worker-codex/file-backend-codex-executor-factories.js");
     if (change === "missing") await rm(factory);
     else await appendFile(factory, "\n// synthetic altered implementation\n");
     await expect(new FileSubscriptionRuntimeInstallationInspector().inspect(
       command, "xiaomi-mimo-token-plan",
     )).rejects.toThrow("Installed subscription runtime code bytes are not approved");
-  });
+  }, distributionIoTimeoutMs);
 
   it.each([
     ["subscription-runtime", "dist"], ["subscription-runtime-mimo", "dist"],
@@ -293,8 +306,7 @@ describe("subscription runtime installation admission", () => {
       for (const packageName of ["subscription-runtime", "subscription-runtime-mimo"]) {
         const destination = join(modules, packageName);
         if (packageName === name) {
-          await cp(join(installationRoot, "node_modules/@vioxen", packageName), destination,
-            { recursive: true });
+          await cloneInstalledPackage(join(installationRoot, "node_modules/@vioxen", packageName), destination);
         } else {
           await symlink(join(installationRoot, "node_modules/@vioxen", packageName), destination);
         }
@@ -306,6 +318,7 @@ describe("subscription runtime installation admission", () => {
         command, "xiaomi-mimo-token-plan",
       )).rejects.toThrow("Installed subscription runtime code bytes are not approved");
     },
+    distributionIoTimeoutMs,
   );
 
   it("rejects changed base CLI implementation behind a version-correct manifest", async () => {
@@ -343,8 +356,7 @@ describe("subscription runtime installation admission", () => {
     await symlink(join(process.cwd(), "node_modules/@vioxen/subscription-runtime"),
       join(modules, "subscription-runtime"));
     const selected = join(modules, "subscription-runtime-mimo");
-    await cp(join(installationRoot, "node_modules/@vioxen/subscription-runtime-mimo"), selected,
-      { recursive: true });
+    await cloneInstalledPackage(join(installationRoot, "node_modules/@vioxen/subscription-runtime-mimo"), selected);
     const inspector = new FileSubscriptionRuntimeInstallationInspector(workspace);
     const request = { ...mimoRequest(), cwd: workspace };
     const admission = admitSubscriptionRuntimeRequest(request);
@@ -392,7 +404,7 @@ describe("subscription runtime installation admission", () => {
     await expect(executor.execute(mimoRequest())).resolves.toMatchObject({
       status: "failed", failure: { code: "agent_runtime.execution_attestation_invalid" },
     });
-  }, 15_000);
+  }, 45_000);
 
   it("loads the selected base CLI from a bare package layout, then rejects its workspace symlink", async () => {
     const bin = await copyInstallation();
@@ -458,8 +470,7 @@ describe("subscription runtime installation admission", () => {
     for (const name of ["subscription-runtime", "subscription-runtime-mimo"]) {
       const destination = join(root!, "node_modules/@vioxen", name);
       if (name === "subscription-runtime-mimo") {
-        await cp(join(installationRoot, "node_modules/@vioxen", name), destination,
-          { recursive: true });
+        await cloneInstalledPackage(join(installationRoot, "node_modules/@vioxen", name), destination);
       } else {
         await symlink(join(installationRoot, "node_modules/@vioxen", name), destination);
       }
@@ -471,7 +482,7 @@ describe("subscription runtime installation admission", () => {
     await expect(new FileSubscriptionRuntimeInstallationInspector(workspace).inspect(
       command, "xiaomi-mimo-token-plan",
     )).rejects.toThrow("Installed runtime import is inside the admitted workspace: zod-to-json-schema");
-  });
+  }, distributionIoTimeoutMs);
 
   it("rejects a changed MiMo package only when that backend is admitted", async () => {
     const command = join(await copyInstallation(), launcherName);
