@@ -299,6 +299,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-weekly-publication-evidence-postgres-contract.ts
       scripts/lib/reader-summary-weekly-publication-github-fixture.ts
       scripts/lib/reader-summary-weekly-review-manifest-postgres-contract.ts
+      scripts/lib/reader-value-assessment-publication-acl.ts
       scripts/lib/reader-value-postgres-fixture.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.ts
