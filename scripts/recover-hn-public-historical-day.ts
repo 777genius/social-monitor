@@ -21,6 +21,7 @@ type PassResult = {
   readonly maxItems: number;
   readonly status: "complete" | "incomplete";
   readonly returnedIds: readonly string[];
+  readonly returnedCommentIds: readonly string[];
   readonly warnings: readonly string[];
   readonly error?: string;
 };
@@ -179,9 +180,10 @@ export async function recoverHnPublicHistoricalDay(input: HistoricalDayInput) {
           if (!comments.has(unit.providerUnitId)) comments.set(unit.providerUnitId, unit);
         }
         passResults.push({ ...base, status: warnings.length === 0 ? "complete" : "incomplete",
-          returnedIds: result.items.map((item) => item.externalId).sort(), warnings });
+          returnedIds: result.items.map((item) => item.externalId).sort(),
+          returnedCommentIds: (result.conversationUnits ?? []).map((unit) => unit.providerUnitId).sort(), warnings });
       } catch (error) {
-        passResults.push({ ...base, status: "incomplete", returnedIds: [], warnings: [],
+        passResults.push({ ...base, status: "incomplete", returnedIds: [], returnedCommentIds: [], warnings: [],
           error: provider.classifyError(error).message });
       }
     }
@@ -217,7 +219,7 @@ function parseArgs(args: readonly string[]): Omit<HistoricalDayInput, "client"> 
     const key = args[index];
     const value = args[index + 1];
     if (key === undefined || value === undefined || !["--day", "--bindings", "--output-dir", "--window-hours"].includes(key) || values.has(key)) {
-      throw new Error("Usage: --day YYYY-MM-DD --bindings PATH --output-dir NEW_DIR [--window-hours 1|2|3|4|6|8|12|24]");
+      throw new Error("Usage: --day YYYY-MM-DD --bindings PATH --output-dir NEW_DIR [--window-hours 24]");
     }
     values.set(key, value);
   }

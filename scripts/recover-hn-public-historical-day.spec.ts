@@ -13,6 +13,7 @@ class FakeClient implements HackerNewsClientPort {
   overflowQuery?: string;
   outsideQuery?: string;
   unique = false;
+  commentQueries = false;
 
   async searchStories(query: string, limit: number, options?: HackerNewsSearchOptions): Promise<readonly HackerNewsStory[]> {
     this.requests.push({ query, limit, options });
@@ -25,8 +26,17 @@ class FakeClient implements HackerNewsClientPort {
       time: Math.floor(options!.from!.getTime() / 1000) + (query === this.outsideQuery ? 86_401 : 1), kind: "story" }];
   }
 
-  async searchComments(): Promise<readonly HackerNewsStory[]> { throw new Error("unexpected comment request"); }
-  async getStory(): Promise<HackerNewsStory | null> { throw new Error("unexpected story expansion"); }
+  async searchComments(query: string, _limit: number, options?: HackerNewsSearchOptions): Promise<readonly HackerNewsStory[]> {
+    if (!this.commentQueries || options?.from === undefined) throw new Error("unexpected comment request");
+    const time = Math.floor(options.from.getTime() / 1000) + 10;
+    const ten: HackerNewsStory = { id: 10, kind: "comment", storyId: 1, text: "Comment ten", time };
+    return query === "comments-a" ? [ten] : query === "comments-b"
+      ? [ten, { id: 11, kind: "comment", storyId: 1, text: "Comment eleven", time: time + 1 }] : [];
+  }
+  async getStory(id: number): Promise<HackerNewsStory | null> {
+    if (!this.commentQueries || id !== 1) throw new Error("unexpected story expansion");
+    return { id, kind: "story", title: "Synthetic root", time: Date.parse("2026-09-20T00:00:01Z") / 1000 };
+  }
   async listStoryComments(): Promise<readonly HackerNewsStory[]> { throw new Error("unexpected comment expansion"); }
   async listStories(_listing: HackerNewsListing): Promise<readonly HackerNewsStory[]> { throw new Error("live listing is forbidden"); }
 }
@@ -139,6 +149,22 @@ describe("private historical HN exporter", () => {
     expect(manifest.passes[2]?.status).toBe("incomplete");
     expect(manifest.passes[2]?.warnings.join(" ")).toContain("maxItems exceeded");
     expect(manifest.status).toBe("incomplete");
+  });
+
+  it("preserves each complete comment pass's IDs before cross-pass deduplication", async () => {
+    const paths = await fixture();
+    const binding = JSON.parse(await readFile(paths.bindingsPath, "utf8")) as Array<{ config: { scanPasses: unknown[] } }>;
+    binding[0]!.config.scanPasses[24] = { mode: "search", target: "comment", query: "comments-a", maxItems: 2 };
+    binding[0]!.config.scanPasses[25] = { mode: "search", target: "comment", query: "comments-b", maxItems: 2 };
+    await writeFile(paths.bindingsPath, JSON.stringify(binding));
+    const client = new FakeClient();
+    client.commentQueries = true;
+    const manifest = await recoverHnPublicHistoricalDay({ day: "2026-09-20", ...paths, client });
+    expect(manifest.passes[24]?.status).toBe("complete");
+    expect(manifest.passes[25]?.status).toBe("complete");
+    expect(manifest.passes[24]?.returnedCommentIds).toHaveLength(1);
+    expect(manifest.passes[25]?.returnedCommentIds).toHaveLength(2);
+    expect(manifest.passes[25]?.returnedCommentIds).toContain(manifest.passes[24]?.returnedCommentIds?.[0]);
   });
 
   it("marks the final cap as incomplete even when every pass succeeds", async () => {
