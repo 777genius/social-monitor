@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { HackerNewsClientPort, HackerNewsListing, HackerNewsSearchOptions, HackerNewsStory } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-client.port";
+import type { HackerNewsClientPort, HackerNewsSearchOptions, HackerNewsStory } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-client.port";
 
 import { recoverHnPublicHistoricalDay, utcDayWindow } from "./recover-hn-public-historical-day";
 
@@ -38,7 +38,7 @@ class FakeClient implements HackerNewsClientPort {
     return { id, kind: "story", title: "Synthetic root", time: Date.parse("2026-09-20T00:00:01Z") / 1000 };
   }
   async listStoryComments(): Promise<readonly HackerNewsStory[]> { throw new Error("unexpected comment expansion"); }
-  async listStories(_listing: HackerNewsListing): Promise<readonly HackerNewsStory[]> { throw new Error("live listing is forbidden"); }
+  async listStories(): Promise<readonly HackerNewsStory[]> { throw new Error("live listing is forbidden"); }
 }
 
 const passes = (count: number) => Array.from({ length: count }, (_, index) => ({
