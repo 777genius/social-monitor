@@ -238,6 +238,10 @@ world write access. The key must be outside the workspace and state roots.
 Startup checks metadata only and verifies the pinned MiMo runtime installation;
 the worker reads the key only for an admitted MiMo task. This mode rejects
 Codex and legacy purpose requests before installation inspection or execution.
+The selected MiMo package and manifest must resolve outside the admitted
+workspace. Admission checks the exact vendored manifest and worker entrypoint
+bytes and requires the worker entrypoint to be a regular local artifact.
+Health stays unavailable if either artifact is missing or changed.
 The setting is accepted only with strict admission. Its only known values are
 `openai-chatgpt` and `xiaomi-mimo-token-plan`, comma-separated without duplicates.
 When unset, the established Codex-pool strict behavior remains available.
@@ -263,10 +267,13 @@ transaction, aligning `backend.sha`, the PostgreSQL runtime `READY` marker and
 integration `HEAD` before bounded recovery.
 
 For local development, `npm run start:agent-runtime` loads only the runtime
-allowlist above from the repository `.env`; unrelated application credentials
+allowlist above from the repository `.env`, including strict admission, workspace,
+backend allowlist and MiMo key file settings; unrelated application credentials
 are not copied into the child process. It also uses the standard local durable
 state root under `XDG_STATE_HOME` (or `~/.local/state`) and the current
-`~/.codex/auth.json` when no explicit Codex auth path is configured.
+`~/.codex/auth.json` when no explicit Codex auth path is configured for a
+legacy Codex service. Explicit MiMo-only selection never adds that fallback;
+an explicitly configured Codex auth path remains forbidden in MiMo-only strict mode.
 
 ## Production Codex Auth Pool
 

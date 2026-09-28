@@ -18,6 +18,7 @@ export type AgentRuntimeSettings = {
     readonly codexAuthJsonPath?: string;
     readonly mimoApiKeyFile?: string;
     readonly allowedModelBackends?: readonly AllowedModelBackend[];
+    readonly workspaceRoot?: string;
     readonly claudeTokenEnv?: string;
     readonly model: string;
     readonly reasoningEffort: typeof activeReaderSummaryReasoningEffort;
@@ -48,6 +49,7 @@ export const resolveAgentRuntimeSettings = (
       ),
       mimoApiKeyFile: nonEmptyOptional(env.AGENT_RUNTIME_MIMO_API_KEY_FILE),
       allowedModelBackends: strictAdmission?.allowedModelBackends,
+      workspaceRoot: strictAdmission?.workspaceRoot,
       claudeTokenEnv: nonEmptyOrFallback(
         env.AGENT_RUNTIME_CLAUDE_TOKEN_ENV,
         "CLAUDE_CODE_OAUTH_TOKEN",

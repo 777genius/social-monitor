@@ -46,6 +46,7 @@ export type SubscriptionRuntimeCliExecutorOptions = {
   readonly codexAuthJsonPath?: string;
   readonly mimoApiKeyFile?: string;
   readonly allowedModelBackends?: readonly AllowedModelBackend[];
+  readonly workspaceRoot?: string;
   readonly claudeTokenEnv?: string;
   readonly model?: string;
   readonly reasoningEffort?: typeof activeReaderSummaryReasoningEffort;
@@ -62,7 +63,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
   constructor(private readonly options: SubscriptionRuntimeCliExecutorOptions) {
     this.installationInspector =
       options.installationInspector ??
-      new FileSubscriptionRuntimeInstallationInspector();
+      new FileSubscriptionRuntimeInstallationInspector(options.workspaceRoot);
     this.logger =
       options.logger ??
       new NestStructuredLogger(SubscriptionRuntimeCliExecutor.name);

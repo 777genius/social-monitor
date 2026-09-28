@@ -13,7 +13,7 @@ import { isMimoOnly } from "./backend-admission-policy";
 async function bootstrap(): Promise<void> {
   const settings = resolveAgentRuntimeSettings(process.env);
   if (settings.strictAdmission !== undefined) {
-    await new FileSubscriptionRuntimeInstallationInspector().inspect(
+    await new FileSubscriptionRuntimeInstallationInspector(settings.strictAdmission.workspaceRoot).inspect(
       settings.cli.command,
       isMimoOnly(settings.strictAdmission.allowedModelBackends) ? "xiaomi-mimo-token-plan" : undefined,
     );

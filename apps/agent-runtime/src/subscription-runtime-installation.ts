@@ -7,6 +7,7 @@ import {
   dirname,
   isAbsolute,
   join,
+  relative,
   resolve,
   sep,
 } from "node:path";
@@ -15,6 +16,10 @@ export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.42-sm.3";
 export const approvedMimoRuntimePackageVersion =
   "0.1.0-main.40-sm-mimo.5";
+const approvedMimoManifestSha256 =
+  "132bae9074c729d9626cab9f765df8b6e8446dac172f3964dedcc6a2fe6d635f";
+const approvedMimoWorkerEntrypointSha256 =
+  "43907edb05db2a3ad733697877cacd5caa434cb301a5ec4da11bd256cdf6ae09";
 export const approvedSubscriptionRuntimeLauncherSha256 =
   "30f7bcac89439ea0eecb3260ee79924fcfab25a87e51be237e289c51f2ccddc1";
 
@@ -59,6 +64,8 @@ export interface SubscriptionRuntimeInstallationInspector {
 }
 
 export class FileSubscriptionRuntimeInstallationInspector implements SubscriptionRuntimeInstallationInspector {
+  constructor(private readonly workspaceRoot?: string) {}
+
   async inspect(
     command: string,
     modelBackend?: "xiaomi-mimo-token-plan",
@@ -101,6 +108,9 @@ export class FileSubscriptionRuntimeInstallationInspector implements Subscriptio
         (mimoManifest.name !== "@vioxen/subscription-runtime" ||
           mimoManifest.version !== approvedMimoRuntimePackageVersion)) {
       throw new Error("Installed MiMo subscription runtime version is not approved");
+    }
+    if (mimoManifest !== undefined) {
+      await inspectMimoRuntimeArtifacts(mimoManifest, this.workspaceRoot);
     }
     return {
       executablePath,
@@ -152,11 +162,16 @@ const readInstalledManifest = async (
   readonly name: string;
   readonly version: string;
   readonly packageRootRealpath: string;
+  readonly manifestPath: string;
+  readonly manifestRealpath: string;
 }> => {
   const runtimeRequire = createRequire(executablePath);
-  const manifestPath = await realpath(
-    runtimeRequire.resolve(packageSpecifier),
-  );
+  const manifestPath = runtimeRequire.resolve(packageSpecifier);
+  const manifestRealpath = await realpath(manifestPath);
+  if (packageSpecifier === "@vioxen/subscription-runtime-mimo/package.json" &&
+      (!(await lstat(manifestPath)).isFile() || !(await lstat(dirname(manifestPath))).isDirectory())) {
+    throw new Error("Installed MiMo subscription runtime package and manifest must be regular installation entries");
+  }
   const parsed: unknown = JSON.parse(await readFile(manifestPath, "utf8"));
   if (!isRecord(parsed) || typeof parsed.name !== "string") {
     throw new Error("Installed subscription runtime manifest is malformed");
@@ -171,7 +186,43 @@ const readInstalledManifest = async (
     name: parsed.name,
     version: parsed.version,
     packageRootRealpath: await realpath(dirname(manifestPath)),
+    manifestPath,
+    manifestRealpath,
   };
+};
+
+const within = (root: string, candidate: string): boolean => {
+  const child = relative(root, candidate);
+  return child === "" || (child !== ".." && !child.startsWith(`..${sep}`) && !isAbsolute(child));
+};
+
+const inspectMimoRuntimeArtifacts = async (
+  manifest: { readonly packageRootRealpath: string; readonly manifestPath: string; readonly manifestRealpath: string },
+  workspaceRoot?: string,
+): Promise<void> => {
+  const packageRoot = manifest.packageRootRealpath;
+  if (workspaceRoot !== undefined &&
+      (within(workspaceRoot, packageRoot) || within(workspaceRoot, manifest.manifestRealpath))) {
+    throw new Error("Installed MiMo subscription runtime must be outside the admitted workspace");
+  }
+  if (dirname(manifest.manifestRealpath) !== packageRoot) {
+    throw new Error("Installed MiMo subscription runtime manifest escapes the selected package");
+  }
+  if (createHash("sha256").update(await readFile(manifest.manifestPath)).digest("hex") !==
+      approvedMimoManifestSha256) {
+    throw new Error("Installed MiMo subscription runtime manifest bytes are not approved");
+  }
+  const workerPath = join(packageRoot, "dist", "worker-codex", "index.js");
+  for (const path of [join(packageRoot, "dist"), join(packageRoot, "dist", "worker-codex"), workerPath]) {
+    const metadata = await lstat(path);
+    if (path === workerPath ? !metadata.isFile() : !metadata.isDirectory()) {
+      throw new Error("Installed MiMo subscription runtime worker entrypoint is not a regular installation artifact");
+    }
+  }
+  if (createHash("sha256").update(await readFile(workerPath)).digest("hex") !==
+      approvedMimoWorkerEntrypointSha256) {
+    throw new Error("Installed MiMo subscription runtime worker entrypoint bytes are not approved");
+  }
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

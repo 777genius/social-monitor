@@ -20,7 +20,9 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { assessmentRequest } from "./source-content-assessment-runtime.spec-support";
+import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
 import { attachExecutorOwnedExecutionAttestation } from "./subscription-runtime-execution-attestation";
+import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-executor";
 import { admitSubscriptionRuntimeRequest } from "./subscription-runtime-purpose-model-policy";
 
 import {
@@ -43,6 +45,22 @@ const dependencyNames = [
   "subscription-runtime-purpose-model-policy.mjs",
   "reader-promotion-v2-canary-contract.cjs",
 ];
+const mimoRequest = (): AgentRuntimeExecutionRequest => ({
+  requestId: "synthetic-mimo-request",
+  tenantId: "synthetic-tenant",
+  workspaceId: "synthetic-workspace",
+  correlationId: "synthetic-correlation",
+  provider: "codex",
+  purpose: "social_monitor.reader_summary.topic_map.label.v2",
+  systemPrompt: "Return labels.",
+  prompt: "Synthetic topic input.",
+  outputSchemaJson: JSON.stringify({ type: "object", additionalProperties: false,
+    required: ["nodeLabels", "groups"], properties: { nodeLabels: { type: "array" }, groups: { type: "array" } } }),
+  controlsJson: JSON.stringify({ model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan",
+    outputSchemaName: "social_monitor_reader_summary_topic_map_labels", schemaVersion: "reader_summary.topic_map.v1" }),
+  timeoutMs: 10_000,
+  metadata: {},
+});
 
 describe("subscription runtime installation admission", () => {
   let root: string | undefined;
@@ -126,12 +144,93 @@ describe("subscription runtime installation admission", () => {
 
   it("attests the isolated MiMo backend version for summary admission", async () => {
     const command = join(await copyInstallation(), launcherName);
-    await expect(new FileSubscriptionRuntimeInstallationInspector().inspect(
+    const workspace = join(root!, "workspace");
+    await mkdir(workspace);
+    await expect(new FileSubscriptionRuntimeInstallationInspector(workspace).inspect(
       command, "xiaomi-mimo-token-plan",
     )).resolves.toMatchObject({
       runtimePackageVersion: approvedSubscriptionRuntimePackageVersion,
       mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.5",
     });
+    const health = await new SubscriptionRuntimeCliExecutor({
+      command, ephemeral: false, workspaceRoot: workspace,
+      allowedModelBackends: ["xiaomi-mimo-token-plan"],
+    }).checkHealth();
+    expect(health).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.5" });
+  });
+
+  const isolatedSelectedPackage = async (): Promise<string> => {
+    await rm(join(root!, "node_modules"));
+    const selected = join(root!, "node_modules/@vioxen/subscription-runtime-mimo");
+    await mkdir(join(root!, "node_modules/@vioxen"), { recursive: true });
+    await symlink(join(installationRoot, "node_modules/@vioxen/subscription-runtime"),
+      join(root!, "node_modules/@vioxen/subscription-runtime"));
+    await mkdir(selected);
+    await copyFile(join(installationRoot, "node_modules/@vioxen/subscription-runtime-mimo/package.json"),
+      join(selected, "package.json"));
+    return selected;
+  };
+
+  it("rejects a selected package symlink into the admitted workspace before health or execution", async () => {
+    const bin = await copyInstallation();
+    const command = join(bin, launcherName);
+    const workspace = join(root!, "workspace");
+    await mkdir(workspace);
+    const selected = await isolatedSelectedPackage();
+    await rename(selected, join(workspace, "selected-runtime"));
+    await symlink(join(workspace, "selected-runtime"), selected);
+    const inspector = new FileSubscriptionRuntimeInstallationInspector(workspace);
+    await expect(inspector.inspect(command, "xiaomi-mimo-token-plan"))
+      .rejects.toThrow("outside the admitted workspace");
+    const executor = new SubscriptionRuntimeCliExecutor({
+      command, ephemeral: false, workspaceRoot: workspace,
+      mimoApiKeyFile: join(root!, "synthetic-key-path"),
+      allowedModelBackends: ["xiaomi-mimo-token-plan"],
+    });
+    await expect(executor.checkHealth()).resolves.toMatchObject({ healthy: false });
+    await expect(executor.execute(mimoRequest())).resolves.toMatchObject({
+      status: "failed", failure: { code: "agent_runtime.execution_attestation_invalid" },
+    });
+  });
+
+  it("rejects a pinned-looking manifest symlink into the admitted workspace", async () => {
+    const bin = await copyInstallation();
+    const workspace = join(root!, "workspace");
+    await mkdir(workspace);
+    const selected = await isolatedSelectedPackage();
+    await rename(join(selected, "package.json"), join(workspace, "package.json"));
+    await symlink(join(workspace, "package.json"), join(selected, "package.json"));
+    await expect(new FileSubscriptionRuntimeInstallationInspector(workspace).inspect(
+      join(bin, launcherName), "xiaomi-mimo-token-plan",
+    )).rejects.toThrow(/outside the admitted workspace|regular installation entries/);
+  });
+
+  it("rejects a pinned-looking selected package with no worker entrypoint before healthy status", async () => {
+    const bin = await copyInstallation();
+    const command = join(bin, launcherName);
+    await isolatedSelectedPackage();
+    const inspector = new FileSubscriptionRuntimeInstallationInspector();
+    await expect(inspector.inspect(command, "xiaomi-mimo-token-plan"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    const executor = new SubscriptionRuntimeCliExecutor({
+      command, ephemeral: false, mimoApiKeyFile: join(root!, "synthetic-key-path"),
+      allowedModelBackends: ["xiaomi-mimo-token-plan"],
+    });
+    await expect(executor.checkHealth()).resolves.toMatchObject({ healthy: false });
+    await expect(executor.execute(mimoRequest())).resolves.toMatchObject({
+      status: "failed", failure: { code: "agent_runtime.execution_attestation_invalid" },
+    });
+  });
+
+  it("rejects a changed MiMo worker entrypoint even with the pinned manifest", async () => {
+    const bin = await copyInstallation();
+    const selected = await isolatedSelectedPackage();
+    const workerDirectory = join(selected, "dist/worker-codex");
+    await mkdir(workerDirectory, { recursive: true });
+    await writeFile(join(workerDirectory, "index.js"), "export const createOneShotExecutor = () => null;\n");
+    await expect(new FileSubscriptionRuntimeInstallationInspector().inspect(
+      join(bin, launcherName), "xiaomi-mimo-token-plan",
+    )).rejects.toThrow("worker entrypoint bytes are not approved");
   });
 
   it("rejects a changed MiMo package only when that backend is admitted", async () => {
