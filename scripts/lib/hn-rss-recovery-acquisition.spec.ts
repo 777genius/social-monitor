@@ -15,6 +15,7 @@ import { InMemorySourceProviderRegistry } from "@social-monitor/ingestion/adapte
 import { RegistrySourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter";
 import { RssSourceProvider } from "@social-monitor/ingestion/adapters/source/rss/rss-source.provider";
 import { HttpRssClient } from "@social-monitor/ingestion/adapters/source/rss/http-rss-client";
+import { guardedContentGet } from "@social-monitor/ingestion/adapters/http/guarded-content-http";
 import type { RssClientPort } from "@social-monitor/ingestion/adapters/source/rss/rss-client.port";
 import { ExecuteScanUseCase } from "@social-monitor/ingestion/features/execute-scan/execute-scan.use-case";
 import { FixedClock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
@@ -29,6 +30,16 @@ import { executeRecoveryAcquisition, executeRecoveryAcquisitionInDisposableJourn
 import { parseRecoveryArgs } from "./hn-rss-recovery-plan";
 import { disposablePublicationFixtureRuntimeUrl, registerPublicationFixtureRevocation, withProvisionedPublicationFixture } from "./reader-summary-publication-disposable-fixture";
 import { runRecoveryInDisposableJournalForTest } from "../run-hn-rss-recovery";
+
+jest.mock("@social-monitor/ingestion/adapters/http/guarded-content-http", () => ({ guardedContentGet: jest.fn() }));
+
+beforeEach(() => {
+  jest.mocked(guardedContentGet).mockImplementation(async (input) => {
+    const response = await globalThis.fetch(input.url, { headers: input.headers });
+    return { status: response.status, headers: response.headers,
+      finalUrl: response.url || input.url, body: await response.text() };
+  });
+});
 
 const tenant = "00000000-0000-7000-8000-000000000301";
 const workspace = "00000000-0000-7000-8000-000000000302";

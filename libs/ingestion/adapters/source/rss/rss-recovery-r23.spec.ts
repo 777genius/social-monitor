@@ -1,7 +1,10 @@
 import { requireCompleteRecoveryScan } from '../../../../../scripts/lib/hn-rss-recovery-acquisition';
+import { guardedContentGet } from '../../http/guarded-content-http';
 import { HttpRssClient } from './http-rss-client';
 import type { RssClientPort } from './rss-client.port';
 import { RssSourceProvider } from './rss-source.provider';
+
+jest.mock('../../http/guarded-content-http', () => ({ guardedContentGet: jest.fn() }));
 
 const feedUrl = 'https://example.test/feed.xml';
 const window = {
@@ -26,6 +29,13 @@ const complete = async (client: RssClientPort) => {
 
 describe('RSS recovery r23 reference and body evidence', () => {
   const originalFetch = globalThis.fetch;
+  beforeEach(() => {
+    jest.mocked(guardedContentGet).mockImplementation(async (input) => {
+      const response = await globalThis.fetch(input.url, { headers: input.headers });
+      return { status: response.status, headers: response.headers,
+        finalUrl: response.url || input.url, body: await response.text() };
+    });
+  });
   afterEach(() => { globalThis.fetch = originalFetch; });
 
   it.each([

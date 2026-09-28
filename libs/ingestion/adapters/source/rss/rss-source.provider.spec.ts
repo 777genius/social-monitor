@@ -1,4 +1,5 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { guardedContentGet } from '../../http/guarded-content-http';
 
 import { certifySourceProvider } from "../testing/source-provider-certification";
 import { validateFeedUrl } from "./feed-url-policy";
@@ -7,8 +8,17 @@ import { HttpRssClient } from "./http-rss-client";
 import type { RssClientPort } from "./rss-client.port";
 import { RssSourceProvider } from "./rss-source.provider";
 
+jest.mock('../../http/guarded-content-http', () => ({ guardedContentGet: jest.fn() }));
+
 describe("RssSourceProvider", () => {
   const originalFetch = globalThis.fetch;
+  beforeEach(() => {
+    jest.mocked(guardedContentGet).mockImplementation(async (input) => {
+      const response = await globalThis.fetch(input.url, { headers: input.headers });
+      return { status: response.status, headers: response.headers,
+        finalUrl: response.url || input.url, body: await response.text() };
+    });
+  });
   afterEach(() => { globalThis.fetch = originalFetch; });
 
   it("reports a malformed secondary feed as a partial acquisition while retaining a valid empty primary feed", async () => {

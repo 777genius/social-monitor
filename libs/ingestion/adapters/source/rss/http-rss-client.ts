@@ -27,7 +27,10 @@ const rawXhtmlParser = new XMLParser({
 });
 
 export class HttpRssClient implements RssClientPort {
-  constructor(private readonly timeoutMs = 10_000) {}
+  constructor(
+    private readonly timeoutMs = 10_000,
+    private readonly get: typeof guardedContentGet = guardedContentGet,
+  ) {}
 
   async readFeed(feedUrl: string, limit: number, options: RssReadFeedOptions = {}): Promise<RssReadFeedResult> {
     const validated = validateFeedUrl(feedUrl);
@@ -35,7 +38,7 @@ export class HttpRssClient implements RssClientPort {
       throw new Error(validated.reason);
     }
 
-    const response = await guardedContentGet({
+    const response = await this.get({
       url: validated.url.toString(), timeoutMs: this.timeoutMs,
       maxBytes: 5 * 1024 * 1024, headers: requestHeaders(options),
     });

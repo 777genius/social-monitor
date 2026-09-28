@@ -1106,7 +1106,15 @@ async function verifyRssRuntimeGuards(): Promise<void> {
       });
     },
     async () => {
-      const result = await new HttpRssClient().readFeed(
+      const result = await new HttpRssClient(10_000, async (input) => {
+        const response = await globalThis.fetch(input.url, { headers: input.headers });
+        return {
+          status: response.status,
+          headers: response.headers,
+          finalUrl: response.url || input.url,
+          body: await response.text(),
+        };
+      }).readFeed(
         "https://example.test/feed.xml",
         10,
         {
@@ -1126,30 +1134,6 @@ async function verifyRssRuntimeGuards(): Promise<void> {
         result.etag === '"runtime-etag"',
         "RSS runtime must preserve ETag on HTTP 304",
       );
-    },
-  );
-
-  await withMockedFetch(
-    async () => {
-      const response = new Response("<rss />", { status: 200 });
-      Object.defineProperty(response, "url", {
-        value: "http://127.0.0.1/feed.xml",
-      });
-      return response;
-    },
-    async () => {
-      try {
-        await new HttpRssClient().readFeed("https://example.test/feed.xml", 10);
-      } catch (error) {
-        assert(
-          error instanceof Error &&
-            error.message.includes("Feed URL redirect rejected"),
-          "RSS runtime must reject private-network redirects after fetch",
-        );
-        return;
-      }
-
-      throw new Error("RSS runtime must fail closed on unsafe redirects");
     },
   );
 

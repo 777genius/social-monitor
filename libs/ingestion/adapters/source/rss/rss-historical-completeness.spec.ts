@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { guardedContentGet } from '../../http/guarded-content-http';
 
 import { requireCompleteRecoveryFetch, requireCompleteRecoveryScan } from '../../../../../scripts/lib/hn-rss-recovery-acquisition';
 import { parseRecoveryArgs } from '../../../../../scripts/lib/hn-rss-recovery-plan';
@@ -12,6 +13,8 @@ import { RegistrySourceFetcherAdapter } from '../registry-source-fetcher.adapter
 import { HttpRssClient } from './http-rss-client';
 import type { RssClientPort } from './rss-client.port';
 import { RssSourceProvider } from './rss-source.provider';
+
+jest.mock('../../http/guarded-content-http', () => ({ guardedContentGet: jest.fn() }));
 
 const feedUrl = 'https://example.test/feed.xml';
 const from = '2026-06-05T10:00:00.000Z';
@@ -26,6 +29,13 @@ const scope = (config: Record<string, unknown> = {}) => ({
 
 describe('RSS historical completeness', () => {
   const originalFetch = globalThis.fetch;
+  beforeEach(() => {
+    jest.mocked(guardedContentGet).mockImplementation(async (input) => {
+      const response = await globalThis.fetch(input.url, { headers: input.headers });
+      return { status: response.status, headers: response.headers,
+        finalUrl: response.url || input.url, body: await response.text() };
+    });
+  });
   afterEach(() => { globalThis.fetch = originalFetch; });
 
   it('warns for an identified dated entry with no readable title or content, including when a valid entry survives', async () => {
