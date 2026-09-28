@@ -11,6 +11,8 @@ import {
 export const productionAgentRuntimeModel = "gpt-5.6-sol";
 export const productionAgentRuntimeReasoningEffort = "xhigh";
 export const activeReaderSummaryReasoningEffort = "high";
+export const mimoSummaryModel = "mimo-v2.6-pro";
+export const mimoSummaryBackend = "xiaomi-mimo-token-plan";
 
 export type SubscriptionRuntimeOutputKind =
   | "structured_output"
@@ -19,7 +21,8 @@ export type SubscriptionRuntimeRetryMode = "standard" | "never";
 
 export type SubscriptionRuntimePurposeProfile = {
   readonly provider: "codex";
-  readonly model: "gpt-5.6-sol";
+  readonly model: "gpt-5.6-sol" | typeof mimoSummaryModel;
+  readonly modelBackend?: typeof mimoSummaryBackend;
   readonly reasoningEffort: "low" | "high" | "xhigh";
   readonly outputKind: SubscriptionRuntimeOutputKind;
   readonly responseFormat: "json" | "text";
@@ -58,6 +61,38 @@ const activeReaderSummaryStructuredProfile = Object.freeze({
   responseFormat: "json",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
+const mimoReaderSummaryStructuredProfile = Object.freeze({
+  provider: "codex",
+  model: mimoSummaryModel,
+  modelBackend: mimoSummaryBackend,
+  reasoningEffort: activeReaderSummaryReasoningEffort,
+  outputKind: "structured_output",
+  responseFormat: "json",
+  retryMode: "never",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
+const artifactRoot = ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"];
+const mimoSchemaMarkers: Readonly<Record<string, readonly [string, string, readonly string[]]>> = Object.freeze({
+  "social_monitor.reader_summary.generate.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1", artifactRoot],
+  "social_monitor.reader_summary.repair.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1", artifactRoot],
+  "social_monitor.reader_summary.topic_map.label.v2": ["social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1", ["nodeLabels", "groups"]],
+  "social_monitor.reader_summary.topic_map.verify_relations.v2": ["social_monitor_reader_summary_topic_relations", "reader_summary.topic_relation.v1", ["decisions"]],
+  "social_monitor.reader_summary.verify_story_relations.v2": ["social_monitor_reader_summary_story_relations", "reader_summary.story_relation.v1", ["decisions"]],
+  "social_monitor.reader_summary.verify_related_topic_relations.v2": ["social_monitor_reader_summary_related_topic_relations", "reader_summary.related_topic_relation.v1", ["decisions"]],
+});
+const profileForRequest = (
+  purpose: string,
+  modelBackend: unknown,
+  activationCapability?: symbol,
+): SubscriptionRuntimePurposeProfile | undefined => {
+  if (modelBackend === mimoSummaryBackend && Object.hasOwn(mimoSchemaMarkers, purpose)) {
+    return mimoReaderSummaryStructuredProfile;
+  }
+  return profilesByPurpose[purpose] ??
+    (activationCapability === readerPromotionV2CanaryActivationCapability
+      ? capabilityProfilesByPurpose[purpose]
+      : undefined);
+};
 const activeReaderSummaryTextProfile = Object.freeze({
   provider: "codex",
   model: productionAgentRuntimeModel,
@@ -118,10 +153,15 @@ export const admitSubscriptionRuntimeRequest = (
   request: AgentRuntimeExecutionRequest,
   activationCapability?: symbol,
 ): AdmittedSubscriptionRuntimeRequest => {
-  const profile = profilesByPurpose[request.purpose] ??
-    (activationCapability === readerPromotionV2CanaryActivationCapability
-      ? capabilityProfilesByPurpose[request.purpose]
-      : undefined);
+  const controls = parseSubscriptionRuntimeJsonObject(
+    request.controlsJson,
+    "controls_json",
+  );
+  const profile = profileForRequest(
+    request.purpose,
+    controls.modelBackend,
+    activationCapability,
+  );
   if (profile === undefined) {
     throw new Error("Agent runtime purpose is not admitted");
   }
@@ -129,31 +169,28 @@ export const admitSubscriptionRuntimeRequest = (
     throw new Error("Agent runtime provider conflicts with purpose policy");
   }
 
-  const controls = parseSubscriptionRuntimeJsonObject(
-    request.controlsJson,
-    "controls_json",
-  );
   const outputSchema = parseSubscriptionRuntimeJsonObject(
     request.outputSchemaJson,
     "output_schema_json",
   );
   assertOptionalExactString(controls.model, profile.model, "model");
-  assertOptionalExactString(
-    request.metadata.model,
-    profile.model,
-    "metadata.model",
-  );
-  assertOptionalExactString(
-    controls.reasoningEffort,
-    profile.reasoningEffort,
-    "reasoningEffort",
-  );
-  assertOptionalExactString(
-    request.metadata.reasoningEffort,
-    profile.reasoningEffort,
-    "metadata.reasoningEffort",
-  );
+  assertOptionalExactString(controls.modelBackend, profile.modelBackend ?? "openai-chatgpt", "modelBackend");
+  assertOptionalExactString(request.metadata.modelBackend, profile.modelBackend ?? "openai-chatgpt", "metadata.modelBackend");
+  assertOptionalExactString(request.metadata.model, profile.model, "metadata.model");
+  assertOptionalExactString(controls.reasoningEffort, profile.reasoningEffort, "reasoningEffort");
+  assertOptionalExactString(request.metadata.reasoningEffort, profile.reasoningEffort, "metadata.reasoningEffort");
   assertDedicatedRelatedTopicMarkers(request, controls);
+  if (profile.modelBackend === mimoSummaryBackend) {
+    const markers = mimoSchemaMarkers[request.purpose];
+    if (markers === undefined) throw new Error("MiMo purpose is not admitted");
+    assertOptionalExactString(controls.toolPolicy, "none", "toolPolicy");
+    if (controls.toolsEnabled !== undefined && controls.toolsEnabled !== false) throw new Error("toolsEnabled conflicts with purpose policy");
+    if (!(["social_monitor.reader_summary.generate.v2", "social_monitor.reader_summary.repair.v2"].includes(request.purpose) && controls.outputSchemaName === undefined)) {
+      assertRequiredExactString(controls.outputSchemaName, markers[0], "outputSchemaName");
+      assertRequiredExactString(controls.schemaVersion, markers[1], "schemaVersion");
+      assertMimoSchemaRoot(request.purpose, outputSchema);
+    }
+  }
   assertReaderPromotionV2CanaryMarkers(request, controls, outputSchema);
   assertOutputControls(request, controls, outputSchema, profile);
 
@@ -201,6 +238,24 @@ export const admitSubscriptionRuntimeRequest = (
       },
     },
   };
+};
+
+const assertMimoSchemaRoot = (
+  purpose: string,
+  schema: Record<string, unknown>,
+): void => {
+  const expected = mimoSchemaMarkers[purpose]?.[2];
+  const properties = schema.properties as Record<string, unknown> | undefined;
+  const required = schema.required as readonly string[] | undefined;
+  const first = expected?.[0];
+  const firstSchema = first === undefined ? undefined : properties?.[first] as Record<string, unknown> | undefined;
+  if (expected === undefined || schema.type !== "object" || schema.additionalProperties !== false ||
+    !properties || Array.isArray(properties) || !Array.isArray(required) ||
+    required.length !== expected?.length ||
+    expected.some((key) => !required.includes(key) || !Object.hasOwn(properties, key)) ||
+    firstSchema?.type !== (first === "headline" ? "string" : "array")) {
+    throw new Error("outputSchema conflicts with MiMo purpose policy");
+  }
 };
 
 export const subscriptionRuntimeOutputMatchesProfile = (
@@ -313,6 +368,9 @@ const canonicalControlsForProfile = (
   return {
     ...preserved,
     model: profile.model,
+    ...(profile.modelBackend === undefined
+      ? {}
+      : { modelBackend: profile.modelBackend }),
     reasoningEffort: profile.reasoningEffort,
     responseFormat: profile.responseFormat,
     ...(profile.outputKind === "structured_output"

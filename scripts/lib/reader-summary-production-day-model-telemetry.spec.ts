@@ -31,6 +31,19 @@ describe("production-day daily model telemetry", () => {
     expect(productionDayModelExecutionMatches(report, report)).toBe(true);
   });
 
+  it("accepts provider-reported MiMo telemetry for a live daily summary", () => {
+    const value = evidence();
+    value.provenance.dailySourceAuthority.modelExecution.model =
+      "mimo-v2.6-pro";
+
+    expect(productionDayModelExecutionReport({
+      durableEvidence: value,
+      readerSummaryJobId: jobId,
+      readerSummaryArtifactId: artifactId,
+      executionMode: "live-production",
+    })).toMatchObject({ model: "mimo-v2.6-pro", reasoningEffort: "high" });
+  });
+
   it.each([
     { usageSource: "ESTIMATED" },
     { durationMs: 0 },

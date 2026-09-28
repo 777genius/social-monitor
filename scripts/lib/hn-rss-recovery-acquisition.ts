@@ -1,0 +1,339 @@
+import { ConversationUnitProjectionAdapter } from "@social-monitor/conversation/adapters/ingestion/conversation-unit-projection.adapter";
+import { PrismaConversationUnitRepository } from "@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-unit.repository";
+import { PrismaFeedProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-projection.adapter";
+import { PrismaSourceEngagementProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-projection.adapter";
+import { PrismaScanAttemptRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-attempt.repository";
+import { PrismaScanFailureQueueAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter";
+import { PrismaScanLeaseAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter";
+import { PrismaSourceItemRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-item.repository";
+import { IsolatedScanCursorRepository } from "@social-monitor/ingestion/adapters/persistence/isolated-scan-cursor.repository";
+import { HackerNewsSourceProvider } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-source.provider";
+import { HttpHackerNewsClient } from "@social-monitor/ingestion/adapters/source/hacker-news/http-hacker-news-client";
+import { readScanPasses } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-scan-pass-support";
+import { readPositiveInteger as readHnLimit } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-source-window";
+import { InMemorySourceProviderRegistry } from "@social-monitor/ingestion/adapters/source/in-memory-source-provider.registry";
+import { RegistrySourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter";
+import { HttpRssClient } from "@social-monitor/ingestion/adapters/source/rss/http-rss-client";
+import { readFeedUrls, readPositiveInteger as readRssLimit } from "@social-monitor/ingestion/adapters/source/rss/rss-cursor-and-config";
+import { feedUrlsForTargetWindow } from "@social-monitor/ingestion/adapters/source/rss/rss-source-window";
+import { RssSourceProvider } from "@social-monitor/ingestion/adapters/source/rss/rss-source.provider";
+import { ExecuteScanUseCase } from "@social-monitor/ingestion/features/execute-scan/execute-scan.use-case";
+import { NOOP_SOURCE_CANDIDATE_MEMORY, type SourceFetcherPort, type SourceProviderPort, type SourceQuery, type SourceRuntimeConfig } from "@social-monitor/ingestion/ports";
+import { PrismaScanJobRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-scan-job.repository";
+import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
+import { CryptoIdGenerator, SystemClock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
+
+import { PrismaIngestionWorkerConnection } from "../../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
+import { cleanRealDayFeedProjectionClient } from "./clean-real-day-provider-acquisition";
+import { CleanRealDaySourceConfigReader } from "./clean-real-day-source-config-reader";
+import { composeCollectionScanExecution } from "./collection-scan-execution";
+import { assertRecoveryAcquisitionPermit, assertRecoveryAcquisitionPermitInDisposableJournalForTest, type RecoveryAcquisitionPermit } from "./hn-rss-recovery-journal";
+import { canonicalRecoveryUuid, sha256, type RecoveryProvider } from "./hn-rss-recovery-plan";
+import { ProductionCollectionScanJobReporter } from "./production-collection-scan-job-reporter";
+import { disposablePublicationFixtureRuntimeUrl, registerPublicationFixtureRevocation, type ProvisionedPublicationFixture } from "./reader-summary-publication-disposable-fixture";
+import { assertPostgres18PsqlTransportConfiguration } from "../reader-summary-publication-postgres18-regression";
+
+export type RecoveryBinding = Readonly<{
+  interestId: string;
+  scanPolicyId: string;
+  interestQuery: string;
+  config: SourceRuntimeConfig;
+}>;
+
+export function recoverySourceQuery(providerKey: RecoveryProvider, config: SourceRuntimeConfig): SourceQuery {
+  const string = (value: unknown): string | undefined => typeof value === "string" && value.trim().length > 0 ? value : undefined;
+  if (providerKey === "rss") {
+    const query = string(config.feedUrl) ?? string(config.url);
+    if (query === undefined) throw new Error("RSS binding requires a feed URL");
+    readFeedUrls(query, config);
+    readRssLimit(config.maxItems, 30, 1, 100);
+    return { mode: "url", query };
+  }
+  const mode = config.mode === "listing" ? "listing" : "search";
+  const query = string(config.query) ?? string(config.term) ?? string(config.topic);
+  if (query === undefined) throw new Error("Hacker News binding requires a query");
+  const passes = readScanPasses(config);
+  const configuredPasses = config.scanPasses ?? config.passes;
+  if (Array.isArray(configuredPasses) && configuredPasses.length !== passes.length) {
+    throw new Error("Hacker News recovery scan passes exceed provider bound");
+  }
+  readHnLimit(config.maxItems, 30, 1, 100);
+  if (mode === "listing" && passes.length === 0) {
+    throw new Error("Historical Hacker News listing requires configured scan passes");
+  }
+  return { mode, query };
+}
+
+/** Validate the actual RSS request fanout before reservation or provider effects. */
+export function validateRecoveryWindow(providerKey: RecoveryProvider, config: SourceRuntimeConfig, from: string, to: string, now: Date): void {
+  const startMs = Date.parse(from);
+  const endMs = Date.parse(to);
+  if (!Number.isFinite(now.getTime()) || !Number.isFinite(startMs) || !Number.isFinite(endMs) ||
+    new Date(startMs).toISOString() !== from || new Date(endMs).toISOString() !== to ||
+    startMs >= endMs || endMs - startMs > 86_400_000 || endMs > now.getTime()) {
+    throw new Error("Recovery interval is invalid or exceeds 24 hours");
+  }
+  if (providerKey !== "rss") return;
+  const query = recoverySourceQuery(providerKey, config).query;
+  const feeds = readFeedUrls(query, config);
+  const googleFeeds = feeds.filter((feed) => {
+    const url = new URL(feed);
+    return url.hostname === "news.google.com" && url.pathname === "/rss/search";
+  });
+  if (googleFeeds.length > 0) {
+    const start = new Date(from);
+    const end = new Date(to);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) ||
+      start.toISOString() !== from || end.toISOString() !== to ||
+      start.getUTCHours() !== 0 || start.getUTCMinutes() !== 0 || start.getUTCSeconds() !== 0 || start.getUTCMilliseconds() !== 0 ||
+      end.getTime() - start.getTime() !== 86_400_000) {
+      throw new Error("Google News recovery requires one full UTC day");
+    }
+    for (const feed of googleFeeds) {
+      const terms = (new URL(feed).searchParams.get("q") ?? "")
+        .replace(/\bwhen:\d+[dhm]\b/giu, "").replace(/\s+/gu, " ").trim()
+        .split(/\s+OR\s+/iu).filter((term) => term.trim().length > 0);
+      if (terms.length === 0) throw new Error("Google News recovery requires a search term");
+      if (terms.length > 12) throw new Error("Recovery RSS expanded reads exceed 12");
+    }
+  }
+  const expanded = feedUrlsForTargetWindow(feeds, {
+    startInclusive: new Date(from), endExclusive: new Date(to),
+  });
+  if (expanded.length > 12) throw new Error("Recovery RSS expanded reads exceed 12");
+}
+
+export type RecoveryAcquisitionInput = Readonly<{
+  connection: PrismaIngestionWorkerConnection;
+  tenantId: string;
+  workspaceId: string;
+  sourceBindingId: string;
+  providerKey: RecoveryProvider;
+  from: string;
+  to: string;
+  binding: RecoveryBinding;
+  runId: string;
+  attemptId: string;
+  scanJobId: string;
+  reservationPermit?: RecoveryAcquisitionPermit;
+  provider?: SourceProviderPort;
+}>;
+
+/** The connection and provider for a synthetic acquisition never come from its caller. */
+declare const disposableFixtureBrand: unique symbol;
+export type DisposableRecoveryAcquisitionFixture = Readonly<{
+  [disposableFixtureBrand]: true; close: () => Promise<void>;
+}>;
+const disposableFixtures = new WeakMap<DisposableRecoveryAcquisitionFixture, {
+  connection: PrismaIngestionWorkerConnection; closed: boolean;
+}>();
+
+/** The only accepted provenance is the active disposable provisioning callback. */
+export async function openDisposableRecoveryAcquisitionFixture(provisioned: ProvisionedPublicationFixture): Promise<DisposableRecoveryAcquisitionFixture> {
+  const databaseUrl = disposablePublicationFixtureRuntimeUrl(provisioned);
+  const fixture = await openSocketFixtureConnection(databaseUrl, provisioned.databaseName);
+  try { registerPublicationFixtureRevocation(provisioned, fixture.close); }
+  catch (error) { await fixture.close(); throw error; }
+  return fixture;
+}
+
+/** A spawned fixture worker receives its URL only across its parent's private IPC channel. */
+export async function openDisposableRecoveryAcquisitionFixtureFromParentIpc(): Promise<Readonly<{
+  fixture: DisposableRecoveryAcquisitionFixture; databaseUrl: string;
+}>> {
+  if (typeof process.send !== "function" || !process.connected) {
+    throw new Error("Synthetic recovery requires fixture parent IPC");
+  }
+  const grant = await new Promise<unknown>((resolve, reject) => {
+    const disconnected = () => { process.off("message", received); reject(new Error("Synthetic fixture parent disconnected")); };
+    const received = (message: unknown) => { process.off("disconnect", disconnected); resolve(message); };
+    process.once("disconnect", disconnected);
+    process.once("message", received);
+    process.send?.({ fixtureGrantRequest: true }, (error) => { if (error) disconnected(); });
+  });
+  if (grant === null || typeof grant !== "object" || Array.isArray(grant) ||
+    Object.keys(grant).sort().join(",") !== "databaseName,runtimeDatabaseUrl") {
+    throw new Error("Synthetic recovery fixture IPC grant is invalid");
+  }
+  const value = grant as Record<string, unknown>;
+  if (typeof value.databaseName !== "string" || typeof value.runtimeDatabaseUrl !== "string") {
+    throw new Error("Synthetic recovery fixture IPC grant is invalid");
+  }
+  let fixture: DisposableRecoveryAcquisitionFixture | undefined;
+  let disconnected = false;
+  const revoke = () => { disconnected = true; if (fixture !== undefined) void fixture.close(); };
+  process.once("disconnect", revoke);
+  try {
+    fixture = await openSocketFixtureConnection(value.runtimeDatabaseUrl, value.databaseName);
+    if (disconnected || !process.connected) {
+      await fixture.close();
+      throw new Error("Synthetic fixture parent disconnected");
+    }
+    return { fixture, databaseUrl: value.runtimeDatabaseUrl };
+  } catch (error) {
+    process.off("disconnect", revoke);
+    throw error;
+  }
+}
+
+async function openSocketFixtureConnection(databaseUrl: string, databaseName: string): Promise<DisposableRecoveryAcquisitionFixture> {
+  const url = new URL(databaseUrl);
+  const suffix = /^reader_summary_publication_test_([0-9a-f]{20})$/.exec(databaseName)?.[1];
+  if (suffix === undefined || url.pathname.slice(1) !== databaseName ||
+    url.username !== `social_monitor_publication_test_${suffix}` || !url.searchParams.has("host") ||
+    process.env.READER_SUMMARY_PUBLICATION_TEST_PG18_SOCKET_TRANSPORT === undefined) {
+    throw new Error("Synthetic recovery requires a provisioned private PostgreSQL 18 socket fixture");
+  }
+  assertPostgres18PsqlTransportConfiguration(databaseUrl, url.username);
+  const connection = await PrismaIngestionWorkerConnection.createForProcess(databaseUrl, "daily-runner");
+  const state = { connection, closed: false };
+  const fixture = Object.freeze({ close: async () => {
+    if (state.closed) return;
+    state.closed = true;
+    await connection.close();
+  } }) as DisposableRecoveryAcquisitionFixture;
+  disposableFixtures.set(fixture, state);
+  return fixture;
+}
+
+/** A failed pass/feed leaves a partial sample; it cannot close a recovery plan. */
+export function requireCompleteRecoveryScan(provider: SourceProviderPort): SourceProviderPort {
+  return {
+    key: () => provider.key(),
+    capabilityProfile: () => provider.capabilityProfile(),
+    validateBinding: (query) => provider.validateBinding(query),
+    planScan: (query, context) => provider.planScan(query, context),
+    classifyError: (error, context) => provider.classifyError(error, context),
+    scan: async (plan, context) => {
+      const result = await provider.scan(plan, context);
+      if (result.warnings.length > 0) {
+        throw new Error("Recovery provider returned a partial acquisition");
+      }
+      return result;
+    },
+  };
+}
+
+/** The registry can add window warnings after the provider has returned. Reject them before persistence. */
+export function requireCompleteRecoveryFetch(fetcher: SourceFetcherPort): SourceFetcherPort {
+  return {
+    fetch: async (command) => {
+      const result = await fetcher.fetch(command);
+      if ((result.warnings?.length ?? 0) > 0) {
+        throw new Error("Recovery fetch returned a partial acquisition");
+      }
+      return result;
+    },
+  };
+}
+
+export async function executeRecoveryAcquisition(input: RecoveryAcquisitionInput): Promise<Readonly<{
+  fetched: number; inserted: number; projected: number; skippedDuplicates: number; warningCount: number;
+}>> {
+  return executeRecoveryAcquisitionWithPermit(input, assertRecoveryAcquisitionPermit);
+}
+
+/** Synthetic PostgreSQL checks require a fixture-owned connection and synthetic provider. */
+export async function executeRecoveryAcquisitionInDisposableJournalForTest(
+  input: Omit<RecoveryAcquisitionInput, "connection" | "provider"> & {
+    fixture: DisposableRecoveryAcquisitionFixture; syntheticWarning?: string;
+  }, directory: string,
+): ReturnType<typeof executeRecoveryAcquisition> {
+  const state = disposableFixtures.get(input.fixture);
+  if (state === undefined || state.closed || "connection" in input || "provider" in input) {
+    throw new Error("Synthetic recovery requires its fixture-owned connection and provider");
+  }
+  const { syntheticRecoveryProvider } = await import("./hn-rss-recovery-synthetic-provider");
+  const baseProvider = syntheticRecoveryProvider(input.providerKey, input.sourceBindingId);
+  const warning = input.syntheticWarning;
+  const provider: SourceProviderPort = warning === undefined ? baseProvider : {
+    key: () => baseProvider.key(), capabilityProfile: () => baseProvider.capabilityProfile(),
+    validateBinding: (query) => baseProvider.validateBinding(query),
+    planScan: (query, context) => baseProvider.planScan(query, context),
+    classifyError: (error, context) => baseProvider.classifyError(error, context),
+    scan: async (plan, context) => ({ ...await baseProvider.scan(plan, context), warnings: [warning] }),
+  };
+  return executeRecoveryAcquisitionWithPermit({ ...input, connection: state.connection, provider }, (permit, scope, identity) =>
+    assertRecoveryAcquisitionPermitInDisposableJournalForTest(permit, scope, identity, directory));
+}
+
+async function executeRecoveryAcquisitionWithPermit(input: RecoveryAcquisitionInput,
+  assertPermit: typeof assertRecoveryAcquisitionPermit): ReturnType<typeof executeRecoveryAcquisition> {
+  const clock = new SystemClock();
+  validateRecoveryWindow(input.providerKey, input.binding.config, input.from, input.to, clock.now());
+  const canonicalTenantId = canonicalRecoveryUuid(input.tenantId);
+  const canonicalWorkspaceId = canonicalRecoveryUuid(input.workspaceId);
+  const canonicalSourceBindingId = canonicalRecoveryUuid(input.sourceBindingId);
+  assertPermit(input.reservationPermit, {
+    tenantId: canonicalTenantId, workspaceId: canonicalWorkspaceId,
+    sourceBindingId: canonicalSourceBindingId, interestId: input.binding.interestId,
+    scanPolicyId: input.binding.scanPolicyId, providerKey: input.providerKey,
+    from: input.from, to: input.to, configSha256: sha256(input.binding.config),
+    interestQuerySha256: sha256(input.binding.interestQuery),
+  }, input);
+  const sourceQuery = recoverySourceQuery(input.providerKey, input.binding.config);
+  const ids = new CryptoIdGenerator();
+  const scope = { tenantId: tenantId(canonicalTenantId), workspaceId: workspaceId(canonicalWorkspaceId), sourceBindingId: canonicalSourceBindingId };
+  const reporter = new ProductionCollectionScanJobReporter(new PrismaScanJobRepository(input.connection), ids, clock);
+  reporter.beginReservedAttempt(input.scanJobId, { ...scope, scanPolicyId: input.binding.scanPolicyId });
+  const execution = composeCollectionScanExecution(input.connection, ids, clock, {
+    scanCursors: new IsolatedScanCursorRepository(scope),
+    reporter,
+    scanJobIdForAttempt: () => input.scanJobId,
+    correlationId: input.runId,
+    causationId: input.attemptId,
+  });
+  const config: SourceRuntimeConfig = {
+    ...input.binding.config,
+    adaptivePagination: { enabled: false },
+    targetPublishedWindow: { startInclusive: input.from, endExclusive: input.to },
+  };
+  const provider = input.provider ?? (input.providerKey === "hacker-news"
+    ? new HackerNewsSourceProvider(new HttpHackerNewsClient(), clock)
+    : new RssSourceProvider(new HttpRssClient()));
+  if (provider.key() !== input.providerKey || !provider.validateBinding(sourceQuery).ok) {
+    throw new Error("Recovery provider binding validation failed");
+  }
+  const executeScan = new ExecuteScanUseCase(
+    requireCompleteRecoveryFetch(new RegistrySourceFetcherAdapter(
+      new InMemorySourceProviderRegistry([requireCompleteRecoveryScan(provider)], []),
+      new CleanRealDaySourceConfigReader([{ sourceBindingId: canonicalSourceBindingId, config }]),
+    )),
+    new PrismaSourceItemRepository(input.connection),
+    new PrismaFeedProjectionAdapter(cleanRealDayFeedProjectionClient(input.connection), ids),
+    new PrismaScanAttemptRepository(input.connection),
+    execution.scanCursors,
+    execution.reporter,
+    new PrismaScanFailureQueueAdapter(input.connection, new InMemoryMetricsRecorder(), ids),
+    new PrismaScanLeaseAdapter(input.connection, ids),
+    ids, clock, undefined, undefined,
+    new ConversationUnitProjectionAdapter(new PrismaConversationUnitRepository(input.connection, ids), ids),
+    // Durable source-item upserts handle overlap; candidate memory can warn only after projection writes.
+    NOOP_SOURCE_CANDIDATE_MEMORY,
+    new PrismaSourceEngagementProjectionAdapter(input.connection, ids),
+  );
+  const result = await runWithTenantDatabaseAccess(scope, () => executeScan.execute({
+    tenantId: scope.tenantId,
+    workspaceId: scope.workspaceId,
+    scanJobId: execution.scanJobIdForAttempt({ ...scope, scanPolicyId: input.binding.scanPolicyId }),
+    interestId: input.binding.interestId,
+    sourceBindingId: canonicalSourceBindingId,
+    scanPolicyId: input.binding.scanPolicyId,
+    providerKey: input.providerKey,
+    sourceQuery,
+    interestQuerySnapshot: input.binding.interestQuery,
+    correlationId: execution.correlationId,
+    causationId: execution.causationId,
+    retryBudget: 0,
+    leaseTtlSeconds: 600,
+  }));
+  if (!result.ok) throw new Error(`Recovery scan failed: ${result.error.name}`);
+  return {
+    fetched: result.value.fetched,
+    inserted: result.value.inserted,
+    projected: result.value.projected,
+    skippedDuplicates: result.value.skippedDuplicates,
+    warningCount: result.value.warnings.length,
+  };
+}

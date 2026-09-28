@@ -1,5 +1,6 @@
 import type { FetchedConversationUnit, FetchedSourceItem } from "../../../ports";
 import type { HackerNewsStory } from "./hacker-news-client.port";
+import { stripHtml } from "./hacker-news-query-match";
 
 /// Normalizes Hacker News wire items into fetched source items plus the
 /// human-readable scan warnings that describe skipped entries.
@@ -47,7 +48,8 @@ export const normalizeHackerNewsCommentConversationUnit = (
     comment.kind !== "comment" ||
     comment.deleted ||
     comment.dead ||
-    comment.text === undefined
+    comment.text === undefined ||
+    stripHtml(comment.text).length === 0
   ) {
     return [];
   }

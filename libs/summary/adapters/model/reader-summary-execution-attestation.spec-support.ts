@@ -21,7 +21,9 @@ export const withTestExecutionAttestation = (
       purpose: command.purpose,
       canonicalRequestSha256: "a".repeat(64),
       provider: command.provider,
-      model: "gpt-5.6-sol",
+      model: command.controls.modelBackend === "xiaomi-mimo-token-plan"
+        ? "mimo-v2.6-pro"
+        : "gpt-5.6-sol",
       reasoningEffort:
         typeof command.controls.reasoningEffort === "string"
           ? command.controls.reasoningEffort

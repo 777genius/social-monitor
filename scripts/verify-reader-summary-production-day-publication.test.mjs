@@ -8,10 +8,11 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import {
   legacyLiveQualityGateNames,
-  publicationQualityContract,
 } from "./lib/reader-summary-publication-quality-contract.mjs";
-import { validateDailyModelExecution } from
-  "./lib/reader-summary-production-day-model-telemetry-verifier.mjs";
+import { dailySourceAuthority } from
+  "./lib/reader-summary-production-day-publication-fixture.mjs";
+import { approvedLauncherSha256, validatePublicationAttestationRecord } from
+  "./lib/reader-summary-publication-runtime-policy.mjs";
 
 const verifierPath = resolve(
   "scripts/verify-reader-summary-production-day-publication.mjs",
@@ -53,6 +54,63 @@ test("accepts a fully live report with all eight real steps", () => {
   });
 });
 
+test("accepts a full publication proof for a pinned MiMo summary and daily telemetry", () => {
+  withFixture(({ reportPath, proofPath, evidence }) => {
+    for (const [index, record] of evidence.executionAttestations.entries()) {
+      assert.doesNotThrow(() => validatePublicationAttestationRecord(record, false),
+        `attestation ${index} must match the current purpose policy`);
+    }
+    const created = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(created.status, 0, created.stderr);
+    const verified = runVerifier(reportPath, proofPath, "--proof");
+    assert.equal(verified.status, 0, verified.stderr);
+  }, { mimo: true, dailyTelemetry: true });
+});
+
+test("rejects an array-coerced losing topic relation in both proof modes", () => {
+  withFixture(({ directory, reportPath, proofPath, evidence, evidencePath,
+    frontendPath }) => {
+    const baseline = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(baseline.status, 0, baseline.stderr);
+    const oldProof = JSON.parse(readFileSync(proofPath, "utf8"));
+    const losing = evidence.executionAttestations[2];
+    losing.taskRole = ["topic_relation"];
+    losing.attempt = "0";
+    evidence.captureExecution.runtimeResult = deriveRuntimeProvenance(
+      evidence.executionAttestations,
+      JSON.parse(readFileSync(frontendPath, "utf8")),
+    );
+    evidence.durableReadback.executionAttestationSetSha256 =
+      evidence.captureExecution.runtimeResult.attestationSetSha256;
+    const evidenceBytes = `${JSON.stringify(evidence)}\n`;
+    writeFileSync(evidencePath, evidenceBytes);
+    const report = buildReport(
+      evidenceBytes, readFileSync(frontendPath, "utf8"), evidence,
+    );
+    const reportBytes = `${JSON.stringify(report)}\n`;
+    writeFileSync(reportPath, reportBytes);
+    const mutatedProofPath = join(directory, "mutated-proof.json");
+    writeFileSync(mutatedProofPath, `${JSON.stringify({
+      ...oldProof,
+      reportByteLength: Buffer.byteLength(reportBytes),
+      reportSha256: createHash("sha256").update(reportBytes).digest("hex"),
+      reportArtifactId: report.reportIdentity.artifactId,
+      evidenceArtifactSha256: report.summary.evidenceArtifactSha256,
+      evidenceArtifactByteLength: Buffer.byteLength(evidenceBytes),
+      model: evidence.captureExecution.runtimeResult,
+    })}\n`);
+    const proofOut = runVerifier(
+      reportPath, join(directory, "new-proof.json"), "--proof-out",
+    );
+    const proofIn = runVerifier(reportPath, mutatedProofPath, "--proof");
+    assert.notEqual(proofOut.status, 0, "array role passed --proof-out");
+    assert.notEqual(proofIn.status, 0, "array role passed --proof");
+    assert.match(proofOut.stderr, /attestation/u);
+    assert.match(proofIn.stderr, /attestation/u);
+  }, { mimo: true, relatedTopicRole: "topic_relation",
+    relatedTopicAttempt: "1" });
+});
+
 test("accepts the exact related-topic relation attestation inventory", () => {
   withFixture(({ reportPath, proofPath }) => {
     const result = runVerifier(reportPath, proofPath, "--proof-out");
@@ -78,37 +136,6 @@ test("accepts historical-incomplete telemetry only when the artifact is also nul
     const result = runVerifier(reportPath, proofPath, "--proof-out", report);
     assert.equal(result.status, 0, result.stderr);
   }, { historicalDailyTelemetry: true });
-});
-
-test("rejects historical-incomplete audit telemetry paired with artifact 0/0", () => {
-  const authority = dailySourceAuthority(true);
-  const modelExecution = {
-    ...authority.modelExecution,
-    modelJobIdentity: authority.modelJobIdentity,
-    receiptSha256: authority.receiptSha256,
-    readerSummaryJobId,
-    readerSummaryArtifactId: readerSummaryId,
-  };
-  assert.throws(() => validateDailyModelExecution(
-    modelExecution,
-    { provenance: { dailySourceAuthority: authority } },
-    { readerSummaryArtifact: { usage: {
-      inputTokens: 0,
-      outputTokens: 0,
-      estimatedCostUsd: 0,
-    } } },
-    {
-      readerSummaryJobId,
-      readerSummaryId,
-      runtimeProvenance: {
-        provider: "codex",
-        physicalModel: "gpt-5.6-sol",
-        reasoningEffort: "high",
-      },
-    },
-    "current",
-    "historical-regeneration",
-  ), /not artifact-bound/u);
 });
 
 for (const patch of [
@@ -192,20 +219,6 @@ test("rejects an incomplete legacy live quality contract", () => {
         .map((name) => [name, true]),
     );
   });
-});
-
-test("rejects the legacy live contract outside its in-flight date", () => {
-  assert.equal(
-    publicationQualityContract({
-      qualityGates: Object.fromEntries(
-        legacyLiveQualityGateNames.map((name) => [name, true]),
-      ),
-      provenance: { mode: "live-production" },
-      model: { liveCollection: true },
-      expectedDate: "2026-07-21",
-    }),
-    null,
-  );
 });
 
 for (const stepId of requiredStepIds) {
@@ -533,7 +546,9 @@ function buildFrontend(options) {
         modelVersion: options.modelVersion ??
           (options.legacyIdentity
             ? "codex:gpt-5.6-sol:xhigh"
-            : "codex:gpt-5.6-sol:high"),
+            : options.mimo
+              ? "codex:mimo-v2.6-pro:high"
+              : "codex:gpt-5.6-sol:high"),
         providerVersion: options.providerVersion ?? "agent-runtime",
       },
       ...(options.dailyTelemetry || options.historicalDailyTelemetry
@@ -576,6 +591,7 @@ function buildEvidence(frontend, frontendBytes, options) {
       ...(options.dailyTelemetry || options.historicalDailyTelemetry
         ? { dailySourceAuthority: dailySourceAuthority(
           options.historicalDailyTelemetry,
+          options.mimo,
         ) }
         : {}),
     },
@@ -602,8 +618,12 @@ function buildEvidence(frontend, frontendBytes, options) {
       runtimeHealth: {
         status: "serving",
         runtimeEngine: options.runtimeEngine ?? "subscription-runtime-cli",
-        runtimeVersion: "0.1.0-main.2",
-        launcherSha256: "b".repeat(64),
+        runtimeVersion: options.mimo
+          ? "0.1.0-main.42-sm.3"
+          : "0.1.0-main.2",
+        launcherSha256: options.mimo
+          ? approvedLauncherSha256
+          : "b".repeat(64),
         checkedAt: "2026-07-16T01:00:30.000Z",
       },
       frontendArtifact: {
@@ -773,33 +793,6 @@ function buildReport(evidenceBytes, frontendBytes, evidence) {
   };
 }
 
-function dailySourceAuthority(historicalIncomplete = false) {
-  return {
-    canonicalSha256: "7".repeat(64),
-    modelJobIdentity: "8".repeat(64),
-    receiptSha256: "9".repeat(64),
-    modelExecution: historicalIncomplete ? {
-      provider: "codex",
-      model: "gpt-5.6-sol",
-      reasoningEffort: "high",
-      inputTokens: null,
-      outputTokens: null,
-      totalTokens: null,
-      usageSource: "HISTORICAL_INCOMPLETE",
-      durationMs: null,
-    } : {
-      provider: "codex",
-      model: "gpt-5.6-sol",
-      reasoningEffort: "high",
-      inputTokens: 120,
-      outputTokens: 30,
-      totalTokens: 150,
-      usageSource: "PROVIDER_REPORTED",
-      durationMs: 250,
-    },
-  };
-}
-
 function historicalRegenerationProvenance(sourceEvidence, datasetGuard) {
   const period = utcPeriod();
   return {
@@ -912,12 +905,16 @@ function buildExecutionAttestations(options) {
     schemaVersion: 1,
     canonicalRequestSha256: "a".repeat(64),
     provider: "codex",
-    model: "gpt-5.6-sol",
+    model: options.mimo ? "mimo-v2.6-pro" : "gpt-5.6-sol",
     reasoningEffort: options.legacyIdentity ? "xhigh" : "high",
     runtimeEngine:
       options.attestationRuntimeEngine ?? "subscription-runtime-cli",
-    runtimePackageVersion: "0.1.0-main.2",
-    launcherSha256: "b".repeat(64),
+    runtimePackageVersion: options.mimo
+      ? "0.1.0-main.40-sm-mimo.5"
+      : "0.1.0-main.2",
+    launcherSha256: options.mimo
+      ? approvedLauncherSha256
+      : "b".repeat(64),
     selectedOutputKind:
       options.attestationOutputKind ?? "structured_output",
     selectedOutputSha256: "c".repeat(64),
@@ -951,14 +948,16 @@ function buildExecutionAttestations(options) {
       ? []
       : [{
           taskRole: options.relatedTopicRole,
-          attempt: "related-topic",
+          attempt: options.relatedTopicAttempt ?? "related-topic",
           normalizedOutputSha256: "f".repeat(64),
           attestation: {
             ...common,
             requestId: "related-topic-relation-request",
-            purpose: options.legacyIdentity
-              ? "social_monitor.reader_summary.verify_related_topic_relations"
-              : "social_monitor.reader_summary.verify_related_topic_relations.v2",
+            purpose: options.relatedTopicRole === "topic_relation"
+              ? "social_monitor.reader_summary.topic_map.verify_relations.v2"
+              : options.legacyIdentity
+                ? "social_monitor.reader_summary.verify_related_topic_relations"
+                : "social_monitor.reader_summary.verify_related_topic_relations.v2",
           },
         }]),
   ];

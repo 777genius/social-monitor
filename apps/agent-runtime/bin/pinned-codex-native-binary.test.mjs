@@ -156,7 +156,7 @@ test("every wrapper factory uses the native default and preserves explicit synth
         admission: { profile: { provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high", retryMode: "never" },
           canonicalRequest: { runId: "synthetic-native-contract" } },
         authPool: isPool ? { accounts: [{ id: "fixture-account" }] } : undefined,
-        isSourceContentAssessment: lane === "assessment",
+        isSourceContentAssessment: lane === "assessment", isMimoSummary: false,
         isReaderPromotionV2Canary: lane.endsWith("canary"), assessmentOutputSchemas: undefined,
         resolvePinnedCodexBinaryPath: () => {
           assert.equal(override, undefined, "explicit override must not resolve a production package");

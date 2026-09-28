@@ -46,7 +46,9 @@ export function validateDailyModelExecution(
     !nonEmptyText(value.reasoningEffort) ||
     !isSha256(value.modelJobIdentity) || !isSha256(value.receiptSha256) ||
     (executionMode === "live-production" &&
-      (value.provider !== "codex" || value.model !== "gpt-5.6-sol" ||
+      (value.provider !== "codex" ||
+        (value.model !== "gpt-5.6-sol" &&
+          value.model !== "mimo-v2.6-pro") ||
         value.reasoningEffort !== "high")) ||
     value.provider !== runtime.provider ||
     value.model !== runtime.physicalModel ||

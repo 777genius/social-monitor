@@ -31,6 +31,74 @@ const legacyReaderSummaryPurposes = [
 ] as const;
 
 describe("subscription runtime purpose policy", () => {
+  it("admits MiMo only for six named daily summary purposes", () => {
+    const markers = [
+      ["social_monitor.reader_summary.generate.v2", "social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+      ["social_monitor.reader_summary.repair.v2", "social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+      ["social_monitor.reader_summary.topic_map.label.v2", "social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1"],
+      ["social_monitor.reader_summary.topic_map.verify_relations.v2", "social_monitor_reader_summary_topic_relations", "reader_summary.topic_relation.v1"],
+      ["social_monitor.reader_summary.verify_story_relations.v2", "social_monitor_reader_summary_story_relations", "reader_summary.story_relation.v1"],
+      ["social_monitor.reader_summary.verify_related_topic_relations.v2", "social_monitor_reader_summary_related_topic_relations", "reader_summary.related_topic_relation.v1"],
+    ] as const;
+    for (const [purpose, name, version] of markers) {
+      const required = purpose.endsWith("generate.v2") || purpose.endsWith("repair.v2")
+        ? ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"]
+        : purpose.endsWith("topic_map.label.v2") ? ["nodeLabels", "groups"] : ["decisions"];
+      const outputSchema = { type: "object", additionalProperties: false, required,
+        properties: Object.fromEntries(required.map((key) => [key, {
+          type: key === "headline" ? "string" : "array",
+        }])) };
+      const admitted = admitSubscriptionRuntimeRequest(request({
+        purpose,
+        outputSchemaJson: JSON.stringify(outputSchema),
+        controlsJson: JSON.stringify({ model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan",
+          outputSchemaName: name, schemaVersion: version }),
+        ...(purpose.endsWith("verify_related_topic_relations.v2")
+          ? { metadata: { taskRole: "related_topic_relation", verificationLane: "related_topic" } }
+          : {}),
+      }));
+      expect(admitted.profile).toMatchObject({
+        provider: "codex",
+        model: "mimo-v2.6-pro",
+        modelBackend: "xiaomi-mimo-token-plan",
+        reasoningEffort: "high",
+        outputKind: "structured_output",
+      });
+      expect((admitted.canonicalRequest.task as Record<string, unknown>).outputSchemaName).toBe(name);
+      for (const badControls of [
+        { outputSchemaName: "unrelated" },
+        { schemaVersion: "unrelated.v1" },
+        { toolsEnabled: true },
+      ]) {
+        expect(() => admitSubscriptionRuntimeRequest(request({
+          purpose,
+          outputSchemaJson: JSON.stringify(outputSchema),
+          controlsJson: JSON.stringify({ modelBackend: "xiaomi-mimo-token-plan",
+            outputSchemaName: name, schemaVersion: version, ...badControls }),
+          ...(purpose.endsWith("verify_related_topic_relations.v2")
+            ? { metadata: { taskRole: "related_topic_relation", verificationLane: "related_topic" } }
+            : {}),
+        }))).toThrow();
+      }
+    }
+    for (const purpose of [
+      "social_monitor.relevance.assess_source_content.v1",
+      "social_monitor.reader_summary.weekly.review.v2",
+      "social_monitor.summary.generate",
+    ]) {
+      expect(() => admitSubscriptionRuntimeRequest(request({
+        purpose,
+        controlsJson: '{"modelBackend":"xiaomi-mimo-token-plan"}',
+      }))).toThrow("modelBackend conflicts with purpose policy");
+    }
+    expect(() => admitSubscriptionRuntimeRequest(request({
+      outputSchemaJson: JSON.stringify({ type: "object", additionalProperties: false,
+        required: ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
+        properties: Object.fromEntries(["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"].map((key) => [key, { type: key === "headline" ? "string" : "array" }])) }),
+      controlsJson: '{"model":"gpt-5.6-sol","modelBackend":"xiaomi-mimo-token-plan","outputSchemaName":"social_monitor_reader_summary_artifact","schemaVersion":"reader_summary.artifact.v1"}',
+    }))).toThrow("model conflicts with purpose policy");
+  });
+
   it("requires the exact high production service default", () => {
     expect(configuredSubscriptionRuntimeDefaultsAreSafe({})).toBe(true);
     expect(configuredSubscriptionRuntimeDefaultsAreSafe({

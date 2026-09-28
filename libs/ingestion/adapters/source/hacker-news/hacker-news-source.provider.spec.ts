@@ -430,12 +430,14 @@ describe("HackerNewsSourceProvider", () => {
       {
         from: new Date("2026-07-07T00:00:00.000Z"),
         to: new Date("2026-07-08T00:00:00.000Z"),
+        requireComplete: true,
       },
     ]);
     expect(client.commentSearchOptions).toEqual([
       {
         from: new Date("2026-07-07T00:00:00.000Z"),
         to: new Date("2026-07-08T00:00:00.000Z"),
+        requireComplete: true,
       },
     ]);
   });
@@ -488,10 +490,12 @@ describe("HackerNewsSourceProvider", () => {
       {
         from: new Date("2026-07-07T00:00:00.000Z"),
         to: new Date("2026-07-08T00:00:00.000Z"),
+        requireComplete: true,
       },
       {
         from: new Date("2026-07-07T00:00:00.000Z"),
         to: new Date("2026-07-08T00:00:00.000Z"),
+        requireComplete: true,
       },
     ]);
   });

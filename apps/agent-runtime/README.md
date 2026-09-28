@@ -162,6 +162,50 @@ Important env:
 - `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`, manifest path inside the pool root
 - `AGENT_RUNTIME_CLAUDE_TOKEN_ENV`, default `CLAUDE_CODE_OAUTH_TOKEN`
 
+MiMo Token Plan admission is reserved for the daily reader-summary
+generate, repair, topic-map label, topic-map relation, story relation, and
+related-topic relation v2 purposes with model `mimo-v2.6-pro`. Each purpose
+requires its named structured-output schema and schema version. Weekly,
+canonical-recovery, generic summary, and relevance tasks remain on Codex.
+The reader summary adapters select this route only when
+`AGENT_RUNTIME_READER_SUMMARY_BACKEND=xiaomi-mimo-token-plan`; its default
+remains the Codex ChatGPT backend. The optional
+`AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL` must be `mimo-v2.6-pro` on
+this route. Optional purpose-specific topic and relation model overrides must
+also be `mimo-v2.6-pro` when MiMo is selected. The historic
+`AGENT_RUNTIME_READER_SUMMARY_MODEL` stays pinned to `gpt-5.6-sol` for the
+default Codex route. MiMo uses the Codex provider transport.
+The summary route uses the isolated `@vioxen/subscription-runtime-mimo`
+package. The existing `main.42-sm.3` package still runs every other purpose.
+The MiMo package is built from upstream commit
+`951aa18c060e6aa28006867dd124aa5a2905d951` in the checked-in source
+bundle. Run `npm run check:subscription-runtime-mimo-rebuild` to verify both
+the bundle and the exact vendored archive. The archived package reports
+`0.1.0-main.40-sm-mimo.5`; the runtime attestation uses this version for MiMo
+and the original package version for other purposes.
+
+Pass the existing root-only key file to the agent-runtime service using a
+systemd credential. An operator-owned unit drop-in can use these settings,
+with the actual root-only source path substituted during deployment:
+
+```ini
+[Service]
+LoadCredential=mimo-token-plan:/absolute/root-only/mimo-key-file
+Environment=AGENT_RUNTIME_MIMO_API_KEY_FILE=%d/mimo-token-plan
+```
+
+The service receives only the credential path. The wrapper opens a regular,
+owner-only file after exact summary admission and gives its contents only to
+the MiMo worker's child-process environment. It does not copy `auth.json` or
+put the key on argv or in the product process environment. Missing, linked,
+group-readable, multiline, or oversized files fail closed. The MiMo worker
+uses one read-only app-server-goal attempt, disables native tools and project
+instructions, binds the named reader-summary output schema, and never enters
+the Codex auth pool. Leave the summary backend
+selector on its Codex default until the integrated release, credential mount,
+and sandbox-only acceptance check are ready. No production key is needed for
+the source rebuild or focused tests.
+
 ## Opt-in strict gRPC admission
 
 Set `AGENT_RUNTIME_STRICT_PRODUCTION_ADMISSION=1` to enable strict admission.
@@ -176,14 +220,44 @@ Strict startup requires all of these explicit values:
 - `AGENT_RUNTIME_STATE_ROOT`: existing absolute directory on an operator-managed
   durable volume; `AGENT_RUNTIME_EPHEMERAL` must be disabled.
 - `AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT` and
-  `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`: existing absolute pool directory and
-  manifest inside it with at least one account reference. Single-account auth
-  paths are rejected in strict mode.
+  `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`: required for the default Codex strict
+  service. The pool is an existing absolute directory with a manifest inside it
+  and at least one account reference. Single-account auth paths are rejected.
 - `AGENT_RUNTIME_CLI_PATH`: existing absolute executable regular file with no
   symlink or traversal components. Startup also checks the pinned installation
   bytes and package identity.
 
-The workspace, state and pool roots must be separate. The CLI must sit outside
+For a MiMo-only strict service, explicitly set
+`AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS=xiaomi-mimo-token-plan` and
+`AGENT_RUNTIME_MIMO_API_KEY_FILE` to an absolute root-controlled key file.
+Do not configure either Codex pool variable, `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`,
+or `CODEX_AUTH_JSON_PATH`; startup rejects even empty values. The key must be a
+regular file with no symlink or traversal components, 1 to 4096 bytes, and no
+group or world permissions. Every parent directory must be free of group or
+world write access. The key must be outside the workspace and state roots.
+Startup checks metadata only and verifies the pinned MiMo runtime installation;
+the worker reads the key only for an admitted MiMo task. This mode rejects
+Codex and legacy purpose requests before installation inspection or execution.
+The selected MiMo package, the base runtime package, and their manifests must
+resolve outside the admitted workspace. MiMo-only admission checks a pinned
+SHA256 inventory of all regular distribution files, including extensionless
+executables, `package.json`, JavaScript, JSON and native modules in both packages and the hoisted imports loaded by
+their worker entrypoints. The inventory rejects missing or changed files and
+symlinks within those code trees. The base fingerprint requires npm's locked
+dependency completion of its vendored archive; the MiMo fingerprint matches
+its pinned archive. Health and execution
+reinspect the same code before spawn, and completed results require a fresh
+inspection before attestation. A changed distribution requires a reviewed pin
+update. The wrapper receives the exact admitted project cwd, including when
+that project is a sibling of the service checkout; the CLI timeout signals its
+local process group. MiMo app-server children are tracked by the wrapper
+process factory and shut down through the same bounded lifecycle, including
+detached native children.
+The setting is accepted only with strict admission. Its only known values are
+`openai-chatgpt` and `xiaomi-mimo-token-plan`, comma-separated without duplicates.
+When unset, the established Codex-pool strict behavior remains available.
+
+The workspace, state and configured pool roots must be separate. The CLI must sit outside
 the task workspace and state roots so admitted tasks cannot rewrite runtime
 state, auth references or launcher bytes through their workspace.
 
@@ -204,10 +278,13 @@ transaction, aligning `backend.sha`, the PostgreSQL runtime `READY` marker and
 integration `HEAD` before bounded recovery.
 
 For local development, `npm run start:agent-runtime` loads only the runtime
-allowlist above from the repository `.env`; unrelated application credentials
+allowlist above from the repository `.env`, including strict admission, workspace,
+backend allowlist and MiMo key file settings; unrelated application credentials
 are not copied into the child process. It also uses the standard local durable
 state root under `XDG_STATE_HOME` (or `~/.local/state`) and the current
-`~/.codex/auth.json` when no explicit Codex auth path is configured.
+`~/.codex/auth.json` when no explicit Codex auth path is configured for a
+legacy Codex service. Explicit MiMo-only selection never adds that fallback;
+an explicitly configured Codex auth path remains forbidden in MiMo-only strict mode.
 
 ## Production Codex Auth Pool
 
@@ -273,5 +350,6 @@ The override mounts the host Codex auth JSON at
 `@openai/codex` and CA certificates, so the container does not need a manual
 Codex install step.
 
-The health RPC probes `AGENT_RUNTIME_CLI_PATH --help`. It does not run an agent
-task.
+For MiMo-only strict mode, the health RPC inspects the pinned installation
+without running a CLI task. Other modes probe `AGENT_RUNTIME_CLI_PATH` without
+an input task.

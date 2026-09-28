@@ -16,23 +16,62 @@ const entry = "dist/apps/agent-runtime/src/main.js";
 const cli = "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs";
 const verifier = "apps/agent-runtime/bin/host-release.mjs";
 const vendoredCliImport = "node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js";
+const mimoRuntimeManifest = "node_modules/@vioxen/subscription-runtime-mimo/package.json";
+const mimoRuntimeVersion = "0.1.0-main.40-sm-mimo.5";
 const target = Object.freeze({ platform: process.platform, arch: process.arch });
 const codexNativeBinary = `node_modules/@openai/codex-linux-${target.arch}/vendor/${
   target.arch === "x64" ? "x86_64-unknown-linux-musl" : "aarch64-unknown-linux-musl"
 }/bin/codex`;
 const helpers = [
-  "assessment-cli-progress.mjs", "assessment-cli-lifecycle.mjs",
+  "assessment-cli-progress.mjs", "assessment-cli-lifecycle.mjs", "mimo-app-server-custody.mjs", "installed-runtime-modules.mjs",
+  "mimo-key-file.mjs",
   "pinned-codex-native-binary.mjs", "subscription-runtime-failure-details.mjs",
   "codex-worker-cli-usage.mjs", "codex-auth-pool-manifest.mjs",
   "codex-auth-pool-routing.mjs", "subscription-runtime-purpose-model-policy.mjs",
   "reader-promotion-v2-canary-contract.cjs",
 ];
-const forbidden = /^(?:\.env(?:\..*)?|\.git|\.npmrc|auth\.json|fixtures?|__tests__|tests?|.*\.(?:test|spec|fixture)(?:\..*)?)$/i;
+const sensitivePath = /^(?:\.env(?:\..*)?|\.git|\.npmrc|auth\.json)$/i;
+const prunableTestPath = /^(?:fixtures?|__tests__|tests?|.*\.(?:test|spec|fixture)(?:\..*)?)$/i;
+// The installed inspector fingerprints every regular file in these exact
+// package-relative distributions, including tests, fixtures and extensionless
+// files shipped by npm. Pruning any member changes the approved code identity.
+const approvedRuntimeDistributions = [
+  "node_modules/@vioxen/subscription-runtime",
+  "node_modules/@vioxen/subscription-runtime-mimo",
+  "node_modules/@anthropic-ai/claude-agent-sdk",
+  "node_modules/@modelcontextprotocol/sdk",
+  "node_modules/ajv-formats", "node_modules/zod", "node_modules/zod-to-json-schema",
+  "node_modules/fast-uri", "node_modules/fast-deep-equal", "node_modules/json-schema-traverse",
+];
+// The inspector admits this exact root distribution. npm ci --omit=dev omits
+// it because the locked root copy is dev-only, while runtime copies are nested.
+const inspectedTraverse = "node_modules/json-schema-traverse";
+const inspectedTraverseSha256 = "e027afb34851b07a5cc5186b3a6d76b3273214474a35b13dacce9a15b0d309db";
+const inApprovedRuntimeDistribution = (rel) => approvedRuntimeDistributions.some(
+  (root) => rel === root || rel.startsWith(`${root}/`),
+);
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 async function hashFile(path) {
   const digest = createHash("sha256");
   for await (const chunk of createReadStream(path)) digest.update(chunk);
   return digest.digest("hex");
+}
+
+async function distributionHash(root) {
+  if (!(await lstat(root)).isDirectory()) throw new Error("Inspected distribution root is not a directory");
+  const entries = [];
+  async function walk(dir, prefix = "") {
+    for (const name of await readdir(dir)) {
+      const rel = prefix ? `${prefix}/${name}` : name;
+      const path = join(dir, name);
+      const st = await lstat(path);
+      if (st.isDirectory()) await walk(path, rel);
+      else if (st.isFile()) entries.push(`${rel}\0${await hashFile(path)}\n`);
+      else throw new Error(`Inspected distribution contains a non-regular entry: ${rel}`);
+    }
+  }
+  await walk(root);
+  return sha(Buffer.from(entries.sort().join("")));
 }
 
 function option(args, flag) {
@@ -98,8 +137,11 @@ export async function treeHash(root) {
   const entries = [];
   async function walk(dir, prefix) {
     for (const name of (await readdir(dir)).sort()) {
-      if (forbidden.test(name)) throw new Error(`Forbidden release path: ${join(prefix, name)}`);
       const rel = prefix ? `${prefix}/${name}` : name;
+      if (sensitivePath.test(name) ||
+          (prunableTestPath.test(name) && !inApprovedRuntimeDistribution(rel))) {
+        throw new Error(`Forbidden release path: ${rel}`);
+      }
       const path = join(dir, name);
       const st = await lstat(path);
       const mode = (st.mode & 0o777).toString(8);
@@ -122,13 +164,15 @@ export async function treeHash(root) {
   return sha(Buffer.from(JSON.stringify(entries)));
 }
 
-async function pruneForbidden(dir) {
+async function pruneForbidden(dir, prefix = "") {
   for (const name of await readdir(dir)) {
+    const rel = prefix ? `${prefix}/${name}` : name;
     const path = join(dir, name);
-    if (forbidden.test(name)) {
+    if (approvedRuntimeDistributions.includes(rel)) continue;
+    if (sensitivePath.test(name) || prunableTestPath.test(name)) {
       await rm(path, { recursive: true, force: true });
     } else if ((await lstat(path)).isDirectory()) {
-      await pruneForbidden(path);
+      await pruneForbidden(path, rel);
     }
   }
 }
@@ -220,6 +264,8 @@ export async function verify(args) {
   await requireFile(root, "package.json");
   await requireFile(root, "package-lock.json");
   await requireFile(root, "node_modules/@vioxen/subscription-runtime/package.json");
+  await requireFile(root, mimoRuntimeManifest);
+  await requireFile(root, "node_modules/@vioxen/subscription-runtime-mimo/dist/worker-codex/index.js");
   await requireFile(root, vendoredCliImport);
   await requireFile(root, "node_modules/@openai/codex/package.json");
   await requireFile(root, `node_modules/@openai/codex-linux-${target.arch}/package.json`);
@@ -235,6 +281,11 @@ export async function verify(args) {
   const runtime = JSON.parse(await readFile(join(root, "node_modules/@vioxen/subscription-runtime/package.json"), "utf8"));
   if (runtime.name !== "@vioxen/subscription-runtime" || runtime.version !== "0.1.0-main.42-sm.3") {
     throw new Error("Vendored runtime identity mismatch");
+  }
+  const mimoRuntime = JSON.parse(await readFile(join(root, mimoRuntimeManifest), "utf8"));
+  if (mimoRuntime.name !== "@vioxen/subscription-runtime" ||
+      mimoRuntime.version !== mimoRuntimeVersion) {
+    throw new Error("Vendored MiMo runtime identity mismatch");
   }
   process.stdout.write("Host release staging verified\n");
 }
@@ -261,6 +312,11 @@ async function build(args) {
     if (await gitOutput(["status", "--porcelain", "--untracked-files=all"])) {
       throw new Error("Host release requires a clean product checkout");
     }
+    const lockedTraverse = JSON.parse(await readFile(join(sourceRoot, "package-lock.json"), "utf8"))
+      .packages?.[inspectedTraverse];
+    if (lockedTraverse?.version !== "0.4.1" || lockedTraverse.dev !== true) {
+      throw new Error("Inspected json-schema-traverse distribution is not the locked dev-only root");
+    }
     await assertPinnedHelperClosure(join(sourceRoot, "apps/agent-runtime/bin"));
     await run("npm", ["run", "prisma:generate"], sourceRoot, {
       DATABASE_URL: "postgresql://agent_runtime_build:token-value@127.0.0.1:1/agent_runtime_build",
@@ -285,7 +341,7 @@ async function build(args) {
       await copyFile(join(sourceRoot, name), join(install, name));
       await copyFile(join(sourceRoot, name), join(stage, name));
     }
-    for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz"]) {
+    for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz", `vioxen-subscription-runtime-${mimoRuntimeVersion}.tgz`]) {
       await copyFile(join(sourceRoot, "vendor", name), join(install, "vendor", name));
     }
     await run("npm", ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], install);
@@ -294,14 +350,22 @@ async function build(args) {
     await cp(join(install, "node_modules"), join(stage, "node_modules"), {
       recursive: true, verbatimSymlinks: true,
     });
+    const traverseStage = join(stage, inspectedTraverse);
+    if (!(await lstat(traverseStage).catch(() => undefined))) {
+      await cp(join(sourceRoot, inspectedTraverse), traverseStage, { recursive: true });
+    }
     await mkdir(join(stage, "apps/agent-runtime/bin"), { recursive: true });
     for (const name of [basename(cli), basename(verifier), ...helpers]) {
       await copyFile(join(sourceRoot, "apps/agent-runtime/bin", name), join(stage, "apps/agent-runtime/bin", name));
     }
     await chmod(join(stage, cli), 0o755);
     await pruneForbidden(stage);
+    if (await distributionHash(traverseStage) !== inspectedTraverseSha256) {
+      throw new Error("Staged json-schema-traverse distribution bytes are not approved");
+    }
     await requireFile(stage, entry);
     await requireFile(stage, vendoredCliImport);
+    await requireFile(stage, mimoRuntimeManifest);
     await requireFile(stage, "node_modules/@openai/codex/package.json");
     await requireFile(stage, `node_modules/@openai/codex-linux-${target.arch}/package.json`);
     await requireFile(stage, codexNativeBinary);

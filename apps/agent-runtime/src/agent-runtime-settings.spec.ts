@@ -53,6 +53,14 @@ describe("resolveAgentRuntimeSettings", () => {
     });
   });
 
+  it("passes only the MiMo key file path through runtime settings", () => {
+    const settings = resolveAgentRuntimeSettings({
+      AGENT_RUNTIME_MIMO_API_KEY_FILE: "/run/synthetic/mimo-key",
+    });
+    expect(settings.cli.mimoApiKeyFile).toBe("/run/synthetic/mimo-key");
+    expect(settings.cli.model).toBe("gpt-5.6-sol");
+  });
+
   it("accepts the exact production service model overlay", async () => {
     const overlay = await readFile(
       join(

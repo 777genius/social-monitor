@@ -7,7 +7,10 @@ import type {
   AgentRuntimeTaskCommand,
   AgentRuntimeTaskResult,
 } from "../../ports";
-import { AgentRuntimeReaderSummaryTopicLabeler } from "./agent-runtime-reader-summary-topic-labeler.adapter";
+import {
+  AgentRuntimeReaderSummaryTopicLabeler,
+  resolveAgentRuntimeReaderSummaryTopicLabelerOptions,
+} from "./agent-runtime-reader-summary-topic-labeler.adapter";
 import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 
 describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
@@ -224,6 +227,47 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
     await expect(incompleteLabeler.label(input)).rejects.toThrow(
       "must label every requested node exactly once",
     );
+
+    const mimoOutput = {
+      nodeLabels: [{ nodeId: "topic:story:codex", subject: "Codex",
+        parentSubject: "OpenAI", claimType: "other", confidenceScore: 0.92,
+        groupId: "group:agent-tools", keywords: ["codex"] }],
+      groups: [{ id: "group:agent-tools", label: "Agent tools",
+        semanticAnchors: ["Codex"], nodeIds: ["topic:story:codex"],
+        confidenceScore: 0.92 }],
+    };
+    const mimoClient = new CapturingAgentRuntimeClient({
+      status: "completed", structuredOutput: mimoOutput, warnings: [],
+    });
+    const mimoOptions = resolveAgentRuntimeReaderSummaryTopicLabelerOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+    }, mimoClient);
+    await expect(new AgentRuntimeReaderSummaryTopicLabeler(mimoOptions).label(input))
+      .resolves.toMatchObject({ nodeLabels: [expect.objectContaining({ nodeId: "topic:story:codex" })] });
+    expect(mimoClient.commands[0]?.controls).toMatchObject({
+      model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan",
+      toolsEnabled: false, toolPolicy: "none",
+    });
+    const invalidMimo = new CapturingAgentRuntimeClient({
+      status: "completed", structuredOutput: { ...mimoOutput,
+        nodeLabels: [{ ...mimoOutput.nodeLabels[0], keywords: undefined }] },
+      warnings: [],
+    });
+    await expect(new AgentRuntimeReaderSummaryTopicLabeler({
+      ...mimoOptions, client: invalidMimo,
+    }).label(input)).rejects.toThrow("purpose schema");
+    const extraField = new CapturingAgentRuntimeClient({
+      status: "completed", structuredOutput: { ...mimoOutput, unrelated: true },
+      warnings: [],
+    });
+    await expect(new AgentRuntimeReaderSummaryTopicLabeler({
+      ...mimoOptions, client: extraField,
+    }).label(input)).rejects.toThrow("purpose schema");
+    expect(() => resolveAgentRuntimeReaderSummaryTopicLabelerOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL: "gpt-5.6-sol",
+    }, mimoClient)).toThrow("conflicts with purpose policy");
   });
 
   it("caps semantic groups and neutralizes malformed group assignments", async () => {

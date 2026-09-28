@@ -408,24 +408,32 @@ const filterByTargetPublishedWindow = (
     return result;
   }
 
-  const items = result.items.filter(
-    (item) =>
-      item.publishedAt.getTime() >= window.start.getTime() &&
-      item.publishedAt.getTime() < window.end.getTime(),
+  const inWindow = (publishedAt: Date): boolean =>
+    publishedAt.getTime() >= window.start.getTime() &&
+    publishedAt.getTime() < window.end.getTime();
+  const inWindowUnits = result.conversationUnits?.filter((unit) =>
+    inWindow(unit.publishedAt),
   );
-  if (items.length === result.items.length) {
+  const supportingRootExternalIds = new Set(
+    inWindowUnits?.map((unit) => unit.rootExternalId) ?? [],
+  );
+  const items = result.items.filter(
+    (item) => inWindow(item.publishedAt) || supportingRootExternalIds.has(item.externalId),
+  );
+  const retainedRootExternalIds = new Set(items.map((item) => item.externalId));
+  const conversationUnits = inWindowUnits?.filter((unit) =>
+    retainedRootExternalIds.has(unit.rootExternalId),
+  );
+  if (items.length === result.items.length &&
+      conversationUnits?.length === result.conversationUnits?.length) {
     return result;
   }
-
-  const retainedRootExternalIds = new Set(items.map((item) => item.externalId));
 
   return {
     ...result,
     items,
-    conversationUnits: result.conversationUnits?.filter((unit) =>
-      retainedRootExternalIds.has(unit.rootExternalId),
-    ),
-    warnings: compactUnique([
+    conversationUnits,
+    warnings: items.length === result.items.length ? result.warnings : compactUnique([
       ...result.warnings,
       [
         "target_published_window.filtered",

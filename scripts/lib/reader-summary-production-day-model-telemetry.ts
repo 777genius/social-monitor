@@ -45,7 +45,8 @@ export const productionDayModelExecutionReport = (input: {
   if (
     (input.executionMode === "live-production" &&
       (invalidProviderReported || telemetry.provider !== "codex" ||
-        telemetry.model !== "gpt-5.6-sol" ||
+        (telemetry.model !== "gpt-5.6-sol" &&
+          telemetry.model !== "mimo-v2.6-pro") ||
         telemetry.reasoningEffort !== "high")) ||
     (input.executionMode !== "live-production" &&
       !historicalIncomplete && invalidProviderReported)

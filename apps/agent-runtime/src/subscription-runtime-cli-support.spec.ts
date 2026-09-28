@@ -160,6 +160,26 @@ describe("assessment spawn budget and incremental transport", () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 
+  it("confines the child to the supplied cwd and terminates its process group at cutoff", async () => {
+    const process = Object.assign(child(), { pid: 700_001 });
+    const kill = jest.spyOn(globalThis.process, "kill").mockImplementation(() => true);
+    try {
+      jest.mocked(spawn).mockReturnValue(process as unknown as ReturnType<typeof spawn>);
+      const result = runCli({ command: "/synthetic", args: [], cwd: "/synthetic/admitted-project",
+        timeoutMs: 100 });
+      expect(jest.mocked(spawn).mock.calls[0]?.[2]).toMatchObject({
+        cwd: "/synthetic/admitted-project", detached: true,
+      });
+      await jest.advanceTimersByTimeAsync(100);
+      expect(kill).toHaveBeenCalledWith(-700_001, "SIGTERM");
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(kill).toHaveBeenCalledWith(-700_001, "SIGKILL");
+      expect(await result).toMatchObject({ timedOut: true, exitCode: null });
+    } finally {
+      kill.mockRestore();
+    }
+  });
+
   it.each([[2_000, 64], [2_000_000, 0]])(
     "does not retain raw assessment stderr: %i junk bytes allow %i records", async (junkBytes, expectedRecords) => {
     const process = child(), receive = jest.fn();

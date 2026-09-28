@@ -14,7 +14,8 @@ const native = `node_modules/@openai/codex-linux-${process.arch}/vendor/${
   process.arch === "x64" ? "x86_64-unknown-linux-musl" : "aarch64-unknown-linux-musl"
 }/bin/codex`;
 const helpers = [
-  "assessment-cli-progress.mjs", "assessment-cli-lifecycle.mjs",
+  "assessment-cli-progress.mjs", "assessment-cli-lifecycle.mjs", "mimo-app-server-custody.mjs", "installed-runtime-modules.mjs",
+  "mimo-key-file.mjs",
   "pinned-codex-native-binary.mjs", "subscription-runtime-failure-details.mjs",
   "codex-worker-cli-usage.mjs", "codex-auth-pool-manifest.mjs",
   "codex-auth-pool-routing.mjs", "subscription-runtime-purpose-model-policy.mjs",
@@ -49,6 +50,10 @@ async function fixture(t) {
     name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.3",
   }));
   await put(root, "node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js", "vendored");
+  await put(root, "node_modules/@vioxen/subscription-runtime-mimo/package.json", JSON.stringify({
+    name: "@vioxen/subscription-runtime", version: "0.1.0-main.40-sm-mimo.5",
+  }));
+  await put(root, "node_modules/@vioxen/subscription-runtime-mimo/dist/worker-codex/index.js", "mimo");
   await put(root, "node_modules/@openai/codex/package.json", "{}");
   await put(root, `node_modules/@openai/codex-linux-${process.arch}/package.json`, "{}");
   await put(root, native, "native");
@@ -129,6 +134,9 @@ test("rejects a symlink escaping the staged release", async (t) => {
 test("rejects an environment file added after extraction", async (t) => {
   const { root, args } = await fixture(t);
   await put(root, ".env", "synthetic-only");
+  await assert.rejects(verify(args), /Forbidden release path/);
+  await rm(join(root, ".env"));
+  await put(root, "node_modules/@vioxen/subscription-runtime/.env", "synthetic-only");
   await assert.rejects(verify(args), /Forbidden release path/);
 });
 

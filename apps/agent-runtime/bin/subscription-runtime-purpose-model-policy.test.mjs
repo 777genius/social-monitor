@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 /* global structuredClone */
@@ -206,6 +210,112 @@ test("V3 promotion presentation admits only the active structured default", () =
     model: "gpt-5.6-sol",
     reasoningEffort: "xhigh",
   }), /runtime reasoning effort conflicts with purpose policy/u);
+});
+
+const mimoMarkers = {
+  "social_monitor.reader_summary.generate.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+  "social_monitor.reader_summary.repair.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+  "social_monitor.reader_summary.topic_map.label.v2": ["social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1"],
+  "social_monitor.reader_summary.topic_map.verify_relations.v2": ["social_monitor_reader_summary_topic_relations", "reader_summary.topic_relation.v1"],
+  "social_monitor.reader_summary.verify_story_relations.v2": ["social_monitor_reader_summary_story_relations", "reader_summary.story_relation.v1"],
+  "social_monitor.reader_summary.verify_related_topic_relations.v2": ["social_monitor_reader_summary_related_topic_relations", "reader_summary.related_topic_relation.v1"],
+};
+
+const mimoInput = (purpose) => {
+  const input = standardGoldenInput(purpose, "structured_output");
+  const [name, version] = mimoMarkers[purpose];
+  input.request.task.outputSchemaName = name;
+  input.request.task.controls.outputSchemaName = name;
+  input.request.task.controls.schemaVersion = version;
+  input.request.task.controls.modelBackend = "xiaomi-mimo-token-plan";
+  const required = purpose.includes("generate.v2") || purpose.includes("repair.v2")
+    ? ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"]
+    : purpose.includes("topic_map.label.v2") ? ["nodeLabels", "groups"] : ["decisions"];
+  input.request.task.controls.outputSchema = {
+    type: "object", additionalProperties: false, required,
+    properties: Object.fromEntries(required.map((key) => [key, {
+      type: key === "headline" ? "string" : "array",
+    }])),
+  };
+  input.model = "mimo-v2.6-pro";
+  return input;
+};
+
+test("MiMo admission covers only the six named daily summary purposes", () => {
+  for (const purpose of Object.keys(mimoMarkers)) {
+    const input = mimoInput(purpose);
+    const admitted = admitSubscriptionRuntimeWrapperRequest(input);
+    assert.equal(admitted.profile.provider, "codex");
+    assert.equal(admitted.profile.model, "mimo-v2.6-pro");
+    assert.equal(admitted.profile.modelBackend, "xiaomi-mimo-token-plan");
+    assert.equal(admitted.canonicalRequest.task.controls.model, "mimo-v2.6-pro");
+    const conflicting = structuredClone(input);
+    conflicting.request.task.metadata.modelBackend = "openai-chatgpt";
+    assert.throws(() => admitSubscriptionRuntimeWrapperRequest(conflicting),
+      /metadata\.modelBackend conflicts with purpose policy/u);
+    for (const mutate of [
+      (bad) => { bad.request.task.outputSchemaName = "wrong"; },
+      (bad) => { bad.request.task.controls.outputSchemaName = "wrong"; },
+      (bad) => { bad.request.task.controls.schemaVersion = "wrong"; },
+      (bad) => { bad.request.task.controls.toolsEnabled = true; },
+      (bad) => { bad.request.task.controls.outputSchema = { type: "object" }; },
+      (bad) => { bad.provider = "claude"; },
+    ]) {
+      const bad = structuredClone(input);
+      mutate(bad);
+      assert.throws(() => admitSubscriptionRuntimeWrapperRequest(bad),
+        /conflicts with (MiMo )?purpose policy/u);
+    }
+  }
+  for (const purpose of [
+    "social_monitor.relevance.assess_source_content.v1",
+    "social_monitor.reader_summary.weekly.review.v2",
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
+    "social_monitor.summary.generate",
+  ]) {
+    const input = standardGoldenInput(purpose, "structured_output");
+    input.request.task.controls.modelBackend = "xiaomi-mimo-token-plan";
+    assert.throws(() => admitSubscriptionRuntimeWrapperRequest(input),
+      /modelBackend conflicts with purpose policy/u);
+  }
+});
+
+test("MiMo launcher fails closed without a key file and never logs a synthetic token", () => {
+  const root = mkdtempSync(join(
+    process.env.TMPDIR ?? tmpdir(), "social-monitor-mimo-policy-",
+  ));
+  try {
+    const input = mimoInput("social_monitor.reader_summary.generate.v2");
+    input.request.timeoutMs = 10_000;
+    const inputPath = join(root, "request.json");
+    writeFileSync(inputPath, JSON.stringify(input.request));
+    const run = (extraEnv) => spawnSync(process.execPath, [
+      "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs",
+      "--provider", "codex", "--model", "mimo-v2.6-pro",
+      "--input", inputPath,
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH,
+        AGENT_RUNTIME_REASONING_EFFORT: "high",
+        ...extraEnv,
+      },
+    });
+    const missing = run({});
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /MiMo Token Plan key file is not configured/u);
+    const syntheticToken = "synthetic-token-never-log-this-value";
+    const unavailable = run({
+      AGENT_RUNTIME_MIMO_API_KEY_FILE: "/synthetic/key-file",
+      MIMO_TOKEN_PLAN_API_KEY: syntheticToken,
+    });
+    assert.notEqual(unavailable.status, 0);
+    assert.match(unavailable.stderr, /MiMo Token Plan key file is unavailable/u);
+    assert.equal(`${unavailable.stdout}${unavailable.stderr}`.includes(syntheticToken), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("Codex subprocess environment admits only safe execution basics", () => {

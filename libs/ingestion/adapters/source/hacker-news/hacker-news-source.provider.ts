@@ -163,6 +163,7 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
         fallbackMaxCommentedStories: maxCommentedStories,
         fallbackMaxCommentsPerPost: maxCommentsPerPost,
         fallbackCommentDepth: commentDepth,
+        targetWindow,
       });
     }
 
@@ -191,6 +192,7 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
       maxCommentedStories,
       maxCommentsPerPost,
       commentDepth,
+      targetWindow,
     });
     const items = normalized.items.filter(
       (item) =>
@@ -215,6 +217,8 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
         ...hackerNewsWarnings(stories),
         ...normalized.warnings,
         ...hackerNewsRecencyWarnings(items, filteredItems, recencyFilterHours),
+        ...(targetWindow !== undefined && stories.length > plan.maxItems
+          ? ["Hacker News historical search incomplete: maxItems exceeded"] : []),
       ],
     };
   }
@@ -229,6 +233,7 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
     readonly fallbackMaxCommentedStories: number | undefined;
     readonly fallbackMaxCommentsPerPost: number | undefined;
     readonly fallbackCommentDepth: number;
+    readonly targetWindow: { readonly startInclusive: Date; readonly endExclusive: Date } | undefined;
   }): Promise<SourceProviderScanResult> {
     const perPassFallbackLimit = Math.max(
       1,
@@ -284,6 +289,9 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
         filterStoriesByRequiredKeywords(stories, pass.requiredKeywords),
         pass.requiredStoryKeywords,
       );
+      if (params.targetWindow !== undefined && filteredStories.length > limit) {
+        warnings.push(`Hacker News historical pass incomplete: maxItems exceeded (${sourceKeyForPass(pass)})`);
+      }
       const sourceKey = sourceKeyForPass(pass);
       const searchQuery = pass.mode === "search" ? pass.query : undefined;
 
@@ -294,6 +302,7 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
           comments: filteredStories,
           sourceKey,
           searchQuery,
+          targetWindow: params.targetWindow,
         });
 
         for (const item of normalized.items) {
@@ -329,6 +338,7 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
         maxCommentedStories: expansion?.maxCommentedStories,
         maxCommentsPerPost: expansion?.maxCommentsPerPost,
         commentDepth: expansion?.commentDepth ?? params.fallbackCommentDepth,
+        targetWindow: params.targetWindow,
       });
 
       for (const item of normalized.items) {
@@ -364,6 +374,9 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
         .slice(0, params.plan.maxItems)
         .map((item) => item.externalId),
     );
+    if (params.targetWindow !== undefined && filteredItems.length > params.plan.maxItems) {
+      warnings.push("Hacker News historical scan incomplete: maxItems exceeded");
+    }
 
     return {
       items: filteredItems.slice(0, params.plan.maxItems),

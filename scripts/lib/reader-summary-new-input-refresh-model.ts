@@ -1,7 +1,8 @@
 import { sourceContentAssessmentPurpose, refreshAssessmentBudget, refreshAssessmentLimits, verifyRefreshAssessmentExecution } from "./reader-summary-new-input-refresh-assessment-runtime";
-import { activeReaderSummaryPurposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+import { activeReaderSummaryPurposes, mimoReaderSummaryBackend, mimoReaderSummaryModel, verifyAndRecordMimoDailyExecution } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { admitSubscriptionRuntimeRequest } from "../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy";
+import { approvedMimoRuntimePackageVersion } from "../../apps/agent-runtime/src/subscription-runtime-installation";
 import { AgentRuntimeReaderSummaryModelAdapter, resolveAgentRuntimeReaderSummaryModelOptions } from
   "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-model.adapter";
 import { AgentRuntimeReaderSummaryTopicLabeler, resolveAgentRuntimeReaderSummaryTopicLabelerOptions } from
@@ -145,6 +146,12 @@ export function guardedRefreshRuntime(input: {
     activeReaderSummaryPurposes.relatedTopicRelations, sourceContentAssessmentPurpose];
   const expectedReasoningEffort = (purpose: string) =>
     purpose === sourceContentAssessmentPurpose ? "low" : "high";
+  const admittedModel = (command: AgentRuntimeTaskCommand): boolean =>
+    command.purpose !== sourceContentAssessmentPurpose &&
+      command.controls.modelBackend === mimoReaderSummaryBackend
+      ? command.controls.model === mimoReaderSummaryModel
+      : command.controls.model === "gpt-5.6-sol" &&
+        (command.controls.modelBackend === undefined || command.controls.modelBackend === "openai-chatgpt");
   return {
     assertUsable,
     invalidateAdapter: (taskRole, stage) => {
@@ -171,7 +178,7 @@ export function guardedRefreshRuntime(input: {
         // an attempt, not admission, and must not change guard state.
         if (purposes.includes(command.purpose) && command.metadata?.attempt !== "repair" &&
             command.tenantId === input.manifest.tenantId && command.workspaceId === input.manifest.workspaceId &&
-            command.provider === "codex" && command.controls.model === "gpt-5.6-sol" &&
+            command.provider === "codex" && admittedModel(command) &&
             command.controls.reasoningEffort === expectedReasoningEffort(command.purpose)) {
           capture({ kind: "invocation_rejected", command, delegated: false,
             reason: ambiguous ? "authority_rejected" : concurrencyFull ? "in_flight" :
@@ -181,7 +188,7 @@ export function guardedRefreshRuntime(input: {
       }
       if (!purposes.includes(command.purpose) || command.metadata?.attempt === "repair" ||
           command.tenantId !== input.manifest.tenantId || command.workspaceId !== input.manifest.workspaceId ||
-          command.provider !== "codex" || command.controls.model !== "gpt-5.6-sol" ||
+          command.provider !== "codex" || !admittedModel(command) ||
           command.controls.reasoningEffort !== expectedReasoningEffort(command.purpose)) {
         ambiguous = true;
         throw new Error("Refresh invocation budget or model authority rejected");
@@ -203,7 +210,7 @@ export function guardedRefreshRuntime(input: {
       }
       const identity = { requestId: command.requestId, purpose: command.purpose,
         requestSha256: refreshHash(command), operation: input.manifest.operation,
-        observedThrough: input.manifest.observedThrough, model: "gpt-5.6-sol",
+        observedThrough: input.manifest.observedThrough, model: command.controls.model,
         reasoningEffort: expectedReasoningEffort(command.purpose) };
       const verifyResponse = (result: AgentRuntimeTaskResult): void | Promise<unknown> => {
         const taskRole = ({
@@ -217,6 +224,9 @@ export function guardedRefreshRuntime(input: {
         // above also covers failures in the real parsers and normalizers.
         if (command.purpose === sourceContentAssessmentPurpose) {
           verifyRefreshAssessmentExecution(command, result);
+        } else if (command.controls.modelBackend === mimoReaderSummaryBackend && taskRole !== "summary") {
+          return verifyAndRecordMimoDailyExecution({ command, result, taskRole,
+            attempt: "primary", normalizedOutput: result.structuredOutput });
         } else {
           return verifyAndRecordReaderSummaryExecution({ command, result, taskRole,
             attempt: "primary", normalizedOutput: result.structuredOutput });
@@ -228,7 +238,11 @@ export function guardedRefreshRuntime(input: {
           throw new Error("Refresh execution attestation does not bind the invoked request");
         }
         assertRefreshEqual({ engine: attestation.runtimeEngine, packageVersion: attestation.runtimePackageVersion,
-          launcherSha256: attestation.launcherSha256 }, input.manifest.runtime, "runtime attestation");
+          launcherSha256: attestation.launcherSha256 }, {
+          ...input.manifest.runtime,
+          packageVersion: command.controls.modelBackend === mimoReaderSummaryBackend
+            ? approvedMimoRuntimePackageVersion : input.manifest.runtime.packageVersion,
+        }, "runtime attestation");
       };
       try {
         if (capturedCommand) capture({ kind: "invocation_started", command: capturedCommand });

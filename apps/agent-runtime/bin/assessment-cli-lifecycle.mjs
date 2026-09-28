@@ -11,7 +11,7 @@ export function createAssessmentCliLifecycle({
   const controller = new AbortController();
   const pending = new Set();
   let worker, timeout, cleanup, disposal, disposalReceipt, invocation;
-  let enabled = deadline !== Infinity, cliSettled = false, finished = false;
+  let enabled = deadline !== Infinity, activeReserveMs = reserveMs, cliSettled = false, finished = false;
   let cancelledAt;
   let notifyCancellation;
   const cancellation = new Promise((resolve) => { notifyCancellation = resolve; });
@@ -35,11 +35,11 @@ export function createAssessmentCliLifecycle({
   const arm = () => {
     timers.clearTimeout(timeout);
     if (!enabled) return;
-    if (remaining() <= reserveMs) cancel();
-    else timeout = timers.setTimeout(cancel, remaining() - reserveMs);
+    if (remaining() <= activeReserveMs) cancel();
+    else timeout = timers.setTimeout(cancel, remaining() - activeReserveMs);
   };
   const checkpoint = () => {
-    if (enabled && remaining() <= reserveMs) cancel();
+    if (enabled && remaining() <= activeReserveMs) cancel();
     if (controller.signal.aborted) throw new Error("Assessment local work cancelled");
   };
   const work = (invoke) => {
@@ -77,9 +77,10 @@ export function createAssessmentCliLifecycle({
   };
   arm();
   return {
-    remaining, checkpoint, work, cancel,
-    configure(assessment, timeoutMs) {
+    remaining, checkpoint, work, cancel, signal: controller.signal,
+    configure(assessment, timeoutMs, cleanupReserveMs = reserveMs) {
       enabled = assessment;
+      activeReserveMs = cleanupReserveMs;
       if (assessment) {
         if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error("Assessment requires a bounded timeout");
         deadline = Math.min(deadline, entered + timeoutMs);
@@ -124,7 +125,7 @@ export function createAssessmentCliLifecycle({
         });
         const code = await Promise.race([normal, cancellation.then(() => undefined)]);
         // Promise continuations can beat an overdue cancellation timer.
-        if (enabled && remaining() <= reserveMs) cancel();
+        if (enabled && remaining() <= activeReserveMs) cancel();
         if (controller.signal.aborted) { await settleAndDispose(); return 1; }
         return code;
       } finally { finished = true; release(); }

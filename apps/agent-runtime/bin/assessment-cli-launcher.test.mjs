@@ -103,6 +103,15 @@ async function launch(t, { hold, neverStop = false, failedTask = false, parentLo
   };
   const namespaces = new Map([...pure, ["node:fs/promises", fs], ["node:path", path],
     ["./pinned-codex-native-binary.mjs", { resolvePinnedCodexBinaryPath: () => "/synthetic/not-executable" }],
+    ["./mimo-key-file.mjs", { readMimoApiKeyFile: async () => { throw new Error("MiMo key access forbidden"); } }],
+    ["./mimo-app-server-custody.mjs", { createMimoAppServerCustody: () => { throw new Error("MiMo forbidden"); } }],
+    ["./installed-runtime-modules.mjs", {
+      loadInstalledSubscriptionRuntimeCli: async () => ({ runSubscriptionAgentTaskCli: (argv, _io, factory) => {
+        io.readStdin = async () => input;
+        return fixture.runSubscriptionAgentTaskCli(argv.filter((arg, i) => arg !== "--input" && argv[i - 1] !== "--input"), io, factory);
+      } }),
+      loadInstalledMimoAppServerProcess: async () => { throw new Error("MiMo forbidden"); },
+    }],
     ["./codex-auth-pool-manifest.mjs", { loadCodexAuthPoolFromEnv: async () => {
       await pause("account-setup"); return { accounts: [{ id: "synthetic-account", authJsonPath: "/synthetic/account" },
         ...(admissionFailure ? [{ id: "synthetic-second", authJsonPath: "/synthetic/second" }] : []),
@@ -112,12 +121,7 @@ async function launch(t, { hold, neverStop = false, failedTask = false, parentLo
       FileBackendCodexWorker: class { constructor() { throw new Error("Real/default worker forbidden"); } },
       NodeProcessRunner: class { constructor() { throw new Error("Native runner forbidden"); } } }],
     ["@vioxen/subscription-runtime/worker-core", { SubscriptionWorkerError }],
-    ["../../../node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js", {
-      runSubscriptionAgentTaskCli: (argv, _io, factory) => {
-        io.readStdin = async () => input;
-        return fixture.runSubscriptionAgentTaskCli(argv.filter((arg, i) => arg !== "--input" && argv[i - 1] !== "--input"), io, factory);
-      },
-    }],
+
   ]);
   const context = createContext({ process: fakeProcess, performance: globalThis.performance, Date, AbortController, console,
     setTimeout, clearTimeout });

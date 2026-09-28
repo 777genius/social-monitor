@@ -1,5 +1,5 @@
 import { Metadata, status } from "@grpc/grpc-js";
-import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, mkdtemp, realpath, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -37,7 +37,7 @@ describe("opt-in strict gRPC admission", () => {
     env = {
       AGENT_RUNTIME_STRICT_PRODUCTION_ADMISSION: "1",
       AGENT_RUNTIME_GRPC_BIND: "127.0.0.1:50052",
-      AGENT_RUNTIME_SERVICE_TOKEN: "x",
+      AGENT_RUNTIME_SERVICE_TOKEN: "token-value",
       AGENT_RUNTIME_PROJECT_WORKSPACE_ROOT: workspace,
       AGENT_RUNTIME_STATE_ROOT: state,
       AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: pool,
@@ -52,6 +52,127 @@ describe("opt-in strict gRPC admission", () => {
     expect(resolveAgentRuntimeSettings({}).strictAdmission).toBeUndefined();
     expect(resolveAgentRuntimeSettings({}).bindAddress).toBe("0.0.0.0:50052");
     expect(resolveAgentRuntimeSettings(env).strictAdmission?.workspaceRoot).toBe(workspace);
+    expect(resolveAgentRuntimeSettings(env).cli.allowedModelBackends).toEqual([
+      "openai-chatgpt", "xiaomi-mimo-token-plan",
+    ]);
+  });
+
+  it("admits a MiMo-only strict service without a Codex pool and rejects stray Codex settings", async () => {
+    const trustedRoot = await realpath(await mkdtemp(join(process.cwd(), ".mimo-strict-fixture-")));
+    try {
+      const project = join(trustedRoot, "project");
+      const state = join(trustedRoot, "state");
+      const key = join(trustedRoot, "mimo-key");
+      await mkdir(project);
+      await mkdir(state);
+      await writeFile(key, "synthetic-key");
+      await chmod(key, 0o600);
+      const withoutPool = { ...env };
+      delete withoutPool.AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT;
+      delete withoutPool.AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST;
+      const mimoEnv = {
+        ...withoutPool,
+        AGENT_RUNTIME_PROJECT_WORKSPACE_ROOT: project,
+        AGENT_RUNTIME_STATE_ROOT: state,
+        AGENT_RUNTIME_MIMO_API_KEY_FILE: key,
+        AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS: "xiaomi-mimo-token-plan",
+        AGENT_RUNTIME_ALLOWED_TENANT_ID: "fixture-tenant",
+        AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace",
+      };
+      const settings = resolveAgentRuntimeSettings(mimoEnv);
+      expect(settings.strictAdmission?.allowedModelBackends).toEqual(["xiaomi-mimo-token-plan"]);
+      expect(settings.strictAdmission).toMatchObject({ allowedScope: { tenantId: "fixture-tenant", workspaceId: "fixture-workspace" } });
+      const execute = jest.fn(async () => ({ status: "completed" as const, warnings: [] }));
+      const service = createAgentRuntimeGrpcService({
+        execute,
+        checkHealth: async () => ({ healthy: true, runtimeEngine: "fixture", runtimeVersion: "1", warnings: [] }),
+      }, { serviceToken: "token-value", strictAdmission: settings.strictAdmission });
+      const metadata = new Metadata();
+      metadata.set("authorization", "Bearer token-value");
+      const run = (tenantId: string, workspaceId: string) => new Promise<status | undefined>((resolve) => {
+        service.runAgentTask({ request: { ...request(project), tenantId, workspaceId }, metadata } as Parameters<typeof service.runAgentTask>[0],
+          (error) => resolve(error?.code));
+      });
+      expect(await run("other-tenant", "fixture-workspace")).toBe(status.UNAUTHENTICATED);
+      expect(await run("fixture-tenant", "other-workspace")).toBe(status.UNAUTHENTICATED);
+      expect(execute).not.toHaveBeenCalled();
+      expect(await run("fixture-tenant", "fixture-workspace")).toBeUndefined();
+      expect(execute).toHaveBeenCalledTimes(1);
+      const unboundService = createAgentRuntimeGrpcService({
+        execute,
+        checkHealth: async () => ({ healthy: true, runtimeEngine: "fixture", runtimeVersion: "1", warnings: [] }),
+      }, { serviceToken: "token-value", strictAdmission: { ...settings.strictAdmission!, allowedScope: undefined } });
+      expect(await new Promise<status | undefined>((resolve) => {
+        unboundService.runAgentTask({ request: request(project), metadata } as Parameters<typeof service.runAgentTask>[0],
+          (error) => resolve(error?.code));
+      })).toBe(status.UNAUTHENTICATED);
+      expect(execute).toHaveBeenCalledTimes(1);
+      for (const override of [
+        { AGENT_RUNTIME_ALLOWED_TENANT_ID: undefined },
+        { AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: undefined },
+        { AGENT_RUNTIME_ALLOWED_TENANT_ID: "" },
+        { AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "*" },
+        { AGENT_RUNTIME_ALLOWED_TENANT_ID: " fixture-tenant" },
+        { AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace " },
+        { AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace\n" },
+      ]) {
+        expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, ...override })).toThrow();
+      }
+      expect(settings.cli.mimoApiKeyFile).toBe(key);
+      expect(settings.cli.ephemeral).toBe(false);
+      expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, AGENT_RUNTIME_MIMO_API_KEY_FILE: undefined })).toThrow();
+      for (const name of ["AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT", "AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST",
+        "AGENT_RUNTIME_CODEX_AUTH_JSON_PATH", "CODEX_AUTH_JSON_PATH"] as const) {
+        expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, [name]: "" })).toThrow(name);
+      }
+      for (const [label, override] of [
+        ["relative", { AGENT_RUNTIME_MIMO_API_KEY_FILE: "mimo-key" }],
+        ["traversal", { AGENT_RUNTIME_MIMO_API_KEY_FILE: `${trustedRoot}/project/../mimo-key` }],
+        ["workspace", { AGENT_RUNTIME_MIMO_API_KEY_FILE: join(project, "inside-key") }],
+      ] as const) {
+        if (label === "workspace") {
+          await writeFile(join(project, "inside-key"), "synthetic");
+          await chmod(join(project, "inside-key"), 0o600);
+        }
+        expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, ...override })).toThrow();
+      }
+      const alias = join(trustedRoot, "key-alias");
+      await symlink(key, alias);
+      expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, AGENT_RUNTIME_MIMO_API_KEY_FILE: alias })).toThrow();
+      const stateKey = join(state, "inside-key");
+      await writeFile(stateKey, "synthetic");
+      await chmod(stateKey, 0o600);
+      expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, AGENT_RUNTIME_MIMO_API_KEY_FILE: stateKey })).toThrow();
+      const parentAlias = join(trustedRoot, "parent-alias");
+      await symlink(trustedRoot, parentAlias);
+      expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, AGENT_RUNTIME_MIMO_API_KEY_FILE: join(parentAlias, "mimo-key") })).toThrow();
+      await chmod(key, 0o640);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("owner-only");
+      await chmod(key, 0o000);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("owner-only");
+      await chmod(key, 0o600);
+      const hardlink = join(trustedRoot, "key-hardlink");
+      await link(key, hardlink);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("owner-only");
+      await rm(hardlink);
+      await truncate(key, 0);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("owner-only");
+      await truncate(key, 4097);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("owner-only");
+      await truncate(key, 1);
+      await chmod(trustedRoot, 0o770);
+      expect(() => resolveAgentRuntimeSettings(mimoEnv)).toThrow("trusted parent");
+    } finally {
+      await rm(trustedRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects unknown or duplicate backend selections and a selection outside strict mode", () => {
+    for (const value of ["", "codex", "xiaomi-mimo-token-plan,openai-chatgpt,legacy",
+      "xiaomi-mimo-token-plan,xiaomi-mimo-token-plan", " xiaomi-mimo-token-plan"]) {
+      expect(() => resolveAgentRuntimeSettings({ ...env, AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS: value })).toThrow();
+    }
+    expect(() => resolveAgentRuntimeSettings({ AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS: "xiaomi-mimo-token-plan" })).toThrow("requires strict");
   });
 
   it("keeps tokenless default Health compatible", async () => {
@@ -65,6 +186,49 @@ describe("opt-in strict gRPC admission", () => {
         (error) => resolve(error?.code));
     });
     expect(code).toBeUndefined();
+  });
+
+  it("binds configured strict task scope before executor invocation and keeps Health token authenticated", async () => {
+    const calls: string[] = [];
+    const executor: AgentRuntimeExecutorPort = {
+      execute: async () => { calls.push("task"); return { status: "completed", warnings: [] }; },
+      checkHealth: async () => { calls.push("health"); return { healthy: true, runtimeEngine: "fixture", runtimeVersion: "1", warnings: [] }; },
+    };
+    const scopedEnv = {
+      ...env,
+      AGENT_RUNTIME_ALLOWED_TENANT_ID: "fixture-tenant",
+      AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace",
+    };
+    const service = createAgentRuntimeGrpcService(executor, {
+      serviceToken: "token-value",
+      strictAdmission: resolveAgentRuntimeSettings(scopedEnv).strictAdmission,
+    });
+    const metadata = new Metadata();
+    metadata.set("authorization", "Bearer token-value");
+    const run = (tenantId: string, workspaceId: string) => new Promise<{ code?: status; message?: string }>((resolve) => {
+      service.runAgentTask({ request: { ...request(workspace), tenantId, workspaceId }, metadata } as Parameters<typeof service.runAgentTask>[0],
+        (error) => resolve({ code: error?.code, message: error ? (error as Error).message : undefined }));
+    });
+    for (const [tenantId, workspaceId] of [
+      ["other-tenant", "fixture-workspace"],
+      ["fixture-tenant", "other-workspace"],
+      [" fixture-tenant", "fixture-workspace"],
+      ["fixture-tenant", "fixture-workspace "],
+      ["fixture-tenant", "fixture-workspace\n"],
+      ["", "fixture-workspace"],
+    ] as const) {
+      expect(await run(tenantId, workspaceId)).toEqual({ code: status.UNAUTHENTICATED, message: "Unauthorized" });
+    }
+    expect(calls).toEqual([]);
+    expect(await run("fixture-tenant", "fixture-workspace")).toEqual({ code: undefined, message: undefined });
+    expect(calls).toEqual(["task"]);
+    await new Promise<void>((resolve) => {
+      service.checkHealth({ request: {}, metadata } as Parameters<typeof service.checkHealth>[0],
+        (error) => { expect(error).toBeNull(); resolve(); });
+    });
+    expect(calls).toEqual(["task", "health"]);
+    expect(() => resolveAgentRuntimeSettings({ ...env, AGENT_RUNTIME_ALLOWED_TENANT_ID: "fixture-tenant" })).toThrow();
+    expect(() => resolveAgentRuntimeSettings({ ...env, AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace" })).toThrow();
   });
 
   it.each([
@@ -145,7 +309,7 @@ describe("opt-in strict gRPC admission", () => {
       checkHealth: async () => { calls.push("health"); return { healthy: true, runtimeEngine: "fixture", runtimeVersion: "1", warnings: [] }; },
     };
     const service = createAgentRuntimeGrpcService(executor, {
-      serviceToken: "x",
+      serviceToken: "token-value",
       strictAdmission: resolveAgentRuntimeSettings(env).strictAdmission,
     });
     const invokeTask = (cwd: string, metadata: Metadata) => new Promise<status | undefined>((resolve) => {

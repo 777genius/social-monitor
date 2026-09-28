@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
+import { admitModelBackend, isMimoOnly, type AllowedModelBackend } from "./backend-admission-policy";
 
 import {
   NestStructuredLogger,
@@ -27,6 +28,7 @@ import {
   type SubscriptionRuntimeInstallationInspector,
   type SubscriptionRuntimeInstallationIdentity,
 } from "./subscription-runtime-installation";
+import { admitStrictCwd } from "./strict-grpc-admission";
 import {
   admitSubscriptionRuntimeRequest,
   type activeReaderSummaryReasoningEffort,
@@ -43,6 +45,9 @@ export type SubscriptionRuntimeCliExecutorOptions = {
   readonly ephemeral: boolean;
   readonly localEncryptionKey?: string;
   readonly codexAuthJsonPath?: string;
+  readonly mimoApiKeyFile?: string;
+  readonly allowedModelBackends?: readonly AllowedModelBackend[];
+  readonly workspaceRoot?: string;
   readonly claudeTokenEnv?: string;
   readonly model?: string;
   readonly reasoningEffort?: typeof activeReaderSummaryReasoningEffort;
@@ -59,7 +64,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
   constructor(private readonly options: SubscriptionRuntimeCliExecutorOptions) {
     this.installationInspector =
       options.installationInspector ??
-      new FileSubscriptionRuntimeInstallationInspector();
+      new FileSubscriptionRuntimeInstallationInspector(options.workspaceRoot);
     this.logger =
       options.logger ??
       new NestStructuredLogger(SubscriptionRuntimeCliExecutor.name);
@@ -71,6 +76,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     const startedAt = Date.now();
     this.logger.info("agent runtime task started", taskFields(request));
     let admission: AdmittedSubscriptionRuntimeRequest;
+    let executionCwd: string | undefined;
     try {
       if (!configuredSubscriptionRuntimeDefaultsAreSafe(this.options)) {
         this.logger.error("agent runtime task rejected unsafe defaults", {
@@ -83,6 +89,35 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         request,
         this.options.readerPromotionV2CanaryActivationCapability,
       );
+      if (this.options.allowedModelBackends !== undefined) {
+        admitModelBackend(admission.profile.modelBackend, this.options.allowedModelBackends);
+      }
+      if (admission.profile.modelBackend === "xiaomi-mimo-token-plan" &&
+        this.options.mimoApiKeyFile === undefined) {
+        this.logger.error("agent runtime MiMo key file is not configured", {
+          ...taskFields(request), stage: "credential_configuration",
+        });
+        return {
+          status: "failed",
+          warnings: [],
+          failure: {
+            code: "agent_runtime.mimo_key_unavailable",
+            safeMessage: "MiMo Token Plan credential is unavailable",
+            retryable: false,
+            reconnectRequired: false,
+            causeCategory: "credential_configuration",
+            details: {},
+          },
+        };
+      }
+      if (this.options.workspaceRoot !== undefined) {
+        executionCwd = admitStrictCwd(request.cwd, {
+          workspaceRoot: this.options.workspaceRoot,
+          allowedModelBackends: this.options.allowedModelBackends ?? [],
+        });
+      } else if (request.cwd !== undefined && isAbsolute(request.cwd)) {
+        executionCwd = request.cwd;
+      }
     } catch (error) {
       this.logFailure(request, "admission", error);
       return invalidAttestationResult();
@@ -91,6 +126,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     try {
       admittedInstallation = await this.installationInspector.inspect(
         this.options.command,
+        admission.profile.modelBackend,
       );
     } catch (error) {
       this.logFailure(request, "installation", error);
@@ -113,11 +149,13 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       const initialResult = cliExecutionResult(
         await runCli({
           command: admittedInstallation.executablePath,
+          cwd: executionCwd,
           args: this.buildArgs(request, inputPath, admission.profile),
           env: this.executionEnvPatch(
             this.options.ephemeral,
             admission.profile,
           ),
+          modelBackend: admission.profile.modelBackend,
           timeoutMs: request.timeoutMs,
           ...(request.purpose === "social_monitor.relevance.assess_source_content.v1" ? {
             assessment: { onProgress: (fields) => this.logger.info("agent runtime assessment progress", {
@@ -165,8 +203,10 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       const recovered = cliExecutionResult(
         await runCli({
           command: admittedInstallation.executablePath,
+          cwd: executionCwd,
           args: this.buildArgs(request, inputPath, admission.profile, true),
           env: this.executionEnvPatch(true, admission.profile),
+          modelBackend: admission.profile.modelBackend,
           timeoutMs: remainingTimeoutMs,
         }),
       );
@@ -230,9 +270,21 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       };
     }
     try {
+      const mimoOnly = this.options.allowedModelBackends !== undefined &&
+        isMimoOnly(this.options.allowedModelBackends);
       const installation = await this.installationInspector.inspect(
         this.options.command,
+        mimoOnly ? "xiaomi-mimo-token-plan" : undefined,
       );
+      if (mimoOnly) {
+        return {
+          healthy: true,
+          runtimeEngine: "subscription-runtime-cli",
+          runtimeVersion: installation.mimoRuntimePackageVersion ?? installation.runtimePackageVersion,
+          launcherSha256: installation.launcherSha256,
+          warnings: [],
+        };
+      }
       const probe = await runCli({
         command: installation.executablePath,
         args: ["--provider", "codex"],
@@ -380,6 +432,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     }
     if (
       request.provider === "codex" &&
+      profile.modelBackend === undefined &&
       this.options.codexAuthJsonPath !== undefined
     ) {
       args.push("--codex-auth-json", this.options.codexAuthJsonPath);
@@ -404,6 +457,10 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         this.options.localEncryptionKey;
     }
     patch.AGENT_RUNTIME_REASONING_EFFORT = profile.reasoningEffort;
+    if (profile.modelBackend === "xiaomi-mimo-token-plan" &&
+      this.options.mimoApiKeyFile !== undefined) {
+      patch.AGENT_RUNTIME_MIMO_API_KEY_FILE = this.options.mimoApiKeyFile;
+    }
     return patch;
   }
 }

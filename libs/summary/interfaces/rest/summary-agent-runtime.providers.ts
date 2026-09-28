@@ -44,6 +44,7 @@ export const summaryAgentRuntimeProviders: readonly Provider[] = [
         options: {
           timeoutMs: options.timeoutMs,
           serviceToken: options.serviceToken,
+          defaultCwd: options.defaultCwd,
         },
       }),
     inject: [SUMMARY_AGENT_RUNTIME_CLIENT_OPTIONS],
