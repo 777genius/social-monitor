@@ -367,7 +367,8 @@ export type VerifiedHnImportDependencies = {
   readonly verifyCurrentBinding: (scope: VerifiedHnImportScope, query: string) => Promise<boolean>;
   /** Must read the current scoped source-item repository. No old snapshot is accepted. */
   readonly findExistingExternalIds: (scope: VerifiedHnImportScope, ids: readonly string[]) => Promise<readonly string[]>;
-  readonly sourceItems: SourceItemRepositoryPort;
+  /** Separate method prevents an ordinary updating repository from being injected by accident. */
+  readonly sourceItems: { readonly saveBatchInsertOnly: SourceItemRepositoryPort["saveBatch"] };
   readonly feedProjection: FeedProjectionPort;
   readonly conversationProjection: ConversationProjectionPort;
   readonly scanAttempts: ScanAttemptRepositoryPort;
@@ -433,6 +434,9 @@ async function writeExclusiveSynced(path: string, value: unknown): Promise<void>
 export async function importVerifiedHnRemainder(request: VerifiedHnImportRequest): Promise<{
   readonly planSha256: string; readonly inserted: number; readonly alreadyPresent: number;
 }> {
+  if (typeof request.dependencies.sourceItems.saveBatchInsertOnly !== "function") {
+    throw new Error("Verified HN import requires an insert-only source item repository");
+  }
   const plan = planVerifiedHnRemainder(request.artifacts);
   checkDigest(plan.planSha256, request.expectedPlanSha256, "opt-in plan");
   if (plan.days.length !== 8) throw new Error("One-shot import requires all eight pinned Sep20-27 days");
@@ -489,7 +493,10 @@ export async function importVerifiedHnRemainder(request: VerifiedHnImportRequest
   };
   // This composition prevents live acquisition, source-complete reporting, cursor mutation,
   // article fetches and retry dispatch while preserving the domain persistence/projection path.
-  const executeScan = new ExecuteScanUseCase(fetcher, request.dependencies.sourceItems,
+  const insertOnlySourceItems: SourceItemRepositoryPort = {
+    saveBatch: (command) => request.dependencies.sourceItems.saveBatchInsertOnly(command),
+  };
+  const executeScan = new ExecuteScanUseCase(fetcher, insertOnlySourceItems,
     request.dependencies.feedProjection, request.dependencies.scanAttempts,
     { findBySourceBinding: async () => null,
       save: async () => { throw new Error("Verified HN import must not save a scan cursor"); } },

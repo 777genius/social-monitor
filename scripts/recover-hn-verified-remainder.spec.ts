@@ -91,10 +91,11 @@ describe("verified HN remainder planner", () => {
 
   function fakeExecution(calls: string[][], fail = false): VerifiedHnImportDependencies {
     const feed = new FakeFeedProjection();
+    const sourceItems = new FakeSourceItemRepository();
     return {
       verifyCurrentBinding: async () => true,
       findExistingExternalIds: async () => [],
-      sourceItems: new FakeSourceItemRepository(),
+      sourceItems: { saveBatchInsertOnly: (command) => sourceItems.saveBatch(command) },
       feedProjection: {
         project: async (command) => {
           calls.push(command.sourceItems.map((item) => item.toSnapshot().externalId));
@@ -318,6 +319,18 @@ describe("verified HN remainder planner", () => {
     expect(calls).toHaveLength(8);
   });
 
+  // Regression: an ordinary repository can update a different binding's existing post.
+  it("rejects an ordinary updating repository before reserving the one-shot journal", async () => {
+    const { root, artifacts } = await campaignFixture();
+    const plan = planVerifiedHnRemainder(artifacts);
+    const journalPath = join(root, journalName);
+    const dependencies = { ...fakeExecution([]), sourceItems: new FakeSourceItemRepository() };
+    await expect(importVerifiedHnRemainder({ artifacts, expectedPlanSha256: plan.planSha256,
+      journalPath, scope, dependencies: dependencies as unknown as VerifiedHnImportDependencies }))
+      .rejects.toThrow("requires an insert-only source item repository");
+    await expect(readFile(journalPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   // Regression: the opt-in seam must persist source items and invoke feed and conversation projections through ExecuteScanUseCase.
   it("runs the genuine scan use case with disposable source and projection ports", async () => {
     const { root, artifacts } = await campaignFixture();
@@ -329,7 +342,8 @@ describe("verified HN remainder planner", () => {
     const leases = new FakeScanLease();
     const result = await importVerifiedHnRemainder({ artifacts, expectedPlanSha256: plan.planSha256,
       journalPath: join(root, journalName), scope, dependencies: {
-        ...fakeExecution([]), sourceItems: repository, feedProjection: feed,
+        ...fakeExecution([]), sourceItems: { saveBatchInsertOnly: (command) => repository.saveBatch(command) },
+        feedProjection: feed,
         conversationProjection: conversation, scanAttempts: attempts, scanLeases: leases,
       } });
     expect(result.inserted).toBe(216);
@@ -425,7 +439,7 @@ describe("verified HN remainder planner", () => {
     const repository = new FakeSourceItemRepository();
     let seeded = false;
     const dependencies: VerifiedHnImportDependencies = { ...fakeExecution([]), sourceItems: {
-      saveBatch: async (command) => {
+      saveBatchInsertOnly: async (command) => {
         if (!seeded) {
           seeded = true;
           await repository.saveBatch({ ...command, items: command.items.slice(0, 1) });
