@@ -266,6 +266,7 @@ test("MiMo launcher fails closed without a key file and never logs a synthetic t
   ));
   try {
     const input = mimoInput("social_monitor.reader_summary.generate.v2");
+    input.request.timeoutMs = 10_000;
     const inputPath = join(root, "request.json");
     writeFileSync(inputPath, JSON.stringify(input.request));
     const run = (extraEnv) => spawnSync(process.execPath, [
