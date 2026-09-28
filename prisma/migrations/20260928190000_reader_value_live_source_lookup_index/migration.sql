@@ -18,6 +18,23 @@ FROM (
 WHERE owner.table_owner = session_user
    OR owner.table_owner = 'social_monitor_public_schema_owner';
 
+-- A failed concurrent build leaves a same-name invalid index. IF NOT EXISTS
+-- would silently skip it on retry, so stop for explicit operator repair.
+DO $reader_value_index_preflight$
+BEGIN
+  IF to_regclass('public.reader_value_live_source_lookup_idx') IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_index idx
+      WHERE idx.indexrelid = to_regclass('public.reader_value_live_source_lookup_idx')
+        AND idx.indrelid = 'public.feed_items'::regclass
+        AND idx.indisvalid AND idx.indisready
+        AND pg_get_indexdef(idx.indexrelid) =
+          'CREATE INDEX reader_value_live_source_lookup_idx ON public.feed_items USING btree (tenant_id, workspace_id, interest_id, source_item_id, status)'
+    ) THEN
+    RAISE EXCEPTION 'reader_value_live_source_lookup_idx is invalid or unexpected; inspect and repair before retry';
+  END IF;
+END $reader_value_index_preflight$;
+
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "reader_value_live_source_lookup_idx"
 ON "feed_items" (
   "tenant_id", "workspace_id", "interest_id", "source_item_id", "status"
