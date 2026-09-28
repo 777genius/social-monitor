@@ -135,6 +135,9 @@ test("rejects an environment file added after extraction", async (t) => {
   const { root, args } = await fixture(t);
   await put(root, ".env", "synthetic-only");
   await assert.rejects(verify(args), /Forbidden release path/);
+  await rm(join(root, ".env"));
+  await put(root, "node_modules/@vioxen/subscription-runtime/.env", "synthetic-only");
+  await assert.rejects(verify(args), /Forbidden release path/);
 });
 
 test("rejects a staging root writable by the service group", async (t) => {

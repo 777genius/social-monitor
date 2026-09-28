@@ -30,7 +30,22 @@ const helpers = [
   "codex-auth-pool-routing.mjs", "subscription-runtime-purpose-model-policy.mjs",
   "reader-promotion-v2-canary-contract.cjs",
 ];
-const forbidden = /^(?:\.env(?:\..*)?|\.git|\.npmrc|auth\.json|fixtures?|__tests__|tests?|.*\.(?:test|spec|fixture)(?:\..*)?)$/i;
+const sensitivePath = /^(?:\.env(?:\..*)?|\.git|\.npmrc|auth\.json)$/i;
+const prunableTestPath = /^(?:fixtures?|__tests__|tests?|.*\.(?:test|spec|fixture)(?:\..*)?)$/i;
+// The installed inspector fingerprints every regular file in these exact
+// package-relative distributions, including tests, fixtures and extensionless
+// files shipped by npm. Pruning any member changes the approved code identity.
+const approvedRuntimeDistributions = [
+  "node_modules/@vioxen/subscription-runtime",
+  "node_modules/@vioxen/subscription-runtime-mimo",
+  "node_modules/@anthropic-ai/claude-agent-sdk",
+  "node_modules/@modelcontextprotocol/sdk",
+  "node_modules/ajv-formats", "node_modules/zod", "node_modules/zod-to-json-schema",
+  "node_modules/fast-uri", "node_modules/fast-deep-equal", "node_modules/json-schema-traverse",
+];
+const inApprovedRuntimeDistribution = (rel) => approvedRuntimeDistributions.some(
+  (root) => rel === root || rel.startsWith(`${root}/`),
+);
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 async function hashFile(path) {
   const digest = createHash("sha256");
@@ -101,8 +116,11 @@ export async function treeHash(root) {
   const entries = [];
   async function walk(dir, prefix) {
     for (const name of (await readdir(dir)).sort()) {
-      if (forbidden.test(name)) throw new Error(`Forbidden release path: ${join(prefix, name)}`);
       const rel = prefix ? `${prefix}/${name}` : name;
+      if (sensitivePath.test(name) ||
+          (prunableTestPath.test(name) && !inApprovedRuntimeDistribution(rel))) {
+        throw new Error(`Forbidden release path: ${rel}`);
+      }
       const path = join(dir, name);
       const st = await lstat(path);
       const mode = (st.mode & 0o777).toString(8);
@@ -125,13 +143,15 @@ export async function treeHash(root) {
   return sha(Buffer.from(JSON.stringify(entries)));
 }
 
-async function pruneForbidden(dir) {
+async function pruneForbidden(dir, prefix = "") {
   for (const name of await readdir(dir)) {
+    const rel = prefix ? `${prefix}/${name}` : name;
     const path = join(dir, name);
-    if (forbidden.test(name)) {
+    if (approvedRuntimeDistributions.includes(rel)) continue;
+    if (sensitivePath.test(name) || prunableTestPath.test(name)) {
       await rm(path, { recursive: true, force: true });
     } else if ((await lstat(path)).isDirectory()) {
-      await pruneForbidden(path);
+      await pruneForbidden(path, rel);
     }
   }
 }

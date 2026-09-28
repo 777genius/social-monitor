@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -85,16 +85,18 @@ if (args[args.indexOf("-p") + 1] !== "tsconfig.build.json" || !args[args.indexOf
 `);
   await chmod(fakeAlias, 0o755);
   const fakeNpm = await put(fakeBin, "npm", `#!/usr/bin/env node
-import { chmodSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
 if (process.argv[2] === "run" && process.argv[3] === "prisma:generate") process.exit(0);
 if (process.argv[2] !== "ci") process.exit(2);
-mkdirSync("node_modules/@vioxen/subscription-runtime", { recursive: true });
-writeFileSync("node_modules/@vioxen/subscription-runtime/package.json", JSON.stringify({ name: "@vioxen/subscription-runtime", version: "0.1.0-main.42-sm.3" }));
-mkdirSync("node_modules/@vioxen/subscription-runtime/dist/worker-local", { recursive: true });
-writeFileSync("node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js", "export {};\\n");
-mkdirSync("node_modules/@vioxen/subscription-runtime-mimo/dist/worker-codex", { recursive: true });
-writeFileSync("node_modules/@vioxen/subscription-runtime-mimo/package.json", JSON.stringify({ name: "@vioxen/subscription-runtime", version: "0.1.0-main.40-sm-mimo.5" }));
-writeFileSync("node_modules/@vioxen/subscription-runtime-mimo/dist/worker-codex/index.js", "export {};\\n");
+for (const name of [
+  "@vioxen/subscription-runtime", "@vioxen/subscription-runtime-mimo",
+  "@anthropic-ai/claude-agent-sdk", "@modelcontextprotocol/sdk", "ajv-formats",
+  "zod", "zod-to-json-schema", "fast-uri", "fast-deep-equal", "json-schema-traverse",
+]) {
+  cpSync(process.env.SM_HOST_TEST_MODULES_ROOT + "/" + name, "node_modules/" + name, {
+    recursive: true, verbatimSymlinks: true,
+  });
+}
 mkdirSync("node_modules/@openai/codex", { recursive: true });
 writeFileSync("node_modules/@openai/codex/package.json", "{}");
 mkdirSync("node_modules/@openai/codex-linux-${process.arch}", { recursive: true });
@@ -110,7 +112,8 @@ writeFileSync("node_modules/.env", "excluded");
 writeFileSync("node_modules/synthetic.test.js", "excluded");
 `);
   await chmod(fakeNpm, 0o755);
-  const env = { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` };
+  const env = { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`,
+    SM_HOST_TEST_MODULES_ROOT: join(process.cwd(), "node_modules") };
   const script = join(source, "apps/agent-runtime/bin/host-release.mjs");
   command(process.execPath, [script, "build", "--output-dir", output], { cwd: source, env });
   const archive = join(output, `agent-runtime-host-${commit}-linux-${process.arch}.tar.gz`);
@@ -130,6 +133,29 @@ writeFileSync("node_modules/synthetic.test.js", "excluded");
   command("tar", ["-xzf", archive, "-C", extracted], { cwd: source });
   await verify(["--release-dir", extracted, ...args,
     "--service-uid", String(process.getuid() + 1)]);
+  for (const path of [
+    "node_modules/json-schema-traverse/spec/fixtures/schema.js",
+    "node_modules/json-schema-traverse/spec/index.spec.js",
+    "node_modules/@vioxen/subscription-runtime/node_modules/json-schema-traverse/spec/fixtures/schema.js",
+    "node_modules/@vioxen/subscription-runtime-mimo/node_modules/@modelcontextprotocol/sdk/node_modules/json-schema-traverse/spec/index.spec.js",
+    "node_modules/json-schema-traverse/LICENSE",
+  ]) assert.equal((await stat(join(extracted, path))).isFile(), true, path);
+  const inspectorModule = new URL("../src/subscription-runtime-installation.ts", import.meta.url).href;
+  const inspectorArgs = ["--disable-warning=ExperimentalWarning",
+    "--experimental-transform-types", "--input-type=module", "-e",
+    'const { FileSubscriptionRuntimeInstallationInspector } = await import(process.argv[1]); ' +
+      'await new FileSubscriptionRuntimeInstallationInspector().inspect(process.argv[2], "xiaomi-mimo-token-plan");',
+    inspectorModule, join(extracted, "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs"),
+  ];
+  const inspect = spawnSync(process.execPath, inspectorArgs, { encoding: "utf8", cwd: source });
+  assert.equal(inspect.status, 0, inspect.stderr);
+  const approvedSpec = join(extracted, "node_modules/json-schema-traverse/spec/index.spec.js");
+  const approvedSpecBytes = await readFile(approvedSpec);
+  await appendFile(approvedSpec, "\n// altered after packaging\n");
+  const changed = spawnSync(process.execPath, inspectorArgs, { encoding: "utf8", cwd: source });
+  assert.notEqual(changed.status, 0);
+  assert.match(changed.stderr, /Installed runtime import bytes are not approved: json-schema-traverse/);
+  await writeFile(approvedSpec, approvedSpecBytes);
   if (process.getuid() > 0) {
     await assert.rejects(verify(["--release-dir", extracted, ...args,
       "--service-uid", String(process.getuid())]), /Release can be modified by service UID/);
