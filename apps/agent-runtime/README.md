@@ -238,10 +238,19 @@ world write access. The key must be outside the workspace and state roots.
 Startup checks metadata only and verifies the pinned MiMo runtime installation;
 the worker reads the key only for an admitted MiMo task. This mode rejects
 Codex and legacy purpose requests before installation inspection or execution.
-The selected MiMo package and manifest must resolve outside the admitted
-workspace. Admission checks the exact vendored manifest and worker entrypoint
-bytes and requires the worker entrypoint to be a regular local artifact.
-Health stays unavailable if either artifact is missing or changed.
+The selected MiMo package, the base runtime package, and their manifests must
+resolve outside the admitted workspace. MiMo-only admission checks a pinned
+SHA256 inventory of executable distribution files (`package.json`, JavaScript,
+JSON and native modules) in both packages and the hoisted imports loaded by
+their worker entrypoints. The inventory rejects missing or changed files and
+symlinks within those code trees. The base fingerprint requires npm's locked
+dependency completion of its vendored archive; the MiMo fingerprint matches
+its pinned archive. Health and execution
+reinspect the same code before spawn, and completed results require a fresh
+inspection before attestation. A changed distribution requires a reviewed pin
+update. The wrapper receives the exact admitted project cwd, including when
+that project is a sibling of the service checkout; the CLI timeout signals its
+local process group.
 The setting is accepted only with strict admission. Its only known values are
 `openai-chatgpt` and `xiaomi-mimo-token-plan`, comma-separated without duplicates.
 When unset, the established Codex-pool strict behavior remains available.
@@ -339,5 +348,6 @@ The override mounts the host Codex auth JSON at
 `@openai/codex` and CA certificates, so the container does not need a manual
 Codex install step.
 
-The health RPC probes `AGENT_RUNTIME_CLI_PATH --help`. It does not run an agent
-task.
+For MiMo-only strict mode, the health RPC inspects the pinned installation
+without running a CLI task. Other modes probe `AGENT_RUNTIME_CLI_PATH` without
+an input task.

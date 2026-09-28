@@ -1,10 +1,11 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { StructuredLogger } from "@social-monitor/platform-logging";
 import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
 import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-executor";
+import { admitStrictCwd } from "./strict-grpc-admission";
 
 describe("SubscriptionRuntimeCliExecutor", () => {
   it("rejects Codex and legacy purposes in a MiMo-only service before installation or process execution", async () => {
@@ -107,6 +108,46 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       else process.env.CODEX_AUTH_JSON_PATH = priorCodexAuthPath;
       if (priorScopedCodexAuthPath === undefined) delete process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH;
       else process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH = priorScopedCodexAuthPath;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("runs an admitted external project from its exact cwd", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agent-runtime-cwd-test-"));
+    try {
+      const workspace = join(root, "project-workspace");
+      await mkdir(workspace);
+      const admittedCwd = admitStrictCwd(workspace, {
+        workspaceRoot: root, allowedModelBackends: ["xiaomi-mimo-token-plan"],
+      });
+      const capturePath = join(root, "captured-cwd.json");
+      const cliPath = join(root, "fake-cli.mjs");
+      await writeFile(cliPath, [
+        "#!/usr/bin/env node",
+        'import { writeFile } from "node:fs/promises";',
+        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ cwd: process.cwd() }));`,
+        'process.stdout.write(JSON.stringify({ status: "completed", structuredOutput: {}, warnings: [] }));',
+      ].join("\n"));
+      await chmod(cliPath, 0o755);
+      const executor = new SubscriptionRuntimeCliExecutor({
+        command: cliPath, ephemeral: true, mimoApiKeyFile: join(root, "synthetic-key-path"),
+        allowedModelBackends: ["xiaomi-mimo-token-plan"], workspaceRoot: root,
+        installationInspector,
+      });
+      const request = validExecutionRequest({
+        purpose: "social_monitor.reader_summary.generate.v2",
+        controlsJson: '{"model":"mimo-v2.6-pro","modelBackend":"xiaomi-mimo-token-plan"}',
+        cwd: admittedCwd,
+      });
+      await expect(executor.execute({ ...request, cwd: process.cwd() })).resolves.toMatchObject({
+        status: "failed", failure: { code: "agent_runtime.execution_attestation_invalid" },
+      });
+      await expect(readFile(capturePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      const result = await executor.execute(request);
+      expect(result.status).toBe("completed");
+      expect(result.executionAttestation).toBeDefined();
+      expect(JSON.parse(await readFile(capturePath, "utf8"))).toEqual({ cwd: admittedCwd });
+    } finally {
       await rm(root, { recursive: true, force: true });
     }
   });

@@ -28,6 +28,7 @@ import {
   type SubscriptionRuntimeInstallationInspector,
   type SubscriptionRuntimeInstallationIdentity,
 } from "./subscription-runtime-installation";
+import { admitStrictCwd } from "./strict-grpc-admission";
 import {
   admitSubscriptionRuntimeRequest,
   type activeReaderSummaryReasoningEffort,
@@ -108,6 +109,12 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
           },
         };
       }
+      if (this.options.workspaceRoot !== undefined) {
+        admitStrictCwd(request.cwd, {
+          workspaceRoot: this.options.workspaceRoot,
+          allowedModelBackends: this.options.allowedModelBackends ?? [],
+        });
+      }
     } catch (error) {
       this.logFailure(request, "admission", error);
       return invalidAttestationResult();
@@ -139,6 +146,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       const initialResult = cliExecutionResult(
         await runCli({
           command: admittedInstallation.executablePath,
+          cwd: request.cwd,
           args: this.buildArgs(request, inputPath, admission.profile),
           env: this.executionEnvPatch(
             this.options.ephemeral,
@@ -192,6 +200,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       const recovered = cliExecutionResult(
         await runCli({
           command: admittedInstallation.executablePath,
+          cwd: request.cwd,
           args: this.buildArgs(request, inputPath, admission.profile, true),
           env: this.executionEnvPatch(true, admission.profile),
           modelBackend: admission.profile.modelBackend,
