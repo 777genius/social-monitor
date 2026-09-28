@@ -113,7 +113,11 @@ function normalizedComment(unit: FetchedConversationUnit) {
 
 /** Every configured pass is attempted in every bounded window; warnings fail closed. */
 export async function recoverHnPublicHistoricalDay(input: HistoricalDayInput) {
-  const intervals = windows(input.day, input.windowHours ?? 24);
+  const windowHours = input.windowHours ?? 24;
+  if (windowHours !== 24) {
+    throw new Error("HN historical export requires one full UTC day to retain comments");
+  }
+  const intervals = windows(input.day, windowHours);
   const bindingBytes = await readFile(input.bindingsPath);
   const binding = bindingFromJson(JSON.parse(bindingBytes.toString("utf8")) as unknown);
   const config = binding.config;

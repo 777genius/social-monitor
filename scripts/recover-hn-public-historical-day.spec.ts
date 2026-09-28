@@ -59,6 +59,16 @@ describe("private historical HN exporter", () => {
     await expect(readFile(join(paths.outputDir, "manifest.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("rejects split-day scans before provider calls so comments cannot be silently lost", async () => {
+    const paths = await fixture();
+    const client = new FakeClient();
+    await expect(recoverHnPublicHistoricalDay({
+      day: "2026-09-20", windowHours: 4, ...paths, client,
+    })).rejects.toThrow("full UTC day");
+    expect(client.requests).toHaveLength(0);
+    await expect(readFile(join(paths.outputDir, "manifest.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("has no database, credential or production runtime dependency", async () => {
     const source = await readFile(join(process.cwd(), "scripts/recover-hn-public-historical-day.ts"), "utf8");
     expect(/from\s+["'][^"']*(?:prisma|persistence|database|production)/iu.test(source)).toBe(false);
