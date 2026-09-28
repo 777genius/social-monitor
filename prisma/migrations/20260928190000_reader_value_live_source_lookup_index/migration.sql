@@ -1,14 +1,16 @@
 -- @social-monitor-forward-migration
 -- The reader-value live-scope anti-join must find tombstoned feed rows by
 -- tenant, workspace, interest, and source before the worker's 5s timeout.
--- Keep the build online for the production feed_items table.
+-- Production already has this verified index. Fresh installations build it
+-- under a bounded lock: Prisma sends the whole migration in one transaction,
+-- so CREATE INDEX CONCURRENTLY is not permitted in this file.
 SET statement_timeout = '30s';
 SELECT pg_advisory_lock(hashtextextended(
   'social-monitor:20260928190000_reader_value_live_source_lookup_index', 0
 ));
 
 SET lock_timeout = '2s';
-SET statement_timeout = '15min';
+SET statement_timeout = '60s';
 
 SELECT set_config('role', owner.table_owner, false)
 FROM (
@@ -18,8 +20,8 @@ FROM (
 WHERE owner.table_owner = session_user
    OR owner.table_owner = 'social_monitor_public_schema_owner';
 
--- A failed concurrent build leaves a same-name invalid index. IF NOT EXISTS
--- would silently skip it on retry, so stop for explicit operator repair.
+-- A failed earlier concurrent build can leave a same-name invalid index.
+-- IF NOT EXISTS would silently skip it, so stop for explicit operator repair.
 DO $reader_value_index_preflight$
 BEGIN
   IF to_regclass('public.reader_value_live_source_lookup_idx') IS NOT NULL
@@ -35,7 +37,7 @@ BEGIN
   END IF;
 END $reader_value_index_preflight$;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "reader_value_live_source_lookup_idx"
+CREATE INDEX IF NOT EXISTS "reader_value_live_source_lookup_idx"
 ON "feed_items" (
   "tenant_id", "workspace_id", "interest_id", "source_item_id", "status"
 );
