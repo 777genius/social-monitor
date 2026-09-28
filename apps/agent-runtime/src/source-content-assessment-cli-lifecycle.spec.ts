@@ -11,6 +11,7 @@ jest.mock("node:fs/promises", () => ({ mkdtemp: jest.fn(), rm: jest.fn(), writeF
 const assessmentRequest = (id?: string) => ({ ...shortAssessmentRequest(id), timeoutMs: 60_000 });
 
 const children: SyntheticChild[] = [];
+let processKill: jest.SpyInstance;
 class SyntheticChild extends EventEmitter {
   pid: number | undefined = 123;
   readonly stdout = Object.assign(new EventEmitter(), { destroy: jest.fn() });
@@ -50,6 +51,7 @@ const expectIndependentCompletion = async (run: ReturnType<typeof makeRun>) => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  processKill = jest.spyOn(process, "kill").mockImplementation(() => true);
   children.length = 0;
   jest.mocked(mkdtemp).mockResolvedValue("/synthetic/request-dir");
   jest.mocked(writeFile).mockResolvedValue(undefined);
@@ -60,7 +62,10 @@ beforeEach(() => {
     return child as unknown as ReturnType<typeof spawn>;
   });
 });
-afterEach(() => jest.useRealTimers());
+afterEach(() => {
+  processKill.mockRestore();
+  jest.useRealTimers();
+});
 
 it("does not launch or retry a prelaunch write failure", async () => {
   const run = makeRun();
@@ -121,7 +126,11 @@ it.each(["timeout", "signal"])("rejects output after %s without retry", async (s
   const child = await waitForChild(1);
   if (scenario === "timeout") {
     await jest.advanceTimersByTimeAsync(40_000);
-    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    if (process.platform === "win32") expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    else {
+      expect(processKill).toHaveBeenCalledWith(-child.pid!, "SIGTERM");
+      expect(child.kill).not.toHaveBeenCalled();
+    }
   }
   child.close(null, "SIGTERM");
   expect(await result).toMatchObject({ status: "failed" });
@@ -148,7 +157,14 @@ it("bounds cleanup when a child ignores SIGTERM and never closes", async () => {
   const child = await waitForChild(1);
   await jest.advanceTimersByTimeAsync(61_000);
   expect(await result).toMatchObject({ status: "failed", failure: { code: "agent_runtime.cli_timeout", retryable: false } });
-  expect(child.kill.mock.calls).toEqual([["SIGTERM"], ["SIGTERM"], ["SIGKILL"]]);
+  if (process.platform === "win32") {
+    expect(child.kill.mock.calls).toEqual([["SIGTERM"], ["SIGTERM"], ["SIGKILL"]]);
+  } else {
+    expect(processKill.mock.calls).toEqual([
+      [-child.pid!, "SIGTERM"], [-child.pid!, "SIGTERM"], [-child.pid!, "SIGKILL"],
+    ]);
+    expect(child.kill).not.toHaveBeenCalled();
+  }
   expect(child.stdout.destroy).toHaveBeenCalledTimes(1);
   expect(child.stderr.destroy).toHaveBeenCalledTimes(1);
   expect(child.unref).toHaveBeenCalledTimes(1);
