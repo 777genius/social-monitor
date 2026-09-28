@@ -3,6 +3,7 @@ import {
   AgentRuntimeProvider,
   AgentRuntimeSelectedOutputKind,
   AgentRuntimeTaskStatus,
+  AgentRuntimeTaskRequest,
   type AgentRuntimeServiceClient,
   type AgentRuntimeTaskResponse,
 } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
@@ -16,6 +17,40 @@ import {
 } from "./grpc-agent-runtime-client";
 
 describe("gRPC agent runtime client", () => {
+  it("sends the configured host cwd only when a command omits cwd", async () => {
+    const requests: AgentRuntimeTaskRequest[] = [];
+    const transport = {
+      runAgentTask(request: AgentRuntimeTaskRequest, _metadata: unknown, _options: unknown,
+        callback: (error: ServiceError | null, response: AgentRuntimeTaskResponse) => void): ClientUnaryCall {
+        requests.push(AgentRuntimeTaskRequest.decode(AgentRuntimeTaskRequest.encode(request).finish()));
+        callback(null, response());
+        return {} as ClientUnaryCall;
+      },
+    } as unknown as AgentRuntimeServiceClient;
+    const makeClient = (defaultCwd?: string) => new GrpcAgentRuntimeClient(
+      transport, { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      { timeoutMs: 1_000, defaultCwd },
+    );
+
+    await makeClient("/srv/host/project").runTask(command());
+    await makeClient("/srv/host/project").runTask({ ...command(), cwd: "/explicit/project" });
+    await makeClient("/srv/host/project").runTask({ ...command(), cwd: "" });
+    await makeClient().runTask(command());
+    expect(requests.map((request) => request.cwd)).toEqual([
+      "/srv/host/project", "/explicit/project", "", "",
+    ]);
+  });
+
+  it.each(["", "relative", " /srv/project", "/srv/../project", "/srv/./project", "/srv//project", "/srv/project/"])(
+    "rejects malformed configured default cwd %j before transport", (defaultCwd) => {
+      expect(() => new GrpcAgentRuntimeClient(
+        {} as AgentRuntimeServiceClient,
+        { now: () => new Date("2026-07-17T00:00:00.000Z") },
+        { timeoutMs: 1_000, defaultCwd },
+      )).toThrow(/cwd/u);
+    },
+  );
+
   it("keeps transport open long enough to receive a typed task timeout", () => {
     expect(agentRuntimeTaskDeadlineTimeoutMs(600_000)).toBe(605_000);
   });

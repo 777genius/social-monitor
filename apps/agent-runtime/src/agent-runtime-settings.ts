@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { activeReaderSummaryReasoningEffort } from "./subscription-runtime-purpose-model-policy";
 import { resolveStrictGrpcAdmission, type StrictGrpcAdmission } from "./strict-grpc-admission";
+import type { AllowedModelBackend } from "./backend-admission-policy";
 
 export type AgentRuntimeSettings = {
   readonly bindAddress: string;
@@ -16,6 +17,8 @@ export type AgentRuntimeSettings = {
     readonly localEncryptionKey?: string;
     readonly codexAuthJsonPath?: string;
     readonly mimoApiKeyFile?: string;
+    readonly allowedModelBackends?: readonly AllowedModelBackend[];
+    readonly workspaceRoot?: string;
     readonly claudeTokenEnv?: string;
     readonly model: string;
     readonly reasoningEffort: typeof activeReaderSummaryReasoningEffort;
@@ -24,30 +27,38 @@ export type AgentRuntimeSettings = {
 
 export const resolveAgentRuntimeSettings = (
   env: NodeJS.ProcessEnv,
-): AgentRuntimeSettings => ({
-  bindAddress: nonEmptyOrFallback(env.AGENT_RUNTIME_GRPC_BIND, "0.0.0.0:50052"),
-  serviceToken: nonEmptyOptional(env.AGENT_RUNTIME_SERVICE_TOKEN),
-  strictAdmission: resolveStrictGrpcAdmission(env),
-  cli: {
-    command: nonEmptyOrFallback(
-      env.AGENT_RUNTIME_CLI_PATH,
-      "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs",
-    ),
-    stateRoot: resolveStateRoot(env),
-    ephemeral: parseBoolean(env.AGENT_RUNTIME_EPHEMERAL),
-    localEncryptionKey: resolveLocalEncryptionKey(env),
-    codexAuthJsonPath: nonEmptyOptional(
-      env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH ?? env.CODEX_AUTH_JSON_PATH,
-    ),
-    mimoApiKeyFile: nonEmptyOptional(env.AGENT_RUNTIME_MIMO_API_KEY_FILE),
-    claudeTokenEnv: nonEmptyOrFallback(
-      env.AGENT_RUNTIME_CLAUDE_TOKEN_ENV,
-      "CLAUDE_CODE_OAUTH_TOKEN",
-    ),
-    model: nonEmptyOrFallback(env.AGENT_RUNTIME_MODEL, "gpt-5.6-sol"),
-    reasoningEffort: resolveReasoningEffort(env.AGENT_RUNTIME_REASONING_EFFORT),
-  },
-});
+): AgentRuntimeSettings => {
+  const strictAdmission = resolveStrictGrpcAdmission(env);
+  if (strictAdmission === undefined && env.AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS !== undefined) {
+    throw new Error("AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS requires strict admission");
+  }
+  return {
+    bindAddress: nonEmptyOrFallback(env.AGENT_RUNTIME_GRPC_BIND, "0.0.0.0:50052"),
+    serviceToken: nonEmptyOptional(env.AGENT_RUNTIME_SERVICE_TOKEN),
+    strictAdmission,
+    cli: {
+      command: nonEmptyOrFallback(
+        env.AGENT_RUNTIME_CLI_PATH,
+        "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs",
+      ),
+      stateRoot: resolveStateRoot(env),
+      ephemeral: parseBoolean(env.AGENT_RUNTIME_EPHEMERAL),
+      localEncryptionKey: resolveLocalEncryptionKey(env),
+      codexAuthJsonPath: nonEmptyOptional(
+        env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH ?? env.CODEX_AUTH_JSON_PATH,
+      ),
+      mimoApiKeyFile: nonEmptyOptional(env.AGENT_RUNTIME_MIMO_API_KEY_FILE),
+      allowedModelBackends: strictAdmission?.allowedModelBackends,
+      workspaceRoot: strictAdmission?.workspaceRoot,
+      claudeTokenEnv: nonEmptyOrFallback(
+        env.AGENT_RUNTIME_CLAUDE_TOKEN_ENV,
+        "CLAUDE_CODE_OAUTH_TOKEN",
+      ),
+      model: nonEmptyOrFallback(env.AGENT_RUNTIME_MODEL, "gpt-5.6-sol"),
+      reasoningEffort: resolveReasoningEffort(env.AGENT_RUNTIME_REASONING_EFFORT),
+    },
+  };
+};
 
 const resolveReasoningEffort = (
   value: string | undefined,

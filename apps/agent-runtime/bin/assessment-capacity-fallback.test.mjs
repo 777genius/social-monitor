@@ -123,9 +123,9 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
     ["./application/codex-live-quota-capacity.js", { recordCodexAppServerRateLimitsSnapshot: () => { throw new Error("Unexpected quota write"); } }],
     ["./pinned-codex-native-binary.mjs", { resolvePinnedCodexBinaryPath: () => "/synthetic/forbidden" }],
     ["./mimo-key-file.mjs", { readMimoApiKeyFile: async () => { throw new Error("MiMo key access forbidden"); } }],
-    ["./codex-auth-pool-manifest.mjs", { loadCodexAuthPoolFromEnv: async () => ({ accounts: failures.map((_, i) => ({ id: `synthetic-${i}`, authJsonPath: `/synthetic/account-${i}` })) }) }],
-    ["../../../node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js", {
-      runSubscriptionAgentTaskCli: async (_argv, _io, factory) => {
+    ["./mimo-app-server-custody.mjs", { createMimoAppServerCustody: () => { throw new Error("MiMo forbidden"); } }],
+    ["./installed-runtime-modules.mjs", {
+      loadInstalledSubscriptionRuntimeCli: async () => ({ runSubscriptionAgentTaskCli: async (_argv, _io, factory) => {
         const worker = factory({ provider: "codex", stateRootDir: "/synthetic/state", env: {}, cwd: "/synthetic", encryptionKey: "synthetic" });
         try {
           await worker.start();
@@ -133,8 +133,11 @@ async function launch({ failures = ["preflight", "success"], mutateResult, abort
           return 0;
         } catch (error) { failure = error; return 1; }
         finally { await worker.dispose(); }
-      },
+      } }),
+      loadInstalledMimoAppServerProcess: async () => { throw new Error("MiMo forbidden"); },
     }],
+    ["./codex-auth-pool-manifest.mjs", { loadCodexAuthPoolFromEnv: async () => ({ accounts: failures.map((_, i) => ({ id: `synthetic-${i}`, authJsonPath: `/synthetic/account-${i}` })) }) }],
+
   ]);
   for (const name of ["codex-worker-cli-usage.mjs", "subscription-runtime-failure-details.mjs",
     "subscription-runtime-purpose-model-policy.mjs", "codex-auth-pool-routing.mjs"]) {

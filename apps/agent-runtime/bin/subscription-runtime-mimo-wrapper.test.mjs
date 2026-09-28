@@ -37,6 +37,7 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
     } },
     mimoApiKey: fakeKey,
     admission: summaryAdmission,
+    mimoCustody: { processFactory: () => {} },
     codexAuthPoolExecutionPolicy: { maxAttempts: 4 },
     codexAuthPoolTaskHash: () => "synthetic-task-hash",
     nonEmptyRunId: (id) => id,
@@ -67,6 +68,7 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
   assert.equal(options.accounts[0].worker.modelBackend, "xiaomi-mimo-token-plan");
   assert.equal(options.accounts[0].worker.model, "mimo-v2.6-pro");
   assert.equal(options.accounts[0].worker.executionEngine, "app-server-goal");
+  assert.equal(typeof options.accounts[0].worker.appServerProcessFactory, "function");
   assert.deepEqual(options.accounts[0].worker.boundedWorkspaceTools,
     { allowedTools: [], denyProjectInstructions: true });
   assert.deepEqual(options.accounts[0].worker.sourceEnv, {
@@ -86,6 +88,7 @@ test("MiMo summary factory rejects a synthetic key echoed by the model", async (
     }) },
     mimoApiKey: fakeKey,
     admission: summaryAdmission,
+    mimoCustody: { processFactory: () => {} },
     codexAuthPoolExecutionPolicy: {},
     codexAuthPoolTaskHash: () => "synthetic-task-hash",
     nonEmptyRunId: (id) => id,
@@ -140,6 +143,7 @@ test("MiMo worker binds each daily purpose to its schema and output family", asy
           async dispose() {} };
       } },
       mimoApiKey: "synthetic-key",
+      mimoCustody: { processFactory: () => {} },
       codexAuthPoolExecutionPolicy: {},
       codexAuthPoolTaskHash: () => "synthetic-hash",
       nonEmptyRunId: (id) => id,

@@ -104,6 +104,7 @@ const invalidCliResult = (stdout: string): AgentRuntimeExecutionResult => ({
 export const runCli = async (params: {
   readonly command: string;
   readonly args: readonly string[];
+  readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly modelBackend?: "xiaomi-mimo-token-plan";
   readonly timeoutMs: number;
@@ -134,6 +135,8 @@ export const runCli = async (params: {
     const progress = params.assessment && createAssessmentProgressParser(params.assessment.onProgress);
     let stderrBytes = 0;
     const child = spawn(params.command, params.args, {
+      cwd: params.cwd,
+      detached: process.platform !== "win32",
       env,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -143,9 +146,18 @@ export const runCli = async (params: {
     let settled = false;
     let earlyTimeout: ReturnType<typeof setTimeout> | undefined;
     let cleanupTimeout: ReturnType<typeof setTimeout> | undefined;
+    const signalTree = (signal: NodeJS.Signals) => {
+      try {
+        if (process.platform !== "win32" && child.pid !== undefined) {
+          process.kill(-child.pid, signal);
+        } else {
+          child.kill(signal);
+        }
+      } catch { /* The process group may already have exited. */ }
+    };
     const stopLocalChild = () => {
       // Best-effort local cleanup only; signals never acknowledge remote termination.
-      try { child.kill("SIGKILL"); } catch { /* Child may already be gone. */ }
+      signalTree("SIGKILL");
       for (const cleanup of [() => child.stdout?.destroy(), () => child.stderr?.destroy(), () => child.unref()]) {
         try { cleanup(); } catch { /* Cleanup cannot replace the execution outcome. */ }
       }
@@ -169,11 +181,11 @@ export const runCli = async (params: {
         stopLocalChild();
         finish(null, null);
       }, 1_000);
-      try { child.kill("SIGTERM"); } catch { /* Cleanup deadline still applies. */ }
+      signalTree("SIGTERM");
     }, params.assessment ? remaining() : params.timeoutMs);
     if (params.assessment) earlyTimeout = setTimeout(() => {
       timedOut = true;
-      try { child.kill("SIGTERM"); } catch { /* Hard deadline remains authoritative. */ }
+      signalTree("SIGTERM");
     }, Math.max(0, remaining() - 20_000));
     child.stdout!.on("data", (chunk: Buffer) => { if (!settled) stdout.push(chunk); });
     child.stderr!.on("data", (chunk: Buffer) => {

@@ -12,6 +12,8 @@ import { join } from "node:path";
 import { resolvePinnedCodexBinaryPath } from "./pinned-codex-native-binary.mjs";
 import { withTrustedCodexWorkerUsage } from "./codex-worker-cli-usage.mjs";
 import { createAssessmentCliLifecycle } from "./assessment-cli-lifecycle.mjs";
+import { createMimoAppServerCustody } from "./mimo-app-server-custody.mjs";
+import { loadInstalledSubscriptionRuntimeCli, loadInstalledMimoAppServerProcess } from "./installed-runtime-modules.mjs";
 import { createAssessmentProgress } from "./assessment-cli-progress.mjs";
 import { subscriptionRuntimeFailureDetails } from "./subscription-runtime-failure-details.mjs";
 import { readMimoApiKeyFile } from "./mimo-key-file.mjs";
@@ -61,7 +63,8 @@ const admission = admitSubscriptionRuntimeWrapperRequest({
   : undefined);
 const isMimoSummary = admission.profile.modelBackend === "xiaomi-mimo-token-plan";
 const isSourceContentAssessment = admission.canonicalRequest.context.purpose === "social_monitor.relevance.assess_source_content.v1";
-lifecycle.configure(isSourceContentAssessment, admission.canonicalRequest.timeoutMs);
+lifecycle.configure(isSourceContentAssessment || isMimoSummary, admission.canonicalRequest.timeoutMs,
+  isMimoSummary ? Math.min(20_000, Math.max(1, Math.floor(admission.canonicalRequest.timeoutMs / 2))) : 20_000);
 if (isSourceContentAssessment) {
   progress ??= createAssessmentProgress({ write: (line) => process.stderr.write(line),
     now: () => globalThis.performance.now(), remaining: lifecycle.remaining });
@@ -82,15 +85,19 @@ const { createOneShotExecutor } = await lifecycle.work(() => import(
 const { SubscriptionWorkerError } = await lifecycle.work(() => import(
   "@vioxen/subscription-runtime/worker-core"
 ));
-const { runSubscriptionAgentTaskCli } = await lifecycle.work(() => import(
-  "../../../node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js"
-));
+const { runSubscriptionAgentTaskCli } = await lifecycle.work(loadInstalledSubscriptionRuntimeCli);
 const mimoRuntime = isMimoSummary
   ? await lifecycle.work(() => import("@vioxen/subscription-runtime-mimo/worker-codex"))
   : undefined;
 if (isMimoSummary && typeof mimoRuntime?.createOneShotExecutor !== "function") {
   throw new Error("MiMo Codex model backend is not installed");
 }
+const mimoProcess = isMimoSummary ? await lifecycle.work(loadInstalledMimoAppServerProcess) : undefined;
+const mimoCustody = mimoProcess ? createMimoAppServerCustody({
+  signal: lifecycle.signal,
+  spawnProcess: mimoProcess.spawnCodexAppServerProcess,
+  signalChild: mimoProcess.signalCodexAppServerChildGroup,
+}) : undefined;
 const mimoApiKey = isMimoSummary
   ? await lifecycle.work(() => readMimoApiKeyFile(process.env.AGENT_RUNTIME_MIMO_API_KEY_FILE))
   : undefined;
@@ -203,6 +210,7 @@ function createMimoSummaryWorker({ input, model }) {
           modelBackend: "xiaomi-mimo-token-plan",
           mimoApiKeyEnvVarName: "MIMO_TOKEN_PLAN_API_KEY",
           executionEngine: "app-server-goal",
+          appServerProcessFactory: mimoCustody.processFactory,
           boundedWorkspaceTools: { allowedTools: [], denyProjectInstructions: true },
           warmupPrompt: false,
           cleanThreadPrewarm: false,
@@ -671,7 +679,7 @@ return await runSubscriptionAgentTaskCli(
   undefined,
   (input) => {
     const worker = withTrustedCodexWorkerUsage(createStrictCodexWorker(input));
-    return isSourceContentAssessment ? lifecycle.decorateWorker(worker) : worker;
+    return isSourceContentAssessment || isMimoSummary ? lifecycle.decorateWorker(worker) : worker;
   },
 );
 

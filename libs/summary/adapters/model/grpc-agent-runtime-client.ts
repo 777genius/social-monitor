@@ -3,6 +3,7 @@ import {
   type ChannelCredentials,
   type ClientUnaryCall,
 } from "@grpc/grpc-js";
+import { isAbsolute, normalize } from "node:path";
 import {
   AgentRuntimeHealthStatus as GrpcAgentRuntimeHealthStatus,
   AgentRuntimeProvider as GrpcAgentRuntimeProvider,
@@ -37,6 +38,18 @@ import type {
 export type GrpcAgentRuntimeClientOptions = {
   readonly timeoutMs: number;
   readonly serviceToken?: string;
+  readonly defaultCwd?: string;
+};
+
+export const validateAgentRuntimeDefaultCwd = (value: string): string => {
+  if (
+    value.length === 0 || value !== value.trim() ||
+    value.includes("\0") || !isAbsolute(value) || normalize(value) !== value ||
+    (value !== "/" && value.endsWith("/"))
+  ) {
+    throw new Error("Agent runtime default cwd must be a lexical absolute path");
+  }
+  return value;
 };
 
 const schemaVersion = 1;
@@ -70,6 +83,9 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
   ) {
     if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1) {
       throw new Error("Agent runtime gRPC timeout must be a positive integer");
+    }
+    if (options.defaultCwd !== undefined) {
+      validateAgentRuntimeDefaultCwd(options.defaultCwd);
     }
   }
 
@@ -120,7 +136,7 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
           outputSchemaJson: JSON.stringify(command.outputSchema),
           controlsJson: JSON.stringify(command.controls),
           timeoutMs: command.timeoutMs,
-          cwd: command.cwd ?? "",
+          cwd: command.cwd ?? this.options.defaultCwd ?? "",
           metadata: command.metadata ?? {},
         },
         metadata,

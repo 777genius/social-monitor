@@ -20,7 +20,7 @@ import {
   resolveAgentRuntimeSummaryModelOptions,
   type AgentRuntimeSummaryModelAdapterOptions,
 } from "../../adapters/model/agent-runtime-summary-model.adapter";
-import { GrpcAgentRuntimeClient } from "../../adapters/model/grpc-agent-runtime-client";
+import { GrpcAgentRuntimeClient, validateAgentRuntimeDefaultCwd } from "../../adapters/model/grpc-agent-runtime-client";
 import {
   READER_SUMMARY_MODEL_PROVIDER_MODE,
   READER_SUMMARY_TOPIC_LABELER_MODE,
@@ -54,6 +54,7 @@ export type SummaryAgentRuntimeClientOptions = {
   readonly address: string;
   readonly timeoutMs: number;
   readonly serviceToken?: string;
+  readonly defaultCwd?: string;
 };
 
 export const summaryAgentRuntimeClientOptionsProvider: Provider<SummaryAgentRuntimeClientOptions> =
@@ -141,6 +142,9 @@ export const resolveSummaryAgentRuntimeClientOptions = (
     address: address.length > 0 ? address : "127.0.0.1:0",
     timeoutMs: parsePositiveInteger(env.AGENT_RUNTIME_GRPC_TIMEOUT_MS, 5_000),
     serviceToken: nonEmptyOptional(env.AGENT_RUNTIME_SERVICE_TOKEN),
+    defaultCwd: env.AGENT_RUNTIME_TASK_CWD === undefined
+      ? undefined
+      : validateAgentRuntimeDefaultCwd(env.AGENT_RUNTIME_TASK_CWD),
   };
 };
 

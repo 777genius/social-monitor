@@ -14,7 +14,7 @@ const native = `node_modules/@openai/codex-linux-${process.arch}/vendor/${
   process.arch === "x64" ? "x86_64-unknown-linux-musl" : "aarch64-unknown-linux-musl"
 }/bin/codex`;
 const helpers = [
-  "assessment-cli-progress.mjs", "assessment-cli-lifecycle.mjs",
+  "assessment-cli-progress.mjs", "assessment-cli-lifecycle.mjs", "mimo-app-server-custody.mjs", "installed-runtime-modules.mjs",
   "mimo-key-file.mjs",
   "pinned-codex-native-binary.mjs", "subscription-runtime-failure-details.mjs",
   "codex-worker-cli-usage.mjs", "codex-auth-pool-manifest.mjs",
@@ -134,6 +134,9 @@ test("rejects a symlink escaping the staged release", async (t) => {
 test("rejects an environment file added after extraction", async (t) => {
   const { root, args } = await fixture(t);
   await put(root, ".env", "synthetic-only");
+  await assert.rejects(verify(args), /Forbidden release path/);
+  await rm(join(root, ".env"));
+  await put(root, "node_modules/@vioxen/subscription-runtime/.env", "synthetic-only");
   await assert.rejects(verify(args), /Forbidden release path/);
 });
 
