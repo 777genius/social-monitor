@@ -73,6 +73,7 @@ import {
   runReaderSummaryPublicationBootstrapSql,
 } from "./reader-summary-publication-postgres-privileges";
 import { assertReaderSummaryPublicationRuntimeGuard } from "./reader-summary-publication-postgres-runtime-guard";
+import { assertReaderValueAssessmentPublicationAcl } from "./lib/reader-value-assessment-publication-acl";
 import { publish, reverseObject } from "./lib/reader-summary-publication-postgres-publish";
 import { withProvisionedPublicationFixture } from "./lib/reader-summary-publication-disposable-fixture";
 import { assertPostgres18PsqlTransportConfiguration } from "./reader-summary-publication-postgres18-regression";
@@ -319,6 +320,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
           return;
         }
         if (contract === "promotion-v3") {
+          await assertReaderValueAssessmentPublicationAcl(adminClient);
           const { assertReaderSummaryV3PostgresContract } = await import(
             "./lib/reader-summary-v3-postgres-contract"
           );
