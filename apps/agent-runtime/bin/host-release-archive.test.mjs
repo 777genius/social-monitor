@@ -206,7 +206,8 @@ writeFileSync("node_modules/synthetic.test.js", "excluded");
   await writeFile(approvedSpec, approvedSpecBytes);
   if (process.getuid() > 0) {
     await assert.rejects(verify(["--release-dir", extracted, ...args,
-      "--service-uid", String(process.getuid())]), /Release can be modified by service UID/);
+      "--service-uid", String(process.getuid())]),
+    (error) => error.message === `Release has unsafe ancestor: ${temp}`);
   }
   assert.equal((await stat(join(extracted, "dist/apps/agent-runtime/src/main.js"))).isFile(), true);
   assert.equal(await readFile(join(extracted, "dist/apps/agent-runtime/src/main.js"), "utf8"), "fresh compiled bytes\n");
