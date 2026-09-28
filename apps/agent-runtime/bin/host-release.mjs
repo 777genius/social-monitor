@@ -23,7 +23,7 @@ const codexNativeBinary = `node_modules/@openai/codex-linux-${target.arch}/vendo
   target.arch === "x64" ? "x86_64-unknown-linux-musl" : "aarch64-unknown-linux-musl"
 }/bin/codex`;
 const helpers = [
-  "assessment-cli-progress.mjs", "assessment-cli-lifecycle.mjs",
+  "assessment-cli-progress.mjs", "assessment-cli-lifecycle.mjs", "mimo-app-server-custody.mjs", "installed-runtime-modules.mjs",
   "mimo-key-file.mjs",
   "pinned-codex-native-binary.mjs", "subscription-runtime-failure-details.mjs",
   "codex-worker-cli-usage.mjs", "codex-auth-pool-manifest.mjs",

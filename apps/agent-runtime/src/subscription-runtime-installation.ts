@@ -20,28 +20,28 @@ const approvedMimoManifestSha256 =
   "132bae9074c729d9626cab9f765df8b6e8446dac172f3964dedcc6a2fe6d635f";
 const approvedMimoWorkerEntrypointSha256 =
   "43907edb05db2a3ad733697877cacd5caa434cb301a5ec4da11bd256cdf6ae09";
-// SHA256 of sorted "relative path\0file SHA256\n" records for executable
-// package files. The base archive needs npm's locked dependency completion
+// SHA256 of sorted "relative path\0file SHA256\n" records for all regular
+// distribution files. The base archive needs npm's locked dependency completion
 // before it can load; only that complete installed distribution is admitted.
 const approvedBaseRuntimeCodeSha256 = Object.freeze([
-  "0d78cd98d9c347325646aaf6e6f551c0f897fbb11f740059c5d29f6ad930bf92",
+  "0b1ae195815bd45ce2aab77cb4345e4ea07e2af70410527959bf810792669512",
 ]);
 const approvedMimoRuntimeCodeSha256 =
-  "6d3983f649a370d0b3e92927986041c8772d8c35e46190b04637bdff629bee15";
+  "3e08af06465d6bf5d2fbe3ecd1d5d8ea6baed1a3844dc0bc39195a7199442ec7";
 // Package code resolved from the installed node_modules ancestor while the
 // wrapper imports the two runtime distributions, before it reads the key.
 const approvedHoistedRuntimeCodeSha256 = Object.freeze({
-  "@anthropic-ai/claude-agent-sdk": "bf27d0bddc44f33a0f0dd516da1d0c0b9fe13be2795d389496ba332f8f15f29b",
-  "@modelcontextprotocol/sdk": "c0dfaaf3f69671ca3a5ab96ed4b58e93f04d65fbbff28a06d81181a932728623",
-  "ajv-formats": "5b6d30a70952a2a2f40b566c0ea6d9ae22a7d52b711861a2211204f4896e014b",
-  "zod": "38b42135ae2158e0bef62bfc41de465448f1c477019bc57f6f09725729efc7b6",
-  "zod-to-json-schema": "dfa5db1415a820c6b35cba83fdb7b426a99e7910d25a64c86cb0387c33a9304b",
-  "fast-uri": "65051f89a0767f5068bfe8b2c759f34f451865707491a73dcc6d145673956fb2",
-  "fast-deep-equal": "ef90358dc24f1d8adfc86482be86320d506a0a82d19a4870bb921a5c1f6c2857",
-  "json-schema-traverse": "644b5e21f4a48f3707c87adb7738240a9ddfae97928de64999165c246611ec24",
+  "@anthropic-ai/claude-agent-sdk": "68eeb7ef642c42e16cb13c3c0d00e2bc72960906e816f8e9bcb91ca7f3bbf3ae",
+  "@modelcontextprotocol/sdk": "3b1ce6a1229fca3c0c7b33838c7b2c67630d3e56a24b5407e9ce13f7dcbd3c25",
+  "ajv-formats": "444dbf1804b17fc0d114a28ee8fd89963c7084c08b5ebbd16c408b5e089727b4",
+  "zod": "4d7f8ca54064f57c6d93f09d2ce3b028f8d8884193147495f5f283a0916e124c",
+  "zod-to-json-schema": "e6f0b7c6dc6c820f1cdd16b9ef9a7f415190e3ee0bf190e9605f620344f0090a",
+  "fast-uri": "5527eab2950f0500863098edbf2a8d80894b4851a5189fbc5c2bac20a16b8ce7",
+  "fast-deep-equal": "da223f84496561579e85d5f6c0181f84a08db50f250912578c54e145e7b8b00e",
+  "json-schema-traverse": "e027afb34851b07a5cc5186b3a6d76b3273214474a35b13dacce9a15b0d309db",
 });
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "30f7bcac89439ea0eecb3260ee79924fcfab25a87e51be237e289c51f2ccddc1";
+  "bc1ddab061dfaa8ad967aff1480eeeca4a7235f5961dfb29e440d2648d41c8f4";
 
 // Repository wrapper approval, separate from the vendored package provenance.
 // Pin the local import closure too: launcher bytes alone do not bind helpers.
@@ -50,7 +50,11 @@ const approvedSubscriptionRuntimeDependencies = Object.freeze({
   "assessment-cli-progress.mjs":
     "76e82b76acd1f8664e78980d7cc75d8485e73316fef183bb4ee97e2466bef002",
   "assessment-cli-lifecycle.mjs":
-    "5220f2a668cf77f1d763a690dead7eb233e076e245d544870399f3d9f72423ca",
+    "094a5c323b838b22d6869696e923540e5627d1d261bc3040f2298d06877a82f8",
+  "mimo-app-server-custody.mjs":
+    "ca82aadb185205bec1faec471c3cd0b71104d0be0dc881140470cdf5645a7456",
+  "installed-runtime-modules.mjs":
+    "b4b95cc23ee0680c8c03559fc17872434593f6d00ed04f2482fe229f9eefe7bc",
   "pinned-codex-native-binary.mjs":
     "77a32f1ed6f6429b11428c0501d0d5f1712cc8bd913c74027f4ad0204facfb21",
   "subscription-runtime-failure-details.mjs":
@@ -263,7 +267,7 @@ const inspectPackageCode = async (
       dirname(manifest.manifestRealpath) !== packageRoot) {
     throw new Error("Installed subscription runtime package must contain a regular manifest");
   }
-  const digest = await codeInventoryHash(packageRoot, ["package.json", "dist", "node_modules"]);
+  const digest = await codeInventoryHash(packageRoot, ["."]);
   if (!approvedHashes.includes(digest)) {
     throw new Error("Installed subscription runtime code bytes are not approved");
   }
@@ -283,9 +287,7 @@ const codeInventoryHash = async (root: string, selected: readonly string[]): Pro
       if (entry.isDirectory()) {
         await visit(child, name);
       } else if (entry.isFile()) {
-        if (/\.(?:js|cjs|mjs|json|node)$/.test(entry.name)) {
-          entries.push(`${name}\0${createHash("sha256").update(await readFile(child)).digest("hex")}\n`);
-        }
+        entries.push(`${name}\0${createHash("sha256").update(await readFile(child)).digest("hex")}\n`);
       } else {
         throw new Error(`Installed subscription runtime code contains a non-regular entry: ${name}`);
       }

@@ -74,9 +74,48 @@ describe("opt-in strict gRPC admission", () => {
         AGENT_RUNTIME_STATE_ROOT: state,
         AGENT_RUNTIME_MIMO_API_KEY_FILE: key,
         AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS: "xiaomi-mimo-token-plan",
+        AGENT_RUNTIME_ALLOWED_TENANT_ID: "fixture-tenant",
+        AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace",
       };
       const settings = resolveAgentRuntimeSettings(mimoEnv);
       expect(settings.strictAdmission?.allowedModelBackends).toEqual(["xiaomi-mimo-token-plan"]);
+      expect(settings.strictAdmission).toMatchObject({ allowedScope: { tenantId: "fixture-tenant", workspaceId: "fixture-workspace" } });
+      const execute = jest.fn(async () => ({ status: "completed" as const, warnings: [] }));
+      const service = createAgentRuntimeGrpcService({
+        execute,
+        checkHealth: async () => ({ healthy: true, runtimeEngine: "fixture", runtimeVersion: "1", warnings: [] }),
+      }, { serviceToken: "x", strictAdmission: settings.strictAdmission });
+      const metadata = new Metadata();
+      metadata.set("authorization", "Bearer x");
+      const run = (tenantId: string, workspaceId: string) => new Promise<status | undefined>((resolve) => {
+        service.runAgentTask({ request: { ...request(project), tenantId, workspaceId }, metadata } as Parameters<typeof service.runAgentTask>[0],
+          (error) => resolve(error?.code));
+      });
+      expect(await run("other-tenant", "fixture-workspace")).toBe(status.UNAUTHENTICATED);
+      expect(await run("fixture-tenant", "other-workspace")).toBe(status.UNAUTHENTICATED);
+      expect(execute).not.toHaveBeenCalled();
+      expect(await run("fixture-tenant", "fixture-workspace")).toBeUndefined();
+      expect(execute).toHaveBeenCalledTimes(1);
+      const unboundService = createAgentRuntimeGrpcService({
+        execute,
+        checkHealth: async () => ({ healthy: true, runtimeEngine: "fixture", runtimeVersion: "1", warnings: [] }),
+      }, { serviceToken: "x", strictAdmission: { ...settings.strictAdmission!, allowedScope: undefined } });
+      expect(await new Promise<status | undefined>((resolve) => {
+        unboundService.runAgentTask({ request: request(project), metadata } as Parameters<typeof service.runAgentTask>[0],
+          (error) => resolve(error?.code));
+      })).toBe(status.UNAUTHENTICATED);
+      expect(execute).toHaveBeenCalledTimes(1);
+      for (const override of [
+        { AGENT_RUNTIME_ALLOWED_TENANT_ID: undefined },
+        { AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: undefined },
+        { AGENT_RUNTIME_ALLOWED_TENANT_ID: "" },
+        { AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "*" },
+        { AGENT_RUNTIME_ALLOWED_TENANT_ID: " fixture-tenant" },
+        { AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace " },
+        { AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace\n" },
+      ]) {
+        expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, ...override })).toThrow();
+      }
       expect(settings.cli.mimoApiKeyFile).toBe(key);
       expect(settings.cli.ephemeral).toBe(false);
       expect(() => resolveAgentRuntimeSettings({ ...mimoEnv, AGENT_RUNTIME_MIMO_API_KEY_FILE: undefined })).toThrow();
@@ -145,6 +184,49 @@ describe("opt-in strict gRPC admission", () => {
         (error) => resolve(error?.code));
     });
     expect(code).toBeUndefined();
+  });
+
+  it("binds configured strict task scope before executor invocation and keeps Health token authenticated", async () => {
+    const calls: string[] = [];
+    const executor: AgentRuntimeExecutorPort = {
+      execute: async () => { calls.push("task"); return { status: "completed", warnings: [] }; },
+      checkHealth: async () => { calls.push("health"); return { healthy: true, runtimeEngine: "fixture", runtimeVersion: "1", warnings: [] }; },
+    };
+    const scopedEnv = {
+      ...env,
+      AGENT_RUNTIME_ALLOWED_TENANT_ID: "fixture-tenant",
+      AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace",
+    };
+    const service = createAgentRuntimeGrpcService(executor, {
+      serviceToken: "x",
+      strictAdmission: resolveAgentRuntimeSettings(scopedEnv).strictAdmission,
+    });
+    const metadata = new Metadata();
+    metadata.set("authorization", "Bearer x");
+    const run = (tenantId: string, workspaceId: string) => new Promise<{ code?: status; message?: string }>((resolve) => {
+      service.runAgentTask({ request: { ...request(workspace), tenantId, workspaceId }, metadata } as Parameters<typeof service.runAgentTask>[0],
+        (error) => resolve({ code: error?.code, message: error ? (error as Error).message : undefined }));
+    });
+    for (const [tenantId, workspaceId] of [
+      ["other-tenant", "fixture-workspace"],
+      ["fixture-tenant", "other-workspace"],
+      [" fixture-tenant", "fixture-workspace"],
+      ["fixture-tenant", "fixture-workspace "],
+      ["fixture-tenant", "fixture-workspace\n"],
+      ["", "fixture-workspace"],
+    ] as const) {
+      expect(await run(tenantId, workspaceId)).toEqual({ code: status.UNAUTHENTICATED, message: "Unauthorized" });
+    }
+    expect(calls).toEqual([]);
+    expect(await run("fixture-tenant", "fixture-workspace")).toEqual({ code: undefined, message: undefined });
+    expect(calls).toEqual(["task"]);
+    await new Promise<void>((resolve) => {
+      service.checkHealth({ request: {}, metadata } as Parameters<typeof service.checkHealth>[0],
+        (error) => { expect(error).toBeNull(); resolve(); });
+    });
+    expect(calls).toEqual(["task", "health"]);
+    expect(() => resolveAgentRuntimeSettings({ ...env, AGENT_RUNTIME_ALLOWED_TENANT_ID: "fixture-tenant" })).toThrow();
+    expect(() => resolveAgentRuntimeSettings({ ...env, AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace" })).toThrow();
   });
 
   it.each([

@@ -1,6 +1,6 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { admitModelBackend, isMimoOnly, type AllowedModelBackend } from "./backend-admission-policy";
 
 import {
@@ -76,6 +76,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     const startedAt = Date.now();
     this.logger.info("agent runtime task started", taskFields(request));
     let admission: AdmittedSubscriptionRuntimeRequest;
+    let executionCwd: string | undefined;
     try {
       if (!configuredSubscriptionRuntimeDefaultsAreSafe(this.options)) {
         this.logger.error("agent runtime task rejected unsafe defaults", {
@@ -110,10 +111,12 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         };
       }
       if (this.options.workspaceRoot !== undefined) {
-        admitStrictCwd(request.cwd, {
+        executionCwd = admitStrictCwd(request.cwd, {
           workspaceRoot: this.options.workspaceRoot,
           allowedModelBackends: this.options.allowedModelBackends ?? [],
         });
+      } else if (request.cwd !== undefined && isAbsolute(request.cwd)) {
+        executionCwd = request.cwd;
       }
     } catch (error) {
       this.logFailure(request, "admission", error);
@@ -146,7 +149,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       const initialResult = cliExecutionResult(
         await runCli({
           command: admittedInstallation.executablePath,
-          cwd: request.cwd,
+          cwd: executionCwd,
           args: this.buildArgs(request, inputPath, admission.profile),
           env: this.executionEnvPatch(
             this.options.ephemeral,
@@ -200,7 +203,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       const recovered = cliExecutionResult(
         await runCli({
           command: admittedInstallation.executablePath,
-          cwd: request.cwd,
+          cwd: executionCwd,
           args: this.buildArgs(request, inputPath, admission.profile, true),
           env: this.executionEnvPatch(true, admission.profile),
           modelBackend: admission.profile.modelBackend,

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
@@ -16,7 +15,7 @@ function requirePath(specifier) {
 }
 
 const withLauncherFixture = async (callback) => {
-  const root = await mkdtemp(join(tmpdir(), "agent-runtime-launcher-test-"));
+  const root = await realpath(await mkdtemp(join(repository, ".agent-runtime-launcher-test-")));
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   const state = join(root, "state");
@@ -80,11 +79,16 @@ test("dotenv MiMo-only strict settings reach the actual launcher child without a
       AGENT_RUNTIME_STATE_ROOT: state,
       AGENT_RUNTIME_CLI_PATH: cli,
       AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_ALLOWED_TENANT_ID: "fixture-tenant",
+      AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace",
       AGENT_RUNTIME_MIMO_API_KEY_FILE: key,
     });
-    assert.equal(result.exitCode, 0);
+    assert.equal(result.exitCode, 0, result.error);
     assert.equal(result.settings.strictAdmission.workspaceRoot, workspace);
     assert.deepEqual(result.settings.strictAdmission.allowedModelBackends, ["xiaomi-mimo-token-plan"]);
+    assert.deepEqual(result.settings.strictAdmission.allowedScope, {
+      tenantId: "fixture-tenant", workspaceId: "fixture-workspace",
+    });
     assert.equal(result.settings.cli.workspaceRoot, workspace);
     assert.equal(result.settings.cli.mimoApiKeyFile, key);
     assert.equal(result.settings.cli.codexAuthJsonPath, undefined);
@@ -101,6 +105,8 @@ test("dotenv explicit Codex auth remains forbidden in MiMo-only strict settings"
       AGENT_RUNTIME_STATE_ROOT: state,
       AGENT_RUNTIME_CLI_PATH: cli,
       AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_ALLOWED_TENANT_ID: "fixture-tenant",
+      AGENT_RUNTIME_ALLOWED_WORKSPACE_ID: "fixture-workspace",
       AGENT_RUNTIME_MIMO_API_KEY_FILE: key,
       AGENT_RUNTIME_CODEX_AUTH_JSON_PATH: join(home, ".codex/auth.json"),
     });

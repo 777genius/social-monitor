@@ -1,3 +1,7 @@
+import type { FactoryProvider } from "@nestjs/common";
+import { GrpcAgentRuntimeClient } from "../../adapters/model/grpc-agent-runtime-client";
+import { summaryAgentRuntimeProviders } from "./summary-agent-runtime.providers";
+import { createSourceAssessmentRuntime } from "./source-assessment-runtime-provider-tokens";
 import {
   resolveReaderSummaryModelProviderMode,
   resolveReaderSummaryTopicLabelerMode,
@@ -6,6 +10,53 @@ import {
 import { resolveSummaryAgentRuntimeClientOptions } from "./summary-agent-runtime-provider-tokens";
 
 describe("summary provider tokens", () => {
+  it("resolves the trusted task cwd and preserves absent configuration", () => {
+    expect(resolveSummaryAgentRuntimeClientOptions({}, { requireAddress: false }).defaultCwd).toBeUndefined();
+    expect(resolveSummaryAgentRuntimeClientOptions({ AGENT_RUNTIME_TASK_CWD: "/srv/host/project" },
+      { requireAddress: false }).defaultCwd).toBe("/srv/host/project");
+  });
+
+  it("passes the resolved cwd into the scheduled gRPC client", () => {
+    const resolved = resolveSummaryAgentRuntimeClientOptions(
+      { AGENT_RUNTIME_TASK_CWD: "/srv/host/project" }, { requireAddress: false },
+    );
+    const client = {} as GrpcAgentRuntimeClient;
+    const connect = jest.spyOn(GrpcAgentRuntimeClient, "connect").mockReturnValue(client);
+    try {
+      const provider = summaryAgentRuntimeProviders[0] as FactoryProvider;
+      expect(provider.useFactory(resolved)).toBe(client);
+      expect(connect).toHaveBeenCalledWith(expect.objectContaining({
+        options: expect.objectContaining({ defaultCwd: "/srv/host/project" }),
+      }));
+    } finally {
+      connect.mockRestore();
+    }
+  });
+
+  it("passes the resolved cwd into the source assessment gRPC client", () => {
+    const client = {} as GrpcAgentRuntimeClient;
+    const connect = jest.spyOn(GrpcAgentRuntimeClient, "connect").mockReturnValue(client);
+    try {
+      createSourceAssessmentRuntime({
+        env: { AGENT_RUNTIME_GRPC_ADDRESS: "127.0.0.1:50052",
+          AGENT_RUNTIME_TASK_CWD: "/srv/host/project" },
+        clock: { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      });
+      expect(connect).toHaveBeenCalledWith(expect.objectContaining({
+        options: expect.objectContaining({ defaultCwd: "/srv/host/project" }),
+      }));
+    } finally {
+      connect.mockRestore();
+    }
+  });
+
+  it.each(["", "relative", " /srv/project", "/srv/../project", "/srv//project"])(
+    "rejects malformed AGENT_RUNTIME_TASK_CWD %j during configuration", (cwd) => {
+      expect(() => resolveSummaryAgentRuntimeClientOptions({ AGENT_RUNTIME_TASK_CWD: cwd },
+        { requireAddress: false })).toThrow(/cwd/u);
+    },
+  );
+
   it("accepts agent-runtime as a durable summary provider mode", () => {
     expect(
       resolveSummaryModelProviderMode({

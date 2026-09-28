@@ -21,7 +21,7 @@ import type {
   AgentRuntimeExecutionResult,
   AgentRuntimeExecutorPort,
 } from "./agent-runtime-executor.port";
-import { admitStrictCwd, type StrictGrpcAdmission } from "./strict-grpc-admission";
+import { admitStrictCwd, admitsStrictScope, type StrictGrpcAdmission } from "./strict-grpc-admission";
 
 export type AgentRuntimeGrpcServiceOptions = {
   readonly serviceToken?: string;
@@ -39,6 +39,11 @@ export const createAgentRuntimeGrpcService = (
     callback: sendUnaryData<AgentRuntimeTaskResponse>,
   ): void {
     if (!isAuthorized(call, options)) {
+      callback(serviceError(status.UNAUTHENTICATED, "Unauthorized"), null);
+      return;
+    }
+    if (options.strictAdmission !== undefined &&
+        !admitsStrictScope(call.request.tenantId, call.request.workspaceId, options.strictAdmission)) {
       callback(serviceError(status.UNAUTHENTICATED, "Unauthorized"), null);
       return;
     }

@@ -36,6 +36,7 @@ import {
 const launcherName = "run-codex-subscription-runtime-agent-task.mjs";
 const dependencyNames = [
   "assessment-cli-lifecycle.mjs",
+  "mimo-app-server-custody.mjs", "installed-runtime-modules.mjs",
   "assessment-cli-progress.mjs",
   "pinned-codex-native-binary.mjs",
   "subscription-runtime-failure-details.mjs",
@@ -276,6 +277,37 @@ describe("subscription runtime installation admission", () => {
     )).rejects.toThrow("Installed subscription runtime code bytes are not approved");
   });
 
+  it.each([
+    ["subscription-runtime", "dist"], ["subscription-runtime-mimo", "dist"],
+    ["subscription-runtime", "."], ["subscription-runtime-mimo", "."],
+  ])(
+    "rejects an added executable extensionless file in %s/%s", async (name, location) => {
+      const command = join(await copyInstallation(), launcherName);
+      await rm(join(root!, "node_modules"));
+      const modules = join(root!, "node_modules/@vioxen");
+      await mkdir(modules, { recursive: true });
+      for (const external of await readdir(join(installationRoot, "node_modules"))) {
+        if (external !== "@vioxen") await symlink(join(installationRoot, "node_modules", external),
+          join(root!, "node_modules", external));
+      }
+      for (const packageName of ["subscription-runtime", "subscription-runtime-mimo"]) {
+        const destination = join(modules, packageName);
+        if (packageName === name) {
+          await cp(join(installationRoot, "node_modules/@vioxen", packageName), destination,
+            { recursive: true });
+        } else {
+          await symlink(join(installationRoot, "node_modules/@vioxen", packageName), destination);
+        }
+      }
+      const added = join(modules, name, location, "synthetic-extensionless-tool");
+      await writeFile(added, "#!/bin/sh\nexit 0\n");
+      await chmod(added, 0o755);
+      await expect(new FileSubscriptionRuntimeInstallationInspector().inspect(
+        command, "xiaomi-mimo-token-plan",
+      )).rejects.toThrow("Installed subscription runtime code bytes are not approved");
+    },
+  );
+
   it("rejects changed base CLI implementation behind a version-correct manifest", async () => {
     const command = join(await copyInstallation(), launcherName);
     await rm(join(root!, "node_modules"));
@@ -360,14 +392,11 @@ describe("subscription runtime installation admission", () => {
     await expect(executor.execute(mimoRequest())).resolves.toMatchObject({
       status: "failed", failure: { code: "agent_runtime.execution_attestation_invalid" },
     });
-  });
+  }, 15_000);
 
-  it("rejects a version-correct base runtime symlink into the admitted workspace", async () => {
+  it("loads the selected base CLI from a bare package layout, then rejects its workspace symlink", async () => {
     const bin = await copyInstallation();
-    const nestedBin = join(root!, "apps/agent-runtime/bin");
-    await mkdir(join(root!, "apps/agent-runtime"), { recursive: true });
-    await cp(bin, nestedBin, { recursive: true });
-    const command = join(nestedBin, launcherName);
+    const command = join(bin, launcherName);
     const workspace = join(root!, "workspace");
     await mkdir(workspace);
     await rm(join(root!, "node_modules"));

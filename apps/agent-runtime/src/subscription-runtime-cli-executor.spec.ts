@@ -1,6 +1,6 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 
 import type { StructuredLogger } from "@social-monitor/platform-logging";
 import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
@@ -108,6 +108,37 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       else process.env.CODEX_AUTH_JSON_PATH = priorCodexAuthPath;
       if (priorScopedCodexAuthPath === undefined) delete process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH;
       else process.env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH = priorScopedCodexAuthPath;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves a non-strict relative cwd once from the caller workspace", async () => {
+    const root = await mkdtemp(join(process.cwd(), ".relative-cli-cwd-"));
+    try {
+      const project = join(root, "project");
+      await mkdir(project);
+      const capturePath = join(root, "resolved-cwd.json");
+      const cliPath = join(root, "fake-cli.mjs");
+      await writeFile(cliPath, [
+        "#!/usr/bin/env node",
+        'import { readFile, realpath, writeFile } from "node:fs/promises";',
+        'import { resolve } from "node:path";',
+        'const argv = process.argv.slice(2);',
+        'const request = JSON.parse(await readFile(argv[argv.indexOf("--input") + 1], "utf8"));',
+        'const resolved = await realpath(resolve(process.cwd(), request.cwd));',
+        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ root: process.cwd(), resolved }));`,
+        'process.stdout.write(JSON.stringify({ status: "completed", structuredOutput: {}, warnings: [] }));',
+      ].join("\n"));
+      await chmod(cliPath, 0o755);
+      const executor = new SubscriptionRuntimeCliExecutor({
+        command: cliPath, ephemeral: true, installationInspector,
+      });
+      const result = await executor.execute(validExecutionRequest({ cwd: relative(process.cwd(), project) }));
+      expect(result.status).toBe("completed");
+      expect(JSON.parse(await readFile(capturePath, "utf8"))).toEqual({
+        root: process.cwd(), resolved: project,
+      });
+    } finally {
       await rm(root, { recursive: true, force: true });
     }
   });

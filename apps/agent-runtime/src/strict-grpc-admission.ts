@@ -6,10 +6,37 @@ import { isMimoOnly, resolveAllowedModelBackends, type AllowedModelBackend } fro
 export type StrictGrpcAdmission = {
   readonly workspaceRoot: string;
   readonly allowedModelBackends: readonly AllowedModelBackend[];
+  readonly allowedScope?: { readonly tenantId: string; readonly workspaceId: string };
 };
 
 const safePoolId = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
+const safeScopeId = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}(?![\s\S])/;
+const resolveAllowedScope = (
+  env: NodeJS.ProcessEnv,
+  required: boolean,
+): StrictGrpcAdmission["allowedScope"] => {
+  const tenantId = env.AGENT_RUNTIME_ALLOWED_TENANT_ID;
+  const workspaceId = env.AGENT_RUNTIME_ALLOWED_WORKSPACE_ID;
+  if (tenantId === undefined && workspaceId === undefined && !required) return undefined;
+  if (typeof tenantId !== "string" || !safeScopeId.test(tenantId) ||
+      typeof workspaceId !== "string" || !safeScopeId.test(workspaceId)) {
+    throw new Error("Strict gRPC admission requires a valid paired tenant and workspace scope");
+  }
+  return { tenantId, workspaceId };
+};
+export const admitsStrictScope = (
+  tenantId: string,
+  workspaceId: string,
+  admission: StrictGrpcAdmission,
+): boolean => {
+  const scope = admission.allowedScope;
+  if (scope === undefined) return !isMimoOnly(admission.allowedModelBackends);
+  return typeof tenantId === "string" && safeScopeId.test(tenantId) &&
+    typeof workspaceId === "string" && safeScopeId.test(workspaceId) &&
+    typeof scope.tenantId === "string" && safeScopeId.test(scope.tenantId) &&
+    typeof scope.workspaceId === "string" && safeScopeId.test(scope.workspaceId) &&
+    tenantId === scope.tenantId && workspaceId === scope.workspaceId;
+};
 const pathWithin = (root: string, candidate: string): boolean => {
   const child = relative(root, candidate);
   return child === "" || (child !== ".." && !child.startsWith(`..${sep}`) && !isAbsolute(child));
@@ -121,6 +148,7 @@ export const resolveStrictGrpcAdmission = (env: NodeJS.ProcessEnv): StrictGrpcAd
   const workspaceRoot = directory(env.AGENT_RUNTIME_PROJECT_WORKSPACE_ROOT, "AGENT_RUNTIME_PROJECT_WORKSPACE_ROOT");
   const stateRoot = directory(env.AGENT_RUNTIME_STATE_ROOT, "AGENT_RUNTIME_STATE_ROOT");
   const allowedModelBackends = resolveAllowedModelBackends(env.AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS);
+  const allowedScope = resolveAllowedScope(env, isMimoOnly(allowedModelBackends));
   if (env.AGENT_RUNTIME_EPHEMERAL === "1" || env.AGENT_RUNTIME_EPHEMERAL?.toLowerCase() === "true") {
     throw new Error("AGENT_RUNTIME_EPHEMERAL must be disabled in strict mode");
   }
@@ -190,7 +218,7 @@ export const resolveStrictGrpcAdmission = (env: NodeJS.ProcessEnv): StrictGrpcAd
     throw new Error("AGENT_RUNTIME_CLI_PATH must be outside the workspace and state roots");
   }
   accessSync(cliPath, constants.X_OK);
-  return { workspaceRoot, allowedModelBackends };
+  return { workspaceRoot, allowedModelBackends, allowedScope };
 };
 
 const mountPoints = (): readonly string[] => {

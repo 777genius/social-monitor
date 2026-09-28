@@ -10,7 +10,7 @@ import { verify, verifyArchive } from "./host-release.mjs";
 const commit = "c045beb60f0b02ea8ae6b264036bef88ada20b76";
 const helpers = [
   "run-codex-subscription-runtime-agent-task.mjs", "assessment-cli-progress.mjs",
-  "assessment-cli-lifecycle.mjs", "pinned-codex-native-binary.mjs",
+  "assessment-cli-lifecycle.mjs", "mimo-app-server-custody.mjs", "installed-runtime-modules.mjs", "pinned-codex-native-binary.mjs",
   "mimo-key-file.mjs",
   "subscription-runtime-failure-details.mjs", "codex-worker-cli-usage.mjs",
   "codex-auth-pool-manifest.mjs", "codex-auth-pool-routing.mjs",

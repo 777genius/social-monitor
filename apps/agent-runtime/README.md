@@ -240,8 +240,8 @@ the worker reads the key only for an admitted MiMo task. This mode rejects
 Codex and legacy purpose requests before installation inspection or execution.
 The selected MiMo package, the base runtime package, and their manifests must
 resolve outside the admitted workspace. MiMo-only admission checks a pinned
-SHA256 inventory of executable distribution files (`package.json`, JavaScript,
-JSON and native modules) in both packages and the hoisted imports loaded by
+SHA256 inventory of all regular distribution files, including extensionless
+executables, `package.json`, JavaScript, JSON and native modules in both packages and the hoisted imports loaded by
 their worker entrypoints. The inventory rejects missing or changed files and
 symlinks within those code trees. The base fingerprint requires npm's locked
 dependency completion of its vendored archive; the MiMo fingerprint matches
@@ -250,7 +250,9 @@ reinspect the same code before spawn, and completed results require a fresh
 inspection before attestation. A changed distribution requires a reviewed pin
 update. The wrapper receives the exact admitted project cwd, including when
 that project is a sibling of the service checkout; the CLI timeout signals its
-local process group.
+local process group. MiMo app-server children are tracked by the wrapper
+process factory and shut down through the same bounded lifecycle, including
+detached native children.
 The setting is accepted only with strict admission. Its only known values are
 `openai-chatgpt` and `xiaomi-mimo-token-plan`, comma-separated without duplicates.
 When unset, the established Codex-pool strict behavior remains available.
