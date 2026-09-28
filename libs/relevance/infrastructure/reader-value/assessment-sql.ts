@@ -7,17 +7,18 @@ export interface AssessmentSqlTransaction {
 }
 export interface AssessmentSqlClient extends AssessmentSqlTransaction {
   $transaction<T>(operation: (transaction: AssessmentSqlTransaction) => Promise<T>, options: {
-    readonly isolationLevel: 'Serializable'; readonly timeout: number; readonly maxWait: number;
+    readonly isolationLevel: 'Serializable' | 'ReadCommitted'; readonly timeout: number; readonly maxWait: number;
   }): Promise<T>;
 }
 
 export function assessmentTransaction<T>(client: AssessmentSqlClient, scope: ReaderValueScope,
-  operation: (transaction: AssessmentSqlTransaction) => Promise<T>): Promise<T> {
+  operation: (transaction: AssessmentSqlTransaction) => Promise<T>,
+  isolationLevel: 'Serializable' | 'ReadCommitted' = 'Serializable'): Promise<T> {
   return runWithTenantDatabaseAccess(scope, () => withPrismaWriteRetry(() => client.$transaction(async (transaction) => {
     await transaction.$executeRawUnsafe("SET LOCAL statement_timeout = '5000ms'");
     await transaction.$executeRawUnsafe("SET LOCAL lock_timeout = '2000ms'");
     return operation(transaction);
-  }, { isolationLevel: 'Serializable', timeout: 10_000, maxWait: 5_000 })));
+  }, { isolationLevel, timeout: 10_000, maxWait: 5_000 })));
 }
 
 /** One transaction-scoped, read-only snapshot for bounded preparation scans. */

@@ -3,6 +3,24 @@ import type { AssessmentSqlClient, AssessmentSqlTransaction } from './assessment
 import { PrismaReaderValueAssessmentStore } from './prisma-reader-value-assessment-store';
 
 describe('PrismaReaderValueAssessmentStore dispatch authorization', () => {
+  it('claims with read committed so parallel SKIP LOCKED workers do not serialize the same candidate scan', async () => {
+    const transaction: AssessmentSqlTransaction = {
+      $queryRawUnsafe: async <T>() => [] as T,
+      $executeRawUnsafe: async () => 0,
+    };
+    const isolationLevels: string[] = [];
+    const client: AssessmentSqlClient = { ...transaction,
+      $transaction: async (operation, options) => {
+        isolationLevels.push(options.isolationLevel);
+        return operation(transaction);
+      } };
+    const store = new PrismaReaderValueAssessmentStore(client);
+    const scope = dispatchClaim().input;
+    await store.claim(scope, scope.modelConfigVersion, dispatchClaim().leaseToken, false);
+    await store.backlogAgeMs(scope, scope.modelConfigVersion, false);
+    expect(isolationLevels).toEqual(['ReadCommitted', 'Serializable']);
+  });
+
   it('locks a live pinned summary job before recording legacy-drain sentAt', async () => {
     const queries: string[] = [];
     const transaction: AssessmentSqlTransaction = {

@@ -80,7 +80,7 @@ export class PgAssessmentClient implements AssessmentSqlClient {
   $queryRawUnsafe<T>(): Promise<T> { throw new Error('Assessment read must use a scoped transaction'); }
   $executeRawUnsafe(): Promise<number> { throw new Error('Assessment write must use a scoped transaction'); }
   async $transaction<T>(operation: (tx: AssessmentSqlTransaction) => Promise<T>,
-    options: { isolationLevel: 'Serializable'; maxWait: number; timeout: number }): Promise<T> {
+    options: { isolationLevel: 'Serializable' | 'ReadCommitted'; maxWait: number; timeout: number }): Promise<T> {
     const result = await this.client.$transaction(operation, options);
     if (this.loseNextCommitAcknowledgement) {
       this.loseNextCommitAcknowledgement=false;

@@ -86,8 +86,8 @@ const postgresAssessmentClient = (client: PoolClient): AssessmentSqlClient => ({
     (await client.query(sql, values)).rows as T,
   $executeRawUnsafe: async (sql: string, ...values: unknown[]) =>
     (await client.query(sql, values)).rowCount ?? 0,
-  $transaction: async <T>(operation: (transaction: AssessmentSqlTransaction) => Promise<T>) => {
-    await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+  $transaction: async <T>(operation: (transaction: AssessmentSqlTransaction) => Promise<T>, options) => {
+    await client.query(`BEGIN ISOLATION LEVEL ${options.isolationLevel === 'ReadCommitted' ? 'READ COMMITTED' : 'SERIALIZABLE'}`);
     try {
       const result = await operation(postgresAssessmentClientTransaction(client));
       await client.query("COMMIT");

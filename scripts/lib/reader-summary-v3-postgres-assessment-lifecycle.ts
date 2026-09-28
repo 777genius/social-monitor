@@ -96,8 +96,8 @@ const sqlClient = (client: PoolClient): AssessmentSqlClient => ({
     (await client.query(sql, values)).rowCount ?? 0,
   $transaction: async <T>(operation: (
     transaction: AssessmentSqlTransaction,
-  ) => Promise<T>) => {
-    await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+  ) => Promise<T>, options) => {
+    await client.query(`BEGIN ISOLATION LEVEL ${options.isolationLevel === 'ReadCommitted' ? 'READ COMMITTED' : 'SERIALIZABLE'}`);
     try {
       const result = await operation(transactionClient(client));
       await client.query("COMMIT");
