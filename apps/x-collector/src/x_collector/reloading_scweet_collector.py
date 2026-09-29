@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 from .config import XCollectorSettings
 from .domain import DailySearchRequest, DailySearchResult
 from .ports import DailySearchCollectorPort
 from .scweet_adapter import ScweetDailySearchCollector
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class ReloadingScweetDailySearchCollector(DailySearchCollectorPort):
@@ -25,4 +29,9 @@ class ReloadingScweetDailySearchCollector(DailySearchCollectorPort):
         self,
         request: DailySearchRequest,
     ) -> DailySearchResult:
-        return self._factory(self._settings).collect_daily_search(request)
+        try:
+            collector = self._factory(self._settings)
+        except Exception as exc:
+            LOGGER.error("X collector setup failed (%s)", type(exc).__name__)
+            raise
+        return collector.collect_daily_search(request)

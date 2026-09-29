@@ -483,7 +483,11 @@ class RepairTests(unittest.TestCase):
             self.skipTest('historical production commit unavailable in shallow checkout')
         real = self.root / 'real-history'
         self.command('git', 'clone', '--no-local', '--no-checkout', '-q', str(source), str(real))
-        target = self.command('git', '-C', str(source), 'rev-parse', 'HEAD').strip().decode()
+        # This is an immutable historical bridge-compatibility fixture. The
+        # forward verifier intentionally bounds its first-parent search, so a
+        # moving HEAD eventually stops representing the reviewed release.
+        target = '0451c0743dd4a9412be602d4b3ba9fd642a84f28'
+        self.command('git', '-C', str(source), 'merge-base', '--is-ancestor', target, 'HEAD')
         real_origin = self.root / 'real-origin.git'
         self.command('git', 'clone', '--bare', '--no-local', '-q', str(source), str(real_origin))
         self.command('git', '-C', str(real_origin), 'update-ref', 'refs/heads/main', target)

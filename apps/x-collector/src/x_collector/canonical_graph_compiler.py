@@ -21,7 +21,7 @@ REPOSITORY_PINS = {
     "config.py": "6a5be45e5ac39defd34e61a805aa67f3625ca6e98e3afd0e8f0588d4a277d3d5",
     "domain.py": "867469a50eb49ffa821b528505db8e084dc7e60f58a829a5f7ebe2cd2faa6666",
     "search_plan.py": "3a82bea0aebd1146c1a9e63ac63f8a1ffdcfb221af7ebecc03782c678a837875",
-    "scweet_adapter.py": "fd9486970c86c76dba6934140a098a5d539cff2e1c4529ced436fd7ff7417ac2",
+    "scweet_adapter.py": "de71b7f2d87b004f8c5bb9740fafc03919fd755ef2dca7c0cd8813acf9ae2296",
     "search_budget.py": "494333b7bcbcb47282ae91502bb9f350fde092f654cf10568050478ab79e091f",
 }
 REQUEST_FIELDS = frozenset(DailySearchRequest.__dataclass_fields__)
