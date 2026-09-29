@@ -25,6 +25,43 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
       .toEqual([id(904), id(903)]);
   });
 
+  it("consolidates 22 overlapping interests before charging story comparisons", async () => {
+    const candidates = Array.from({ length: 88 }, (_, index) => {
+      const story = Math.floor(index / 22);
+      const base = candidate(index + 1,
+        index === 21 ? "important" : "useful", "central", `shared-${story}`);
+      return { ...base, sourceItemId: id(200 + story),
+        canonicalIdentity: `https://example.test/shared-${story}`,
+        provider: story % 2 === 0 ? "rss" : "reddit",
+        publishedAt: "2026-09-20T12:00:00.000001Z",
+        observedAt: "2026-09-20T12:01:00.000001Z" };
+    });
+    const presentation = new TestPresentation();
+    const fixture = workspaceSetup(candidates, undefined, presentation, 22);
+
+    const result = await fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest });
+
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(fixture.readInterests).toEqual(Array.from({ length: 22 },
+      (_, index) => id(903 + index)));
+    expect(presentation.attempted).toBe(4);
+    expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
+      .toEqual([id(22), id(23), id(45), id(67)]);
+    expect(result.evidence.promotionV3?.top[0]).toMatchObject({
+      assessmentId: id(122), answers: { usefulness: { choice: "important" } },
+    });
+    expect(result.evidence.promotionV3?.excluded.filter((value) =>
+      value.reason === "story_representative")).toHaveLength(84);
+    expect(result.evidence.clusters).toHaveLength(4);
+    for (const cluster of result.evidence.clusters) {
+      expect(cluster.duplicateFeedItemIds).toHaveLength(21);
+      expect(cluster.interestIds).toEqual(Array.from({ length: 22 },
+        (_, index) => id(903 + index)));
+    }
+  });
+
   // Regression: a useful, relevant source with no citation identity is still
   // signal; it cannot be published as no signal when no card can present it.
   it("fails an incomplete citation identity instead of returning no signal", async () => {
@@ -175,6 +212,25 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     await expect(fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest })).resolves.toEqual({ kind: "budget_exhausted" });
     expect(presentation.attempted).toBe(0);
+  });
+
+  it("applies the relation inventory cap after exact source consolidation", async () => {
+    const candidates = Array.from({ length: 5_001 }, (_, index) => ({
+      ...candidate(index + 1, "useful", "relevant", "one-shared-story"),
+      sourceItemId: id(200), canonicalIdentity: "https://example.test/shared",
+      publishedAt: "2026-09-20T12:00:00.000001Z",
+      observedAt: "2026-09-20T12:01:00.000001Z",
+    }));
+    const presentation = new TestPresentation();
+    const fixture = workspaceSetup(candidates, undefined, presentation);
+
+    const result = await fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest });
+
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(presentation.attempted).toBe(1);
+    expect(result.evidence.clusters[0]?.duplicateFeedItemIds).toHaveLength(5_000);
   });
 
   it("fails before presentation when pairwise story work exceeds its budget", async () => {
@@ -334,10 +390,19 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(result.evidence.clusters[0]?.duplicateFeedItemIds).toEqual([id(2)]);
   });
 
-  it('removes URL query credentials from serialized public cards and citations', async () => {
+  it.each([
+    ['direct', 'https://example.test/article?edition=2&access_token=synthetic-marker-only',
+      'https://example.test/article?edition=2'],
+    ['whitespace', '  https://example.test/article?edition=2&access_token=synthetic-marker-only',
+      'https://example.test/article?edition=2'],
+    ['redirect', `  https://www.google.com/url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
+    `https://www.google.com/url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&sa=U`],
+  ])('sanitizes %s URLs through promotion and projection', async (_case, raw, safe) => {
     const marker = 'synthetic-marker-only';
     const fixture = setup([{ ...candidate(1, 'useful', 'central'),
-      canonicalIdentity: `https://example.test/article?edition=2&access_token=${marker}`,
+      canonicalIdentity: raw,
     }], new TestPresentation());
     const result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
     expect(result.kind).toBe('ready');
@@ -351,10 +416,12 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
         field: 'canonicalUrl', canonicalUrl: item.canonicalUrl }],
       attestationBinding: { artifactId: id(997), sourceWindow: result.evidence.sourceWindow },
     });
-    expect(projection.topReads[0]?.canonicalUrl).toBe('https://example.test/article?edition=2');
-    expect(projection.admittedCitations[0]?.canonicalUrl).toBe('https://example.test/article?edition=2');
-    expect(projection.topReads[0]?.promotionCanonicalIdentity).not.toContain(marker);
-    expect(JSON.stringify({ cards: projection.topReads, citations: projection.admittedCitations }))
+    expect(item.canonicalUrl).toBe(safe);
+    expect(projection.topReads[0]?.canonicalUrl).toBe(safe);
+    expect(projection.admittedCitations[0]?.canonicalUrl).toBe(safe);
+    expect(projection.attestations[0]?.canonicalIdentity).toBe(safe);
+    expect(JSON.stringify({ evidence: projection.admittedEvidence, cards: projection.topReads,
+      citations: projection.admittedCitations, attestations: projection.attestations }))
       .not.toContain(marker);
   });
 

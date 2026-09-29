@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { err, ok, redactSensitiveText, sanitizeUrlCredentials, validateOutboundUrl, type Result } from '@social-monitor/shared-kernel';
+import { err, ok, publicCanonicalUrlIdentity, redactSensitiveText, validateOutboundUrl, type Result } from '@social-monitor/shared-kernel';
 
 import type { SourceContentSafetyPolicy } from '../../domain/source-content-safety';
 import type { ReaderValueCapture, ReaderValueSource, ReaderValueSourceSnapshot } from '../../domain/reader-value/reader-value-source';
@@ -59,7 +59,7 @@ export function unicodePrefix(value: string, maxUnits: number): string {
 }
 
 function stableCapture(capture: ReaderValueCapture, sanitize: boolean): ReaderValueCapture {
-  const url = (value: string | null): string | null => value === null || !sanitize ? value : sanitizeUrlCredentials(value);
+  const url = (value: string | null): string | null => value === null || !sanitize ? value : publicCanonicalUrlIdentity(value);
   return {
     representationVersion: capture.representationVersion,
     availability: capture.availability,

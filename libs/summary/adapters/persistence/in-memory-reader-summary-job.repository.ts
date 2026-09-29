@@ -90,7 +90,9 @@ export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobPolli
           snapshot.status === "running" && snapshot.startedAt !== undefined &&
             snapshot.startedAt < params.staleRunningStartedBefore ||
           snapshot.status === "failed" && snapshot.terminalFailureCode === undefined &&
-            snapshot.failureReason === "v3_retryable_provider_rate_limited");
+            snapshot.failureReason === "v3_retryable_provider_rate_limited" &&
+            (snapshot.preparationNextCheckAt === undefined ||
+              snapshot.preparationNextCheckAt <= params.now));
       })
       .sort(compareRequestedJobs)
       .slice(0, params.limit);

@@ -78,6 +78,36 @@ describe('reader-value source custody', () => {
     }).sourceSnapshotSha256);
   });
 
+  it('removes nested redirect credentials from serialized capture evidence while retaining identity query values', () => {
+    const marker = 'synthetic-marker-only';
+    const destination = `https://example.test/article?edition=2&access_token=${marker}`;
+    const safeDestination = 'https://example.test/article?edition=2';
+    const sourceUrl = `  https://www.google.com/url?q=${encodeURIComponent(destination)}&sa=U`;
+    const finalUrl = `https://www.google.com/url?url=${encodeURIComponent(destination)}&sa=U`;
+    const result = prepare({ capture: { ...source.capture, segments: [{
+      origin: 'article', sourceUrl, finalUrl,
+      offset: 0, length: 4, originalLength: 4, truncated: false,
+    }] } });
+    expect(result.capture.segments[0]).toMatchObject({
+      sourceUrl: `https://www.google.com/url?q=${encodeURIComponent(safeDestination)}&sa=U`,
+      finalUrl: `https://www.google.com/url?url=${encodeURIComponent(safeDestination)}&sa=U`,
+    });
+    expect(JSON.stringify(result)).not.toContain(marker);
+    expect(result.sourceSnapshotSha256).not.toBe(prepare().sourceSnapshotSha256);
+  });
+
+  it('drops ambiguous encoded redirect destinations from serialized capture evidence', () => {
+    const marker = 'synthetic-marker-only';
+    const encodedDestination = `https://example.test/article%3Faccess_token%3D${marker}`;
+    const sourceUrl = `https://www.google.com/url?q=${encodeURIComponent(encodedDestination)}&sa=U`;
+    const result = prepare({ capture: { ...source.capture, segments: [{
+      origin: 'article', sourceUrl, finalUrl: null,
+      offset: 0, length: 4, originalLength: 4, truncated: false,
+    }] } });
+    expect(result.capture.segments[0]?.sourceUrl).toBe('https://www.google.com/url?sa=U');
+    expect(JSON.stringify(result)).not.toContain(marker);
+  });
+
   it('rejects empty content and empty configuration, but accepts title-only/body-only inputs', () => {
     expect(prepareReaderValueSourceSnapshot({ ...source, title: ' ', body: '\n' }, safety))
       .toEqual({ ok: false, error: 'empty_input' });

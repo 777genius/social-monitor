@@ -65,13 +65,13 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
     if (!_summaryGenerationGuard.isCurrent(generation)) {
       return;
     }
-    // A completed job returned for the normal key is the only source that can
-    // be safely named by a stable successor key. New and in-flight jobs keep
+    // A published job returned for the normal key can be safely named by a
+    // stable successor key. New and in-flight jobs keep
     // their normal request identity.
     if (canRequestSuccessor &&
         result is ResultSuccess<ReaderSummaryJobSnapshot> &&
         !result.value.created &&
-        result.value.status == ReaderSummaryJobStatus.completed) {
+        result.value.status.shouldRefreshSummary) {
       result = await _dependencies.requestWorkspaceSummary(
         RequestWorkspaceSummaryCommand(
           scope: _scope,

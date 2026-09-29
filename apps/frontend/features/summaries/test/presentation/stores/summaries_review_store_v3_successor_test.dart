@@ -79,8 +79,13 @@ void main() {
     );
   });
 
-  for (final cadence in ['daily', 'weekly']) {
-    test('Generate retains a published $cadence period during V3 rollback', () async {
+  for (final (cadence, legacyStatus) in [
+    ('daily', 'completed'),
+    ('daily', 'no_signal'),
+    ('weekly', 'completed'),
+    ('weekly', 'no_signal'),
+  ]) {
+    test('Generate retains a published $cadence $legacyStatus period during V3 rollback', () async {
       final period = cadence == 'daily'
           ? summaryPeriodApiDto()
           : summaryPeriodApiDto(
@@ -96,6 +101,7 @@ void main() {
           workspaceSummary: readerSummaryApiDto(period: period),
         ),
         rolloutDisabled: true,
+        normalStatus: legacyStatus,
       );
       final store = _store(GeneratedSummaryReviewCatalog(apiClient: client));
       if (cadence == 'weekly') {
@@ -116,13 +122,20 @@ void main() {
         'legacy-job',
       );
       expect(
+        (store.summaryJobState as ReadyViewState<ReaderSummaryJobSnapshot>)
+            .value.status,
+        legacyStatus == 'no_signal'
+            ? ReaderSummaryJobStatus.noSignal
+            : ReaderSummaryJobStatus.completed,
+      );
+      expect(
         (store.workspaceSummaryState as ReadyViewState<WorkspaceSummarySnapshot>)
             .value.current?.id,
         'readerSummary-1',
       );
     });
 
-    test('Generate uses one stable V3 successor key for $cadence', () async {
+    test('Generate uses one stable V3 successor key for $cadence $legacyStatus', () async {
       final period = cadence == 'daily'
           ? summaryPeriodApiDto()
           : summaryPeriodApiDto(
@@ -137,6 +150,7 @@ void main() {
           items: [summaryApiDto()],
           workspaceSummary: readerSummaryApiDto(period: period),
         ),
+        normalStatus: legacyStatus,
       );
       final catalog = GeneratedSummaryReviewCatalog(apiClient: client);
       final store = _store(catalog);

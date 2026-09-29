@@ -22,7 +22,8 @@ type Candidate = ReturnType<typeof candidate>;
 
 export const workspaceSetup = (candidates: readonly Candidate[],
   failure?: "revoked" | "late" | "revision" | "rubric" | "interest_hash",
-  presentation: PromotionPresentationBuilder = new TestPresentation()) => {
+  presentation: PromotionPresentationBuilder = new TestPresentation(),
+  interestCount = 2) => {
   const base = setup(candidates, new TestPresentation());
   const job = ReaderSummaryJob.rehydrate({ ...base.job.toSnapshot(),
     scope: { type: "workspace" },
@@ -33,7 +34,7 @@ export const workspaceSetup = (candidates: readonly Candidate[],
     ...assessment(value), assessedAt: failure === "late" && index === 1
       ? "2026-09-21T00:15:00.000001Z" : value.assessedAt,
     input: { ...assessment(value).input,
-      interestId: id(903 + index % 2), sourceRevisionKey:
+      interestId: id(903 + index % interestCount), sourceRevisionKey:
         failure === "revision" && index === 1 ? "changed-revision" : "revision",
       rubricVersion: failure === "rubric" ? "reader-value.v2" : "reader-value.v1",
       interestSha256: failure === "interest_hash" ? "0".repeat(64) :
@@ -45,14 +46,14 @@ export const workspaceSetup = (candidates: readonly Candidate[],
   const manifest = { schemaVersion: "reader_summary_preparation_manifest.v2" as const,
     cutoffAt: base.manifest.cutoffAt,
     periodKey: job.toSnapshot().period.periodKey,
-    interests: candidates.slice(0, 2).map((_value, index) => ({
+    interests: Array.from({ length: interestCount }, (_value, index) => ({
       schemaVersion: "reader_summary_preparation_config.v1" as const,
       interestId: id(903 + index), interestSha256: "1".repeat(64),
       rubricVersion: "reader-value.v1", rubricSha256: "2".repeat(64),
       inputBuilderVersion: "input.v1", modelConfigVersion: "model.v1",
     })),
     candidates: base.manifest.candidates.map((value, index) => ({ ...value,
-      interestId: id(903 + index % 2), sourceRevisionKey: "revision" })),
+      interestId: id(903 + index % interestCount), sourceRevisionKey: "revision" })),
   };
   const subject = new RelevanceReaderSummaryV3Promotion({
     read: async (_scope, interestId, references) => {

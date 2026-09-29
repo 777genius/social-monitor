@@ -38,4 +38,13 @@ describe("StoryClusteringService comparison budget", () => {
     expect(result.selection.clusters).toHaveLength(1);
     expect(result.selection.clusters[0]?.duplicateFeedItemIds).toEqual(["feed-2"]);
   });
+
+  it("keeps the 64 versus 65 distinct story boundary fail closed", () => {
+    const items = Array.from({ length: 65 }, (_, index) =>
+      item(index, `https://example.com/stories/${index}`));
+    expect(service.clusterWithinComparisonBudget({ identity,
+      items: items.slice(0, 64), limit: 64, now }, 4_096).kind).toBe("ready");
+    expect(service.clusterWithinComparisonBudget({ identity,
+      items, limit: 65, now }, 4_096)).toEqual({ kind: "budget_exhausted" });
+  });
 });

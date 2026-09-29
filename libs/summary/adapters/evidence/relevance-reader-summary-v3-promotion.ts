@@ -207,6 +207,7 @@ implements ReaderSummaryV3PromotionPort {
       cutoffAt: params.manifest.cutoffAt,
       identity: { tenantId: job.tenantId, workspaceId: job.workspaceId,
         scope: job.scope },
+      deterministicStoryIds,
       workspaceManifest: params.manifest.schemaVersion ===
         "reader_summary_preparation_manifest.v2",
     });

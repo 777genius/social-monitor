@@ -173,7 +173,12 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobPolling
               startedAt: { lt: params.staleRunningStartedBefore } },
             { status: "FAILED", selectionStrategy: "jev_primary_v3",
               terminalFailureCode: null,
-              failureReason: "v3_retryable_provider_rate_limited" },
+              failureReason: "v3_retryable_provider_rate_limited",
+              // The narrow summary-client facade omits Prisma's nested OR.
+              OR: [
+                { preparationNextCheckAt: null },
+                { preparationNextCheckAt: { lte: params.now } },
+              ] } as never,
           ],
         },
         orderBy: [{ requestedAt: "asc" }, { id: "asc" }],

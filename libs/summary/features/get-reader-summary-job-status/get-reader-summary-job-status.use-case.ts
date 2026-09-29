@@ -48,6 +48,12 @@ export class GetReaderSummaryJobStatusUseCase {
     }
 
     const snapshot = job.toSnapshot();
+    const recoveryPending = snapshot.selectionStrategy === "jev_primary_v3" &&
+      snapshot.status === "failed" && snapshot.terminalFailureCode === undefined &&
+      snapshot.failureReason === "v3_retryable_provider_rate_limited";
+    const publicStatus = recoveryPending ? "requested" : snapshot.status;
+    const publicFailureReason = snapshot.failureReason?.startsWith("v3_") ||
+      recoveryPending ? undefined : snapshot.failureReason;
 
     return ok({
       readerSummaryJobId: snapshot.id,
@@ -59,21 +65,23 @@ export class GetReaderSummaryJobStatusUseCase {
         timezone: snapshot.period.timezone,
         periodKey: snapshot.period.periodKey,
       },
-      status: snapshot.status,
+      status: publicStatus,
       requestedAt: snapshot.requestedAt.toISOString(),
-      startedAt: snapshot.startedAt?.toISOString(),
+      startedAt: recoveryPending ? undefined : snapshot.startedAt?.toISOString(),
       completedAt: snapshot.completedAt?.toISOString(),
-      failedAt: snapshot.failedAt?.toISOString(),
+      failedAt: recoveryPending ? undefined : snapshot.failedAt?.toISOString(),
       readerSummaryId: snapshot.readerSummaryId,
-      failureReason: snapshot.failureReason,
-      failureClass: failureClassFor(snapshot.status),
-      timeline: buildTimeline(snapshot),
+      failureReason: publicFailureReason,
+      failureClass: failureClassFor(publicStatus),
+      timeline: buildTimeline(snapshot, recoveryPending, publicFailureReason),
     });
   }
 }
 
 const buildTimeline = (
   snapshot: ReaderSummaryJobProps,
+  recoveryPending: boolean,
+  publicFailureReason?: string,
 ): readonly ReaderSummaryJobTimelineEvent[] => {
   const events: ReaderSummaryJobTimelineEvent[] = [
     {
@@ -83,12 +91,8 @@ const buildTimeline = (
     },
   ];
 
-  pushIfPresent(
-    events,
-    "running",
-    snapshot.startedAt,
-    "Reader summary generation started",
-  );
+  if (!recoveryPending) pushIfPresent(
+    events, "running", snapshot.startedAt, "Reader summary generation started");
   pushIfPresent(
     events,
     snapshot.status,
@@ -98,8 +102,8 @@ const buildTimeline = (
   pushIfPresent(
     events,
     snapshot.status === "quality_rejected" ? "quality_rejected" : "failed",
-    snapshot.failedAt,
-    messageForFailedStatus(snapshot),
+    recoveryPending ? undefined : snapshot.failedAt,
+    messageForFailedStatus(snapshot, publicFailureReason),
   );
 
   return events;
@@ -125,10 +129,11 @@ const messageForCompletedStatus = (status: ReaderSummaryJobStatus): string =>
     ? "Reader summary completed with no reliable signal"
     : "Reader summary completed";
 
-const messageForFailedStatus = (snapshot: ReaderSummaryJobProps): string =>
+const messageForFailedStatus = (snapshot: ReaderSummaryJobProps,
+  publicFailureReason?: string): string =>
   snapshot.status === "quality_rejected"
     ? "Reader summary rejected by pre-publish quality gate"
-    : (snapshot.failureReason ?? "Reader summary generation failed");
+    : (publicFailureReason ?? "Reader summary generation failed");
 
 const failureClassFor = (
   status: ReaderSummaryJobStatus,

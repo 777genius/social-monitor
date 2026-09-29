@@ -170,6 +170,9 @@ implements ReaderSummaryV3PreflightPort {
           snapshot.terminalFailureCode !== undefined ||
           snapshot.failureReason !== "v3_retryable_provider_rate_limited") {
         return { kind: "terminal", job: current };
+      } else if (snapshot.preparationNextCheckAt !== undefined &&
+          snapshot.preparationNextCheckAt > now) {
+        return { kind: "deferred", job: current };
       }
       const manifest = snapshot.preparationManifest;
       const config = snapshot.preparationConfig;
@@ -190,7 +193,7 @@ implements ReaderSummaryV3PreflightPort {
         (snapshot.startedAt?.getTime() ?? 0) + 1));
       const running = ReaderSummaryJob.rehydrate({ ...snapshot, status: "running",
         requestedAt: snapshot.requestedAt, startedAt, failedAt: undefined,
-        failureReason: recoveryClaim });
+        preparationNextCheckAt: undefined, failureReason: recoveryClaim });
       await this.jobs.save(running);
       return { kind: "claimed", job: running, manifest };
     });

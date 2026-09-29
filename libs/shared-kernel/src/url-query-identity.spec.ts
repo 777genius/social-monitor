@@ -7,6 +7,35 @@ describe('public URL identity', () => {
     expect(publicCanonicalUrlIdentity(`url:${raw}`)).toBe('url:https://example.test/article?edition=2');
   });
 
+  it('sanitizes recognized redirect destinations and whitespace in public identities', () => {
+    const destination = 'https://example.test/article?edition=2&access_token=synthetic-marker-only';
+    const redirect = `https://www.google.com/url?q=${encodeURIComponent(destination)}&sa=U`;
+    const safe = `https://www.google.com/url?q=${encodeURIComponent('https://example.test/article?edition=2')}&sa=U`;
+    expect(publicCanonicalUrlIdentity(`  ${redirect}`)).toBe(safe);
+    expect(publicCanonicalUrlIdentity(`url:  ${redirect}`)).toBe(`url:${safe}`);
+    expect(publicCanonicalUrlIdentity(`  ${destination}`)).toBe('https://example.test/article?edition=2');
+    expect(publicCanonicalUrlIdentity('https://example.test/article?edition=2'))
+      .toBe('https://example.test/article?edition=2');
+    // The policy also handles URLs shaped like capture segment sourceUrl/finalUrl.
+    const segmentUrl = `https://www.google.com/url?url=${encodeURIComponent(destination)}`;
+    expect(publicCanonicalUrlIdentity(segmentUrl)).not.toContain('synthetic-marker-only');
+  });
+
+  it('bounds redirect traversal and discards ambiguous destinations', () => {
+    const marker = 'synthetic-marker-only';
+    const target = `https://example.test/article?access_token=${marker}`;
+    const doubleEncoded = `https://www.google.com/url?q=${encodeURIComponent(
+      `https://example.test/article%3Faccess_token%3D${marker}`)}`;
+    expect(publicCanonicalUrlIdentity(doubleEncoded)).toBe('https://www.google.com/url');
+    expect(publicCanonicalUrlIdentity('https://www.google.com/url?q=javascript%3Aalert(1)&sa=U'))
+      .toBe('https://www.google.com/url?sa=U');
+    const nested = Array.from({ length: 4 }).reduce((url) =>
+      `https://www.google.com/url?q=${encodeURIComponent(url)}`, target);
+    expect(publicCanonicalUrlIdentity(nested)).not.toContain(marker);
+    const unrelated = `https://example.test/url?q=${encodeURIComponent(target)}`;
+    expect(publicCanonicalUrlIdentity(unrelated)).toBe(unrelated);
+  });
+
   it('keeps repeated identity values in order and scopes share parameters to their hosts', () => {
     const entries = (host: string, query: string) =>
       identityQueryEntries(host, new URLSearchParams(query));

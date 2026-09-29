@@ -168,10 +168,10 @@ export class RequestReaderSummaryUseCase {
         periodKey: period.periodKey,
         userId,
         subscriptionId,
-      }) || snapshot.status !== "completed") {
+      }) || (snapshot.status !== "completed" && snapshot.status !== "no_signal")) {
         return err(new DomainError(
           "operation.conflict",
-          "V3 successor requires a completed reader summary for the same scope and period",
+          "V3 successor requires a published reader summary for the same scope and period",
         ));
       }
       if (snapshot.selectionStrategy === "jev_primary_v3") {

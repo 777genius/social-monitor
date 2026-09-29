@@ -310,17 +310,26 @@ describe("InMemoryReaderSummaryV3Preflight", () => {
     const old = workspaceFrozenJob("daily").startPrepared({
       startedAt: now, readyAt: now }).fail({ failedAt: now,
       failureReason: "v3_retryable_provider_rate_limited" });
-    await jobs.save(old);
+    const dueAt = new Date(now.getTime() + 60_000);
+    const scheduled = ReaderSummaryJob.rehydrate({ ...old.toSnapshot(),
+      preparationNextCheckAt: dueAt });
+    await jobs.save(scheduled);
     const subject = new InMemoryReaderSummaryV3Preflight(jobs, unusedSource());
     expect((await jobs.findDueForPolling({ now,
       staleRunningStartedBefore: new Date("2026-09-20T22:00:00Z"),
+      limit: 1 }))).toEqual([]);
+    expect((await subject.advance({ job: scheduled, requestedAt: now,
+      startedAt: now })).kind).toBe("deferred");
+    expect((await jobs.findDueForPolling({ now: dueAt,
+      staleRunningStartedBefore: new Date("2026-09-20T22:00:00Z"),
       limit: 1 })).map((candidate) => candidate.toSnapshot().id))
       .toEqual([old.toSnapshot().id]);
-    const result = await subject.advance({ job: old, requestedAt: now,
-      startedAt: now });
+    const result = await subject.advance({ job: scheduled, requestedAt: dueAt,
+      startedAt: dueAt });
     expect(result.kind).toBe("claimed");
     if (result.kind !== "claimed") return;
     expect(result.manifest).toEqual(old.toSnapshot().preparationManifest);
+    expect(result.job.toSnapshot().preparationNextCheckAt).toBeUndefined();
     await jobs.save(result.job.fail({ failedAt: now,
       failureReason: "rate limit after recovery" }));
     expect((await subject.advance({ job: old, requestedAt: now,

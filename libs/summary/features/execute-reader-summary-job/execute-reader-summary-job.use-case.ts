@@ -4,10 +4,10 @@ import { type Clock, DomainError, type IdGenerator, err, ok, type Result } from
 import { assertReaderSummaryCitationsAgainstEvidence,
   admitReaderPostPromotionEvidence, buildReaderSummaryCoveragePlan,
   calibrateReaderSummaryConfidence, defaultReaderSummaryGenerationPolicy,
-  ReaderSummaryArtifact, ReaderSummaryPublicationPolicy,
+  ReaderSummaryArtifact, ReaderSummaryJob, ReaderSummaryPublicationPolicy,
   primaryReaderSummaryEvidence, resolveEffectiveReaderSummaryPolicy,
   type ReaderSummaryPreparationManifest, type SummaryEvidenceSelection,
-  type ReaderSummaryJob } from "../../domain";
+  } from "../../domain";
 import {
   NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
   type ReaderSummaryArtifactRepositoryPort,
@@ -53,10 +53,9 @@ import {
 } from "./execute-reader-summary-job-support";
 import { buildReaderSummaryPromotionArtifactFields } from "./reader-summary-promotion-artifact-fields";
 import { buildReaderSummaryV3Evidence, prepareReaderSummaryV3Job } from "./reader-summary-v3-execution";
+import { isDefinitiveQuotaRejection, retryableQuotaMarker,
+  retryDelayMs } from "./reader-summary-v3-quota-recovery";
 type ExecuteReaderSummaryJobFailure = DomainError | Error;
-const v3FailureReason = (kind: string, retryable: boolean,
-  recovered: boolean, message: string): string => kind === "provider_rate_limited" &&
-  retryable && !recovered ? "v3_retryable_provider_rate_limited" : message;
 export class ExecuteReaderSummaryJobUseCase {
   constructor(
     private readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort,
@@ -150,7 +149,7 @@ export class ExecuteReaderSummaryJobUseCase {
     }
     const claimStartedAt = runningJob.toSnapshot().startedAt;
     if (claimStartedAt === undefined) return readerSummaryExecutionClaimLost();
-    let modelPipelineFinished = false;
+    let retryablePreProviderQuota = false;
     try {
       if (frozenV3Manifest !== undefined) {
         if (!await this.v3Preflight!.markProviderStarted(runningJob, claimStartedAt)) {
@@ -171,15 +170,12 @@ export class ExecuteReaderSummaryJobUseCase {
         command.maxEvidenceItems ?? defaultReaderSummaryMaxEvidenceItems,
         observedThrough,
         v3Evidence,
+        (error) => { retryablePreProviderQuota = isDefinitiveQuotaRejection(error); },
       );
-      modelPipelineFinished = true;
       if (!result.ok) {
         const failedJob = runningJob.fail({
           failedAt: this.clock.now(),
-          failureReason: frozenV3Manifest === undefined ? result.error.message :
-            v3FailureReason(result.error.kind, result.error.retryable,
-              runningJob.toSnapshot().failureReason === "v3_recovery_claim",
-              result.error.message),
+          failureReason: result.error.message,
         });
         const saved = await saveReaderSummaryExecutionOutcome(
           this.readerSummaryJobs,
@@ -283,15 +279,17 @@ export class ExecuteReaderSummaryJobUseCase {
       }
       const failedJob = runningJob.fail({
         failedAt: this.clock.now(),
-        failureReason: frozenV3Manifest !== undefined && !modelPipelineFinished
-          ? v3FailureReason("kind" in failure ? failure.kind : "unknown",
-            "retryable" in failure && failure.retryable === true,
-            runningJob.toSnapshot().failureReason === "v3_recovery_claim",
-            failure.message) : failure.message,
+        failureReason: frozenV3Manifest !== undefined && retryablePreProviderQuota &&
+          runningJob.toSnapshot().failureReason !== "v3_recovery_claim"
+          ? retryableQuotaMarker : failure.message,
       });
+      const scheduledJob = failedJob.toSnapshot().failureReason === retryableQuotaMarker
+        ? ReaderSummaryJob.rehydrate({ ...failedJob.toSnapshot(),
+            preparationNextCheckAt: new Date(this.clock.now().getTime() + retryDelayMs) })
+        : failedJob;
       const saved = await saveReaderSummaryExecutionOutcome(
         this.readerSummaryJobs,
-        failedJob,
+        scheduledJob,
         claimStartedAt,
       );
       if (!saved) {
@@ -310,6 +308,7 @@ export class ExecuteReaderSummaryJobUseCase {
     maxEvidenceItems: number,
     observedThrough?: Date,
     frozenV3Evidence?: SummaryEvidenceSelection,
+    onWriterFailure?: (error: unknown) => void,
   ): Promise<ReaderSummaryModelPipelineResult> {
     const snapshot = job.toSnapshot();
     const generatedAt = this.clock.now();
@@ -409,7 +408,13 @@ export class ExecuteReaderSummaryJobUseCase {
       defaultModelPolicy,
       defaultModelBudget,
     );
-    const attempt = await this.readerSummaryModel.generate(input, route);
+    let attempt;
+    try {
+      attempt = await this.readerSummaryModel.generate(input, route);
+    } catch (error) {
+      onWriterFailure?.(error);
+      throw error;
+    }
     const validation =
       this.readerSummaryModel.validateRawProviderResponse(attempt);
     if (!validation.ok) {

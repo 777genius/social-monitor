@@ -19,10 +19,18 @@ import { assertV3PromotionAttestation } from
   "../../adapters/persistence/prisma/prisma-reader-summary-promotion-v3-schema";
 
 describe("Promotion V3 public canonical identity", () => {
-  it("signs the safe public URL without changing the frozen ranking candidate", () => {
+  it.each([
+    ["direct", "https://example.test/article?edition=2&access_token=synthetic-marker-only",
+      "https://example.test/article?edition=2"],
+    ["whitespace", "  https://example.test/article?edition=2&access_token=synthetic-marker-only",
+      "https://example.test/article?edition=2"],
+    ["Google redirect", `  https://www.google.com/url?q=${encodeURIComponent(
+      "https://example.test/article?edition=2&access_token=synthetic-marker-only")}&sa=U`,
+    `https://www.google.com/url?q=${encodeURIComponent(
+      "https://example.test/article?edition=2")}&sa=U`],
+  ])("signs a safe %s URL and serializes public evidence", (_case, rawIdentity,
+    publicIdentity) => {
     const marker = "synthetic-marker-only";
-    const rawIdentity = `https://example.test/article?edition=2&access_token=${marker}`;
-    const publicIdentity = "https://example.test/article?edition=2";
     const base = dailySynthesisArtifact().toSnapshot();
     const source = dailyEvidenceSelection(25).selectedEvidence[0]!;
     const lead = acceptedFixtureReaderHeadline({ ...source,
@@ -94,6 +102,7 @@ describe("Promotion V3 public canonical identity", () => {
     const view = presentReaderSummaryArtifact(artifact, { status: "fresh",
       checkedAt: new Date("2026-07-05T09:00:00Z") });
     const response = readerSummaryArtifactViewFromReaderSummaryView(view);
+    expect(response).toBeDefined();
     expect(JSON.stringify(response)).not.toContain(marker);
   });
 });

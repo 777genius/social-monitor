@@ -51,7 +51,11 @@ describe("PrismaReaderSummaryJobRepository execution lease", () => {
           startedAt: { lt: staleBefore } },
         { status: "FAILED", selectionStrategy: "jev_primary_v3",
           terminalFailureCode: null,
-          failureReason: "v3_retryable_provider_rate_limited" },
+          failureReason: "v3_retryable_provider_rate_limited",
+          OR: [
+            { preparationNextCheckAt: null },
+            { preparationNextCheckAt: { lte: now } },
+          ] },
       ] },
       orderBy: [{ requestedAt: "asc" }, { id: "asc" }], take: 3,
     });

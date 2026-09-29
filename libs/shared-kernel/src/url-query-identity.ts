@@ -25,9 +25,65 @@ export const identityQueryEntries = (
 
 /** Sanitize a URL carried directly or inside a `url:` canonical identity. */
 export const publicCanonicalUrlIdentity = (value: string): string => {
-  const hasPrefix = /^url:https?:\/\//iu.test(value);
-  const url = hasPrefix ? value.slice(4) : value;
+  const normalized = value.trim();
+  const hasPrefix = /^url:\s*https?:\/\//iu.test(normalized);
+  const url = hasPrefix ? normalized.slice(4).trimStart() : normalized;
   if (!/^https?:\/\//iu.test(url)) return value;
-  const sanitized = sanitizeUrlCredentials(url);
+  const sanitized = sanitizePublicRedirectUrl(url, 0);
   return hasPrefix ? `url:${sanitized}` : sanitized;
+};
+
+const maxRedirectDepth = 3;
+const maxDestinationLength = 4_096;
+
+const hasEncodedCredentialLayer = (value: string): boolean => {
+  let decoded = value;
+  for (let layer = 0; layer < maxRedirectDepth && decoded.includes('%'); layer += 1) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) return false;
+      decoded = next;
+    } catch {
+      return true;
+    }
+    if (sanitizeUrlCredentials(decoded) !== decoded) return true;
+  }
+  return false;
+};
+
+/** Only known redirect endpoints carry a URL in these query keys. */
+const redirectDestinationKeys = (url: URL): ReadonlySet<string> => {
+  const host = url.hostname.toLowerCase().replace(/^www\./u, '');
+  const path = url.pathname.replace(/\/+$/u, '') || '/';
+  return (host === 'google.com' || host === 'google.co.uk') && path === '/url'
+    ? new Set(['url', 'q']) : new Set();
+};
+
+const sanitizePublicRedirectUrl = (value: string, depth: number): string => {
+  const outer = sanitizeUrlCredentials(value);
+  let parsed: URL;
+  try {
+    parsed = new URL(outer);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+  } catch {
+    return '';
+  }
+  const destinationKeys = redirectDestinationKeys(parsed);
+  if (destinationKeys.size === 0 || !parsed.search) return outer;
+  const queryStart = outer.indexOf('?');
+  const queryEnd = outer.indexOf('#', queryStart);
+  const rawQuery = outer.slice(queryStart + 1, queryEnd < 0 ? undefined : queryEnd);
+  const retained = rawQuery.split('&').flatMap((component) => {
+    const [name] = [...new URLSearchParams(component).keys()];
+    if (!name || !destinationKeys.has(name.toLowerCase())) return [component];
+    const destination = new URLSearchParams(component).get(name)?.trim() ?? '';
+    // Invalid, oversized, or excessively nested destinations are discarded.
+    if (depth >= maxRedirectDepth || destination.length > maxDestinationLength ||
+        !/^https?:\/\//iu.test(destination) || hasEncodedCredentialLayer(destination)) return [];
+    const safe = sanitizePublicRedirectUrl(destination, depth + 1);
+    if (!safe) return [];
+    return safe === destination ? [component] : [`${component.slice(0, component.indexOf('='))}=${encodeURIComponent(safe)}`];
+  });
+  const suffix = queryEnd < 0 ? '' : outer.slice(queryEnd);
+  return `${outer.slice(0, queryStart)}${retained.length ? `?${retained.join('&')}` : ''}${suffix}`;
 };

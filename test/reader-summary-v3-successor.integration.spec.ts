@@ -37,9 +37,12 @@ class SequenceIdGenerator implements IdGenerator {
 }
 
 describe("Reader summary V3 successor publication and read", () => {
-  it.each(["daily", "weekly"] as const)(
-    "requests one V3 successor for a published legacy %s workspace period",
-    async (cadence) => {
+  it.each([
+    ["daily", "completed"], ["weekly", "completed"],
+    ["daily", "no_signal"], ["weekly", "no_signal"],
+  ] as const)(
+    "requests one V3 successor for a published legacy %s %s workspace period",
+    async (cadence, legacyStatus) => {
       const jobs = new FakeReaderSummaryJobRepository();
       const queue = new FakeReaderSummaryJobQueue();
       const publications = new InMemoryReaderSummaryArtifactRepository();
@@ -67,8 +70,10 @@ describe("Reader summary V3 successor publication and read", () => {
       expect(legacy.ok).toBe(true);
       const originalJob = await jobs.findByIdempotencyKey(command);
       expect(originalJob).not.toBeNull();
-      await jobs.save(originalJob!.start({ startedAt: new Date("2026-07-06T08:01:00Z") })
-        .complete({ completedAt: new Date("2026-07-06T08:02:00Z"), readerSummaryId: "legacy-publication" }));
+      const running = originalJob!.start({ startedAt: new Date("2026-07-06T08:01:00Z") });
+      const published = { completedAt: new Date("2026-07-06T08:02:00Z"), readerSummaryId: "legacy-publication" };
+      await jobs.save(legacyStatus === "no_signal"
+        ? running.markNoSignal(published) : running.complete(published));
       const publishedPeriod = originalJob!.toSnapshot().period;
       const publish = async (id: string): Promise<void> => {
         // Stage the publication handoff here; model and promotion execution
@@ -79,6 +84,14 @@ describe("Reader summary V3 successor publication and read", () => {
           workspaceId: command.workspaceId,
           period: publishedPeriod,
           promotionBoardState: "legacy_unavailable",
+          ...(id === "legacy-publication" && legacyStatus === "no_signal" ? {
+            content: undefined,
+            topStories: [],
+            qualityFlags: ["no_signal"] as const,
+            noSignalReason: "No source evidence passed selection.",
+            confidence: { level: "none" as const, score: 0,
+              rationale: "No source evidence passed selection." },
+          } : {}),
         });
         const audit = cadence === "daily" ? {
           schemaVersion: "reader_summary.github_projection.v1" as const,
@@ -111,12 +124,23 @@ describe("Reader summary V3 successor publication and read", () => {
         })).items.map((artifact) => artifact.toSnapshot().readerSummaryId);
       await publish("legacy-publication");
       expect(await readPublished()).toEqual(["legacy-publication"]);
+      expect((await publications.listPeriodSummaries({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        scope: command.scope,
+        cadence,
+        periodStartedAt: publishedPeriod.startedAt,
+        periodEndedAt: publishedPeriod.endedAt,
+        limit: 10,
+      })).items).toEqual([
+        expect.objectContaining({ readerSummaryId: "legacy-publication", status: legacyStatus }),
+      ]);
       strategy = "jev_primary_v3";
 
       const normalRetry = await useCase.execute(command);
       expect(normalRetry).toEqual(expect.objectContaining({
         ok: true,
-        value: expect.objectContaining({ readerSummaryJobId: "reader-summary-job-1", created: false, status: "completed" }),
+        value: expect.objectContaining({ readerSummaryJobId: "reader-summary-job-1", created: false, status: legacyStatus }),
       }));
       const successorCommand = {
         ...command,
@@ -127,7 +151,7 @@ describe("Reader summary V3 successor publication and read", () => {
         ok: true,
         value: expect.objectContaining({
           readerSummaryJobId: "reader-summary-job-1", created: false,
-          status: "completed",
+          status: legacyStatus,
         }),
       }));
       expect(queue.all()).toHaveLength(1);
