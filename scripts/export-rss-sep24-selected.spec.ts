@@ -8,14 +8,15 @@ import { join } from "node:path";
 
 import type { RssClientPort, RssFeedItem, RssReadFeedResult } from
   "@social-monitor/ingestion/adapters/source/rss/rss-client.port";
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { readRssSep24OperatorArtifacts } from "./import-rss-sep24-verified";
 import { planRssSep24Verified } from "./recover-rss-sep24-verified";
 import { exportRssSep24Selected, type SelectedExportRequest } from "./export-rss-sep24-selected";
 
 const feedUrl = "https://example.test/rss";
 const bindingId = "00000000-0000-4000-8000-000000000004";
-const scope = { tenantId: "00000000-0000-4000-8000-000000000001",
-  workspaceId: "00000000-0000-4000-8000-000000000002",
+const scope: SelectedExportRequest["scope"] = { tenantId: tenantId("00000000-0000-4000-8000-000000000001"),
+  workspaceId: workspaceId("00000000-0000-4000-8000-000000000002"),
   interestId: "00000000-0000-4000-8000-000000000003", sourceBindingId: bindingId,
   scanPolicyId: "00000000-0000-4000-8000-000000000005" };
 const extraFeedUrls = Array.from({ length: 24 }, (_, index) => `https://feed-${index + 1}.example.test/rss`);
