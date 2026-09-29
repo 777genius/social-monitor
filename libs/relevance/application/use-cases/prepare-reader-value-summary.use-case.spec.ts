@@ -1,10 +1,14 @@
-import { err, tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { err, tenantId, workspaceId, type Clock } from "@social-monitor/shared-kernel";
 
 import type { ReaderValueAssessmentStore } from
   "../contracts/reader-value-assessment-store";
 import type { ReaderValueInputBuilder, ReaderValuePreparationInventory,
   ReaderValueInventoryItem } from "../contracts/reader-value-inventory";
 import { ReaderValueInventoryByteCeilingExceeded } from
+  "../contracts/reader-value-inventory";
+import { ReaderValueInventoryTimeCeilingExceeded } from
+  "../contracts/reader-value-inventory";
+import { ReaderValueInventorySnapshotUnavailable } from
   "../contracts/reader-value-inventory";
 import type { ConfiguredInterestReaderPort } from "../../ports";
 import { PrepareReaderValueSummaryUseCase } from
@@ -14,6 +18,20 @@ import { ConservativeReaderValueInputBuilder } from
 import { SourceContentSafetyPolicy } from "../../domain/source-content-safety";
 
 describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
+  // Regression: incomplete workspace inventory must surface a snapshot
+  // failure before assessment creation or an empty manifest can be published.
+  it("classifies an unversioned visible source as snapshot unavailable", async () => {
+    const fixture = setupWithInventory({ readSnapshot: async () => {
+      throw new ReaderValueInventorySnapshotUnavailable();
+    } });
+
+    await expect(prepare(fixture.subject)).resolves.toEqual({
+      ok: false, code: "assessment_snapshot_unavailable",
+    });
+    expect(fixture.store.ensure).not.toHaveBeenCalled();
+    expect(fixture.store.pin).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["day", "2026-09-20T00:00:00.000Z", "2026-09-21T00:00:00.000Z"],
     ["week", "2026-09-14T00:00:00.000Z", "2026-09-21T00:00:00.000Z"],
@@ -33,7 +51,8 @@ describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
       const fixture = setupWithInventory(inventory);
       const actual = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy());
       fixture.builder.prepare.mockImplementation((source, revision) => actual.prepare(source, revision));
-      fixture.store.ensure.mockResolvedValue({ id: ids.assessment } as never);
+      fixture.store.ensure.mockImplementation(async (_id, input) => ({
+        id: ids.assessment, input }) as never);
       const command = { tenantId: ids.tenant, workspaceId: ids.workspace,
         interestId: ids.interest, jobId: ids.job,
         periodStartedAt, periodEndedAt, cutoffAt };
@@ -167,7 +186,8 @@ describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
       sourceUpdatedAt: "2026-09-21T00:00:00.000001Z", title: "", body: "" }));
     const actual = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy());
     fixture.builder.prepare.mockImplementation((source, revision) => actual.prepare(source, revision));
-    fixture.store.ensure.mockResolvedValue({ id: ids.assessment } as never);
+    fixture.store.ensure.mockImplementation(async (_id, input) => ({
+      id: ids.assessment, input }) as never);
 
     await expect(prepare(fixture.subject)).resolves.toMatchObject({
       ok: true, manifest: { candidates: [] },
@@ -182,7 +202,8 @@ describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
     const fixture = setup(item({}));
     const actual = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy());
     fixture.builder.prepare.mockImplementation((source, revision) => actual.prepare(source, revision));
-    fixture.store.ensure.mockResolvedValue({ id: ids.assessment } as never);
+    fixture.store.ensure.mockImplementation(async (_id, input) => ({
+      id: ids.assessment, input }) as never);
     const command = { tenantId: ids.tenant, workspaceId: ids.workspace,
       interestId: ids.interest, jobId: ids.job,
       periodStartedAt: "2026-09-20T00:00:00.000000Z",
@@ -210,6 +231,92 @@ describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
 
     expect(result).toEqual({ ok: false, code: "assessment_snapshot_unavailable" });
     expect(fixture.builder.prepare).not.toHaveBeenCalled();
+  });
+
+  // Regression: a source revision can change without changing captured text.
+  // The old cache row must be bypassed with a revision-bound assessment so a
+  // weekly workspace can still prepare every candidate and pin exact provenance.
+  it("prepares a revision-bound assessment after a same-content cache hit", async () => {
+    const fixture = setup(item({}));
+    const builder = new ConservativeReaderValueInputBuilder(
+      new SourceContentSafetyPolicy());
+    fixture.builder.prepare.mockImplementation((source, revision) =>
+      builder.prepare(source, revision));
+    fixture.store.ensure.mockImplementationOnce(async (_id, input) => ({
+      id: ids.assessment, input: { ...input,
+        sourceRevisionKey: "older-revision" },
+    }) as never).mockImplementationOnce(async (_id, input) => ({
+      id: "00000000-0000-4000-8000-000000000009", input,
+    }) as never);
+
+    const result = await prepare(fixture.subject);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const cachedInput = fixture.store.ensure.mock.calls[0]?.[1];
+    const revisionInput = fixture.store.ensure.mock.calls[1]?.[1];
+    expect(revisionInput?.inputSha256).not.toBe(cachedInput?.inputSha256);
+    expect(revisionInput?.sourceRevisionKey).toBe("revision");
+    expect(result.manifest.candidates[0]).toMatchObject({
+      assessmentId: "00000000-0000-4000-8000-000000000009",
+      sourceRevisionKey: "revision", inputSha256: revisionInput?.inputSha256,
+    });
+    expect(fixture.store.pin.mock.calls[0]?.[3][0]).toMatchObject({
+      assessmentId: "00000000-0000-4000-8000-000000000009",
+      sourceBindingId: ids.binding,
+      inputSha256: revisionInput?.inputSha256,
+    });
+  });
+
+  // Regression: a faulty cache returning another revision even for the
+  // alternate identity must fail preparation before it pins stale evidence.
+  it("rejects a stale revision-bound assessment before pinning", async () => {
+    const fixture = setup(item({}));
+    const builder = new ConservativeReaderValueInputBuilder(
+      new SourceContentSafetyPolicy());
+    fixture.builder.prepare.mockImplementation((source, revision) =>
+      builder.prepare(source, revision));
+    fixture.store.ensure.mockImplementation(async (_id, input) => ({
+      id: ids.assessment, input: { ...input,
+        sourceRevisionKey: "older-revision" },
+    }) as never);
+
+    await expect(prepare(fixture.subject)).resolves.toEqual({
+      ok: false, code: "assessment_snapshot_unavailable",
+    });
+    expect(fixture.store.pin).not.toHaveBeenCalled();
+  });
+
+  // Regression: a visible weekly source beyond assessment retention must
+  // fail preparation when no reusable pinned assessment exists, rather than
+  // becoming a false no-signal inventory omission.
+  it("fails explicitly when a visible source has no retainable assessment", async () => {
+    const fixture = setup(item({}));
+    const builder = new ConservativeReaderValueInputBuilder(
+      new SourceContentSafetyPolicy());
+    fixture.builder.prepare.mockImplementation((source, revision) =>
+      builder.prepare(source, revision));
+    fixture.store.ensure.mockResolvedValue(null);
+
+    await expect(prepare(fixture.subject)).resolves.toEqual({
+      ok: false, code: "assessment_snapshot_unavailable",
+    });
+    expect(fixture.store.pin).not.toHaveBeenCalled();
+  });
+
+  // Regression: workspace preparation must request a complete retention
+  // inventory; interest V3 keeps its existing discovery boundary.
+  it("passes the workspace retention requirement to the inventory", async () => {
+    const requested: boolean[] = [];
+    const fixture = setupWithInventory({ readSnapshot: async (_scope,
+      operation, options) => {
+      requested.push(options?.includeExpiredSources === true);
+      return operation({ page: async () => [] });
+    } });
+
+    await prepare(fixture.subject);
+    await prepare(fixture.subject, "2026-09-21T00:00:00.000000Z", true);
+
+    expect(requested).toEqual([false, true]);
   });
 
   it("excludes a pre-existing source projected one microsecond after cutoff", async () => {
@@ -264,9 +371,9 @@ describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
     const fixture = setupWithInventory(inventory);
     const actual = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy());
     fixture.builder.prepare.mockImplementation((source, revision) => actual.prepare(source, revision));
-    fixture.store.ensure.mockImplementation(async () => {
+    fixture.store.ensure.mockImplementation(async (_id, input) => {
       expect(snapshotOpen).toBe(false);
-      return { id: ids.assessment } as never;
+      return { id: ids.assessment, input } as never;
     });
     fixture.store.pin.mockImplementation(async () => {
       expect(snapshotOpen).toBe(false);
@@ -279,15 +386,93 @@ describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
     expect(fixture.store.ensure).toHaveBeenCalledTimes(26);
     expect(fixture.store.pin).toHaveBeenCalledTimes(1);
   });
+  // Regression: a weekly workspace inventory must fail with an explicit budget
+  // result when another eligible row exists, never return a truncated manifest.
+  it("reports over-budget on the next eligible weekly candidate", async () => {
+    const first = item({ publishedAt: "2026-09-20T12:00:00.000000Z",
+      sourceUpdatedAt: "2026-09-20T11:00:00.000000Z",
+      availableAt: "2026-09-20T11:00:00.000000Z" });
+    const second = { ...first, cursor: { ...first.cursor,
+      feedItemId: "00000000-0000-4000-8000-000000000009" } };
+    const fixture = setupWithInventory({ readSnapshot: async (_scope, operation) =>
+      operation({ page: async () => [first, second] }) });
+    const actual = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy());
+    fixture.builder.prepare.mockImplementation((source, revision) =>
+      actual.prepare(source, revision));
+    const command = { tenantId: ids.tenant, workspaceId: ids.workspace,
+      interestId: ids.interest, jobId: ids.job,
+      periodStartedAt: "2026-09-14T00:00:00.000000Z",
+      periodEndedAt: "2026-09-21T00:00:00.000000Z",
+      cutoffAt: "2026-09-21T00:00:00.000000Z", candidateBudget: 1 };
+    const configured = await fixture.subject.configuration(command);
+    if (!configured.ok) throw new Error("fixture config unavailable");
+
+    await expect(fixture.subject.prepare(command, configured.config)).resolves
+      .toEqual({ ok: false, code: "assessment_inventory_over_budget" });
+    expect(fixture.store.pin).not.toHaveBeenCalled();
+  });
+  // Regression: an inventory walk finishing after the frozen assessment
+  // deadline cannot become a publishable partial workspace manifest.
+  it("reports a measured time budget failure before pinning", async () => {
+    const clock: Clock = { now: jest.fn()
+      .mockReturnValueOnce(new Date("2026-09-21T00:14:59.000Z"))
+      .mockReturnValue(new Date("2026-09-21T00:15:00.000Z")) };
+    const fixture = setupWithInventory({ readSnapshot: async (_scope, operation) =>
+      operation({ page: async () => [] }) }, clock);
+    const command = { tenantId: ids.tenant, workspaceId: ids.workspace,
+      interestId: ids.interest, jobId: ids.job,
+      periodStartedAt: "2026-09-14T00:00:00.000000Z",
+      periodEndedAt: "2026-09-21T00:00:00.000000Z",
+      cutoffAt: "2026-09-21T00:00:00.000000Z",
+      deadlineAt: "2026-09-21T00:15:00.000000Z" };
+    const configured = await fixture.subject.configuration(command);
+    if (!configured.ok) throw new Error("fixture config unavailable");
+
+    await expect(fixture.subject.prepare(command, configured.config)).resolves
+      .toEqual({ ok: false, code: "assessment_time_over_budget" });
+    expect(fixture.store.pin).not.toHaveBeenCalled();
+  });
+
+  // Regression: a weekly snapshot that hits the bounded database transaction
+  // deadline cannot become a generic error or a partial no-signal manifest.
+  it("returns the explicit time budget code for a database snapshot timeout", async () => {
+    const fixture = setupWithInventory({ readSnapshot: async () => {
+      throw new ReaderValueInventoryTimeCeilingExceeded();
+    } });
+    const command = { tenantId: ids.tenant, workspaceId: ids.workspace,
+      interestId: ids.interest, jobId: ids.job,
+      periodStartedAt: "2026-09-14T00:00:00.000000Z",
+      periodEndedAt: "2026-09-21T00:00:00.000000Z",
+      cutoffAt: "2026-09-21T00:00:00.000000Z" };
+    const configured = await fixture.subject.configuration(command);
+    if (!configured.ok) throw new Error("fixture config unavailable");
+
+    await expect(fixture.subject.prepare(command, configured.config)).resolves
+      .toEqual({ ok: false, code: "assessment_time_over_budget" });
+    expect(fixture.store.pin).not.toHaveBeenCalled();
+  });
+
+  // Regression: a weekly pin transaction can exhaust its bounded 120-second
+  // budget after the inventory completes; the job must fail as over budget.
+  it("returns the explicit time budget code when pinning times out", async () => {
+    const fixture = setupWithInventory({ readSnapshot: async (_scope, operation) =>
+      operation({ page: async () => [] }) });
+    fixture.store.pin.mockRejectedValue(new ReaderValueInventoryTimeCeilingExceeded());
+
+    await expect(prepare(fixture.subject)).resolves.toEqual({ ok: false,
+      code: "assessment_time_over_budget" });
+    expect(fixture.store.pin).toHaveBeenCalledTimes(1);
+  });
 });
 
 const prepare = async (subject: PrepareReaderValueSummaryUseCase,
-  cutoffAt = "2026-09-21T00:00:00.000000Z") => {
+  cutoffAt = "2026-09-21T00:00:00.000000Z",
+  retentionComplete = false) => {
   const command = { tenantId: ids.tenant, workspaceId: ids.workspace,
     interestId: ids.interest, jobId: ids.job,
     periodStartedAt: "2026-09-20T00:00:00.000000Z",
     periodEndedAt: "2026-09-21T00:00:00.000000Z",
-    cutoffAt };
+    cutoffAt, ...(retentionComplete ? { requireRetentionCompleteness: true } : {}) };
   const configuration = await subject.configuration(command);
   if (!configuration.ok) throw new Error("fixture configuration unavailable");
   return subject.prepare(command, configuration.config);
@@ -308,7 +493,8 @@ const setup = (row: ReaderValueInventoryItem) => {
   return setupWithInventory(inventory);
 };
 
-const setupWithInventory = (inventory: ReaderValuePreparationInventory) => {
+const setupWithInventory = (inventory: ReaderValuePreparationInventory,
+  clock?: Clock) => {
   const prepare: ReaderValueInputBuilder["prepare"] = () => err("unsafe_source");
   const builder: jest.Mocked<ReaderValueInputBuilder> = {
     prepare: jest.fn(prepare),
@@ -331,7 +517,7 @@ const setupWithInventory = (inventory: ReaderValuePreparationInventory) => {
       query: "database methods" },
   }) };
   return { builder, store, subject: new PrepareReaderValueSummaryUseCase(inventory,
-    builder, store, { generate: () => ids.assessment }, interests) };
+    builder, store, { generate: () => ids.assessment }, interests, clock) };
 };
 
 const item = (overrides: { readonly publishedAt?: string;

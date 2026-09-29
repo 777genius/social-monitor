@@ -30,13 +30,28 @@ export interface ReaderValueInventorySnapshot {
  */
 export interface ReaderValuePreparationInventory {
   readSnapshot<T>(scope: ReaderValueDiscoveryScope,
-    operation: (snapshot: ReaderValueInventorySnapshot) => Promise<T>): Promise<T>;
+    operation: (snapshot: ReaderValueInventorySnapshot) => Promise<T>,
+    options?: { readonly includeExpiredSources?: boolean }): Promise<T>;
 }
 
 export class ReaderValueInventoryByteCeilingExceeded extends Error {
   constructor() {
     super('Reader value inventory exceeds the source byte ceiling');
     this.name = 'ReaderValueInventoryByteCeilingExceeded';
+  }
+}
+
+export class ReaderValueInventoryTimeCeilingExceeded extends Error {
+  constructor() {
+    super('Reader value inventory exceeds the preparation time ceiling');
+    this.name = 'ReaderValueInventoryTimeCeilingExceeded';
+  }
+}
+
+export class ReaderValueInventorySnapshotUnavailable extends Error {
+  constructor() {
+    super('Reader value inventory contains an unversioned visible source');
+    this.name = 'ReaderValueInventorySnapshotUnavailable';
   }
 }
 

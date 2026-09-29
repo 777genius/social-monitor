@@ -5,7 +5,8 @@ import type {
 } from "../../ports";
 import type { InMemoryReaderSummaryJobRepository } from
   "./in-memory-reader-summary-job.repository";
-import { canonicalReaderSummaryPreparationTimestamp } from "../../domain";
+import { canonicalReaderSummaryPreparationTimestamp,
+  sameReaderSummaryPreparationIdentity } from "../../domain";
 
 const deadlineMs = 15 * 60 * 1_000;
 const checkMs = 10 * 1_000;
@@ -60,11 +61,11 @@ implements ReaderSummaryV3PreflightPort {
       if (config === undefined) return this.fail(job, params.startedAt, "config_unavailable");
       const prepared = await this.source.prepare(job, config);
       if (!prepared.ok) return this.fail(job, params.startedAt, prepared.code);
-      if (JSON.stringify(prepared.config) !== JSON.stringify(config) ||
-          prepared.manifest.interestSha256 !== config.interestSha256 ||
-          prepared.manifest.rubricSha256 !== config.rubricSha256 ||
-          prepared.manifest.inputBuilderVersion !== config.inputBuilderVersion ||
-          prepared.manifest.modelConfigVersion !== config.modelConfigVersion) {
+      if (!sameReaderSummaryPreparationIdentity(config, prepared.config,
+        prepared.manifest) ||
+          prepared.manifest.schemaVersion ===
+            "reader_summary_preparation_manifest.v2" &&
+          prepared.manifest.cutoffAt !== snapshot.preparationCutoffAt) {
         return this.fail(job, params.startedAt, "config_unavailable");
       }
       const withManifest = job.freezePreparationManifest({ manifest: prepared.manifest,
@@ -123,7 +124,8 @@ implements ReaderSummaryV3PreflightPort {
     job: Parameters<ReaderSummaryV3PreparationSourcePort["prepare"]>[0],
     now: Date,
     code: "assessment_snapshot_unavailable" |
-      "assessment_inventory_over_budget" | "config_unavailable",
+      "assessment_inventory_over_budget" | "assessment_time_over_budget" |
+      "config_unavailable",
     unconfiguredOnly = false,
   ): Promise<ReaderSummaryV3PreflightOutcome> {
     return this.jobs.runExclusive(async () => {

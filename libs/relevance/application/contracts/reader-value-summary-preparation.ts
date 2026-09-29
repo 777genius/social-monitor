@@ -28,14 +28,21 @@ export type PrepareReaderValueSummaryCommand = {
   readonly periodStartedAt: string;
   readonly periodEndedAt: string;
   readonly cutoffAt: string;
+  /** Inventory scan fails explicitly if another eligible candidate exists. */
+  readonly candidateBudget?: number;
+  readonly sourceByteBudget?: number;
+  readonly deadlineAt?: string;
+  /** Workspace pooling must fail instead of silently omitting retained-out sources. */
+  readonly requireRetentionCompleteness?: boolean;
 };
 
 export type PrepareReaderValueSummaryResult =
   | { readonly ok: true; readonly config: ReaderValueSummaryPreparationConfig;
       readonly manifest: ReaderValueSummaryPreparationManifest;
-      readonly manifestSha256: string }
+      readonly manifestSha256: string; readonly sourceBytes: number }
   | { readonly ok: false; readonly code: "assessment_snapshot_unavailable" |
-      "assessment_inventory_over_budget" | "config_unavailable" };
+      "assessment_inventory_over_budget" | "assessment_time_over_budget" |
+      "config_unavailable" };
 
 export interface ReaderValueSummaryPreparation {
   configuration(command: PrepareReaderValueSummaryCommand): Promise<

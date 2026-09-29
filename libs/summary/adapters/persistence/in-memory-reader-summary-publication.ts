@@ -1,8 +1,11 @@
-import { canReaderSummaryGenerationSupersede } from "../../domain";
+import { canReaderSummaryGenerationSupersede,
+  readerSummaryWorkspaceManifestSha256,
+  sameReaderSummaryPreparationConfig } from "../../domain";
 import type {
   ReaderSummaryPublicationCommand,
   ReaderSummaryPublicationOutcome,
   ReaderSummaryPublicationPort,
+  ReaderSummaryV3PreparationSourcePort,
   SummaryEventPublisherPort,
 } from "../../ports";
 import type { InMemorySummaryEventPublisher } from "../messaging/in-memory-summary-event-publisher";
@@ -29,6 +32,7 @@ export class InMemoryReaderSummaryPublication
     private readonly jobs: InMemoryReaderSummaryJobRepository,
     private readonly artifacts: InMemoryReaderSummaryArtifactRepository,
     private readonly events: InMemorySummaryEventPublisher | SummaryEventPublisherPort,
+    private readonly v3Source?: ReaderSummaryV3PreparationSourcePort,
   ) {}
 
   async publish(
@@ -70,6 +74,54 @@ export class InMemoryReaderSummaryPublication
       (isNoSignal && attestations.length !== 0)
     )) {
       throw new Error("Reader summary V3 publication guard rejected the execution fence");
+    }
+    if (durable?.selectionStrategy === "jev_primary_v3" &&
+        durable.preparationManifest?.schemaVersion ===
+          "reader_summary_preparation_manifest.v2") {
+      if (this.v3Source === undefined || durableJob === null ||
+          durable.preparationConfig?.schemaVersion !==
+            "reader_summary_preparation_config.v2" ||
+          durable.preparationManifest.periodKey !== durable.period.periodKey ||
+          artifactSnapshot.period.periodKey !== durable.preparationManifest.periodKey ||
+          artifactSnapshot.sourceWindow.exactIngestionCutoff !==
+            durable.preparationManifest.cutoffAt ||
+          durable.preparationDeadlineAt === undefined) {
+        throw new Error("Workspace V3 publication readiness is unavailable");
+      }
+      if (durable.preparationManifestSha256 !==
+          readerSummaryWorkspaceManifestSha256(durable.preparationManifest)) {
+        throw new Error("Workspace V3 publication manifest digest changed");
+      }
+      const current = await this.v3Source.configuration(durableJob);
+      const coverage = await this.v3Source.coverage({ job: durableJob,
+        manifest: durable.preparationManifest,
+        deadlineAt: durable.preparationDeadlineAt });
+      if (!current.ok || !sameReaderSummaryPreparationConfig(current.config,
+          durable.preparationConfig) || coverage.status !== "ready" ||
+          (isNoSignal && coverage.hasPromotableSignal !== false)) {
+        throw new Error("Workspace V3 publication scope or coverage changed");
+      }
+      const frozen = new Map(durable.preparationManifest.candidates.map((candidate) =>
+        [candidate.candidateId, candidate] as const));
+      const frozenInterests = new Map(durable.preparationConfig.interests.map(
+        (interest) => [interest.interestId, interest] as const));
+      if (attestations.some((attestation) => {
+        const candidate = frozen.get(attestation.candidateId);
+        const interest = candidate === undefined ? undefined :
+          frozenInterests.get(candidate.interestId);
+        return candidate === undefined || attestation.schemaVersion !==
+          "reader_post_promotion_attestation.v3" ||
+          interest === undefined ||
+          attestation.assessment.assessmentId !== candidate.assessmentId ||
+          attestation.assessment.sourceSnapshotSha256 !== candidate.sourceSnapshotSha256 ||
+          attestation.assessment.inputSha256 !== candidate.inputSha256 ||
+          attestation.assessment.rubricVersion !== interest.rubricVersion ||
+          attestation.assessment.rubricSha256 !== interest.rubricSha256 ||
+          attestation.assessment.modelConfigVersion !== interest.modelConfigVersion ||
+          attestation.exactIngestionCutoff !== durable.preparationManifest!.cutoffAt;
+      })) {
+        throw new Error("Workspace V3 publication provenance changed");
+      }
     }
 
     const slotKey = [

@@ -2,10 +2,14 @@ import { validateReaderValueAnswers } from '../../domain/reader-value/reader-val
 import { readerValueRetryDecision } from '../../domain/reader-value/reader-value-failure';
 import type { ReaderValueAssessment, ReaderValueAssessmentStore, ReaderValueCleanupPolicy, ReaderValuePreparedInput,
   ReaderValueReference, ReaderValueScope, ReaderValueScoringOutcome } from '../../application/contracts/reader-value-assessment-store';
+import { ReaderValueInventoryTimeCeilingExceeded } from
+  '../../application/contracts/reader-value-inventory';
 import { normalizeReaderValuePersistedCostUsd } from
   '../../application/contracts/reader-value-persisted-cost';
 import { assessmentFromRecord, type AssessmentRecord } from './assessment-record';
-import { activeAssessmentPin, assessmentTransaction, liveAssessmentScope, type AssessmentSqlClient, type AssessmentSqlTransaction } from './assessment-sql';
+import { activeAssessmentPin, assessmentTransaction, liveAssessmentScope,
+  readerValueDatabaseTimedOut, type AssessmentSqlClient,
+  type AssessmentSqlTransaction } from './assessment-sql';
 import { cleanupReaderValueAssessments, pinReaderValueAssessments, readReaderValueAssessments, type AssessmentCleanupCursor } from './reader-value-retention';
 import { sha256 } from './reader-value-source-snapshot';
 
@@ -147,7 +151,14 @@ export class PrismaReaderValueAssessmentStore implements ReaderValueAssessmentSt
     return assessmentTransaction(this.client, scope, (tx) => readReaderValueAssessments(tx,scope,interestId,references));
   }
   pin(scope: ReaderValueScope, interestId: string, jobId: string, references: readonly ReaderValueReference[]) {
-    return assessmentTransaction(this.client, scope, (tx) => pinReaderValueAssessments(tx,scope,interestId,jobId,references));
+    return assessmentTransaction(this.client, scope,
+      (tx) => pinReaderValueAssessments(tx,scope,interestId,jobId,references),
+      'Serializable', 120_000).catch((error: unknown) => {
+        if (readerValueDatabaseTimedOut(error)) {
+          throw new ReaderValueInventoryTimeCeilingExceeded();
+        }
+        throw error;
+      });
   }
   async cleanup(scope: ReaderValueScope, policy: ReaderValueCleanupPolicy) {
     const key=`${scope.tenantId}/${scope.workspaceId}/${scope.interestId ?? "*"}`;

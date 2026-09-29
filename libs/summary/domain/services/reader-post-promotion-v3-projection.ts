@@ -69,7 +69,9 @@ export const buildReaderPostPromotionV3Projection = (
       providerName: lead.providerName ?? candidate.providerKey,
       primaryActionKind: lead.readerActionKind ?? "read_source" as const,
       reason: "Selected by reader-value semantic assessment.",
-      matchedInterestIds: [lead.interestId], matchedRules: [
+      matchedInterestIds: params.clusters.find((cluster) =>
+        cluster.id === candidate.storyId)?.interestIds ?? [lead.interestId],
+      matchedRules: [
         `reader-value:usefulness:${candidate.answers.usefulness.choice}`,
         `reader-value:relevance:${candidate.answers.relevance.choice}`,
       ],
