@@ -83,7 +83,17 @@ w_paths=(
 # the reviewed client contract so descendant tests cannot silently reseal H
 # from mutable checkout files.
 GITHUB_WORKSPACE=$repo
-TARGET=$(git -C "$repo" rev-parse HEAD)
+# The forward release is historical; its reviewed 256-commit admission window
+# is not a promise that today's HEAD remains deployable through that workflow.
+CURRENT=$(git -C "$repo" rev-parse HEAD)
+TARGET=3d7c8611abff6635714cef54bfbc9f83a67895c5
+git -C "$repo" merge-base --is-ancestor "$TARGET" "$CURRENT" || \
+  fail 'current checkout lost canonical production forward lineage'
+for path in "${b_paths[@]}"; do
+  [[ $(git -C "$repo" rev-parse "$TARGET:$path") == \
+     $(git -C "$repo" rev-parse "$CURRENT:$path") ]] || \
+    fail "current checkout substituted sealed B authority: $path"
+done
 # shellcheck source=ops/deploy/github-production-forward-bridge-client-lib.sh
 source "$SCRIPT_DIR/github-production-forward-bridge-client-lib.sh"
 F=$(production_forward_anchor_for_target "$TARGET") || \
