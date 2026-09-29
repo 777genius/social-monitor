@@ -130,6 +130,9 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-yesterday-reader-summary-artifact-quality.ts:Pool
       scripts/check-yesterday-social-collection-quality.ts:Pool
       scripts/import-hn-verified-remainder.ts:Pool
+      scripts/import-rss-sep24-verified.postgres.spec.ts:Pool
+      scripts/import-rss-sep24-verified.postgres.spec.ts:Pool
+      scripts/import-rss-sep24-verified.ts:Pool
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
       scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts:Pool
@@ -242,6 +245,9 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-yesterday-reader-summary-artifact-quality.ts
       scripts/check-yesterday-social-collection-quality.ts
       scripts/import-hn-verified-remainder.ts
+      scripts/import-rss-sep24-verified.postgres.spec.ts
+      scripts/import-rss-sep24-verified.spec.ts
+      scripts/import-rss-sep24-verified.ts
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts
       scripts/lib/github-trending-durable-snapshot-reuse.postgres.spec.ts
       scripts/lib/github-trending-durable-snapshot-reuse.prisma.spec.ts
