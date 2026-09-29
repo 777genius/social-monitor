@@ -101,12 +101,13 @@ describe("Workspace V3 frozen preparation", () => {
     const fixture = await setup();
     const result = await fixture.preflight.advance(command(fixture.job));
     const snapshot = result.job.toSnapshot();
-    expect(snapshot.preparationManifest?.schemaVersion)
+    const manifest = snapshot.preparationManifest;
+    expect(manifest?.schemaVersion)
       .toBe("reader_summary_preparation_manifest.v2");
-    if (snapshot.preparationManifest?.schemaVersion !==
+    if (manifest?.schemaVersion !==
         "reader_summary_preparation_manifest.v2") return;
     expect(() => ReaderSummaryJob.rehydrate({ ...snapshot,
-      preparationManifest: { ...snapshot.preparationManifest,
+      preparationManifest: { ...manifest,
         periodKey: "weekly:another-window" },
     })).toThrow("period changed");
   });

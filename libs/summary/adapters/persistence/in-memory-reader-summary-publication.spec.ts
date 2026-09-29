@@ -7,6 +7,7 @@ import {
   readerSummaryGitHubProjectionCollectionGraceMs,
   readerSummaryGitHubProjectionCollectionWarningThresholdMs,
 } from "../../domain";
+import type { ReaderSummaryArtifact } from "../../domain";
 import type {
   ReaderSummaryPublicationCommand,
   ReaderSummaryV3PreparationSourcePort,
@@ -342,12 +343,12 @@ const workspaceV3ReadyFixture = (sequence: number, change: "rubric" | "model") =
       inputSha256: candidate.inputSha256, rubricVersion: "rubric.v1",
       rubricSha256: change === "rubric" ? "0".repeat(64) : "c".repeat(64),
       modelConfigVersion: change === "model" ? "other-model" : "model.v1" } };
-  const artifact = { toSnapshot: () => ({ ...artifactSnapshot,
+  const artifact = ({ toSnapshot: () => ({ ...artifactSnapshot,
     promotionAttestations: [attestation],
     sourceWindow: { ...artifactSnapshot.sourceWindow,
-      exactIngestionCutoff: cutoff, ingestionCutoff: new Date(cutoff) } }) };
+      exactIngestionCutoff: cutoff, ingestionCutoff: new Date(cutoff) } }) }) as unknown as ReaderSummaryArtifact;
   return { ...fixture, config, command: { ...fixture.command,
-    finalJob, artifact } as ReaderSummaryPublicationCommand };
+    finalJob, artifact } };
 };
 
 const createContext = async (
