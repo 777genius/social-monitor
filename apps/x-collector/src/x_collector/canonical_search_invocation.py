@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from datetime import datetime
-from typing import Callable
+from typing import Callable, TypeVar
 
 from . import __version__
 from .candidate_rejection_cache import (
@@ -19,6 +20,9 @@ from .canonical_search_services import (
     CanonicalSearchServices, CanonicalSearchObserver, PassRecord, ChosenOrigin,
     CacheObservation, CanonicalObservationError,
 )
+
+LOGGER = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 class CanonicalInvocation:
@@ -40,6 +44,18 @@ class CanonicalInvocation:
             raise CanonicalObservationError("Canonical observation failed") from exc
 
     @staticmethod
+    def _pre_run(stage: str, action: Callable[[], T]) -> T:
+        try:
+            return action()
+        except Exception as exc:
+            LOGGER.error(
+                "X collector failure stage=%s error_class=%s",
+                stage,
+                type(exc).__name__,
+            )
+            raise
+
+    @staticmethod
     def _observed_rejections(rejections):
         try:
             return tuple(rejections.items())
@@ -50,10 +66,12 @@ class CanonicalInvocation:
         self,
         request: DailySearchRequest,
     ) -> DailySearchResult:
-        started_at = self.services.clock.now()
-        scweet = self.services.start_execution()
-        self.services.prepare_account_pool()
-        since, until = self.services.date_window(request)
+        started_at = self._pre_run("clock", self.services.clock.now)
+        scweet = self._pre_run("scweet_init", self.services.start_execution)
+        self._pre_run("account_pool_prepare", self.services.prepare_account_pool)
+        since, until = self._pre_run(
+            "date_window", lambda: self.services.date_window(request),
+        )
         fetched_posts: list[tuple[XCollectedPost, CandidateSignal]] = []
         warnings: list[XCollectorWarning] = []
         if request.cursor:
@@ -67,9 +85,19 @@ class CanonicalInvocation:
                 ),
             )
 
-        planned_passes = plan_scweet_search_passes(request)
-        budget = self.services.budget_search_passes(planned_passes)
-        self.services.account_usage_observer.record_budget_decision(request, budget)
+        planned_passes = self._pre_run(
+            "search_plan", lambda: plan_scweet_search_passes(request),
+        )
+        budget = self._pre_run(
+            "account_budget",
+            lambda: self.services.budget_search_passes(planned_passes),
+        )
+        self._pre_run(
+            "budget_observation",
+            lambda: self.services.account_usage_observer.record_budget_decision(
+                request, budget,
+            ),
+        )
         warnings.extend(warnings_for_budget_decision(budget))
         if not budget.passes and budget.remaining_request_budget is not None:
             raise XCollectorRateLimitError(
