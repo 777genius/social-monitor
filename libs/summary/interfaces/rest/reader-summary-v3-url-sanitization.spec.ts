@@ -36,6 +36,10 @@ describe("Promotion V3 public canonical identity", () => {
       "https://example.test/article?edition=2&access_token=synthetic-marker-only")}&sa=U`,
     `https://www.google.com/url?q=${encodeURIComponent(
       "https://example.test/article?edition=2")}&sa=U`],
+    ["Google trailing DNS dot", `https://www.google.com./url?q=${encodeURIComponent(
+      "https://example.test/article?edition=2&access_token=synthetic-marker-only")}&sa=U`,
+    `https://www.google.com./url?q=${encodeURIComponent(
+      "https://example.test/article?edition=2")}&sa=U`],
   ])("signs a safe %s URL and serializes public evidence", (_case, rawIdentity,
     publicIdentity) => {
     const marker = "synthetic-marker-only";

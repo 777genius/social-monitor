@@ -104,6 +104,10 @@ describe('reader-value source custody', () => {
     ['leading NUL before redirect', `\u0000https://www.google.com/url?q=${encodeURIComponent(
       'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
     `https://www.google.com/url?q=${encodeURIComponent('https://example.test/article?edition=2')}&sa=U`],
+    ['Google trailing DNS dot', `https://www.google.com./url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
+    `https://www.google.com./url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&sa=U`],
   ])('removes credentials from serialized capture with %s', (_kind, raw, safe) => {
     const result = prepare({ canonicalUrl: raw, capture: { ...source.capture, segments: [{
       origin: 'article', sourceUrl: raw, finalUrl: raw,

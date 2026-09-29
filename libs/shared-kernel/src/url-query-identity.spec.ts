@@ -21,6 +21,13 @@ describe('public URL identity', () => {
     expect(publicCanonicalUrlIdentity(segmentUrl)).not.toContain('synthetic-marker-only');
   });
 
+  it('sanitizes a recognized redirect host with a trailing DNS dot', () => {
+    const raw = `https://www.google.com./url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}`;
+    expect(publicCanonicalUrlIdentity(raw)).toBe(`https://www.google.com./url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2')}`);
+  });
+
   it.each([
     ['scheme without slashes', 'https:example.test/article?edition=2&access_token=synthetic-marker-only',
       'https://example.test/article?edition=2'],

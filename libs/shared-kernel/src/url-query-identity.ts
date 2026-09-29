@@ -68,7 +68,7 @@ const hasEncodedCredentialLayer = (value: string): boolean => {
 
 /** Only known redirect endpoints carry a URL in these query keys. */
 const redirectDestinationKeys = (url: URL): ReadonlySet<string> => {
-  const host = url.hostname.toLowerCase().replace(/^www\./u, '');
+  const host = url.hostname.toLowerCase().replace(/\.+$/u, '').replace(/^www\./u, '');
   const path = url.pathname.replace(/\/+$/u, '') || '/';
   return (host === 'google.com' || host === 'google.co.uk') && path === '/url'
     ? new Set(['url', 'q']) : new Set();
