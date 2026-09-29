@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 
@@ -9,7 +9,6 @@ import { assertSep28AbsentCount, sep28BindingSha256, sep28ManifestSha256,
 import type { VerifiedHnImportScope } from "./recover-hn-verified-remainder";
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
-const sourceDir = resolve(__dirname, "../.artifacts/sep28-final-r1");
 const pinTemplate = resolve(__dirname, "pins-hn-sep28.json");
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const roots: string[] = [];
@@ -19,14 +18,9 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 async function privateArtifact() {
   const root = await mkdtemp(join(tmpdir(), "hn-sep28-pinned-"));
   roots.push(root);
-  const day = join(root, "sep28-final-r1");
-  await mkdir(day, { mode: 0o700 });
   const pinsPath = join(root, "pins-hn-sep28.json");
   await writeFile(pinsPath, await readFile(pinTemplate), { mode: 0o600 });
-  for (const name of ["manifest.json", "items.json"]) {
-    await writeFile(join(day, name), await readFile(join(sourceDir, name)), { mode: 0o600 });
-  }
-  return { root, day, pinsPath, request: { inputRoot: root, pinsPath, campaign: "sep28" as const } };
+  return { root, pinsPath, request: { inputRoot: root, pinsPath, campaign: "sep28" as const } };
 }
 
 describe("separate Sep28 public artifact admission", () => {
@@ -51,50 +45,31 @@ describe("separate Sep28 public artifact admission", () => {
     expect(() => assertSep28AbsentCount(12, 6)).toThrow("six-post import target");
   });
 
-  // Red if this candidate points at a cross-day, repinned, or falsely complete artifact.
-  it("pins the actual partial one-day artifact and its single complete story pass", async () => {
-    const manifestBytes = await readFile(join(sourceDir, "manifest.json"));
-    const itemsBytes = await readFile(join(sourceDir, "items.json"));
-    const manifest = JSON.parse(manifestBytes.toString("utf8")) as Record<string, unknown>;
-    const items = JSON.parse(itemsBytes.toString("utf8")) as { day: string;
-      candidateItems: { externalId: string; metadata: { source: string; searchQuery: string } }[] };
-    const passes = manifest.passes as { status: string; mode: string; target: string;
-      query: string; returnedIds: string[] }[];
-    const complete = passes.filter((pass) => pass.status === "complete");
-    expect(sha(manifestBytes)).toBe(sep28ManifestSha256);
-    expect(sha(itemsBytes)).toBe(manifest.itemsSha256);
-    expect(manifest).toMatchObject({ day: "2026-09-28", status: "incomplete",
-      commentPassCoverage: "INCOMPLETE", configuredPasses: 28, attemptedPassWindows: 28,
-      uniqueCandidateCount: 11, returnedItemCount: 11, bindingSha256: sep28BindingSha256 });
-    expect(items.day).toBe("2026-09-28");
-    expect(complete).toHaveLength(1);
-    expect(complete[0]).toMatchObject({ mode: "search", target: "story" });
-    expect(items.candidateItems).toHaveLength(11);
-    expect(items.candidateItems.every((item) => complete[0]!.returnedIds.includes(item.externalId) &&
-      item.metadata.source === "story_search" && item.metadata.searchQuery === complete[0]!.query)).toBe(true);
+  // Red if the checked-in pin silently changes campaign day, binding or manifest identity.
+  it("pins one Sep28 partial-source artifact without requiring private payloads in Git", async () => {
+    const pinsBytes = await readFile(pinTemplate);
+    const pins = JSON.parse(pinsBytes.toString("utf8")) as Record<string, unknown>;
+    expect(sha(pinsBytes)).toBe("25b3e45b2ead5fb6ecae9a4dcaa39ba6a51be6cb084dae419fd13a8de50ec871");
+    expect(pins).toEqual({ schemaVersion: 1, bindingSha256: sep28BindingSha256,
+      days: [{ day: "2026-09-28", directory: "sep28-final-r1",
+        manifestSha256: sep28ManifestSha256 }] });
   });
 
-  // Red if altered public bytes, a cross-day pin, or symlink path reach binding/SQL admission.
-  it("rejects altered bytes, altered pins and symlinked source paths before binding read", async () => {
-    const { root, day, pinsPath, request } = await privateArtifact();
+  // Red if a missing private payload, altered pin or unsafe path reaches binding/SQL admission.
+  it("refuses missing private input, altered pins and symlinked source paths", async () => {
+    const { root, pinsPath, request } = await privateArtifact();
     await expect(readOperatorArtifacts(request, process.getuid?.() ?? 0))
-      .rejects.toMatchObject({ code: "ENOENT" }); // Only the independently supplied binding is absent.
-    const originalItems = await readFile(join(day, "items.json"));
-    await writeFile(join(day, "items.json"), Buffer.concat([originalItems, Buffer.from(" ")]));
-    await expect(readOperatorArtifacts(request, process.getuid?.() ?? 0)).rejects.toThrow("SHA-256 mismatch");
-    await writeFile(join(day, "items.json"), originalItems);
-    const originalManifest = await readFile(join(day, "manifest.json"));
-    await writeFile(join(day, "manifest.json"), Buffer.concat([originalManifest, Buffer.from(" ")]));
-    await expect(readOperatorArtifacts(request, process.getuid?.() ?? 0)).rejects.toThrow("SHA-256 mismatch");
-    await writeFile(join(day, "manifest.json"), originalManifest);
+      .rejects.toMatchObject({ code: "ENOENT" }); // The private manifest is intentionally absent.
     const pins = JSON.parse(await readFile(pinsPath, "utf8")) as { days: { day: string }[] };
     pins.days[0]!.day = "2026-09-27";
     await writeFile(pinsPath, JSON.stringify(pins));
     await expect(readOperatorArtifacts(request, process.getuid?.() ?? 0)).rejects.toThrow("pins SHA-256 mismatch");
     await writeFile(pinsPath, await readFile(pinTemplate));
-    await rm(join(day, "items.json"));
-    await symlink(join(sourceDir, "items.json"), join(day, "items.json"));
-    await expect(readOperatorArtifacts(request, process.getuid?.() ?? 0)).rejects.toThrow("root-owned and private");
+    const link = `${root}-symlink`;
+    roots.push(link);
+    await symlink(root, link);
+    await expect(readOperatorArtifacts({ inputRoot: link, pinsPath: join(link, "pins-hn-sep28.json"),
+      campaign: "sep28" }, process.getuid?.() ?? 0)).rejects.toThrow("private root-owned");
     await chmod(root, 0o755);
     await expect(readOperatorArtifacts(request, process.getuid?.() ?? 0)).rejects.toThrow("private root-owned");
   });
