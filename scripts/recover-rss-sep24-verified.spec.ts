@@ -57,6 +57,14 @@ function withSecondFeed(artifacts: RssSep24Artifacts, secondFeed: string): RssSe
   return { ...artifacts, bindingBytes, expectedBindingSha256: sha(bindingBytes), manifestBytes,
     expectedManifestSha256: sha(manifestBytes) };
 }
+function withBindingConfig(artifacts: RssSep24Artifacts, config: Record<string, unknown>): RssSep24Artifacts {
+  const bindingBytes = json([{ bindingId, status: "ENABLED", config }]);
+  const manifest = JSON.parse(artifacts.manifestBytes.toString("utf8")) as Record<string, unknown>;
+  manifest.bindingSha256 = sha(bindingBytes);
+  const manifestBytes = json(manifest);
+  return { ...artifacts, bindingBytes, expectedBindingSha256: sha(bindingBytes), manifestBytes,
+    expectedManifestSha256: sha(manifestBytes) };
+}
 function doubles(): { dependencies: RssSep24Dependencies; writes: RssSep24WriteDependencies;
   source: FakeSourceItemRepository; feed: FakeFeedProjection } {
   const source = new FakeSourceItemRepository();
@@ -78,6 +86,37 @@ describe("RSS Sep 24 verified importer", () => {
     roots.push(root);
     return join(root, RSS_SEP24_JOURNAL);
   }
+
+  it("plans the enabled URL-mode binding shape and retains its exact config for the write guard", async () => {
+    const config = { extraFeedUrls: Array.from({ length: 24 }, (_, index) =>
+      `https://feed-${index + 1}.example.test/rss`), feedUrl, maxItemAgeHours: 24,
+    maxItems: 30, mode: "url", query: feedUrl };
+    const artifacts = withBindingConfig(fixture(), config);
+    const plan = planRssSep24Verified(artifacts);
+    expect(JSON.parse(plan.bindingConfig)).toEqual(config);
+    const path = await journal();
+    const { writes } = doubles();
+    const verifyCurrentBinding = jest.fn(async (_scope: RssSep24Scope, _url: string, current: string) =>
+      current === JSON.stringify(config));
+    const dependencies: RssSep24Dependencies = { withAtomicWrites: (_scope, _url, current, work) => {
+      expect(current).toBe(JSON.stringify(config));
+      return work({ ...writes, verifyCurrentBinding });
+    } };
+    await expect(importRssSep24Verified({ artifacts, expectedPlanSha256: plan.planSha256,
+      journalPath: path, scope, dependencies })).resolves.toMatchObject({ inserted: 2, postWritePresent: 2 });
+    expect(verifyCurrentBinding).toHaveBeenCalledWith(scope, feedUrl, JSON.stringify(config));
+  });
+
+  it("rejects changed URL mode or a query unequal to the primary feed URL", () => {
+    const config = { extraFeedUrls: Array.from({ length: 24 }, (_, index) =>
+      `https://feed-${index + 1}.example.test/rss`), feedUrl, maxItemAgeHours: 24,
+    maxItems: 30, mode: "url", query: feedUrl };
+    expect(() => planRssSep24Verified(withBindingConfig(fixture(), { ...config, mode: "search" })))
+      .toThrow("Binding mode/query mismatch");
+    expect(() => planRssSep24Verified(withBindingConfig(fixture(),
+      { ...config, query: "https://different.example.test/rss" })))
+      .toThrow("Binding mode/query mismatch");
+  });
 
   // Regression: a changed day, scope, or byte pin must never reach a write.
   it("rejects wrong day, scope, and exact hash", async () => {
