@@ -246,6 +246,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-yesterday-social-collection-quality.ts
       scripts/import-hn-verified-remainder.ts
       scripts/import-rss-sep24-verified.postgres.spec.ts
+      scripts/import-rss-sep24-verified.spec.ts
       scripts/import-rss-sep24-verified.ts
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts
       scripts/lib/github-trending-durable-snapshot-reuse.postgres.spec.ts
