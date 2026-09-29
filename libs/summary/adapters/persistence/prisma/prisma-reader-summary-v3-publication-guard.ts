@@ -259,7 +259,8 @@ ReaderSummaryPublicationTransactionGuard = async (
     if (assessment === undefined || frozen === undefined ||
         assessment.interest_id !== interestId ||
         assessment.source_item_id !== candidate.sourceItemId ||
-        assessment.source_revision_key !== candidate.sourceRevisionKey ||
+        workspaceManifest &&
+          assessment.source_revision_key !== candidate.sourceRevisionKey ||
         assessment.source_snapshot_sha256 !== candidate.sourceSnapshotSha256 ||
         assessment.input_sha256 !== candidate.inputSha256 ||
         workspaceManifest && assessment.interest_sha256 !== frozen.interestSha256 ||
@@ -316,6 +317,7 @@ ReaderSummaryPublicationTransactionGuard = async (
           entry.interestId === interestId)?.modelConfigVersion :
           manifest.modelConfigVersion) !== attestation.assessment.modelConfigVersion ||
         !assessmentMatchesAttestation({ assessment, attestation, candidate, card,
+          requireSourceRevisionMatch: workspaceManifest,
           tenantId: job.tenantId, workspaceId: job.workspaceId,
           interestId })) {
       return reject(client, job, "config_unavailable");
@@ -349,6 +351,7 @@ const assessmentMatchesAttestation = (params: {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly interestId: string;
+  readonly requireSourceRevisionMatch: boolean;
 }): boolean => {
   const { assessment, attestation, candidate } = params;
   const snapshot = optionalRecord(assessment.input_snapshot);
@@ -385,7 +388,8 @@ const assessmentMatchesAttestation = (params: {
     assessment.id === attestation.assessment.assessmentId &&
     assessment.interest_id === params.interestId &&
     assessment.source_item_id === candidate.sourceItemId &&
-    assessment.source_revision_key === candidate.sourceRevisionKey &&
+    (!params.requireSourceRevisionMatch ||
+      assessment.source_revision_key === candidate.sourceRevisionKey) &&
     assessment.source_snapshot_sha256 === attestation.assessment.sourceSnapshotSha256 &&
     assessment.input_sha256 === attestation.assessment.inputSha256 &&
     assessment.rubric_version === attestation.assessment.rubricVersion &&
