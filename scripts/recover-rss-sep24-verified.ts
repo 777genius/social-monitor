@@ -155,11 +155,13 @@ export function planRssSep24Verified(input: RssSep24Artifacts): RssSep24Plan {
     throw new Error("Pinned RSS scope/binding mismatch");
   }
   const config = object(binding.config, "binding config", ["feedUrl", "url", "feedUrls", "extraFeedUrls",
-    "maxItems", "maxItemAgeHours", "targetPublishedWindow"], []);
+    "maxItems", "maxItemAgeHours", "targetPublishedWindow", "mode", "query"], []);
   if (config.feedUrl !== undefined && config.url !== undefined && config.feedUrl !== config.url) {
     throw new Error("Binding feed URL is ambiguous");
   }
   const feedUrl = safeUrl(config.feedUrl ?? config.url, "binding feed URL");
+  if ((config.mode !== undefined || config.query !== undefined) &&
+    (config.mode !== "url" || config.query !== feedUrl)) throw new Error("Binding mode/query mismatch");
   if (config.targetPublishedWindow !== undefined) {
     const window = object(config.targetPublishedWindow, "target window", ["startInclusive", "endExclusive"]);
     if (window.startInclusive !== START || window.endExclusive !== END) throw new Error("Binding target day mismatch");
