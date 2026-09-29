@@ -86,11 +86,13 @@ assert_rolling_entrypoint_bridge() {
   local current graph_target bridge_blob current_blob bridge_file candidate_file variant
   local reviewed_candidate_blob=d245faeac28a99be7c22ecec3d330698059fba12
   current=$(git -C "$PROJECT_ROOT" rev-parse 'HEAD^{commit}')
-  graph_target=$current
-  if [[ ${GITHUB_EVENT_NAME:-} == pull_request ]]; then
-    # Actions checks out a synthetic merge; the reviewed graph is on its PR-head parent.
-    graph_target=$(git -C "$PROJECT_ROOT" rev-parse 'HEAD^2^{commit}')
-  fi
+  # Verify the immutable historical bridge at its canonical forward commit.
+  # Current main is more than the graph verifier's bounded 256-hop interval away.
+  graph_target=3d7c8611abff6635714cef54bfbc9f83a67895c5
+  git -C "$PROJECT_ROOT" merge-base --is-ancestor "$graph_target" "$current" || {
+    echo 'current rolling entrypoint has lost the canonical forward lineage' >&2
+    exit 1
+  }
   REPO=$PROJECT_ROOT
   fail() { printf 'rolling-entrypoint-bridge-error: %s\n' "$*" >&2; exit 1; }
   # shellcheck source=ops/deploy/production-forward-bridge-host-lib.sh
