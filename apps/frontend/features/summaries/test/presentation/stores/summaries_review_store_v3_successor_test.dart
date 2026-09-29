@@ -17,6 +17,7 @@ import 'package:social_monitor_summaries/src/application/use_cases/submit_reader
 import 'package:social_monitor_summaries/src/application/use_cases/submit_summary_feedback_use_case.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/domain/entities/reader_summary_job_snapshot.dart';
+import 'package:social_monitor_summaries/src/infrastructure/api/post_rating_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api_clients/in_memory_summaries_api_client.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api_clients/summaries_api_client.dart';
@@ -221,6 +222,11 @@ final class _LegacyPeriodApiClient implements SummariesApiClient {
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummaryHistory(
     LoadWorkspaceSummaryApiRequest request,
   ) => delegate.loadWorkspaceSummaryHistory(request);
+
+  @override
+  Future<Result<List<PostRatingApiDto>>> loadPostRatings(
+    LoadPostRatingsApiRequest request,
+  ) => delegate.loadPostRatings(request);
 
   @override
   Future<Result<ReaderSummaryJobApiDto>> requestWorkspaceSummary(
