@@ -26,10 +26,23 @@ export const identityQueryEntries = (
 /** Sanitize a URL carried directly or inside a `url:` canonical identity. */
 export const publicCanonicalUrlIdentity = (value: string): string => {
   const normalized = value.trim();
-  const hasPrefix = /^url:\s*https?:\/\//iu.test(normalized);
+  const hasPrefix = /^url:/iu.test(normalized);
   const url = hasPrefix ? normalized.slice(4).trimStart() : normalized;
-  if (!/^https?:\/\//iu.test(url)) return value;
-  const sanitized = sanitizePublicRedirectUrl(url, 0);
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    // A malformed URL-shaped identity cannot safely be copied to a public surface.
+    const compact = url.replace(/[\t\n\r]/gu, '');
+    let start = 0;
+    while (start < compact.length && compact.charCodeAt(start) <= 0x20) start += 1;
+    return /^https?:/iu.test(compact.slice(start)) ? '' : value;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return value;
+  // WHATWG accepts spellings such as `https:host`, tabs in the scheme and
+  // leading C0 controls. Serialize first so credential removal sees their URL form.
+  const sanitized = sanitizePublicRedirectUrl(parsed.href, 0);
+  if (!sanitized) return '';
   return hasPrefix ? `url:${sanitized}` : sanitized;
 };
 
@@ -46,7 +59,9 @@ const hasEncodedCredentialLayer = (value: string): boolean => {
     } catch {
       return true;
     }
-    if (sanitizeUrlCredentials(decoded) !== decoded) return true;
+    let normalized = decoded;
+    try { normalized = new URL(decoded).href; } catch { /* It may be a decoded URL component. */ }
+    if (sanitizeUrlCredentials(normalized) !== normalized) return true;
   }
   return false;
 };
@@ -60,14 +75,15 @@ const redirectDestinationKeys = (url: URL): ReadonlySet<string> => {
 };
 
 const sanitizePublicRedirectUrl = (value: string, depth: number): string => {
-  const outer = sanitizeUrlCredentials(value);
   let parsed: URL;
   try {
-    parsed = new URL(outer);
+    parsed = new URL(value);
     if (!['http:', 'https:'].includes(parsed.protocol)) return '';
   } catch {
     return '';
   }
+  const outer = sanitizeUrlCredentials(parsed.href);
+  try { parsed = new URL(outer); } catch { return ''; }
   const destinationKeys = redirectDestinationKeys(parsed);
   if (destinationKeys.size === 0 || !parsed.search) return outer;
   const queryStart = outer.indexOf('?');
@@ -79,7 +95,7 @@ const sanitizePublicRedirectUrl = (value: string, depth: number): string => {
     const destination = new URLSearchParams(component).get(name)?.trim() ?? '';
     // Invalid, oversized, or excessively nested destinations are discarded.
     if (depth >= maxRedirectDepth || destination.length > maxDestinationLength ||
-        !/^https?:\/\//iu.test(destination) || hasEncodedCredentialLayer(destination)) return [];
+        hasEncodedCredentialLayer(destination)) return [];
     const safe = sanitizePublicRedirectUrl(destination, depth + 1);
     if (!safe) return [];
     return safe === destination ? [component] : [`${component.slice(0, component.indexOf('='))}=${encodeURIComponent(safe)}`];

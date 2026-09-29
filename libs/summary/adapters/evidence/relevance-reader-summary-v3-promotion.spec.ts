@@ -399,6 +399,14 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
       'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
     `https://www.google.com/url?q=${encodeURIComponent(
       'https://example.test/article?edition=2')}&sa=U`],
+    ['scheme without slashes', 'https:example.test/article?edition=2&access_token=synthetic-marker-only',
+      'https://example.test/article?edition=2'],
+    ['tab in scheme', 'hTTps:\t//example.test/article?edition=2&access_token=synthetic-marker-only',
+      'https://example.test/article?edition=2'],
+    ['leading NUL before redirect', `\u0000https://www.google.com/url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
+    `https://www.google.com/url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&sa=U`],
   ])('sanitizes %s URLs through promotion and projection', async (_case, raw, safe) => {
     const marker = 'synthetic-marker-only';
     const fixture = setup([{ ...candidate(1, 'useful', 'central'),

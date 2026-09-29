@@ -28,6 +28,14 @@ describe("Promotion V3 public canonical identity", () => {
       "https://example.test/article?edition=2&access_token=synthetic-marker-only")}&sa=U`,
     `https://www.google.com/url?q=${encodeURIComponent(
       "https://example.test/article?edition=2")}&sa=U`],
+    ["scheme without slashes", "https:example.test/article?edition=2&access_token=synthetic-marker-only",
+      "https://example.test/article?edition=2"],
+    ["tab in scheme", "hTTps:\t//example.test/article?edition=2&access_token=synthetic-marker-only",
+      "https://example.test/article?edition=2"],
+    ["leading NUL before Google redirect", `\u0000https://www.google.com/url?q=${encodeURIComponent(
+      "https://example.test/article?edition=2&access_token=synthetic-marker-only")}&sa=U`,
+    `https://www.google.com/url?q=${encodeURIComponent(
+      "https://example.test/article?edition=2")}&sa=U`],
   ])("signs a safe %s URL and serializes public evidence", (_case, rawIdentity,
     publicIdentity) => {
     const marker = "synthetic-marker-only";

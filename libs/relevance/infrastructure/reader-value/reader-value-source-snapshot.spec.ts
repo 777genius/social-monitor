@@ -96,6 +96,24 @@ describe('reader-value source custody', () => {
     expect(result.sourceSnapshotSha256).not.toBe(prepare().sourceSnapshotSha256);
   });
 
+  it.each([
+    ['scheme without slashes', 'https:example.test/article?edition=2&access_token=synthetic-marker-only',
+      'https://example.test/article?edition=2'],
+    ['tab in scheme', 'hTTps:\t//example.test/article?edition=2&access_token=synthetic-marker-only',
+      'https://example.test/article?edition=2'],
+    ['leading NUL before redirect', `\u0000https://www.google.com/url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
+    `https://www.google.com/url?q=${encodeURIComponent('https://example.test/article?edition=2')}&sa=U`],
+  ])('removes credentials from serialized capture with %s', (_kind, raw, safe) => {
+    const result = prepare({ canonicalUrl: raw, capture: { ...source.capture, segments: [{
+      origin: 'article', sourceUrl: raw, finalUrl: raw,
+      offset: 0, length: 4, originalLength: 4, truncated: false,
+    }] } });
+    expect(result.capture.segments[0]).toMatchObject({ sourceUrl: safe, finalUrl: safe });
+    expect(JSON.stringify(result)).not.toContain('synthetic-marker-only');
+    expect(result.sourceSnapshotSha256).not.toBe(prepare({ canonicalUrl: safe }).sourceSnapshotSha256);
+  });
+
   it('drops ambiguous encoded redirect destinations from serialized capture evidence', () => {
     const marker = 'synthetic-marker-only';
     const encodedDestination = `https://example.test/article%3Faccess_token%3D${marker}`;

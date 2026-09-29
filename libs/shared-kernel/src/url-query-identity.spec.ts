@@ -21,6 +21,24 @@ describe('public URL identity', () => {
     expect(publicCanonicalUrlIdentity(segmentUrl)).not.toContain('synthetic-marker-only');
   });
 
+  it.each([
+    ['scheme without slashes', 'https:example.test/article?edition=2&access_token=synthetic-marker-only',
+      'https://example.test/article?edition=2'],
+    ['tab in scheme', 'hTTps:\t//example.test/article?edition=2&access_token=synthetic-marker-only',
+      'https://example.test/article?edition=2'],
+    ['leading NUL before redirect', `\u0000https://www.google.com/url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
+    `https://www.google.com/url?q=${encodeURIComponent('https://example.test/article?edition=2')}&sa=U`],
+  ])('sanitizes parser-accepted %s spelling', (_kind, raw, safe) => {
+    expect(publicCanonicalUrlIdentity(raw)).toBe(safe);
+    expect(publicCanonicalUrlIdentity(`url:${raw}`)).toBe(`url:${safe}`);
+  });
+
+  it('drops malformed URL-shaped identities and retains non-URL story identities', () => {
+    expect(publicCanonicalUrlIdentity('https://?access_token=synthetic-marker-only')).toBe('');
+    expect(publicCanonicalUrlIdentity('story:release-2')).toBe('story:release-2');
+  });
+
   it('bounds redirect traversal and discards ambiguous destinations', () => {
     const marker = 'synthetic-marker-only';
     const target = `https://example.test/article?access_token=${marker}`;
@@ -34,6 +52,13 @@ describe('public URL identity', () => {
     expect(publicCanonicalUrlIdentity(nested)).not.toContain(marker);
     const unrelated = `https://example.test/url?q=${encodeURIComponent(target)}`;
     expect(publicCanonicalUrlIdentity(unrelated)).toBe(unrelated);
+  });
+
+  it('normalizes an accepted destination spelling inside a known redirect', () => {
+    const destination = 'https:example.test/article?edition=2&access_token=synthetic-marker-only';
+    const redirect = `https://www.google.com/url?q=${encodeURIComponent(destination)}&sa=U`;
+    const safe = `https://www.google.com/url?q=${encodeURIComponent('https://example.test/article?edition=2')}&sa=U`;
+    expect(publicCanonicalUrlIdentity(redirect)).toBe(safe);
   });
 
   it('keeps repeated identity values in order and scopes share parameters to their hosts', () => {
