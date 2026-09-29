@@ -51,6 +51,7 @@ describe('migration image production compilation', () => {
     expect(scriptCopies).toEqual([
       'COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/',
       'COPY scripts/recover-hn-verified-remainder.ts scripts/import-hn-verified-remainder.ts scripts/import-hn-verified-sep28.ts ./scripts/',
+      'COPY scripts/import-rss-sep24-verified.ts scripts/recover-rss-sep24-verified.ts ./scripts/',
     ]);
     const copiedScripts = new Set(scriptCopies.flatMap((line) => line.split(' ').slice(1, -1)));
     const available = (file: string) => {
@@ -77,5 +78,9 @@ describe('migration image production compilation', () => {
       .toContain('scripts/check-feed-promotion-index-recovery.ts');
     expect(program.getSourceFiles().map((file) => projectPath(file.fileName)))
       .toContain('scripts/import-hn-verified-sep28.ts');
+    expect(program.getSourceFiles().map((file) => projectPath(file.fileName)))
+      .toContain('scripts/import-rss-sep24-verified.ts');
+    expect(program.getSourceFiles().map((file) => projectPath(file.fileName)))
+      .toContain('scripts/recover-rss-sep24-verified.ts');
   }, 60_000);
 });

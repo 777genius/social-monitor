@@ -28,6 +28,7 @@ DOCKERFILE = (REPO / "Dockerfile").read_text()
 INSTRUCTIONS = DOCKERFILE.replace("\\\n", " ").splitlines()
 COPIES = [shlex.split(line)[1:] for line in INSTRUCTIONS if line.startswith("COPY ")]
 SOURCES = [part for copy in COPIES for part in copy[:-1] if not part.startswith("--")]
+RSS_SEP24_SCRIPTS = ("import-rss-sep24-verified", "recover-rss-sep24-verified")
 GIB = 1024 ** 3
 
 
@@ -79,6 +80,10 @@ def remove_test_image(image_id):
 
 
 class LocalPermissions(unittest.TestCase):
+    def test_verified_rss_sep24_scripts_enter_build_context(self):
+        for script in RSS_SEP24_SCRIPTS:
+            self.assertIn(f"scripts/{script}.ts", SOURCES)
+
     def test_cleanup_preserves_existing_parent_images(self):
         with mock.patch(__name__ + ".run") as command:
             remove_test_image("sha256:" + "a" * 64)
@@ -197,6 +202,14 @@ def image_regression(base):
             probe = (REPO / "ops/deploy/support/runtime-source-permissions-image-probe.mjs").read_text()
             run(["docker", "run", "-i", *isolation, image_id, "--input-type=module", "-"],
                 input="const expected = " + json.dumps(expected) + ";\n" + probe, text=True)
+            run(["docker", "run", *isolation, image_id, "-e",
+                 "const fs = require('node:fs');"
+                 "for (const script of JSON.parse(process.argv[1])) {"
+                 "const path = '/app/dist/scripts/' + script + '.js';"
+                 "fs.accessSync(path, fs.constants.R_OK);"
+                 "if (!fs.statSync(path).isFile()) throw Error('missing compiled script: ' + path);"
+                 "fs.readFileSync(path); }",
+                 json.dumps(RSS_SEP24_SCRIPTS)])
             print(json.dumps({"image": image_id, "sourceFiles": len(expected),
                               "offlineImagePermissions": "passed"}))
         finally:
