@@ -32,6 +32,16 @@ class ReloadingScweetDailySearchCollector(DailySearchCollectorPort):
         try:
             collector = self._factory(self._settings)
         except Exception as exc:
-            LOGGER.error("X collector setup failed (%s)", type(exc).__name__)
+            LOGGER.error(
+                "X collector failure stage=collector_setup error_class=%s",
+                type(exc).__name__,
+            )
             raise
-        return collector.collect_daily_search(request)
+        try:
+            return collector.collect_daily_search(request)
+        except Exception as exc:
+            LOGGER.error(
+                "X collector failure stage=collector_run error_class=%s",
+                type(exc).__name__,
+            )
+            raise

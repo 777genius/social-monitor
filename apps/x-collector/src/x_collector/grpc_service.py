@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -28,6 +29,9 @@ from .health import XCollectorHealthMonitor
 from .ports import DailySearchCollectorPort
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 class XCollectorGrpcService(x_collector_pb2_grpc.XCollectorServiceServicer):
     def __init__(
         self,
@@ -46,19 +50,27 @@ class XCollectorGrpcService(x_collector_pb2_grpc.XCollectorServiceServicer):
     ) -> x_collector_pb2.CollectDailySearchResponse:
         require_service_token(context, self._service_token)
 
+        stage = "request_decode"
         try:
-            result = self._collector.collect_daily_search(request_from_proto(request))
+            daily_request = request_from_proto(request)
+            stage = "collector_call"
+            result = self._collector.collect_daily_search(daily_request)
+            stage = "response_encode"
+            return response_to_proto(
+                result_with_health_warnings(result, self._health_monitor),
+            )
         except XCollectorError as exc:
             abort_collector_error(context, exc)
-        except Exception:
+        except Exception as exc:
+            LOGGER.error(
+                "X collector failure stage=%s error_class=%s",
+                stage,
+                type(exc).__name__,
+            )
             context.abort(
                 grpc.StatusCode.UNAVAILABLE,
                 "X collector unavailable",
             )
-
-        return response_to_proto(
-            result_with_health_warnings(result, self._health_monitor),
-        )
 
     def CheckHealth(
         self,

@@ -141,6 +141,68 @@ class ScweetRuntimeLimitsTests(unittest.TestCase):
                 ).fetchall()
             self.assertEqual(runs, [])
 
+    def test_three_ready_accounts_without_history_reach_synthetic_search(self) -> None:
+        """Three status=1 accounts and no run/events do not alone cause pre-run failure."""
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "scweet.db"
+            with sqlite3.connect(db_path) as connection:
+                connection.executescript(
+                    """
+                    CREATE TABLE accounts (
+                      id INTEGER PRIMARY KEY, username TEXT NOT NULL,
+                      status INTEGER NOT NULL, available_til FLOAT,
+                      lease_expires_at FLOAT, busy BOOLEAN NOT NULL,
+                      daily_requests INTEGER NOT NULL, daily_tweets INTEGER NOT NULL,
+                      last_reset_date TEXT, last_used FLOAT,
+                      lease_id TEXT, cooldown_reason TEXT
+                    );
+                    CREATE TABLE runs (run_id TEXT PRIMARY KEY);
+                    INSERT INTO accounts
+                      (id, username, status, busy, daily_requests, daily_tweets)
+                    VALUES
+                      (1, 'synthetic-1', 1, 0, 0, 0),
+                      (2, 'synthetic-2', 1, 0, 0, 0),
+                      (3, 'synthetic-3', 1, 0, 0, 0);
+                    """
+                )
+            searches: list[object] = []
+
+            class FakeScweet:
+                def __init__(self, **_kwargs: object) -> None:
+                    pass
+
+                def search(self, *_args: object, **_kwargs: object) -> list[object]:
+                    searches.append(object())
+                    return []
+
+            fake_module = ModuleType("Scweet")
+            fake_module.ScweetConfig = lambda **_kwargs: object()
+            fake_module.Scweet = FakeScweet
+            settings = XCollectorSettings.from_env(
+                {"X_COLLECTOR_SCWEET_DB_PATH": str(db_path)}
+            )
+            request = DailySearchRequest(
+                request_id="synthetic-request", tenant_id="synthetic-tenant",
+                workspace_id="synthetic-workspace", source_binding_id="synthetic-binding",
+                scan_job_id="synthetic-scan", correlation_id="synthetic-correlation",
+                query="synthetic query", language=None, window_hours=24,
+                window_end=datetime(2026, 9, 29, 12, tzinfo=UTC),
+                search_products=(SearchProduct.TOP,), limit_per_product=1,
+                max_items=1, min_likes=None, min_retweets=None,
+                min_replies=None, cursor=None,
+            )
+            with patch.dict(sys.modules, {"Scweet": fake_module}):
+                result = ReloadingScweetDailySearchCollector(settings).collect_daily_search(request)
+
+            self.assertEqual(result.posts, ())
+            self.assertTrue(searches)
+            with sqlite3.connect(db_path) as connection:
+                self.assertEqual(connection.execute("SELECT count(*) FROM runs").fetchone()[0], 0)
+                self.assertGreater(
+                    connection.execute("SELECT count(*) FROM account_usage_events").fetchone()[0],
+                    0,
+                )
+
     def test_setup_failure_logs_only_exception_type(self) -> None:
         settings = XCollectorSettings.from_env({})
 
@@ -158,7 +220,7 @@ class ScweetRuntimeLimitsTests(unittest.TestCase):
             captured.output,
             [
                 "ERROR:x_collector.reloading_scweet_collector:"
-                "X collector setup failed (RuntimeError)"
+                "X collector failure stage=collector_setup error_class=RuntimeError"
             ],
         )
 
