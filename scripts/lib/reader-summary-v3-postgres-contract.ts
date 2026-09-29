@@ -462,7 +462,6 @@ const runV3Preflight = async (client: PoolClient,
       startedAt: job.toSnapshot().requestedAt });
   if (outcome.kind === "claimed" || outcome.kind === "already_running") {
     preparedV3Jobs.set(fixture.jobId, outcome.job);
-    await pinPreparedAssessments(client, fixture.jobId, outcome.job);
   }
   return outcome;
 };
@@ -507,20 +506,19 @@ const postgresPreparationSource = async (client: PoolClient,
     modelConfigVersion: config.modelConfigVersion, candidates };
   return {
     configuration: async () => ({ ok: true, config }),
-    prepare: async () => ({ ok: true, config, manifest,
-      manifestSha256: sha256(JSON.stringify(manifest)) }),
+    prepare: async (job) => {
+      if (candidates.length > 0) {
+        // Real preparation pins assessments before the transactional claim.
+        await client.query(`UPDATE reader_value_assessments
+          SET pinned_job_ids=array_append(pinned_job_ids,$1::uuid)
+          WHERE id=ANY($2::uuid[]) AND NOT $1::uuid=ANY(pinned_job_ids)`,
+        [job.toSnapshot().id, candidates.map((candidate) => candidate.assessmentId)]);
+      }
+      return { ok: true, config, manifest,
+        manifestSha256: sha256(JSON.stringify(manifest)) };
+    },
     coverage: async () => ({ status: "ready" }),
   };
-};
-
-const pinPreparedAssessments = async (client: PoolClient, jobId: string,
-  job: ReaderSummaryJob): Promise<void> => {
-  const ids = job.toSnapshot().preparationManifest?.candidates
-    .map((candidate) => candidate.assessmentId) ?? [];
-  if (ids.length === 0) return;
-  await client.query(`UPDATE reader_value_assessments
-    SET pinned_job_ids=array_append(pinned_job_ids,$1::uuid)
-    WHERE id=ANY($2::uuid[]) AND NOT $1::uuid=ANY(pinned_job_ids)`, [jobId, ids]);
 };
 
 const assertPreflightCompetingHandlers = async (params: Params): Promise<void> => {
