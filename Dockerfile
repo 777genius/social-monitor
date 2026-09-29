@@ -16,6 +16,7 @@ COPY prisma.config.ts ./
 COPY prisma ./prisma
 COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/
 COPY scripts/recover-hn-verified-remainder.ts scripts/import-hn-verified-remainder.ts scripts/import-hn-verified-sep28.ts ./scripts/
+COPY scripts/import-rss-sep24-verified.ts scripts/recover-rss-sep24-verified.ts ./scripts/
 COPY apps ./apps
 COPY libs ./libs
 
