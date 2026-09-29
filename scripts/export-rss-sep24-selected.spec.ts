@@ -1,6 +1,8 @@
 import { lstat, mkdtemp, readFile, rm } from "node:fs/promises";
+import type * as FsPromises from "node:fs/promises";
 // CommonJS object permits a one-call filesystem fault while the real exporter writes actual files.
-const filesystem = require("node:fs/promises") as typeof import("node:fs/promises");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const filesystem = require("node:fs/promises") as typeof FsPromises;
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 

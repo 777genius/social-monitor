@@ -203,7 +203,11 @@ export async function exportRssSep24Selected(request: SelectedExportRequest,
     if (beforePins.dev !== state.dev || beforePins.ino !== state.ino) throw new Error("Output root moved");
     // Pins are the commit marker. If their sync fails, remove the marker.
     try { await writeAtomic(anchor, "pins-rss-sep24.json", pinsBytes, directory); }
-    catch (error) { await unlink(join(anchor, "pins-rss-sep24.json")).catch(() => undefined); await directory.sync(); throw error; }
+    catch (error) {
+      await unlink(join(anchor, "pins-rss-sep24.json")).catch(() => undefined);
+      await directory.sync().catch(() => undefined);
+      throw error;
+    }
     const current = await lstat(request.outputRoot);
     if (current.dev !== state.dev || current.ino !== state.ino) throw new Error("Output root moved");
   } finally { await directory.close(); }
