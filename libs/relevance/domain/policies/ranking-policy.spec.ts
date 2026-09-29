@@ -88,6 +88,253 @@ describe("RankingPolicy", () => {
     );
   });
 
+  it("keeps Hacker News items with different ids even when their titles match", () => {
+    const result = new RankingPolicy().rank({
+      candidates: [
+        candidate({
+          id: "hn-1",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?id=1",
+          title: "AI agents reliability release",
+        }),
+        candidate({
+          id: "hn-2",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?id=2",
+          title: "AI agents reliability release",
+        }),
+      ],
+      profile: null,
+      generatedAt: new Date("2026-06-22T10:00:00.000Z"),
+      limit: 10,
+    });
+
+    expect(result.map((item) => item.candidate.id).sort()).toEqual(["hn-1", "hn-2"]);
+    expect(result.every((item) => item.clusterSize === 1)).toBe(true);
+  });
+
+  it("keeps repeated Hacker News id order as part of item identity", () => {
+    const result = new RankingPolicy().rank({
+      candidates: [
+        candidate({
+          id: "hn-first",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?id=1&id=2",
+          title: "AI agents reliability release",
+          sourceSignalScore: 0.3,
+        }),
+        candidate({
+          id: "hn-first-tracked",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?utm_source=digest&id=1&id=2#comments",
+          title: "AI agents reliability release",
+          sourceSignalScore: 0.1,
+        }),
+        candidate({
+          id: "hn-second",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?id=2&id=1",
+          title: "AI agents reliability release",
+        }),
+      ],
+      profile: null,
+      generatedAt: new Date("2026-06-22T10:00:00.000Z"),
+      limit: 10,
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result.find((item) => item.candidate.id === "hn-first")).toEqual(
+      expect.objectContaining({
+        clusterSize: 2,
+        duplicateCandidateIds: ["hn-first-tracked"],
+      }),
+    );
+    expect(result.find((item) => item.candidate.id === "hn-second")?.clusterSize).toBe(1);
+  });
+
+  it("does not join distinct Hacker News ids through a cross-source title match", () => {
+    const result = new RankingPolicy().rank({
+      candidates: [
+        candidate({
+          id: "other-source",
+          canonicalUrl: "https://journal.example/agent-reliability",
+          title: "AI agents reliability release",
+          sourceSignalScore: 0.5,
+        }),
+        candidate({
+          id: "hn-1",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?id=1",
+          title: "AI agents reliability release",
+          sourceSignalScore: 0.2,
+        }),
+        candidate({
+          id: "hn-2",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?id=2",
+          title: "AI agents reliability release",
+        }),
+      ],
+      profile: null,
+      generatedAt: new Date("2026-06-22T10:00:00.000Z"),
+      limit: 10,
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result.find((item) => item.candidate.id === "other-source")).toEqual(
+      expect.objectContaining({
+        clusterSize: 2,
+        duplicateCandidateIds: ["hn-1"],
+      }),
+    );
+    expect(result.find((item) => item.candidate.id === "hn-2")?.clusterSize).toBe(1);
+  });
+
+  it("clusters the same Hacker News item across tracking and fragment variants", () => {
+    const result = new RankingPolicy().rank({
+      candidates: [
+        candidate({
+          id: "hn-original",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?id=1",
+          title: "First report on agent reliability",
+          sourceSignalScore: 0.3,
+        }),
+        candidate({
+          id: "hn-tracked",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://NEWS.YCOMBINATOR.COM/item/?utm_source=digest&id=1&ref=front#comments",
+          title: "Discussion of the reliability report",
+          sourceSignalScore: 0.1,
+        }),
+      ],
+      profile: null,
+      generatedAt: new Date("2026-06-22T10:00:00.000Z"),
+      limit: 10,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(expect.objectContaining({
+      candidate: expect.objectContaining({ id: "hn-original" }),
+      clusterSize: 2,
+      duplicateCandidateIds: ["hn-tracked"],
+    }));
+  });
+
+  it("preserves other query-identified resources while ignoring tracking and credentials", () => {
+    const result = new RankingPolicy().rank({
+      candidates: [
+        candidate({
+          id: "article-1",
+          canonicalUrl: "https://journal.example/article?edition=1&lang=en",
+          title: "Agent reliability analysis",
+          sourceSignalScore: 0.3,
+        }),
+        candidate({
+          id: "article-1-tracked",
+          canonicalUrl: "https://JOURNAL.example/article/?lang=en&utm_campaign=weekly&edition=1&access_token=fixture#top",
+          title: "Reliability analysis from the journal",
+          sourceSignalScore: 0.1,
+        }),
+        candidate({
+          id: "article-2",
+          canonicalUrl: "https://journal.example/article?edition=2&lang=en",
+          title: "Agent reliability analysis",
+        }),
+      ],
+      profile: null,
+      generatedAt: new Date("2026-06-22T10:00:00.000Z"),
+      limit: 10,
+    });
+
+    expect(result.map((item) => item.candidate.id).sort()).toEqual(["article-1", "article-2"]);
+    expect(result.find((item) => item.candidate.id === "article-1")).toEqual(
+      expect.objectContaining({
+        clusterSize: 2,
+        duplicateCandidateIds: ["article-1-tracked"],
+      }),
+    );
+    expect(result.map((item) => item.clusterId).join(" ")).not.toContain("fixture");
+  });
+
+  it.each([
+    ["x.com", "https://x.com/author/status/123", "s=20"],
+    ["twitter.com", "https://twitter.com/author/status/123", "s=20"],
+    ["youtube.com", "https://www.youtube.com/watch?v=alpha", "si=fixture-share"],
+    ["youtu.be", "https://youtu.be/alpha", "si=fixture-share"],
+  ])("clusters %s share links with their original item", (_host, originalUrl, shareQuery) => {
+    const result = new RankingPolicy().rank({
+      candidates: [
+        candidate({
+          id: "original",
+          canonicalUrl: originalUrl,
+          title: "First report on agent reliability",
+          sourceSignalScore: 0.3,
+        }),
+        candidate({
+          id: "shared",
+          canonicalUrl: `${originalUrl}${originalUrl.includes("?") ? "&" : "?"}${shareQuery}`,
+          title: "Discussion of the reliability report",
+          sourceSignalScore: 0.1,
+        }),
+      ],
+      profile: null,
+      generatedAt: new Date("2026-06-22T10:00:00.000Z"),
+      limit: 10,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(expect.objectContaining({
+      candidate: expect.objectContaining({ id: "original" }),
+      clusterSize: 2,
+      duplicateCandidateIds: ["shared"],
+    }));
+  });
+
+  it.each(["s", "si"])("keeps %s query identity on unrelated hosts", (queryKey) => {
+    const result = new RankingPolicy().rank({
+      candidates: [
+        candidate({
+          id: "original",
+          canonicalUrl: "https://journal.example/article",
+          title: "Agent reliability analysis",
+        }),
+        candidate({
+          id: "queried",
+          canonicalUrl: `https://journal.example/article?${queryKey}=other`,
+          title: "Agent reliability analysis",
+        }),
+      ],
+      profile: null,
+      generatedAt: new Date("2026-06-22T10:00:00.000Z"),
+      limit: 10,
+    });
+
+    expect(result.map((item) => item.candidate.id).sort()).toEqual(["original", "queried"]);
+  });
+
+  it("keeps different YouTube video ids separate despite the same title", () => {
+    const result = new RankingPolicy().rank({
+      candidates: [
+        candidate({
+          id: "video-alpha",
+          canonicalUrl: "https://www.youtube.com/watch?v=alpha&si=fixture-share",
+          title: "Agent reliability analysis",
+        }),
+        candidate({
+          id: "video-beta",
+          canonicalUrl: "https://www.youtube.com/watch?v=beta",
+          title: "Agent reliability analysis",
+        }),
+      ],
+      profile: null,
+      generatedAt: new Date("2026-06-22T10:00:00.000Z"),
+      limit: 10,
+    });
+
+    expect(result.map((item) => item.candidate.id).sort()).toEqual(["video-alpha", "video-beta"]);
+  });
+
   it("applies memory guidance without requiring a persisted profile", () => {
     const generatedAt = new Date("2026-06-22T10:00:00.000Z");
     const policy = new RankingPolicy();
