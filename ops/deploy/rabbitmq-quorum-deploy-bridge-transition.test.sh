@@ -86,17 +86,18 @@ assert_rolling_entrypoint_bridge() {
   local current graph_target bridge_blob current_blob bridge_file candidate_file variant
   local reviewed_candidate_blob=d245faeac28a99be7c22ecec3d330698059fba12
   current=$(git -C "$PROJECT_ROOT" rev-parse 'HEAD^{commit}')
-  # Verify the immutable historical bridge at its canonical forward commit.
-  # Current main is more than the graph verifier's bounded 256-hop interval away.
-  graph_target=3d7c8611abff6635714cef54bfbc9f83a67895c5
-  git -C "$PROJECT_ROOT" merge-base --is-ancestor "$graph_target" "$current" || {
-    echo 'current rolling entrypoint has lost the canonical forward lineage' >&2
-    exit 1
-  }
   REPO=$PROJECT_ROOT
   fail() { printf 'rolling-entrypoint-bridge-error: %s\n' "$*" >&2; exit 1; }
   # shellcheck source=ops/deploy/production-forward-bridge-host-lib.sh
   source "$SCRIPT_DIR/production-forward-bridge-host-lib.sh"
+  # Verify the immutable historical bridge at its canonical forward commit.
+  # Current main is beyond the graph verifier's bounded 256-hop interval.
+  graph_target=$(git -C "$PROJECT_ROOT" log --first-parent --format='%H %P' "$current" | \
+    awk -v main="$PRODUCTION_FORWARD_MAIN_SHA" \
+      '$2 == main && NF == 3 && !found {found=$1} END {print found}')
+  [[ $graph_target =~ ^[0-9a-f]{40}$ ]] || fail 'canonical forward merge is absent'
+  git -C "$PROJECT_ROOT" merge-base --is-ancestor "$graph_target" "$current" || \
+    fail 'current rolling entrypoint has lost the canonical forward lineage'
   production_forward_derive_graph "$graph_target"
   production_forward_verify_target_graph "$PRODUCTION_FORWARD_B" "$graph_target"
   ROLLING_ENTRYPOINT_BRIDGE_SHA=$PRODUCTION_FORWARD_W

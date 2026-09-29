@@ -86,7 +86,10 @@ GITHUB_WORKSPACE=$repo
 # The forward release is historical; its reviewed 256-commit admission window
 # is not a promise that today's HEAD remains deployable through that workflow.
 CURRENT=$(git -C "$repo" rev-parse HEAD)
-TARGET=3d7c8611abff6635714cef54bfbc9f83a67895c5
+TARGET=$(git -C "$repo" log --first-parent --format='%H %P' "$CURRENT" | \
+  awk -v main="$M" '$2 == main && NF == 3 && !found {found=$1} END {print found}')
+[[ $TARGET =~ ^[0-9a-f]{40}$ ]] || \
+  fail 'canonical production forward merge is absent from first-parent history'
 git -C "$repo" merge-base --is-ancestor "$TARGET" "$CURRENT" || \
   fail 'current checkout lost canonical production forward lineage'
 for path in "${b_paths[@]}"; do
