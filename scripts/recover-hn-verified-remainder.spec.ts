@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { HackerNewsClientPort, HackerNewsListing, HackerNewsSearchOptions, HackerNewsStory } from
+import type { HackerNewsClientPort, HackerNewsSearchOptions, HackerNewsStory } from
   "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-client.port";
 import { ScanAttempt } from "@social-monitor/ingestion/domain";
 import {
@@ -42,7 +42,7 @@ class FakeClient implements HackerNewsClientPort {
     return { id, kind: "story", title: "Comment-only root", time: Math.floor(Date.parse(`${this.commentRootDay}T12:00:00.000Z`) / 1000) };
   }
   async listStoryComments(): Promise<readonly HackerNewsStory[]> { throw new Error("unexpected comment expansion"); }
-  async listStories(_listing: HackerNewsListing): Promise<readonly HackerNewsStory[]> { throw new Error("live listing forbidden"); }
+  async listStories(): Promise<readonly HackerNewsStory[]> { throw new Error("live listing forbidden"); }
 }
 
 describe("verified HN remainder planner", () => {
