@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Private gRPC X/Twitter collector for Social Monitor"
 requires-python = ">=3.11,<3.14"
 dependencies = [
-  "Scweet==5.3",
+  "Scweet==5.8.0",
   "grpcio==1.81.1",
   "grpcio-tools==1.81.1",
   "protobuf>=6.33.5,<7.0.0",
