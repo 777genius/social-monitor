@@ -13,7 +13,6 @@ import { ReaderSummaryExecutionLeasePolicy } from
 
 const deadlineMs = 15 * 60 * 1_000;
 const checkMs = 10 * 1_000;
-const recoveryClaim = "v3_recovery_claim";
 const preProviderClaim = "v3_pre_provider_claim";
 const providerStarted = "v3_provider_started";
 const uncertainOutcome = "V3 execution outcome uncertain after provider invocation";
@@ -33,11 +32,9 @@ implements ReaderSummaryV3PreflightPort {
       const snapshot = current?.toSnapshot();
       if (snapshot?.status !== "running" ||
           snapshot.startedAt?.getTime() !== expectedStartedAt.getTime() ||
-          snapshot.failureReason !== preProviderClaim &&
-          snapshot.failureReason !== recoveryClaim) return false;
+          snapshot.failureReason !== preProviderClaim) return false;
       await this.jobs.save(ReaderSummaryJob.rehydrate({ ...snapshot,
-        failureReason: snapshot.failureReason === recoveryClaim
-          ? "v3_provider_started_after_recovery" : providerStarted }));
+        failureReason: providerStarted }));
       return true;
     });
   }
@@ -47,8 +44,7 @@ implements ReaderSummaryV3PreflightPort {
   ): Promise<ReaderSummaryV3PreflightOutcome> {
     let job = (await this.find(params.job)) ?? params.job;
     let snapshot = job.toSnapshot();
-    if (snapshot.status === "running" || snapshot.status === "failed" &&
-        snapshot.terminalFailureCode === undefined) {
+    if (snapshot.status === "running") {
       return this.recover(job, params.startedAt);
     }
     if (snapshot.status !== "requested") return { kind: "terminal", job };
@@ -166,14 +162,7 @@ implements ReaderSummaryV3PreflightPort {
           await this.jobs.save(failed);
           return { kind: "terminal", job: failed };
         }
-      } else if (snapshot.status !== "failed" ||
-          snapshot.terminalFailureCode !== undefined ||
-          snapshot.failureReason !== "v3_retryable_provider_rate_limited") {
-        return { kind: "terminal", job: current };
-      } else if (snapshot.preparationNextCheckAt !== undefined &&
-          snapshot.preparationNextCheckAt > now) {
-        return { kind: "deferred", job: current };
-      }
+      } else return { kind: "terminal", job: current };
       const manifest = snapshot.preparationManifest;
       const config = snapshot.preparationConfig;
       if (manifest === undefined || config === undefined ||
@@ -193,7 +182,7 @@ implements ReaderSummaryV3PreflightPort {
         (snapshot.startedAt?.getTime() ?? 0) + 1));
       const running = ReaderSummaryJob.rehydrate({ ...snapshot, status: "running",
         requestedAt: snapshot.requestedAt, startedAt, failedAt: undefined,
-        preparationNextCheckAt: undefined, failureReason: recoveryClaim });
+        preparationNextCheckAt: undefined, failureReason: preProviderClaim });
       await this.jobs.save(running);
       return { kind: "claimed", job: running, manifest };
     });

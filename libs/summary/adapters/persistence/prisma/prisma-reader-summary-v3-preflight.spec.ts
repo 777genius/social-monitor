@@ -166,7 +166,7 @@ describe("PrismaReaderSummaryV3Preflight execution fence", () => {
         startedAt, readyAt: startedAt }).toSnapshot(),
         failureReason: "v3_pre_provider_claim" });
       const recovered = ReaderSummaryJob.rehydrate({ ...old.toSnapshot(),
-        startedAt: recoveryAt, failureReason: "v3_recovery_claim" });
+        startedAt: recoveryAt, failureReason: "v3_pre_provider_claim" });
       const frozen = old.toSnapshot();
       const sql: string[] = [];
       const tx = { $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
@@ -234,65 +234,18 @@ describe("PrismaReaderSummaryV3Preflight execution fence", () => {
     expect(source.prepare).not.toHaveBeenCalled();
   });
 
-  it("reclaims one definitive rate limit without rebuilding preparation", async () => {
-    const now = new Date("2026-09-21T00:00:00Z");
-    const retriedAt = new Date("2026-09-21T00:01:00Z");
+  it("does not reclaim a historical failed quota marker", async () => {
     const failed = workspaceFrozenJob().startPrepared({ startedAt: now,
       readyAt: now }).fail({ failedAt: now,
       failureReason: "v3_retryable_provider_rate_limited" });
-    const scheduled = ReaderSummaryJob.rehydrate({ ...failed.toSnapshot(),
-      preparationNextCheckAt: retriedAt });
-    const old = scheduled.toSnapshot();
-    const recovered = ReaderSummaryJob.rehydrate({ ...old, status: "running",
-      startedAt: retriedAt, failedAt: undefined,
-      preparationNextCheckAt: undefined,
-      failureReason: "v3_recovery_claim" });
-    const tx = { $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
-      const statement = parts.join("?");
-      if (statement.includes("FROM reader_summary_jobs")) return [{ ...lockedRow(),
-        status: "FAILED", started_at: now, terminal_failure_code: null,
-        preparation_next_check_at: retriedAt,
-        failure_reason: old.failureReason, preparation_config: old.preparationConfig,
-        preparation_manifest: old.preparationManifest,
-        preparation_manifest_sha256: old.preparationManifestSha256,
-        preparation_cutoff_at: old.preparationCutoffAt,
-        period_key: old.period.periodKey }];
-      if (statement.includes("AS due")) return [{ due: true }];
-      if (statement.includes("status='RUNNING'")) return [{ started_at: retriedAt }];
-      return [];
-    }) };
+    const tx = { $queryRaw: jest.fn() };
     const source = unusedSource();
     const outcome = await new PrismaReaderSummaryV3Preflight(prismaFor(tx),
-      repositoryReturning(scheduled, recovered), source).advance({ job: scheduled,
-        requestedAt: retriedAt, startedAt: retriedAt });
-    expect(outcome).toMatchObject({ kind: "claimed", job: recovered,
-      manifest: old.preparationManifest });
+      repositoryReturning(failed, failed), source).advance({ job: failed,
+        requestedAt: now, startedAt: now });
+    expect(outcome).toMatchObject({ kind: "terminal", job: failed });
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
     expect(source.prepare).not.toHaveBeenCalled();
-  });
-
-  it("defers a scheduled quota recovery using PostgreSQL wall time", async () => {
-    const failed = workspaceFrozenJob().startPrepared({ startedAt: now,
-      readyAt: now }).fail({ failedAt: now,
-      failureReason: "v3_retryable_provider_rate_limited" });
-    const checkAt = new Date(now.getTime() + 60_000);
-    const scheduled = ReaderSummaryJob.rehydrate({ ...failed.toSnapshot(),
-      preparationNextCheckAt: checkAt });
-    const tx = { $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
-      const statement = parts.join("?");
-      if (statement.includes("FROM reader_summary_jobs")) return [{ ...lockedRow(),
-        status: "FAILED", started_at: now,
-        failure_reason: "v3_retryable_provider_rate_limited",
-        preparation_next_check_at: checkAt }];
-      if (statement.includes("AS due")) return [{ due: false }];
-      return [];
-    }) };
-
-    const outcome = await new PrismaReaderSummaryV3Preflight(prismaFor(tx),
-      repositoryReturning(scheduled, scheduled), unusedSource()).advance({
-        job: scheduled, requestedAt: now, startedAt: now });
-    expect(outcome.kind).toBe("deferred");
-    expect(tx.$queryRaw.mock.calls.some(([parts]) => (parts as TemplateStringsArray)
-      .join("?").includes("failure_reason='v3_recovery_claim'"))).toBe(false);
   });
 
   it("retires an expired claim when frozen preparation no longer verifies", async () => {

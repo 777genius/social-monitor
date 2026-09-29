@@ -86,13 +86,9 @@ export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobPolli
           return snapshot.preparationNextCheckAt === undefined ||
             snapshot.preparationNextCheckAt <= params.now;
         }
-        return snapshot.selectionStrategy === "jev_primary_v3" && (
+        return snapshot.selectionStrategy === "jev_primary_v3" &&
           snapshot.status === "running" && snapshot.startedAt !== undefined &&
-            snapshot.startedAt < params.staleRunningStartedBefore ||
-          snapshot.status === "failed" && snapshot.terminalFailureCode === undefined &&
-            snapshot.failureReason === "v3_retryable_provider_rate_limited" &&
-            (snapshot.preparationNextCheckAt === undefined ||
-              snapshot.preparationNextCheckAt <= params.now));
+          snapshot.startedAt < params.staleRunningStartedBefore;
       })
       .sort(compareRequestedJobs)
       .slice(0, params.limit);

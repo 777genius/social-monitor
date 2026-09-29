@@ -25,7 +25,7 @@ describe("PrismaReaderSummaryJobRepository execution lease", () => {
     await expect(repository.claimForExecution(claimParams())).resolves.toBeNull();
     expect(updateMany).not.toHaveBeenCalled();
   });
-  it("queries only due requested, stale V3, and definitive V3 rate-limit work in scope", async () => {
+  it("queries only due requested and stale V3 work in scope", async () => {
     const findMany = jest.fn().mockResolvedValue([record({
       status: "REQUESTED",
       startedAt: null,
@@ -49,13 +49,6 @@ describe("PrismaReaderSummaryJobRepository execution lease", () => {
         ] },
         { status: "RUNNING", selectionStrategy: "jev_primary_v3",
           startedAt: { lt: staleBefore } },
-        { status: "FAILED", selectionStrategy: "jev_primary_v3",
-          terminalFailureCode: null,
-          failureReason: "v3_retryable_provider_rate_limited",
-          OR: [
-            { preparationNextCheckAt: null },
-            { preparationNextCheckAt: { lte: now } },
-          ] },
       ] },
       orderBy: [{ requestedAt: "asc" }, { id: "asc" }], take: 3,
     });

@@ -132,7 +132,7 @@ describe("GetReaderSummaryJobStatusUseCase", () => {
     });
   });
 
-  it("keeps a scheduled V3 quota recovery pending without exposing internal markers", async () => {
+  it("shows a historical V3 quota marker as failed without exposing the marker", async () => {
     const startedAt = new Date("2026-06-23T08:01:00.000Z");
     const request = ReaderSummaryJob.request({
       id: "v3-recovery", tenantId: tenant, workspaceId: workspace,
@@ -151,19 +151,10 @@ describe("GetReaderSummaryJobStatusUseCase", () => {
 
     const pending = await subject.execute(query);
     expect(pending).toMatchObject({ ok: true, value: {
-      status: "requested", failureReason: undefined, failureClass: undefined,
-      failedAt: undefined, startedAt: undefined,
-      timeline: [{ status: "requested", message: "Reader summary requested",
-        occurredAt: "2026-06-23T08:00:00.000Z" }],
+      status: "failed", failureReason: undefined, failureClass: "system_failure",
+      failedAt: startedAt.toISOString(), startedAt: startedAt.toISOString(),
     } });
     expect(JSON.stringify(pending)).not.toContain("v3_");
-
-    repository.replace(ReaderSummaryJob.rehydrate({ ...request.toSnapshot(),
-      status: "completed", startedAt,
-      completedAt: new Date("2026-06-23T08:03:00.000Z"),
-      readerSummaryId: "reader-summary-recovered" }));
-    await expect(subject.execute(query)).resolves.toMatchObject({ ok: true,
-      value: { status: "completed", readerSummaryId: "reader-summary-recovered" } });
   });
 });
 

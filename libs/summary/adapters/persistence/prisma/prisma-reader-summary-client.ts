@@ -245,9 +245,6 @@ export type PrismaReaderSummaryClient = {
           ] },
           { readonly status: "RUNNING"; readonly selectionStrategy: "jev_primary_v3";
             readonly startedAt: { readonly lt: Date } },
-          { readonly status: "FAILED"; readonly selectionStrategy: "jev_primary_v3";
-            readonly terminalFailureCode: null;
-            readonly failureReason: "v3_retryable_provider_rate_limited" },
         ];
       };
       readonly orderBy: readonly [

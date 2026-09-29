@@ -144,7 +144,8 @@ export type ReaderSummaryPreparationFailureCode =
   | "interest_changed"
   | "operator_cancelled"
   | "presentation_unavailable"
-  | "presentation_dependency_unavailable";
+  | "presentation_dependency_unavailable"
+  | "provider_execution_failed";
 
 export function assertReaderSummarySelectionStrategy(
   value: string,

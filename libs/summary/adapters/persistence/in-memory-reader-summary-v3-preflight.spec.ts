@@ -304,7 +304,7 @@ describe("InMemoryReaderSummaryV3Preflight", () => {
       startedAt: later })).kind).toBe("terminal");
   });
 
-  it("retries a known rate limit once and retains the manifest", async () => {
+  it("does not recover a historical failed quota marker even after its due time", async () => {
     const jobs = new InMemoryReaderSummaryJobRepository();
     const now = new Date("2026-09-21T00:00:00Z");
     const old = workspaceFrozenJob("daily").startPrepared({
@@ -315,25 +315,11 @@ describe("InMemoryReaderSummaryV3Preflight", () => {
       preparationNextCheckAt: dueAt });
     await jobs.save(scheduled);
     const subject = new InMemoryReaderSummaryV3Preflight(jobs, unusedSource());
-    expect((await jobs.findDueForPolling({ now,
-      staleRunningStartedBefore: new Date("2026-09-20T22:00:00Z"),
-      limit: 1 }))).toEqual([]);
-    expect((await subject.advance({ job: scheduled, requestedAt: now,
-      startedAt: now })).kind).toBe("deferred");
-    expect((await jobs.findDueForPolling({ now: dueAt,
-      staleRunningStartedBefore: new Date("2026-09-20T22:00:00Z"),
-      limit: 1 })).map((candidate) => candidate.toSnapshot().id))
-      .toEqual([old.toSnapshot().id]);
-    const result = await subject.advance({ job: scheduled, requestedAt: dueAt,
-      startedAt: dueAt });
-    expect(result.kind).toBe("claimed");
-    if (result.kind !== "claimed") return;
-    expect(result.manifest).toEqual(old.toSnapshot().preparationManifest);
-    expect(result.job.toSnapshot().preparationNextCheckAt).toBeUndefined();
-    await jobs.save(result.job.fail({ failedAt: now,
-      failureReason: "rate limit after recovery" }));
-    expect((await subject.advance({ job: old, requestedAt: now,
-      startedAt: now })).kind).toBe("terminal");
+    expect(await jobs.findDueForPolling({ now: dueAt,
+      staleRunningStartedBefore: new Date(0), limit: 1 })).toEqual([]);
+    expect((await subject.advance({ job: scheduled, requestedAt: dueAt,
+      startedAt: dueAt })).kind).toBe("terminal");
+    expect((await jobs.findById(key(old)))?.toSnapshot().status).toBe("failed");
   });
 
   it("retires a stale claim whose frozen configuration cannot be verified", async () => {
