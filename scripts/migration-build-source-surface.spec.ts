@@ -50,9 +50,9 @@ describe('migration image production compilation', () => {
     const scriptCopies = dockerfile.split('\n').filter((line) => /^COPY .*scripts/.test(line));
     expect(scriptCopies).toEqual([
       'COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/',
-      'COPY scripts/recover-hn-verified-remainder.ts scripts/import-hn-verified-remainder.ts ./scripts/',
+      'COPY scripts/recover-hn-verified-remainder.ts scripts/import-hn-verified-remainder.ts scripts/import-hn-verified-sep28.ts ./scripts/',
     ]);
-    const copiedScripts = new Set(scriptCopies.map((line) => line.split(' ')[1]));
+    const copiedScripts = new Set(scriptCopies.flatMap((line) => line.split(' ').slice(1, -1)));
     const available = (file: string) => {
       const path = projectPath(file);
       return !path.startsWith('scripts/') || copiedScripts.has(path);
@@ -75,5 +75,7 @@ describe('migration image production compilation', () => {
       .not.toContain(bindingSupport);
     expect(program.getSourceFiles().map((file) => projectPath(file.fileName)))
       .toContain('scripts/check-feed-promotion-index-recovery.ts');
+    expect(program.getSourceFiles().map((file) => projectPath(file.fileName)))
+      .toContain('scripts/import-hn-verified-sep28.ts');
   }, 60_000);
 });

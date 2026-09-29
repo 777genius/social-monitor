@@ -14,11 +14,17 @@ import { noopSourceItemEnrichment,
 import type { Clock, IdGenerator, TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 const sha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
-const dayPattern = /^2026-09-(2[0-7])$/u;
+const dayPattern = /^2026-09-(2[0-8])$/u;
 const digestPattern = /^[0-9a-f]{64}$/u;
 const idPattern = /^hn:([1-9][0-9]*)$/u;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const journalFileName = "hn-verified-remainder-2026-09-20_27.journal.json";
+const sep28JournalFileName = "hn-verified-posts-2026-09-28.journal.json";
+export const sep28ManifestSha256 = "9c56ae5b071e0c98a249719bff0f68b3c9e29765cd8d397d3f47d94b0aa13ec8";
+export const sep28BindingSha256 = "7f16836be3241663ea0bf00e46e11883d8956785b52e2f2e17c3c919cd9e644f";
+export type VerifiedHnCampaign = "remainder" | "sep28";
+export const verifiedHnJournalName = (campaign: VerifiedHnCampaign): string =>
+  campaign === "sep28" ? sep28JournalFileName : journalFileName;
 
 export type PinnedDayArtifact = {
   readonly day: string;
@@ -28,6 +34,7 @@ export type PinnedDayArtifact = {
 };
 
 export type VerifiedRemainderInput = {
+  readonly campaign?: VerifiedHnCampaign;
   readonly bindingBytes: Buffer;
   readonly expectedBindingSha256: string;
   readonly days: readonly PinnedDayArtifact[];
@@ -103,8 +110,10 @@ function checkDigest(actual: string, expected: string, label: string): void {
   if (!digestPattern.test(expected) || actual !== expected) throw new Error(`${label} SHA-256 mismatch`);
 }
 
-function dayWindow(day: string): { from: string; to: string; fromMs: number; toMs: number } {
-  if (!dayPattern.test(day)) throw new Error("Only 2026-09-20 through 2026-09-27 UTC days are allowed");
+function dayWindow(day: string, campaign: VerifiedHnCampaign = "remainder"): { from: string; to: string; fromMs: number; toMs: number } {
+  if (!dayPattern.test(day) || (campaign === "sep28" ? day !== "2026-09-28" : day === "2026-09-28")) {
+    throw new Error("Day is outside the selected verified HN campaign");
+  }
   const fromMs = Date.parse(`${day}T00:00:00.000Z`);
   const toMs = fromMs + 86_400_000;
   return { from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString(), fromMs, toMs };
@@ -238,8 +247,9 @@ function validateComment(value: unknown, label: string): void {
     metadata.replyCount !== metadata.replies) throw new Error(`${label} is not HN comment output`);
 }
 
-function validateDay(artifact: PinnedDayArtifact, binding: ReturnType<typeof readBinding>, bindingSha256: string) {
-  const window = dayWindow(artifact.day);
+function validateDay(artifact: PinnedDayArtifact, binding: ReturnType<typeof readBinding>, bindingSha256: string,
+  campaign: VerifiedHnCampaign) {
+  const window = dayWindow(artifact.day, campaign);
   const manifestSha256 = sha256(artifact.manifestBytes);
   checkDigest(manifestSha256, artifact.expectedManifestSha256, `${artifact.day} manifest`);
   const manifest = record(parseJson(artifact.manifestBytes, "manifest", true), "manifest", ["schemaVersion", "day", "windowHours",
@@ -319,9 +329,14 @@ function validateDay(artifact: PinnedDayArtifact, binding: ReturnType<typeof rea
 
 /** Candidate eligibility is source proof only; current DB absence must be checked at a future write boundary. */
 export function planVerifiedHnRemainder(input: VerifiedRemainderInput): VerifiedRemainderPlan {
-  if (input.days.length === 0 || input.days.length > 8) throw new Error("One to eight explicit days are required");
+  const campaign = input.campaign ?? "remainder";
+  if (campaign !== "remainder" && campaign !== "sep28") throw new Error("Unknown verified HN campaign");
+  if (campaign === "sep28" ? input.days.length !== 1 : input.days.length === 0 || input.days.length > 8) {
+    throw new Error("Invalid number of explicit campaign days");
+  }
   const bindingSha256 = sha256(input.bindingBytes);
   checkDigest(bindingSha256, input.expectedBindingSha256, "binding");
+  if (campaign === "sep28" && bindingSha256 !== sep28BindingSha256) throw new Error("Sep28 binding pin mismatch");
   const binding = readBinding(input.bindingBytes);
   const seenDays = new Set<string>();
   const seenIds = new Set<string>();
@@ -330,7 +345,15 @@ export function planVerifiedHnRemainder(input: VerifiedRemainderInput): Verified
   for (const artifact of [...input.days].sort((a, b) => a.day.localeCompare(b.day))) {
     if (seenDays.has(artifact.day)) throw new Error(`Duplicate day ${artifact.day}`);
     seenDays.add(artifact.day);
-    const verified = validateDay(artifact, binding, bindingSha256);
+    if (campaign === "sep28" && artifact.expectedManifestSha256 !== sep28ManifestSha256) {
+      throw new Error("Sep28 public manifest pin mismatch");
+    }
+    const verified = validateDay(artifact, binding, bindingSha256, campaign);
+    if (campaign === "sep28" && (verified.completePasses !== 1 ||
+      verified.incompletePassIndices.length !== 27 || verified.candidateCount !== 11 ||
+      verified.verified.length !== 11 || verified.finalCapExceeded)) {
+      throw new Error("Sep28 partial source coverage changed");
+    }
     days.push({ day: verified.day, manifestSha256: verified.manifestSha256, itemsSha256: verified.itemsSha256,
       aggregateStatus: verified.aggregateStatus, completePasses: verified.completePasses,
       incompletePasses: verified.incompletePasses, incompletePassIndices: verified.incompletePassIndices,
@@ -350,7 +373,8 @@ export function planVerifiedHnRemainder(input: VerifiedRemainderInput): Verified
   }
   const unsigned = { schemaVersion: 1 as const, coverage: "PARTIAL_SOURCE_ONLY" as const,
     bindingId: binding.bindingId, bindingSha256, bindingQuery: binding.config.query as string, days, candidates };
-  return { ...unsigned, planSha256: sha256(JSON.stringify(unsigned)) };
+  return { ...unsigned, planSha256: sha256(JSON.stringify(campaign === "sep28"
+    ? { campaign, ...unsigned } : unsigned)) };
 }
 
 export type VerifiedHnImportScope = {
@@ -364,7 +388,7 @@ export type VerifiedHnImportScope = {
 
 export type VerifiedHnImportDependencies = {
   /** Re-read the live tenant/workspace/binding/interest/policy relation and approved query. */
-  readonly verifyCurrentBinding: (scope: VerifiedHnImportScope, query: string) => Promise<boolean>;
+  readonly verifyCurrentBinding: (scope: VerifiedHnImportScope, query: string, config?: string) => Promise<boolean>;
   /** Must read the current scoped source-item repository. No old snapshot is accepted. */
   readonly findExistingExternalIds: (scope: VerifiedHnImportScope, ids: readonly string[]) => Promise<readonly string[]>;
   /** Separate method prevents an ordinary updating repository from being injected by accident. */
@@ -380,7 +404,7 @@ export type VerifiedHnImportDependencies = {
 export type VerifiedHnImportRequest = {
   readonly artifacts: VerifiedRemainderInput;
   readonly expectedPlanSha256: string;
-  /** One fixed, exclusive path for this entire Sep20-27 campaign, independent of plan hash. */
+  /** One fixed, exclusive path per campaign, independent of plan hash. */
   readonly journalPath: string;
   readonly scope: VerifiedHnImportScope;
   readonly dependencies: VerifiedHnImportDependencies;
@@ -399,6 +423,13 @@ function fetchedItem(candidate: VerifiedCandidate): FetchedSourceItem {
   };
 }
 
+/** A changed live snapshot needs reconciliation before consuming the fixed six-post campaign. */
+export function assertSep28AbsentCount(candidateCount: number, existingCount: number): void {
+  if (candidateCount !== 11 || existingCount !== 5) {
+    throw new Error("Sep28 current source-item snapshot differs from the six-post import target");
+  }
+}
+
 function deterministicUuid(value: string): string {
   const bytes = createHash("sha256").update(value).digest().subarray(0, 16);
   bytes[6] = (bytes[6]! & 0x0f) | 0x40;
@@ -407,8 +438,8 @@ function deterministicUuid(value: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function scanJobId(planSha256: string, day: string): string {
-  return deterministicUuid(`hn-verified-remainder:${planSha256}:${day}`);
+function scanJobId(planSha256: string, day: string, campaign: VerifiedHnCampaign): string {
+  return deterministicUuid(`hn-verified-${campaign}:${planSha256}:${day}`);
 }
 
 async function syncDirectory(path: string): Promise<void> {
@@ -438,16 +469,20 @@ export async function importVerifiedHnRemainder(request: VerifiedHnImportRequest
     throw new Error("Verified HN import requires an insert-only source item repository");
   }
   const plan = planVerifiedHnRemainder(request.artifacts);
+  const campaign = request.artifacts.campaign ?? "remainder";
   checkDigest(plan.planSha256, request.expectedPlanSha256, "opt-in plan");
-  if (plan.days.length !== 8) throw new Error("One-shot import requires all eight pinned Sep20-27 days");
+  if (campaign === "remainder" && plan.days.length !== 8) throw new Error("One-shot import requires all eight pinned Sep20-27 days");
   if (request.scope.sourceBindingId !== plan.bindingId ||
     [request.scope.tenantId, request.scope.workspaceId, request.scope.interestId,
       request.scope.sourceBindingId, request.scope.scanPolicyId].some((id) => !uuidPattern.test(id)) ||
     !request.scope.correlationId) throw new Error("Import scope/binding mismatch");
   if (plan.candidates.length === 0) throw new Error("No verified candidates to import");
   const journalPath = resolve(request.journalPath);
-  if (basename(journalPath) !== journalFileName) throw new Error(`Journal filename must be ${journalFileName}`);
-  const journalBase = { schemaVersion: 1, campaign: "hn-verified-remainder-2026-09-20_27", planSha256: plan.planSha256,
+  const expectedJournal = verifiedHnJournalName(campaign);
+  if (basename(journalPath) !== expectedJournal) throw new Error(`Journal filename must be ${expectedJournal}`);
+  const journalBase = { schemaVersion: 1, campaign: campaign === "sep28"
+    ? "hn-verified-posts-2026-09-28" : "hn-verified-remainder-2026-09-20_27",
+    ...(campaign === "sep28" ? { coverage: plan.coverage } : {}), planSha256: plan.planSha256,
     bindingSha256: plan.bindingSha256, artifacts: plan.days.map((day) => ({ day: day.day,
       manifestSha256: day.manifestSha256, itemsSha256: day.itemsSha256 })),
     scope: { tenantId: request.scope.tenantId, workspaceId: request.scope.workspaceId,
@@ -462,7 +497,10 @@ export async function importVerifiedHnRemainder(request: VerifiedHnImportRequest
     throw error;
   }
 
-  if (!await request.dependencies.verifyCurrentBinding(request.scope, plan.bindingQuery)) {
+  const config = campaign === "sep28"
+    ? JSON.stringify((JSON.parse(request.artifacts.bindingBytes.toString("utf8")) as { config: unknown }[])[0]?.config)
+    : undefined;
+  if (!await request.dependencies.verifyCurrentBinding(request.scope, plan.bindingQuery, config)) {
     throw new Error("Current scoped binding does not match pinned HN query; journal remains started");
   }
   const ids = plan.candidates.map((candidate) => candidate.externalId);
@@ -471,11 +509,12 @@ export async function importVerifiedHnRemainder(request: VerifiedHnImportRequest
   if (new Set(existing).size !== existing.length || existing.some((id) => !allowed.has(id))) {
     throw new Error("Current scoped source-item snapshot is invalid; journal remains started");
   }
+  if (campaign === "sep28") assertSep28AbsentCount(ids.length, existing.length);
   const existingSet = new Set(existing);
   const missing = plan.candidates.filter((candidate) => !existingSet.has(candidate.externalId));
   const byJob = new Map<string, readonly FetchedSourceItem[]>();
   for (const day of plan.days) {
-    byJob.set(scanJobId(plan.planSha256, day.day),
+    byJob.set(scanJobId(plan.planSha256, day.day, campaign),
       missing.filter((candidate) => candidate.day === day.day).map(fetchedItem));
   }
   const fetcher: SourceFetcherPort = {
@@ -507,7 +546,7 @@ export async function importVerifiedHnRemainder(request: VerifiedHnImportRequest
     undefined, noopSourceItemEnrichment, request.dependencies.conversationProjection);
   let inserted = 0;
   for (const day of plan.days) {
-    const jobId = scanJobId(plan.planSha256, day.day);
+    const jobId = scanJobId(plan.planSha256, day.day, campaign);
     const expected = missing.filter((candidate) => candidate.day === day.day).length;
     if (expected === 0) continue;
     const result = await executeScan.execute({ tenantId: request.scope.tenantId, workspaceId: request.scope.workspaceId,

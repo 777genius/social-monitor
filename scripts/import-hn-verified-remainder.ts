@@ -1,6 +1,7 @@
 /** One campaign, one invocation. The finite credential and container deadline are host controls. */
 import { createHash } from "node:crypto";
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Pool, type PoolClient } from "pg";
 
@@ -15,14 +16,16 @@ import { CryptoIdGenerator, SystemClock, type TenantId, type WorkspaceId } from 
 import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import { importVerifiedHnRemainder, planVerifiedHnRemainder,
   type PinnedDayArtifact, type VerifiedHnImportDependencies, type VerifiedHnImportScope,
-  type VerifiedRemainderInput } from "./recover-hn-verified-remainder";
+  type VerifiedRemainderInput, type VerifiedHnCampaign, sep28BindingSha256, sep28ManifestSha256,
+  verifiedHnJournalName } from "./recover-hn-verified-remainder";
 
 const digest = /^[a-f0-9]{64}$/u;
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
-const journalName = "hn-verified-remainder-2026-09-20_27.journal.json";
+const sep28PinsSha256 = "25b3e45b2ead5fb6ecae9a4dcaa39ba6a51be6cb084dae419fd13a8de50ec871";
 const hash = (bytes: Buffer): string => createHash("sha256").update(bytes).digest("hex");
 
 export type OperatorRequest = Readonly<{
+  campaign?: VerifiedHnCampaign;
   inputRoot: string; pinsPath: string; expectedPlanSha256: string; journalDir: string;
   scope: VerifiedHnImportScope;
 }>;
@@ -71,33 +74,50 @@ async function pinnedBytes(root: string, path: string, ownerUid: number, expecte
       throw new Error("Pinned input is not root-owned and private");
     }
   }
-  const bytes = await readFile(name);
+  const handle = await open(name, constants.O_RDONLY | constants.O_NOFOLLOW);
+  let bytes: Buffer;
+  try {
+    const state = await handle.stat();
+    if (!state.isFile() || state.uid !== ownerUid || (state.mode & 0o077) !== 0) {
+      throw new Error("Pinned input changed during read");
+    }
+    bytes = await handle.readFile();
+  } finally { await handle.close(); }
   if (expected !== undefined && hash(bytes) !== exactDigest(expected)) throw new Error("Pinned input SHA-256 mismatch");
   return bytes;
 }
 
-export async function readOperatorArtifacts(request: OperatorRequest, ownerUid = 0): Promise<VerifiedRemainderInput> {
+export async function readOperatorArtifacts(request: Pick<OperatorRequest, "inputRoot" | "pinsPath" | "campaign">,
+  ownerUid = 0): Promise<VerifiedRemainderInput> {
+  const campaign = request.campaign ?? "remainder";
   const root = exactPath(request.inputRoot);
   const rootStat = await lstat(root);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || rootStat.uid !== ownerUid ||
     (rootStat.mode & 0o077) !== 0 || await realpath(root) !== root) {
     throw new Error("Input mount must be a private root-owned directory");
   }
-  if (request.pinsPath !== join(root, "pins-20260928.json")) throw new Error("Unexpected pins path");
-  const pins = object(JSON.parse((await pinnedBytes(root, request.pinsPath, ownerUid)).toString("utf8")) as unknown,
+  if (request.pinsPath !== join(root, campaign === "sep28" ? "pins-hn-sep28.json" : "pins-20260928.json")) {
+    throw new Error("Unexpected pins path");
+  }
+  const pinsBytes = await pinnedBytes(root, request.pinsPath, ownerUid);
+  if (campaign === "sep28" && hash(pinsBytes) !== sep28PinsSha256) throw new Error("Sep28 pins SHA-256 mismatch");
+  const pins = object(JSON.parse(pinsBytes.toString("utf8")) as unknown,
     ["schemaVersion", "bindingSha256", "days"]);
-  if (pins.schemaVersion !== 1 || !Array.isArray(pins.days) || pins.days.length !== 8) {
-    throw new Error("Eight explicit day pins are required");
+  if (pins.schemaVersion !== 1 || !Array.isArray(pins.days) ||
+    pins.days.length !== (campaign === "sep28" ? 1 : 8)) {
+    throw new Error("Explicit campaign day pins are required");
   }
   const bindingSha256 = exactDigest(pins.bindingSha256);
-  const bindingBytes = await pinnedBytes(root, join(root, "bindings-sanitized.json"), ownerUid, bindingSha256);
+  if (campaign === "sep28" && bindingSha256 !== sep28BindingSha256) throw new Error("Sep28 binding pin mismatch");
   const days: PinnedDayArtifact[] = [];
   for (const [index, raw] of pins.days.entries()) {
     const pin = object(raw, ["day", "directory", "manifestSha256"]);
-    const day = `2026-09-${String(index + 20)}`;
+    const day = campaign === "sep28" ? "2026-09-28" : `2026-09-${String(index + 20)}`;
     if (pin.day !== day) throw new Error("Day pin path or order mismatch");
     const directory = join(root, dayDirectory(pin.directory));
     const manifestSha256 = exactDigest(pin.manifestSha256);
+    if (campaign === "sep28" && (manifestSha256 !== sep28ManifestSha256 ||
+      pin.directory !== "sep28-final-r1")) throw new Error("Sep28 public artifact pin mismatch");
     const manifestBytes = await pinnedBytes(root, join(directory, "manifest.json"), ownerUid, manifestSha256);
     const manifest = JSON.parse(manifestBytes.toString("utf8")) as unknown;
     if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest)) {
@@ -111,10 +131,11 @@ export async function readOperatorArtifacts(request: OperatorRequest, ownerUid =
       exactDigest(fields.itemsSha256));
     days.push({ day, expectedManifestSha256: manifestSha256, manifestBytes, itemsBytes });
   }
-  return { bindingBytes, expectedBindingSha256: bindingSha256, days };
+  const bindingBytes = await pinnedBytes(root, join(root, "bindings-sanitized.json"), ownerUid, bindingSha256);
+  return { campaign, bindingBytes, expectedBindingSha256: bindingSha256, days };
 }
 
-export function parseOperatorArgs(args: readonly string[]): OperatorRequest {
+export function parseOperatorArgs(args: readonly string[], campaign: VerifiedHnCampaign = "remainder"): OperatorRequest {
   const names = ["--input-root", "--pins", "--plan-sha256", "--journal-dir", "--tenant-id",
     "--workspace-id", "--interest-id", "--binding-id", "--scan-policy-id", "--correlation-id"];
   const found = new Map<string, string>();
@@ -137,7 +158,7 @@ export function parseOperatorArgs(args: readonly string[]): OperatorRequest {
     scope.scanPolicyId].some((id) => !uuid.test(id)) || !/^[a-zA-Z0-9._:-]{1,128}$/u.test(scope.correlationId)) {
     throw new Error("Invalid operator scope");
   }
-  return { inputRoot: exactPath(get("--input-root")), pinsPath: exactPath(get("--pins")),
+  return { campaign, inputRoot: exactPath(get("--input-root")), pinsPath: exactPath(get("--pins")),
     expectedPlanSha256: exactDigest(get("--plan-sha256")),
     journalDir: exactPath(get("--journal-dir")), scope };
 }
@@ -174,7 +195,7 @@ export async function scopedRead<T>(pool: Pick<Pool, "connect">, scope: Verified
 }
 
 export async function verifyCurrentRelation(pool: Pick<Pool, "connect">,
-  scope: VerifiedHnImportScope, query: string): Promise<boolean> {
+  scope: VerifiedHnImportScope, query: string, config?: string): Promise<boolean> {
   return scopedRead(pool, scope, async (client) => {
     const result = await client.query<{ matched: number }>(`
       SELECT 1 AS matched FROM tenants t
@@ -189,9 +210,10 @@ export async function verifyCurrentRelation(pool: Pick<Pool, "connect">,
       WHERE t.id = $1::uuid AND t.deleted_at IS NULL AND w.id = $2::uuid
         AND i.status = 'ENABLED' AND i.deleted_at IS NULL
         AND i.id = $3::uuid AND sb.id = $4::uuid AND sp.id = $5::uuid
-        AND sb.config->>'query' = $6`,
+        AND sb.config->>'query' = $6
+        ${config === undefined ? "" : "AND sb.config = $7::jsonb"}`,
       [scope.tenantId, scope.workspaceId, scope.interestId, scope.sourceBindingId,
-        scope.scanPolicyId, query]);
+        scope.scanPolicyId, query, ...(config === undefined ? [] : [config])]);
     return result.rows.length === 1;
   });
 }
@@ -215,7 +237,7 @@ export function composeImportDependencies(connection: PrismaIngestionWorkerConne
   const ids = new CryptoIdGenerator();
   const sourceItems = new PrismaSourceItemRepository(connection);
   return {
-    verifyCurrentBinding: (scope, query) => verifyCurrentRelation(pool, scope, query),
+    verifyCurrentBinding: (scope, query, config) => verifyCurrentRelation(pool, scope, query, config),
     findExistingExternalIds: (scope, externalIds) => findScopedExistingIds(pool, scope, externalIds),
     sourceItems: { saveBatchInsertOnly: (command) => sourceItems.saveBatchInsertOnly(command) },
     feedProjection: new PrismaFeedProjectionAdapter(connection, ids),
@@ -228,10 +250,14 @@ export function composeImportDependencies(connection: PrismaIngestionWorkerConne
 
 /** Explicit allowlist prevents future importer fields from entering operator output. */
 export function redactedOperatorReceipt(result: { readonly planSha256: string; readonly inserted: number;
-  readonly alreadyPresent: number }): { readonly status: "COMPLETE"; readonly planSha256: string;
-    readonly inserted: number; readonly alreadyPresent: number } {
+  readonly alreadyPresent: number }, campaign: VerifiedHnCampaign = "remainder"):
+  { readonly status: "COMPLETE"; readonly planSha256: string;
+    readonly inserted: number; readonly alreadyPresent: number;
+    readonly coverage?: "PARTIAL_SOURCE_ONLY"; readonly sourceStatus?: "incomplete" } {
   return { status: "COMPLETE", planSha256: result.planSha256,
-    inserted: result.inserted, alreadyPresent: result.alreadyPresent };
+    inserted: result.inserted, alreadyPresent: result.alreadyPresent,
+    ...(campaign === "sep28" ? { coverage: "PARTIAL_SOURCE_ONLY" as const,
+      sourceStatus: "incomplete" as const } : {}) };
 }
 
 type OperatorRuntime = Readonly<{
@@ -244,6 +270,7 @@ type OperatorRuntime = Readonly<{
 export async function runVerifiedHnOperatorWithRuntime(request: OperatorRequest, databaseUrl: string,
   runtime: OperatorRuntime): Promise<{
   status: "COMPLETE"; planSha256: string; inserted: number; alreadyPresent: number;
+  coverage?: "PARTIAL_SOURCE_ONLY"; sourceStatus?: "incomplete";
 }> {
   if (!databaseUrl) throw new Error("Collection database URL is unavailable");
   const ownerUid = runtime.testOwnerUid ?? 0;
@@ -262,16 +289,19 @@ export async function runVerifiedHnOperatorWithRuntime(request: OperatorRequest,
   let connection: PrismaIngestionWorkerConnection | undefined;
   try {
     // Both gates complete before the importer can create its exclusive journal or domain writes.
-    if (!await verifyCurrentRelation(pool, request.scope, plan.bindingQuery)) {
+    const bindingConfig = request.campaign === "sep28"
+      ? JSON.stringify((JSON.parse(artifacts.bindingBytes.toString("utf8")) as { config: unknown }[])[0]?.config)
+      : undefined;
+    if (!await verifyCurrentRelation(pool, request.scope, plan.bindingQuery, bindingConfig)) {
       throw new Error("Scoped HN relation does not match pinned binding");
     }
     const prismaConnection = await runtime.openPrisma(databaseUrl);
     connection = prismaConnection;
     const result = await runWithTenantDatabaseAccess(request.scope, () =>
       importVerifiedHnRemainder({ artifacts, expectedPlanSha256: request.expectedPlanSha256,
-        journalPath: join(journalDir, journalName), scope: request.scope,
+        journalPath: join(journalDir, verifiedHnJournalName(request.campaign ?? "remainder")), scope: request.scope,
         dependencies: composeImportDependencies(prismaConnection, pool) }));
-    return redactedOperatorReceipt(result);
+    return redactedOperatorReceipt(result, request.campaign);
   } finally {
     await connection?.close();
     await pool.end();
