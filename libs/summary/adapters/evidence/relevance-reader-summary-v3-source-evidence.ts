@@ -1,3 +1,4 @@
+import { publicCanonicalUrlIdentity } from "@social-monitor/shared-kernel";
 import type { ReaderValueAssessment } from
   "@social-monitor/relevance/application/contracts/reader-value-assessment-store";
 
@@ -15,7 +16,7 @@ export const evidenceItem = (
   readerHeadline: seal.headline,
   feedItemId: frozen.candidateId, sourceItemId: frozen.sourceItemId,
   sourceBindingId: frozen.sourceBindingId, interestId: assessment.input.interestId,
-  providerKey: frozen.providerKey, canonicalUrl: frozen.canonicalIdentity,
+  providerKey: frozen.providerKey, canonicalUrl: publicCanonicalUrlIdentity(frozen.canonicalIdentity),
   title: input.title, bodyPreview: input.body, sourceText: input.body,
   publishedAt: new Date(frozen.publishedAt), observedAt: new Date(frozen.observedAt),
   score: 0, whyImportant: [], readerActionKind: "read_source",
@@ -29,7 +30,7 @@ export const clusteringEvidenceItem = (
 ): SummaryEvidenceItem => ({
   feedItemId: frozen.candidateId, sourceItemId: frozen.sourceItemId,
   sourceBindingId: frozen.sourceBindingId, interestId: assessment.input.interestId,
-  providerKey: frozen.providerKey, canonicalUrl: frozen.canonicalIdentity,
+  providerKey: frozen.providerKey, canonicalUrl: publicCanonicalUrlIdentity(frozen.canonicalIdentity),
   title: input.title, bodyPreview: input.body, sourceText: input.body,
   publishedAt: new Date(frozen.publishedAt), observedAt: new Date(frozen.observedAt),
   score: 0, whyImportant: [], storyKeyHint: frozen.storyId,

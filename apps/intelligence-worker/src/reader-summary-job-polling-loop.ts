@@ -11,11 +11,12 @@ import {
 import { WorkerCommandIdFactory } from "@social-monitor/platform-worker";
 import {
   EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
-  type ReaderSummaryJobRepositoryPort,
+  type ReaderSummaryJobPollingRepositoryPort,
 } from "@social-monitor/summary/ports";
 import { ExecuteReaderSummaryJobCommandHandler } from "@social-monitor/summary/interfaces/queue/execute-reader-summary-job-command.handler";
 import { READER_SUMMARY_JOB_REPOSITORY } from "@social-monitor/summary/interfaces/rest/summary-provider-tokens";
 import { type Clock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { ReaderSummaryExecutionLeasePolicy } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-execution-lease.policy";
 
 import {
   INTELLIGENCE_READER_SUMMARY_JOB_LOOP_CLOCK,
@@ -37,7 +38,7 @@ export class ReaderSummaryJobPollingLoop
   constructor(
     private readonly handler: ExecuteReaderSummaryJobCommandHandler,
     @Inject(READER_SUMMARY_JOB_REPOSITORY)
-    private readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort,
+    private readonly readerSummaryJobs: ReaderSummaryJobPollingRepositoryPort,
     @Inject(INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS)
     private readonly options: IntelligenceReaderSummaryJobLoopOptions,
     private readonly commandIds: WorkerCommandIdFactory = WorkerCommandIdFactory.system(),
@@ -105,9 +106,12 @@ export class ReaderSummaryJobPollingLoop
 
   private async executeTick(trigger: "startup" | "interval"): Promise<void> {
     try {
-      const jobs = await this.readerSummaryJobs.findRequested({
+      const now = this.clock.now();
+      const jobs = await this.readerSummaryJobs.findDueForPolling({
         limit: this.options.limit,
-        now: this.clock.now(),
+        now,
+        staleRunningStartedBefore: new ReaderSummaryExecutionLeasePolicy()
+          .staleRunningStartedBefore(now),
         ...(this.options.tenantId === undefined
           ? {}
           : {

@@ -267,6 +267,33 @@ describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
     });
   });
 
+  it("keeps the frozen canonical URL in assessment provenance and ranking identity", async () => {
+    const canonicalUrl = "https://example.test/item?edition=2&access_token=synthetic-marker-only";
+    const row = item({});
+    const fixture = setup({ ...row, source: { ...row.source, canonicalUrl } });
+    const builder = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy());
+    fixture.builder.prepare.mockImplementation((source, revision) =>
+      builder.prepare(source, revision));
+    fixture.store.ensure.mockImplementation(async (_id, input) => ({
+      id: ids.assessment, input,
+    }) as never);
+
+    const result = await prepare(fixture.subject);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const input = fixture.store.ensure.mock.calls[0]?.[1];
+    expect(result.manifest.candidates[0]).toMatchObject({
+      canonicalIdentity: canonicalUrl,
+      sourceSnapshotSha256: input?.sourceSnapshotSha256,
+      inputSha256: input?.inputSha256,
+    });
+    expect(fixture.store.pin.mock.calls[0]?.[3][0]).toMatchObject({
+      sourceSnapshotSha256: input?.sourceSnapshotSha256,
+      inputSha256: input?.inputSha256,
+    });
+  });
+
   // Regression: a faulty cache returning another revision even for the
   // alternate identity must fail preparation before it pins stale evidence.
   it("rejects a stale revision-bound assessment before pinning", async () => {

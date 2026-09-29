@@ -61,6 +61,23 @@ describe('reader-value source custody', () => {
     expect(JSON.stringify(result)).not.toContain('fixture-only');
   });
 
+  it('keeps raw URL bytes in provenance while removing query credentials from captured source URLs', () => {
+    const marker = 'synthetic-marker-only';
+    const sourceUrl = `https://example.test/article?edition=2&access_token=${marker}`;
+    const result = prepare({ canonicalUrl: sourceUrl, capture: { ...source.capture, segments: [{
+      origin: 'article', sourceUrl, finalUrl: sourceUrl,
+      offset: 0, length: 4, originalLength: 4, truncated: false,
+    }] } });
+    expect(result.capture.segments[0]).toMatchObject({
+      sourceUrl: 'https://example.test/article?edition=2',
+      finalUrl: 'https://example.test/article?edition=2',
+    });
+    expect(JSON.stringify(result)).not.toContain(marker);
+    expect(result.sourceSnapshotSha256).not.toBe(prepare({
+      canonicalUrl: 'https://example.test/article?edition=2',
+    }).sourceSnapshotSha256);
+  });
+
   it('rejects empty content and empty configuration, but accepts title-only/body-only inputs', () => {
     expect(prepareReaderValueSourceSnapshot({ ...source, title: ' ', body: '\n' }, safety))
       .toEqual({ ok: false, error: 'empty_input' });

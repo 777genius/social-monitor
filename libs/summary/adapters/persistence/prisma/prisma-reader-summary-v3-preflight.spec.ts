@@ -144,15 +144,157 @@ describe("PrismaReaderSummaryV3Preflight execution fence", () => {
 
   it("treats duplicate delivery of the running claim as idempotent", async () => {
     const running = frozenJob().startPrepared({ startedAt: now, readyAt: now });
-    const transaction = jest.fn();
-    const prisma = { $transaction: transaction } as unknown as PrismaSummaryClient;
+    const tx = transactionReturning({ ...lockedRow(), status: "RUNNING",
+      started_at: now });
     const jobs = { findById: jest.fn().mockResolvedValue(running) } as unknown as
       PrismaReaderSummaryJobRepository;
 
-    await expect(new PrismaReaderSummaryV3Preflight(prisma, jobs, unusedSource())
+    await expect(new PrismaReaderSummaryV3Preflight(prismaFor(tx), jobs, unusedSource())
       .advance({ job: running, requestedAt: now, startedAt: now }))
       .resolves.toMatchObject({ kind: "already_running" });
-    expect(transaction).not.toHaveBeenCalled();
+    expect(tx.$queryRaw.mock.calls.some(([parts]) => (parts as TemplateStringsArray)
+      .join("?").includes("AS expired"))).toBe(true);
+  });
+
+  it.each(["daily", "weekly"] as const)(
+    "atomically recovers a %s workspace crash after claim using the DB lease and frozen manifest",
+    async (cadence) => {
+      const prepared = workspaceFrozenJob(cadence);
+      const startedAt = new Date("2026-09-21T00:00:00Z");
+      const recoveryAt = new Date("2026-09-23T00:00:00Z");
+      const old = ReaderSummaryJob.rehydrate({ ...prepared.startPrepared({
+        startedAt, readyAt: startedAt }).toSnapshot(),
+        failureReason: "v3_pre_provider_claim" });
+      const recovered = ReaderSummaryJob.rehydrate({ ...old.toSnapshot(),
+        startedAt: recoveryAt, failureReason: "v3_recovery_claim" });
+      const frozen = old.toSnapshot();
+      const sql: string[] = [];
+      const tx = { $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
+        const statement = parts.join("?");
+        sql.push(statement);
+        if (statement.includes("FROM reader_summary_jobs")) return [{ ...lockedRow(),
+          status: "RUNNING", started_at: startedAt,
+          failure_reason: "v3_pre_provider_claim",
+          preparation_config: Object.fromEntries(Object.entries(
+            frozen.preparationConfig ?? {}).reverse()),
+          preparation_manifest: Object.fromEntries(Object.entries(
+            frozen.preparationManifest ?? {}).reverse()),
+          preparation_manifest_sha256: frozen.preparationManifestSha256,
+          preparation_cutoff_at: frozen.preparationCutoffAt,
+          period_key: frozen.period.periodKey }];
+        if (statement.includes("AS expired")) return [{ expired: true }];
+        if (statement.includes("status='RUNNING'")) {
+          return [{ started_at: recoveryAt }];
+        }
+        return [];
+      }) };
+      const source = unusedSource();
+      const outcome = await new PrismaReaderSummaryV3Preflight(prismaFor(tx),
+        repositoryReturning(old, recovered), source).advance({ job: old,
+          requestedAt: recoveryAt, startedAt });
+      expect(outcome).toMatchObject({ kind: "claimed", job: recovered,
+        manifest: frozen.preparationManifest });
+      expect(sql.some((statement) => statement.includes(
+        "clock_timestamp() -"))).toBe(true);
+      expect(sql.some((statement) => statement.includes(
+        "started_at + interval '1 millisecond'"))).toBe(true);
+      expect(sql.some((statement) => statement.includes(
+        "preparation_config="))).toBe(false);
+      expect(source.configuration).not.toHaveBeenCalled();
+      expect(source.prepare).not.toHaveBeenCalled();
+      expect(source.coverage).not.toHaveBeenCalled();
+    });
+
+  it.each(["v3_provider_started", undefined])(
+    "retires an expired uncertain claim with marker %s without spending again",
+    async (failureReason) => {
+    const startedAt = new Date("2026-09-21T00:00:00Z");
+    const later = new Date("2026-09-23T00:00:00Z");
+    const old = ReaderSummaryJob.rehydrate({ ...workspaceFrozenJob()
+      .startPrepared({ startedAt, readyAt: startedAt }).toSnapshot(),
+      failureReason });
+    const failed = ReaderSummaryJob.rehydrate({ ...old.toSnapshot(),
+      status: "failed", failedAt: later,
+      failureReason: "V3 execution outcome uncertain after provider invocation" });
+    const tx = { $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
+      const statement = parts.join("?");
+      if (statement.includes("FROM reader_summary_jobs")) return [{ ...lockedRow(),
+        status: "RUNNING", started_at: startedAt,
+        failure_reason: failureReason ?? null }];
+      if (statement.includes("AS expired")) return [{ expired: true }];
+      return [];
+    }) };
+    const source = unusedSource();
+    const outcome = await new PrismaReaderSummaryV3Preflight(prismaFor(tx),
+      repositoryReturning(old, failed), source).advance({ job: old,
+        requestedAt: later, startedAt: later });
+    expect(outcome).toMatchObject({ kind: "terminal", job: failed });
+    expect(tx.$queryRaw.mock.calls.some(([parts]) => (parts as TemplateStringsArray)
+      .join("?").includes("status='RUNNING',"))).toBe(false);
+    expect(source.prepare).not.toHaveBeenCalled();
+  });
+
+  it("reclaims one definitive rate limit without rebuilding preparation", async () => {
+    const now = new Date("2026-09-21T00:00:00Z");
+    const retriedAt = new Date("2026-09-21T00:01:00Z");
+    const failed = workspaceFrozenJob().startPrepared({ startedAt: now,
+      readyAt: now }).fail({ failedAt: now,
+      failureReason: "v3_retryable_provider_rate_limited" });
+    const old = failed.toSnapshot();
+    const recovered = ReaderSummaryJob.rehydrate({ ...old, status: "running",
+      startedAt: retriedAt, failedAt: undefined,
+      failureReason: "v3_recovery_claim" });
+    const tx = { $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
+      const statement = parts.join("?");
+      if (statement.includes("FROM reader_summary_jobs")) return [{ ...lockedRow(),
+        status: "FAILED", started_at: now, terminal_failure_code: null,
+        failure_reason: old.failureReason, preparation_config: old.preparationConfig,
+        preparation_manifest: old.preparationManifest,
+        preparation_manifest_sha256: old.preparationManifestSha256,
+        preparation_cutoff_at: old.preparationCutoffAt,
+        period_key: old.period.periodKey }];
+      if (statement.includes("status='RUNNING'")) return [{ started_at: retriedAt }];
+      return [];
+    }) };
+    const source = unusedSource();
+    const outcome = await new PrismaReaderSummaryV3Preflight(prismaFor(tx),
+      repositoryReturning(failed, recovered), source).advance({ job: failed,
+        requestedAt: retriedAt, startedAt: retriedAt });
+    expect(outcome).toMatchObject({ kind: "claimed", job: recovered,
+      manifest: old.preparationManifest });
+    expect(source.prepare).not.toHaveBeenCalled();
+  });
+
+  it("retires an expired claim when frozen preparation no longer verifies", async () => {
+    const startedAt = new Date("2026-09-21T00:00:00Z");
+    const later = new Date("2026-09-23T00:00:00Z");
+    const old = ReaderSummaryJob.rehydrate({ ...workspaceFrozenJob("weekly")
+      .startPrepared({ startedAt, readyAt: startedAt }).toSnapshot(),
+      failureReason: "v3_pre_provider_claim" });
+    const failed = ReaderSummaryJob.rehydrate({ ...old.toSnapshot(),
+      status: "failed", failedAt: later,
+      failureReason: "V3 recovery requires manual review: frozen preparation is unverifiable" });
+    const sql: string[] = [];
+    const tx = { $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
+      const statement = parts.join("?");
+      sql.push(statement);
+      if (statement.includes("FROM reader_summary_jobs")) return [{ ...lockedRow(),
+        status: "RUNNING", started_at: startedAt,
+        failure_reason: "v3_pre_provider_claim",
+        preparation_manifest_sha256: "0".repeat(64) }];
+      if (statement.includes("AS expired")) return [{ expired: true }];
+      return [];
+    }) };
+
+    const outcome = await new PrismaReaderSummaryV3Preflight(prismaFor(tx),
+      repositoryReturning(old, failed), unusedSource()).advance({ job: old,
+        requestedAt: later, startedAt: later });
+
+    expect(outcome).toMatchObject({ kind: "terminal", job: failed });
+    expect(sql.some((statement) => statement.includes(
+      "frozen preparation is unverifiable"))).toBe(true);
+    expect(sql.some((statement) => statement.includes(
+      "failure_reason='v3_recovery_claim'"))).toBe(false);
   });
 
   // Regression: a JSONB manifest, per-interest rubric, period, or exact
@@ -416,14 +558,23 @@ const workspaceManifest = { schemaVersion: "reader_summary_preparation_manifest.
   cutoffAt: "2026-09-21T00:00:00.000000Z",
   periodKey: "daily:2026-09-19T00:00:00.000Z:2026-09-20T00:00:00.000Z:UTC",
   interests: [config], candidates: [] };
-const workspaceFrozenJob = () => ReaderSummaryJob.rehydrate({
-  ...requestedJob().toSnapshot(), scope: { type: "workspace" } }).freezePreparation({
+const workspaceFrozenJob = (cadence: "daily" | "weekly" = "daily") => {
+  const original = requestedJob().toSnapshot();
+  const startedAt = cadence === "weekly" ? new Date("2026-09-13T00:00:00Z") :
+    original.period.startedAt;
+  const period = { ...original.period, cadence, startedAt,
+    periodKey: `${cadence}:${startedAt.toISOString()}:` +
+      `${original.period.endedAt.toISOString()}:UTC` };
+  const manifest = { ...workspaceManifest, periodKey: period.periodKey };
+  return ReaderSummaryJob.rehydrate({
+  ...original, scope: { type: "workspace" }, period }).freezePreparation({
     strategy: "jev_primary_v3", config: workspaceConfig,
-    cutoffAt: workspaceManifest.cutoffAt,
+    cutoffAt: manifest.cutoffAt,
     deadlineAt: "2026-09-21T00:15:00.000000Z",
     nextCheckAt: new Date("2026-09-21T00:00:10Z"),
-  }).freezePreparationManifest({ manifest: workspaceManifest,
-    manifestSha256: readerSummaryWorkspaceManifestSha256(workspaceManifest) });
+  }).freezePreparationManifest({ manifest,
+    manifestSha256: readerSummaryWorkspaceManifestSha256(manifest) });
+};
 const candidate = { candidateId: id(10), sourceItemId: id(11),
   sourceBindingId: id(12), providerKey: "rss", sourceRevisionKey: "revision",
   sourceSnapshotSha256: "1".repeat(64), assessmentId: id(13),

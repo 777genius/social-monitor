@@ -5,7 +5,8 @@ import {
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import type { ReaderSummaryJob } from "../../../domain";
-import type { ReaderSummaryJobRepositoryPort } from "../../../ports";
+import type { ReaderSummaryJobRepositoryPort,
+  ReaderSummaryJobPollingRepositoryPort } from "../../../ports";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import {
   readerSummaryJobFromPrisma,
@@ -13,7 +14,7 @@ import {
   readerSummaryScopeToPrisma,
 } from "./prisma-reader-summary-records";
 
-export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
+export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobPollingRepositoryPort {
   constructor(private readonly prisma: PrismaSummaryClient) {}
 
   async save(job: ReaderSummaryJob): Promise<void> {
@@ -154,6 +155,39 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
     return records.map((record) => readerSummaryJobFromPrisma(record));
   }
 
+  async findDueForPolling(
+    params: Parameters<ReaderSummaryJobPollingRepositoryPort["findDueForPolling"]>[0],
+  ): Promise<readonly ReaderSummaryJob[]> {
+    assertOptionalScopeIsComplete(params);
+    const findDue = async () => {
+      const records = await this.prisma.readerSummaryJob.findMany({
+        where: {
+          tenantId: params.tenantId,
+          workspaceId: params.workspaceId,
+          OR: [
+            { status: "REQUESTED", OR: [
+              { preparationNextCheckAt: null },
+              { preparationNextCheckAt: { lte: params.now } },
+            ] },
+            { status: "RUNNING", selectionStrategy: "jev_primary_v3",
+              startedAt: { lt: params.staleRunningStartedBefore } },
+            { status: "FAILED", selectionStrategy: "jev_primary_v3",
+              terminalFailureCode: null,
+              failureReason: "v3_retryable_provider_rate_limited" },
+          ],
+        },
+        orderBy: [{ requestedAt: "asc" }, { id: "asc" }],
+        take: params.limit,
+      });
+      return this.withExactPreparationTimesForRecords(records);
+    };
+    const records = params.tenantId === undefined
+      ? await runWithSystemDatabaseAccess(
+        "cross-tenant reader summary job polling", findDue)
+      : await findDue();
+    return records.map((record) => readerSummaryJobFromPrisma(record));
+  }
+
   private async withExactPreparationTimes<T extends {
     readonly id: string;
     readonly tenantId: string;
@@ -218,6 +252,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
     if (record === null) {
       return null;
     }
+    if (record.selectionStrategy === "jev_primary_v3") return null;
     const staleRunning =
       record.status === "RUNNING" &&
       record.startedAt !== null &&

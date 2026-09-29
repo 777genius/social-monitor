@@ -51,10 +51,12 @@ import {
   readerSummaryObservedThrough,
   withReaderSummaryTopicMap,
 } from "./execute-reader-summary-job-support";
-
 import { buildReaderSummaryPromotionArtifactFields } from "./reader-summary-promotion-artifact-fields";
 import { buildReaderSummaryV3Evidence, prepareReaderSummaryV3Job } from "./reader-summary-v3-execution";
 type ExecuteReaderSummaryJobFailure = DomainError | Error;
+const v3FailureReason = (kind: string, retryable: boolean,
+  recovered: boolean, message: string): string => kind === "provider_rate_limited" &&
+  retryable && !recovered ? "v3_retryable_provider_rate_limited" : message;
 export class ExecuteReaderSummaryJobUseCase {
   constructor(
     private readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort,
@@ -78,7 +80,6 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly v3Preflight?: ReaderSummaryV3PreflightPort,
     private readonly v3Promotion?: ReaderSummaryV3PromotionPort,
   ) {}
-
   async execute(
     command: ExecuteReaderSummaryJobCommand,
   ): Promise<
@@ -92,13 +93,11 @@ export class ExecuteReaderSummaryJobUseCase {
         ),
       );
     }
-
     const existingJob = await this.readerSummaryJobs.findById({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       readerSummaryJobId: command.readerSummaryJobId,
     });
-
     if (existingJob === null) {
       return err(
         new DomainError(
@@ -107,7 +106,6 @@ export class ExecuteReaderSummaryJobUseCase {
         ),
       );
     }
-
     const snapshot = existingJob.toSnapshot();
     const observed = await readerSummaryObservedThrough({ job: existingJob,
       authority: this.newInputRefresh, clock: this.clock });
@@ -120,11 +118,9 @@ export class ExecuteReaderSummaryJobUseCase {
         readerSummaryId: snapshot.readerSummaryId,
       });
     }
-
     if (snapshot.status === "failed" && snapshot.terminalFailureCode !== undefined) {
       return ok({ readerSummaryJobId: snapshot.id, status: "failed" });
     }
-
     let runningJob: ReaderSummaryJob | null;
     let frozenV3Manifest: ReaderSummaryPreparationManifest | undefined;
     if (snapshot.selectionStrategy === "jev_primary_v3") {
@@ -144,7 +140,6 @@ export class ExecuteReaderSummaryJobUseCase {
         readerSummaryJobId: command.readerSummaryJobId,
       });
     }
-
     if (runningJob === null) {
       return err(
         new DomainError(
@@ -154,11 +149,14 @@ export class ExecuteReaderSummaryJobUseCase {
       );
     }
     const claimStartedAt = runningJob.toSnapshot().startedAt;
-    if (claimStartedAt === undefined) {
-      return readerSummaryExecutionClaimLost();
-    }
-
+    if (claimStartedAt === undefined) return readerSummaryExecutionClaimLost();
+    let modelPipelineFinished = false;
     try {
+      if (frozenV3Manifest !== undefined) {
+        if (!await this.v3Preflight!.markProviderStarted(runningJob, claimStartedAt)) {
+          return readerSummaryExecutionClaimLost();
+        }
+      }
       let v3Evidence;
       if (frozenV3Manifest !== undefined) {
         const prepared = await buildReaderSummaryV3Evidence({ job: runningJob,
@@ -174,11 +172,14 @@ export class ExecuteReaderSummaryJobUseCase {
         observedThrough,
         v3Evidence,
       );
-
+      modelPipelineFinished = true;
       if (!result.ok) {
         const failedJob = runningJob.fail({
           failedAt: this.clock.now(),
-          failureReason: result.error.message,
+          failureReason: frozenV3Manifest === undefined ? result.error.message :
+            v3FailureReason(result.error.kind, result.error.retryable,
+              runningJob.toSnapshot().failureReason === "v3_recovery_claim",
+              result.error.message),
         });
         const saved = await saveReaderSummaryExecutionOutcome(
           this.readerSummaryJobs,
@@ -188,7 +189,6 @@ export class ExecuteReaderSummaryJobUseCase {
         if (!saved) {
           return readerSummaryExecutionClaimLost();
         }
-
         return err(
           new DomainError(
             "external.dependency_unavailable",
@@ -199,7 +199,6 @@ export class ExecuteReaderSummaryJobUseCase {
           ),
         );
       }
-
       const prepublication = await evaluateReaderSummaryPrepublication({
         artifact: result.value.artifact,
         evidence: result.value.evidence,
@@ -234,14 +233,12 @@ export class ExecuteReaderSummaryJobUseCase {
         if (!saved) {
           return readerSummaryExecutionClaimLost();
         }
-
         return ok({
           readerSummaryJobId: rejectedJob.toSnapshot().id,
           status: "quality_rejected",
           readerSummaryId: artifactSnapshot.readerSummaryId,
         });
       }
-
       const publicationResult = await publishReaderSummaryJob({
         artifact: result.value.artifact,
         runningJob,
@@ -286,7 +283,11 @@ export class ExecuteReaderSummaryJobUseCase {
       }
       const failedJob = runningJob.fail({
         failedAt: this.clock.now(),
-        failureReason: failure.message,
+        failureReason: frozenV3Manifest !== undefined && !modelPipelineFinished
+          ? v3FailureReason("kind" in failure ? failure.kind : "unknown",
+            "retryable" in failure && failure.retryable === true,
+            runningJob.toSnapshot().failureReason === "v3_recovery_claim",
+            failure.message) : failure.message,
       });
       const saved = await saveReaderSummaryExecutionOutcome(
         this.readerSummaryJobs,
@@ -296,7 +297,6 @@ export class ExecuteReaderSummaryJobUseCase {
       if (!saved) {
         return readerSummaryExecutionClaimLost();
       }
-
       if (availabilityError !== undefined) return err(availabilityError);
       return err(
         new DomainError("external.dependency_unavailable", failure.message, {
@@ -305,7 +305,6 @@ export class ExecuteReaderSummaryJobUseCase {
       );
     }
   }
-
   private async runModelPipeline(
     job: ReaderSummaryJob,
     maxEvidenceItems: number,
@@ -413,11 +412,9 @@ export class ExecuteReaderSummaryJobUseCase {
     const attempt = await this.readerSummaryModel.generate(input, route);
     const validation =
       this.readerSummaryModel.validateRawProviderResponse(attempt);
-
     if (!validation.ok) {
       return err(validation.failure);
     }
-
     try {
       assertReaderSummaryCitationsAgainstEvidence(attempt.draft, modelEvidence);
     } catch (error) {
@@ -488,12 +485,10 @@ export class ExecuteReaderSummaryJobUseCase {
       return err(this.readerSummaryModel.classifyError(draftResult.error));
     }
     const artifact = createArtifact(draftResult.value);
-
     return ok({
       artifact,
       evidence: publicationEvidence,
       editorialEvidence: modelEvidence,
     });
   }
-
 }

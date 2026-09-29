@@ -32,6 +32,16 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
       return;
     }
     final period = selectedSummaryPeriod;
+    final normalKey = _summaryRequestIdempotencyKeyFactory(_scope, period);
+    final published = switch (workspaceSummaryState) {
+      ReadyViewState<WorkspaceSummarySnapshot>(:final value) => value.current,
+      _ => null,
+    };
+    final canRequestSuccessor =
+        published != null &&
+        _sameSummaryPeriodWindow(published.period, period) &&
+        (period.cadence == SummaryPeriodCadence.daily ||
+            period.cadence == SummaryPeriodCadence.weekly);
     final generation = _summaryGenerationGuard.markOperationStarted();
     final previous = switch (summaryJobState) {
       ReadyViewState<ReaderSummaryJobSnapshot>(:final value) => value,
@@ -44,16 +54,35 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
     );
     _notifyStateChanged();
 
-    final result = await _dependencies.requestWorkspaceSummary(
+    var result = await _dependencies.requestWorkspaceSummary(
       RequestWorkspaceSummaryCommand(
         scope: _scope,
         userId: _userId,
-        idempotencyKey: _summaryRequestIdempotencyKeyFactory(_scope, period),
+        idempotencyKey: normalKey,
         period: period,
       ),
     );
     if (!_summaryGenerationGuard.isCurrent(generation)) {
       return;
+    }
+    // A completed job returned for the normal key is the only source that can
+    // be safely named by a stable successor key. New and in-flight jobs keep
+    // their normal request identity.
+    if (canRequestSuccessor &&
+        result is ResultSuccess<ReaderSummaryJobSnapshot> &&
+        !result.value.created &&
+        result.value.status == ReaderSummaryJobStatus.completed) {
+      result = await _dependencies.requestWorkspaceSummary(
+        RequestWorkspaceSummaryCommand(
+          scope: _scope,
+          userId: _userId,
+          idempotencyKey: 'v3-successor:$normalKey',
+          period: period,
+        ),
+      );
+      if (!_summaryGenerationGuard.isCurrent(generation)) {
+        return;
+      }
     }
 
     final job = result.fold<ReaderSummaryJobSnapshot?>(

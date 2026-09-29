@@ -12,7 +12,6 @@ import {
   compareReaderPostPromotionV3,
   selectGitHubTrendingSupplementalEvidence,
   selectReaderPostPromotionsV3,
-  StoryClusteringService,
   type ReaderPostPromotionV3Candidate,
   type ReaderPostPromotionV3Presentation,
   type ReaderPostPromotionV3Provider,
@@ -40,10 +39,11 @@ import { clustersForSelection, v3EvidenceSelection } from
   "./relevance-reader-summary-v3-evidence";
 import { clusteringEvidenceItem, evidenceItem } from
   "./relevance-reader-summary-v3-source-evidence";
+import { clusterPromotionStoryRelations, semanticAdmission } from
+  "./relevance-reader-summary-v3-story-relations";
 
 const maxPresentationCandidates = 32;
 const presentationBatchSize = 4;
-const maxWorkspaceStoryRelationCandidates = 5_000;
 
 export class RelevanceReaderSummaryV3Promotion
 implements ReaderSummaryV3PromotionPort {
@@ -202,34 +202,19 @@ implements ReaderSummaryV3PromotionPort {
         blocked: snapshot.safety === "blocked",
       } satisfies ReaderPostPromotionV3Candidate;
     });
-    // The generic story matcher compares groups pairwise. Only candidates
-    // eligible for V3 promotion can affect the global Top or Additional story
-    // relation; exact source, explicit story and canonical identities still
-    // join every assessed candidate in normalizeDuplicateStoryIds below.
-    const relationCandidates = params.manifest.schemaVersion ===
-      "reader_summary_preparation_manifest.v2"
-      ? rawCandidates.filter(semanticAdmission) : rawCandidates;
-    if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
-        relationCandidates.length > maxWorkspaceStoryRelationCandidates) {
-      return { kind: "budget_exhausted" };
-    }
-    const relationIds = new Set(relationCandidates.map((candidate) => candidate.candidateId));
-    const relationEvidence = frozenEvidence.filter((item) =>
-      relationIds.has(item.feedItemId));
-    const storyMembership = new StoryClusteringService(
-      { now: () => new Date(params.manifest.cutoffAt) },
-      { ...STORY_RANKING_POLICY_V1,
-        maxClusters: Math.max(1, relationEvidence.length) },
-    ).cluster({
+    const clustered = clusterPromotionStoryRelations({
+      candidates: rawCandidates, evidence: frozenEvidence,
+      cutoffAt: params.manifest.cutoffAt,
       identity: { tenantId: job.tenantId, workspaceId: job.workspaceId,
         scope: job.scope },
-      items: [...relationEvidence].sort((left, right) =>
-        compareUtf8Bytes(left.feedItemId, right.feedItemId)),
-      limit: Math.max(1, relationEvidence.length),
-      now: new Date(params.manifest.cutoffAt),
+      workspaceManifest: params.manifest.schemaVersion ===
+        "reader_summary_preparation_manifest.v2",
     });
+    if (clustered.kind === "budget_exhausted") {
+      return { kind: "budget_exhausted" };
+    }
     const candidates = normalizeDuplicateStoryIds(rawCandidates,
-      explicitStoryIds, deterministicStoryIds, storyMembership.clusters)
+      explicitStoryIds, deterministicStoryIds, clustered.clusters)
       .sort(compareReaderPostPromotionV3);
 
     const statuses = new Map<string, ReaderPostPromotionV3Presentation>(candidates.map((candidate) =>
@@ -348,8 +333,6 @@ implements ReaderSummaryV3PromotionPort {
       return { kind: "presentation_unavailable" };
     }
     if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
-        selection.outcome === "ready" &&
-        selection.top.length + selection.additional.length < 16 &&
         selection.excluded.some((entry) =>
           entry.reason === "presentation_budget_exhausted")) {
       return { kind: "budget_exhausted" };
@@ -385,14 +368,6 @@ implements ReaderSummaryV3PromotionPort {
     return { kind: "ready", evidence: value };
   }
 }
-
-const semanticAdmission = (candidate: ReaderPostPromotionV3Candidate): boolean =>
-  (candidate.answers.usefulness.choice === "useful" ||
-    candidate.answers.usefulness.choice === "important") &&
-  (candidate.answers.relevance.choice === "relevant" ||
-    candidate.answers.relevance.choice === "central") &&
-  !candidate.appendixOnly && candidate.scopeValid && candidate.sourceIdentityValid &&
-  candidate.freshnessValid && candidate.safetyValid && !candidate.blocked;
 
 const promotionProviderFamily = (providerKey: string): ReaderPostPromotionV3Provider => {
   const key = providerKey.trim().toLowerCase();

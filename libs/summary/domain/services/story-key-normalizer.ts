@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { validateOutboundUrl } from "@social-monitor/shared-kernel";
+import { identityQueryEntries, validateOutboundUrl } from "@social-monitor/shared-kernel";
 
 import type { StoryRankingPolicy } from "../policies/story-ranking-policy";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
@@ -231,8 +231,9 @@ const canonicalUrlStoryKey = (value: string): string | null => {
       host === "news.ycombinator.com" &&
       parsed.pathname.replace(/\/+$/u, "") === "/item"
     ) {
-      const itemId = parsed.searchParams.get("id")?.trim();
-      if (itemId !== undefined && /^[0-9]+$/u.test(itemId)) {
+      const itemIds = parsed.searchParams.getAll("id");
+      const itemId = itemIds[0]?.trim();
+      if (itemIds.length === 1 && itemId !== undefined && /^[0-9]+$/u.test(itemId)) {
         return `url:news.ycombinator.com/item/${itemId}`;
       }
     }
@@ -252,28 +253,8 @@ const canonicalUrlStoryKey = (value: string): string | null => {
   }
 };
 
-const trackingQueryParameterNames = new Set([
-  "fbclid",
-  "gclid",
-  "igshid",
-  "mc_cid",
-  "mc_eid",
-  "ref",
-  "source",
-]);
-
 const canonicalQueryKey = (host: string, params: URLSearchParams): string => {
-  const identityParameters = [...params.entries()]
-    .filter(([name]) => {
-      const normalized = name.toLocaleLowerCase("en-US");
-      return (
-        !normalized.startsWith("utm_") &&
-        !trackingQueryParameterNames.has(normalized) &&
-        !(host === "x.com" && normalized === "s") &&
-        !(host === "youtube.com" && normalized === "si")
-      );
-    })
-    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+  const identityParameters = identityQueryEntries(host, params);
 
   if (identityParameters.length === 0) {
     return "";

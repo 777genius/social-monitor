@@ -153,6 +153,8 @@ describe("storyKey canonical URL query identity", () => {
     expect(keyFor("https://twitter.com/author/status/123?s=20")).toBe(
       keyFor("https://x.com/author/status/123"),
     );
+    expect(keyFor("https://x.com/author/status/123?ref_src=twsrc%5Etfw&access_token=synthetic-marker-only"))
+      .toBe(keyFor("https://x.com/author/status/123"));
     expect(keyFor("https://example.test/author/status/123?s=20")).not.toBe(
       keyFor("https://example.test/author/status/123"),
     );
@@ -165,6 +167,8 @@ describe("storyKey canonical URL query identity", () => {
     expect(keyFor("https://youtube.com/watch?v=alpha&si=fixture-share")).toBe(
       keyFor("https://www.youtube.com/watch?v=alpha"),
     );
+    expect(keyFor("https://youtu.be/alpha?si=fixture-share&access_token=synthetic-marker-only"))
+      .toBe(keyFor("https://youtu.be/alpha"));
     expect(keyFor("https://youtube.com/watch?v=alpha")).not.toBe(
       keyFor("https://youtube.com/watch?v=beta"),
     );
@@ -216,6 +220,14 @@ describe("storyKey canonical URL query identity", () => {
 
     expect(first).toBe("url:news.ycombinator.com/item/987");
     expect(second).toBe(first);
+  });
+
+  it('keeps repeated Hacker News ids in order instead of collapsing to the first id', () => {
+    const keyFor = (query: string) => storyKey(evidence({
+      title: 'HN item', canonicalUrl: `https://news.ycombinator.com/item?${query}`,
+    }), STORY_RANKING_POLICY_V1);
+    expect(keyFor('id=1&id=2')).not.toBe(keyFor('id=2&id=1'));
+    expect(keyFor('id=1&id=2')).not.toBe(keyFor('id=1'));
   });
 
   it("does not expose malformed Hacker News item IDs", () => {

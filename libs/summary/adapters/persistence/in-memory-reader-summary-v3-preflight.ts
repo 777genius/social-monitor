@@ -6,24 +6,51 @@ import type {
 import type { InMemoryReaderSummaryJobRepository } from
   "./in-memory-reader-summary-job.repository";
 import { canonicalReaderSummaryPreparationTimestamp,
+  ReaderSummaryJob, readerSummaryWorkspaceManifestSha256,
   sameReaderSummaryPreparationIdentity } from "../../domain";
+import { ReaderSummaryExecutionLeasePolicy } from
+  "../../features/execute-reader-summary-job/reader-summary-execution-lease.policy";
 
 const deadlineMs = 15 * 60 * 1_000;
 const checkMs = 10 * 1_000;
+const recoveryClaim = "v3_recovery_claim";
+const preProviderClaim = "v3_pre_provider_claim";
+const providerStarted = "v3_provider_started";
+const uncertainOutcome = "V3 execution outcome uncertain after provider invocation";
 
 export class InMemoryReaderSummaryV3Preflight
 implements ReaderSummaryV3PreflightPort {
   constructor(
     private readonly jobs: InMemoryReaderSummaryJobRepository,
     private readonly source: ReaderSummaryV3PreparationSourcePort,
+    private readonly lease: ReaderSummaryExecutionLeasePolicy =
+      new ReaderSummaryExecutionLeasePolicy(),
   ) {}
+
+  async markProviderStarted(job: ReaderSummaryJob, expectedStartedAt: Date): Promise<boolean> {
+    return this.jobs.runExclusive(async () => {
+      const current = await this.find(job);
+      const snapshot = current?.toSnapshot();
+      if (snapshot?.status !== "running" ||
+          snapshot.startedAt?.getTime() !== expectedStartedAt.getTime() ||
+          snapshot.failureReason !== preProviderClaim &&
+          snapshot.failureReason !== recoveryClaim) return false;
+      await this.jobs.save(ReaderSummaryJob.rehydrate({ ...snapshot,
+        failureReason: snapshot.failureReason === recoveryClaim
+          ? "v3_provider_started_after_recovery" : providerStarted }));
+      return true;
+    });
+  }
 
   async advance(
     params: Parameters<ReaderSummaryV3PreflightPort["advance"]>[0],
   ): Promise<ReaderSummaryV3PreflightOutcome> {
-    let job = params.job;
+    let job = (await this.find(params.job)) ?? params.job;
     let snapshot = job.toSnapshot();
-    if (snapshot.status === "running") return { kind: "already_running", job };
+    if (snapshot.status === "running" || snapshot.status === "failed" &&
+        snapshot.terminalFailureCode === undefined) {
+      return this.recover(job, params.startedAt);
+    }
     if (snapshot.status !== "requested") return { kind: "terminal", job };
 
     if (snapshot.preparationConfig === undefined) {
@@ -95,8 +122,10 @@ implements ReaderSummaryV3PreflightPort {
       if (currentSnapshot.status === "running") return { kind: "already_running", job: current };
       if (currentSnapshot.status !== "requested") return { kind: "terminal", job: current };
       if (coverage.status === "ready") {
-        const running = current.startPrepared({ startedAt: params.startedAt,
-          readyAt: params.startedAt });
+        const running = ReaderSummaryJob.rehydrate({
+          ...current.startPrepared({ startedAt: params.startedAt,
+            readyAt: params.startedAt }).toSnapshot(),
+          failureReason: preProviderClaim });
         await this.jobs.save(running);
         return { kind: "claimed", job: running, manifest };
       }
@@ -117,6 +146,53 @@ implements ReaderSummaryV3PreflightPort {
         params.startedAt.getTime() + checkMs)));
       await this.jobs.save(deferred);
       return { kind: "deferred", job: deferred };
+    });
+  }
+
+  private async recover(job: ReaderSummaryJob, now: Date):
+  Promise<ReaderSummaryV3PreflightOutcome> {
+    return this.jobs.runExclusive(async () => {
+      const current = await this.find(job);
+      if (current === null) return { kind: "terminal", job };
+      const snapshot = current.toSnapshot();
+      if (snapshot.status === "running") {
+        if (snapshot.startedAt === undefined ||
+            snapshot.startedAt >= this.lease.staleRunningStartedBefore(now)) {
+          return { kind: "already_running", job: current };
+        }
+        if (snapshot.failureReason !== preProviderClaim) {
+          const failed = ReaderSummaryJob.rehydrate({ ...snapshot, status: "failed",
+            failedAt: now, failureReason: uncertainOutcome });
+          await this.jobs.save(failed);
+          return { kind: "terminal", job: failed };
+        }
+      } else if (snapshot.status !== "failed" ||
+          snapshot.terminalFailureCode !== undefined ||
+          snapshot.failureReason !== "v3_retryable_provider_rate_limited") {
+        return { kind: "terminal", job: current };
+      }
+      const manifest = snapshot.preparationManifest;
+      const config = snapshot.preparationConfig;
+      if (manifest === undefined || config === undefined ||
+          !sameReaderSummaryPreparationIdentity(config, config, manifest) ||
+          manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+          (readerSummaryWorkspaceManifestSha256(manifest) !==
+            snapshot.preparationManifestSha256 ||
+            manifest.cutoffAt !== snapshot.preparationCutoffAt ||
+            manifest.periodKey !== snapshot.period.periodKey)) {
+        const failed = ReaderSummaryJob.rehydrate({ ...snapshot, status: "failed",
+          failedAt: now,
+          failureReason: "V3 recovery requires manual review: frozen preparation is unverifiable" });
+        await this.jobs.save(failed);
+        return { kind: "terminal", job: failed };
+      }
+      const startedAt = new Date(Math.max(now.getTime(),
+        (snapshot.startedAt?.getTime() ?? 0) + 1));
+      const running = ReaderSummaryJob.rehydrate({ ...snapshot, status: "running",
+        requestedAt: snapshot.requestedAt, startedAt, failedAt: undefined,
+        failureReason: recoveryClaim });
+      await this.jobs.save(running);
+      return { kind: "claimed", job: running, manifest };
     });
   }
 

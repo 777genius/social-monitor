@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import {
+  identityQueryEntries,
   sanitizeUrlCredentials,
   type JsonObject,
 } from "@social-monitor/shared-kernel";
@@ -335,9 +336,7 @@ const canonicalClusterKey = (
     const parsed = new URL(sanitizedCanonicalUrl ?? canonicalUrl);
     const safeOriginal = new URL(sanitizeUrlCredentials(canonicalUrl));
     const pathKey = `url:${parsed.host.toLowerCase()}${parsed.pathname.replace(/\/+$/u, "")}`;
-    const query = [...safeOriginal.searchParams.entries()]
-      .filter(([key]) => !isTrackingQueryParam(key, safeOriginal.hostname))
-      .sort(([leftKey], [rightKey]) => compareQueryPart(leftKey, rightKey));
+    const query = identityQueryEntries(safeOriginal.hostname, safeOriginal.searchParams);
 
     if (query.length === 0) {
       return pathKey;
@@ -346,26 +345,13 @@ const canonicalClusterKey = (
     // Cluster ids leave the domain as read-model data, so keep query values
     // out of them even after credential redaction.
     const queryDigest = createHash("sha256")
-      .update(new URLSearchParams(query).toString())
+      .update(JSON.stringify(query))
       .digest("hex");
 
     return `${pathKey}?q=${queryDigest}`;
   } catch {
     return `title:${titleTokens(title).join("-")}`;
   }
-};
-
-const compareQueryPart = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
-
-const isTrackingQueryParam = (key: string, hostname: string): boolean => {
-  const normalized = key.toLowerCase();
-  const host = hostname.toLowerCase().replace(/^www\./u, "");
-
-  return normalized.startsWith("utm_") ||
-    ["fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid", "ref", "ref_src"].includes(normalized) ||
-    (normalized === "s" && ["x.com", "twitter.com"].includes(host)) ||
-    (normalized === "si" && ["youtube.com", "youtu.be"].includes(host));
 };
 
 const tokenSimilarity = (

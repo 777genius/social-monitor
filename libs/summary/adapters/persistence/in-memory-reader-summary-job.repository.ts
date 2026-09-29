@@ -1,7 +1,8 @@
 import type { ReaderSummaryJob } from "../../domain";
-import type { ReaderSummaryJobRepositoryPort } from "../../ports";
+import type { ReaderSummaryJobRepositoryPort,
+  ReaderSummaryJobPollingRepositoryPort } from "../../ports";
 
-export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
+export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobPollingRepositoryPort {
   private readonly jobsById = new Map<string, ReaderSummaryJob>();
   private readonly jobsByIdempotencyKey = new Map<string, ReaderSummaryJob>();
   private mutationTail = Promise.resolve();
@@ -70,6 +71,31 @@ export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobRepos
       .slice(0, params.limit);
   }
 
+  async findDueForPolling(
+    params: Parameters<ReaderSummaryJobPollingRepositoryPort["findDueForPolling"]>[0],
+  ): Promise<readonly ReaderSummaryJob[]> {
+    assertOptionalScopeIsComplete(params);
+    return [...this.jobsById.values()]
+      .filter((job) => {
+        const snapshot = job.toSnapshot();
+        if (params.tenantId !== undefined && snapshot.tenantId !== params.tenantId ||
+            params.workspaceId !== undefined && snapshot.workspaceId !== params.workspaceId) {
+          return false;
+        }
+        if (snapshot.status === "requested") {
+          return snapshot.preparationNextCheckAt === undefined ||
+            snapshot.preparationNextCheckAt <= params.now;
+        }
+        return snapshot.selectionStrategy === "jev_primary_v3" && (
+          snapshot.status === "running" && snapshot.startedAt !== undefined &&
+            snapshot.startedAt < params.staleRunningStartedBefore ||
+          snapshot.status === "failed" && snapshot.terminalFailureCode === undefined &&
+            snapshot.failureReason === "v3_retryable_provider_rate_limited");
+      })
+      .sort(compareRequestedJobs)
+      .slice(0, params.limit);
+  }
+
   async claimForExecution(
     params: Parameters<ReaderSummaryJobRepositoryPort["claimForExecution"]>[0],
   ): Promise<ReaderSummaryJob | null> {
@@ -80,6 +106,7 @@ export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobRepos
     }
 
     const snapshot = job.toSnapshot();
+    if (snapshot.selectionStrategy === "jev_primary_v3") return null;
     const staleRunning =
       snapshot.status === "running" &&
       snapshot.startedAt !== undefined &&
@@ -151,4 +178,13 @@ const compareRequestedJobs = (
   }
 
   return leftSnapshot.id.localeCompare(rightSnapshot.id);
+};
+
+const assertOptionalScopeIsComplete = (scope: {
+  readonly tenantId?: string;
+  readonly workspaceId?: string;
+}): void => {
+  if ((scope.tenantId === undefined) !== (scope.workspaceId === undefined)) {
+    throw new Error("Reader summary job polling scope must include tenant and workspace");
+  }
 };

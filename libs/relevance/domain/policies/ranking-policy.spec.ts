@@ -291,6 +291,22 @@ describe("RankingPolicy", () => {
     }));
   });
 
+  it('shares X ref_src and YouTube short-link identity with story grouping', () => {
+    for (const originalUrl of ['https://x.com/author/status/123', 'https://youtu.be/alpha']) {
+      const shareQuery = originalUrl.includes('x.com') ? 'ref_src=twsrc%5Etfw' : 'si=share';
+      const result = new RankingPolicy().rank({
+        candidates: [
+          candidate({ id: 'original', canonicalUrl: originalUrl, title: 'Agent reliability analysis' }),
+          candidate({ id: 'shared', canonicalUrl: `${originalUrl}?${shareQuery}&access_token=synthetic-marker-only`,
+            title: 'Agent reliability analysis' }),
+        ], profile: null, generatedAt: new Date('2026-06-22T10:00:00.000Z'), limit: 1,
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0]?.clusterSize).toBe(2);
+      expect(JSON.stringify(result.map((item) => item.clusterId))).not.toContain('synthetic-marker-only');
+    }
+  });
+
   it.each(["s", "si"])("keeps %s query identity on unrelated hosts", (queryKey) => {
     const result = new RankingPolicy().rank({
       candidates: [

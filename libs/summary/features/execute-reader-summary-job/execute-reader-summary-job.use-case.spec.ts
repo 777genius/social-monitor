@@ -67,6 +67,43 @@ const readerSummaryPeriod: ReaderSummaryPeriod = {
 };
 
 describe("ExecuteReaderSummaryJobUseCase", () => {
+  it("fences V3 provider work before it can spend on a lost execution claim", async () => {
+    const now = new Date("2026-09-21T00:00:00Z");
+    const jobs = new FakeReaderSummaryJobRepository();
+    const requested = ReaderSummaryJob.request({ id: "v3-fence-test",
+      tenantId: tenantId("v3-tenant"), workspaceId: workspaceId("v3-workspace"),
+      scope: interestReaderSummaryScope("v3-interest"),
+      period: readerSummaryPeriod, idempotencyKey: "v3-fence-test",
+      requestedAt: now, selectionStrategy: "jev_primary_v3" });
+    const manifest = { schemaVersion: "reader_summary_preparation_manifest.v1" as const,
+      cutoffAt: "2026-09-21T00:00:00.000000Z",
+      interestSha256: "1".repeat(64), rubricSha256: "2".repeat(64),
+      inputBuilderVersion: "input.v1", modelConfigVersion: "jev.v1",
+      candidates: [] };
+    const running = ReaderSummaryJob.rehydrate({ ...requested.toSnapshot(),
+      status: "running", startedAt: now, preparationReadyAt: now,
+      preparationManifest: manifest });
+    await jobs.save(running);
+    const markProviderStarted = jest.fn(async () => false);
+    const promotionBuild = jest.fn();
+    const result = await new ExecuteReaderSummaryJobUseCase(
+      jobs, unused(), unused(), unused<ReaderSummaryEvidenceSelectorPort>(),
+      unused(), unused(), new StaticIdGenerator(), new FixedClock(now),
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
+      undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined,
+      { advance: async () => ({ kind: "claimed" as const, job: running,
+        manifest }), markProviderStarted },
+      { build: promotionBuild },
+    ).execute({ tenantId: requested.toSnapshot().tenantId,
+      workspaceId: requested.toSnapshot().workspaceId,
+      readerSummaryJobId: requested.toSnapshot().id });
+    expect(result).toMatchObject({ ok: false,
+      error: { code: "operation.conflict" } });
+    expect(markProviderStarted).toHaveBeenCalledWith(running, now);
+    expect(promotionBuild).not.toHaveBeenCalled();
+  });
+
   it("rejects empty reader summary job ids with canonical language", async () => {
     const useCase = new ExecuteReaderSummaryJobUseCase(
       unused(),

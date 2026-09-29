@@ -1,10 +1,12 @@
 import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { readerSummaryWorkspaceManifestSha256,
   sameReaderSummaryPreparationConfig,
   sameReaderSummaryPreparationIdentity,
   type ReaderSummaryWorkspacePreparationManifest } from "../../../domain";
-
+import { ReaderSummaryExecutionLeasePolicy } from
+  "../../../features/execute-reader-summary-job/reader-summary-execution-lease.policy";
 import type {
   ReaderSummaryV3PreflightOutcome,
   ReaderSummaryV3PreflightPort,
@@ -19,7 +21,6 @@ import { requireSerializableReaderSummaryTransactions,
 import { assessmentStatesMatchManifest, type ReaderSummaryAssessmentState,
   type ReaderSummaryVisibleCandidate, uniqueAssessmentIds,
   visibleCandidateBindingsMatchManifest } from "./prisma-reader-summary-v3-readiness";
-
 type LockedJob = {
   readonly status: string;
   readonly selection_strategy: string | null;
@@ -31,28 +32,42 @@ type LockedJob = {
   readonly preparation_deadline_at: string | null;
   readonly started_at: Date | null;
   readonly terminal_failure_code: string | null;
+  readonly failure_reason: string | null;
 };
-
-type ClaimedExecution = {
-  readonly kind: "claimed";
-  readonly startedAt: Date;
-};
-
+type ClaimedExecution = { readonly kind: "claimed"; readonly startedAt: Date };
 export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightPort {
   constructor(
     private readonly prisma: PrismaSummaryClient,
     private readonly jobs: PrismaReaderSummaryJobRepository,
     private readonly source: ReaderSummaryV3PreparationSourcePort,
+    private readonly lease: ReaderSummaryExecutionLeasePolicy =
+      new ReaderSummaryExecutionLeasePolicy(),
   ) { requireSerializableReaderSummaryTransactions(prisma); }
-
+  async markProviderStarted(job: Parameters<ReaderSummaryV3PreflightPort["advance"]>[0]["job"],
+    expectedStartedAt: Date): Promise<boolean> {
+    const snapshot = job.toSnapshot();
+    const updated = await withPrismaWriteRetry(() => this.prisma.$queryRaw<
+      readonly { readonly id: string }[]>`
+      UPDATE reader_summary_jobs SET failure_reason=CASE WHEN failure_reason='v3_recovery_claim'
+        THEN 'v3_provider_started_after_recovery' ELSE 'v3_provider_started' END
+      WHERE tenant_id=${snapshot.tenantId}::uuid AND workspace_id=${snapshot.workspaceId}::uuid
+        AND id=${snapshot.id}::uuid
+        AND status='RUNNING' AND started_at=${expectedStartedAt}::timestamptz
+        AND failure_reason IN ('v3_pre_provider_claim', 'v3_recovery_claim')
+      RETURNING id::text
+    `);
+    return updated.length === 1;
+  }
   async advance(
     params: Parameters<ReaderSummaryV3PreflightPort["advance"]>[0],
   ): Promise<ReaderSummaryV3PreflightOutcome> {
     let job = await this.find(params.job) ?? params.job;
     let snapshot = job.toSnapshot();
-    if (snapshot.status === "running") return { kind: "already_running", job };
+    if (snapshot.status === "running" || snapshot.status === "failed" &&
+        snapshot.terminalFailureCode === undefined) {
+      return this.recover(job);
+    }
     if (snapshot.status !== "requested") return { kind: "terminal", job };
-
     if (snapshot.preparationConfig === undefined) {
       // Freeze exact config and clocks before the inventory walk. Retries and
       // competing preparers must use the identity selected by this CAS.
@@ -137,7 +152,6 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
     }
     const manifest = snapshot.preparationManifest;
     if (manifest === undefined) return this.fail(job, "config_unavailable", params);
-
     const decision = await withPrismaWriteRetry(() =>
       runSerializableReaderSummaryTransaction(this.prisma, async (tx) => {
         const rows = await lockJob(tx, snapshot);
@@ -192,7 +206,8 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
             UPDATE reader_summary_jobs SET status='RUNNING',
               preparation_ready_at=clock_timestamp(),
               started_at=date_trunc('milliseconds', clock_timestamp()),
-              preparation_next_check_at=NULL, failed_at=NULL, failure_reason=NULL
+              preparation_next_check_at=NULL, failed_at=NULL,
+              failure_reason='v3_pre_provider_claim'
             WHERE tenant_id=${snapshot.tenantId}::uuid
               AND workspace_id=${snapshot.workspaceId}::uuid
               AND id=${snapshot.id}::uuid AND status='REQUESTED'
@@ -237,7 +252,88 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
     if (decision === "running") return { kind: "already_running", job: current };
     return { kind: "terminal", job: current };
   }
-
+  private async recover(job: Parameters<ReaderSummaryV3PreflightPort["advance"]>[0]["job"]):
+  Promise<ReaderSummaryV3PreflightOutcome> {
+    const snapshot = job.toSnapshot();
+    const decision = await withPrismaWriteRetry(() =>
+      runSerializableReaderSummaryTransaction(this.prisma, async (tx) => {
+        const row = (await lockJob(tx, snapshot))[0];
+        if (row === undefined) return "terminal" as const;
+        if (row.status === "RUNNING") {
+          const stale = await tx.$queryRaw<readonly { readonly expired: boolean }[]>`
+            SELECT ${row.started_at}::timestamptz <
+              clock_timestamp() - ${this.lease.timeoutMs}::bigint * interval '1 millisecond'
+              AS expired
+          `;
+          if (row.started_at === null || stale[0]?.expired !== true) {
+            return "running" as const;
+          }
+          if (row.failure_reason !== "v3_pre_provider_claim") {
+            await tx.$queryRaw`
+              UPDATE reader_summary_jobs SET status='FAILED', failed_at=clock_timestamp(),
+                failure_reason='V3 execution outcome uncertain after provider invocation'
+              WHERE tenant_id=${snapshot.tenantId}::uuid
+                AND workspace_id=${snapshot.workspaceId}::uuid AND id=${snapshot.id}::uuid
+                AND status='RUNNING'
+                AND started_at=${row.started_at}::timestamptz RETURNING id
+            `;
+            return "terminal" as const;
+          }
+        } else if (row.status !== "FAILED" || row.terminal_failure_code !== null ||
+            row.failure_reason !== "v3_retryable_provider_rate_limited") {
+          return "terminal" as const;
+        }
+        if (row.selection_strategy !== "jev_primary_v3" ||
+            row.started_at === null ||
+            snapshot.preparationManifest === undefined || snapshot.preparationConfig === undefined ||
+            !sameReaderSummaryPreparationIdentity(snapshot.preparationConfig,
+              snapshot.preparationConfig, snapshot.preparationManifest) ||
+            snapshot.preparationManifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+              (readerSummaryWorkspaceManifestSha256(snapshot.preparationManifest) !== snapshot.preparationManifestSha256 ||
+                snapshot.preparationManifest.cutoffAt !== snapshot.preparationCutoffAt ||
+                snapshot.preparationManifest.periodKey !== snapshot.period.periodKey) ||
+            row.preparation_manifest_sha256 !== snapshot.preparationManifestSha256 ||
+            row.preparation_cutoff_at !== snapshot.preparationCutoffAt ||
+            row.period_key !== snapshot.period.periodKey ||
+            !isDeepStrictEqual(row.preparation_config, snapshot.preparationConfig) ||
+            !isDeepStrictEqual(row.preparation_manifest, snapshot.preparationManifest)) {
+          await tx.$queryRaw`
+            UPDATE reader_summary_jobs SET status='FAILED', failed_at=clock_timestamp(),
+              failure_reason='V3 recovery requires manual review: frozen preparation is unverifiable'
+            WHERE tenant_id=${snapshot.tenantId}::uuid
+              AND workspace_id=${snapshot.workspaceId}::uuid AND id=${snapshot.id}::uuid
+              AND status=${row.status} AND started_at IS NOT DISTINCT FROM
+                ${row.started_at}::timestamptz RETURNING id
+          `;
+          return "terminal" as const;
+        }
+        const claimed = await tx.$queryRaw<readonly {
+          readonly started_at: Date }[]>`
+          UPDATE reader_summary_jobs SET status='RUNNING',
+            started_at=date_trunc('milliseconds', GREATEST(clock_timestamp(),
+              started_at + interval '1 millisecond')),
+            failed_at=NULL, failure_reason='v3_recovery_claim',
+            terminal_failure_code=NULL
+          WHERE tenant_id=${snapshot.tenantId}::uuid
+            AND workspace_id=${snapshot.workspaceId}::uuid AND id=${snapshot.id}::uuid
+            AND status IN ('RUNNING','FAILED') AND started_at=${row.started_at}::timestamptz
+          RETURNING started_at
+        `;
+        return claimed[0]?.started_at ?? "terminal" as const;
+      }));
+    const current = await this.find(job) ?? job;
+    const currentSnapshot = current.toSnapshot();
+    if (decision instanceof Date && currentSnapshot.status === "running" &&
+        currentSnapshot.startedAt?.getTime() === decision.getTime() &&
+        currentSnapshot.preparationManifest !== undefined) {
+      return { kind: "claimed", job: current,
+        manifest: currentSnapshot.preparationManifest };
+    }
+    if (currentSnapshot.status === "running") {
+      return { kind: "already_running", job: current };
+    }
+    return { kind: "terminal", job: current };
+  }
   private async fail(job: Parameters<ReaderSummaryV3PreparationSourcePort["prepare"]>[0],
     code: "assessment_snapshot_unavailable" | "assessment_inventory_over_budget" |
       "assessment_time_over_budget" | "config_unavailable",
@@ -265,14 +361,12 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
     }
     return { kind: "terminal", job: current };
   }
-
   private find(job: Parameters<ReaderSummaryV3PreparationSourcePort["prepare"]>[0]) {
     const snapshot = job.toSnapshot();
     return this.jobs.findById({ tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId, readerSummaryJobId: snapshot.id });
   }
 }
-
 const lockJob = (tx: Pick<PrismaReaderSummaryClient, "$queryRaw">, snapshot: ReturnType<
   Parameters<ReaderSummaryV3PreparationSourcePort["prepare"]>[0]["toSnapshot"]>,
 ) => tx.$queryRaw<readonly LockedJob[]>`
@@ -284,13 +378,11 @@ const lockJob = (tx: Pick<PrismaReaderSummaryClient, "$queryRaw">, snapshot: Ret
     CASE WHEN preparation_deadline_at IS NULL THEN NULL ELSE
       to_char(preparation_deadline_at AT TIME ZONE 'UTC',
         'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS preparation_deadline_at,
-    started_at,
-    terminal_failure_code FROM reader_summary_jobs
+    started_at, terminal_failure_code, failure_reason FROM reader_summary_jobs
   WHERE tenant_id=${snapshot.tenantId}::uuid
     AND workspace_id=${snapshot.workspaceId}::uuid AND id=${snapshot.id}::uuid
   FOR UPDATE
 `;
-
 const fail = async (
   tx: Pick<PrismaReaderSummaryClient, "$queryRaw">,
   snapshot: ReturnType<Parameters<ReaderSummaryV3PreparationSourcePort["prepare"]>[0]["toSnapshot"]>,
@@ -306,7 +398,6 @@ const fail = async (
   `;
   return "terminal";
 };
-
 const livePreparationScope = async (
   tx: Pick<PrismaReaderSummaryClient, "$queryRaw">,
   snapshot: ReturnType<Parameters<ReaderSummaryV3PreparationSourcePort["prepare"]>[0]["toSnapshot"]>,
@@ -404,6 +495,5 @@ const livePreparationScope = async (
   return visibleCandidateBindingsMatchManifest(manifest, visible,
     expected[0]!.interestId) ? "live" : "scope_changed";
 };
-
 const sha256 = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");

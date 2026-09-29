@@ -1,3 +1,5 @@
+import { publicCanonicalUrlIdentity } from "@social-monitor/shared-kernel";
+
 import type { ReaderSummaryCitation } from "../entities/citation";
 import type { TopRead } from "../entities/top-read";
 import type { StoryCluster, SummaryEvidenceItem, SummarySourceWindow } from
@@ -62,7 +64,7 @@ export const buildReaderPostPromotionV3Projection = (
       promotionMarker: "reader_post_promotion" as const,
       promotionPolicyVersion: "reader_post_promotion.v3" as const,
       promotionTier: placement, promotionCandidateId: candidate.candidateId,
-      promotionCanonicalIdentity: candidate.canonicalIdentity,
+      promotionCanonicalIdentity: publicCanonicalUrlIdentity(candidate.canonicalIdentity),
       title: publicHeadline.text, displayHeadline: publicHeadline,
       capturedSource: source, providerKey: candidate.providerKey,
       ...(story?.summary === undefined ? {} : { summary: story.summary }),
@@ -112,7 +114,12 @@ export const buildReaderPostPromotionV3Projection = (
   const attestations = params.attestationBinding === undefined ? [] : selected.map(
     ({ candidate, placement, slot }) => {
       const card = cardById.get(candidate.candidateId)!;
-      return buildReaderPostPromotionAttestationV3({ candidate, placement, slot,
+      // The attestation is public too. Bind its signed identity to the card's
+      // sanitized URL while leaving the frozen candidate used for ranking intact.
+      return buildReaderPostPromotionAttestationV3({ candidate: {
+        ...candidate,
+        canonicalIdentity: publicCanonicalUrlIdentity(candidate.canonicalIdentity),
+      }, placement, slot,
         binding: { artifactId: params.attestationBinding!.artifactId,
           sourceWindowId: params.sourceWindow.windowId,
           periodStartedAt: requiredDate(params.sourceWindow.periodStartedAt),
