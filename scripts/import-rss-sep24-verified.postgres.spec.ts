@@ -22,7 +22,7 @@ if (!adminUrl) {
 } else {
 const target = new URL(adminUrl);
 if (target.hostname !== "127.0.0.1" || target.pathname !== "/rssproof" ||
-  target.username !== "postgres" || target.password !== "synthetic-rss-only") {
+  target.username !== "postgres" || target.password !== "password") {
   throw new Error("Proof accepts only its loopback synthetic PostgreSQL database");
 }
 const roleUrl = new URL(adminUrl);
