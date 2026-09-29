@@ -50,6 +50,7 @@ describe('migration image production compilation', () => {
     const scriptCopies = dockerfile.split('\n').filter((line) => /^COPY .*scripts/.test(line));
     expect(scriptCopies).toEqual([
       'COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/',
+      'COPY scripts/recover-hn-verified-remainder.ts scripts/import-hn-verified-remainder.ts ./scripts/',
     ]);
     const copiedScripts = new Set(scriptCopies.map((line) => line.split(' ')[1]));
     const available = (file: string) => {

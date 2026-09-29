@@ -129,6 +129,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-tenant-rls-postgres.ts:Pool
       scripts/check-yesterday-reader-summary-artifact-quality.ts:Pool
       scripts/check-yesterday-social-collection-quality.ts:Pool
+      scripts/import-hn-verified-remainder.ts:Pool
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
       scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts:Pool
@@ -240,6 +241,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-tenant-rls-postgres.ts
       scripts/check-yesterday-reader-summary-artifact-quality.ts
       scripts/check-yesterday-social-collection-quality.ts
+      scripts/import-hn-verified-remainder.ts
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts
       scripts/lib/github-trending-durable-snapshot-reuse.postgres.spec.ts
       scripts/lib/github-trending-durable-snapshot-reuse.prisma.spec.ts

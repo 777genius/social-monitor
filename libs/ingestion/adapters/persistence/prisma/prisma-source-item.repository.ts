@@ -33,7 +33,10 @@ type TransactionalPrismaIngestionClient = PrismaIngestionClient & {
 
 export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
   private readonly articleCaptures: PrismaArticleCaptureRepository;
-  constructor(private readonly prisma: PrismaIngestionClient) {
+  constructor(
+    private readonly prisma: PrismaIngestionClient,
+    private readonly writeMode: "update-existing" | "insert-only" = "update-existing",
+  ) {
     this.articleCaptures = new PrismaArticleCaptureRepository(prisma);
   }
 
@@ -47,9 +50,23 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
     return this.articleCaptures.completeArticleCapture(command);
   }
 
+  /** Historical imports must call this explicit entrypoint, never ordinary saveBatch. */
+  saveBatchInsertOnly(command: SaveSourceItemsCommand): Promise<SaveSourceItemsResult> {
+    return new PrismaSourceItemRepository(this.prisma, "insert-only").saveBatch(command);
+  }
+
   async saveBatch(
     command: SaveSourceItemsCommand,
   ): Promise<SaveSourceItemsResult> {
+    if (this.writeMode === "insert-only") {
+      if (this.transaction() === undefined) {
+        throw new Error("Insert-only source item writes require a Serializable transaction");
+      }
+      const externalIds = command.items.map((item) => item.toSnapshot().externalId);
+      if (new Set(externalIds).size !== externalIds.length) {
+        throw new Error("Insert-only source item batch contains a duplicate ID");
+      }
+    }
     const githubObservedAt = githubTrendingSnapshotBatchObservedAt({
       providerKey: command.providerKey,
       items: command.items.map((item) => item.toSnapshot()),
@@ -58,7 +75,7 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
     try {
       return await this.saveBatchAtomically(command, githubObservedAt);
     } catch (error) {
-      if (!supportsTransactions || !isUniqueSourceItemConflict(error)) {
+      if (this.writeMode === "insert-only" || !supportsTransactions || !isUniqueSourceItemConflict(error)) {
         throw error;
       }
       return this.saveBatchAtomically(command, githubObservedAt);
@@ -93,6 +110,9 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
       transaction,
       command,
     );
+    if (this.writeMode === "insert-only" && existingByProviderItemId.size > 0) {
+      throw new Error("Insert-only source item batch conflicts with an existing ID");
+    }
     if (githubObservedAt !== undefined) {
       for (const existing of existingByProviderItemId.values()) {
         assertGitHubTrendingDurableObservationCoherence({
@@ -118,6 +138,9 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
         snapshot,
       });
       if (existing !== undefined) {
+        if (this.writeMode === "insert-only") {
+          throw new Error("Insert-only source item batch conflicts with an existing ID");
+        }
         const update = await this.updateExisting(transaction, {
           existing,
           snapshot,
@@ -265,6 +288,9 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
     operation: (transaction: PrismaIngestionClient) => Promise<Result>,
   ): Promise<Result> {
     const transaction = this.transaction();
+    if (transaction === undefined && this.writeMode === "insert-only") {
+      throw new Error("Insert-only source item writes require a Serializable transaction");
+    }
     return transaction === undefined
       ? operation(this.prisma)
       : (transaction.call(this.prisma, operation, {
