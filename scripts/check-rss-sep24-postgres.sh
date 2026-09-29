@@ -21,7 +21,7 @@ container="rss-sep24-proof-${UID}-${BASHPID}"
 cleanup() { docker rm -f "$container" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 docker run --pull never --rm -d --name "$container" \
-  -e POSTGRES_PASSWORD=synthetic-rss-only -e POSTGRES_DB=rssproof \
+  -e POSTGRES_PASSWORD=password -e POSTGRES_DB=rssproof \
   -p 127.0.0.1::5432 postgres:18 >/dev/null
 port_binding="$(docker port "$container" 5432/tcp)"
 port="${port_binding##*:}"
@@ -41,6 +41,6 @@ if (( ready == 0 )); then
   echo "Disposable PostgreSQL 18 did not become ready" >&2
   exit 2
 fi
-RSS_SEP24_PG18_URL="postgresql://postgres:synthetic-rss-only@127.0.0.1:${port}/rssproof" \
+RSS_SEP24_PG18_URL="postgresql://postgres:password@127.0.0.1:${port}/rssproof" \
   node node_modules/jest/bin/jest.js --config jest.config.ts --runInBand \
   --runTestsByPath scripts/import-rss-sep24-verified.postgres.spec.ts

@@ -1,7 +1,7 @@
 /** Explicit operator entrypoint. Reads only pinned files; write requires a finite DB role. */
 import { createHash } from "node:crypto";
 import { constants, type Stats } from "node:fs";
-import { lstat, open, realpath, type FileHandle } from "node:fs/promises";
+import { lstat, open, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { Pool, type PoolClient } from "pg";
 

@@ -22,6 +22,11 @@ export const RSS_SEP24_JOURNAL = "rss-verified-posts-2026-09-24.journal.json";
 const digestPattern = /^[a-f0-9]{64}$/u;
 const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
 const sha = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
+const hasControlCharacter = (value: string): boolean =>
+  [...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 31 || code === 127;
+  });
 
 export type RssSep24PinnedScope = Readonly<{ tenantId: TenantId; workspaceId: WorkspaceId;
   interestId: string; sourceBindingId: string; scanPolicyId: string }>;
@@ -78,7 +83,7 @@ function safeUrl(value: unknown, label: string): string {
   try { url = new URL(source); }
   catch { throw new Error(`${label} is not a URL`); }
   if (url.protocol !== "https:" || url.username || url.password || url.hash || url.toString() !== source ||
-    source.length > 4096 || /[\u0000-\u001f\u007f]/u.test(source)) throw new Error(`${label} is unsafe`);
+    source.length > 4096 || hasControlCharacter(source)) throw new Error(`${label} is unsafe`);
   if (!validateOutboundUrl(source, { label, allowedProtocols: ["https:"] }).ok) {
     throw new Error(`${label} is unsafe`);
   }
@@ -88,7 +93,7 @@ function normalizedItem(value: unknown, label: string, feeds: ReadonlySet<string
   const row = object(value, label, ["externalId", "canonicalUrl", "title", "body", "authorHandle", "publishedAt", "metadata"],
     ["externalId", "canonicalUrl", "title", "body", "publishedAt", "metadata"]);
   const externalId = string(row.externalId, `${label} externalId`);
-  if (externalId.length > 2048 || /[\u0000-\u001f\u007f]/u.test(externalId)) throw new Error(`${label} provider ID is malformed`);
+  if (externalId.length > 2048 || hasControlCharacter(externalId)) throw new Error(`${label} provider ID is malformed`);
   const canonicalUrl = safeUrl(row.canonicalUrl, `${label} canonicalUrl`);
   if (!externalId.startsWith("https://") && !externalId.startsWith("http://") && !/^[^\s<>]+$/u.test(externalId)) {
     throw new Error(`${label} provider ID is malformed`);

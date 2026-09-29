@@ -12,6 +12,7 @@ export const BOUNDED_POSTGRES_TEST_ONLY_FILES = new Set([
   'scripts/check-reader-summary-publication-postgres.ts',
   'scripts/check-reader-summary-weekly-execution-receipt-postgres.ts',
   'scripts/check-tenant-rls-postgres.ts',
+  'scripts/import-rss-sep24-verified.postgres.spec.ts',
   'scripts/reader-summary-publication-postgres-legacy.ts',
   'scripts/reader-summary-publication-postgres-privileges.ts',
   'scripts/reader-summary-publication-postgres-runtime-guard.ts',
@@ -42,6 +43,7 @@ export const BOUNDED_POSTGRES_TEST_POOL_MAXIMUMS = new Map<
     [1, 1, 2, 4, 1, 1, 1],
   ],
   ['scripts/check-tenant-rls-postgres.ts', [1, 1, 1, 1]],
+  ['scripts/import-rss-sep24-verified.postgres.spec.ts', [2, 2]],
   ['scripts/reader-summary-publication-postgres-legacy.ts', [1]],
   [
     'scripts/reader-summary-publication-postgres-privileges.ts',
