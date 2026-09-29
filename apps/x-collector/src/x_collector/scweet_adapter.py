@@ -84,12 +84,16 @@ def scweet_runtime_limits(
 ) -> AccountLimitOverride:
     return AccountLimitOverride(
         daily_requests=max(
-            default_daily_requests,
-            *(profile.daily_requests for profile in account_limit_profiles.values()),
+            (
+                default_daily_requests,
+                *(profile.daily_requests for profile in account_limit_profiles.values()),
+            ),
         ),
         daily_tweets=max(
-            default_daily_tweets,
-            *(profile.daily_tweets for profile in account_limit_profiles.values()),
+            (
+                default_daily_tweets,
+                *(profile.daily_tweets for profile in account_limit_profiles.values()),
+            ),
         ),
         priority=100,
     )
@@ -122,12 +126,16 @@ def runtime_limits_from_account_pool(
 
     return AccountLimitOverride(
         daily_requests=max(
-            limits.daily_requests,
-            *(limit.daily_requests for limit in per_account.values()),
+            (
+                limits.daily_requests,
+                *(limit.daily_requests for limit in per_account.values()),
+            ),
         ),
         daily_tweets=max(
-            limits.daily_tweets,
-            *(limit.daily_tweets for limit in per_account.values()),
+            (
+                limits.daily_tweets,
+                *(limit.daily_tweets for limit in per_account.values()),
+            ),
         ),
         priority=100,
     )
