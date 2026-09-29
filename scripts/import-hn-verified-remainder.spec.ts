@@ -323,7 +323,7 @@ describe("verified HN operator admission", () => {
         await Promise.resolve();
         expect(currentDatabaseAccess()).toEqual({ kind: "tenant", tenantId: scope.tenantId,
           workspaceId: scope.workspaceId });
-        return { inserted: 0, skippedDuplicates: 0, savedItems: [] } as
+        return { inserted: 0, contentUpdated: 0, skippedDuplicates: 0, items: [] } as
           Awaited<ReturnType<PrismaSourceItemRepository["saveBatchInsertOnly"]>>;
       });
     const importer = jest.spyOn(recovery, "importVerifiedHnRemainder").mockImplementation(async (input) => {
@@ -348,7 +348,7 @@ describe("verified HN operator admission", () => {
 
   it("never exposes an ordinary updating source repository in composition", async () => {
     const insertOnly = jest.spyOn(PrismaSourceItemRepository.prototype, "saveBatchInsertOnly")
-      .mockResolvedValue({ inserted: 0, skippedDuplicates: 0, savedItems: [] } as
+      .mockResolvedValue({ inserted: 0, contentUpdated: 0, skippedDuplicates: 0, items: [] } as
         Awaited<ReturnType<PrismaSourceItemRepository["saveBatchInsertOnly"]>>);
     const updating = jest.spyOn(PrismaSourceItemRepository.prototype, "saveBatch")
       .mockRejectedValue(new Error("Ordinary update must not be called"));
