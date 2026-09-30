@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { SourceItem } from '../../../domain/entities/source-item';
 import { captureArticleText, captureNativeText, captureSha256 } from '../../../domain/value-objects/source-content-capture';
@@ -5,11 +6,15 @@ import { prepareArticleCaptureAttempt, readArticleCaptureAttempt, reserveArticle
 import { sourceItemContentHash, sourceItemProviderContentHash } from '../../../domain/value-objects/source-item-content-fingerprint';
 import { PrismaArticleCaptureRepository } from './prisma-article-capture.repository';
 import type { PrismaIngestionClient } from './prisma-ingestion-client';
-import type { PrismaSourceItemRecord } from './prisma-ingestion-records';
+import { sourceItemFromPrisma, type PrismaSourceItemRecord } from './prisma-ingestion-records';
 
 const now = new Date('2026-09-20T00:00:00Z');
 const scope = { tenantId: tenantId('tenant'), workspaceId: workspaceId('workspace'), sourceBindingId: 'binding', providerKey: 'hacker-news' };
 const lease = { ...scope, scanJobId: 'scan', workerId: 'worker', fencingToken: 'fence', leasedAt: now, expiresAt: new Date(now.getTime() + 60_000) };
+const legacyContentHash = (record: PrismaSourceItemRecord): string => createHash('sha256').update([
+  record.sourceBindingId, record.providerItemId, record.canonicalUrl, record.title, record.body,
+  record.authorHandle ?? '', record.publishedAt.toISOString(),
+].join('\u001f')).digest('hex');
 const fixture = () => {
   const native = captureNativeText({ ...scope, id: 'source', externalId: 'story', canonicalUrl: 'https://news.ycombinator.com/item?id=1',
     title: 'Story', body: 'Native', authorHandle: 'original', publishedAt: now, ingestedAt: now,
@@ -27,7 +32,8 @@ const fixture = () => {
     const text = sql.join('?');
     if (text.includes('UPDATE source_items')) {
       record = { ...record, metadata: JSON.parse(values[0] as string), body: values[1] as string,
-        contentHash: values[2] as string, providerContentHash: values[3] as string };
+        contentHash: values[2] as string, providerContentHash: values[3] as string,
+        contentUpdatedAt: values[4] ? new Date(now.getTime() + 1000) : record.contentUpdatedAt };
       return [{ id: record.id }];
     }
     if (text.includes('FROM scan_leases')) return [{ expires_at: lease.expiresAt }];
@@ -37,9 +43,13 @@ const fixture = () => {
   const client = { $queryRaw: query, sourceItem: { findFirst: async () => record },
     $transaction: async (run: (tx: unknown) => Promise<unknown>) => run(client) };
   const repository = new PrismaArticleCaptureRepository(client as unknown as PrismaIngestionClient);
-  return { complete: () => repository.completeArticleCapture({ ...scope, item: SourceItem.rehydrate(incoming),
+  return { complete: (item = incoming) => repository.completeArticleCapture({ ...scope, item: SourceItem.rehydrate(item),
     expected: readArticleCaptureAttempt(reserved)!, lease, now }),
-    record: () => record, change: (patch: Partial<PrismaSourceItemRecord>) => { record = { ...record, ...patch }; }, query };
+    reserve: () => repository.reserveArticleCapture({ ...scope, externalId: reserved.externalId,
+      expectedNativeRevision: readArticleCaptureAttempt(reserved)!.nativeRevision,
+      expectedArticleUrl: readArticleCaptureAttempt(reserved)!.articleUrl,
+      reservationToken: 'next-reservation', lease, now }),
+    reserved, record: () => record, change: (patch: Partial<PrismaSourceItemRecord>) => { record = { ...record, ...patch }; }, query };
 };
 
 describe('capture completion current-record merge', () => {
@@ -52,6 +62,45 @@ describe('capture completion current-record merge', () => {
     expect(result.body).toContain('Article');
     expect(f.record().contentHash).toBe(sourceItemContentHash(result));
     expect(f.record().providerContentHash).toBe(sourceItemProviderContentHash({ providerKey: scope.providerKey, snapshot: result }));
+  });
+
+  it('keeps a legacy revision and cutoff clock through a bookkeeping-only reservation', async () => {
+    const f = fixture();
+    const pending = prepareArticleCaptureAttempt(captureNativeText({ ...sourceItemFromPrisma(f.record()).toSnapshot(),
+      metadata: { kind: 'hacker_news_story', externalUrl: 'https://example.test/article' } }, scope.providerKey, now), now);
+    const legacyHash = legacyContentHash(f.record());
+    f.change({ metadata: { ...(f.record().metadata as Record<string, unknown>),
+      articleCaptureAttempt: readArticleCaptureAttempt(pending) }, contentHash: legacyHash });
+    f.change({ providerContentHash: sourceItemProviderContentHash({ providerKey: scope.providerKey,
+      snapshot: sourceItemFromPrisma(f.record()).toSnapshot() }) });
+    expect(await f.reserve()).not.toBeNull();
+    expect(f.record().contentHash).toBe(legacyHash);
+    expect(f.record().contentUpdatedAt).toEqual(now);
+  });
+
+  it('keeps a legacy revision and cutoff clock after a failed capture with unchanged bytes', async () => {
+    const f = fixture();
+    const legacyHash = legacyContentHash(f.record());
+    f.change({ contentHash: legacyHash, providerContentHash: sourceItemProviderContentHash({
+      providerKey: scope.providerKey, snapshot: sourceItemFromPrisma(f.record()).toSnapshot(),
+    }) });
+    const failed = finishArticleCapture(f.reserved, { kind: 'retryable_failed', reasonCode: 'fetch_failed' }, now);
+    expect(await f.complete(failed)).not.toBeNull();
+    expect(f.record().contentHash).toBe(legacyHash);
+    expect(f.record().contentUpdatedAt).toEqual(now);
+  });
+
+  it('advances a legacy revision and cutoff clock when completion adds article bytes', async () => {
+    const f = fixture();
+    const legacyHash = legacyContentHash(f.record());
+    f.change({ contentHash: legacyHash, providerContentHash: sourceItemProviderContentHash({
+      providerKey: scope.providerKey, snapshot: sourceItemFromPrisma(f.record()).toSnapshot(),
+    }) });
+    const completed = await f.complete();
+    expect(completed).not.toBeNull();
+    expect(f.record().contentHash).not.toBe(legacyHash);
+    expect(f.record().contentHash).toBe(sourceItemContentHash(completed!.toSnapshot()));
+    expect(f.record().contentUpdatedAt).toEqual(new Date(now.getTime() + 1000));
   });
 
   it('rejects a provider-kind correction without overwriting current provider metadata', async () => {

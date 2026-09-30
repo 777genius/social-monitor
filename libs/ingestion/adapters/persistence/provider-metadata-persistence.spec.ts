@@ -1,11 +1,13 @@
+import { createHash } from 'node:crypto';
 import { tenantId, workspaceId, type JsonObject } from '@social-monitor/shared-kernel';
 import { SourceItem } from '../../domain/entities/source-item';
-import { readContentCapture } from '../../domain/value-objects/source-content-capture';
+import { captureArticleText, captureSha256, readContentCapture } from '../../domain/value-objects/source-content-capture';
 import { sourceItemContentHash, sourceItemProviderContentHash } from '../../domain/value-objects/source-item-content-fingerprint';
 import { InMemorySourceItemRepository } from './in-memory-source-item.repository';
 import { PrismaSourceItemRepository } from './prisma/prisma-source-item.repository';
 import type { PrismaIngestionClient } from './prisma/prisma-ingestion-client';
 import type { PrismaSourceItemRecord } from './prisma/prisma-ingestion-records';
+import { sourceItemFromPrisma } from './prisma/prisma-ingestion-records';
 import { PrepareReaderValueSummaryUseCase } from '@social-monitor/relevance/application/use-cases/prepare-reader-value-summary.use-case';
 import { ConservativeReaderValueInputBuilder } from '@social-monitor/relevance/infrastructure/reader-value/reader-value-input-builder';
 import { SourceContentSafetyPolicy } from '@social-monitor/relevance/domain/source-content-safety';
@@ -100,7 +102,10 @@ it.each([false, true])('retains the durable revision and cutoff clock on a bindi
   const { repository, readRecord } = prismaFixture();
   await repository.saveBatch({ ...scope, providerKey: 'rss', items: [source({ kind: 'rss_item' })] });
   const initial = readRecord()!;
-  const legacyContentHash = 'legacy-binding-inclusive-revision';
+  const legacyContentHash = createHash('sha256').update([
+    initial.sourceBindingId, initial.providerItemId, initial.canonicalUrl, initial.title, initial.body,
+    initial.authorHandle ?? '', initial.publishedAt.toISOString(),
+  ].join('\u001f')).digest('hex');
   // Existing rows can still carry the pre-fix binding-inclusive content hash.
   Object.assign(initial, { contentHash: legacyContentHash,
     ...(missingProviderHash ? { providerContentHash: null } : {}) });
@@ -113,6 +118,8 @@ it.each([false, true])('retains the durable revision and cutoff clock on a bindi
   expect(rebound.providerContentHash).not.toBe(initial.providerContentHash);
   expect(rebound.contentHash).toBe(legacyContentHash);
   expect(rebound.contentUpdatedAt).toEqual(initial.contentUpdatedAt);
+  expect(readReaderValueCapture(rebound.metadata as JsonObject, 'rss', rebound.title, rebound.body).availableAt)
+    .toBe(readReaderValueCapture(initial.metadata as JsonObject, 'rss', initial.title, initial.body).availableAt);
 
   await repository.saveBatch({ ...scope, providerKey: 'rss', items: [SourceItem.rehydrate({
     ...source({ kind: 'rss_item' }, 'binding-other', new Date('2026-09-20T02:00:00Z')).toSnapshot(),
@@ -120,6 +127,28 @@ it.each([false, true])('retains the durable revision and cutoff clock on a bindi
   })] });
   expect(readRecord()!.contentHash).not.toBe(legacyContentHash);
   expect(readRecord()!.contentUpdatedAt).toEqual(new Date('2026-09-20T02:00:00Z'));
+});
+
+it('does not transfer article bytes or a prior capture attempt to another binding', async () => {
+  const { repository, readRecord } = prismaFixture();
+  const providerKey = 'hacker-news';
+  const metadata = { kind: 'hacker_news_story', externalUrl: 'https://example.test/article' };
+  await repository.saveBatch({ ...scope, providerKey, items: [source(metadata)] });
+  const prior = readRecord()!;
+  const enriched = captureArticleText(sourceItemFromPrisma(prior).toSnapshot(), {
+    text: 'Old article', sourceUrl: metadata.externalUrl, finalUrl: metadata.externalUrl,
+    originalLength: 11, fullTextSha256: captureSha256('Old article'), truncated: false,
+    extractionVersion: 'readability.text.v2', acquiredAt: now,
+  });
+  Object.assign(prior, { body: enriched.body, metadata: { ...enriched.metadata,
+    articleCaptureAttempt: { reservationToken: 'old-binding-reservation' } } });
+  await repository.saveBatch({ ...scope, providerKey,
+    items: [source(metadata, 'binding-other', new Date('2026-09-21T01:00:00Z'))] });
+  const rebound = readRecord()!;
+  expect(rebound.body).toBe('Provider native description');
+  expect(readReaderValueCapture(rebound.metadata as JsonObject, providerKey, rebound.title, rebound.body).capture.segments)
+    .toHaveLength(1);
+  expect(JSON.stringify(rebound.metadata)).not.toContain('old-binding-reservation');
 });
 
 it('reuses a Jev assessment after a persisted binding-only change', async () => {
@@ -178,13 +207,15 @@ it('reuses a Jev assessment after a persisted binding-only change', async () => 
 
   feedBinding = secondBinding;
   await repository.saveBatch({ ...scope, providerKey,
-    items: [source({ kind: 'rss_item', nativeContentComplete: true }, secondBinding, new Date('2026-09-20T01:00:00Z'))] });
+    items: [source({ kind: 'rss_item', nativeContentComplete: true }, secondBinding, new Date('2026-09-21T01:00:00Z'))] });
   const rebound = await subject.prepare(command, configured.config);
 
   expect(first.ok).toBe(true);
   expect(rebound.ok).toBe(true);
   if (!first.ok || !rebound.ok) return;
   expect(readRecord()!.contentHash).toBe(originalRevision);
+  expect(readReaderValueCapture(readRecord()!.metadata as JsonObject, providerKey, readRecord()!.title, readRecord()!.body).availableAt)
+    .toBe('2026-09-20T00:00:00.000Z');
   expect(assessments.size).toBe(1);
   expect(ensure).toHaveBeenCalledTimes(2);
   expect(rebound.manifest.candidates[0]).toMatchObject({

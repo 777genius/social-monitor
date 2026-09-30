@@ -2,7 +2,7 @@ import { preserveVerifiedLegacyCapture } from '../../../domain/value-objects/leg
 import { PrismaArticleCaptureRepository } from './prisma-article-capture.repository';
 import type { ArticleCaptureRepository } from '../../../ports/article-capture-repository';
 import { prepareArticleCaptureAttempt } from '../../../domain/value-objects/article-capture-attempt';
-import { captureNativeText, preserveSourceCapture } from '../../../domain/value-objects/source-content-capture';
+import { captureNativeText, preserveNativeCaptureAvailability, preserveSourceCapture } from '../../../domain/value-objects/source-content-capture';
 import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
 import {
   assertGitHubTrendingDurableObservationCoherence,
@@ -223,6 +223,9 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
         providerKey: params.providerKey,
         snapshot: { ...params.snapshot, sourceBindingId: params.existing.sourceBindingId },
       });
+    const snapshot = bindingOnlyChange
+      ? preserveNativeCaptureAvailability(params.snapshot, sourceItemFromPrisma(params.existing).toSnapshot())
+      : params.snapshot;
     if (params.immutable) {
       return { record: params.existing, contentChanged: false };
     }
@@ -243,7 +246,7 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
             providerContentHash: params.providerContentHash,
             lastObservedAt: params.snapshot.ingestedAt,
             ...(bindingOnlyChange ? {} : { contentUpdatedAt: params.snapshot.ingestedAt }),
-            metadata: params.snapshot.metadata ?? {},
+            metadata: snapshot.metadata ?? {},
           }
         : {
             providerContentHash: params.providerContentHash,

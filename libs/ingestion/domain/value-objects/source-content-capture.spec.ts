@@ -1,4 +1,4 @@
-import { captureArticleText, captureNativeText, captureSha256, preserveSourceCapture, readContentCapture } from './source-content-capture';
+import { captureArticleText, captureNativeText, captureSha256, preserveNativeCaptureAvailability, preserveSourceCapture, readContentCapture } from './source-content-capture';
 
 const early = new Date('2026-09-20T00:00:00Z');
 const later = new Date('2026-09-20T01:00:00Z');
@@ -19,6 +19,21 @@ describe('source capture contract for checkpoint 1/2', () => {
     expect(second.body).toBe(first.body);
     expect(readContentCapture(second)).toEqual(readContentCapture(first));
     expect(second.canonicalUrl).toBe(native.canonicalUrl);
+  });
+
+  it('transfers only proven native availability across bindings', () => {
+    const enriched = rich('Old article');
+    const previous = { ...enriched, metadata: { ...enriched.metadata,
+      articleCaptureAttempt: { status: 'succeeded' } } };
+    const incoming = captureNativeText(native, 'hacker-news', later);
+    const transferred = preserveNativeCaptureAvailability(incoming, previous);
+    expect(readContentCapture(transferred)?.native.availableAt).toBe(early.toISOString());
+    expect(transferred.body).toBe(native.body);
+    expect(readContentCapture(transferred)?.article).toBeUndefined();
+    expect('articleCaptureAttempt' in (transferred.metadata ?? {})).toBe(false);
+    expect(readContentCapture(preserveNativeCaptureAvailability(
+      captureNativeText({ ...native, body: 'Changed native bytes' }, 'hacker-news', later), previous,
+    ))?.native.availableAt).toBe(later.toISOString());
   });
 
   it('reuses the article with its original availability when native text changes, but not when URL changes', () => {
