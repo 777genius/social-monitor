@@ -35,3 +35,15 @@ export interface ReaderSummaryJobRepositoryPort {
     readonly expectedStartedAt: Date;
   }): Promise<boolean>;
 }
+
+/** Poller-only due work contract; other repository consumers keep their existing port. */
+export interface ReaderSummaryJobPollingRepositoryPort extends ReaderSummaryJobRepositoryPort {
+  /** Requested work plus V3 claims due for fenced recovery or manual review. */
+  findDueForPolling(params: {
+    readonly tenantId?: TenantId;
+    readonly workspaceId?: WorkspaceId;
+    readonly limit: number;
+    readonly now: Date;
+    readonly staleRunningStartedBefore: Date;
+  }): Promise<readonly ReaderSummaryJob[]>;
+}

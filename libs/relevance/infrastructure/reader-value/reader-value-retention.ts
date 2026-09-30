@@ -8,10 +8,12 @@ export async function readReaderValueAssessments(tx: AssessmentSqlTransaction, s
   if (references.length === 0) return [];
   const rows = await tx.$queryRawUnsafe<{ row: AssessmentRecord; feed_id: string }[]>(`
     SELECT row_to_json(a) AS row,f.id::text AS feed_id FROM reader_value_assessments a
-    JOIN jsonb_to_recordset($4::jsonb) AS r("assessmentId" uuid,"feedItemId" uuid)
+    JOIN jsonb_to_recordset($4::jsonb) AS r("assessmentId" uuid,"feedItemId" uuid,
+      "sourceBindingId" uuid)
       ON a.id=r."assessmentId"
     JOIN feed_items f ON f.id=r."feedItemId" AND f.tenant_id=a.tenant_id AND f.workspace_id=a.workspace_id
       AND f.interest_id=a.interest_id AND f.source_item_id=a.source_item_id AND f.status='VISIBLE'
+      AND (r."sourceBindingId" IS NULL OR f.source_binding_id=r."sourceBindingId")
     JOIN source_items referenced_source ON referenced_source.id=f.source_item_id
       AND referenced_source.tenant_id=f.tenant_id AND referenced_source.workspace_id=f.workspace_id
       AND referenced_source.provider_key=f.provider_key
@@ -36,7 +38,7 @@ export async function readReaderValueAssessments(tx: AssessmentSqlTransaction, s
 
 export async function pinReaderValueAssessments(tx: AssessmentSqlTransaction, scope: ReaderValueScope,
   interestId: string, jobId: string, references: readonly ReaderValueReference[]): Promise<boolean> {
-  if (references.length > 1000) throw new Error('Assessment preparation limit is 1000');
+  if (references.length > 20_000) throw new Error('Assessment preparation limit is 20000');
   const jobs = await tx.$queryRawUnsafe<{ id: string }[]>(`SELECT id FROM reader_summary_jobs
     WHERE tenant_id=$1::uuid AND workspace_id=$2::uuid AND id=$3::uuid AND (interest_id=$4::uuid OR interest_id IS NULL)
       AND status IN ('REQUESTED','RUNNING') FOR SHARE`,scope.tenantId,scope.workspaceId,jobId,interestId);

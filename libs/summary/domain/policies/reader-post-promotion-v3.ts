@@ -21,6 +21,8 @@ export type ReaderPostPromotionV3Presentation =
 
 export type ReaderPostPromotionV3Candidate = {
   readonly candidateId: string;
+  /** Frozen provenance for a pooled workspace candidate. */
+  readonly interestId?: string;
   /** Exact persisted provider key. This identity is never rewritten. */
   readonly providerKey: string;
   /** Normalized family used only for ranking diversity. */

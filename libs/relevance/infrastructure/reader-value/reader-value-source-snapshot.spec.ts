@@ -61,6 +61,87 @@ describe('reader-value source custody', () => {
     expect(JSON.stringify(result)).not.toContain('fixture-only');
   });
 
+  it('keeps raw URL bytes in provenance while removing query credentials from captured source URLs', () => {
+    const marker = 'synthetic-marker-only';
+    const sourceUrl = `https://example.test/article?edition=2&access_token=${marker}`;
+    const result = prepare({ canonicalUrl: sourceUrl, capture: { ...source.capture, segments: [{
+      origin: 'article', sourceUrl, finalUrl: sourceUrl,
+      offset: 0, length: 4, originalLength: 4, truncated: false,
+    }] } });
+    expect(result.capture.segments[0]).toMatchObject({
+      sourceUrl: 'https://example.test/article?edition=2',
+      finalUrl: 'https://example.test/article?edition=2',
+    });
+    expect(JSON.stringify(result)).not.toContain(marker);
+    expect(result.sourceSnapshotSha256).not.toBe(prepare({
+      canonicalUrl: 'https://example.test/article?edition=2',
+    }).sourceSnapshotSha256);
+  });
+
+  it('removes nested redirect credentials from serialized capture evidence while retaining identity query values', () => {
+    const marker = 'synthetic-marker-only';
+    const destination = `https://example.test/article?edition=2&access_token=${marker}`;
+    const safeDestination = 'https://example.test/article?edition=2';
+    const sourceUrl = `  https://www.google.com/url?q=${encodeURIComponent(destination)}&sa=U`;
+    const finalUrl = `https://www.google.com/url?url=${encodeURIComponent(destination)}&sa=U`;
+    const result = prepare({ capture: { ...source.capture, segments: [{
+      origin: 'article', sourceUrl, finalUrl,
+      offset: 0, length: 4, originalLength: 4, truncated: false,
+    }] } });
+    expect(result.capture.segments[0]).toMatchObject({
+      sourceUrl: `https://www.google.com/url?q=${encodeURIComponent(safeDestination)}&sa=U`,
+      finalUrl: `https://www.google.com/url?url=${encodeURIComponent(safeDestination)}&sa=U`,
+    });
+    expect(JSON.stringify(result)).not.toContain(marker);
+    expect(result.sourceSnapshotSha256).not.toBe(prepare().sourceSnapshotSha256);
+  });
+
+  it.each([
+    ['scheme without slashes', 'https:example.test/article?edition=2&access_token=synthetic-marker-only',
+      'https://example.test/article?edition=2'],
+    ['tab in scheme', 'hTTps:\t//example.test/article?edition=2&access_token=synthetic-marker-only',
+      'https://example.test/article?edition=2'],
+    ['leading NUL before redirect', `\u0000https://www.google.com/url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
+    `https://www.google.com/url?q=${encodeURIComponent('https://example.test/article?edition=2')}&sa=U`],
+    ['Google trailing DNS dot', `https://www.google.com./url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
+    `https://www.google.com./url?q=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&sa=U`],
+    ['encoded Google path', `https://www.google.com./%75rl?q=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
+    `https://www.google.com./%75rl?q=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&sa=U`],
+    ['Facebook redirect', `https://l.facebook.com/l.php?u=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&lang=en`,
+    `https://l.facebook.com/l.php?u=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&lang=en`],
+    ['LinkedIn redirect', `https://www.linkedin.com/redir/redirect?url=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&lang=en`,
+    `https://www.linkedin.com/redir/redirect?url=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&lang=en`],
+  ])('removes credentials from serialized capture with %s', (_kind, raw, safe) => {
+    const result = prepare({ canonicalUrl: raw, capture: { ...source.capture, segments: [{
+      origin: 'article', sourceUrl: raw, finalUrl: raw,
+      offset: 0, length: 4, originalLength: 4, truncated: false,
+    }] } });
+    expect(result.capture.segments[0]).toMatchObject({ sourceUrl: safe, finalUrl: safe });
+    expect(JSON.stringify(result)).not.toContain('synthetic-marker-only');
+    expect(result.sourceSnapshotSha256).not.toBe(prepare({ canonicalUrl: safe }).sourceSnapshotSha256);
+  });
+
+  it('drops ambiguous encoded redirect destinations from serialized capture evidence', () => {
+    const marker = 'synthetic-marker-only';
+    const encodedDestination = `https://example.test/article%3Faccess_token%3D${marker}`;
+    const sourceUrl = `https://www.google.com/url?q=${encodeURIComponent(encodedDestination)}&sa=U`;
+    const result = prepare({ capture: { ...source.capture, segments: [{
+      origin: 'article', sourceUrl, finalUrl: null,
+      offset: 0, length: 4, originalLength: 4, truncated: false,
+    }] } });
+    expect(result.capture.segments[0]?.sourceUrl).toBe('https://www.google.com/url?sa=U');
+    expect(JSON.stringify(result)).not.toContain(marker);
+  });
+
   it('rejects empty content and empty configuration, but accepts title-only/body-only inputs', () => {
     expect(prepareReaderValueSourceSnapshot({ ...source, title: ' ', body: '\n' }, safety))
       .toEqual({ ok: false, error: 'empty_input' });

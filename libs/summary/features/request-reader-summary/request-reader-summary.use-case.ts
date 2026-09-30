@@ -37,6 +37,8 @@ const legacyReaderSummarySelectionStrategy: ReaderSummarySelectionStrategyResolv
   resolve: () => "legacy_v2",
 };
 
+const v3SuccessorPrefix = "v3-successor:";
+
 export class RequestReaderSummaryUseCase {
   constructor(
     private readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort,
@@ -121,12 +123,85 @@ export class RequestReaderSummaryUseCase {
         );
       }
 
+      if (idempotencyKey.startsWith(v3SuccessorPrefix) &&
+          snapshot.selectionStrategy !== "jev_primary_v3") {
+        return err(new DomainError(
+          "operation.conflict",
+          "V3 successor key already belongs to a non-V3 reader summary job",
+        ));
+      }
+
       return ok({
         readerSummaryJobId: snapshot.id,
         period: periodToResult(snapshot.period),
         status: snapshot.status,
         created: false,
       });
+    }
+
+    let successorStrategy: ReaderSummarySelectionStrategy | undefined;
+    const successorSourceKey = idempotencyKey.startsWith(v3SuccessorPrefix)
+      ? idempotencyKey.slice(v3SuccessorPrefix.length)
+      : undefined;
+    if (successorSourceKey !== undefined) {
+      if (successorSourceKey.length === 0 || command.scope.type !== "workspace" ||
+          (period.cadence !== "daily" && period.cadence !== "weekly")) {
+        return err(new DomainError(
+          "validation.failed",
+          "V3 successor requests require a daily or weekly workspace period and source key",
+        ));
+      }
+      const source = await this.readerSummaryJobs.findByIdempotencyKey({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        idempotencyKey: successorSourceKey,
+      });
+      if (source === null) {
+        return err(new DomainError(
+          "resource.not_found",
+          "Legacy reader summary job for V3 successor was not found",
+        ));
+      }
+      const snapshot = source.toSnapshot();
+      if (!isSameIdempotentReaderSummaryRequest(snapshot, {
+        scopeKey: readerSummaryScopeKey(command.scope),
+        periodKey: period.periodKey,
+        userId,
+        subscriptionId,
+      }) || (snapshot.status !== "completed" && snapshot.status !== "no_signal")) {
+        return err(new DomainError(
+          "operation.conflict",
+          "V3 successor requires a published reader summary for the same scope and period",
+        ));
+      }
+      if (snapshot.selectionStrategy === "jev_primary_v3") {
+        return ok({
+          readerSummaryJobId: snapshot.id,
+          period: periodToResult(snapshot.period),
+          status: snapshot.status,
+          created: false,
+        });
+      }
+      if (snapshot.selectionStrategy !== undefined &&
+          snapshot.selectionStrategy !== "legacy_v2") {
+        return err(new DomainError(
+          "operation.conflict",
+          "V3 successor source must be a legacy reader summary job",
+        ));
+      }
+      successorStrategy = this.selectionStrategy.resolve({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+      });
+      if (successorStrategy !== "jev_primary_v3") {
+        // Keep the published legacy period usable while V3 selection is rolled back.
+        return ok({
+          readerSummaryJobId: snapshot.id,
+          period: periodToResult(snapshot.period),
+          status: snapshot.status,
+          created: false,
+        });
+      }
     }
 
     const readerSummaryJobId = this.ids.generate();
@@ -166,7 +241,7 @@ export class RequestReaderSummaryUseCase {
       subscriptionId,
       idempotencyKey,
       requestedAt: this.clock.now(),
-      selectionStrategy: this.selectionStrategy.resolve({
+      selectionStrategy: successorStrategy ?? this.selectionStrategy.resolve({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         interestId: command.scope.type === "interest"

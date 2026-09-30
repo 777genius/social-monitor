@@ -26,7 +26,8 @@ export const prepareReaderSummaryV3Job = async (params: {
   if (outcome.kind === "deferred" || outcome.kind === "terminal") {
     const snapshot = outcome.job.toSnapshot();
     return { kind: "result", value: { readerSummaryJobId: snapshot.id,
-      status: snapshot.status, readerSummaryId: snapshot.readerSummaryId } };
+      status: outcome.kind === "deferred" ? "requested" : snapshot.status,
+      readerSummaryId: snapshot.readerSummaryId } };
   }
   if (outcome.kind === "already_running") {
     return { kind: "result", value: { readerSummaryJobId:

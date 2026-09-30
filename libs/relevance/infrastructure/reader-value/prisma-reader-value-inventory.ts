@@ -1,11 +1,14 @@
 import type { JsonObject } from '@social-monitor/shared-kernel';
 import { ReaderValueInventoryByteCeilingExceeded,
+  ReaderValueInventorySnapshotUnavailable,
+  ReaderValueInventoryTimeCeilingExceeded,
   type ReaderValueInventory, type ReaderValueInventoryCursor,
   type ReaderValueInventoryItem, type ReaderValueInventorySnapshot,
   type ReaderValuePreparationInventory } from '../../application/contracts/reader-value-inventory';
 import type { ReaderValueDiscoveryScope } from '../../application/contracts/reader-value-assessment-store';
 import { assessmentReadSnapshot, assessmentTransaction, liveAssessmentScope,
-  type AssessmentSqlClient, type AssessmentSqlTransaction } from './assessment-sql';
+  readerValueDatabaseTimedOut, type AssessmentSqlClient,
+  type AssessmentSqlTransaction } from './assessment-sql';
 import { readReaderValueCapture } from './reader-value-capture';
 import { canonicalPostgresTimestamp } from './canonical-postgres-timestamp';
 
@@ -19,7 +22,7 @@ type InventoryRow = {
 };
 type InventoryIdentityRow = {
   readonly feed_item_id: string; readonly source_item_id: string;
-  readonly source_updated_at: string; readonly content_hash: string;
+  readonly source_updated_at: string | null; readonly content_hash: string;
   readonly source_bytes: number | string | bigint;
 };
 
@@ -34,11 +37,12 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
     Promise<readonly ReaderValueInventoryItem[]> {
     validatePage(limit, sourceByteBudget);
     return assessmentTransaction(this.client, scope, (tx) => this.pageInTransaction(tx, scope,
-      backfillFrom, cursor, limit, sourceByteBudget, exclusivePeriodEnd));
+      backfillFrom, cursor, limit, sourceByteBudget, exclusivePeriodEnd, false));
   }
 
   readSnapshot<T>(scope: ReaderValueDiscoveryScope,
-    operation: (snapshot: ReaderValueInventorySnapshot) => Promise<T>): Promise<T> {
+    operation: (snapshot: ReaderValueInventorySnapshot) => Promise<T>,
+    options: { readonly includeExpiredSources?: boolean } = {}): Promise<T> {
     return assessmentReadSnapshot(this.client, scope, async (tx) => {
       let active = true;
       const snapshot: ReaderValueInventorySnapshot = { page: async (
@@ -47,20 +51,30 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
       ) => {
         if (!active) throw new Error('Reader value inventory snapshot is closed');
         validatePage(limit, sourceByteBudget);
+        // Workspace preparation opts into complete retention visibility so
+        // ensure() can reuse a pin or fail explicitly. Interest V3 and ordinary
+        // discovery retain their existing inventory policy.
         return this.pageInTransaction(tx, scope, backfillFrom, cursor, limit,
-          sourceByteBudget, exclusivePeriodEnd);
+          sourceByteBudget, exclusivePeriodEnd,
+          options.includeExpiredSources === true);
       } };
       try {
         return await operation(snapshot);
       } finally {
         active = false;
       }
+    }, 120_000).catch((error: unknown) => {
+      if (readerValueDatabaseTimedOut(error)) {
+        throw new ReaderValueInventoryTimeCeilingExceeded();
+      }
+      throw error;
     });
   }
 
   private async pageInTransaction(tx: AssessmentSqlTransaction, scope: ReaderValueDiscoveryScope,
     backfillFrom: string, cursor: ReaderValueInventoryCursor | undefined, limit: number,
-    sourceByteBudget: number, exclusivePeriodEnd?: string): Promise<readonly ReaderValueInventoryItem[]> {
+    sourceByteBudget: number, exclusivePeriodEnd: string | undefined,
+    includeExpiredForPreparation: boolean): Promise<readonly ReaderValueInventoryItem[]> {
       // Preflight only bounded identities, versions and database byte lengths. A
       // rejected page never transfers a source body into the application process.
       const identities = await tx.$queryRawUnsafe<InventoryIdentityRow[]>(`SELECT
@@ -76,17 +90,25 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
         JOIN source_catalog_entries c ON c.id=b.source_catalog_entry_id AND c.provider_key=f.provider_key
         CROSS JOIN LATERAL (SELECT f.tenant_id,f.workspace_id,f.interest_id,f.source_item_id) a
         WHERE f.tenant_id=$1::uuid AND f.workspace_id=$2::uuid AND f.status='VISIBLE'
-          AND f.interest_id=$3::uuid AND s.content_updated_at IS NOT NULL
+          AND f.interest_id=$3::uuid
+          AND ($9::boolean OR s.content_updated_at IS NOT NULL)
           AND f.published_at >= $4::timestamptz AND f.published_at <= clock_timestamp()
           AND ($8::timestamptz IS NULL OR f.published_at < $8::timestamptz)
-          AND s.created_at+interval '180 days'>clock_timestamp() AND ${liveAssessmentScope}
+          AND ($9::boolean OR s.created_at+interval '180 days'>clock_timestamp())
+          AND ${liveAssessmentScope}
           AND ($5::timestamptz IS NULL OR (f.published_at,f.id)>($5::timestamptz,$6::uuid))
         ORDER BY f.published_at,f.id LIMIT $7`,scope.tenantId,scope.workspaceId,
       scope.interestId,backfillFrom,cursor?.publishedAt ?? null,cursor?.feedItemId ?? null,limit,
-      exclusivePeriodEnd ?? null);
+      exclusivePeriodEnd ?? null,includeExpiredForPreparation);
       const bytes = identities.reduce((sum, row) => sum + Number(row.source_bytes), 0);
       if (!Number.isSafeInteger(bytes) || bytes > sourceByteBudget) {
         throw new ReaderValueInventoryByteCeilingExceeded();
+      }
+      // A workspace snapshot must count every visible row. A legacy source
+      // without a revision clock cannot be pinned to the frozen cutoff.
+      if (includeExpiredForPreparation && identities.some((row) =>
+        row.source_updated_at === null)) {
+        throw new ReaderValueInventorySnapshotUnavailable();
       }
       if (identities.length === 0) return [];
       const requested = identities.map((row, ordinal) => ({ ...row,
@@ -115,11 +137,13 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
           AND s.content_updated_at IS NOT NULL
           AND f.published_at >= $4::timestamptz AND f.published_at <= clock_timestamp()
           AND ($8::timestamptz IS NULL OR f.published_at < $8::timestamptz)
-          AND s.created_at+interval '180 days'>clock_timestamp() AND ${liveAssessmentScope}
+          AND ($9::boolean OR s.created_at+interval '180 days'>clock_timestamp())
+          AND ${liveAssessmentScope}
           AND ($5::timestamptz IS NULL OR (f.published_at,f.id)>($5::timestamptz,$6::uuid))
         ORDER BY r.ordinal`,scope.tenantId,scope.workspaceId,
       scope.interestId,backfillFrom,cursor?.publishedAt ?? null,cursor?.feedItemId ?? null,
-      JSON.stringify(requested),exclusivePeriodEnd ?? null);
+      JSON.stringify(requested),exclusivePeriodEnd ?? null,
+      includeExpiredForPreparation);
       if (rows.length !== identities.length) {
         throw new Error('Reader value inventory changed during materialization');
       }

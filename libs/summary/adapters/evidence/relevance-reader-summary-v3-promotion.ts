@@ -1,17 +1,17 @@
 import type {
-  ReaderValueAssessment,
   ReaderValueAssessmentStore,
   ReaderValueRead,
   ReaderValueReference,
 } from "@social-monitor/relevance/application/contracts/reader-value-assessment-store";
 import { canonicalReaderValueTimestamp } from
   "@social-monitor/relevance/domain/reader-value/canonical-reader-value-timestamp";
+import { validateReaderValueAnswers } from
+  "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
 
 import {
   compareReaderPostPromotionV3,
   selectGitHubTrendingSupplementalEvidence,
   selectReaderPostPromotionsV3,
-  StoryClusteringService,
   type ReaderPostPromotionV3Candidate,
   type ReaderPostPromotionV3Presentation,
   type ReaderPostPromotionV3Provider,
@@ -19,8 +19,7 @@ import {
   type ReaderDisplayHeadlineSeal,
   type StoryCluster,
   type SummaryEvidenceItem,
-  type SummaryEvidenceSelection,
-  canonicalReaderSummaryPreparationTimestamp,
+  compareReaderSummaryPreparationTimestamps,
 } from "../../domain";
 import { STORY_RANKING_POLICY_V1 } from
   "../../domain/policies/story-ranking-policy";
@@ -36,6 +35,12 @@ import type { ReaderSummaryV3PromotionPort,
   ReaderSummaryV3PromotionOutcome } from "../../ports";
 import { maxReaderSummaryEvidenceItems } from
   "./relevance-reader-summary-evidence-support";
+import { clustersForSelection, v3EvidenceSelection } from
+  "./relevance-reader-summary-v3-evidence";
+import { clusteringEvidenceItem, evidenceItem } from
+  "./relevance-reader-summary-v3-source-evidence";
+import { clusterPromotionStoryRelations, semanticAdmission } from
+  "./relevance-reader-summary-v3-story-relations";
 
 const maxPresentationCandidates = 32;
 const presentationBatchSize = 4;
@@ -51,11 +56,23 @@ implements ReaderSummaryV3PromotionPort {
   async build(params: Parameters<ReaderSummaryV3PromotionPort["build"]>[0]):
   Promise<ReaderSummaryV3PromotionOutcome> {
     const job = params.job.toSnapshot();
-    if (job.scope.type !== "interest" ||
+    if (job.scope.type === "workspace" &&
+        params.manifest.schemaVersion !== "reader_summary_preparation_manifest.v2" ||
+        job.scope.type === "interest" &&
         params.manifest.schemaVersion !== "reader_summary_preparation_manifest.v1") {
       return { kind: "dependency_failure", reason: "config_unavailable" };
     }
-    const interestId = job.scope.interestId;
+    if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+        (params.manifest.periodKey !== job.period.periodKey ||
+          params.manifest.cutoffAt !== job.preparationCutoffAt)) {
+      return { kind: "dependency_failure", reason: "config_unavailable" };
+    }
+    const interestByCandidate = new Map(params.manifest.candidates.map((candidate) =>
+      [candidate.candidateId, params.manifest.schemaVersion ===
+        "reader_summary_preparation_manifest.v2"
+        ? (candidate as typeof params.manifest.candidates[number] & {
+          readonly interestId: string }).interestId
+        : job.scope.type === "interest" ? job.scope.interestId : ""] as const));
     let supplementalEvidence: readonly SummaryEvidenceItem[];
     try {
       supplementalEvidence = selectGitHubTrendingSupplementalEvidence(
@@ -71,24 +88,68 @@ implements ReaderSummaryV3PromotionPort {
       return { kind: "dependency_failure", reason: error instanceof Error
         ? error.message : "supplemental_evidence_unavailable" };
     }
-    const references: ReaderValueReference[] = params.manifest.candidates.map(
-      (candidate) => ({ assessmentId: candidate.assessmentId,
-        feedItemId: candidate.candidateId,
+    const referenceGroups = new Map<string, ReaderValueReference[]>();
+    for (const candidate of params.manifest.candidates) {
+      const interestId = interestByCandidate.get(candidate.candidateId)!;
+      const reference = {
+        assessmentId: candidate.assessmentId, feedItemId: candidate.candidateId,
+        ...(params.manifest.schemaVersion ===
+          "reader_summary_preparation_manifest.v2"
+          ? { sourceBindingId: candidate.sourceBindingId } : {}),
         sourceSnapshotSha256: candidate.sourceSnapshotSha256,
-        inputSha256: candidate.inputSha256 }));
-    const reads: ReaderValueRead[] = [];
-    for (let offset = 0; offset < references.length; offset += 100) {
-      reads.push(...await this.assessments.read({ tenantId: job.tenantId,
-        workspaceId: job.workspaceId }, interestId,
-      references.slice(offset, offset + 100)));
+        inputSha256: candidate.inputSha256 };
+      const group = referenceGroups.get(interestId);
+      if (group === undefined) referenceGroups.set(interestId, [reference]);
+      else group.push(reference);
     }
-    if (reads.length !== references.length || reads.some((read) =>
+    const reads: ReaderValueRead[] = [];
+    let referenceCount = 0;
+    for (const [interestId, references] of referenceGroups) {
+      referenceCount += references.length;
+      for (let offset = 0; offset < references.length; offset += 100) {
+        reads.push(...await this.assessments.read({ tenantId: job.tenantId,
+          workspaceId: job.workspaceId }, interestId,
+        references.slice(offset, offset + 100)));
+      }
+    }
+    if (reads.length !== referenceCount || reads.some((read) =>
       read.status !== "available" || read.assessment.state !== "assessed" ||
       read.assessment.answers === null || read.assessment.assessedAt === null)) {
       return { kind: "dependency_failure", reason: "assessment_unavailable" };
     }
+    if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+        (job.preparationDeadlineAt === undefined || reads.some((read) =>
+          read.status === "available" && read.assessment.assessedAt !== null &&
+          compareReaderSummaryPreparationTimestamps(read.assessment.assessedAt,
+            job.preparationDeadlineAt!) > 0))) {
+      return { kind: "dependency_failure", reason: "assessment_coverage_timeout" };
+    }
     const assessmentById = new Map(reads.flatMap((read) =>
       read.status === "available" ? [[read.assessment.id, read.assessment] as const] : []));
+    if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+        params.manifest.candidates.some((frozen) => {
+          const assessment = assessmentById.get(frozen.assessmentId);
+          const config = params.manifest.schemaVersion ===
+            "reader_summary_preparation_manifest.v2" &&
+            params.manifest.interests.find((entry) =>
+              entry.interestId === frozen.interestId);
+          return assessment === undefined ||
+            !config ||
+            assessment.input.interestId !== frozen.interestId ||
+            assessment.input.sourceItemId !== frozen.sourceItemId ||
+            assessment.input.sourceRevisionKey !== frozen.sourceRevisionKey ||
+            assessment.input.sourceSnapshotSha256 !== frozen.sourceSnapshotSha256 ||
+            assessment.input.inputSha256 !== frozen.inputSha256 ||
+            assessment.input.interestSha256 !== config.interestSha256 ||
+            assessment.input.rubricVersion !== config.rubricVersion ||
+            assessment.input.rubricSha256 !== config.rubricSha256 ||
+            assessment.input.inputBuilderVersion !== config.inputBuilderVersion ||
+            assessment.input.modelConfigVersion !== config.modelConfigVersion ||
+            assessment.answers === null ||
+            !validateReaderValueAnswers(assessment.answers).ok;
+        })) {
+      return { kind: "dependency_failure", reason: "assessment_unavailable" };
+    }
     const presentationInputById = new Map<string, ReaderPostPresentationV3Input>();
     const explicitStoryIds = new Map(params.manifest.candidates.map((candidate) =>
       [candidate.candidateId, candidate.storyId] as const));
@@ -102,6 +163,7 @@ implements ReaderSummaryV3PromotionPort {
       }
       const providerFamily = promotionProviderFamily(frozen.providerKey);
       const snapshot = assessment.input.snapshot;
+      const interestId = interestByCandidate.get(frozen.candidateId)!;
       const derivedStoryId = deterministicStoryId(frozen, snapshot.title, snapshot.body);
       deterministicStoryIds.set(frozen.candidateId, derivedStoryId);
       const presentationInput: ReaderPostPresentationV3Input = {
@@ -118,7 +180,8 @@ implements ReaderSummaryV3PromotionPort {
       presentationInputById.set(frozen.candidateId, presentationInput);
       frozenEvidence.push(clusteringEvidenceItem(frozen, presentationInput, assessment));
       return {
-        candidateId: frozen.candidateId, providerKey: frozen.providerKey,
+        candidateId: frozen.candidateId, interestId,
+        providerKey: frozen.providerKey,
         providerFamily, sourceItemId: frozen.sourceItemId,
         canonicalIdentity: frozen.canonicalIdentity,
         storyId: frozen.storyId ?? derivedStoryId,
@@ -139,24 +202,27 @@ implements ReaderSummaryV3PromotionPort {
         blocked: snapshot.safety === "blocked",
       } satisfies ReaderPostPromotionV3Candidate;
     });
-    const storyMembership = new StoryClusteringService(
-      { now: () => new Date(params.manifest.cutoffAt) },
-      { ...STORY_RANKING_POLICY_V1,
-        maxClusters: Math.max(1, frozenEvidence.length) },
-    ).cluster({
+    const clustered = clusterPromotionStoryRelations({
+      candidates: rawCandidates, evidence: frozenEvidence,
+      cutoffAt: params.manifest.cutoffAt,
       identity: { tenantId: job.tenantId, workspaceId: job.workspaceId,
         scope: job.scope },
-      items: [...frozenEvidence].sort((left, right) =>
-        compareUtf8Bytes(left.feedItemId, right.feedItemId)),
-      limit: Math.max(1, frozenEvidence.length),
-      now: new Date(params.manifest.cutoffAt),
+      deterministicStoryIds,
+      workspaceManifest: params.manifest.schemaVersion ===
+        "reader_summary_preparation_manifest.v2",
     });
+    if (clustered.kind === "budget_exhausted") {
+      return { kind: "budget_exhausted" };
+    }
     const candidates = normalizeDuplicateStoryIds(rawCandidates,
-      explicitStoryIds, deterministicStoryIds, storyMembership.clusters)
+      explicitStoryIds, deterministicStoryIds, clustered.clusters)
       .sort(compareReaderPostPromotionV3);
 
     const statuses = new Map<string, ReaderPostPromotionV3Presentation>(candidates.map((candidate) =>
       [candidate.candidateId, candidate.presentation] as const));
+    const bindingFor = (candidate: ReaderPostPromotionV3Candidate): string =>
+      presentationAttemptBinding(candidate, params.manifest.schemaVersion ===
+        "reader_summary_preparation_manifest.v2");
     const sealById = new Map<string, ReaderDisplayHeadlineSeal>();
     const admitted = candidates.filter(semanticAdmission);
     // Charge the finite budget only when a distinct presentation binding is
@@ -179,7 +245,7 @@ implements ReaderSummaryV3PromotionPort {
         if (attempted.has(candidate.candidateId) || readyStories.has(candidate.storyId) ||
             batchStories.has(candidate.storyId)) continue;
         const input = presentationInputById.get(candidate.candidateId)!;
-        const binding = presentationAttemptBinding(candidate);
+        const binding = bindingFor(candidate);
         const priorOutcome = outcomeByBinding.get(binding);
         if (priorOutcome !== undefined) {
           attempted.add(candidate.candidateId);
@@ -228,20 +294,20 @@ implements ReaderSummaryV3PromotionPort {
       }
       allowed.forEach((candidate, index) => {
         attempted.add(candidate.candidateId);
-        chargedBindings.add(presentationAttemptBinding(candidate));
+        chargedBindings.add(bindingFor(candidate));
         const result = results[index]!;
         if (result.status === "available") {
           const outcome = { status: "available" as const,
             presentationInputDigest: result.presentationInputDigest };
           statuses.set(candidate.candidateId, outcome);
-          outcomeByBinding.set(presentationAttemptBinding(candidate), outcome);
+          outcomeByBinding.set(bindingFor(candidate), outcome);
           readyStories.add(candidate.storyId);
           sealById.set(candidate.candidateId, result.seal);
         } else {
           const outcome = { status: "unavailable" as const,
             reason: result.reason };
           statuses.set(candidate.candidateId, outcome);
-          outcomeByBinding.set(presentationAttemptBinding(candidate), outcome);
+          outcomeByBinding.set(bindingFor(candidate), outcome);
         }
       });
     }
@@ -253,6 +319,25 @@ implements ReaderSummaryV3PromotionPort {
     const completed = candidates.map((candidate) => ({ ...candidate,
       presentation: statuses.get(candidate.candidateId)! }));
     const selection = selectReaderPostPromotionsV3(completed);
+    if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+        selection.top.length + selection.additional.length < 16 &&
+        completed.some((candidate) =>
+          (candidate.answers.usefulness.choice === "useful" ||
+            candidate.answers.usefulness.choice === "important") &&
+          (candidate.answers.relevance.choice === "relevant" ||
+            candidate.answers.relevance.choice === "central") &&
+          !candidate.appendixOnly && candidate.scopeValid &&
+          candidate.freshnessValid && candidate.safetyValid && !candidate.blocked &&
+          !candidate.sourceIdentityValid &&
+          ![...selection.top, ...selection.additional].some((selected) =>
+            selected.storyId === candidate.storyId))) {
+      return { kind: "presentation_unavailable" };
+    }
+    if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+        selection.excluded.some((entry) =>
+          entry.reason === "presentation_budget_exhausted")) {
+      return { kind: "budget_exhausted" };
+    }
     if (selection.outcome !== "ready") {
       if (selection.outcome !== "no_signal" || supplementalEvidence.length === 0) {
         return { kind: selection.outcome };
@@ -285,14 +370,6 @@ implements ReaderSummaryV3PromotionPort {
   }
 }
 
-const semanticAdmission = (candidate: ReaderPostPromotionV3Candidate): boolean =>
-  (candidate.answers.usefulness.choice === "useful" ||
-    candidate.answers.usefulness.choice === "important") &&
-  (candidate.answers.relevance.choice === "relevant" ||
-    candidate.answers.relevance.choice === "central") &&
-  !candidate.appendixOnly && candidate.scopeValid && candidate.sourceIdentityValid &&
-  candidate.freshnessValid && candidate.safetyValid && !candidate.blocked;
-
 const promotionProviderFamily = (providerKey: string): ReaderPostPromotionV3Provider => {
   const key = providerKey.trim().toLowerCase();
   if (key === "x" || key === "twitter" || key === "x-twitter") return "x";
@@ -310,7 +387,12 @@ const promotionProviderFamily = (providerKey: string): ReaderPostPromotionV3Prov
 
 const presentationAttemptBinding = (
   candidate: ReaderPostPromotionV3Candidate,
-): string => `${candidate.sourceItemId}\u0000${candidate.storyId}`;
+  workspaceManifest: boolean,
+): string => `${candidate.interestId ?? ""}\u0000${
+  workspaceManifest ? candidate.candidateId : ""}\u0000${
+  candidate.assessmentId}\u0000${
+  candidate.sourceItemId}\u0000${
+  candidate.sourceSnapshotSha256}\u0000${candidate.inputSha256}`;
 
 const deterministicStoryId = (candidate: ReaderSummaryPreparationCandidate,
   title: string, body: string): string => `story:${storyKey({
@@ -364,7 +446,9 @@ const normalizeDuplicateStoryIds = (
   const groups = new Map<string, ReaderPostPromotionV3Candidate[]>();
   for (const candidate of candidates) {
     const root = find(candidate.candidateId);
-    groups.set(root, [...(groups.get(root) ?? []), candidate]);
+    const group = groups.get(root);
+    if (group === undefined) groups.set(root, [candidate]);
+    else group.push(candidate);
   }
   const storyByCandidate = new Map<string, string>();
   for (const group of groups.values()) {
@@ -388,81 +472,3 @@ const inFrozenWindow = (value: string, start: Date, end: Date): boolean => {
   const time = Date.parse(value);
   return Number.isFinite(time) && time >= start.getTime() && time < end.getTime();
 };
-
-const evidenceItem = (
-  frozen: ReaderSummaryPreparationCandidate,
-  input: ReaderPostPresentationV3Input,
-  assessment: ReaderValueAssessment,
-  seal: ReaderDisplayHeadlineSeal,
-): SummaryEvidenceItem => ({
-  readerHeadline: seal.headline,
-  feedItemId: frozen.candidateId, sourceItemId: frozen.sourceItemId,
-  sourceBindingId: frozen.sourceBindingId, interestId: assessment.input.interestId,
-  providerKey: frozen.providerKey, canonicalUrl: frozen.canonicalIdentity,
-  title: input.title, bodyPreview: input.body, sourceText: input.body,
-  publishedAt: new Date(frozen.publishedAt), observedAt: new Date(frozen.observedAt),
-  score: 0, whyImportant: [], readerActionKind: "read_source",
-  storyKeyHint: frozen.storyId,
-});
-
-const clusteringEvidenceItem = (
-  frozen: ReaderSummaryPreparationCandidate,
-  input: ReaderPostPresentationV3Input,
-  assessment: ReaderValueAssessment,
-): SummaryEvidenceItem => ({
-  feedItemId: frozen.candidateId, sourceItemId: frozen.sourceItemId,
-  sourceBindingId: frozen.sourceBindingId, interestId: assessment.input.interestId,
-  providerKey: frozen.providerKey, canonicalUrl: frozen.canonicalIdentity,
-  title: input.title, bodyPreview: input.body, sourceText: input.body,
-  publishedAt: new Date(frozen.publishedAt), observedAt: new Date(frozen.observedAt),
-  score: 0, whyImportant: [], storyKeyHint: frozen.storyId,
-});
-
-const v3EvidenceSelection = (params: {
-  readonly jobId: string;
-  readonly period: { readonly startedAt: Date; readonly endedAt: Date };
-  readonly cutoffAt: string;
-  readonly clusters: readonly StoryCluster[];
-  readonly primaryEvidence: readonly SummaryEvidenceItem[];
-  readonly supplementalEvidence: readonly SummaryEvidenceItem[];
-  readonly selection: NonNullable<SummaryEvidenceSelection["promotionV3"]>;
-}): SummaryEvidenceSelection => {
-  const primaryIds = new Set(params.primaryEvidence.map((item) => item.feedItemId));
-  const selectedEvidence = [...params.primaryEvidence,
-    ...params.supplementalEvidence.filter((item) => !primaryIds.has(item.feedItemId))];
-  const exactCutoff = canonicalReaderSummaryPreparationTimestamp(params.cutoffAt);
-  return {
-    rankingPolicyVersion: "reader_promotion_policy.v3",
-    sourceWindow: {
-      windowId: `reader-summary-v3:${params.jobId}`,
-      startedAt: params.period.startedAt, endedAt: params.period.endedAt,
-      selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
-      storyClusterIds: params.clusters.map((cluster) => cluster.id),
-      periodStartedAt: params.period.startedAt,
-      periodEndedAt: params.period.endedAt,
-      ingestionCutoff: new Date(exactCutoff), exactIngestionCutoff: exactCutoff,
-    },
-    clusters: params.clusters, selectedEvidence, promotionV3: params.selection,
-  };
-};
-
-const clustersForSelection = (
-  selection: ReturnType<typeof selectReaderPostPromotionsV3>,
-  evidence: readonly SummaryEvidenceItem[],
-  candidates: readonly ReaderPostPromotionV3Candidate[],
-): readonly StoryCluster[] => [...selection.top, ...selection.additional].map((candidate) => {
-  const item = evidence.find((value) => value.feedItemId === candidate.candidateId)!;
-  const members = candidates.filter((value) =>
-    value.storyId === candidate.storyId || value.sourceItemId === candidate.sourceItemId);
-  const duplicateFeedItemIds = members.filter((value) =>
-    value.candidateId !== candidate.candidateId &&
-    (value.storyId === candidate.storyId || value.sourceItemId === candidate.sourceItemId))
-    .map((value) => value.candidateId);
-  return { id: candidate.storyId, storyKey: candidate.storyId,
-    rankingPolicyVersion: "reader_promotion_policy.v3",
-    representativeFeedItemId: candidate.candidateId, duplicateFeedItemIds,
-    interestIds: [item.interestId], providerKeys: [...new Set(
-      members.map((member) => member.providerKey))].sort(compareUtf8Bytes), score: 0,
-    observedAtRange: { startedAt: item.observedAt, endedAt: item.observedAt },
-    whyImportant: [] };
-});

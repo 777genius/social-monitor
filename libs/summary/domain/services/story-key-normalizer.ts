@@ -1,4 +1,6 @@
-import { validateOutboundUrl } from "@social-monitor/shared-kernel";
+import { createHash } from "node:crypto";
+
+import { identityQueryEntries, validateOutboundUrl } from "@social-monitor/shared-kernel";
 
 import type { StoryRankingPolicy } from "../policies/story-ranking-policy";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
@@ -229,21 +231,39 @@ const canonicalUrlStoryKey = (value: string): string | null => {
       host === "news.ycombinator.com" &&
       parsed.pathname.replace(/\/+$/u, "") === "/item"
     ) {
-      const itemId = parsed.searchParams.get("id")?.trim();
-      if (itemId !== undefined && itemId.length > 0) {
+      const itemIds = parsed.searchParams.getAll("id");
+      const itemId = itemIds[0]?.trim();
+      if (itemIds.length === 1 && itemId !== undefined && /^[0-9]+$/u.test(itemId)) {
         return `url:news.ycombinator.com/item/${itemId}`;
       }
     }
 
     parsed.hash = "";
-    parsed.search = "";
     parsed.hostname = host;
     const pathname = normalizeCanonicalPath(host, parsed.pathname);
+    if (redirectTargetParams(host, parsed.pathname).length > 0) {
+      return `url:${host}${pathname}`;
+    }
 
-    return `url:${host}${pathname}`;
+    const queryKey = canonicalQueryKey(host, parsed.searchParams);
+
+    return `url:${host}${pathname}${queryKey}`;
   } catch {
     return null;
   }
+};
+
+const canonicalQueryKey = (host: string, params: URLSearchParams): string => {
+  const identityParameters = identityQueryEntries(host, params);
+
+  if (identityParameters.length === 0) {
+    return "";
+  }
+
+  const digest = createHash("sha256")
+    .update(JSON.stringify(identityParameters), "utf8")
+    .digest("hex");
+  return `?q=${digest}`;
 };
 
 const normalizeHost = (value: string): string =>

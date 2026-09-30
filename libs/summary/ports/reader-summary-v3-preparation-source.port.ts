@@ -6,7 +6,7 @@ import type {
 } from "../domain";
 
 export type ReaderSummaryV3Coverage =
-  | { readonly status: "ready" }
+  | { readonly status: "ready"; readonly hasPromotableSignal?: boolean }
   | { readonly status: "pending" }
   | { readonly status: "unavailable"; readonly code:
       Extract<ReaderSummaryPreparationFailureCode,
@@ -16,7 +16,8 @@ export type ReaderSummaryV3Coverage =
 export interface ReaderSummaryV3PreparationSourcePort {
   configuration(job: ReaderSummaryJob): Promise<
     | { readonly ok: true; readonly config: ReaderSummaryPreparationConfig }
-    | { readonly ok: false; readonly code: "config_unavailable" }>;
+    | { readonly ok: false; readonly code: "config_unavailable" |
+        "assessment_inventory_over_budget" }>;
   prepare(job: ReaderSummaryJob, config: ReaderSummaryPreparationConfig): Promise<
     | { readonly ok: true; readonly config: ReaderSummaryPreparationConfig;
         readonly manifest: ReaderSummaryPreparationManifest;
@@ -24,7 +25,8 @@ export interface ReaderSummaryV3PreparationSourcePort {
     | { readonly ok: false; readonly code:
         Extract<ReaderSummaryPreparationFailureCode,
           "assessment_snapshot_unavailable" |
-          "assessment_inventory_over_budget" | "config_unavailable"> }>;
+          "assessment_inventory_over_budget" | "assessment_time_over_budget" |
+          "config_unavailable"> }>;
   coverage(params: {
     readonly job: ReaderSummaryJob;
     readonly manifest: ReaderSummaryPreparationManifest;

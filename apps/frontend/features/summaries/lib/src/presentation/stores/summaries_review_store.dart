@@ -31,6 +31,7 @@ import '../workflows/summaries_review_store_dependencies.dart';
 import '../workflows/summary_period_navigation.dart';
 
 part 'summaries_review_store_workspace_summary_workflow.dart';
+part 'summaries_review_store_workspace_summary_history.dart';
 part 'summaries_review_store_post_rating_workflow.dart';
 part 'summaries_review_store_reader_action_workflow.dart';
 part 'summaries_review_store_topic_recommendation_workflow.dart';
@@ -350,7 +351,6 @@ final class SummariesReviewStore extends ChangeNotifier {
       await activeLoad;
       return;
     }
-
     final load = _loadPrimaryReaderSummary();
     _activeStoreLoad = load;
     _activeStoreLoadKey = loadKey;

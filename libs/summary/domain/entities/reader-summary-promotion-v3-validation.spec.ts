@@ -30,6 +30,22 @@ describe("Promotion V3 artifact and publication headline binding", () => {
       .toEqual([]);
   });
 
+  // Regression: a malformed V3 projection cannot publish nine cards in a
+  // global placement, even when the presentation and citation data are present.
+  it.each(["top", "additional"] as const)(
+    "rejects more than eight %s V3 cards", (placement) => {
+      const fixture = v3Fixture();
+      const card = fixture.props.content!.topReads[0]!;
+      const cards = Array.from({ length: 9 }, () => card);
+      const props = { ...fixture.props, content: { ...fixture.props.content!,
+        topReads: placement === "top" ? cards : [],
+        selectedPosts: placement === "additional" ? cards : [] } };
+
+      expect(() => assertReaderSummaryPromotionAttestations(
+        props, Array.from({ length: 9 }, () => fixture.projection.attestations[0]!),
+      )).toThrow("Reader summary Promotion V3 placement cap is invalid");
+    });
+
   it("rejects a card headline that differs from its V3 seal", () => {
     const fixture = v3Fixture();
     const card = fixture.props.content!.topReads[0]!;

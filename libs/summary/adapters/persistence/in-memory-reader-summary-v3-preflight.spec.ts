@@ -4,7 +4,8 @@ import { PrepareReaderValueSummaryUseCase } from
 import type { ReaderValuePreparationInventory } from
   "@social-monitor/relevance/application/contracts/reader-value-inventory";
 
-import { ReaderSummaryJob, type ReaderSummaryPreparationManifest } from "../../domain";
+import { ReaderSummaryJob, readerSummaryWorkspaceManifestSha256,
+  type ReaderSummaryPreparationManifest } from "../../domain";
 import type { ReaderSummaryV3PreparationSourcePort } from "../../ports";
 import { InMemoryReaderSummaryJobRepository } from
   "./in-memory-reader-summary-job.repository";
@@ -216,6 +217,150 @@ describe("InMemoryReaderSummaryV3Preflight", () => {
     expect(prepare).toHaveBeenCalledTimes(1);
     expect(result.job.toSnapshot().preparationManifestSha256).toBe("1".repeat(64));
   });
+
+  it.each(["daily", "weekly"] as const)(
+    "recovers a %s workspace crash after claim with one frozen identity and fenced redelivery",
+    async (cadence) => {
+      const jobs = new InMemoryReaderSummaryJobRepository();
+      const claimedAt = new Date("2026-09-21T00:00:00Z");
+      const old = ReaderSummaryJob.rehydrate({ ...workspaceFrozenJob(cadence)
+        .startPrepared({ startedAt: claimedAt, readyAt: claimedAt }).toSnapshot(),
+        failureReason: "v3_pre_provider_claim" });
+      await jobs.save(old);
+      const source = unusedSource();
+      const subject = new InMemoryReaderSummaryV3Preflight(jobs, source);
+      const deliveredAt = new Date("2026-09-23T00:00:00Z");
+      const due = await jobs.findDueForPolling({
+        tenantId: old.toSnapshot().tenantId,
+        workspaceId: old.toSnapshot().workspaceId,
+        now: deliveredAt,
+        staleRunningStartedBefore: new Date("2026-09-22T22:00:00Z"),
+        limit: 1,
+      });
+      expect(due.map((candidate) => candidate.toSnapshot().id)).toEqual([
+        old.toSnapshot().id,
+      ]);
+      expect(await jobs.claimForExecution({
+        tenantId: old.toSnapshot().tenantId,
+        workspaceId: old.toSnapshot().workspaceId,
+        readerSummaryJobId: old.toSnapshot().id,
+        requestedAt: deliveredAt, startedAt: deliveredAt,
+        staleRunningStartedBefore: new Date("2026-09-22T22:00:00Z"),
+      })).toBeNull();
+      expect(await jobs.findDueForPolling({
+        tenantId: old.toSnapshot().tenantId,
+        workspaceId: workspaceId("00000000-0000-4000-8000-000000000099"),
+        now: deliveredAt,
+        staleRunningStartedBefore: new Date("2026-09-22T22:00:00Z"),
+        limit: 1,
+      })).toEqual([]);
+      const result = await subject.advance({ job: old, requestedAt: deliveredAt,
+        startedAt: deliveredAt });
+      expect(result.kind).toBe("claimed");
+      if (result.kind !== "claimed") return;
+      expect(result.job.toSnapshot()).toMatchObject({ status: "running",
+        scope: { type: "workspace" }, period: old.toSnapshot().period,
+        preparationConfig: old.toSnapshot().preparationConfig,
+        preparationCutoffAt: old.toSnapshot().preparationCutoffAt,
+        preparationManifestSha256: old.toSnapshot().preparationManifestSha256 });
+      expect(result.manifest).toEqual(old.toSnapshot().preparationManifest);
+      expect(await jobs.saveExecutionOutcome({ job: old.fail({ failedAt: deliveredAt,
+        failureReason: "late old worker" }), expectedStartedAt: claimedAt })).toBe(false);
+      await expect(subject.advance({ job: old, requestedAt: deliveredAt,
+        startedAt: deliveredAt })).resolves.toMatchObject({ kind: "already_running" });
+      expect(source.configuration).not.toHaveBeenCalled();
+      expect(source.prepare).not.toHaveBeenCalled();
+      expect(source.coverage).not.toHaveBeenCalled();
+      expect(await jobs.findDueForPolling({ tenantId: old.toSnapshot().tenantId,
+        workspaceId: old.toSnapshot().workspaceId, now: deliveredAt,
+        staleRunningStartedBefore: new Date("2026-09-22T22:00:00Z"),
+        limit: 1 })).toEqual([]);
+    });
+
+  it("excludes an active claim and retires an expired uncertain provider invocation", async () => {
+    const jobs = new InMemoryReaderSummaryJobRepository();
+    const now = new Date("2026-09-21T00:00:00Z");
+    const old = ReaderSummaryJob.rehydrate({ ...workspaceFrozenJob("daily")
+      .startPrepared({ startedAt: now, readyAt: now }).toSnapshot(),
+      failureReason: "v3_pre_provider_claim" });
+    await jobs.save(old);
+    const subject = new InMemoryReaderSummaryV3Preflight(jobs, unusedSource());
+    expect(await jobs.findDueForPolling({ now,
+      staleRunningStartedBefore: new Date("2026-09-20T22:00:00Z"),
+      limit: 1 })).toEqual([]);
+    expect((await subject.advance({ job: old, requestedAt: now,
+      startedAt: now })).kind).toBe("already_running");
+    expect(await subject.markProviderStarted(old, now)).toBe(true);
+    const later = new Date("2026-09-23T00:00:00Z");
+    const outcome = await subject.advance({ job: old, requestedAt: later,
+      startedAt: later });
+    expect(outcome.kind).toBe("terminal");
+    expect(outcome.job.toSnapshot()).toMatchObject({ status: "failed",
+      failureReason: "V3 execution outcome uncertain after provider invocation" });
+    expect(await jobs.findDueForPolling({ now: later,
+      staleRunningStartedBefore: new Date("2026-09-22T22:00:00Z"),
+      limit: 1 })).toEqual([]);
+    expect((await subject.advance({ job: old, requestedAt: later,
+      startedAt: later })).kind).toBe("terminal");
+  });
+
+  it("does not recover a historical failed quota marker even after its due time", async () => {
+    const jobs = new InMemoryReaderSummaryJobRepository();
+    const now = new Date("2026-09-21T00:00:00Z");
+    const old = workspaceFrozenJob("daily").startPrepared({
+      startedAt: now, readyAt: now }).fail({ failedAt: now,
+      failureReason: "v3_retryable_provider_rate_limited" });
+    const dueAt = new Date(now.getTime() + 60_000);
+    const scheduled = ReaderSummaryJob.rehydrate({ ...old.toSnapshot(),
+      preparationNextCheckAt: dueAt });
+    await jobs.save(scheduled);
+    const subject = new InMemoryReaderSummaryV3Preflight(jobs, unusedSource());
+    expect(await jobs.findDueForPolling({ now: dueAt,
+      staleRunningStartedBefore: new Date(0), limit: 1 })).toEqual([]);
+    expect((await subject.advance({ job: scheduled, requestedAt: dueAt,
+      startedAt: dueAt })).kind).toBe("terminal");
+    expect((await jobs.findById(key(old)))?.toSnapshot().status).toBe("failed");
+  });
+
+  it("retires a stale claim whose frozen configuration cannot be verified", async () => {
+    const jobs = new InMemoryReaderSummaryJobRepository();
+    const claimedAt = new Date("2026-09-21T00:00:00Z");
+    const old = ReaderSummaryJob.rehydrate({ ...workspaceFrozenJob("daily")
+      .startPrepared({ startedAt: claimedAt, readyAt: claimedAt }).toSnapshot(),
+      preparationConfig: undefined, failureReason: "v3_pre_provider_claim" });
+    await jobs.save(old);
+    const later = new Date("2026-09-23T00:00:00Z");
+
+    const outcome = await new InMemoryReaderSummaryV3Preflight(jobs, unusedSource())
+      .advance({ job: old, requestedAt: later, startedAt: later });
+
+    expect(outcome.job.toSnapshot()).toMatchObject({ status: "failed",
+      failureReason: "V3 recovery requires manual review: frozen preparation is unverifiable" });
+    expect(await jobs.findDueForPolling({ now: later,
+      staleRunningStartedBefore: new Date("2026-09-22T22:00:00Z"),
+      limit: 1 })).toEqual([]);
+  });
+
+  it("sends an old unmarked running claim to manual review without provider work", async () => {
+    const jobs = new InMemoryReaderSummaryJobRepository();
+    const claimedAt = new Date("2026-09-21T00:00:00Z");
+    const old = workspaceFrozenJob("weekly").startPrepared({
+      startedAt: claimedAt, readyAt: claimedAt });
+    await jobs.save(old);
+    const later = new Date("2026-09-23T00:00:00Z");
+    const source = unusedSource();
+
+    const outcome = await new InMemoryReaderSummaryV3Preflight(jobs, source)
+      .advance({ job: old, requestedAt: later, startedAt: later });
+
+    expect(outcome.job.toSnapshot()).toMatchObject({ status: "failed",
+      failureReason: "V3 execution outcome uncertain after provider invocation" });
+    expect(source.prepare).not.toHaveBeenCalled();
+    expect(source.coverage).not.toHaveBeenCalled();
+    expect(await jobs.findDueForPolling({ now: later,
+      staleRunningStartedBefore: new Date("2026-09-22T22:00:00Z"),
+      limit: 1 })).toEqual([]);
+  });
 });
 
 type ConfigurationMethod = ReaderSummaryV3PreparationSourcePort["configuration"];
@@ -273,3 +418,28 @@ const preparationSource = (
 ): ReaderSummaryV3PreparationSourcePort => ({ prepare: async () => prepare(),
   configuration: async () => ({ ok: true, config: fixture(1).config }),
   coverage: async () => typeof coverage === "function" ? coverage() : coverage });
+
+const unusedSource = (): ReaderSummaryV3PreparationSourcePort => ({
+  configuration: jest.fn(), prepare: jest.fn(), coverage: jest.fn(),
+});
+
+const workspaceFrozenJob = (cadence: "daily" | "weekly") => {
+  const requested = requestedJob().toSnapshot();
+  const period = { ...requested.period, cadence,
+    startedAt: cadence === "weekly" ? new Date("2026-09-13T00:00:00.000Z") :
+      requested.period.startedAt,
+    periodKey: `${cadence}:${cadence === "weekly" ?
+      "2026-09-13T00:00:00.000Z" : requested.period.startedAt.toISOString()}:` +
+      `${requested.period.endedAt.toISOString()}:UTC` };
+  const config = { schemaVersion: "reader_summary_preparation_config.v2" as const,
+    interests: [fixture(1).config] };
+  const manifest = { schemaVersion: "reader_summary_preparation_manifest.v2" as const,
+    cutoffAt: "2026-09-21T00:00:00.000000Z", periodKey: period.periodKey,
+    interests: [fixture(1).config], candidates: [] };
+  return ReaderSummaryJob.rehydrate({ ...requested, scope: { type: "workspace" },
+    period }).freezePreparation({ strategy: "jev_primary_v3", config,
+    cutoffAt: manifest.cutoffAt, deadlineAt: "2026-09-21T00:15:00.000000Z",
+    nextCheckAt: new Date("2026-09-21T00:00:10Z") })
+    .freezePreparationManifest({ manifest,
+      manifestSha256: readerSummaryWorkspaceManifestSha256(manifest) });
+};
