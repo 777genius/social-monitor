@@ -1,4 +1,5 @@
-import { tenantId, workspaceId, type IdGenerator } from "@social-monitor/shared-kernel";
+import { tenantId, workspaceId, type Clock, type IdGenerator } from "@social-monitor/shared-kernel";
+import { performance } from "node:perf_hooks";
 
 import { classifyReaderValueSourceKind } from
   "../../domain/reader-value/reader-value-source-kind";
@@ -10,6 +11,8 @@ import { READER_VALUE_INPUT_VERSION, READER_VALUE_MODEL_CONFIG,
 import type { ReaderValueAssessmentStore, ReaderValuePreparedInput } from
   "../contracts/reader-value-assessment-store";
 import { ReaderValueInventoryByteCeilingExceeded,
+  ReaderValueInventorySnapshotUnavailable,
+  ReaderValueInventoryTimeCeilingExceeded,
   type ReaderValueInputBuilder, type ReaderValuePreparationInventory } from
   "../contracts/reader-value-inventory";
 import type {
@@ -23,8 +26,9 @@ import { READER_VALUE_RUBRIC_VERSION } from
   "../../domain/reader-value/reader-value-rubric";
 
 const physicalRowCeiling = 100_000;
-const candidateCeiling = 1_000;
+const candidateCeiling = 20_000;
 const sourceByteCeiling = 32 * 1024 * 1024;
+const preparationTimeCeilingMs = 110_000;
 
 type PreparedCandidate = {
   readonly input: ReaderValuePreparedInput;
@@ -38,9 +42,10 @@ type PreparedCandidate = {
 
 type InventoryScan =
   | { readonly ok: false; readonly code: "assessment_snapshot_unavailable" |
-      "assessment_inventory_over_budget" | "config_unavailable" }
+      "assessment_inventory_over_budget" | "assessment_time_over_budget" |
+      "config_unavailable" }
   | { readonly ok: true; readonly config: ReaderValueSummaryPreparationConfig;
-      readonly prepared: readonly PreparedCandidate[] };
+      readonly prepared: readonly PreparedCandidate[]; readonly sourceBytes: number };
 
 export class PrepareReaderValueSummaryUseCase
 implements ReaderValueSummaryPreparation {
@@ -50,6 +55,7 @@ implements ReaderValueSummaryPreparation {
     private readonly store: Pick<ReaderValueAssessmentStore, "ensure" | "pin">,
     private readonly ids: IdGenerator,
     private readonly interests: ConfiguredInterestReaderPort,
+    private readonly clock?: Clock,
   ) {}
 
   async configuration(command: PrepareReaderValueSummaryCommand): Promise<
@@ -81,6 +87,15 @@ implements ReaderValueSummaryPreparation {
     if (!current.ok || !sameConfig(current.config, expectedConfig)) {
       return { ok: false, code: "config_unavailable" };
     }
+    const budget = command.candidateBudget ?? candidateCeiling;
+    if (!Number.isSafeInteger(budget) || budget < 0 || budget > candidateCeiling) {
+      return overBudget();
+    }
+    const byteBudget = command.sourceByteBudget ?? sourceByteCeiling;
+    if (!Number.isSafeInteger(byteBudget) || byteBudget < 0 ||
+        byteBudget > sourceByteCeiling) return overBudget();
+    if (this.timeBudgetExpired(command)) return timeOverBudget();
+    const startedAt = performance.now();
     const scope = { tenantId: command.tenantId, workspaceId: command.workspaceId };
     const inventoryEnd = exclusiveInventoryEnd(command);
     let scan: InventoryScan;
@@ -94,8 +109,10 @@ implements ReaderValueSummaryPreparation {
           let config = expectedConfig;
           const prepared: PreparedCandidate[] = [];
           do {
+            if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
             const page = await snapshot.page(command.periodStartedAt, cursor, 25,
-              sourceByteCeiling - sourceBytes, inventoryEnd);
+              byteBudget - sourceBytes, inventoryEnd);
+            if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
             if (page.length === 0) break;
             // The inventory has already enforced [periodStartedAt, inventoryEnd), so
             // every materialized row belongs to this frozen window. Charge the page
@@ -103,7 +120,7 @@ implements ReaderValueSummaryPreparation {
             sourceBytes += page.reduce((sum, item) => sum +
               Buffer.byteLength(item.source.title, "utf8") +
               Buffer.byteLength(item.source.body, "utf8"), 0);
-            if (!Number.isSafeInteger(sourceBytes) || sourceBytes > sourceByteCeiling) {
+            if (!Number.isSafeInteger(sourceBytes) || sourceBytes > byteBudget) {
               return overBudget();
             }
             scanned += page.length;
@@ -139,7 +156,7 @@ implements ReaderValueSummaryPreparation {
                   compareTimestamp(item.sourceUpdatedAt, command.cutoffAt) > 0) {
                 return { ok: false, code: "assessment_snapshot_unavailable" };
               }
-              if (candidateCount >= candidateCeiling) return overBudget();
+              if (candidateCount >= budget) return overBudget();
               const input = emptyPrepared ??
                 this.builder.prepare(item.source, item.sourceRevisionKey);
               if (!input.ok) continue;
@@ -179,10 +196,14 @@ implements ReaderValueSummaryPreparation {
             }
             if (page.length < 25) break;
           } while (cursor !== undefined);
-          return { ok: true, config, prepared };
-        });
+          return { ok: true, config, prepared, sourceBytes };
+        }, { includeExpiredSources: command.requireRetentionCompleteness === true });
     } catch (error) {
       if (error instanceof ReaderValueInventoryByteCeilingExceeded) return overBudget();
+      if (error instanceof ReaderValueInventoryTimeCeilingExceeded) return timeOverBudget();
+      if (error instanceof ReaderValueInventorySnapshotUnavailable) {
+        return { ok: false, code: "assessment_snapshot_unavailable" };
+      }
       throw error;
     }
     if (!scan.ok) return scan;
@@ -195,17 +216,36 @@ implements ReaderValueSummaryPreparation {
       storyId?: string;
     }> = [];
     for (const prepared of scan.prepared) {
-      const assessment = await this.store.ensure(this.ids.generate(), prepared.input);
-      if (assessment === null) {
+      if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
+      let input = prepared.input;
+      let assessment = await this.store.ensure(this.ids.generate(), input);
+      // A content-equivalent source can acquire a new revision key while the
+      // existing interest-scoped cache row keeps the earlier revision. The
+      // alternate digest creates a distinct assessment without changing the
+      // long-lived input builder or mutating a pinned historical row.
+      if (assessment !== null &&
+          assessment.input.sourceRevisionKey !== input.sourceRevisionKey &&
+          sameCachedReaderValueInputExceptRevision(assessment.input, input)) {
+        input = { ...input, inputSha256: readerValueSha256(JSON.stringify({
+          version: "reader-value-revision-binding.v1",
+          inputSha256: input.inputSha256,
+          sourceRevisionKey: input.sourceRevisionKey,
+        })) };
+        if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
+        assessment = await this.store.ensure(this.ids.generate(), input);
+      }
+      if (assessment === null ||
+          !sameCachedReaderValueInputExceptRevision(assessment.input, input) ||
+          assessment.input.sourceRevisionKey !== input.sourceRevisionKey) {
         return { ok: false, code: "assessment_snapshot_unavailable" };
       }
       if (prepared.candidate === null) continue;
       candidates.push({ ...prepared.candidate,
-        sourceItemId: prepared.input.sourceItemId,
-        sourceRevisionKey: prepared.input.sourceRevisionKey,
-        sourceSnapshotSha256: prepared.input.sourceSnapshotSha256,
+        sourceItemId: input.sourceItemId,
+        sourceRevisionKey: input.sourceRevisionKey,
+        sourceSnapshotSha256: input.sourceSnapshotSha256,
         assessmentId: assessment.id,
-        inputSha256: prepared.input.inputSha256,
+        inputSha256: input.inputSha256,
       });
     }
 
@@ -214,12 +254,23 @@ implements ReaderValueSummaryPreparation {
     const references = candidates.map((candidate) => ({
       assessmentId: candidate.assessmentId,
       feedItemId: candidate.candidateId,
+      sourceBindingId: candidate.sourceBindingId,
       sourceSnapshotSha256: candidate.sourceSnapshotSha256,
       inputSha256: candidate.inputSha256,
     }));
-    if (!(await this.store.pin(scope, command.interestId, command.jobId, references))) {
+    let pinned: boolean;
+    try {
+      pinned = await this.store.pin(scope, command.interestId, command.jobId, references);
+    } catch (error) {
+      if (error instanceof ReaderValueInventoryTimeCeilingExceeded) {
+        return timeOverBudget();
+      }
+      throw error;
+    }
+    if (!pinned) {
       return { ok: false, code: "assessment_snapshot_unavailable" };
     }
+    if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
     const manifest = {
       schemaVersion: "reader_summary_preparation_manifest.v1" as const,
       cutoffAt: command.cutoffAt,
@@ -229,11 +280,20 @@ implements ReaderValueSummaryPreparation {
       modelConfigVersion: scan.config.modelConfigVersion,
       candidates,
     };
-    if (Buffer.byteLength(JSON.stringify(manifest), "utf8") > 4 * 1024 * 1024) {
+    if (Buffer.byteLength(JSON.stringify(manifest), "utf8") > 16 * 1024 * 1024) {
       return overBudget();
     }
     return { ok: true, config: scan.config, manifest,
-      manifestSha256: readerValueSha256(JSON.stringify(manifest)) };
+      manifestSha256: readerValueSha256(JSON.stringify(manifest)),
+      sourceBytes: scan.sourceBytes };
+  }
+
+  private timeBudgetExpired(command: PrepareReaderValueSummaryCommand,
+    startedAt?: number): boolean {
+    return (startedAt !== undefined &&
+      performance.now() - startedAt >= preparationTimeCeilingMs) ||
+      command.deadlineAt !== undefined && this.clock !== undefined &&
+      compareTimestamp(this.clock.now().toISOString(), command.deadlineAt) >= 0;
   }
 }
 
@@ -263,6 +323,8 @@ const compareTimestamp = (left: string, right: string): number => {
 
 const overBudget = (): { readonly ok: false; readonly code: "assessment_inventory_over_budget" } =>
   ({ ok: false, code: "assessment_inventory_over_budget" });
+const timeOverBudget = (): { readonly ok: false; readonly code: "assessment_time_over_budget" } =>
+  ({ ok: false, code: "assessment_time_over_budget" });
 
 const sameConfig = (left: ReaderValueSummaryPreparationConfig,
   right: ReaderValueSummaryPreparationConfig): boolean =>
@@ -271,3 +333,21 @@ const sameConfig = (left: ReaderValueSummaryPreparationConfig,
   left.rubricVersion === right.rubricVersion && left.rubricSha256 === right.rubricSha256 &&
   left.inputBuilderVersion === right.inputBuilderVersion &&
   left.modelConfigVersion === right.modelConfigVersion;
+
+const sameCachedReaderValueInputExceptRevision = (
+  cached: ReaderValuePreparedInput,
+  prepared: ReaderValuePreparedInput,
+): boolean => cached.tenantId === prepared.tenantId &&
+  cached.workspaceId === prepared.workspaceId &&
+  cached.interestId === prepared.interestId &&
+  cached.sourceItemId === prepared.sourceItemId &&
+  cached.sourceSnapshotSha256 === prepared.sourceSnapshotSha256 &&
+  cached.interestSha256 === prepared.interestSha256 &&
+  cached.rubricVersion === prepared.rubricVersion &&
+  cached.rubricSha256 === prepared.rubricSha256 &&
+  cached.inputBuilderVersion === prepared.inputBuilderVersion &&
+  cached.modelConfigVersion === prepared.modelConfigVersion &&
+  cached.inputSha256 === prepared.inputSha256 &&
+  cached.requestSha256 === prepared.requestSha256 &&
+  cached.requestedModel === prepared.requestedModel &&
+  cached.terminalFailure === prepared.terminalFailure;

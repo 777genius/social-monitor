@@ -168,6 +168,10 @@ const assertV3Attestations = (
     ...(props.content?.topReads ?? []).map((card, index) => ({ card, placement: "top" as const, slot: index + 1 })),
     ...(props.content?.selectedPosts ?? []).map((card, index) => ({ card, placement: "additional" as const, slot: index + 1 })),
   ].filter(({ card }) => card.promotionMarker === "reader_post_promotion");
+  if (cards.filter((value) => value.placement === "top").length > 8 ||
+      cards.filter((value) => value.placement === "additional").length > 8) {
+    throw new Error("Reader summary Promotion V3 placement cap is invalid");
+  }
   if (cards.length !== attestations.length) {
     throw new Error("Every Promotion V3 card requires one attestation");
   }

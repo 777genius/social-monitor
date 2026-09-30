@@ -11,6 +11,8 @@ export type ReaderSummaryV3PreflightOutcome =
  * freeze exact assessment identities and decide ready/fail against DB wall clock.
  */
 export interface ReaderSummaryV3PreflightPort {
+  /** Fence provider entry against the exact active V3 claim. */
+  markProviderStarted(job: ReaderSummaryJob, expectedStartedAt: Date): Promise<boolean>;
   advance(params: {
     readonly job: ReaderSummaryJob;
     readonly requestedAt: Date;

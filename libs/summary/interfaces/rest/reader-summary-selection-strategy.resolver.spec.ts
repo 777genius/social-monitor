@@ -21,7 +21,7 @@ describe("reader summary selection strategy", () => {
     expect(defaultPrimary.resolve({ tenantId, workspaceId, interestId }))
       .toBe("jev_primary_v3");
     expect(defaultPrimary.resolve({ tenantId, workspaceId }))
-      .toBe("legacy_v2");
+      .toBe("jev_primary_v3");
     const primary = resolveReaderSummarySelectionStrategy(base);
     expect(primary.resolve({ tenantId, workspaceId, interestId }))
       .toBe("jev_primary_v3");
@@ -55,5 +55,21 @@ describe("reader summary selection strategy", () => {
   it("keeps shadow rollout explicitly scoped", () => {
     expect(() => resolveReaderSummarySelectionStrategy({
       READER_VALUE_MODE: "jev_shadow" })).toThrow(/scope/u);
+  });
+  // Regression: the workspace screen used to stay on V2 even when durable V3
+  // was the production default; an explicit switch must still restore V2.
+  it("selects guarded workspace V3 by default with explicit V2 rollback", () => {
+    const durable = { RELEVANCE_PERSISTENCE: "prisma",
+      SUMMARY_PERSISTENCE: "prisma", READER_VALUE_WORKSPACE_V3: "enabled" };
+    expect(resolveReaderSummarySelectionStrategy(durable).resolve({
+      tenantId, workspaceId })).toBe("jev_primary_v3");
+    expect(resolveReaderSummarySelectionStrategy({ ...durable,
+      READER_VALUE_MODE: "legacy_v2", READER_VALUE_WORKSPACE_V3: "disabled" })
+      .resolve({ tenantId, workspaceId })).toBe("legacy_v2");
+    expect(resolveReaderSummarySelectionStrategy({ ...durable,
+      READER_VALUE_WORKSPACE_V3: "disabled" })
+      .resolve({ tenantId, workspaceId })).toBe("legacy_v2");
+    expect(() => resolveReaderSummarySelectionStrategy({ ...base,
+      READER_VALUE_WORKSPACE_V3: "enabled" })).toThrow(/unrestricted discovery/u);
   });
 });

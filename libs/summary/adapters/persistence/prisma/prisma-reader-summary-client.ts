@@ -234,10 +234,17 @@ export type PrismaReaderSummaryClient = {
       readonly where: {
         readonly tenantId?: string;
         readonly workspaceId?: string;
-        readonly status: PrismaSummaryStatus;
+        readonly status?: PrismaSummaryStatus;
         readonly OR?: readonly [
           { readonly preparationNextCheckAt: null },
           { readonly preparationNextCheckAt: { readonly lte: Date } },
+        ] | readonly [
+          { readonly status: "REQUESTED"; readonly OR: readonly [
+            { readonly preparationNextCheckAt: null },
+            { readonly preparationNextCheckAt: { readonly lte: Date } },
+          ] },
+          { readonly status: "RUNNING"; readonly selectionStrategy: "jev_primary_v3";
+            readonly startedAt: { readonly lt: Date } },
         ];
       };
       readonly orderBy: readonly [

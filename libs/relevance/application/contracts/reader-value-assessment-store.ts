@@ -21,7 +21,8 @@ export type ReaderValuePreparedInput = ReaderValueScope & {
   readonly rubricSha256: string;
   readonly inputBuilderVersion: string;
   readonly modelConfigVersion: string;
-  /** Versioned identity includes exact raw interest and request/diagnostic envelope digests. */
+  /** Versioned identity includes exact interest and request digests; preparation
+   *  also binds a changed source revision when an existing cache row collides. */
   readonly inputSha256: string;
   /** Hash of requestBody: wire bytes for runnable inputs, diagnostic envelope for terminal inputs. */
   readonly requestSha256: string;
@@ -68,6 +69,8 @@ export type ReaderValueAssessment = {
 export type ReaderValueReference = {
   readonly assessmentId: string;
   readonly feedItemId: string;
+  /** When frozen, a rebound FeedItem is unavailable even if its source remains visible. */
+  readonly sourceBindingId?: string;
   readonly sourceSnapshotSha256: string;
   readonly inputSha256: string;
 };

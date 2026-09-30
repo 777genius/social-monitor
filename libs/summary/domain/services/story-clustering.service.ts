@@ -30,27 +30,37 @@ export class StoryClusteringService {
     private readonly policy: StoryRankingPolicy = STORY_RANKING_POLICY_V1,
   ) {}
 
-  cluster(params: {
-    readonly identity: ReaderSummaryScopeIdentity;
-    readonly items: readonly SummaryEvidenceItem[];
-    readonly limit: number;
-    readonly verifiedStoryRelationPairs?: ReadonlySet<string>;
-    readonly verifiedStrictTitleRelationPairs?: ReadonlySet<string>;
-    readonly now?: Date;
-  }): SummaryEvidenceSelection {
+  cluster(params: StoryClusteringParams): SummaryEvidenceSelection {
+    return this.build(params)!;
+  }
+
+  clusterWithinComparisonBudget(
+    params: StoryClusteringParams,
+    maxPairComparisons: number,
+  ): { readonly kind: "ready"; readonly selection: SummaryEvidenceSelection } |
+    { readonly kind: "budget_exhausted" } {
+    if (!Number.isSafeInteger(maxPairComparisons) || maxPairComparisons < 0) {
+      throw new Error("Story comparison budget must be a nonnegative safe integer");
+    }
+    const selection = this.build(params, maxPairComparisons);
+    return selection === undefined ? { kind: "budget_exhausted" } :
+      { kind: "ready", selection };
+  }
+
+  private build(params: StoryClusteringParams, maxPairComparisons?: number):
+  SummaryEvidenceSelection | undefined {
     const limit = normalizeLimit(params.limit, this.policy);
     const now = new Date((params.now ?? this.clock.now()).getTime());
-    const clusters = [
-      ...buildClusters(
+    const built = buildClusters(
         params.items,
         now,
         this.policy,
         params.verifiedStoryRelationPairs,
         params.verifiedStrictTitleRelationPairs,
-      ),
-    ]
-      .sort(compareStoryClusters)
-      .slice(0, limit);
+        maxPairComparisons,
+      );
+    if (built === undefined) return undefined;
+    const clusters = [...built].sort(compareStoryClusters).slice(0, limit);
     const selectedEvidence = selectedClusterEvidence(
       params.items,
       clusters,
@@ -71,22 +81,39 @@ export class StoryClusteringService {
   }
 }
 
+type StoryClusteringParams = {
+  readonly identity: ReaderSummaryScopeIdentity;
+  readonly items: readonly SummaryEvidenceItem[];
+  readonly limit: number;
+  readonly verifiedStoryRelationPairs?: ReadonlySet<string>;
+  readonly verifiedStrictTitleRelationPairs?: ReadonlySet<string>;
+  readonly now?: Date;
+};
+
 const buildClusters = (
   items: readonly SummaryEvidenceItem[],
   now: Date,
   policy: StoryRankingPolicy,
   verifiedStoryRelationPairs: ReadonlySet<string> | undefined,
   verifiedStrictTitleRelationPairs: ReadonlySet<string> | undefined,
-): readonly StoryCluster[] => {
+  maxPairComparisons?: number,
+): readonly StoryCluster[] | undefined => {
   const groups: {
     readonly key: string;
     readonly items: SummaryEvidenceItem[];
   }[] = [];
+  let pairComparisons = 0;
 
   for (const item of items) {
     const key = storyKey(item, policy);
-    const group = groups.find(
-      (candidate) =>
+    let group: (typeof groups)[number] | undefined;
+    for (const candidate of groups) {
+      // Both membership predicates can inspect every existing member.
+      // Reserve their worst-case work before processing any text.
+      pairComparisons += candidate.items.length * 2;
+      if (maxPairComparisons !== undefined &&
+          pairComparisons > maxPairComparisons) return undefined;
+      if (
         (candidate.key === key &&
           !hasCrossProviderClaimFacetConflict(item, candidate.items, policy)) ||
         belongsToVerifiedStoryCluster(
@@ -95,8 +122,12 @@ const buildClusters = (
           policy,
           verifiedStoryRelationPairs,
           verifiedStrictTitleRelationPairs,
-        ),
-    );
+        )
+      ) {
+        group = candidate;
+        break;
+      }
+    }
 
     if (group === undefined) {
       groups.push({ key, items: [item] });

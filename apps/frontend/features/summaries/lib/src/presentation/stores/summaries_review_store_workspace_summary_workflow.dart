@@ -32,6 +32,16 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
       return;
     }
     final period = selectedSummaryPeriod;
+    final normalKey = _summaryRequestIdempotencyKeyFactory(_scope, period);
+    final published = switch (workspaceSummaryState) {
+      ReadyViewState<WorkspaceSummarySnapshot>(:final value) => value.current,
+      _ => null,
+    };
+    final canRequestSuccessor =
+        published != null &&
+        _sameSummaryPeriodWindow(published.period, period) &&
+        (period.cadence == SummaryPeriodCadence.daily ||
+            period.cadence == SummaryPeriodCadence.weekly);
     final generation = _summaryGenerationGuard.markOperationStarted();
     final previous = switch (summaryJobState) {
       ReadyViewState<ReaderSummaryJobSnapshot>(:final value) => value,
@@ -44,16 +54,35 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
     );
     _notifyStateChanged();
 
-    final result = await _dependencies.requestWorkspaceSummary(
+    var result = await _dependencies.requestWorkspaceSummary(
       RequestWorkspaceSummaryCommand(
         scope: _scope,
         userId: _userId,
-        idempotencyKey: _summaryRequestIdempotencyKeyFactory(_scope, period),
+        idempotencyKey: normalKey,
         period: period,
       ),
     );
     if (!_summaryGenerationGuard.isCurrent(generation)) {
       return;
+    }
+    // A published job returned for the normal key can be safely named by a
+    // stable successor key. New and in-flight jobs keep
+    // their normal request identity.
+    if (canRequestSuccessor &&
+        result is ResultSuccess<ReaderSummaryJobSnapshot> &&
+        !result.value.created &&
+        result.value.status.shouldRefreshSummary) {
+      result = await _dependencies.requestWorkspaceSummary(
+        RequestWorkspaceSummaryCommand(
+          scope: _scope,
+          userId: _userId,
+          idempotencyKey: 'v3-successor:$normalKey',
+          period: period,
+        ),
+      );
+      if (!_summaryGenerationGuard.isCurrent(generation)) {
+        return;
+      }
     }
 
     final job = result.fold<ReaderSummaryJobSnapshot?>(
@@ -315,60 +344,6 @@ Future<void> _loadWorkspaceSummaryForStore(
       _loadWorkspaceSummaryHistoryForStore(store, generation, readyState.value),
     );
   }
-}
-
-Future<void> _loadWorkspaceSummaryHistoryForStore(
-  SummariesReviewStore store,
-  int generation,
-  WorkspaceSummarySnapshot currentSnapshot,
-) async {
-  Result<WorkspaceSummarySnapshot> result;
-  try {
-    result = await store._dependencies.loadWorkspaceSummaryHistory(
-      LoadWorkspaceSummaryQuery(
-        scope: store._scope,
-        period: store.selectedSummaryPeriod,
-      ),
-    );
-  } on Object catch (error) {
-    result = Result.failure(
-      UnexpectedFailure(
-        message: 'Workspace summary history failed to load.',
-        code: 'summaries.workspace_summary_history_unexpected_failure',
-        cause: error,
-      ),
-    );
-  }
-  if (!store._summaryGenerationGuard.isCurrent(generation)) {
-    return;
-  }
-
-  final history = result.fold<WorkspaceSummarySnapshot?>(
-    onSuccess: (snapshot) => snapshot,
-    onFailure: (_) => null,
-  );
-  if (history == null) {
-    return;
-  }
-
-  final state = store.workspaceSummaryState;
-  if (state is! ReadyViewState<WorkspaceSummarySnapshot>) {
-    return;
-  }
-
-  final current =
-      state.value.current ?? history.current ?? currentSnapshot.current;
-  store.workspaceSummaryState = ReadyViewState<WorkspaceSummarySnapshot>(
-    WorkspaceSummarySnapshot(
-      current: current,
-      availablePeriods: [
-        ..._snapshotSummaryPeriods(currentSnapshot),
-        ..._snapshotSummaryPeriods(history),
-      ],
-      availablePeriodsAreComplete: true,
-    ),
-  );
-  store._notifyStateChanged();
 }
 
 String _workspaceSummaryLoadKey(WorkspaceScope scope, SummaryPeriod period) {

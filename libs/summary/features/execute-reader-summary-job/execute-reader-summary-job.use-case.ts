@@ -4,10 +4,10 @@ import { type Clock, DomainError, type IdGenerator, err, ok, type Result } from
 import { assertReaderSummaryCitationsAgainstEvidence,
   admitReaderPostPromotionEvidence, buildReaderSummaryCoveragePlan,
   calibrateReaderSummaryConfidence, defaultReaderSummaryGenerationPolicy,
-  ReaderSummaryArtifact, ReaderSummaryPublicationPolicy,
+  ReaderSummaryArtifact, type ReaderSummaryJob, ReaderSummaryPublicationPolicy,
   primaryReaderSummaryEvidence, resolveEffectiveReaderSummaryPolicy,
   type ReaderSummaryPreparationManifest, type SummaryEvidenceSelection,
-  type ReaderSummaryJob } from "../../domain";
+  } from "../../domain";
 import {
   NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
   type ReaderSummaryArtifactRepositoryPort,
@@ -51,7 +51,6 @@ import {
   readerSummaryObservedThrough,
   withReaderSummaryTopicMap,
 } from "./execute-reader-summary-job-support";
-
 import { buildReaderSummaryPromotionArtifactFields } from "./reader-summary-promotion-artifact-fields";
 import { buildReaderSummaryV3Evidence, prepareReaderSummaryV3Job } from "./reader-summary-v3-execution";
 type ExecuteReaderSummaryJobFailure = DomainError | Error;
@@ -78,7 +77,6 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly v3Preflight?: ReaderSummaryV3PreflightPort,
     private readonly v3Promotion?: ReaderSummaryV3PromotionPort,
   ) {}
-
   async execute(
     command: ExecuteReaderSummaryJobCommand,
   ): Promise<
@@ -92,13 +90,11 @@ export class ExecuteReaderSummaryJobUseCase {
         ),
       );
     }
-
     const existingJob = await this.readerSummaryJobs.findById({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       readerSummaryJobId: command.readerSummaryJobId,
     });
-
     if (existingJob === null) {
       return err(
         new DomainError(
@@ -107,7 +103,6 @@ export class ExecuteReaderSummaryJobUseCase {
         ),
       );
     }
-
     const snapshot = existingJob.toSnapshot();
     const observed = await readerSummaryObservedThrough({ job: existingJob,
       authority: this.newInputRefresh, clock: this.clock });
@@ -120,11 +115,9 @@ export class ExecuteReaderSummaryJobUseCase {
         readerSummaryId: snapshot.readerSummaryId,
       });
     }
-
     if (snapshot.status === "failed" && snapshot.terminalFailureCode !== undefined) {
       return ok({ readerSummaryJobId: snapshot.id, status: "failed" });
     }
-
     let runningJob: ReaderSummaryJob | null;
     let frozenV3Manifest: ReaderSummaryPreparationManifest | undefined;
     if (snapshot.selectionStrategy === "jev_primary_v3") {
@@ -144,7 +137,6 @@ export class ExecuteReaderSummaryJobUseCase {
         readerSummaryJobId: command.readerSummaryJobId,
       });
     }
-
     if (runningJob === null) {
       return err(
         new DomainError(
@@ -154,11 +146,13 @@ export class ExecuteReaderSummaryJobUseCase {
       );
     }
     const claimStartedAt = runningJob.toSnapshot().startedAt;
-    if (claimStartedAt === undefined) {
-      return readerSummaryExecutionClaimLost();
-    }
-
+    if (claimStartedAt === undefined) return readerSummaryExecutionClaimLost();
     try {
+      if (frozenV3Manifest !== undefined) {
+        if (!await this.v3Preflight!.markProviderStarted(runningJob, claimStartedAt)) {
+          return readerSummaryExecutionClaimLost();
+        }
+      }
       let v3Evidence;
       if (frozenV3Manifest !== undefined) {
         const prepared = await buildReaderSummaryV3Evidence({ job: runningJob,
@@ -174,12 +168,13 @@ export class ExecuteReaderSummaryJobUseCase {
         observedThrough,
         v3Evidence,
       );
-
       if (!result.ok) {
-        const failedJob = runningJob.fail({
-          failedAt: this.clock.now(),
-          failureReason: result.error.message,
-        });
+        const failedJob = frozenV3Manifest === undefined
+          ? runningJob.fail({ failedAt: this.clock.now(),
+              failureReason: result.error.message })
+          : runningJob.failTerminal({ failedAt: this.clock.now(),
+              failureReason: result.error.message,
+              terminalFailureCode: "provider_execution_failed" });
         const saved = await saveReaderSummaryExecutionOutcome(
           this.readerSummaryJobs,
           failedJob,
@@ -188,7 +183,6 @@ export class ExecuteReaderSummaryJobUseCase {
         if (!saved) {
           return readerSummaryExecutionClaimLost();
         }
-
         return err(
           new DomainError(
             "external.dependency_unavailable",
@@ -199,7 +193,6 @@ export class ExecuteReaderSummaryJobUseCase {
           ),
         );
       }
-
       const prepublication = await evaluateReaderSummaryPrepublication({
         artifact: result.value.artifact,
         evidence: result.value.evidence,
@@ -234,14 +227,12 @@ export class ExecuteReaderSummaryJobUseCase {
         if (!saved) {
           return readerSummaryExecutionClaimLost();
         }
-
         return ok({
           readerSummaryJobId: rejectedJob.toSnapshot().id,
           status: "quality_rejected",
           readerSummaryId: artifactSnapshot.readerSummaryId,
         });
       }
-
       const publicationResult = await publishReaderSummaryJob({
         artifact: result.value.artifact,
         runningJob,
@@ -284,10 +275,12 @@ export class ExecuteReaderSummaryJobUseCase {
           durableSnapshot.terminalFailureCode !== undefined) {
         return ok({ readerSummaryJobId: durableSnapshot.id, status: "failed" });
       }
-      const failedJob = runningJob.fail({
-        failedAt: this.clock.now(),
-        failureReason: failure.message,
-      });
+      const failedJob = frozenV3Manifest === undefined
+        ? runningJob.fail({ failedAt: this.clock.now(),
+            failureReason: failure.message })
+        : runningJob.failTerminal({ failedAt: this.clock.now(),
+            failureReason: failure.message,
+            terminalFailureCode: "provider_execution_failed" });
       const saved = await saveReaderSummaryExecutionOutcome(
         this.readerSummaryJobs,
         failedJob,
@@ -296,7 +289,6 @@ export class ExecuteReaderSummaryJobUseCase {
       if (!saved) {
         return readerSummaryExecutionClaimLost();
       }
-
       if (availabilityError !== undefined) return err(availabilityError);
       return err(
         new DomainError("external.dependency_unavailable", failure.message, {
@@ -305,7 +297,6 @@ export class ExecuteReaderSummaryJobUseCase {
       );
     }
   }
-
   private async runModelPipeline(
     job: ReaderSummaryJob,
     maxEvidenceItems: number,
@@ -413,11 +404,9 @@ export class ExecuteReaderSummaryJobUseCase {
     const attempt = await this.readerSummaryModel.generate(input, route);
     const validation =
       this.readerSummaryModel.validateRawProviderResponse(attempt);
-
     if (!validation.ok) {
       return err(validation.failure);
     }
-
     try {
       assertReaderSummaryCitationsAgainstEvidence(attempt.draft, modelEvidence);
     } catch (error) {
@@ -488,12 +477,10 @@ export class ExecuteReaderSummaryJobUseCase {
       return err(this.readerSummaryModel.classifyError(draftResult.error));
     }
     const artifact = createArtifact(draftResult.value);
-
     return ok({
       artifact,
       evidence: publicationEvidence,
       editorialEvidence: modelEvidence,
     });
   }
-
 }

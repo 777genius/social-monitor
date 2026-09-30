@@ -1,7 +1,9 @@
 import { PrismaReaderValueInventory } from './prisma-reader-value-inventory';
 import type { AssessmentSqlClient, AssessmentSqlTransaction } from './assessment-sql';
 import { classifyReaderValueSourceKind } from '../../domain/reader-value/reader-value-source-kind';
-import { ReaderValueInventoryByteCeilingExceeded, type ReaderValueInventorySnapshot } from
+import { ReaderValueInventoryByteCeilingExceeded,
+  ReaderValueInventorySnapshotUnavailable,
+  ReaderValueInventoryTimeCeilingExceeded, type ReaderValueInventorySnapshot } from
   '../../application/contracts/reader-value-inventory';
 
 const scope = {tenantId:'11111111-1111-4111-8111-111111111111',
@@ -70,7 +72,63 @@ describe('Prisma reader-value inventory JSON boundary', () => {
     expect(queries[0]).not.toContain('s.title,s.body');
   });
 
-  it('reads all preparation pages in one read-only PostgreSQL snapshot', async () => {
+  // Regression: retention-expired visible sources in a frozen weekly window
+  // used to disappear from preparation and could be published as no signal.
+  // Preparation must inspect them so assessment pinning can fail explicitly;
+  // ordinary discovery keeps its retention filter.
+  it('includes expired visible sources only in preparation snapshots', async () => {
+    const reads: Array<{ sql: string; includeExpired: unknown }> = [];
+    const tx: AssessmentSqlTransaction = {
+      $executeRawUnsafe: async () => 0,
+      $queryRawUnsafe: async <T>(sql: string, ...values: unknown[]) => {
+        reads.push({ sql, includeExpired: values[8] });
+        return [] as T;
+      },
+    };
+    const client: AssessmentSqlClient = { ...tx,
+      $transaction: async (operation) => operation(tx) };
+    const inventory = new PrismaReaderValueInventory(client);
+
+    await inventory.page(scope, '2026-09-01T00:00:00Z', undefined, 25);
+    await inventory.readSnapshot(scope, (snapshot) =>
+      snapshot.page('2026-09-01T00:00:00Z', undefined, 25));
+    await inventory.readSnapshot(scope, (snapshot) =>
+      snapshot.page('2026-09-01T00:00:00Z', undefined, 25),
+    { includeExpiredSources: true });
+
+    expect(reads).toHaveLength(3);
+    expect(reads.map((read) => read.includeExpired)).toEqual([false, false, true]);
+    expect(reads.every((read) => read.sql.includes(
+      "($9::boolean OR s.created_at+interval '180 days'>clock_timestamp())")))
+      .toBe(true);
+  });
+
+  // Regression: a visible legacy source with no revision timestamp was
+  // excluded by SQL and could turn a workspace weekly summary into no signal.
+  it('fails a complete preparation snapshot on an unversioned visible source', async () => {
+    const queries: string[] = [];
+    const tx: AssessmentSqlTransaction = {
+      $executeRawUnsafe: async () => 0,
+      $queryRawUnsafe: async <T>(sql: string) => {
+        queries.push(sql);
+        return [{ feed_item_id:'first', source_item_id:'source',
+          source_updated_at:null, content_hash:'revision', source_bytes:7 }] as T;
+      },
+    };
+    const client: AssessmentSqlClient = { ...tx,
+      $transaction: async (operation) => operation(tx) };
+
+    await expect(new PrismaReaderValueInventory(client).readSnapshot(scope,
+      (snapshot) => snapshot.page('2026-09-01T00:00:00Z', undefined, 25),
+      { includeExpiredSources: true })).rejects.toBeInstanceOf(
+      ReaderValueInventorySnapshotUnavailable);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toContain('($9::boolean OR s.content_updated_at IS NOT NULL)');
+  });
+
+  // Regression: the old 10-second snapshot transaction could abort a weekly
+  // scan before its measured candidate and source-byte budgets were reached.
+  it('reads all preparation pages in one bounded read-only PostgreSQL snapshot', async () => {
     const commands: string[] = [];
     const queries: string[] = [];
     let transactionCount = 0;
@@ -94,7 +152,7 @@ describe('Prisma reader-value inventory JSON boundary', () => {
     };
     const client: AssessmentSqlClient = {...tx,$transaction:async (operation, options) => {
       transactionCount += 1;
-      expect(options).toEqual({isolationLevel:'Serializable',timeout:10_000,maxWait:5_000});
+      expect(options).toEqual({isolationLevel:'Serializable',timeout:120_000,maxWait:5_000});
       return operation(tx);
     }};
     const inventory = new PrismaReaderValueInventory(client);
@@ -114,5 +172,20 @@ describe('Prisma reader-value inventory JSON boundary', () => {
     expect(queries).toHaveLength(3);
     await expect(retainedSnapshot!.page('2026-09-01T00:00:00Z',undefined,25))
       .rejects.toThrow('Reader value inventory snapshot is closed');
+  });
+
+  // Regression: exhausting the bounded snapshot transaction must surface as
+  // an explicit preparation time budget result, not an unclassified failure.
+  it('classifies a database snapshot timeout', async () => {
+    const tx: AssessmentSqlTransaction = {
+      $executeRawUnsafe: async () => 0,
+      $queryRawUnsafe: async <T>() => [] as T,
+    };
+    const client: AssessmentSqlClient = { ...tx,
+      $transaction: async () => { throw { code: 'P2028' }; } };
+
+    await expect(new PrismaReaderValueInventory(client).readSnapshot(scope,
+      async () => [])).rejects.toBeInstanceOf(
+      ReaderValueInventoryTimeCeilingExceeded);
   });
 });

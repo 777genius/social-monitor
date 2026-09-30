@@ -9,11 +9,13 @@ import { PrismaReaderValueAssessmentStore } from
   "@social-monitor/relevance/infrastructure/reader-value/prisma-reader-value-assessment-store";
 import { PrismaReaderValueInventory } from
   "@social-monitor/relevance/infrastructure/reader-value/prisma-reader-value-inventory";
+import { PrismaReaderValueWorkspaceInterests } from
+  "@social-monitor/relevance/infrastructure/reader-value/prisma-reader-value-workspace-interests";
 import { ConservativeReaderValueInputBuilder } from
   "@social-monitor/relevance/infrastructure/reader-value/reader-value-input-builder";
 import { CONFIGURED_INTEREST_READER, type ConfiguredInterestReaderPort } from
   "@social-monitor/relevance/ports";
-import { CryptoIdGenerator } from "@social-monitor/shared-kernel";
+import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
 import { RelevanceReaderSummaryV3PreparationSource } from
   "../../adapters/evidence/relevance-reader-summary-v3-preparation-source";
 import { RelevanceReaderSummaryEvidenceSelector } from
@@ -51,7 +53,8 @@ export const readerSummaryV3Providers: readonly Provider[] = [{
     const source = new RelevanceReaderSummaryV3PreparationSource(
       new PrepareReaderValueSummaryUseCase(new PrismaReaderValueInventory(relevanceClient),
         new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy()),
-        store, new CryptoIdGenerator(), interests), store);
+        store, new CryptoIdGenerator(), interests, new SystemClock()), store,
+      new PrismaReaderValueWorkspaceInterests(relevanceClient));
     if (!(jobs instanceof PrismaReaderSummaryJobRepository)) {
       throw new Error("Jev primary preflight requires the Prisma job repository");
     }

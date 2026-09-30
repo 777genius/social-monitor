@@ -13,17 +13,23 @@ export interface AssessmentSqlClient extends AssessmentSqlTransaction {
 
 export function assessmentTransaction<T>(client: AssessmentSqlClient, scope: ReaderValueScope,
   operation: (transaction: AssessmentSqlTransaction) => Promise<T>,
-  isolationLevel: 'Serializable' | 'ReadCommitted' = 'Serializable'): Promise<T> {
+  isolationLevel: 'Serializable' | 'ReadCommitted' = 'Serializable',
+  transactionTimeoutMs = 10_000): Promise<T> {
   return runWithTenantDatabaseAccess(scope, () => withPrismaWriteRetry(() => client.$transaction(async (transaction) => {
     await transaction.$executeRawUnsafe("SET LOCAL statement_timeout = '5000ms'");
     await transaction.$executeRawUnsafe("SET LOCAL lock_timeout = '2000ms'");
     return operation(transaction);
-  }, { isolationLevel, timeout: 10_000, maxWait: 5_000 })));
+  }, { isolationLevel, timeout: transactionTimeoutMs, maxWait: 5_000 })));
 }
 
 /** One transaction-scoped, read-only snapshot for bounded preparation scans. */
 export function assessmentReadSnapshot<T>(client: AssessmentSqlClient, scope: ReaderValueScope,
-  operation: (transaction: AssessmentSqlTransaction) => Promise<T>): Promise<T> {
+  operation: (transaction: AssessmentSqlTransaction) => Promise<T>,
+  transactionTimeoutMs = 10_000): Promise<T> {
+  if (!Number.isSafeInteger(transactionTimeoutMs) || transactionTimeoutMs < 10_000 ||
+      transactionTimeoutMs > 120_000) {
+    throw new Error('Reader value read snapshot timeout is invalid');
+  }
   return client.$transaction(async (transaction) => {
     // Prisma has already opened this as Serializable. Mark it read-only and
     // deferrable before the tenant guard's first data statement so PostgreSQL
@@ -42,8 +48,21 @@ export function assessmentReadSnapshot<T>(client: AssessmentSqlClient, scope: Re
       await transaction.$executeRawUnsafe("SET LOCAL lock_timeout = '2000ms'");
       return operation(transaction);
     });
-  }, { isolationLevel: 'Serializable', timeout: 10_000, maxWait: 5_000 });
+  }, { isolationLevel: 'Serializable', timeout: transactionTimeoutMs, maxWait: 5_000 });
 }
+
+export const readerValueDatabaseTimedOut = (error: unknown, depth = 0): boolean => {
+  if (error === null || typeof error !== 'object' || depth > 2) return false;
+  const value = error as { readonly code?: unknown;
+    readonly meta?: { readonly code?: unknown;
+      readonly driverAdapterError?: { readonly cause?: {
+        readonly originalCode?: unknown } } };
+    readonly cause?: unknown };
+  return value.code === 'P2028' || value.code === '57014' ||
+    value.meta?.code === '57014' ||
+    value.meta?.driverAdapterError?.cause?.originalCode === '57014' ||
+    readerValueDatabaseTimedOut(value.cause, depth + 1);
+};
 
 /** a is always the assessment row. No popularity, quality flags or semantic floors. */
 export const liveAssessmentScope = `EXISTS (

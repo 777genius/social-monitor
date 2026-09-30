@@ -13,7 +13,12 @@ import type {
   ReaderSummaryPreparationManifest,
   ReaderSummarySelectionStrategy,
 } from "../value-objects/reader-summary-preparation";
-import { assertReaderSummaryPreparationManifest } from
+import { assertReaderSummaryPreparationManifest,
+  readerSummaryWorkspaceManifestSha256 } from
+  "../value-objects/reader-summary-preparation";
+import { sameReaderSummaryPreparationConfig } from
+  "../value-objects/reader-summary-preparation";
+import { sameReaderSummaryPreparationIdentity } from
   "../value-objects/reader-summary-preparation";
 import { canonicalReaderSummaryPreparationTimestamp,
   compareReaderSummaryPreparationTimestamps } from
@@ -73,6 +78,12 @@ export class ReaderSummaryJob {
 
     if (props.preparationManifest !== undefined) {
       assertReaderSummaryPreparationManifest(props.preparationManifest);
+      assertWorkspaceCandidateWindow(props.preparationManifest, props.period);
+      if (props.preparationManifest.schemaVersion ===
+          "reader_summary_preparation_manifest.v2" &&
+          props.preparationManifest.periodKey !== props.period.periodKey) {
+        throw new Error("Workspace reader summary period changed after preparation");
+      }
     }
     if (props.selectionStrategy === "jev_primary_v3" && props.status === "running" &&
         (props.preparationManifest === undefined ||
@@ -158,7 +169,8 @@ export class ReaderSummaryJob {
     if (this.props.selectionStrategy !== undefined) {
       if (this.props.selectionStrategy !== params.strategy ||
           (this.props.preparationConfig !== undefined &&
-            JSON.stringify(this.props.preparationConfig) !== JSON.stringify(params.config))) {
+            !sameReaderSummaryPreparationConfig(this.props.preparationConfig,
+              params.config))) {
         throw new Error("Reader summary preparation identity is immutable");
       }
       if (this.props.preparationConfig !== undefined) return this;
@@ -187,8 +199,22 @@ export class ReaderSummaryJob {
       throw new Error("Reader summary manifest requires frozen requested preparation");
     }
     assertReaderSummaryPreparationManifest(params.manifest);
+    assertWorkspaceCandidateWindow(params.manifest, this.props.period);
+    if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+        (params.manifest.periodKey !== this.props.period.periodKey ||
+          params.manifest.cutoffAt !== this.props.preparationCutoffAt ||
+          this.props.preparationConfig === undefined ||
+          !sameReaderSummaryPreparationIdentity(this.props.preparationConfig,
+            this.props.preparationConfig, params.manifest))) {
+      throw new Error("Workspace reader summary manifest identity changed");
+    }
     if (!/^[0-9a-f]{64}$/u.test(params.manifestSha256)) {
       throw new Error("Reader summary manifest digest is invalid");
+    }
+    if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+        params.manifestSha256 !==
+          readerSummaryWorkspaceManifestSha256(params.manifest)) {
+      throw new Error("Workspace reader summary manifest digest changed");
     }
     if (this.props.preparationManifest !== undefined) {
       if (this.props.preparationManifestSha256 !== params.manifestSha256) {
@@ -436,5 +462,23 @@ const assertReaderSummaryId = (readerSummaryId: string): void => {
     throw new Error(
       "Completed reader summary job must reference a reader summary artifact",
     );
+  }
+};
+
+const assertWorkspaceCandidateWindow = (
+  manifest: ReaderSummaryPreparationManifest,
+  period: ReaderSummaryPeriod,
+): void => {
+  if (manifest.schemaVersion !== "reader_summary_preparation_manifest.v2") return;
+  const start = canonicalReaderSummaryPreparationTimestamp(period.startedAt);
+  const end = canonicalReaderSummaryPreparationTimestamp(period.endedAt);
+  if (manifest.candidates.some((candidate) =>
+    compareReaderSummaryPreparationTimestamps(candidate.publishedAt, start) < 0 ||
+    compareReaderSummaryPreparationTimestamps(candidate.publishedAt, end) >= 0 ||
+    compareReaderSummaryPreparationTimestamps(candidate.publishedAt,
+      manifest.cutoffAt) > 0 ||
+    compareReaderSummaryPreparationTimestamps(candidate.observedAt,
+      manifest.cutoffAt) > 0)) {
+    throw new Error("Workspace reader summary candidate is outside frozen window");
   }
 };

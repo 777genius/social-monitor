@@ -11,7 +11,8 @@ describe("reader summary V3 execution provenance", () => {
 
     const result = await prepareReaderSummaryV3Job({
       job,
-      preflight: { advance: async () => ({ kind: "deferred", job }) },
+      preflight: { advance: async () => ({ kind: "deferred", job }),
+        markProviderStarted: async () => false },
       clock: new FixedClock(now),
     });
 
@@ -34,7 +35,8 @@ describe("reader summary V3 execution provenance", () => {
 
     const result = await prepareReaderSummaryV3Job({
       job: requested,
-      preflight: { advance: async () => ({ kind: "already_running", job: running }) },
+      preflight: { advance: async () => ({ kind: "already_running", job: running }),
+        markProviderStarted: async () => false },
       clock: new FixedClock(now),
     });
 

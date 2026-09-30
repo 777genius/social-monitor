@@ -14,6 +14,48 @@ const reclaimedAt = new Date("2026-08-14T12:30:00.000Z");
 const staleBefore = new Date("2026-08-14T12:15:00.000Z");
 
 describe("PrismaReaderSummaryJobRepository execution lease", () => {
+  it("reserves V3 claims for fenced preflight recovery", async () => {
+    const updateMany = jest.fn();
+    const repository = repositoryWith({
+      findFirst: jest.fn().mockResolvedValue(record({
+        selectionStrategy: "jev_primary_v3" })),
+      updateMany,
+    });
+
+    await expect(repository.claimForExecution(claimParams())).resolves.toBeNull();
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+  it("queries only due requested and stale V3 work in scope", async () => {
+    const findMany = jest.fn().mockResolvedValue([record({
+      status: "REQUESTED",
+      startedAt: null,
+      selectionStrategy: "jev_primary_v3",
+    })]);
+    const repository = new PrismaReaderSummaryJobRepository({
+      readerSummaryJob: { findMany },
+    } as unknown as PrismaSummaryClient);
+    const now = new Date("2026-08-14T14:30:00.000Z");
+
+    const due = await repository.findDueForPolling({ tenantId: tenant,
+      workspaceId: workspace, now, staleRunningStartedBefore: staleBefore,
+      limit: 3 });
+
+    expect(due).toHaveLength(1);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { tenantId: tenant, workspaceId: workspace, OR: [
+        { status: "REQUESTED", OR: [
+          { preparationNextCheckAt: null },
+          { preparationNextCheckAt: { lte: now } },
+        ] },
+        { status: "RUNNING", selectionStrategy: "jev_primary_v3",
+          startedAt: { lt: staleBefore } },
+      ] },
+      orderBy: [{ requestedAt: "asc" }, { id: "asc" }], take: 3,
+    });
+    await expect(repository.findDueForPolling({ tenantId: tenant,
+      now, staleRunningStartedBefore: staleBefore, limit: 3 }))
+      .rejects.toThrow("must include tenant and workspace");
+  });
   it("maps exact PostgreSQL preparation timestamps without Date truncation", () => {
     const job = readerSummaryJobFromPrisma(record({
       preparationCutoffAt: new Date("2026-09-21T00:00:00.123Z"),

@@ -9,21 +9,25 @@ export class ConfiguredReaderSummarySelectionStrategyResolver
 implements ReaderSummarySelectionStrategyResolver {
   private readonly scopes: ReadonlySet<string>;
   private readonly allActiveScopes: boolean;
+  private readonly workspacePrimaryEnabled: boolean;
 
   constructor(
     private readonly strategy: ReaderSummarySelectionStrategy,
     scopes: readonly Scope[],
     allActiveScopes = false,
+    workspacePrimaryEnabled = false,
   ) {
     this.scopes = new Set(scopes.map(scopeKey));
     this.allActiveScopes = allActiveScopes;
+    this.workspacePrimaryEnabled = workspacePrimaryEnabled;
     if (strategy !== "legacy_v2" && !allActiveScopes && this.scopes.size === 0) {
       throw new Error("Jev summary strategy scope override must not be empty");
     }
   }
 
   resolve(params: Scope): ReaderSummarySelectionStrategy {
-    return this.strategy === "legacy_v2" || params.interestId === undefined ||
+    return this.strategy === "legacy_v2" ||
+      (params.interestId === undefined && !this.workspacePrimaryEnabled) ||
       (!this.allActiveScopes && !this.scopes.has(scopeKey(params)))
       ? "legacy_v2"
       : this.strategy;
@@ -46,6 +50,19 @@ export const resolveReaderSummarySelectionStrategy = (
     throw new Error("jev_primary_v3 requires durable relevance/summary persistence, assessment loop, and due poller");
   }
   const scopes = parseScopes(env.READER_VALUE_DISCOVERY_SCOPES);
+  if (env.READER_VALUE_WORKSPACE_V3 !== undefined &&
+      env.READER_VALUE_WORKSPACE_V3 !== "enabled" &&
+      env.READER_VALUE_WORKSPACE_V3 !== "disabled") {
+    throw new Error("READER_VALUE_WORKSPACE_V3 must be enabled or disabled");
+  }
+  const workspacePrimaryEnabled = strategy === "jev_primary_v3" &&
+    env.READER_VALUE_DISCOVERY_SCOPES === undefined &&
+    env.READER_VALUE_WORKSPACE_V3 !== "disabled";
+  if (env.READER_VALUE_WORKSPACE_V3 === "enabled" &&
+      (strategy !== "jev_primary_v3" ||
+      env.READER_VALUE_DISCOVERY_SCOPES !== undefined)) {
+    throw new Error("Workspace Jev V3 requires primary mode and unrestricted discovery");
+  }
   const pollerTenant = env.INTELLIGENCE_READER_SUMMARY_JOB_LOOP_TENANT_ID?.toLowerCase();
   const pollerWorkspace = env.INTELLIGENCE_READER_SUMMARY_JOB_LOOP_WORKSPACE_ID?.toLowerCase();
   if (strategy === "jev_primary_v3" && (pollerTenant !== undefined || pollerWorkspace !== undefined) &&
@@ -59,6 +76,7 @@ export const resolveReaderSummarySelectionStrategy = (
     strategy,
     scopes,
     strategy === "jev_primary_v3" && env.READER_VALUE_DISCOVERY_SCOPES === undefined,
+    workspacePrimaryEnabled,
   );
 };
 

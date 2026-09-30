@@ -1,6 +1,12 @@
 import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
 import { createHash } from "node:crypto";
-
+import { isDeepStrictEqual } from "node:util";
+import { readerSummaryWorkspaceManifestSha256,
+  sameReaderSummaryPreparationConfig,
+  sameReaderSummaryPreparationIdentity,
+  type ReaderSummaryWorkspacePreparationManifest } from "../../../domain";
+import { ReaderSummaryExecutionLeasePolicy } from
+  "../../../features/execute-reader-summary-job/reader-summary-execution-lease.policy";
 import type {
   ReaderSummaryV3PreflightOutcome,
   ReaderSummaryV3PreflightPort,
@@ -13,39 +19,41 @@ import type { PrismaReaderSummaryJobRepository } from
 import { requireSerializableReaderSummaryTransactions,
   runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
 import { assessmentStatesMatchManifest, type ReaderSummaryAssessmentState,
-  uniqueAssessmentIds } from "./prisma-reader-summary-v3-readiness";
-
-type LockedJob = {
-  readonly status: string;
-  readonly selection_strategy: string | null;
-  readonly preparation_manifest: unknown | null;
-  readonly preparation_config: unknown | null;
-  readonly preparation_manifest_sha256: string | null;
-  readonly preparation_deadline_at: string | null;
-  readonly started_at: Date | null;
-  readonly terminal_failure_code: string | null;
-};
-
-type ClaimedExecution = {
-  readonly kind: "claimed";
-  readonly startedAt: Date;
-};
-
+  type ReaderSummaryVisibleCandidate, uniqueAssessmentIds,
+  visibleCandidateBindingsMatchManifest } from "./prisma-reader-summary-v3-readiness";
+import { lockJob } from "./prisma-reader-summary-v3-preflight-lock";
+type ClaimedExecution = { readonly kind: "claimed"; readonly startedAt: Date };
 export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightPort {
   constructor(
     private readonly prisma: PrismaSummaryClient,
     private readonly jobs: PrismaReaderSummaryJobRepository,
     private readonly source: ReaderSummaryV3PreparationSourcePort,
+    private readonly lease: ReaderSummaryExecutionLeasePolicy =
+      new ReaderSummaryExecutionLeasePolicy(),
   ) { requireSerializableReaderSummaryTransactions(prisma); }
-
+  async markProviderStarted(job: Parameters<ReaderSummaryV3PreflightPort["advance"]>[0]["job"],
+    expectedStartedAt: Date): Promise<boolean> {
+    const snapshot = job.toSnapshot();
+    const updated = await withPrismaWriteRetry(() => this.prisma.$queryRaw<
+      readonly { readonly id: string }[]>`
+      UPDATE reader_summary_jobs SET failure_reason='v3_provider_started'
+      WHERE tenant_id=${snapshot.tenantId}::uuid AND workspace_id=${snapshot.workspaceId}::uuid
+        AND id=${snapshot.id}::uuid
+        AND status='RUNNING' AND started_at=${expectedStartedAt}::timestamptz
+        AND failure_reason='v3_pre_provider_claim'
+      RETURNING id::text
+    `);
+    return updated.length === 1;
+  }
   async advance(
     params: Parameters<ReaderSummaryV3PreflightPort["advance"]>[0],
   ): Promise<ReaderSummaryV3PreflightOutcome> {
     let job = await this.find(params.job) ?? params.job;
     let snapshot = job.toSnapshot();
-    if (snapshot.status === "running") return { kind: "already_running", job };
+    if (snapshot.status === "running") {
+      return this.recover(job);
+    }
     if (snapshot.status !== "requested") return { kind: "terminal", job };
-
     if (snapshot.preparationConfig === undefined) {
       // Freeze exact config and clocks before the inventory walk. Retries and
       // competing preparers must use the identity selected by this CAS.
@@ -90,7 +98,11 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
       }
       const prepared = await this.source.prepare(job, frozenConfig);
       if (!prepared.ok) return this.fail(job, prepared.code, params);
-      if (!samePreparationIdentity(frozenConfig, prepared.config, prepared.manifest)) {
+      if (!sameReaderSummaryPreparationIdentity(frozenConfig, prepared.config,
+        prepared.manifest) ||
+          prepared.manifest.schemaVersion ===
+            "reader_summary_preparation_manifest.v2" &&
+          prepared.manifest.cutoffAt !== snapshot.preparationCutoffAt) {
         return this.fail(job, "config_unavailable", params);
       }
       await withPrismaWriteRetry(() => runSerializableReaderSummaryTransaction(
@@ -126,7 +138,6 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
     }
     const manifest = snapshot.preparationManifest;
     if (manifest === undefined) return this.fail(job, "config_unavailable", params);
-
     const decision = await withPrismaWriteRetry(() =>
       runSerializableReaderSummaryTransaction(this.prisma, async (tx) => {
         const rows = await lockJob(tx, snapshot);
@@ -136,21 +147,38 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
         if (row.status !== "REQUESTED") return "terminal" as const;
         const deadlineText = row.preparation_deadline_at;
         if (deadlineText === null) return fail(tx, snapshot, "config_unavailable");
+        if (manifest.schemaVersion === "reader_summary_preparation_manifest.v2") {
+          const digest = readerSummaryWorkspaceManifestSha256(manifest);
+          if (row.preparation_manifest_sha256 !== digest ||
+              row.preparation_cutoff_at !== manifest.cutoffAt ||
+              snapshot.preparationCutoffAt !== manifest.cutoffAt ||
+              row.period_key !== manifest.periodKey ||
+              snapshot.period.periodKey !== manifest.periodKey ||
+              readerSummaryWorkspaceManifestSha256(row.preparation_manifest as
+                ReaderSummaryWorkspacePreparationManifest) !== digest) {
+            return fail(tx, snapshot, "config_unavailable");
+          }
+        }
         const live = await livePreparationScope(tx, snapshot, row.preparation_config,
-          manifest.candidates.map((candidate) => candidate.candidateId));
+          manifest);
         if (live !== "live") return fail(tx, snapshot, live);
         const ids = uniqueAssessmentIds(manifest);
         const states = ids.length === 0 ? [] : await tx.$queryRaw<readonly ReaderSummaryAssessmentState[]>`
-          SELECT a.id::text, a.state,
+          SELECT a.id::text, a.interest_id::text, a.source_item_id::text,
+            a.source_revision_key, a.state,
             (a.assessed_at IS NOT NULL AND
               a.assessed_at <= ${deadlineText}::timestamptz) AS accepted_on_time,
             btrim(a.source_snapshot_sha256) AS source_snapshot_sha256,
             btrim(a.input_sha256) AS input_sha256,
-            btrim(a.rubric_sha256) AS rubric_sha256, a.model_config_version
+            btrim(a.interest_sha256) AS interest_sha256,
+            a.rubric_version, btrim(a.rubric_sha256) AS rubric_sha256,
+            a.input_builder_version, a.model_config_version, a.result
           FROM reader_value_assessments a
           WHERE a.tenant_id=${snapshot.tenantId}::uuid
             AND a.workspace_id=${snapshot.workspaceId}::uuid
-            AND a.id=ANY(${ids}::uuid[]) ORDER BY a.id FOR KEY SHARE OF a
+            AND a.id=ANY(${ids}::uuid[])
+            AND ${snapshot.id}::uuid=ANY(a.pinned_job_ids)
+            ORDER BY a.id FOR KEY SHARE OF a
         `;
         if (!assessmentStatesMatchManifest(manifest, states)) {
           return fail(tx, snapshot, "assessment_unavailable");
@@ -164,7 +192,8 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
             UPDATE reader_summary_jobs SET status='RUNNING',
               preparation_ready_at=clock_timestamp(),
               started_at=date_trunc('milliseconds', clock_timestamp()),
-              preparation_next_check_at=NULL, failed_at=NULL, failure_reason=NULL
+              preparation_next_check_at=NULL, failed_at=NULL,
+              failure_reason='v3_pre_provider_claim'
             WHERE tenant_id=${snapshot.tenantId}::uuid
               AND workspace_id=${snapshot.workspaceId}::uuid
               AND id=${snapshot.id}::uuid AND status='REQUESTED'
@@ -209,10 +238,89 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
     if (decision === "running") return { kind: "already_running", job: current };
     return { kind: "terminal", job: current };
   }
-
+  private async recover(job: Parameters<ReaderSummaryV3PreflightPort["advance"]>[0]["job"]):
+  Promise<ReaderSummaryV3PreflightOutcome> {
+    const snapshot = job.toSnapshot();
+    const decision = await withPrismaWriteRetry(() =>
+      runSerializableReaderSummaryTransaction(this.prisma, async (tx) => {
+        const row = (await lockJob(tx, snapshot))[0];
+        if (row === undefined) return "terminal" as const;
+        if (row.status === "RUNNING") {
+          const stale = await tx.$queryRaw<readonly { readonly expired: boolean }[]>`
+            SELECT ${row.started_at}::timestamptz <
+              clock_timestamp() - ${this.lease.timeoutMs}::bigint * interval '1 millisecond'
+              AS expired
+          `;
+          if (row.started_at === null || stale[0]?.expired !== true) {
+            return "running" as const;
+          }
+          if (row.failure_reason !== "v3_pre_provider_claim") {
+            await tx.$queryRaw`
+              UPDATE reader_summary_jobs SET status='FAILED', failed_at=clock_timestamp(),
+                failure_reason='V3 execution outcome uncertain after provider invocation'
+              WHERE tenant_id=${snapshot.tenantId}::uuid
+                AND workspace_id=${snapshot.workspaceId}::uuid AND id=${snapshot.id}::uuid
+                AND status='RUNNING'
+                AND started_at=${row.started_at}::timestamptz RETURNING id
+            `;
+            return "terminal" as const;
+          }
+        } else return "terminal" as const;
+        if (row.selection_strategy !== "jev_primary_v3" ||
+            row.started_at === null ||
+            snapshot.preparationManifest === undefined || snapshot.preparationConfig === undefined ||
+            !sameReaderSummaryPreparationIdentity(snapshot.preparationConfig,
+              snapshot.preparationConfig, snapshot.preparationManifest) ||
+            snapshot.preparationManifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+              (readerSummaryWorkspaceManifestSha256(snapshot.preparationManifest) !== snapshot.preparationManifestSha256 ||
+                snapshot.preparationManifest.cutoffAt !== snapshot.preparationCutoffAt ||
+                snapshot.preparationManifest.periodKey !== snapshot.period.periodKey) ||
+            row.preparation_manifest_sha256 !== snapshot.preparationManifestSha256 ||
+            row.preparation_cutoff_at !== snapshot.preparationCutoffAt ||
+            row.period_key !== snapshot.period.periodKey ||
+            !isDeepStrictEqual(row.preparation_config, snapshot.preparationConfig) ||
+            !isDeepStrictEqual(row.preparation_manifest, snapshot.preparationManifest)) {
+          await tx.$queryRaw`
+            UPDATE reader_summary_jobs SET status='FAILED', failed_at=clock_timestamp(),
+              failure_reason='V3 recovery requires manual review: frozen preparation is unverifiable'
+            WHERE tenant_id=${snapshot.tenantId}::uuid
+              AND workspace_id=${snapshot.workspaceId}::uuid AND id=${snapshot.id}::uuid
+              AND status=${row.status} AND started_at IS NOT DISTINCT FROM
+                ${row.started_at}::timestamptz RETURNING id
+          `;
+          return "terminal" as const;
+        }
+        const claimed = await tx.$queryRaw<readonly {
+          readonly started_at: Date }[]>`
+          UPDATE reader_summary_jobs SET status='RUNNING',
+            started_at=date_trunc('milliseconds', GREATEST(clock_timestamp(),
+              started_at + interval '1 millisecond')),
+            failed_at=NULL, failure_reason='v3_pre_provider_claim',
+            preparation_next_check_at=NULL,
+            terminal_failure_code=NULL
+          WHERE tenant_id=${snapshot.tenantId}::uuid
+            AND workspace_id=${snapshot.workspaceId}::uuid AND id=${snapshot.id}::uuid
+            AND status='RUNNING' AND started_at=${row.started_at}::timestamptz
+          RETURNING started_at
+        `;
+        return claimed[0]?.started_at ?? "terminal" as const;
+      }));
+    const current = await this.find(job) ?? job;
+    const currentSnapshot = current.toSnapshot();
+    if (decision instanceof Date && currentSnapshot.status === "running" &&
+        currentSnapshot.startedAt?.getTime() === decision.getTime() &&
+        currentSnapshot.preparationManifest !== undefined) {
+      return { kind: "claimed", job: current,
+        manifest: currentSnapshot.preparationManifest };
+    }
+    if (currentSnapshot.status === "running") {
+      return { kind: "already_running", job: current };
+    }
+    return { kind: "terminal", job: current };
+  }
   private async fail(job: Parameters<ReaderSummaryV3PreparationSourcePort["prepare"]>[0],
     code: "assessment_snapshot_unavailable" | "assessment_inventory_over_budget" |
-      "config_unavailable",
+      "assessment_time_over_budget" | "config_unavailable",
     params: Parameters<ReaderSummaryV3PreflightPort["advance"]>[0],
     unconfiguredOnly = false,
   ): Promise<ReaderSummaryV3PreflightOutcome> {
@@ -237,29 +345,12 @@ export class PrismaReaderSummaryV3Preflight implements ReaderSummaryV3PreflightP
     }
     return { kind: "terminal", job: current };
   }
-
   private find(job: Parameters<ReaderSummaryV3PreparationSourcePort["prepare"]>[0]) {
     const snapshot = job.toSnapshot();
     return this.jobs.findById({ tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId, readerSummaryJobId: snapshot.id });
   }
 }
-
-const lockJob = (tx: Pick<PrismaReaderSummaryClient, "$queryRaw">, snapshot: ReturnType<
-  Parameters<ReaderSummaryV3PreparationSourcePort["prepare"]>[0]["toSnapshot"]>,
-) => tx.$queryRaw<readonly LockedJob[]>`
-  SELECT status, selection_strategy, preparation_manifest, preparation_config,
-    preparation_manifest_sha256,
-    CASE WHEN preparation_deadline_at IS NULL THEN NULL ELSE
-      to_char(preparation_deadline_at AT TIME ZONE 'UTC',
-        'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS preparation_deadline_at,
-    started_at,
-    terminal_failure_code FROM reader_summary_jobs
-  WHERE tenant_id=${snapshot.tenantId}::uuid
-    AND workspace_id=${snapshot.workspaceId}::uuid AND id=${snapshot.id}::uuid
-  FOR UPDATE
-`;
-
 const fail = async (
   tx: Pick<PrismaReaderSummaryClient, "$queryRaw">,
   snapshot: ReturnType<Parameters<ReaderSummaryV3PreparationSourcePort["prepare"]>[0]["toSnapshot"]>,
@@ -275,19 +366,37 @@ const fail = async (
   `;
   return "terminal";
 };
-
 const livePreparationScope = async (
   tx: Pick<PrismaReaderSummaryClient, "$queryRaw">,
   snapshot: ReturnType<Parameters<ReaderSummaryV3PreparationSourcePort["prepare"]>[0]["toSnapshot"]>,
   rawConfig: unknown,
-  candidateIds: readonly string[],
+  manifest: NonNullable<ReturnType<Parameters<
+    ReaderSummaryV3PreparationSourcePort["prepare"]>[0]["toSnapshot"]>["preparationManifest"]>,
 ): Promise<"live" | "scope_changed" | "interest_changed" | "config_unavailable"> => {
   if (rawConfig === null || typeof rawConfig !== "object" || Array.isArray(rawConfig)) {
     return "config_unavailable";
   }
   const config = rawConfig as Record<string, unknown>;
-  if (typeof config.interestId !== "string" ||
-      typeof config.interestSha256 !== "string") return "config_unavailable";
+  if ((config.schemaVersion === "reader_summary_preparation_config.v2") !==
+      (snapshot.scope.type === "workspace") ||
+      (manifest.schemaVersion === "reader_summary_preparation_manifest.v2") !==
+      (snapshot.scope.type === "workspace")) return "config_unavailable";
+  if (manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+      manifest.periodKey !== snapshot.period.periodKey) return "config_unavailable";
+  const frozenInterests = config.schemaVersion === "reader_summary_preparation_config.v2"
+    ? config.interests : [config];
+  if (!Array.isArray(frozenInterests) || frozenInterests.length < 1 ||
+      frozenInterests.length > 32 || frozenInterests.some((value) =>
+        value === null || typeof value !== "object" || Array.isArray(value) ||
+        typeof value.interestId !== "string" ||
+        typeof value.interestSha256 !== "string")) return "config_unavailable";
+  if (manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+      (frozenInterests.length !== manifest.interests.length ||
+        frozenInterests.some((entry, index) =>
+          !sameReaderSummaryPreparationConfig(entry as
+            typeof manifest.interests[number], manifest.interests[index]!)))) {
+    return "config_unavailable";
+  }
   const workspace = await tx.$queryRaw<readonly { readonly live: boolean }[]>`
     SELECT (w.deleted_at IS NULL AND t.deleted_at IS NULL) AS live
     FROM workspaces w JOIN tenants t ON t.id=w.tenant_id
@@ -298,21 +407,37 @@ const livePreparationScope = async (
     FOR NO KEY UPDATE OF w,t
   `;
   if (workspace.length !== 1 || workspace[0]?.live !== true) return "scope_changed";
-  const interests = await tx.$queryRaw<readonly { readonly query: string;
-    readonly status: string; readonly deleted_at: Date | null }[]>`
-    SELECT query,status,deleted_at FROM interests
+  const expected = frozenInterests as readonly { readonly interestId: string;
+    readonly interestSha256: string }[];
+  if (snapshot.scope.type === "interest" &&
+      expected[0]?.interestId !== snapshot.scope.interestId) {
+    return "config_unavailable";
+  }
+  const interests = await tx.$queryRaw<readonly { readonly id: string;
+    readonly query: string }[]>`
+    SELECT id::text, query FROM interests
     WHERE tenant_id=${snapshot.tenantId}::uuid
       AND workspace_id=${snapshot.workspaceId}::uuid
-      AND id=${config.interestId}::uuid FOR NO KEY UPDATE
+      AND status='ENABLED' AND deleted_at IS NULL
+      AND (${config.schemaVersion === "reader_summary_preparation_config.v2"}::boolean
+        OR id::text=${expected[0]!.interestId})
+    -- One excess row proves a workspace has crossed its frozen 32-interest
+    -- ceiling. An interest job reads only its own interest.
+    ORDER BY id LIMIT 33 FOR NO KEY UPDATE
   `;
-  const interest = interests[0];
-  if (interest === undefined || interest.deleted_at !== null ||
-      interest.status !== 'ENABLED' || sha256(interest.query) !== config.interestSha256) {
+  const live = config.schemaVersion === "reader_summary_preparation_config.v2"
+    ? interests : interests.filter((interest) => interest.id === expected[0]!.interestId);
+  if (live.length !== expected.length || live.some((interest, index) =>
+    interest.id !== expected[index]?.interestId ||
+    sha256(interest.query) !== expected[index]?.interestSha256)) {
     return "interest_changed";
   }
+  const candidateIds = manifest.candidates.map((candidate) => candidate.candidateId);
   if (candidateIds.length === 0) return "live";
-  const visible = await tx.$queryRaw<readonly { readonly id: string }[]>`
-    SELECT f.id::text AS id FROM feed_items f JOIN source_items s
+  const visible = await tx.$queryRaw<readonly ReaderSummaryVisibleCandidate[]>`
+    SELECT f.id::text AS id, f.interest_id::text,
+      f.source_item_id::text, f.source_binding_id::text, f.provider_key
+    FROM feed_items f JOIN source_items s
       ON s.tenant_id=f.tenant_id AND s.workspace_id=f.workspace_id
         AND s.id=f.source_item_id AND s.provider_key=f.provider_key
     JOIN source_bindings b ON b.tenant_id=f.tenant_id
@@ -322,7 +447,6 @@ const livePreparationScope = async (
       AND c.provider_key=f.provider_key
     WHERE f.tenant_id=${snapshot.tenantId}::uuid
       AND f.workspace_id=${snapshot.workspaceId}::uuid
-      AND f.interest_id=${config.interestId}::uuid
       AND f.id=ANY(${candidateIds}::uuid[]) AND f.status='VISIBLE'
       AND COALESCE(s.metadata->>'deleted','false') <> 'true'
       AND COALESCE(s.metadata->>'dead','false') <> 'true'
@@ -336,26 +460,8 @@ const livePreparationScope = async (
     -- deterministic candidate order prevents inverted multi-row lock order.
     ORDER BY f.id FOR NO KEY UPDATE OF f,s,b
   `;
-  return visible.length === candidateIds.length ? "live" : "scope_changed";
+  return visibleCandidateBindingsMatchManifest(manifest, visible,
+    expected[0]!.interestId) ? "live" : "scope_changed";
 };
-
 const sha256 = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");
-
-const samePreparationIdentity = (
-  frozen: NonNullable<ReturnType<Parameters<
-    ReaderSummaryV3PreparationSourcePort["prepare"]>[0]["toSnapshot"]>["preparationConfig"]>,
-  prepared: typeof frozen,
-  manifest: NonNullable<ReturnType<Parameters<
-    ReaderSummaryV3PreparationSourcePort["prepare"]>[0]["toSnapshot"]>["preparationManifest"]>,
-): boolean => frozen.schemaVersion === prepared.schemaVersion &&
-  frozen.interestId === prepared.interestId &&
-  frozen.interestSha256 === prepared.interestSha256 &&
-  frozen.rubricVersion === prepared.rubricVersion &&
-  frozen.rubricSha256 === prepared.rubricSha256 &&
-  frozen.inputBuilderVersion === prepared.inputBuilderVersion &&
-  frozen.modelConfigVersion === prepared.modelConfigVersion &&
-  manifest.interestSha256 === frozen.interestSha256 &&
-  manifest.rubricSha256 === frozen.rubricSha256 &&
-  manifest.inputBuilderVersion === frozen.inputBuilderVersion &&
-  manifest.modelConfigVersion === frozen.modelConfigVersion;
