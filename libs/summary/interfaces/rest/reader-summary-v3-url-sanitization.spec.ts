@@ -60,6 +60,15 @@ describe("Promotion V3 public canonical identity", () => {
       "https://example.test/?=https%3A%2F%2Fexample.test%2F"],
     ["scheme-relative value", "https://example.test/article?next=%2F%2Fuser%3Asynthetic-marker-only%40elsewhere.test%2F",
       "https://example.test/article?next=%2F%2Felsewhere.test%2F"],
+    ["doubly encoded scheme-relative value",
+      "https://example.test/?next=%252F%252Fuser%253Asynthetic-marker-only%2540elsewhere.test%252F",
+      "https://example.test/"],
+    ["encoded scheme-relative query name",
+      "https://example.test/?%2F%2Fuser%3Asynthetic-marker-only%40elsewhere.test%2F=x",
+      "https://example.test/"],
+    ["encoded scheme-relative fragment",
+      "https://example.test/#%2F%2Fuser%3Asynthetic-marker-only%40elsewhere.test%2F",
+      "https://example.test/"],
   ])("signs a safe %s URL and serializes public evidence", (_case, rawIdentity,
     publicIdentity) => {
     const marker = "synthetic-marker-only";

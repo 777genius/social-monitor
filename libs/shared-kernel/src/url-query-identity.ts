@@ -98,7 +98,9 @@ const hasEncodedCredentialLayer = (value: string): boolean => {
       return /%[0-9a-f]{2}/iu.test(decoded);
     }
     let normalized = decoded;
-    try { normalized = new URL(decoded).href; } catch { /* It may be a decoded URL component. */ }
+    try {
+      normalized = new URL(decoded.startsWith('//') ? `https:${decoded}` : decoded).href;
+    } catch { /* It may be a decoded URL component. */ }
     if (sanitizeUrlCredentials(normalized) !== normalized) return true;
   }
   // An encoded value that cannot be inspected within the bound is ambiguous.
@@ -134,7 +136,8 @@ const sanitizePublicRedirectUrl = (value: string, depth: number): string => {
   const fragmentStart = sanitized.indexOf('#');
   const fragment = fragmentStart < 0 ? '' : sanitized.slice(fragmentStart + 1);
   const outer = fragment && (sanitizeUrlCredentials(fragment) !== fragment ||
-    hasEncodedCredentialLayer(fragment)) ? sanitized.slice(0, fragmentStart) : sanitized;
+    hasEncodedCredentialLayer(fragment) || (fragment.startsWith('//') &&
+      publicCanonicalUrlIdentity(fragment) !== fragment)) ? sanitized.slice(0, fragmentStart) : sanitized;
   try { parsed = new URL(outer); } catch { return ''; }
   const destinationKeys = redirectDestinationKeys(parsed);
   if (!parsed.search) return outer;
@@ -144,7 +147,9 @@ const sanitizePublicRedirectUrl = (value: string, depth: number): string => {
   const retained = rawQuery.split('&').flatMap((component) => {
     const [name] = [...new URLSearchParams(component).keys()];
     const queryName = name ?? '';
-    if (sanitizeUrlCredentials(queryName) !== queryName || hasEncodedCredentialLayer(queryName)) return [];
+    if (sanitizeUrlCredentials(queryName) !== queryName ||
+        (queryName.startsWith('//') && publicCanonicalUrlIdentity(queryName) !== queryName) ||
+        hasEncodedCredentialLayer(queryName)) return [];
     const destination = new URLSearchParams(component).get(queryName)?.trim() ?? '';
     const knownDestination = destinationKeys.has(queryName.toLowerCase());
     const schemeRelative = destination.startsWith('//');

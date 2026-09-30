@@ -73,6 +73,29 @@ describe('public URL identity', () => {
     expect(publicCanonicalUrlIdentity(benign)).toBe(benign);
   });
 
+  it.each([
+    ['doubly encoded query value',
+      'https://example.test/?next=%252F%252Fuser%253Asynthetic-marker-only%2540elsewhere.test%252F',
+      'https://example.test/'],
+    ['encoded query name',
+      'https://example.test/?%2F%2Fuser%3Asynthetic-marker-only%40elsewhere.test%2F=x',
+      'https://example.test/'],
+    ['encoded fragment',
+      'https://example.test/#%2F%2Fuser%3Asynthetic-marker-only%40elsewhere.test%2F',
+      'https://example.test/'],
+  ])('discards %s with scheme-relative userinfo', (_case, raw, safe) => {
+    expect(publicCanonicalUrlIdentity(raw)).toBe(safe);
+    expect(publicCanonicalUrlIdentity(`url:${raw}`)).toBe(`url:${safe}`);
+    expect(identityQueryEntries('example.test', new URL(raw).searchParams)).toEqual([]);
+  });
+
+  it('preserves bounded benign encoded scheme-relative values', () => {
+    const raw = 'https://example.test/?next=%252F%252Felsewhere.test%252Farticle';
+    expect(publicCanonicalUrlIdentity(raw)).toBe(raw);
+    expect(identityQueryEntries('example.test', new URL(raw).searchParams))
+      .toEqual([['next', '%2F%2Felsewhere.test%2Farticle']]);
+  });
+
   it('bounds oversized query identities without changing bounded query values', () => {
     // A blank, noncredential value is part of a bounded URL's identity.
     expect(identityQueryEntries('example.test', new URLSearchParams('edition=&lang=en')))
@@ -104,6 +127,8 @@ describe('public URL identity', () => {
     const fragment = `https://example.test/article#${encodeURIComponent(target)}`;
     expect(publicCanonicalUrlIdentity(queryName)).toBe('https://example.test/article?lang=en');
     expect(publicCanonicalUrlIdentity(fragment)).toBe('https://example.test/article');
+    expect(publicCanonicalUrlIdentity('https://example.test/article#//user:synthetic-marker-only@elsewhere.test/'))
+      .toBe('https://example.test/article');
     expect(publicCanonicalUrlIdentity('https://example.test/article#section-2'))
       .toBe('https://example.test/article#section-2');
   });
