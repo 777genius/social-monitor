@@ -143,14 +143,16 @@ const githubRepositoryUrlKey = (value: string): string | null => {
       return null;
     }
 
-    const [owner, repo, section] = parsed.pathname
+    const [owner, repo, section, detail] = parsed.pathname
       .split("/")
       .filter((part) => part.trim().length > 0);
     if (owner === undefined || repo === undefined) {
       return null;
     }
 
-    if (section !== undefined) {
+    // Stargazers is repository-level metadata, not a distinct event.
+    if (section !== undefined &&
+        !(section.toLocaleLowerCase("en-US") === "stargazers" && detail === undefined)) {
       return null;
     }
 
