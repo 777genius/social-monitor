@@ -145,6 +145,7 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
           existing,
           snapshot,
           providerContentHash,
+          providerKey: command.providerKey,
           immutable:
             command.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY,
         });
@@ -198,6 +199,7 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
       readonly existing: PrismaSourceItemRecord;
       readonly snapshot: SourceItemProps;
       readonly providerContentHash: string;
+      readonly providerKey: string;
       readonly immutable: boolean;
     },
   ): Promise<{
@@ -207,6 +209,20 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
     const contentChanged =
       params.existing.providerContentHash === null ||
       params.existing.providerContentHash !== params.providerContentHash;
+    // The provider fingerprint includes binding provenance. A shared item
+    // observed through another binding still needs that provenance persisted,
+    // but must retain its existing assessment revision and cutoff clock when
+    // every other fingerprint input is unchanged. This also preserves legacy
+    // binding-inclusive content hashes until a real content revision occurs.
+    const bindingOnlyChange = contentChanged &&
+      params.existing.sourceBindingId !== params.snapshot.sourceBindingId &&
+      sourceItemProviderContentHash({
+        providerKey: params.providerKey,
+        snapshot: sourceItemFromPrisma(params.existing).toSnapshot(),
+      }) === sourceItemProviderContentHash({
+        providerKey: params.providerKey,
+        snapshot: { ...params.snapshot, sourceBindingId: params.existing.sourceBindingId },
+      });
     if (params.immutable) {
       return { record: params.existing, contentChanged: false };
     }
@@ -223,10 +239,10 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
             body: params.snapshot.body,
             authorHandle: params.snapshot.authorHandle ?? null,
             publishedAt: params.snapshot.publishedAt,
-            contentHash: contentHashForSourceItem(params.snapshot),
+            contentHash: bindingOnlyChange ? params.existing.contentHash : contentHashForSourceItem(params.snapshot),
             providerContentHash: params.providerContentHash,
             lastObservedAt: params.snapshot.ingestedAt,
-            contentUpdatedAt: params.snapshot.ingestedAt,
+            ...(bindingOnlyChange ? {} : { contentUpdatedAt: params.snapshot.ingestedAt }),
             metadata: params.snapshot.metadata ?? {},
           }
         : {

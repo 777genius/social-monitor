@@ -390,6 +390,31 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(result.evidence.clusters[0]?.duplicateFeedItemIds).toEqual([id(2)]);
   });
 
+  it("keeps a repository release and security issue in Top and summary evidence", async () => {
+    const release = { ...candidate(1, "useful", "relevant", undefined),
+      storyId: undefined,
+      canonicalIdentity: "https://github.com/OpenAI/Codex/releases/tag/v1.2.3",
+      title: "OpenAI Codex v1.2.3 release",
+      body: "The release introduces a new agent workflow." };
+    const issue = { ...candidate(2, "important", "central", undefined),
+      storyId: undefined,
+      canonicalIdentity: "https://github.com/openai/codex/issues/42",
+      title: "OpenAI Codex security issue 42",
+      body: "A vulnerability affects the agent workflow." };
+    const fixture = setup([release, issue], new TestPresentation());
+
+    const result = await fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest });
+
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(result.evidence.promotionV3?.top.map((item) => item.candidateId))
+      .toEqual([issue.id, release.id]);
+    expect(result.evidence.clusters).toHaveLength(2);
+    expect(result.evidence.selectedEvidence.map((item) => item.feedItemId))
+      .toEqual([issue.id, release.id]);
+  });
+
   it.each([
     ['direct', 'https://example.test/article?edition=2&access_token=synthetic-marker-only',
       'https://example.test/article?edition=2'],

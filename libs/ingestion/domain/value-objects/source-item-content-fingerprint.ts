@@ -12,11 +12,11 @@ import {
   sourceMetadataWithoutEngagementAndVolatileProvenance,
 } from "./source-engagement-metrics";
 
-export const sourceItemContentHash = (snapshot: SourceItemProps): string =>
+const hashSourceItemFields = (snapshot: SourceItemProps, includeBinding: boolean): string =>
   createHash("sha256")
     .update(
       [
-        snapshot.sourceBindingId,
+        ...(includeBinding ? [snapshot.sourceBindingId] : []),
         snapshot.externalId,
         snapshot.canonicalUrl,
         snapshot.title,
@@ -26,6 +26,11 @@ export const sourceItemContentHash = (snapshot: SourceItemProps): string =>
       ].join("\u001f"),
     )
     .digest("hex");
+
+// A SourceItem is shared by provider identity across bindings. Its content
+// revision must remain stable when only the observing binding changes.
+export const sourceItemContentHash = (snapshot: SourceItemProps): string =>
+  hashSourceItemFields(snapshot, false);
 
 export const sourceItemProviderContentHash = (params: {
   readonly providerKey: string;
@@ -58,7 +63,10 @@ export const sourceItemProviderContentHash = (params: {
   return createHash("sha256")
     .update(
       JSON.stringify(canonical({
-        contentHash: sourceItemContentHash(params.snapshot),
+        // Retain the binding in the provider persistence fingerprint so a
+        // binding change still updates the SourceItem's provenance. Keep the
+        // existing digest format to avoid rewriting unchanged provider rows.
+        contentHash: hashSourceItemFields(params.snapshot, true),
         // Assessment identity is the capture digest; provider persistence must
         // additionally observe meaningful non-text provider facts.
         sourceDigest,
