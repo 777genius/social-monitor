@@ -2,9 +2,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { HttpRedditClient } from "../libs/ingestion/adapters/source/reddit/http-reddit-client";
+import { RedditAppOnlyTokenProvider } from "../libs/ingestion/adapters/source/reddit/app-only-reddit-token-provider";
 import type { RedditClientPort, RedditListingPage, RedditPost } from "../libs/ingestion/adapters/source/reddit/reddit-client.port";
+import type { RedditTokenProviderPort } from "../libs/ingestion/adapters/source/reddit/reddit-token-provider.port";
 import { normalizePost } from "../libs/ingestion/adapters/source/reddit/reddit-post-normalizer";
 import { readListing, readOptionalNonNegativeInteger, readScanPasses, readSearchSort, type RedditScanPass } from "../libs/ingestion/adapters/source/reddit/reddit-source-support";
+import type { SourceProviderScanContext } from "../libs/ingestion/ports";
 
 const from = "2026-09-24T00:00:00.000Z";
 const to = "2026-09-25T00:00:00.000Z";
@@ -21,7 +24,7 @@ type PassEvidence = Readonly<{
   inWindow: number;
   exported: number;
   terminal: boolean;
-  stopReason: "cursor_exhausted" | "page_cap" | "cursor_repeated" | "request_failed";
+  stopReason: "cursor_exhausted" | "page_cap" | "cursor_repeated" | "cursor_invalid" | "request_failed";
 }>;
 
 export type RedditSep24Export = Readonly<{
@@ -74,7 +77,7 @@ const configuredPasses = (config: Readonly<Record<string, unknown>>): readonly R
   const raw = config.scanPasses ?? config.passes;
   if (raw !== undefined) {
     if (!Array.isArray(raw) || raw.length === 0 || raw.length > 48) throw new Error("Expected 1 to 48 scan passes");
-    return readScanPasses(config);
+    return readScanPasses(config as SourceProviderScanContext["config"]);
   }
   const mode = config.mode === "listing" ? "listing" : "search";
   if (mode === "listing") {
@@ -94,9 +97,9 @@ const validPost = (post: RedditPost): boolean =>
 
 /** Every pass follows its own OAuth cursor. Terminal means the API returned no next cursor. */
 export async function exportRedditSep24Public(
-  bindings: readonly Binding[], client: RedditClientPort, accessToken: string, userAgent: string,
+  bindings: readonly Binding[], client: RedditClientPort, tokenProvider: RedditTokenProviderPort, userAgent: string,
 ): Promise<RedditSep24Export> {
-  if (!accessToken.trim() || !userAgent.trim()) throw new Error("Runtime OAuth token and user agent are required");
+  if (!userAgent.trim()) throw new Error("Runtime user agent is required");
   const results: RedditSep24Export["bindings"][number][] = [];
   for (const binding of bindings) {
     const passes = configuredPasses(binding.config);
@@ -114,12 +117,15 @@ export async function exportRedditSep24Public(
       for (; pages < maxPagesPerPass;) {
         let page: RedditListingPage;
         try {
+          const accessToken = await tokenProvider.getAccessToken();
+          if (!accessToken.trim()) throw new Error("Runtime OAuth token is required");
           page = pass.mode === "listing"
             ? await client.listSubredditPosts({ accessToken, userAgent, subreddit: pass.subreddit,
                 listing: pass.listing, topTime: pass.listing === "top" ? "all" : undefined,
                 limit: 100, after: cursor })
             : await client.searchPosts({ accessToken, userAgent, query: pass.query,
                 sort: "new", time: "all", limit: 100, after: cursor });
+          if (!Array.isArray(page.posts)) throw new Error("Invalid Reddit listing page");
         } catch {
           stopReason = "request_failed";
           break;
@@ -141,7 +147,11 @@ export async function exportRedditSep24Public(
           stopReason = "cursor_exhausted";
           break;
         }
-        if (page.after.trim() === "" || page.after === cursor || cursors.has(page.after)) {
+        if (typeof page.after !== "string" || page.after.trim() === "") {
+          stopReason = "cursor_invalid";
+          break;
+        }
+        if (page.after === cursor || cursors.has(page.after)) {
           stopReason = "cursor_repeated";
           break;
         }
@@ -161,7 +171,7 @@ export async function exportRedditSep24Public(
 
 export async function runRedditSep24PublicCli(
   args: readonly string[],
-  environment: Readonly<{ REDDIT_ACCESS_TOKEN?: string; REDDIT_USER_AGENT?: string }>,
+  environment: NodeJS.ProcessEnv,
   client: RedditClientPort,
 ): Promise<0 | 2> {
   const [bindingsPath, outputPath] = args;
@@ -169,10 +179,11 @@ export async function runRedditSep24PublicCli(
     throw new Error("Usage: ts-node scripts/export-reddit-sep24-public.ts BINDINGS_JSON OUTPUT_JSON");
   }
   const bindings = parseRedditSep24Bindings(JSON.parse(await readFile(resolve(bindingsPath), "utf8")));
-  const token = environment.REDDIT_ACCESS_TOKEN;
-  const userAgent = environment.REDDIT_USER_AGENT;
-  if (!token || !userAgent) throw new Error("REDDIT_ACCESS_TOKEN and REDDIT_USER_AGENT are required in the process environment");
-  const result = await exportRedditSep24Public(bindings, client, token, userAgent);
+  const tokenOptions = RedditAppOnlyTokenProvider.optionsFromEnvironment(environment);
+  if (tokenOptions === null) throw new Error("Reddit app-only client credentials are required in the process environment");
+  const tokenProvider = new RedditAppOnlyTokenProvider(tokenOptions);
+  const userAgent = tokenOptions.userAgent ?? "social-monitor-mvp/0.1 reddit-app-only";
+  const result = await exportRedditSep24Public(bindings, client, tokenProvider, userAgent);
   await writeFile(resolve(outputPath), `${JSON.stringify(result, null, 2)}\n`, { flag: "wx", mode: 0o600 });
   return result.bindings.some((binding) => !binding.terminal) ? 2 : 0;
 }
