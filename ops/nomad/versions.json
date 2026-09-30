@@ -1,0 +1,19 @@
+{
+  "nomad": {
+    "version": "2.0.6",
+    "source": "https://api.releases.hashicorp.com/v1/releases/nomad/latest",
+    "verifiedAt": "2026-09-11T00:00:00Z",
+    "verificationMethod": "curl https://releases.hashicorp.com/nomad/<version>/nomad_<version>_SHA256SUMS, compared byte-for-byte against this file; GPG signature over that SHASUMS file not verified in this environment (no HashiCorp public key available here) - verify the .sig against key 72D7468F before production bootstrap",
+    "sha256": {
+      "linux_amd64": "c6da734081a41d51cadf15ec880d5eab0313093a29d2ee0984ca5ae1cdf867ec",
+      "linux_arm64": "6ccc4c25ec0b6b71c30af4df7ae3dfb3f7a0a05173555f94be452d072100cc52"
+    },
+    "downloadUrlTemplate": "https://releases.hashicorp.com/nomad/{version}/nomad_{version}_{os}_{arch}.zip",
+    "shasumsUrl": "https://releases.hashicorp.com/nomad/2.0.6/nomad_2.0.6_SHA256SUMS",
+    "shasumsSignatureUrls": [
+      "https://releases.hashicorp.com/nomad/2.0.6/nomad_2.0.6_SHA256SUMS.sig",
+      "https://releases.hashicorp.com/nomad/2.0.6/nomad_2.0.6_SHA256SUMS.72D7468F.sig"
+    ]
+  },
+  "traefik": null
+}
