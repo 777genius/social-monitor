@@ -203,6 +203,18 @@ export const preserveSourceCapture = <T extends CaptureText>(incoming: T, existi
   return { ...result, metadata: { ...result.metadata, articleContent: existing.metadata?.articleContent ?? null } };
 };
 
+// A binding transfer may reuse proven native bytes, but never carries an
+// article or capture attempt from the previous binding.
+export const preserveNativeCaptureAvailability = <T extends CaptureText>(incoming: T, existing: CaptureText): T => {
+  const next = readContentCapture(incoming);
+  const prior = readContentCapture(existing);
+  if (next === undefined || prior === undefined || next.nativeRevision !== prior.nativeRevision ||
+      stableSegment(next.native) !== stableSegment(prior.native) ||
+      incoming.body.slice(next.native.offset, next.native.offset + next.native.length) !==
+        existing.body.slice(prior.native.offset, prior.native.offset + prior.native.length)) return incoming;
+  return withCapture(incoming, { ...next, native: { ...next.native, availableAt: prior.native.availableAt } });
+};
+
 const stableSegment = (segment: CaptureSegment): string => JSON.stringify([
   segment.origin, segment.offset, segment.length, segment.originalLength, segment.fullTextSha256,
   segment.truncated, segment.sourceUrl, segment.finalUrl, segment.extractionVersion,

@@ -263,6 +263,34 @@ describe("storyKey canonical URL query identity", () => {
     expect(redirected).toBe(direct);
   });
 
+  it("keeps distinct GitHub events separate from each other and the repository homepage", () => {
+    const keyFor = (canonicalUrl: string): string => storyKey(evidence({
+      title: "OpenAI Codex event", bodyPreview: "GitHub repository openai/codex",
+      canonicalUrl,
+    }), STORY_RANKING_POLICY_V1);
+
+    expect(keyFor("https://github.com/OpenAI/Codex/releases/tag/v1.2.3"))
+      .toBe("url:github.com/openai/codex/releases/tag/v1.2.3");
+    expect(keyFor("https://github.com/openai/codex/issues/42"))
+      .toBe("url:github.com/openai/codex/issues/42");
+    expect(keyFor("https://github.com/openai/codex/security/advisories/GHSA-test"))
+      .toBe("url:github.com/openai/codex/security/advisories/ghsa-test");
+    for (const path of [
+      "compare/main...next", "blob/main/README.md", "tree/main/docs",
+      "actions/runs/42", "milestones/1", "wiki/Release-notes",
+    ]) {
+      expect(keyFor(`https://github.com/openai/codex/${path}`))
+        .toBe(`url:github.com/openai/codex/${path.toLowerCase()}`);
+    }
+    expect(keyFor("https://github.com/openai/codex/issues/42?utm_source=feed#discussion"))
+      .toBe(keyFor("https://www.github.com/OpenAI/Codex/issues/42"));
+    expect(keyFor(`https://www.google.com/url?q=${encodeURIComponent(
+      "https://github.com/openai/codex/issues/42",
+    )}`)).toBe(keyFor("https://github.com/openai/codex/issues/42"));
+    expect(keyFor("https://github.com/openai/codex?utm_source=radar"))
+      .toBe(keyFor("https://www.github.com/OpenAI/Codex.git"));
+  });
+
   it("keeps an unwrapped article's query identity", () => {
     const direct = storyKey(
       evidence({

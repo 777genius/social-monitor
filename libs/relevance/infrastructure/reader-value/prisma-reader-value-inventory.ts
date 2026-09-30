@@ -91,7 +91,6 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
         CROSS JOIN LATERAL (SELECT f.tenant_id,f.workspace_id,f.interest_id,f.source_item_id) a
         WHERE f.tenant_id=$1::uuid AND f.workspace_id=$2::uuid AND f.status='VISIBLE'
           AND f.interest_id=$3::uuid
-          AND ($9::boolean OR s.content_updated_at IS NOT NULL)
           AND f.published_at >= $4::timestamptz AND f.published_at <= clock_timestamp()
           AND ($8::timestamptz IS NULL OR f.published_at < $8::timestamptz)
           AND ($9::boolean OR s.created_at+interval '180 days'>clock_timestamp())
@@ -100,15 +99,15 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
         ORDER BY f.published_at,f.id LIMIT $7`,scope.tenantId,scope.workspaceId,
       scope.interestId,backfillFrom,cursor?.publishedAt ?? null,cursor?.feedItemId ?? null,limit,
       exclusivePeriodEnd ?? null,includeExpiredForPreparation);
+      // Every eligible visible row must have a revision clock. Otherwise
+      // discovery could complete a sweep without it, and either preparation
+      // path could publish an incomplete inventory as no signal.
+      if (identities.some((row) => row.source_updated_at === null)) {
+        throw new ReaderValueInventorySnapshotUnavailable();
+      }
       const bytes = identities.reduce((sum, row) => sum + Number(row.source_bytes), 0);
       if (!Number.isSafeInteger(bytes) || bytes > sourceByteBudget) {
         throw new ReaderValueInventoryByteCeilingExceeded();
-      }
-      // A workspace snapshot must count every visible row. A legacy source
-      // without a revision clock cannot be pinned to the frozen cutoff.
-      if (includeExpiredForPreparation && identities.some((row) =>
-        row.source_updated_at === null)) {
-        throw new ReaderValueInventorySnapshotUnavailable();
       }
       if (identities.length === 0) return [];
       const requested = identities.map((row, ordinal) => ({ ...row,

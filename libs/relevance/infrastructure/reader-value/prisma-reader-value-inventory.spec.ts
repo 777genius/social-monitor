@@ -49,7 +49,8 @@ describe('Prisma reader-value inventory JSON boundary', () => {
     expect(inventorySql[1]).toContain('f.published_at < $8::timestamptz');
     expect(inventorySql[1]).toContain('s.content_updated_at=r.source_updated_at');
     expect(inventorySql.join('\n')).toContain('s.content_updated_at::text AS source_updated_at');
-    expect(inventorySql.join('\n')).toContain('s.content_updated_at IS NOT NULL');
+    expect(inventorySql[0]).not.toContain('s.content_updated_at IS NOT NULL');
+    expect(inventorySql[1]).toContain('s.content_updated_at IS NOT NULL');
     expect(inventorySql.join('\n')).not.toContain('s.updated_at');
   });
 
@@ -103,9 +104,9 @@ describe('Prisma reader-value inventory JSON boundary', () => {
       .toBe(true);
   });
 
-  // Regression: a visible legacy source with no revision timestamp was
-  // excluded by SQL and could turn a workspace weekly summary into no signal.
-  it('fails a complete preparation snapshot on an unversioned visible source', async () => {
+  // Regression: the discovery preflight used to filter this row before it
+  // could fail, allowing a completed sweep and an incomplete interest Top.
+  it('fails discovery and either preparation snapshot on an unversioned visible source', async () => {
     const queries: string[] = [];
     const tx: AssessmentSqlTransaction = {
       $executeRawUnsafe: async () => 0,
@@ -118,12 +119,18 @@ describe('Prisma reader-value inventory JSON boundary', () => {
     const client: AssessmentSqlClient = { ...tx,
       $transaction: async (operation) => operation(tx) };
 
-    await expect(new PrismaReaderValueInventory(client).readSnapshot(scope,
+    const inventory = new PrismaReaderValueInventory(client);
+    await expect(inventory.page(scope, '2026-09-01T00:00:00Z', undefined, 25))
+      .rejects.toBeInstanceOf(ReaderValueInventorySnapshotUnavailable);
+    await expect(inventory.readSnapshot(scope,
+      (snapshot) => snapshot.page('2026-09-01T00:00:00Z', undefined, 25)))
+      .rejects.toBeInstanceOf(ReaderValueInventorySnapshotUnavailable);
+    await expect(inventory.readSnapshot(scope,
       (snapshot) => snapshot.page('2026-09-01T00:00:00Z', undefined, 25),
       { includeExpiredSources: true })).rejects.toBeInstanceOf(
       ReaderValueInventorySnapshotUnavailable);
-    expect(queries).toHaveLength(1);
-    expect(queries[0]).toContain('($9::boolean OR s.content_updated_at IS NOT NULL)');
+    expect(queries).toHaveLength(3);
+    expect(queries.every((sql) => !sql.includes('s.content_updated_at IS NOT NULL'))).toBe(true);
   });
 
   // Regression: the old 10-second snapshot transaction could abort a weekly

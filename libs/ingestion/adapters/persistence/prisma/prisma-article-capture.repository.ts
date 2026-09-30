@@ -109,10 +109,12 @@ export class PrismaArticleCaptureRepository implements ArticleCaptureRepository 
       });
       if (reserved === undefined) return null;
       const providerContentHash = sourceItemProviderContentHash({ providerKey: command.providerKey, snapshot: reserved });
+      const revisedContentHash = contentHashForSourceItem(reserved);
+      const contentRevised = revisedContentHash !== contentHashForSourceItem(sourceItemFromPrisma(record).toSnapshot());
       if (!await writeArticleCapture(fence.tx, command, command.lease, {
         id: record.id, body: reserved.body, metadata: reserved.metadata ?? {},
-        contentHash: contentHashForSourceItem(reserved), providerContentHash,
-        contentChanged: providerContentHash !== record.providerContentHash,
+        contentHash: contentRevised ? revisedContentHash : record.contentHash, providerContentHash,
+        contentChanged: contentRevised || providerContentHash !== record.providerContentHash,
       })) return null;
       const persisted = await findCurrent(tx, command, command.externalId);
       return persisted === null ? null : sourceItemFromPrisma(persisted);
@@ -135,9 +137,12 @@ export class PrismaArticleCaptureRepository implements ArticleCaptureRepository 
       if (merged === undefined) return null;
       const providerContentHash = sourceItemProviderContentHash({ providerKey: command.providerKey, snapshot: merged });
       const changed = providerContentHash !== record.providerContentHash;
+      const revisedContentHash = contentHashForSourceItem(merged);
+      const contentRevised = revisedContentHash !== contentHashForSourceItem(current);
       if (!await writeArticleCapture(fence.tx, command, command.lease, {
         id: record.id, body: merged.body, metadata: merged.metadata ?? {},
-        contentHash: contentHashForSourceItem(merged), providerContentHash, contentChanged: changed,
+        contentHash: contentRevised ? revisedContentHash : record.contentHash,
+        providerContentHash, contentChanged: contentRevised || changed,
       })) return null;
       const persisted = await findCurrent(tx, command, incoming.externalId);
       return persisted === null ? null : sourceItemFromPrisma(persisted);
