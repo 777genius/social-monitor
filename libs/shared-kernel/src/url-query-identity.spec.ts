@@ -49,6 +49,44 @@ describe('public URL identity', () => {
     const raw = `https://example.test/article?edition=2&next=${encodeURIComponent(
       'https://elsewhere.test')}&q=hello%20world&discount=100%25`;
     expect(publicCanonicalUrlIdentity(raw)).toBe(raw);
+    expect(identityQueryEntries('example.test', new URLSearchParams('next=https%3A%2F%2Felsewhere.test')))
+      .toEqual([['next', 'https://elsewhere.test']]);
+  });
+
+  it('sanitizes a nested credential under an empty query name for public and story identities', () => {
+    const raw = 'https://example.test/?=https%3A%2F%2Fexample.test%2F%3Faccess_token%3Dsynthetic-marker-only';
+    const safe = 'https://example.test/?=https%3A%2F%2Fexample.test%2F';
+    expect(publicCanonicalUrlIdentity(raw)).toBe(safe);
+    expect(publicCanonicalUrlIdentity(`url:${raw}`)).toBe(`url:${safe}`);
+    expect(identityQueryEntries('example.test', new URL(raw).searchParams)).toEqual(
+      identityQueryEntries('example.test', new URL(safe).searchParams));
+  });
+
+  it('removes credentials in generic scheme-relative values and preserves benign ones', () => {
+    const raw = 'https://example.test/article?next=%2F%2Fuser%3Asynthetic-marker-only%40elsewhere.test%2F';
+    const safe = 'https://example.test/article?next=%2F%2Felsewhere.test%2F';
+    expect(publicCanonicalUrlIdentity(raw)).toBe(safe);
+    expect(publicCanonicalUrlIdentity(`url:${raw}`)).toBe(`url:${safe}`);
+    expect(identityQueryEntries('example.test', new URL(raw).searchParams)).toEqual(
+      identityQueryEntries('example.test', new URL(safe).searchParams));
+    const benign = 'https://example.test/article?next=%2F%2Felsewhere.test%2Farticle';
+    expect(publicCanonicalUrlIdentity(benign)).toBe(benign);
+  });
+
+  it('bounds oversized query identities without changing bounded query values', () => {
+    // A blank, noncredential value is part of a bounded URL's identity.
+    expect(identityQueryEntries('example.test', new URLSearchParams('edition=&lang=en')))
+      .toEqual([['edition', ''], ['lang', 'en']]);
+    const bounded = new URLSearchParams(Array.from({ length: 256 }, (_, index) =>
+      [`p${index}`, `v${index}`]));
+    expect(identityQueryEntries('example.test', bounded)).toHaveLength(256);
+    bounded.append('access_token', 'synthetic-marker-only');
+    expect(identityQueryEntries('example.test', bounded)).toEqual([]);
+    const oversized = new URLSearchParams(Array.from({ length: 8000 }, (_, index) =>
+      [`p${index}`, `v${index}`]));
+    expect(identityQueryEntries('example.test', oversized)).toEqual([]);
+    expect(publicCanonicalUrlIdentity(`https://example.test/?q=${'a'.repeat(16_384)}`))
+      .toBe('');
   });
 
   it('handles redirect host aliases and mixed case without exposing the destination', () => {
@@ -128,5 +166,9 @@ describe('public URL identity', () => {
     expect(entries('journal.example', 'ref_src=edition')).toEqual([['ref_src', 'edition']]);
     expect(entries('youtu.be', 'si=share')).toEqual([]);
     expect(entries('journal.example', 'si=edition')).toEqual([['si', 'edition']]);
+    expect(entries('journal.example', 'sv=1&sig=synthetic-marker-only&edition=2'))
+      .toEqual([['edition', '2']]);
+    expect(entries('journal.example', 'expires=1&awsaccesskeyid=synthetic-marker-only&edition=2'))
+      .toEqual([['edition', '2']]);
   });
 });

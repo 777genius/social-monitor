@@ -5,6 +5,24 @@ const trackingNames = new Set([
   'ref',
 ]);
 
+const maxIdentityQueryParameters = 256;
+const maxIdentityQueryLength = 16_384;
+const credentialContextKeys = [
+  'sig', 'awsaccesskeyid', 'googleaccessid', 'key-pair-id',
+] as const;
+
+const retainBenignQueryValue = (value: string, sanitized: string): string => {
+  if (sanitized === value) return value;
+  const schemeRelative = value.startsWith('//');
+  try {
+    const parsed = new URL(schemeRelative ? `https:${value}` : value);
+    const canonical = schemeRelative ? parsed.href.replace(/^https:/u, '') : parsed.href;
+    return sanitized === canonical ? value : sanitized;
+  } catch {
+    return sanitized;
+  }
+};
+
 /** Preserve the order of repeated values while ignoring delivery and credential parameters. */
 export const identityQueryEntries = (
   hostname: string,
@@ -12,22 +30,42 @@ export const identityQueryEntries = (
 ): readonly (readonly [string, string])[] => {
   const host = hostname.toLowerCase().replace(/^(?:www\.|m\.|old\.|mobile\.)/u, '')
     .replace(/^twitter\.com$/u, 'x.com');
-  const entries = [...params.entries()];
-  const names = entries.map(([name]) => name);
-  return entries.filter(([name]) => {
-    const key = name.toLowerCase();
+  const entries: Array<readonly [string, string, string]> = [];
+  let queryLength = 0;
+  for (const [name, value] of params) {
+    queryLength += name.length + value.length;
+    if (entries.length >= maxIdentityQueryParameters || queryLength > maxIdentityQueryLength)
+      return [];
+    entries.push([name, value, name.toLowerCase()]);
+  }
+  const normalizedNames = new Set(entries.map(([, , key]) => key));
+  // The shared credential policy only uses these query companions for contextual keys.
+  const context = credentialContextKeys.filter((key) => normalizedNames.has(key));
+  return entries.flatMap(([name, value, key]) => {
+    const safeName = publicCanonicalUrlIdentity(name);
+    const safeValue = publicCanonicalUrlIdentity(value);
+    if (safeName !== name || hasEncodedCredentialLayer(name) ||
+        (safeValue === '' && value !== '') || hasEncodedCredentialLayer(value)) return [];
     return !key.startsWith('utm_') && !trackingNames.has(key) &&
-      !isSensitiveUrlCredentialKey(name, names) &&
+      !isSensitiveUrlCredentialKey(key, context) &&
       !(host === 'x.com' && (key === 's' || key === 'ref_src')) &&
-      !(['youtube.com', 'youtu.be'].includes(host) && key === 'si');
+      !(['youtube.com', 'youtu.be'].includes(host) && key === 'si')
+      ? [[name, retainBenignQueryValue(value, safeValue)] as const] : [];
   }).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
 };
 
 /** Sanitize a URL carried directly or inside a `url:` canonical identity. */
 export const publicCanonicalUrlIdentity = (value: string): string => {
   const normalized = value.trim();
+  if (normalized.length > maxIdentityQueryLength) return '';
   const hasPrefix = /^url:/iu.test(normalized);
   const url = hasPrefix ? normalized.slice(4).trimStart() : normalized;
+  if (url.startsWith('//')) {
+    const absolute = `https:${url}`;
+    const safe = sanitizePublicRedirectUrl(absolute, 0);
+    return safe ? `${hasPrefix ? 'url:' : ''}${safe === absolute ? url
+      : safe.replace(/^https:/u, '')}` : '';
+  }
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -105,12 +143,14 @@ const sanitizePublicRedirectUrl = (value: string, depth: number): string => {
   const rawQuery = outer.slice(queryStart + 1, queryEnd < 0 ? undefined : queryEnd);
   const retained = rawQuery.split('&').flatMap((component) => {
     const [name] = [...new URLSearchParams(component).keys()];
-    if (!name) return [component];
-    if (sanitizeUrlCredentials(name) !== name || hasEncodedCredentialLayer(name)) return [];
-    const destination = new URLSearchParams(component).get(name)?.trim() ?? '';
-    const knownDestination = destinationKeys.has(name.toLowerCase());
+    const queryName = name ?? '';
+    if (sanitizeUrlCredentials(queryName) !== queryName || hasEncodedCredentialLayer(queryName)) return [];
+    const destination = new URLSearchParams(component).get(queryName)?.trim() ?? '';
+    const knownDestination = destinationKeys.has(queryName.toLowerCase());
+    const schemeRelative = destination.startsWith('//');
     let nested: URL | undefined;
-    try { nested = new URL(destination); } catch { /* It may be ordinary query text. */ }
+    try { nested = schemeRelative ? new URL(destination, parsed) : new URL(destination); }
+    catch { /* It may be ordinary query text. */ }
     const isHttpUrl = nested?.protocol === 'http:' || nested?.protocol === 'https:';
     const looksHttpUrl = /^https?:/iu.test(destination.replace(/[\t\n\r]/gu, '').trimStart());
     if (!knownDestination && !isHttpUrl && !looksHttpUrl &&
@@ -118,11 +158,14 @@ const sanitizePublicRedirectUrl = (value: string, depth: number): string => {
         !hasEncodedCredentialLayer(destination)) return [component];
     // Invalid, oversized, or excessively nested destinations are discarded.
     if (depth >= maxRedirectDepth || destination.length > maxDestinationLength ||
-        hasEncodedCredentialLayer(destination) || !isHttpUrl) return [];
-    const safe = sanitizePublicRedirectUrl(destination, depth + 1);
+        hasEncodedCredentialLayer(destination) || !nested || !isHttpUrl) return [];
+    const safe = sanitizePublicRedirectUrl(nested.href, depth + 1);
     if (!safe) return [];
-    return safe === nested?.href ? [component]
-      : [`${component.slice(0, component.indexOf('='))}=${encodeURIComponent(safe)}`];
+    const safeDestination = schemeRelative ? safe.replace(/^https?:/u, '') : safe;
+    return safe === nested.href && (schemeRelative || /^https?:\/\//iu.test(destination))
+      ? [component]
+      : [`${component.slice(0, component.indexOf('='))}=${encodeURIComponent(
+        safeDestination)}`];
   });
   const suffix = queryEnd < 0 ? '' : outer.slice(queryEnd);
   return `${outer.slice(0, queryStart)}${retained.length ? `?${retained.join('&')}` : ''}${suffix}`;

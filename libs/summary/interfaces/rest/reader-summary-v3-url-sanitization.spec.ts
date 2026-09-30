@@ -56,6 +56,10 @@ describe("Promotion V3 public canonical identity", () => {
       "https://example.test/article?edition=2&access_token=synthetic-marker-only")}&lang=en`,
     `https://redirect.example.test/go?next=${encodeURIComponent(
       "https://example.test/article?edition=2")}&lang=en`],
+    ["empty query name", "https://example.test/?=https%3A%2F%2Fexample.test%2F%3Faccess_token%3Dsynthetic-marker-only",
+      "https://example.test/?=https%3A%2F%2Fexample.test%2F"],
+    ["scheme-relative value", "https://example.test/article?next=%2F%2Fuser%3Asynthetic-marker-only%40elsewhere.test%2F",
+      "https://example.test/article?next=%2F%2Felsewhere.test%2F"],
   ])("signs a safe %s URL and serializes public evidence", (_case, rawIdentity,
     publicIdentity) => {
     const marker = "synthetic-marker-only";
