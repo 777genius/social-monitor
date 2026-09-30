@@ -108,6 +108,18 @@ describe('reader-value source custody', () => {
       'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
     `https://www.google.com./url?q=${encodeURIComponent(
       'https://example.test/article?edition=2')}&sa=U`],
+    ['encoded Google path', `https://www.google.com./%75rl?q=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
+    `https://www.google.com./%75rl?q=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&sa=U`],
+    ['Facebook redirect', `https://l.facebook.com/l.php?u=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&lang=en`,
+    `https://l.facebook.com/l.php?u=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&lang=en`],
+    ['LinkedIn redirect', `https://www.linkedin.com/redir/redirect?url=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&lang=en`,
+    `https://www.linkedin.com/redir/redirect?url=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&lang=en`],
   ])('removes credentials from serialized capture with %s', (_kind, raw, safe) => {
     const result = prepare({ canonicalUrl: raw, capture: { ...source.capture, segments: [{
       origin: 'article', sourceUrl: raw, finalUrl: raw,

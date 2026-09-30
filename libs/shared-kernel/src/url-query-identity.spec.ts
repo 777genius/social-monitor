@@ -29,6 +29,48 @@ describe('public URL identity', () => {
   });
 
   it.each([
+    ['encoded Google path', 'https://www.google.com./%75rl?q=', ''],
+    ['Facebook redirect', 'https://l.facebook.com/l.php?u=', ''],
+    ['LinkedIn redirect', 'https://www.linkedin.com/redir/redirect?url=', ''],
+    ['DuckDuckGo redirect', 'https://duckduckgo.com/l/?uddg=', ''],
+    ['unknown redirect', 'https://redirect.example.test/go?next=', ''],
+  ])('removes nested credentials from %s while preserving harmless parameters',
+    (_kind, prefix, suffix) => {
+      const destination = 'https://example.test/article?edition=2&access_token=synthetic-marker-only';
+      const safe = 'https://example.test/article?edition=2';
+      const raw = `${prefix}${encodeURIComponent(destination)}${suffix}&lang=en`;
+      const expected = `${prefix}${encodeURIComponent(safe)}${suffix}&lang=en`;
+      expect(publicCanonicalUrlIdentity(raw)).toBe(expected);
+      expect(publicCanonicalUrlIdentity(`url:${raw}`)).toBe(`url:${expected}`);
+      expect(publicCanonicalUrlIdentity(raw)).not.toContain('synthetic-marker-only');
+    });
+
+  it('retains benign URL-valued and ordinary query values on unrelated hosts', () => {
+    const raw = `https://example.test/article?edition=2&next=${encodeURIComponent(
+      'https://elsewhere.test')}&q=hello%20world&discount=100%25`;
+    expect(publicCanonicalUrlIdentity(raw)).toBe(raw);
+  });
+
+  it('handles redirect host aliases and mixed case without exposing the destination', () => {
+    const raw = `HTTPS://WWW.LINKEDIN.COM./REDIR/REDIRECT?URL=${encodeURIComponent(
+      'https://example.test/article?lang=en&access_token=synthetic-marker-only')}&lang=en`;
+    const safe = publicCanonicalUrlIdentity(raw);
+    expect(safe).toBe(`https://www.linkedin.com./REDIR/REDIRECT?URL=${encodeURIComponent(
+      'https://example.test/article?lang=en')}&lang=en`);
+    expect(safe).not.toContain('synthetic-marker-only');
+  });
+
+  it('drops credential-bearing URLs hidden in query names and fragments', () => {
+    const target = 'https://example.test/article?access_token=synthetic-marker-only';
+    const queryName = `https://example.test/article?${encodeURIComponent(target)}&lang=en`;
+    const fragment = `https://example.test/article#${encodeURIComponent(target)}`;
+    expect(publicCanonicalUrlIdentity(queryName)).toBe('https://example.test/article?lang=en');
+    expect(publicCanonicalUrlIdentity(fragment)).toBe('https://example.test/article');
+    expect(publicCanonicalUrlIdentity('https://example.test/article#section-2'))
+      .toBe('https://example.test/article#section-2');
+  });
+
+  it.each([
     ['scheme without slashes', 'https:example.test/article?edition=2&access_token=synthetic-marker-only',
       'https://example.test/article?edition=2'],
     ['tab in scheme', 'hTTps:\t//example.test/article?edition=2&access_token=synthetic-marker-only',
@@ -52,13 +94,18 @@ describe('public URL identity', () => {
     const doubleEncoded = `https://www.google.com/url?q=${encodeURIComponent(
       `https://example.test/article%3Faccess_token%3D${marker}`)}`;
     expect(publicCanonicalUrlIdentity(doubleEncoded)).toBe('https://www.google.com/url');
+    const deeplyEncoded = Array.from({ length: 5 }).reduce<string>((value) =>
+      encodeURIComponent(value), target);
+    expect(publicCanonicalUrlIdentity(`https://example.test/go?next=${deeplyEncoded}`))
+      .toBe('https://example.test/go');
     expect(publicCanonicalUrlIdentity('https://www.google.com/url?q=javascript%3Aalert(1)&sa=U'))
       .toBe('https://www.google.com/url?sa=U');
-    const nested = Array.from({ length: 4 }).reduce((url) =>
+    const nested = Array.from({ length: 4 }).reduce<string>((url) =>
       `https://www.google.com/url?q=${encodeURIComponent(url)}`, target);
     expect(publicCanonicalUrlIdentity(nested)).not.toContain(marker);
     const unrelated = `https://example.test/url?q=${encodeURIComponent(target)}`;
-    expect(publicCanonicalUrlIdentity(unrelated)).toBe(unrelated);
+    expect(publicCanonicalUrlIdentity(unrelated))
+      .toBe('https://example.test/url?q=https%3A%2F%2Fexample.test%2Farticle');
   });
 
   it('normalizes an accepted destination spelling inside a known redirect', () => {

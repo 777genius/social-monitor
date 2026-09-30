@@ -407,6 +407,18 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
       'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
     `https://www.google.com/url?q=${encodeURIComponent(
       'https://example.test/article?edition=2')}&sa=U`],
+    ['encoded Google path', `https://www.google.com./%75rl?q=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&sa=U`,
+    `https://www.google.com./%75rl?q=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&sa=U`],
+    ['Facebook redirect', `https://l.facebook.com/l.php?u=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&lang=en`,
+    `https://l.facebook.com/l.php?u=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&lang=en`],
+    ['LinkedIn redirect', `https://www.linkedin.com/redir/redirect?url=${encodeURIComponent(
+      'https://example.test/article?edition=2&access_token=synthetic-marker-only')}&lang=en`,
+    `https://www.linkedin.com/redir/redirect?url=${encodeURIComponent(
+      'https://example.test/article?edition=2')}&lang=en`],
   ])('sanitizes %s URLs through promotion and projection', async (_case, raw, safe) => {
     const marker = 'synthetic-marker-only';
     const fixture = setup([{ ...candidate(1, 'useful', 'central'),

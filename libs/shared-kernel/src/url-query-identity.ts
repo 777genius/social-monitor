@@ -57,21 +57,31 @@ const hasEncodedCredentialLayer = (value: string): boolean => {
       if (next === decoded) return false;
       decoded = next;
     } catch {
-      return true;
+      return /%[0-9a-f]{2}/iu.test(decoded);
     }
     let normalized = decoded;
     try { normalized = new URL(decoded).href; } catch { /* It may be a decoded URL component. */ }
     if (sanitizeUrlCredentials(normalized) !== normalized) return true;
   }
-  return false;
+  // An encoded value that cannot be inspected within the bound is ambiguous.
+  return /%[0-9a-f]{2}/iu.test(decoded);
 };
 
-/** Only known redirect endpoints carry a URL in these query keys. */
+/** Known redirect keys also reject non-HTTP destinations. URL values in any key are inspected. */
 const redirectDestinationKeys = (url: URL): ReadonlySet<string> => {
   const host = url.hostname.toLowerCase().replace(/\.+$/u, '').replace(/^www\./u, '');
-  const path = url.pathname.replace(/\/+$/u, '') || '/';
-  return (host === 'google.com' || host === 'google.co.uk') && path === '/url'
-    ? new Set(['url', 'q']) : new Set();
+  let path: string;
+  try { path = decodeURIComponent(url.pathname).toLowerCase(); } catch { return new Set(); }
+  path = path.replace(/\/+$/u, '') || '/';
+  if ((host === 'google.com' || host === 'google.co.uk') && path === '/url')
+    return new Set(['url', 'q']);
+  if ((host === 'facebook.com' || host === 'l.facebook.com') && path === '/l.php')
+    return new Set(['u']);
+  if (host === 'linkedin.com' && path === '/redir/redirect')
+    return new Set(['url']);
+  if (host === 'duckduckgo.com' && path === '/l')
+    return new Set(['uddg']);
+  return new Set();
 };
 
 const sanitizePublicRedirectUrl = (value: string, depth: number): string => {
@@ -82,23 +92,37 @@ const sanitizePublicRedirectUrl = (value: string, depth: number): string => {
   } catch {
     return '';
   }
-  const outer = sanitizeUrlCredentials(parsed.href);
+  const sanitized = sanitizeUrlCredentials(parsed.href);
+  const fragmentStart = sanitized.indexOf('#');
+  const fragment = fragmentStart < 0 ? '' : sanitized.slice(fragmentStart + 1);
+  const outer = fragment && (sanitizeUrlCredentials(fragment) !== fragment ||
+    hasEncodedCredentialLayer(fragment)) ? sanitized.slice(0, fragmentStart) : sanitized;
   try { parsed = new URL(outer); } catch { return ''; }
   const destinationKeys = redirectDestinationKeys(parsed);
-  if (destinationKeys.size === 0 || !parsed.search) return outer;
+  if (!parsed.search) return outer;
   const queryStart = outer.indexOf('?');
   const queryEnd = outer.indexOf('#', queryStart);
   const rawQuery = outer.slice(queryStart + 1, queryEnd < 0 ? undefined : queryEnd);
   const retained = rawQuery.split('&').flatMap((component) => {
     const [name] = [...new URLSearchParams(component).keys()];
-    if (!name || !destinationKeys.has(name.toLowerCase())) return [component];
+    if (!name) return [component];
+    if (sanitizeUrlCredentials(name) !== name || hasEncodedCredentialLayer(name)) return [];
     const destination = new URLSearchParams(component).get(name)?.trim() ?? '';
+    const knownDestination = destinationKeys.has(name.toLowerCase());
+    let nested: URL | undefined;
+    try { nested = new URL(destination); } catch { /* It may be ordinary query text. */ }
+    const isHttpUrl = nested?.protocol === 'http:' || nested?.protocol === 'https:';
+    const looksHttpUrl = /^https?:/iu.test(destination.replace(/[\t\n\r]/gu, '').trimStart());
+    if (!knownDestination && !isHttpUrl && !looksHttpUrl &&
+        sanitizeUrlCredentials(destination) === destination &&
+        !hasEncodedCredentialLayer(destination)) return [component];
     // Invalid, oversized, or excessively nested destinations are discarded.
     if (depth >= maxRedirectDepth || destination.length > maxDestinationLength ||
-        hasEncodedCredentialLayer(destination)) return [];
+        hasEncodedCredentialLayer(destination) || !isHttpUrl) return [];
     const safe = sanitizePublicRedirectUrl(destination, depth + 1);
     if (!safe) return [];
-    return safe === destination ? [component] : [`${component.slice(0, component.indexOf('='))}=${encodeURIComponent(safe)}`];
+    return safe === nested?.href ? [component]
+      : [`${component.slice(0, component.indexOf('='))}=${encodeURIComponent(safe)}`];
   });
   const suffix = queryEnd < 0 ? '' : outer.slice(queryEnd);
   return `${outer.slice(0, queryStart)}${retained.length ? `?${retained.join('&')}` : ''}${suffix}`;
