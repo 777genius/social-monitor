@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { lstat, mkdtemp, readFile, rm } from "node:fs/promises";
 import type * as FsPromises from "node:fs/promises";
 // CommonJS object permits a one-call filesystem fault while the real exporter writes actual files.
@@ -87,6 +88,50 @@ describe("Sep24 source-only selected export", () => {
     expect(planRssSep24Verified(artifacts).distinctCount).toBe(25);
   });
 
+  // Regression caught: rejecting the real 26-term primary before reads, scanning beyond the first 12 terms,
+  // or losing the original binding fingerprint and partial status in the 36-feed, 30-item capture.
+  it("scans the first 12 of 26 Google News terms plus 24 extras and pins selected items", async () => {
+    const input = await request();
+    const terms = "abcdefghijklmnopqrstuvwxyz".split("");
+    const primary = new URL("https://news.google.com/rss/search?q=a");
+    primary.searchParams.set("q", terms.join(" OR "));
+    const newsFeed = primary.toString();
+    const expectedFeeds = [...terms.slice(0, 12).map((term) => {
+      const historical = new URL(newsFeed);
+      historical.searchParams.set("q", `${term} after:2026-09-24 before:2026-09-25`);
+      return historical.toString();
+    }), ...extraFeedUrls];
+    const configuredBinding = { ...binding, config: { ...binding.config, feedUrl: newsFeed, query: newsFeed } };
+    const configured = { ...input, bindings: [configuredBinding] };
+    const calls: string[] = [];
+    const client: RssClientPort = { readFeed: async (url, limit, options) => {
+      calls.push(url);
+      expect(limit).toBe(30);
+      expect(options?.targetPublishedWindow?.startInclusive.toISOString()).toBe("2026-09-24T00:00:00.000Z");
+      expect(options?.targetPublishedWindow?.endExclusive.toISOString()).toBe("2026-09-25T00:00:00.000Z");
+      const id = calls.length.toString(36);
+      return { items: [{ ...item(id, "a"), link: `https://example.test/posts/${id}`, content: "a" }] };
+    } };
+    const result = await exportRssSep24Selected(configured, client);
+    expect(calls).toEqual(expectedFeeds);
+    expect(result).toMatchObject({ selectedCount: 30, warningCount: 1 });
+    const artifacts = await readRssSep24OperatorArtifacts({ inputRoot: input.outputRoot,
+      expectedPinsSha256: result.pinsSha256 }, process.getuid?.() ?? 0);
+    const originalBindingBytes = Buffer.from(`${JSON.stringify([configuredBinding], null, 2)}\n`);
+    expect(artifacts.bindingBytes).toEqual(originalBindingBytes);
+    const fingerprint = createHash("sha256").update(originalBindingBytes).digest("hex");
+    expect(artifacts.expectedBindingSha256).toBe(fingerprint);
+    const plan = planRssSep24Verified(artifacts);
+    expect(plan.bindingSha256).toBe(fingerprint);
+    expect(plan.bindingConfig).toBe(JSON.stringify(configuredBinding.config));
+    expect(plan.coverage).toBe("PARTIAL_SOURCE_ONLY");
+    expect(plan.candidates.map((candidate) => candidate.externalId)).toEqual(
+      Array.from({ length: 30 }, (_, index) => (index + 1).toString(36)));
+    const manifest = JSON.parse((await readFile(join(input.outputRoot, "manifest.json"))).toString("utf8")) as
+      { sourceStatus: string };
+    expect(manifest.sourceStatus).toBe("partial");
+  });
+
   // Regression caught: a known skipped entry is misreported as full-day coverage or leaks warning text.
   it("counts known skipped entries while preserving partial source status", async () => {
     const input = await request();
@@ -143,9 +188,13 @@ describe("Sep24 source-only selected export", () => {
       config: { ...binding.config, maxItems: 101 } }] }, client)).rejects.toThrow();
     await expect(exportRssSep24Selected({ ...input, bindings: [{ ...binding,
       config: { ...binding.config, maxItemAgeHours: 745 } }] }, client)).rejects.toThrow();
-    const newsFeed = "https://news.google.com/rss/search?q=alpha+OR+beta";
+    const newsFeed = "https://news.google.com/rss/search?q=a+OR+b";
     await expect(exportRssSep24Selected({ ...input, bindings: [{ ...binding,
-      config: { ...binding.config, feedUrl: newsFeed, query: newsFeed } }] }, client)).rejects.toThrow();
+      config: { ...binding.config, extraFeedUrls: [newsFeed, ...extraFeedUrls.slice(1)] } }] }, client))
+      .rejects.toThrow();
+    await expect(exportRssSep24Selected({ ...input, bindings: [{ ...binding,
+      config: { ...binding.config, feedUrl: newsFeed.replace("a+OR+b", "a+OR+"),
+        query: newsFeed.replace("a+OR+b", "a+OR+") } }] }, client)).rejects.toThrow();
     expect(calls).toHaveLength(0);
   });
 

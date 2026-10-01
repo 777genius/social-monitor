@@ -74,18 +74,34 @@ function validateRequest(request: SelectedExportRequest): { scope: RssSep24Pinne
   if (!Array.isArray(config.extraFeedUrls) || config.extraFeedUrls.length !== 24) {
     throw new Error("Exactly 24 extra feed URLs required");
   }
-  const feeds = [feedUrl, ...config.extraFeedUrls.map(safeFeedUrl)];
+  const extras = config.extraFeedUrls.map(safeFeedUrl);
+  const feeds = [feedUrl, ...extras];
   if (new Set(feeds).size !== 25) throw new Error("Duplicate feed URL");
-  // The provider silently caps Google News OR fanout at 12; reject all expansion or truncation.
-  for (const value of feeds) {
+  const window = { startInclusive: new Date(START), endExclusive: new Date(END) };
+  // This binding permits only the adapter's first 12 Google News terms and 24 single-feed extras.
+  const expected = feeds.flatMap((value, index) => {
     const parsed = new URL(value);
-    if (parsed.hostname === "news.google.com" && parsed.pathname === "/rss/search" &&
-      (parsed.searchParams.get("q") ?? "").split(/\s+OR\s+/iu).length > 1) {
+    if (parsed.hostname !== "news.google.com" || parsed.pathname !== "/rss/search") return [value];
+    const queries = parsed.searchParams.getAll("q");
+    if (queries.length > 1) throw new Error("Google News query is ambiguous");
+    if (queries.length === 0 || !queries[0]!.trim()) return [value];
+    const query = queries[0]!.trim().replace(/\bwhen:\d+[dhm]\b/giu, "")
+      .replace(/\s+/gu, " ").trim();
+    const terms = query.split(/\s+OR\s+/iu).map((term) => term.trim());
+    if (terms.some((term) => !term || /(?:^|\s)OR(?:\s|$)/iu.test(term)) ||
+      (index > 0 && terms.length !== 1)) {
       throw new Error("Google News query fanout exceeds bound");
     }
-  }
-  const expanded = feedUrlsForTargetWindow(feeds, { startInclusive: new Date(START), endExclusive: new Date(END) });
-  if (expanded.length !== 25 || new Set(expanded).size !== 25 ||
+    return terms.slice(0, 12).map((term) => {
+      const historical = new URL(value);
+      historical.searchParams.set("q", `${term} after:${DAY} before:2026-09-25`);
+      return historical.toString();
+    });
+  });
+  const expanded = feedUrlsForTargetWindow(feeds, window);
+  if (expanded.length !== expected.length || expanded.length > 36 ||
+    expanded.some((value, index) => value !== expected[index]) ||
+    new Set(expanded).size !== expanded.length ||
     expanded.some((url) => safeFeedUrl(url) !== url)) {
     throw new Error("Feed fanout is unsupported");
   }
