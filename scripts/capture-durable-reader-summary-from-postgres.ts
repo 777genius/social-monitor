@@ -1,3 +1,4 @@
+import { resolveFirstPublicationMode, readFirstPublicationOperation, assertFirstPublicationServingAuthority } from "./lib/reader-summary-first-publication";
 import { PrismaMonitoringConnection } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-connection";
 import { PrismaInterestRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-interest.repository";
 import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
@@ -40,25 +41,16 @@ import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/featu
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import type {
-  EnqueueReaderSummaryJobCommand,
   ReaderSummaryTimestampPolicy,
-  ReaderSummaryJobQueuePort,
   ReaderSummaryModelPort,
   ReaderSummaryTopicMapPublicationAuditPort,
   ReaderSummaryTopicMapPublicationRejection,
-  ReserveSummaryJobQuotaCommand,
-  ReserveSummaryJobQuotaResult,
-  SummaryQuotaPort,
 } from "@social-monitor/summary/ports";
 import {
   CryptoIdGenerator,
-  ok,
   SystemClock,
   tenantId,
   workspaceId,
-  type DomainError,
-  type Result,
-  type Clock,
 } from "@social-monitor/shared-kernel";
 
 import { loadDotenvIfPresent } from "./lib/env-file";
@@ -70,11 +62,8 @@ import {
 } from "./lib/reader-summary-historical-github-omission";
 import {
   DatasetGuardedReaderSummaryEvidenceSelector,
-  ReaderSummaryDayDatasetGuard,
-  readReaderSummaryDayDatasetAdmission,
-  readReaderSummaryDayDatasetManifest,
 } from "./lib/reader-summary-day-dataset-guard";
-import { assertImmutableRecoveryInputs } from "./lib/reader-summary-recovery-files";
+import { buildDatasetGuard, CapturingReaderSummaryJobQueue, AllowingSummaryQuota } from "./lib/reader-summary-durable-capture-support";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import {
   createReaderSummaryDailyCaptureContext,
@@ -134,10 +123,6 @@ const periodEndedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_ENDED_AT";
 const cadenceEnv = "DURABLE_READER_SUMMARY_CADENCE";
 const historicalGitHubOmissionReasonEnv =
   "DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON";
-const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
-const datasetManifestSha256Env =
-  "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256";
-const datasetRecoveryRootEnv = "DURABLE_READER_SUMMARY_RECOVERY_ROOT";
 const recoveryTimestampPolicyEnv =
   "DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY";
 const publicationRecoveryDirectoryEnv =
@@ -189,6 +174,9 @@ async function main(): Promise<void> {
     periodEndedAt,
     now,
   });
+  const firstPublicationActive = resolveFirstPublicationMode({ argv: process.argv.slice(2), environment: process.env,
+    cadence, timezone, startedAt: periodStartedAt, endedAt: periodEndedAt, now,
+    replayActive: dailyReplay !== null, recoveryActive: recoveryTimestampPolicy.active });
   const historicalGitHubOmission = resolveHistoricalGitHubOmission({
     argv: process.argv.slice(2),
     reason: readEnv(historicalGitHubOmissionReasonEnv),
@@ -218,7 +206,7 @@ async function main(): Promise<void> {
   });
   const { liveObservationCutoff } = captureExecution;
   const { promotionRebuild, sourceProvenance } =
-    resolveProductionDayPromotionInput({
+    firstPublicationActive ? { promotionRebuild: undefined, sourceProvenance: undefined } : resolveProductionDayPromotionInput({
       environment: process.env,
       recoveryActive: recoveryTimestampPolicy.active,
       date: periodStartedAt.toISOString().slice(0, 10),
@@ -266,7 +254,16 @@ async function main(): Promise<void> {
   try {
     monitoringConnection = dailyReplay === null
       ? await PrismaMonitoringConnection.create(runtimePoolConfig) : undefined;
-    const datasetGuard = recoveryTimestampPolicy.active
+    const firstPublication = firstPublicationActive ? readFirstPublicationOperation({
+      client: summaryConnection, clock, tenantId: tenant, workspaceId: workspace,
+      startedAt: periodStartedAt, endedAt: periodEndedAt,
+      manifestPath: requiredEnv("DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH"),
+      manifestSha256: requiredEnv("DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256"),
+      privateRoot: requiredEnv("DURABLE_READER_SUMMARY_RECOVERY_ROOT"),
+      forbiddenOutputPaths: [readEnv(evidencePathEnv), readEnv(frontendFixturePathEnv), readEnv(rejectedTopicMapPathEnv)]
+        .filter((path): path is string => path !== undefined),
+    }) : undefined;
+    const datasetGuard = firstPublication?.guard ?? (recoveryTimestampPolicy.active
       ? buildDatasetGuard({
           client: summaryConnection,
           clock,
@@ -277,7 +274,8 @@ async function main(): Promise<void> {
           now,
           timestampPolicy: recoveryTimestampPolicy.policy,
         })
-      : null;
+      : null);
+    await firstPublication?.reserve();
     await revalidateProductionDayPromotionInput({
       promotionRebuild,
       datasetGuard,
@@ -357,12 +355,13 @@ async function main(): Promise<void> {
       agentRuntimeClient,
       checkedAt: clock.now().toISOString(),
     });
+    if (firstPublication !== undefined) assertFirstPublicationServingAuthority(servingAuthority);
     const attemptIdentity = readerSummaryProductionDayAttemptIdentity({
       tenantId: tenant,
       workspaceId: workspace,
       periodKey: period.periodKey,
       servingAuthority,
-      sourceProvenance,
+      sourceProvenance: firstPublication?.sourceProvenance ?? sourceProvenance!,
     });
 
     const requestReaderSummary = new RequestReaderSummaryUseCase(
@@ -382,7 +381,7 @@ async function main(): Promise<void> {
         endedAt: periodEndedAt,
         timezone,
       },
-      idempotencyKey: readerSummaryProductionDayIdempotencyKey(
+      idempotencyKey: firstPublication?.idempotencyKey ?? readerSummaryProductionDayIdempotencyKey(
         attemptIdentity,
         promotionRebuild?.rebuildIdentity,
       ),
@@ -460,6 +459,7 @@ async function main(): Promise<void> {
       undefined,
       publicationWiring.githubProjectionReader,
       historicalGitHubOmission,
+      undefined, undefined, undefined, undefined, undefined, firstPublication,
     ], {
       tenantId: tenant,
       workspaceId: workspace,
@@ -577,6 +577,7 @@ async function main(): Promise<void> {
                   historicalGitHubOmission.authorizedAt.toISOString(),
               },
         datasetManifest: datasetGuard?.evidence(),
+        historicalFirstPublication: firstPublication?.evidence(),
         dailySourceAuthority:
           dailyReplay === null
             ? undefined
@@ -647,76 +648,6 @@ async function main(): Promise<void> {
     );
   } finally {
     await Promise.all([feedConnection.close(), summaryConnection.close(), monitoringConnection?.close()]);
-  }
-}
-
-function buildDatasetGuard(params: {
-  readonly client: PrismaSummaryConnection;
-  readonly clock: Clock;
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly periodStartedAt: Date;
-  readonly periodEndedAt: Date;
-  readonly now: Date;
-  readonly timestampPolicy: ReaderSummaryTimestampPolicy;
-}): ReaderSummaryDayDatasetGuard {
-  const admission = readReaderSummaryDayDatasetAdmission(process.env);
-  const manifestPath = requiredEnv(datasetManifestPathEnv);
-  assertImmutableRecoveryInputs({
-    recoveryRoot: requiredEnv(datasetRecoveryRootEnv),
-    inputPaths: [manifestPath],
-    forbiddenOutputPaths: [],
-  });
-  const { manifest, fileSha256 } = readReaderSummaryDayDatasetManifest({
-    path: manifestPath,
-    expectedFileSha256: requiredEnv(datasetManifestSha256Env),
-    tenantId: params.tenantId,
-    workspaceId: params.workspaceId,
-    startedAt: params.periodStartedAt,
-    endedAt: params.periodEndedAt,
-    now: params.now,
-    expectedTimestampPolicy: params.timestampPolicy,
-    ...(admission === undefined ? {} : { admission }),
-  });
-  return new ReaderSummaryDayDatasetGuard(
-    params.client,
-    manifest,
-    fileSha256,
-    () => params.clock.now(),
-    admission,
-  );
-}
-
-class CapturingReaderSummaryJobQueue implements ReaderSummaryJobQueuePort {
-  private readonly commands: EnqueueReaderSummaryJobCommand[] = [];
-
-  async canAccept(): Promise<boolean> {
-    return true;
-  }
-
-  async enqueue(command: EnqueueReaderSummaryJobCommand): Promise<void> {
-    this.commands.push(command);
-  }
-
-  all(): readonly EnqueueReaderSummaryJobCommand[] {
-    return [...this.commands];
-  }
-}
-
-class AllowingSummaryQuota implements SummaryQuotaPort {
-  constructor(private readonly clock: Clock) {}
-
-  async reserveSummaryJob(
-    _command: ReserveSummaryJobQuotaCommand,
-  ): Promise<Result<ReserveSummaryJobQuotaResult, DomainError>> {
-    void _command;
-
-    return ok({
-      remaining: 999,
-      resetAt: new Date(
-        this.clock.now().getTime() + 24 * 60 * 60 * 1000,
-      ).toISOString(),
-    });
   }
 }
 

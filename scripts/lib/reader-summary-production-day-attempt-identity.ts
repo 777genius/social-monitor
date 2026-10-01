@@ -9,6 +9,14 @@ export type ReaderSummaryProductionDayAttemptIdentityInput = Readonly<{
   servingAuthority: ReaderSummaryServingAuthority;
   sourceProvenance:
     | Readonly<{
+        kind: "historical-first-publication";
+        sourceAuthority: "inventory-manifest";
+        datasetManifestSha256: string;
+        observationCutoff: string;
+        timestampPolicy: "published_at";
+        providerCoverage: "UNPROVEN";
+      }>
+    | Readonly<{
         kind: "live-production";
         observationCutoff?: string;
       }>
@@ -70,7 +78,9 @@ export const readerSummaryProductionDayAttemptIdentity = (
     periodKey: requiredText(input.periodKey, "period"),
     servingAuthority: servingAuthority(input.servingAuthority),
     sourceProvenance:
-      input.sourceProvenance.kind === "live-production"
+      input.sourceProvenance.kind === "historical-first-publication"
+        ? firstPublicationSourceAuthority(input.sourceProvenance)
+        : input.sourceProvenance.kind === "live-production"
         ? {
             kind: input.sourceProvenance.kind,
             ...(input.sourceProvenance.observationCutoff === undefined
@@ -280,3 +290,15 @@ const requiredIsoTimestamp = (value: string): string => {
 
 const sha256 = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
+
+const firstPublicationSourceAuthority = (value: Extract<
+  ReaderSummaryProductionDayAttemptIdentityInput["sourceProvenance"],
+  { readonly kind: "historical-first-publication" }
+>) => {
+  if (value.sourceAuthority !== "inventory-manifest" || value.timestampPolicy !== "published_at" ||
+      value.providerCoverage !== "UNPROVEN") throw new Error("First publication source provenance cannot claim collection authority or proven coverage");
+  return { kind: value.kind, sourceAuthority: value.sourceAuthority,
+    datasetManifestSha256: requiredSha256(value.datasetManifestSha256),
+    observationCutoff: requiredIsoTimestamp(value.observationCutoff), timestampPolicy: value.timestampPolicy,
+    providerCoverage: value.providerCoverage };
+};

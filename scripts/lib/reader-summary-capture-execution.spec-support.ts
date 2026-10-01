@@ -1,3 +1,4 @@
+import type { ReadReaderSummaryGitHubProjectionResult } from "@social-monitor/summary/ports";
 import { InMemoryFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
 import { FeedItem } from "@social-monitor/feed/domain";
 import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
@@ -23,8 +24,9 @@ export async function cutoffScenario(options: {
   readonly authority?: ReaderSummaryNewInputRefreshAuthority;
   readonly preflight?: ReaderSummaryV3PreflightPort;
   readonly onLookup?: () => void;
+  readonly historicalAsOf?: Date;
 } = {}) {
-  let now = cutoffB.getTime();
+  let now = (options.historicalAsOf ?? cutoffB).getTime() + (options.historicalAsOf === undefined ? 0 : 60_000);
   const clock: Clock = { now: () => new Date(now) };
   const jobs = new FakeReaderSummaryJobRepository();
   const job = options.job ?? ReaderSummaryJob.request({ ...cutoffScope, id: "cutoff-job",
@@ -42,10 +44,15 @@ export async function cutoffScenario(options: {
     ["primary-late", new Date("2026-06-26T12:30:00Z"), "hacker-news"],
     ["github-late", new Date("2026-06-26T12:30:00Z"), "github-trending-page"],
   ] as const) {
-    feed.upsert(FeedItem.publish({ ...cutoffScope, id, interestId: "fixture-interest", sourceItemId: `source-${id}`,
+    if (options.historicalAsOf !== undefined && providerKey === "github-trending-page") continue;
+    const dayStart = job.toSnapshot().period.startedAt.getTime();
+    const fixturePublishedAt = options.historicalAsOf === undefined ? new Date("2026-06-26T10:00:00Z") : new Date(dayStart + 3600_000);
+    const fixtureObservedAt = options.historicalAsOf === undefined ? observedAt : new Date(dayStart +
+      (id === "primary-early" ? 7200_000 : 86_400_000 + 3600_000));
+    feed.upsert(FeedItem.publish({ tenantId: job.toSnapshot().tenantId, workspaceId: job.toSnapshot().workspaceId, id, interestId: "fixture-interest", sourceItemId: `source-${id}`,
       sourceBindingId: `binding-${providerKey}`, providerKey, canonicalUrl: `https://example.test/${id}`,
       title: `Runtime regression fixed in ${id}`, bodyPreview: "Runtime regression fixed with an available patch and measured benchmark results.",
-      publishedAt: new Date("2026-06-26T10:00:00Z"), observedAt,
+      publishedAt: fixturePublishedAt, observedAt: fixtureObservedAt,
       providerMetadata: providerKey === "hacker-news" ? { kind: "hacker_news_story", points: 500, comments: 50 }
         : { kind: "github_trending_page_repository", repository: { fullName: "fixture/repo", totalStars: 20000 },
             trending: { rank: 1, starsGained: 1500, window: "daily" } },
@@ -73,7 +80,7 @@ export async function cutoffScenario(options: {
   const select = jest.spyOn(selector, "select");
   const model = new DeterministicReaderSummaryModelAdapter();
   const generate = jest.spyOn(model, "generate").mockImplementation(async (input, route) => {
-    now = Date.parse("2026-06-26T14:00:00Z");
+    now = options.historicalAsOf === undefined ? Date.parse("2026-06-26T14:00:00Z") : now + 3600_000;
     return DeterministicReaderSummaryModelAdapter.prototype.generate.call(model, input, route);
   });
   const artifacts = new PromotionControlArtifactRepository();
@@ -81,7 +88,7 @@ export async function cutoffScenario(options: {
   const publish = jest.spyOn(publication, "publish");
   const github = { read: jest.fn(async (_query: { observedThrough: Date }) => {
     void _query;
-    return { eligibleBindingIds: [], items: [], pageCount: 1 };
+    return { eligibleBindingIds: [], items: [], pageCount: 1 } as ReadReaderSummaryGitHubProjectionResult;
   }) };
   const dependencies: ConstructorParameters<typeof ExecuteReaderSummaryJobUseCase> = [jobs, artifacts,
     new PromotionControlPolicyRepository(), selector, model, publication, new PromotionControlIdGenerator(), clock,

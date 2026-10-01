@@ -1,3 +1,4 @@
+import { readFirstPublicationObservationScope, type FirstPublicationInventory } from "./reader-summary-first-publication-inventory";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
@@ -124,6 +125,8 @@ export class ReaderSummaryDayDatasetGuard {
     private readonly manifestFileSha256: string,
     private readonly clock: () => Date,
     admission?: ReaderSummaryDayDatasetAdmission,
+    private readonly firstPublicationInventory?: FirstPublicationInventory,
+    private readonly assertPinnedFirstPublicationManifest?: () => void,
   ) {
     if (admission !== undefined) {
       assertAdmissionBinding(admission, expected, manifestFileSha256, clock());
@@ -142,7 +145,10 @@ export class ReaderSummaryDayDatasetGuard {
   async assertCurrentForPublicationTransaction(
     client: PrismaReaderSummaryClient,
   ): Promise<void> {
-    await lockManifestDatasetTables(client, this.expected.retainedEngagementAuthority !== undefined);
+    await lockManifestDatasetTables(client, this.expected.retainedEngagementAuthority !== undefined || this.firstPublicationInventory !== undefined);
+    if (this.firstPublicationInventory !== undefined) {
+      await (client as LockCapableReaderSummaryClient).$executeRaw`lock table tenants, workspaces in share mode nowait`;
+    }
     await this.assertCurrentWithClient(client, "before_publication", true);
   }
 
@@ -164,6 +170,7 @@ export class ReaderSummaryDayDatasetGuard {
         `Reader summary dataset guard phase ${phase} is out of order`,
       );
     }
+    this.assertPinnedFirstPublicationManifest?.();
     const now = this.clock();
     this.assertLifetime(now.getTime(), phase);
     const actual = await captureReaderSummaryDayDatasetManifest({
@@ -172,7 +179,7 @@ export class ReaderSummaryDayDatasetGuard {
       workspaceId: this.expected.scope.workspaceId,
       startedAt: new Date(this.expected.period.startedAt),
       endedAt: new Date(this.expected.period.endedAt),
-      generatedAt: now,
+      generatedAt: this.firstPublicationInventory === undefined ? now : new Date(this.expected.generatedAt),
       timestampPolicy: this.expected.policy.timestampPolicy,
       ...(this.expected.retainedEngagementAuthority === undefined ? {} : {
         retainedAuthorityBoundThrough: new Date(this.expected.retainedEngagementAuthority.boundThrough),
@@ -180,6 +187,10 @@ export class ReaderSummaryDayDatasetGuard {
     });
     if (!manifestsMatch(this.expected, actual)) {
       throw new Error(`Reader summary dataset changed at ${phase}`);
+    }
+    if (this.firstPublicationInventory !== undefined &&
+        await readFirstPublicationObservationScope(client, this.expected) !== this.firstPublicationInventory.observationScopeSha256) {
+      throw new Error(`First publication observation scope changed at ${phase}`);
     }
     const validatedAtMs = this.clock().getTime();
     this.assertLifetime(validatedAtMs, phase, now.getTime());
@@ -239,6 +250,10 @@ export class ReaderSummaryDayDatasetGuard {
         this.expected.dataset.githubEligibilityRowCount,
       completedPhases: [...this.completedPhases],
     };
+  }
+
+  firstPublicationCutoff(): Date | undefined {
+    return this.firstPublicationInventory === undefined ? undefined : new Date(this.expected.generatedAt);
   }
 
   retainedEngagementAuthority() {
@@ -307,6 +322,10 @@ export class DatasetGuardedReaderSummaryEvidenceSelector implements ReaderSummar
       throw new Error(
         "Reader summary evidence timestamp policy does not match dataset manifest",
       );
+    }
+    const firstPublicationCutoff = this.guard.firstPublicationCutoff();
+    if (firstPublicationCutoff !== undefined && params.observedThrough?.getTime() !== firstPublicationCutoff.getTime()) {
+      throw new Error("First publication selection must use the manifest as-of boundary");
     }
     await this.guard.assertCurrent("before_evidence_selection");
     if (params.retainedEngagementAuthority !== undefined) {
