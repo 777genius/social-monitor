@@ -346,7 +346,7 @@
   "dependencies": {
     "@bufbuild/protobuf": "^2.12.1",
     "@google-cloud/bigquery": "^8.3.1",
-    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/grpc-js": "^1.14.5",
     "@infinity-context/sdk": "file:vendor/infinity-context-sdk-0.1.0.tgz",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@mozilla/readability": "^0.6.0",
