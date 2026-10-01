@@ -24,13 +24,13 @@ it("keeps all 422 rows including 24 late observations at the same as-of across a
     s.advance(3600_000); return { selectedEvidence: [] } as never;
   } }, op.guard);
   await selector.select({ observedThrough: boundary.observedThrough } as never);
-  await s.db.client.$transaction(async (tx) => op.guard.assertCurrentForPublicationTransaction(tx), { isolationLevel: "Serializable" });
+  await s.db.client.$transaction(async (tx) => op.guard.assertCurrentForPublicationTransaction(tx), { isolationLevel: "ReadCommitted" });
   expect(selectedAt).toEqual(firstpubAsOf);
   expect(op.evidence()).toMatchObject({ providerCoverage: "UNPROVEN", dataset: { feedRowCount: 422,
     completedPhases: ["before_evidence_selection", "after_evidence_selection", "before_publication"] } });
-  expect(s.db.reads.filter((r) => r.sql.includes("with inventory as")).flatMap((r) => r.values)
+  expect(s.db.reads.filter((r) => r.sql.includes("observe_reader_summary_first_publication")).flatMap((r) => r.values)
     .filter((v): v is Date => v instanceof Date).every((v) => v.getTime() <= firstpubAsOf.getTime())).toBe(true);
-  expect(s.db.locks).toBeGreaterThanOrEqual(3);
+  expect(s.db.locks).toBeGreaterThanOrEqual(2);
 });
 
 it.each((["jobs", "artifacts", "publications", "slots", "dailyModelJobs"] as const)
@@ -83,7 +83,7 @@ it("fails changed scope after selection and inside the publication transaction",
   await op.guard.assertCurrent("after_evidence_selection");
   s.db.rows[421]!.observedAt = firstpubAsOf.getTime() + 1;
   await expect(s.db.client.$transaction((tx) => op.guard.assertCurrentForPublicationTransaction(tx),
-    { isolationLevel: "Serializable" })).rejects.toThrow();
+    { isolationLevel: "ReadCommitted" })).rejects.toThrow();
   expect(s.db.claims.slots).toBe(1);
 });
 

@@ -1,3 +1,4 @@
+import { readerSummaryFirstPublicationPrefix } from "../../../application/contracts/reader-summary-first-publication-authority";
 import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
 
 import type {
@@ -16,7 +17,7 @@ import {
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
 import { requireSerializableReaderSummaryTransactions,
-  runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
+  runSerializableReaderSummaryTransaction, runFirstPublicationReaderSummaryTransaction } from "./prisma-summary-transaction";
 import {
   configureReaderSummaryPublicationDeadline,
   readerSummaryPublicationTimeoutMs,
@@ -37,6 +38,7 @@ export class PrismaReaderSummaryPublication implements ReaderSummaryPublicationP
   constructor(
     private readonly prisma: PrismaSummaryClient,
     private readonly transactionGuard?: ReaderSummaryPublicationTransactionGuard,
+    private readonly firstPublicationTransaction?: "first_publication_sep29",
   ) {}
 
   async publish(
@@ -45,6 +47,19 @@ export class PrismaReaderSummaryPublication implements ReaderSummaryPublicationP
     if (command.finalJob.toSnapshot().selectionStrategy === "jev_primary_v3") {
       requireSerializableReaderSummaryTransactions(this.prisma);
     }
+    if (this.firstPublicationTransaction !== undefined) {
+      const job = command.finalJob.toSnapshot();
+      if (this.transactionGuard === undefined || job.scope.type !== "workspace" ||
+          job.period.cadence !== "daily" || job.period.timezone !== "UTC" ||
+          job.period.startedAt.toISOString() !== "2026-09-29T00:00:00.000Z" ||
+          job.period.endedAt.toISOString() !== "2026-09-30T00:00:00.000Z" ||
+          job.selectionStrategy === "jev_primary_v3" ||
+          job.idempotencyKey !== `${readerSummaryFirstPublicationPrefix}${job.workspaceId}:2026-09-29`) {
+        throw new Error("First publication transaction requires the guarded Sep29 workspace route");
+      }
+    }
+    const runTransaction = this.firstPublicationTransaction === undefined
+      ? runSerializableReaderSummaryTransaction : runFirstPublicationReaderSummaryTransaction;
     const usesDbOwnedWeeklyEvidence =
       readerSummaryPublicationHasWeeklyDailyEvidence(command);
     const request = usesDbOwnedWeeklyEvidence
@@ -52,7 +67,7 @@ export class PrismaReaderSummaryPublication implements ReaderSummaryPublicationP
       : buildReaderSummaryPublicationPayload(command);
     const serialized = JSON.stringify(request);
     const transactionResult = await withPrismaWriteRetry(() =>
-      runSerializableReaderSummaryTransaction(
+      runTransaction(
         this.prisma,
         async (prisma) => {
           await configureReaderSummaryPublicationDeadline(prisma);

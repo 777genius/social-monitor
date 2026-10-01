@@ -424,6 +424,7 @@ async function main(): Promise<void> {
             datasetGuard.assertCurrentForPublicationTransaction(
               transactionClient,
             ),
+      firstPublication === undefined ? undefined : "first_publication_sep29",
     );
     const { publication, recovery: publicationRecovery } =
       createRecoverableReaderSummaryPublication({

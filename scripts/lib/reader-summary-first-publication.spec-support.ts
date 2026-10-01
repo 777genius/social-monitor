@@ -26,31 +26,40 @@ export class FirstPublicationMemoryDatabase {
   locks = 0;
   transactions = 0;
   private tail = Promise.resolve();
+  private isolationLevel: string | undefined;
   readonly client = {
     $queryRaw: async <T>(query: TemplateStringsArray, ...values: readonly unknown[]): Promise<T> =>
       this.query(query, values) as T,
     $transaction: async <T>(operation: (tx: PrismaReaderSummaryClient) => Promise<T>, options?: { isolationLevel?: string }): Promise<T> => {
-      if (options?.isolationLevel !== "Serializable") throw new Error("Synthetic DB requires Serializable");
+      if (!["Serializable", "ReadCommitted"].includes(options?.isolationLevel ?? "")) throw new Error("Synthetic DB requires explicit isolation");
       const previous = this.tail;
       let release!: () => void;
       this.tail = new Promise<void>((resolve) => { release = resolve; });
       await previous;
       this.transactions++;
+      this.isolationLevel = options?.isolationLevel;
       const priorSlots = this.claims.slots;
       try { return await operation({ ...this.client, $executeRaw: async () => { this.locks++; return 0; } } as never); }
       catch (error) { this.claims.slots = priorSlots; throw error; }
-      finally { release(); }
+      finally { this.isolationLevel = undefined; release(); }
     },
   } as PrismaTransactionalSummaryClient;
   private query(query: TemplateStringsArray, values: readonly unknown[]): unknown {
     const sql = query.join("?");
     this.reads.push({ sql, values });
-    if (sql.includes('as claims')) return [{ claims: Object.values(this.claims).reduce((a, b) => a + b, 0) + this.existingClaims.length }];
-    if (sql.includes('insert into reader_summary_publication_slots')) {
-      if (this.claims.slots !== 0) throw new Error("Synthetic unique slot violation");
-      this.claims.slots++; return [];
+    if (sql.includes('reserve_reader_summary_first_publication')) {
+      if (this.isolationLevel !== "ReadCommitted") throw new Error("First publication requires READ COMMITTED");
+      this.locks++;
+      if (Object.values(this.claims).some((n) => n !== 0) || this.existingClaims.length !== 0) {
+        throw new Error("First publication day already claimed, including failed or uncertain attempts");
+      }
+      this.claims.slots++; return [{ reserved: true }];
     }
-    if (sql.includes('with inventory as')) {
+    if (sql.includes('lock_reader_summary_first_publication_dataset')) {
+      if (this.isolationLevel !== "ReadCommitted") throw new Error("First publication requires READ COMMITTED");
+      this.locks++; return [{ locked: true }];
+    }
+    if (sql.includes('observe_reader_summary_first_publication')) {
       const asof = Math.max(...values.filter((v): v is Date => v instanceof Date).map((d) => d.getTime()));
       const valid = this.rows.filter((r) => r.validJoin && !r.deleted &&
         r.observedAt >= firstpubStart.getTime() && r.sourceObservedAt >= firstpubStart.getTime() &&

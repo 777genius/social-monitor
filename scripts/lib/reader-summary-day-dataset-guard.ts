@@ -145,9 +145,21 @@ export class ReaderSummaryDayDatasetGuard {
   async assertCurrentForPublicationTransaction(
     client: PrismaReaderSummaryClient,
   ): Promise<void> {
-    await lockManifestDatasetTables(client, this.expected.retainedEngagementAuthority !== undefined || this.firstPublicationInventory !== undefined);
     if (this.firstPublicationInventory !== undefined) {
-      await (client as LockCapableReaderSummaryClient).$executeRaw`lock table tenants, workspaces in share mode nowait`;
+      // Contract refuses snapshot-pinned transactions. READ COMMITTED gives
+      // subsequent manifest/digest reads the state committed before these
+      // strong locks; ordinary writers remain blocked through publication.
+      const rows = await client.$queryRaw<readonly { locked: boolean }[]>`
+        select public.lock_reader_summary_first_publication_dataset(
+          ${this.expected.scope.tenantId}::uuid, ${this.expected.scope.workspaceId}::uuid,
+          ${new Date(this.expected.period.startedAt)}, ${new Date(this.expected.period.endedAt)},
+          ${new Date(this.expected.generatedAt)}) as locked
+      `;
+      if (rows.length !== 1 || rows[0]?.locked !== true) {
+        throw new Error("First publication dataset contract did not acquire locks");
+      }
+    } else {
+      await lockManifestDatasetTables(client, this.expected.retainedEngagementAuthority !== undefined);
     }
     await this.assertCurrentWithClient(client, "before_publication", true);
   }
