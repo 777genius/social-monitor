@@ -48,7 +48,7 @@ import {
   type ReaderSummaryDraft,
   type ReaderSummaryModelPipelineResult,
   safeBuildReaderSummaryContext,
-  readerSummaryObservedThrough,
+  resolveReaderSummaryExecutionObservedThrough,
   withReaderSummaryTopicMap,
 } from "./execute-reader-summary-job-support";
 import { buildReaderSummaryPromotionArtifactFields } from "./reader-summary-promotion-artifact-fields";
@@ -82,6 +82,7 @@ export class ExecuteReaderSummaryJobUseCase {
   ): Promise<
     Result<ExecuteReaderSummaryJobResult, ExecuteReaderSummaryJobFailure>
   > {
+    const explicitCutoffTime = command.observedThrough?.getTime();
     if (command.readerSummaryJobId.trim().length === 0) {
       return err(
         new DomainError(
@@ -104,10 +105,15 @@ export class ExecuteReaderSummaryJobUseCase {
       );
     }
     const snapshot = existingJob.toSnapshot();
-    const observed = await readerSummaryObservedThrough({ job: existingJob,
-      authority: this.newInputRefresh, clock: this.clock });
+    const observed = await resolveReaderSummaryExecutionObservedThrough({
+      cutoffTime: explicitCutoffTime, job: existingJob,
+      authority: this.newInputRefresh, clock: this.clock,
+      recoveryActive: this.historicalGitHubOmission !== undefined ||
+        this.recoveryProvenance !== undefined,
+    });
     if (observed instanceof DomainError) return err(observed);
-    const observedThrough = observed;
+    // Keep the boundary as a primitive. Each Date consumer receives its own copy.
+    let observedThroughTime = observed;
     if (snapshot.status === "completed" || snapshot.status === "no_signal") {
       return ok({
         readerSummaryJobId: snapshot.id,
@@ -127,6 +133,7 @@ export class ExecuteReaderSummaryJobUseCase {
       if (prepared.kind === "result") return ok(prepared.value);
       runningJob = prepared.job;
       frozenV3Manifest = prepared.manifest;
+      observedThroughTime = new Date(frozenV3Manifest.cutoffAt).getTime();
     } else {
       runningJob = await claimReaderSummaryJobExecution({
         jobs: this.readerSummaryJobs,
@@ -165,7 +172,7 @@ export class ExecuteReaderSummaryJobUseCase {
       const result = await this.runModelPipeline(
         runningJob,
         command.maxEvidenceItems ?? defaultReaderSummaryMaxEvidenceItems,
-        observedThrough,
+        observedThroughTime === undefined ? undefined : new Date(observedThroughTime),
         v3Evidence,
       );
       if (!result.ok) {
@@ -199,7 +206,8 @@ export class ExecuteReaderSummaryJobUseCase {
         editorialEvidence: result.value.editorialEvidence,
         publicationPolicy: this.publicationPolicy,
         githubProjectionReader: this.githubProjectionReader,
-        observedThrough: observedThrough ?? this.clock.now(),
+        observedThrough: observedThroughTime === undefined
+          ? this.clock.now() : new Date(observedThroughTime),
         historicalGitHubOmission: this.historicalGitHubOmission,
         recoveryProvenance: this.recoveryProvenance,
       });

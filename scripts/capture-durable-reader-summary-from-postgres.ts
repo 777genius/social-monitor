@@ -34,7 +34,7 @@ import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/a
 import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import { PrismaReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-policy.repository";
 import { buildReaderSummaryPeriod } from "@social-monitor/summary/domain";
-import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { createReaderSummaryCaptureExecution } from "./lib/reader-summary-capture-execution";
 import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
@@ -92,7 +92,6 @@ import {
 import {
   addUtcDays,
   liveObservationCutoffEnv,
-  resolveLiveObservationCutoff,
   resolveRecoveryTimestampPolicy,
   startOfUtcDay,
 } from "./lib/reader-summary-capture-period-policy";
@@ -207,7 +206,7 @@ async function main(): Promise<void> {
       "Historical GitHub omission requires explicit historical recovery mode",
     );
   }
-  const liveObservationCutoff = resolveLiveObservationCutoff({
+  const captureExecution = createReaderSummaryCaptureExecution({
     value: readDateEnv(liveObservationCutoffEnv),
     dailyReplayActive: dailyReplay !== null,
     recoveryActive: recoveryTimestampPolicy.active,
@@ -217,6 +216,7 @@ async function main(): Promise<void> {
     periodEndedAt,
     now,
   });
+  const { liveObservationCutoff } = captureExecution;
   const { promotionRebuild, sourceProvenance } =
     resolveProductionDayPromotionInput({
       environment: process.env,
@@ -434,7 +434,7 @@ async function main(): Promise<void> {
         attestations: () => executionAttestations.all(),
       });
     const metrics = new InMemoryMetricsRecorder();
-    const executeReaderSummary = new ExecuteReaderSummaryJobUseCase(
+    const execution = await captureExecution.execute([
       readerSummaryJobs,
       readerSummaryArtifacts,
       readerSummaryPolicies,
@@ -460,8 +460,7 @@ async function main(): Promise<void> {
       undefined,
       publicationWiring.githubProjectionReader,
       historicalGitHubOmission,
-    );
-    const execution = await executeReaderSummary.execute({
+    ], {
       tenantId: tenant,
       workspaceId: workspace,
       readerSummaryJobId: request.value.readerSummaryJobId,
