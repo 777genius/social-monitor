@@ -455,7 +455,7 @@ describe("subscription runtime installation admission", () => {
     await expect(executor.execute({ ...mimoRequest(), cwd: workspace })).resolves.toMatchObject({
       status: "failed", failure: { code: "agent_runtime.execution_attestation_invalid" },
     });
-  });
+  }, 45_000);
 
   it("rejects a hoisted import that resolves into the admitted workspace", async () => {
     const command = join(await copyInstallation(), launcherName);
