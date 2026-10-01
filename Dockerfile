@@ -17,6 +17,14 @@ COPY prisma ./prisma
 COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/
 COPY scripts/recover-hn-verified-remainder.ts scripts/import-hn-verified-remainder.ts scripts/import-hn-verified-sep28.ts ./scripts/
 COPY scripts/import-rss-sep24-verified.ts scripts/recover-rss-sep24-verified.ts ./scripts/
+# Sep24 source entrypoints and their script closure. Publication grants no capture authority.
+COPY scripts/materialize-social-sep24-private-inputs.ts \
+  scripts/export-reddit-sep24-public.ts scripts/export-rss-sep24-selected.ts \
+  scripts/diagnose-rss-sep24-source-only.ts ./scripts/
+COPY scripts/lib/social-source-private-input-contract.ts \
+  scripts/lib/social-source-private-input-database.ts \
+  scripts/lib/social-source-private-input-files.ts \
+  scripts/lib/social-source-private-input-materializer.ts ./scripts/lib/
 # Public closure of npm run run:reader-summary-clean-real-day-collection.
 # Keep this positive list scoped to that consumer; never copy all of scripts.
 COPY scripts/run-with-timeout.mjs scripts/run-reader-summary-clean-real-day-collection.ts ./scripts/
