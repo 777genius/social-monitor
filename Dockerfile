@@ -17,6 +17,34 @@ COPY prisma ./prisma
 COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/
 COPY scripts/recover-hn-verified-remainder.ts scripts/import-hn-verified-remainder.ts scripts/import-hn-verified-sep28.ts ./scripts/
 COPY scripts/import-rss-sep24-verified.ts scripts/recover-rss-sep24-verified.ts ./scripts/
+# Public closure of npm run run:reader-summary-clean-real-day-collection.
+# Keep this positive list scoped to that consumer; never copy all of scripts.
+COPY scripts/run-with-timeout.mjs scripts/run-reader-summary-clean-real-day-collection.ts ./scripts/
+COPY scripts/lib/clean-real-day-collection-report.ts \
+  scripts/lib/clean-real-day-provider-acquisition.ts \
+  scripts/lib/clean-real-day-scan-policy-targets.ts \
+  scripts/lib/clean-real-day-source-config-reader.ts \
+  scripts/lib/clean-real-day-target-discovery.ts \
+  scripts/lib/collection-scan-execution.ts \
+  scripts/lib/env-file.ts \
+  scripts/lib/github-trending-durable-snapshot-candidate-budget.ts \
+  scripts/lib/github-trending-durable-snapshot-reuse.ts \
+  scripts/lib/private-evaluation-file.ts \
+  scripts/lib/production-collection-quality-policy.ts \
+  scripts/lib/production-collection-scan-job-reporter.ts \
+  scripts/lib/provider-collection-observability.ts \
+  scripts/lib/provider-scan-result-selection.ts \
+  scripts/lib/quality-gates.ts \
+  scripts/lib/reader-summary-clean-real-day-collection-artifact.ts \
+  scripts/lib/reader-summary-clean-real-day-collection-cli.ts \
+  scripts/lib/reader-summary-daily-maintenance-bounds.ts \
+  scripts/lib/reader-summary-daily-maintenance-scope.ts \
+  scripts/lib/reader-summary-daily-provider-catch-up.ts \
+  scripts/lib/reader-summary-multi-day-corpus-security.ts \
+  scripts/lib/reader-summary-quality-eval-support.ts \
+  scripts/lib/targeted-provider-collection.ts \
+  scripts/lib/x-collection-retry-policy.ts \
+  scripts/lib/yesterday-social-replay-support.ts ./scripts/lib/
 COPY apps ./apps
 COPY libs ./libs
 
