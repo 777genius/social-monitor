@@ -1,7 +1,11 @@
 import { parseRedditSep24Bindings } from '../export-reddit-sep24-public';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { exportRssSep24Selected } from '../export-rss-sep24-selected';
 import { assertUnprotectedJson, materializedRequest, validateSnapshot } from './social-source-private-input-contract';
-import { freshOutput, syntheticSnapshots } from './social-source-private-input-fixtures.spec-support';
+import { fakeScopedPool, freshOutput, syntheticSnapshots } from './social-source-private-input-fixtures.spec-support';
+import { readScopedSnapshots } from './social-source-private-input-database';
+import { admitSocialSep24PrivateInputs, materializeSocialSep24PrivateInputs } from './social-source-private-input-materializer';
 
 describe('authentic unchanged Sep24 request validation', () => {
   it('preserves the original 44 passes, whitespace, array order and actual policy pins', () => {
@@ -81,6 +85,80 @@ describe('authentic unchanged Sep24 request validation', () => {
     expect(() => assertUnprotectedJson(Array.from({ length: 128 }, () => Array.from({ length: 128 }, () => null))))
       .toThrow('configuration');
     expect(() => assertUnprotectedJson({ a: '😀'.repeat(4096), b: '😀'.repeat(4096) }, 32_768)).toThrow('configuration');
+  });
+  const protectedArrays = [
+    JSON.stringify([{ kind: 'credential_ref', id: 'x' }]),
+    JSON.stringify([{ encrypted: true, value: 'x' }]),
+  ].flatMap((value) => [value, encodeURIComponent(value)]);
+  it.each(protectedArrays)('refuses serialized protected arrays at validation and scoped publication boundaries: %s', async (value) => {
+    const rows = syntheticSnapshots();
+    rows[0]!.capability.config.note = value;
+    const unchanged = JSON.stringify(rows);
+    expect(() => materializedRequest(validateSnapshot(rows[0]))).toThrow(/^private_input_refused:configuration$/u);
+    expect(() => assertUnprotectedJson(value)).toThrow(/^private_input_refused:configuration$/u);
+    const fake = fakeScopedPool(rows.map((snapshot) => ({ eligible: true, snapshot })));
+    await expect(readScopedSnapshots(fake.pool)).rejects.toThrow(/^private_input_refused:database$/u);
+    expect(fake.calls.at(-1)?.text).toBe('ROLLBACK');
+    expect(fake.calls.some((call) => call.text === 'COMMIT')).toBe(false);
+    const paths = await freshOutput();
+    await expect(materializeSocialSep24PrivateInputs({ ...paths, readSnapshots: async () => rows }))
+      .rejects.toThrow(/^private_input_refused:filesystem$/u);
+    await expect(readFile(join(paths.outputRoot, 'manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(JSON.stringify(rows)).toBe(unchanged);
+  });
+  it('recurses through nested objects, arrays and separately percent-encoded structured strings', () => {
+    for (const value of protectedArrays) {
+      for (const nested of [JSON.stringify([{ nested: [[value]] }]),
+        encodeURIComponent(JSON.stringify({ nested: [value] }))]) {
+        expect(() => assertUnprotectedJson(nested)).toThrow(/^private_input_refused:configuration$/u);
+        const row = syntheticSnapshots()[0]!;
+        expect(() => validateSnapshot({ ...row, interestQuery: nested })).toThrow('configuration');
+        expect(() => materializedRequest(validateSnapshot({ ...row, config: { mode: 'search', query: nested } })))
+          .toThrow('configuration');
+      }
+    }
+  });
+  it('applies existing bounds and metadata exceptions inside serialized arrays', () => {
+    let deep: unknown = 'x';
+    for (let index = 0; index < 9; index++) deep = [deep];
+    for (const value of [JSON.stringify(Array.from({ length: 129 }, () => null)), JSON.stringify(deep),
+      JSON.stringify(Array.from({ length: 128 }, () => Array.from({ length: 32 }, () => null))),
+      JSON.stringify([Object.fromEntries(Array.from({ length: 65 }, (_, index) => [`a${index}`, null]))]),
+      JSON.stringify([{ requiresCredentials: false }]), JSON.stringify([{ kind: 'protected', id: 'x' }])]) {
+      expect(() => assertUnprotectedJson(value, 65_536, true)).toThrow('configuration');
+    }
+    const flags = { requiresCredentials: false, tenantCredentialOverrideSupported: true, tokenRecommended: false };
+    expect(() => assertUnprotectedJson(flags, 32_768, true)).not.toThrow();
+    expect(() => assertUnprotectedJson({ requiresCredentials: 'false' }, 32_768, true)).toThrow('configuration');
+  });
+  it('preserves benign arrays and prose through scoped reading, requests, publication and admission', async () => {
+    const values = ['  ordinary prose [x] {y}  ', '[ordinary prose',
+      ' ["x", {"nested": [null, true, 1.25, "%78"]}] ',
+      encodeURIComponent('["x", {"nested": [false, 2]}]'),
+      JSON.stringify([encodeURIComponent(JSON.stringify({ nested: ['x'] }))])];
+    const rows = syntheticSnapshots();
+    rows[0]!.capability.config.notes = values;
+    rows[0]!.config.query = values[2];
+    const original = JSON.stringify(rows);
+    for (const value of values) {
+      expect(() => assertUnprotectedJson(value)).not.toThrow();
+      expect(validateSnapshot({ ...rows[0]!, interestQuery: value }).interestQuery).toBe(value);
+    }
+    const reader = () => readScopedSnapshots(fakeScopedPool(rows.map((snapshot) => ({ eligible: true, snapshot }))).pool);
+    expect(await reader()).toEqual(rows);
+    const expected = materializedRequest(validateSnapshot(rows[0])).bytes;
+    const paths = await freshOutput();
+    const published = await materializeSocialSep24PrivateInputs({ ...paths, readSnapshots: reader });
+    expect((await admitSocialSep24PrivateInputs(published.commit, reader)).redditRequestBytes).toEqual(expected);
+    const stored = JSON.parse(await readFile(join(paths.outputRoot, 'snapshot.json'), 'utf8')) as { snapshots: unknown };
+    expect(stored.snapshots).toEqual(rows);
+    expect(expected.toString()).toBe(`${JSON.stringify([{ sourceBindingId: rows[0]!.scope.sourceBindingId, config: rows[0]!.config }], null, 2)}\n`);
+    expect(JSON.stringify(rows)).toBe(original);
+    for (const value of protectedArrays) {
+      const changed = structuredClone(rows);
+      changed[0]!.capability.config.note = value;
+      await expect(admitSocialSep24PrivateInputs(published.commit, async () => changed)).rejects.toThrow(/^private_input_refused:drift$/u);
+    }
   });
   it.each([
     { extraFeedUrls: [] }, { maxItems: 101 }, { mode: 'query' }, { query: 'https://example.test/different.xml' },
