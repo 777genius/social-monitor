@@ -35,6 +35,37 @@ export type ReaderSummaryContextBuildResult = {
   readonly unavailable: boolean;
 };
 
+/** The numeric value is captured before the first await, so caller Date mutation
+ * cannot change validation or later consumers. Explicit live boundaries have no
+ * authority on refresh, V3, or recovery routes, including equal-looking values. */
+export const validateReaderSummaryExecutionCutoff = (params: {
+  readonly cutoffTime: number;
+  readonly job: ReaderSummaryJob;
+  readonly now: Date;
+  readonly recoveryActive: boolean;
+}): DomainError | undefined => {
+  const snapshot = params.job.toSnapshot();
+  if (snapshot.idempotencyKey.startsWith(readerSummaryNewInputRefreshPrefix) ||
+      snapshot.selectionStrategy === "jev_primary_v3" || params.recoveryActive) {
+    return new DomainError("operation.conflict",
+      "Explicit live cutoff is unsupported on an authoritative refresh, V3 or recovery route");
+  }
+  const period = snapshot.period;
+  const startedAt = period.startedAt.getTime();
+  const endedAt = period.endedAt.getTime();
+  const now = params.now.getTime();
+  if (!Number.isFinite(params.cutoffTime) || !Number.isFinite(now) ||
+      params.cutoffTime > now || period.cadence !== "daily" ||
+      period.timezone !== "UTC" || startedAt % 86_400_000 !== 0 ||
+      endedAt - startedAt !== 86_400_000 ||
+      params.cutoffTime < startedAt || params.cutoffTime >= endedAt ||
+      now < startedAt || now >= endedAt) {
+    return new DomainError("validation.failed",
+      "Explicit live cutoff requires a finite, non-future boundary in the current exact UTC daily period");
+  }
+  return undefined;
+};
+
 export const readerSummaryObservedThrough = async (params: {
   readonly job: ReaderSummaryJob;
   readonly authority?: ReaderSummaryNewInputRefreshAuthority;
@@ -55,6 +86,21 @@ export const readerSummaryObservedThrough = async (params: {
     return new DomainError("operation.conflict",
       "Historical new-input refresh requires reconciliation or valid authority");
   }
+};
+
+export const resolveReaderSummaryExecutionObservedThrough = async (params: {
+  readonly cutoffTime?: number;
+  readonly job: ReaderSummaryJob;
+  readonly authority?: ReaderSummaryNewInputRefreshAuthority;
+  readonly clock: Clock;
+  readonly recoveryActive: boolean;
+}): Promise<number | DomainError | undefined> => {
+  if (params.cutoffTime !== undefined) {
+    return validateReaderSummaryExecutionCutoff({ ...params,
+      cutoffTime: params.cutoffTime, now: params.clock.now() }) ?? params.cutoffTime;
+  }
+  const observed = await readerSummaryObservedThrough(params);
+  return observed instanceof DomainError ? observed : observed?.getTime();
 };
 
 export const defaultModelPolicy: ReaderSummaryModelPolicy = {
