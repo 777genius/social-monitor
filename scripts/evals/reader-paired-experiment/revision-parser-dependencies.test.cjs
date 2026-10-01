@@ -15,7 +15,7 @@ const identityKey = `${name}/pure-status-contract.v1`;
 const lockAt = revision => execFileSync('git', ['show', `${revision}:package-lock.json`]);
 const historicalBytes = lockAt(FINAL);
 const historical = JSON.parse(historicalBytes);
-const current = JSON.parse(lockAt('e527491e0f102512a7936fb73a76d59ec2bfe4d5'));
+const current = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package-lock.json')));
 const load = lock => parserDependencies(JSON.stringify(lock)).load(name);
 const clone = value => JSON.parse(JSON.stringify(value));
 
