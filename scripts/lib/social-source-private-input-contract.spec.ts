@@ -180,3 +180,116 @@ describe('authentic unchanged Sep24 request validation', () => {
     expect(() => materializedRequest({ ...row, config: { ...row.config, extraFeedUrls: large } })).toThrow('configuration');
   });
 });
+
+describe('every decoded JSON envelope at public private-input boundaries', () => {
+  const maskedKinds = [
+    ['kind', 'credential_ref', '%6bind'], ['type', 'protected', '%74ype'],
+    ['__type', 'encrypted', '%5f_type'], ['kind', 'secret', '%256bind'],
+  ].flatMap(([key, kind, alias]) => {
+    const object = `{"${key}":"${kind}","${alias}":"x"}`;
+    return [object, `[${object}]`, encodeURIComponent(`[${object}]`)];
+  });
+  let deep: unknown = 'x';
+  for (let index = 0; index < 9; index++) deep = [deep];
+  const maskedGraphs = [
+    ['array width', Array.from({ length: 129 }, () => 0)], ['depth', deep],
+    ['node count', Array.from({ length: 128 }, () => Array.from({ length: 32 }, () => 0))],
+  ].flatMap(([name, graph]) => {
+    const value = `{"n":${JSON.stringify(graph)},"%6e":"x"}`;
+    return [{ name: String(name), value }, { name: `${name} before invalid quotes`,
+      value: `{"n":${JSON.stringify(graph)},"%6e":"x","q":"%2522"}` }];
+  });
+  const maskedProperties = `{${Array.from({ length: 33 }, (_, index) =>
+    `"a${index}":0,"%61${index}":0`).join(',')}}`;
+  const invalidating = '{"kind":"credential_ref","%6bind":"x","n":"%2522"}';
+  const refusals = [...maskedKinds.map((value, index) => ({ name: `protected discriminator ${index}`, value })),
+    ...maskedGraphs, { name: '66 properties collapsing to 33', value: maskedProperties },
+    { name: 'properties before invalid quotes', value: `${maskedProperties.slice(0, -1)},"q":"%2522"}` },
+    { name: 'overwrite followed by invalid quotes', value: invalidating },
+    { name: 'invalid quotes retaining protected array', value: '[{"kind":"credential_ref","n":"%22"}]' },
+    { name: 'invalid quotes retaining excessive width', value: `{"n":${JSON.stringify(Array.from({ length: 129 }, () => 0))},"q":"%22"}` }];
+
+  it.each(refusals)('refuses $name before scoped reading or publication', async ({ value }) => {
+    const rows = syntheticSnapshots();
+    rows[0]!.capability.config.note = value;
+    const original = JSON.stringify(rows);
+    const rejection = async (operation: () => unknown): Promise<string> => {
+      try { await operation(); return 'accepted'; }
+      catch (error) { return error instanceof Error ? error.message : 'unexpected'; }
+    };
+    const row = syntheticSnapshots()[0]!;
+    const fake = fakeScopedPool(rows.map((snapshot) => ({ eligible: true, snapshot })));
+    const paths = await freshOutput();
+    // Exercise every public boundary before asserting, so the base failure proves more than a helper rejection.
+    const outcomes = {
+      graph: await rejection(() => assertUnprotectedJson(value)),
+      capability: await rejection(() => validateSnapshot(rows[0])),
+      interest: await rejection(() => validateSnapshot({ ...row, interestQuery: value })),
+      request: await rejection(() => materializedRequest(validateSnapshot({ ...row, config: { mode: 'search', query: value } }))),
+      database: await rejection(() => readScopedSnapshots(fake.pool)),
+      publication: await rejection(() => materializeSocialSep24PrivateInputs({ ...paths, readSnapshots: async () => rows })),
+    };
+    expect(outcomes).toEqual({ graph: 'private_input_refused:configuration', capability: 'private_input_refused:configuration',
+      interest: 'private_input_refused:configuration', request: 'private_input_refused:configuration',
+      database: 'private_input_refused:database', publication: 'private_input_refused:filesystem' });
+    expect(fake.calls.at(-1)?.text).toBe('ROLLBACK');
+    expect(fake.calls.some((call) => call.text === 'COMMIT')).toBe(false);
+    await expect(readFile(join(paths.outputRoot, 'manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(JSON.stringify(rows)).toBe(original);
+  });
+
+  it.each(refusals)('refuses $name at admission even when earlier publication accepted it', async ({ value }) => {
+    const rows = syntheticSnapshots();
+    const changed = JSON.parse(JSON.stringify(rows)) as typeof rows;
+    changed[0] = { ...changed[0]!, config: { mode: 'search', query: value } };
+    const paths = await freshOutput();
+    // On the vulnerable base this publishes the masked bytes and exercises admission of those exact bytes.
+    // With the fix publication refuses them, so admission exercises a legitimate commit against the changed reader.
+    const published = await materializeSocialSep24PrivateInputs({ ...paths, readSnapshots: async () => changed })
+      .catch(async (error: unknown) => {
+        expect(error).toMatchObject({ message: 'private_input_refused:filesystem' });
+        return materializeSocialSep24PrivateInputs({ ...paths, readSnapshots: async () => rows });
+      });
+    await expect(admitSocialSep24PrivateInputs(published.commit, async () => changed))
+      .rejects.toThrow(/^private_input_refused:drift$/u);
+  });
+
+  it('preserves near-budget graphs across equivalent and changing decoded representations', async () => {
+    // 3969 graph nodes leave room for the surrounding snapshot fields, but two visits exceed 4096.
+    const graph = Array.from({ length: 128 }, () => Array.from({ length: 30 }, () => 0));
+    const raw = JSON.stringify({ n: graph, q: '%2578' });
+    const values = [raw, encodeURIComponent(raw), JSON.stringify(graph),
+      JSON.stringify(Array.from({ length: 128 }, () => 0)),
+      JSON.stringify(Object.fromEntries(Array.from({ length: 64 }, (_, index) => [`a${index}`, 0]))),
+      '[[[[[[0]]]]]]', 'arbitrary prose [x] {y} %22 %zz'];
+    for (const value of values) {
+      const rows = syntheticSnapshots();
+      rows[0] = { ...rows[0]!, config: { mode: 'search', query: value } };
+      const original = JSON.stringify(rows);
+      expect(() => assertUnprotectedJson(value)).not.toThrow();
+      expect(validateSnapshot(rows[0]).config.query).toBe(value);
+      const reader = () => readScopedSnapshots(fakeScopedPool(rows.map((snapshot) => ({ eligible: true, snapshot }))).pool);
+      expect(await reader()).toEqual(rows);
+      const expected = materializedRequest(validateSnapshot(rows[0])).bytes;
+      const paths = await freshOutput();
+      const published = await materializeSocialSep24PrivateInputs({ ...paths, readSnapshots: reader });
+      expect((await admitSocialSep24PrivateInputs(published.commit, reader)).redditRequestBytes).toEqual(expected);
+      expect(JSON.parse(await readFile(join(paths.outputRoot, 'snapshot.json'), 'utf8'))).toMatchObject({ snapshots: rows });
+      expect(JSON.parse(expected.toString())).toEqual([{ sourceBindingId: rows[0]!.scope.sourceBindingId, config: rows[0]!.config }]);
+      expect(JSON.stringify(rows)).toBe(original);
+    }
+    expect(() => assertUnprotectedJson({ a: JSON.stringify(graph), b: JSON.stringify(graph) })).toThrow('configuration');
+  });
+
+  it('keeps the three-pass bound and boolean exceptions confined to the actual capability root', () => {
+    const protectedValue = '[{"kind":"credential_ref"}]';
+    expect(() => assertUnprotectedJson(encodeURIComponent(encodeURIComponent(protectedValue)))).toThrow('configuration');
+    expect(() => assertUnprotectedJson(encodeURIComponent(encodeURIComponent(encodeURIComponent(protectedValue))))).not.toThrow();
+    const flags = { requiresCredentials: false, tenantCredentialOverrideSupported: true, tokenRecommended: false };
+    expect(() => assertUnprotectedJson(flags, 32_768, true)).not.toThrow();
+    for (const value of [JSON.stringify(flags), encodeURIComponent(JSON.stringify(flags)), { nested: flags },
+      '{"requiresCredentials":false,"%72equiresCredentials":"x"}']) {
+      expect(() => assertUnprotectedJson(value, 32_768, true)).toThrow('configuration');
+    }
+  });
+});

@@ -33,22 +33,30 @@ export function assertUnprotectedJson(value: unknown, byteLimit = 65_536, capabi
       if (Buffer.byteLength(child) > 16_384) refuse('configuration');
       // Decoding is validation only: stored bytes and request values remain unchanged.
       let decoded = child;
-      let envelope: unknown;
+      const beforeEnvelope = count;
+      let largestEnvelope = count;
       for (let index = 0; index < 3; index++) {
         if (redactSensitiveText(decoded) !== decoded || urlContainsCredentials(decoded) ||
           /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----|^(?:credential|secret|protected|encrypted)[_-]?(?:ref|reference|value):/iu.test(decoded)) refuse('configuration');
         for (const candidate of decoded.match(/[a-z][a-z0-9+.-]*:\/\/[^\s"<>]+/giu) ?? []) {
           if (urlContainsCredentials(candidate)) refuse('configuration');
         }
-        // Retain a parsed container if decoding an encoded child later invalidates its JSON quotes.
+        // Validate each container before later decoding can overwrite keys or invalidate quotes.
         const trimmed = decoded.trim();
         if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          let envelope: unknown;
           try { envelope = JSON.parse(decoded) as unknown; } catch { /* Ordinary query prose. */ }
+          if (envelope !== undefined) {
+            // Decoded alternatives share the remaining graph budget, rather than accumulating visits.
+            count = beforeEnvelope;
+            visit(envelope, depth + 1);
+            largestEnvelope = Math.max(largestEnvelope, count);
+          }
         }
         if (index === 2) break;
         try { decoded = decodeURIComponent(decoded); } catch { break; }
       }
-      if (envelope !== undefined) visit(envelope, depth + 1);
+      count = largestEnvelope;
     } else if (Array.isArray(child)) {
       if (child.length > 128) refuse('configuration');
       child.forEach((entry) => visit(entry, depth + 1));
