@@ -1,3 +1,4 @@
+import * as ts from 'typescript';
 import {
   POSTGRES_RUNTIME_CONNECTION_FACTORIES,
   POSTGRES_RUNTIME_POOL_MINIMUM,
@@ -19,17 +20,127 @@ import {
 
 function expectRawDependencySyntax(path: string, source: string): void {
   if (path === 'scripts/lib/social-source-private-input-database.spec.ts') {
-    // Permit only the exact constructor-spy binding, never another raw load.
+    // A namespace can bypass the named-constructor budget resolver. Admit only
+    // the installed-constructor spy, with every namespace reference checked.
     const spyBinding = "const pg = require(" + "'pg') as typeof Pg;";
     expect(source.split(spyBinding)).toHaveLength(2);
-    expect(source).toContain("jest.spyOn(pg, 'Pool').mockImplementation(");
-    expect(source).toContain('finally { constructor.mockRestore(); }');
-    expect(source).not.toMatch(/new\s+(?:pg|Pg)\s*\.\s*(?:Pool|Client)\s*\(/);
+    expectSpyNamespaceUsage(path, source, spyBinding);
     source = source.replace(spyBinding, '');
   }
   expect(source).not.toMatch(
     /(?:require\s*\(\s*['"](?:pg|@prisma\/adapter-pg)['"]\s*\)|import\s*\(\s*['"](?:pg|@prisma\/adapter-pg)['"]\s*\)|import\s+\*\s+as\s+\w+\s+from\s+['"](?:pg|@prisma\/adapter-pg)['"])/,
   );
+}
+
+function expectSpyNamespaceUsage(path: string, source: string, spyBinding: string): void {
+  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  const options: ts.CompilerOptions = { noLib: true, noResolve: true, types: [] };
+  const host = ts.createCompilerHost(options);
+  host.getSourceFile = (name) => name === path ? file : undefined;
+  const program = ts.createProgram([path], options, host);
+  expect(program.getSyntacticDiagnostics(file)).toEqual([]);
+  const nodes: ts.Node[] = [];
+  const visit = (node: ts.Node): void => {
+    nodes.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  const identifier = (node: ts.Node | undefined, name: string): boolean =>
+    node !== undefined && ts.isIdentifier(node) && node.text === name;
+  const method = (node: ts.Node, receiver: string, name: string): node is ts.CallExpression =>
+    ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.questionDotToken === undefined && node.questionDotToken === undefined &&
+    identifier(node.expression.expression, receiver) && node.expression.name.text === name;
+
+  const imports = nodes.filter((node): node is ts.ImportDeclaration =>
+    ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) &&
+    node.moduleSpecifier.text === 'pg');
+  expect(imports).toHaveLength(1);
+  const clause = imports[0]?.importClause;
+  if (!clause?.isTypeOnly || !clause.namedBindings ||
+    !ts.isNamespaceImport(clause.namedBindings) || clause.namedBindings.name.text !== 'Pg') {
+    throw new Error('Constructor spy requires its type-only namespace import');
+  }
+  const bindings = nodes.filter((node): node is ts.VariableStatement =>
+    ts.isVariableStatement(node) && node.getText(file) === spyBinding);
+  expect(bindings).toHaveLength(1);
+  const binding = bindings[0]?.declarationList.declarations[0];
+  if (!binding?.initializer || !ts.isAsExpression(binding.initializer) ||
+    !ts.isTypeQueryNode(binding.initializer.type)) {
+    throw new Error('Constructor spy requires its exact namespace binding');
+  }
+  const allowed = new Set<ts.Node>([
+    clause.namedBindings.name, binding.name, binding.initializer.type.exprName,
+  ]);
+
+  const spies = nodes.filter((node): node is ts.CallExpression =>
+    method(node, 'jest', 'spyOn') && identifier(node.arguments[0], 'pg'));
+  expect(spies).toHaveLength(1);
+  const spy = spies[0];
+  if (!spy || spy.arguments.length !== 2 || !identifier(spy.arguments[0], 'pg') ||
+    !spy.arguments[1] || !ts.isStringLiteral(spy.arguments[1]) || spy.arguments[1].text !== 'Pool') {
+    throw new Error('Only the Pool constructor spy may receive the namespace');
+  }
+  const access = spy.parent;
+  const mock = access.parent;
+  const declaration = mock.parent;
+  if (!ts.isPropertyAccessExpression(access) || access.expression !== spy ||
+    access.name.text !== 'mockImplementation' || access.questionDotToken !== undefined ||
+    !ts.isCallExpression(mock) || mock.expression !== access || mock.questionDotToken !== undefined ||
+    mock.arguments.length !== 1 || !ts.isArrowFunction(mock.arguments[0]!) ||
+    !ts.isVariableDeclaration(declaration) || declaration.initializer !== mock ||
+    !identifier(declaration.name, 'constructor')) {
+    throw new Error('Namespace admission requires the genuine mock implementation chain');
+  }
+  allowed.add(spy.arguments[0]!);
+  const statement = declaration.parent.parent;
+  const block = statement.parent;
+  if (!ts.isVariableStatement(statement) || !ts.isBlock(block)) {
+    throw new Error('Constructor spy must be scoped to its test block');
+  }
+  const cleanup = block.statements[block.statements.indexOf(statement) + 1];
+  const restoreStatement = cleanup && ts.isTryStatement(cleanup) &&
+    cleanup.finallyBlock?.statements.length === 1 ? cleanup.finallyBlock.statements[0] : undefined;
+  if (!restoreStatement || !ts.isExpressionStatement(restoreStatement) ||
+    !method(restoreStatement.expression, 'constructor', 'mockRestore') ||
+    restoreStatement.expression.arguments.length !== 0) {
+    throw new Error('Constructor spy must restore the same mock in its associated finally');
+  }
+  const restore = restoreStatement.expression;
+
+  for (const node of nodes) {
+    if (!ts.isIdentifier(node)) continue;
+    if (node.text === 'pg' || node.text === 'Pg') {
+      // Qualified namespace names are harmless only in a type reference.
+      const parent = node.parent;
+      const typeOnly = node.text === 'Pg' && ts.isQualifiedName(parent) &&
+        parent.left === node && ts.isTypeReferenceNode(parent.parent);
+      if (!allowed.has(node) && !typeOnly) {
+        throw new Error('Unresolved pg namespace use bypasses constructor budgets');
+      }
+    }
+    if (node.text === 'jest') {
+      const access = node.parent;
+      if (!ts.isPropertyAccessExpression(access) || access.expression !== node ||
+        !ts.isCallExpression(access.parent) || access.parent.expression !== access ||
+        !['fn', 'spyOn'].includes(access.name.text)) {
+        throw new Error('Constructor spy must use the unmodified Jest test API');
+      }
+    }
+    if (node.text === 'constructor' && node !== declaration.name) {
+      const parent = node.parent;
+      const assertion = ts.isCallExpression(parent) && identifier(parent.expression, 'expect') &&
+        parent.arguments.length === 1 && parent.arguments[0] === node;
+      const implementation = ts.isPropertyAccessExpression(parent) && parent.expression === node &&
+        method(parent.parent, 'constructor', 'mockImplementation') &&
+        parent.parent.arguments.length === 1 && ts.isArrowFunction(parent.parent.arguments[0]!);
+      const restoration = ts.isPropertyAccessExpression(parent) && parent.expression === node &&
+        parent.parent === restore;
+      if (!assertion && !implementation && !restoration) {
+        throw new Error('Constructor spy may only be asserted, mocked, and restored');
+      }
+    }
+  }
 }
 
 describe('production PostgreSQL construction and entrypoint inventory', () => {
@@ -364,6 +475,80 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
   ])('rejects an additional raw bypass in the exact constructor-spy spec: %s', (bypass) => {
     const path = 'scripts/lib/social-source-private-input-database.spec.ts';
     expect(() => expectRawDependencySyntax(path, `${readSource(path)}\n${bypass}`)).toThrow();
+  });
+
+  it('admits the genuine installed constructor spy and its type-only pool reference', () => {
+    const path = 'scripts/lib/social-source-private-input-database.spec.ts';
+    expect(() => expectRawDependencySyntax(path, readSource(path))).not.toThrow();
+  });
+
+  it('admits harmless constructor text and formatted genuine mock and restore calls', () => {
+    const path = 'scripts/lib/social-source-private-input-database.spec.ts';
+    const source = readSource(path)
+      .replace("jest.spyOn(pg, 'Pool').mockImplementation(", "jest.spyOn( pg, 'Pool' )\n.mockImplementation(")
+      .replace('finally { constructor.mockRestore(); }', 'finally {\n constructor.mockRestore();\n }');
+    expect(() => expectRawDependencySyntax(path, `${source}\nconst note = 'new pg.Pool({max:100})';`)).not.toThrow();
+  });
+
+  it.each(['pg', 'Pg'].flatMap((namespace) => ['Pool', 'Client'].flatMap((member) => [
+    { behavior: `${namespace}.${member} direct construction`, code: `new ${namespace}.${member}({ min: 0, max: 100 });` },
+    { behavior: `${namespace}.${member} constructor alias`, code: `const Unbudgeted = ${namespace}.${member}; new Unbudgeted({ min: 0, max: 100 });` },
+    { behavior: `${namespace}.${member} computed construction`, code: `new ${namespace}['${member}']({ min: 0, max: 100 });` },
+    { behavior: `${namespace}.${member} dynamic computed construction`, code: `const key = '${member}'; new ${namespace}[key]({ min: 0, max: 100 });` },
+    { behavior: `${namespace}.${member} destructured constructor`, code: `const { ${member} } = ${namespace}; new ${member}({ min: 0, max: 100 });` },
+    { behavior: `${namespace}.${member} renamed destructured constructor`, code: `const { ${member}: Unbudgeted } = ${namespace}; new Unbudgeted({ min: 0, max: 100 });` },
+  ])))('rejects untracked $behavior through the public raw dependency guard', ({ code }) => {
+    const path = 'scripts/lib/social-source-private-input-database.spec.ts';
+    expect(() => expectRawDependencySyntax(path, `${readSource(path)}\n${code}`)).toThrow();
+  });
+
+  it.each([
+    ['namespace alias', 'const other = pg; new other.Pool({ min: 0, max: 100 });'],
+    ['namespace destructuring', 'const { ...other } = pg;'],
+    ['namespace spread', 'const other = { ...pg };'],
+    ['argument escape', 'consume(pg);'],
+    ['export escape', 'export { pg };'],
+    ['namespace reassignment', 'pg = replacement;'],
+    ['member reassignment', 'pg.Pool = replacement;'],
+    ['reflective construction', "Reflect.construct(pg['Client'], [{ min: 0, max: 100 }]);"],
+    ['optional member alias', 'const other = pg?.Pool;'],
+    ['shorthand escape', 'const other = { pg };'],
+    ['nested alias', 'function later() { return pg.Pool; }'],
+    ['parenthesized alias', 'const other = (pg as unknown as any).Pool;'],
+    ['escaped identifier alias', 'const other = p\\u0067.Pool;'],
+    ['interpolated namespace', 'const other = `${pg}`;'],
+    ['duplicate spy', "const another = jest.spyOn(pg, 'Pool').mockImplementation(() => fake);"],
+    ['Jest shadow', 'function bypass(jest: any) { return jest; }'],
+    ['Jest replacement', 'jest.spyOn = replacement;'],
+    ['constructor spy reassignment', 'constructor = replacement;'],
+    ['constructor spy escape', 'consume(constructor);'],
+    ['malformed input', 'const other = pg[;'],
+  ])('rejects %s through the public raw dependency guard', (_behavior, code) => {
+    const path = 'scripts/lib/social-source-private-input-database.spec.ts';
+    expect(() => expectRawDependencySyntax(path, `${readSource(path)}\n${code}`)).toThrow();
+  });
+
+  it.each([
+    ['mock marker in a comment', (source: string) => source.replace("jest.spyOn(pg, 'Pool').mockImplementation(",
+      "/* jest.spyOn(pg, 'Pool').mockImplementation( */ jest.spyOn(pg, 'Pool').mockReturnValue(")],
+    ['restore marker in a comment', (source: string) => source.replace('finally { constructor.mockRestore(); }',
+      'finally { /* finally { constructor.mockRestore(); } */ }')],
+    ['wrong restore receiver', (source: string) => source.replace('finally { constructor.mockRestore(); }',
+      'finally { other.mockRestore(); /* finally { constructor.mockRestore(); } */ }')],
+    ['restore outside finally', (source: string) => source.replace('finally { constructor.mockRestore(); }',
+      'finally {} constructor.mockRestore(); /* finally { constructor.mockRestore(); } */')],
+    ['wrong spy member', (source: string) => source.replace("spyOn(pg, 'Pool')", "spyOn(pg, 'Client')")],
+    ['namespace type import made live', (source: string) => source.replace('import type * as Pg', 'import * as Pg')],
+    ['missing namespace type import', (source: string) => source.replace("import type * as Pg from " + "'pg';", '')],
+    ['duplicate binding', (source: string) => `${source}\nconst pg = require(` + "'pg') as typeof Pg;"],
+  ])('rejects %s instead of trusting textual spy markers', (_behavior, mutate) => {
+    const path = 'scripts/lib/social-source-private-input-database.spec.ts';
+    expect(() => expectRawDependencySyntax(path, mutate(readSource(path)))).toThrow();
+  });
+
+  it('refuses the genuine spy binding at any other path', () => {
+    const source = readSource('scripts/lib/social-source-private-input-database.spec.ts');
+    expect(() => expectRawDependencySyntax('scripts/unadmitted.spec.ts', source)).toThrow();
   });
 
   it('requires explicit min=0 and max on every direct pool outside the shared factory', () => {
