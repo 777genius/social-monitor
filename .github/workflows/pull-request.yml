@@ -1,6 +1,8 @@
 name: Pull request checks
 
 on:
+  push:
+    branches: [main]
   pull_request:
   merge_group:
   workflow_dispatch:
@@ -9,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -94,7 +96,7 @@ jobs:
   backend_unit_shards:
     name: Backend unit shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -103,6 +105,9 @@ jobs:
     steps:
       - name: Check out the review commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -116,23 +121,46 @@ jobs:
       - name: Generate the pinned Prisma client
         run: npm run prisma:generate
 
-      - name: Run backend unit tests
-        run: node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4
+      - name: List the complete unit inventory before sharding
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"
+          node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --testPathIgnorePatterns="$unit_ignore" --listTests --json > reports/inventory.json
 
-  backend_unit:
-    name: Backend build and unit tests
-    needs: backend_unit_shards
-    if: always()
+      - name: Run backend unit tests once with coverage
+        run: |
+          set -euo pipefail
+          unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"
+          node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4 --testPathIgnorePatterns="$unit_ignore" --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json
+
+      - name: Upload unit execution and inventory data
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: backend-unit-report-${{ matrix.shard }}
+          path: reports/*.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: backend-unit-coverage-${{ matrix.shard }}
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 1
+
+  backend_build_contracts:
+    name: Backend build and sandbox contracts
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
-      - name: Require every backend unit shard to succeed
-        run: test "${{ needs.backend_unit_shards.result }}" = "success"
-
       - name: Check out the review commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Set up Node.js
@@ -161,9 +189,45 @@ jobs:
 
       - name: Prove Reader Promotion V2 canary control plane
         run: |
+          set -euo pipefail
           node --test scripts/lib/reader-promotion-v2-production-canary-control.test.mjs
           node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=1024 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath scripts/lib/reader-promotion-v2-production-canary-runner.spec.ts
           bash ops/deploy/production-runtime/reader-promotion-v2-production-canary.test.sh
+
+  backend_unit:
+    name: Backend build and unit tests
+    needs: [backend_unit_shards, backend_build_contracts]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Require every backend prerequisite to succeed
+        run: |
+          set -euo pipefail
+          test "${{ needs.backend_unit_shards.result }}" = "success"
+          test "${{ needs.backend_build_contracts.result }}" = "success"
+
+      - name: Check out the exact tested commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up clean Node.js without dependencies
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+
+      - name: Download all unit report artifacts without merging
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          pattern: backend-unit-report-*
+          path: unit-reports
+          merge-multiple: false
+
+      - name: Prove complete and unique unit suite execution
+        run: node scripts/ci/verify-jest-shard-completeness.mjs --reports unit-reports --root . --exclusions ops/ci/jest-inventory-exclusions.txt
 
   backend_e2e:
     name: Backend end-to-end tests

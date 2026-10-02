@@ -1,69 +1,48 @@
 name: Code coverage
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
+  workflow_run:
+    workflows: [Pull request checks]
+    types: [completed]
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
 
 jobs:
   backend_unit_coverage:
     name: Backend coverage shard ${{ matrix.shard }}/4
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
 
     steps:
-      - name: Check out the tested commit
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-
-      - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      - name: Download coverage data from the successful tested run
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
-          node-version: 22
-          cache: npm
+          name: backend-unit-coverage-${{ matrix.shard }}
+          path: coverage-data
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
 
-      - name: Install exact dependencies
-        run: npm ci
-
-      - name: Generate the pinned Prisma client
-        run: npm run prisma:generate
-
-      - name: Collect backend unit coverage
-        run: >-
-          node scripts/run-with-timeout.mjs
-          --timeout-ms 2700000
-          --node-options --max-old-space-size=4096
-          -- ./node_modules/.bin/jest
-          --config jest.config.ts
-          --runInBand
-          --shard=${{ matrix.shard }}/4
-          --coverage
-          --coverageDirectory=coverage/shard-${{ matrix.shard }}
-          --coverageReporters=lcovonly
-          --coverageReporters=json-summary
-          --coverageReporters=text-summary
-
-      - name: Upload coverage to Codecov
+      - name: Upload coverage data attributed to the tested head SHA
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
         with:
           use_oidc: true
-          fail_ci_if_error: true
+          fail_ci_if_error: false
           disable_search: true
-          files: ./coverage/shard-${{ matrix.shard }}/lcov.info
+          files: coverage-data/lcov.info
+          override_commit: ${{ github.event.workflow_run.head_sha }}
+          override_pr: ${{ github.event.workflow_run.pull_requests[0].number }}
           flags: backend-unit
           name: backend-unit-shard-${{ matrix.shard }}
