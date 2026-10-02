@@ -12,6 +12,10 @@ import { provisionReaderSummaryPublicationFixtureScope, readerSummaryPublication
 import { createNativeFirstpubPrismaConnection, closeFirstpubPrismaOwners, expectFirstpubPrismaSqlState,
   type NativeFirstpubPrismaConnection, type NativeFirstpubTransactionHooks } from "./reader-summary-first-publication-pg18-prisma.spec-support";
 import type { PrismaTransactionalSummaryClient } from "../../libs/summary/adapters/persistence/prisma/prisma-summary-transaction";
+import { forwardFirstpubCrashReservation, requireFirstpubGeneratedPrerequisite,
+  type FirstpubCrashComposition, type FirstpubLifecycleComposition } from "./reader-summary-first-publication-pg18-composition.spec-support";
+import { nativeFirstpubPrismaClient } from "./reader-summary-first-publication-pg18-prisma.spec-support";
+import type { FirstPublicationDay } from "./reader-summary-first-publication-reservation";
 export { nativeFirstpubPrismaClient } from "./reader-summary-first-publication-pg18-prisma.spec-support";
 export type { NativeFirstpubTransactionHooks } from "./reader-summary-first-publication-pg18-prisma.spec-support";
 
@@ -27,14 +31,16 @@ export type NativeFirstpubClaimFixture = Readonly<{
  * A native PG18 binary directory is mandatory. Missing proof fails, never skips.
  * /proc/<this pid>/cwd is only a short alias to our owned workspace: Unix socket
  * paths otherwise exceed sun_path's limit in long worker workspace names. */
-export async function createFirstPublicationPg18Fixture() {
+export async function createFirstPublicationPg18Fixture(
+  composition: FirstpubLifecycleComposition = { kind: "genuine" },
+) {
   if (typeof process.getuid !== "function" || typeof process.geteuid !== "function" ||
       process.getuid() === 0 || process.geteuid() === 0 || process.getuid() !== process.geteuid()) {
     throw new Error("FIRSTPUB native fixture requires an admitted nonroot identity before namespace creation");
   }
   // A required generated graph must be loadable before creating any native
   // namespace. The unchanged loader fails instead of generating or skipping.
-  loadPrismaRuntimeClient();
+  requireFirstpubGeneratedPrerequisite(composition, loadPrismaRuntimeClient);
   const bin = process.env.FIRSTPUB_NATIVE_PG18_BIN ?? "/usr/lib/postgresql/18/bin";
   const required = ["initdb", "pg_ctl", "postgres"].map((name) => join(bin, name));
   if (!required.every(existsSync)) {
@@ -53,6 +59,9 @@ export async function createFirstPublicationPg18Fixture() {
     }
   };
   const openPrisma = async (hooks: NativeFirstpubTransactionHooks = {}, db = database) => {
+    if (composition.kind !== "genuine") {
+      throw new Error("Offline lifecycle fault composition cannot acquire Prisma connections");
+    }
     let connection: NativeFirstpubPrismaConnection;
     try { connection = await createNativeFirstpubPrismaConnection({ socketHost: host, database: db }, hooks); }
     catch (error) { prismaConstructionFailed = true; prismaConstructionFailure = error; throw error; }
@@ -166,6 +175,19 @@ export async function createFirstPublicationPg18Fixture() {
     try { await stop(); } catch (shutdownError) { throw new AggregateError([error, shutdownError], `Own PG18 fixture failed; retained ${root}`); }
     throw error;
   }
+}
+
+/** Default crash execution keeps the genuine factory and its owned lease.
+ * Offline consumers must explicitly supply a reservation completion port;
+ * neither Pool shape nor cwd/environment selects a substitute client. */
+export async function reserveFirstpubCrashDay(
+  pool: Pool, input: FirstPublicationDay, reservedAt: Date,
+  composition: FirstpubCrashComposition = { kind: "genuine" },
+): Promise<void> {
+  await forwardFirstpubCrashReservation(pool, input, reservedAt, composition,
+    async (genuinePool, genuineDay, genuineTime) => {
+      await reserveFirstPublicationDay(nativeFirstpubPrismaClient(genuinePool), genuineDay, genuineTime);
+    });
 }
 
 

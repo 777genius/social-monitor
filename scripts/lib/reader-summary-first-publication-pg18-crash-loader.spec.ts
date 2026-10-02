@@ -7,24 +7,56 @@ import { runInThisContext } from "node:vm";
 import { proveNativeFirstpubProcessCrash } from "./reader-summary-first-publication-pg18-crash.spec-support";
 import * as fixture from "./reader-summary-first-publication-pg18.spec-support";
 import * as reservation from "./reader-summary-first-publication-reservation";
+import { guardRootClientDuringInteractiveTransaction } from "../../libs/platform/persistence/src/postgres-runtime-pool-transaction-guard";
+import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
+import type { PrismaSummaryTransactionOptions, PrismaTransactionalSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-transaction";
+import type { FirstpubCrashReservation } from "./reader-summary-first-publication-pg18-composition.spec-support";
 import { loadCuratedFirstpubCrashChild } from "./reader-summary-first-publication-pg18-crash-loader.spec-support";
 
 jest.mock("node:child_process", () => ({ fork: jest.fn(), spawnSync: jest.fn(() => { throw new Error("Native commands forbidden"); }) }));
 
 // Invariant: the actual curated fork configuration loads the exact entry module,
-// executes its IPC handler and reports success only after fake Pool COMMIT.
+// executes its IPC handler and reports success only after its explicit owner
+// completion port settles. The genuine child still waits for genuine COMMIT.
 // Regression: dropping TS_NODE_PROJECT discovers root tsconfig and raises TS5011.
 it("loads the exact crash child with the pinned test project and curated environment", async () => {
   const assertSharedUnchanged = observeSharedLoaderState();
   const statements: string[] = [], sent: unknown[] = [];
   const poolOptions: unknown[] = [];
-  const connection = {
-    query: jest.fn(async (sql: string) => {
-      statements.push(sql);
-      return { rows: sql.includes("reserve_reader_summary_first_publication") ? [{ reserved: true }] : [],
-        rowCount: 1, command: sql === "COMMIT" ? "COMMIT" : "SELECT" };
+  const transactionOptions: Array<PrismaSummaryTransactionOptions | undefined> = [];
+  const tenantInputs: unknown[][] = [];
+  const bodyReturned = controlledPromise<void>(), ownerCompletion = controlledPromise<void>();
+  let completionAcknowledged = false;
+  const reservationRows = [{ reserved: true }];
+  // These method ports observe the existing adapter/middleware's inputs. They
+  // interpret no SQL and have no transaction/COMMIT/rollback engine or tags.
+  const transaction = {
+    $executeRawUnsafe: jest.fn(async (sql: string, ...values: unknown[]) => {
+      statements.push(sql); tenantInputs.push(values);
     }),
-    release: jest.fn(),
+    $queryRaw: jest.fn(async <TResult>(sql: TemplateStringsArray): Promise<TResult> => {
+      statements.push(sql.join("?"));
+      return reservationRows as unknown as TResult;
+    }),
+  };
+  const callbackOwner = {
+    async $transaction<TValue>(operation: (client: PrismaReaderSummaryClient) => Promise<TValue>, options?: PrismaSummaryTransactionOptions) {
+      transactionOptions.push(options);
+      const value = await operation(transaction as unknown as PrismaReaderSummaryClient);
+      bodyReturned.resolve();
+      // Callback return is NOT owner acknowledgement. Completion is supplied
+      // independently by the caller, with no invented command or diagnostic.
+      await ownerCompletion.promise;
+      completionAcknowledged = true;
+      return value;
+    },
+  };
+  const client = guardRootClientDuringInteractiveTransaction(callbackOwner) as unknown as PrismaTransactionalSummaryClient;
+  const connection = { release: jest.fn() };
+  const offlineReserve: FirstpubCrashReservation = async (pool, day, reservedAt) => {
+    const borrowed = await pool.connect();
+    try { await reservation.reserveFirstPublicationDay(client, day, reservedAt); }
+    finally { borrowed.release(); }
   };
   class FakePool {
     constructor(options: unknown) { poolOptions.push(options); }
@@ -49,16 +81,20 @@ it("loads the exact crash child with the pinned test project and curated environ
       observed = loadCuratedFirstpubCrashChild(entry, options, {
         once: (event, listener) => ipc.once(event, listener),
         send: (message) => {
-          // This is observable ordering through the actual entry's reservation
-          // adapter/tenant middleware, with a fake Pool rather than a database.
+          // Observe the supplied owner completion before the exact entry's
+          // successful IPC. This is not a native PostgreSQL COMMIT verdict.
           sent.push(message);
-          expect(statements.at(-1)).toBe("COMMIT");
+          expect(completionAcknowledged).toBe(true);
           child.emit("message", message);
         },
       }, {
         pg: { Pool: FakePool },
         "./reader-summary-first-publication-reservation": reservation,
-        "./reader-summary-first-publication-pg18.spec-support": fixture,
+        "./reader-summary-first-publication-pg18.spec-support": {
+          ...fixture,
+          reserveFirstpubCrashDay: (pool: Parameters<FirstpubCrashReservation>[0], day: Parameters<FirstpubCrashReservation>[1], reservedAt: Date) =>
+            fixture.reserveFirstpubCrashDay(pool, day, reservedAt, { kind: "offline-reservation", reserve: offlineReserve }),
+        },
       });
     } catch (error) {
       loaderError = error;
@@ -69,11 +105,22 @@ it("loads the exact crash child with the pinned test project and curated environ
   const adminQuery = jest.fn().mockResolvedValue({ rows: [{ count: "1" }] });
   const refusingClient = { $transaction: jest.fn().mockRejectedValue(Object.assign(new Error("synthetic consumed slot"), { code: "P0001" })) };
   try {
-    await proveNativeFirstpubProcessCrash({
+    const proof = proveNativeFirstpubProcessCrash({
       database: "firstpub_synthetic_claim_slots_unknown",
       socketHost: "/proc/424242/cwd/.firstpub-native-pg18-TestOnly/socket",
       admin: { query: adminQuery }, client: refusingClient,
     } as unknown as fixture.NativeFirstpubClaimFixture);
+    const observedProof = proof.then(() => ({ ok: true } as const),
+      (error: unknown) => ({ ok: false, error: loaderError ?? error } as const));
+    await Promise.race([bodyReturned.promise, observedProof.then((outcome) => {
+      if (!outcome.ok) throw outcome.error;
+      throw new Error("Crash proof completed before explicit owner acknowledgement");
+    })]);
+    expect(sent).toEqual([]);
+    expect(connection.release).not.toHaveBeenCalled();
+    ownerCompletion.resolve();
+    const outcome = await observedProof;
+    if (!outcome.ok) throw outcome.error;
   } catch (error) { throw loaderError ?? error; }
   finally { jest.mocked(fork).mockReset(); }
 
@@ -83,8 +130,9 @@ it("loads the exact crash child with the pinned test project and curated environ
     entry: resolve("scripts/lib/reader-summary-first-publication-pg18-crash.spec-support.ts") });
   expect(poolOptions).toEqual([{ host: "/proc/424242/cwd/.firstpub-native-pg18-TestOnly/socket", port: 5432,
     database: "firstpub_synthetic_claim_slots_unknown", user: "firstpub_synthetic_finite", connectionTimeoutMillis: 5000, max: 1 }]);
-  expect(statements[0]).toBe("BEGIN ISOLATION LEVEL READ COMMITTED");
+  expect(transactionOptions).toEqual([{ isolationLevel: "ReadCommitted", maxWait: 30_000, timeout: 30_000 }]);
   expect(statements.some((sql) => sql.includes("set_config('social_monitor.tenant_id'"))).toBe(true);
+  expect(tenantInputs).toEqual([[fixture.pg18FixtureScope.tenantId, fixture.pg18FixtureScope.workspaceId, "false"]]);
   expect(statements.some((sql) => sql.includes("reserve_reader_summary_first_publication"))).toBe(true);
   expect(sent).toEqual(["FIRSTPUB_COMMITTED"]);
   expect(connection.release).toHaveBeenCalledTimes(1);
@@ -92,6 +140,12 @@ it("loads the exact crash child with the pinned test project and curated environ
   expect(adminQuery).toHaveBeenCalledTimes(1);
   expect(refusingClient.$transaction).toHaveBeenCalledTimes(1);
 });
+
+function controlledPromise<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => { resolve = complete; });
+  return { promise, resolve };
+}
 
 // Compare runtime object/function/descriptor identity; no copied source-map
 // implementation or assumed handler counts. Observe both Jest and Node realms.
@@ -236,4 +290,42 @@ it.each(["pinned project", "root project TS5011"])("contains actual compiler hoo
     expect(send).not.toHaveBeenCalled();
     assertSharedUnchanged();
   }
+});
+
+// RED on exact4c55: its minimal connect-only caller reads pool.options before
+// reaching reservation. This contract supplies only an opaque completion port;
+// it executes no Pool method, SQL, Prisma engine, loader or child process.
+it("explicit offline crash reservation reaches its port and awaits completion without Pool config", async () => {
+  const pool = { connect: jest.fn(() => { throw new Error("Pool execution forbidden"); }) };
+  const day = { ...fixture.pg18FixtureScope, startedAt: "2026-09-29T00:00:00.000Z", endedAt: "2026-09-30T00:00:00.000Z" };
+  const reservedAt = new Date("2026-10-02T00:00:00.000Z");
+  let complete!: () => void;
+  let refuse!: (error: unknown) => void;
+  const pending = new Promise<void>((resolvePort, rejectPort) => { complete = resolvePort; refuse = rejectPort; });
+  const reserve = jest.fn((receivedPool: unknown, receivedDay: unknown, receivedTime: unknown) => {
+    expect(receivedPool).toBe(pool);
+    expect(receivedDay).toBe(day);
+    expect(receivedTime).toBe(reservedAt);
+    return pending;
+  });
+  const composition = { kind: "offline-reservation", reserve } as const;
+  const success = jest.fn();
+  const operation = fixture.reserveFirstpubCrashDay(pool as never, day, reservedAt, composition).then(success);
+  expect(reserve).toHaveBeenCalledTimes(1);
+  await Promise.resolve();
+  expect(success).not.toHaveBeenCalled();
+  complete(); await operation;
+  expect(success).toHaveBeenCalledTimes(1);
+  expect(pool.connect).not.toHaveBeenCalled();
+
+  const failure = new Error("reservation completion refused");
+  const rejected = new Promise<void>((_resolvePort, rejectPort) => { refuse = rejectPort; });
+  const later = jest.fn();
+  const failedOperation = fixture.reserveFirstpubCrashDay(pool as never, day, reservedAt,
+    { kind: "offline-reservation", reserve: () => rejected }).then(later);
+  const observed = failedOperation.catch((error: unknown) => error);
+  refuse(failure);
+  expect(await observed).toBe(failure);
+  expect(later).not.toHaveBeenCalled();
+  expect(pool.connect).not.toHaveBeenCalled();
 });

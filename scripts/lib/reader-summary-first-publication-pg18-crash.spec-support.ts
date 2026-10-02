@@ -2,7 +2,7 @@ import { fork } from "node:child_process";
 import { resolve } from "node:path";
 import { Pool } from "pg";
 import { reserveFirstPublicationDay } from "./reader-summary-first-publication-reservation";
-import { nativeFirstpubPrismaClient, pg18FixtureScope, type NativeFirstpubClaimFixture } from "./reader-summary-first-publication-pg18.spec-support";
+import { reserveFirstpubCrashDay, pg18FixtureScope, type NativeFirstpubClaimFixture } from "./reader-summary-first-publication-pg18.spec-support";
 
 const day = { ...pg18FixtureScope, startedAt: "2026-09-29T00:00:00.000Z", endedAt: "2026-09-30T00:00:00.000Z" };
 const crashDatabase = "firstpub_synthetic_claim_slots_unknown";
@@ -59,7 +59,7 @@ if (require.main === module && process.send !== undefined) {
           input.database !== crashDatabase) throw new Error("Only the owned synthetic crash socket/database is allowed");
       const pool = new Pool({ host: input.socketHost, port: 5432, database: crashDatabase,
         user: "firstpub_synthetic_finite", connectionTimeoutMillis: 5000, max: 1 });
-      await reserveFirstPublicationDay(nativeFirstpubPrismaClient(pool), day, new Date());
+      await reserveFirstpubCrashDay(pool, day, new Date());
       // Keep this process/connection alive until the parent kills it. The
       // message follows actual successful COMMIT, not transaction intent.
       process.send?.("FIRSTPUB_COMMITTED");

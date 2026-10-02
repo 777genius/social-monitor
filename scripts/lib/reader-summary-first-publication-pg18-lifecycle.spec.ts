@@ -3,6 +3,10 @@ import fs from "node:fs";
 import { join } from "node:path";
 import { createFirstPublicationPg18Fixture } from "./reader-summary-first-publication-pg18.spec-support";
 
+// Explicitly selects lifecycle fault/retention coverage, without an application
+// generated graph. The genuine fixture's default prerequisite is unchanged.
+const offlineLifecycle = { kind: "offline-lifecycle-faults" } as const;
+
 jest.mock("node:child_process", () => ({ spawnSync: jest.fn() }));
 jest.mock("pg", () => ({ Pool: jest.fn().mockImplementation(() => ({
   query: jest.fn().mockRejectedValue(new Error("synthetic SQL setup refused")),
@@ -108,14 +112,14 @@ afterEach(() => {
 
 it.each(["getuid", "geteuid"] as const)("rejects root %s before creating a namespace or issuing any command", async (kind) => {
   jest.mocked(process[kind]).mockReturnValue(0);
-  await expect(createFirstPublicationPg18Fixture()).rejects.toThrow(/nonroot/u);
+  await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow(/nonroot/u);
   expect(namespace()).toBeUndefined(); expect(commands).toEqual([]);
 });
 
 it.each(["timeout", "signal", "spawn-error", "start-nonzero", "missing-pid", "empty-pid", "status-failed", "status-empty", "status-wrong-pid", "foreign-uid", "foreign-executable"])(
   "retains namespace and never issues stop after uncertain startup: %s", async (fault) => {
     mode = fault;
-    await expect(createFirstPublicationPg18Fixture()).rejects.toThrow();
+    await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow();
     expect(commands).not.toContain("pg_ctl:stop");
     expect(fs.existsSync(join(root(), "data"))).toBe(true);
     expect(fs.existsSync(join(root(), "socket"))).toBe(true);
@@ -124,7 +128,7 @@ it.each(["timeout", "signal", "spawn-error", "start-nonzero", "missing-pid", "em
 
 it.each(["stop-timeout", "stop-status-failed", "stop-status-signal", "stop-pid-retained", "stop-process-retained"])("retains namespace after uncertain owned shutdown: %s", async (fault) => {
   mode = fault;
-  await expect(createFirstPublicationPg18Fixture()).rejects.toThrow();
+  await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow();
   expect(commands.filter((c) => c === "pg_ctl:stop")).toHaveLength(1);
   expect(fs.existsSync(join(root(), "data"))).toBe(true);
   expect(fs.existsSync(join(root(), "socket"))).toBe(true);
@@ -132,7 +136,7 @@ it.each(["stop-timeout", "stop-status-failed", "stop-status-signal", "stop-pid-r
 
 it.each(["changed-pid-before-stop", "changed-namespace-before-stop"])("refuses stop when owned identity changes: %s", async (fault) => {
   mode = fault;
-  await expect(createFirstPublicationPg18Fixture()).rejects.toThrow();
+  await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow();
   expect(commands).not.toContain("pg_ctl:stop");
   expect(fs.existsSync(join(root(), "data"))).toBe(true);
   expect(fs.existsSync(join(root(), "socket"))).toBe(true);
@@ -140,7 +144,7 @@ it.each(["changed-pid-before-stop", "changed-namespace-before-stop"])("refuses s
 
 it("refuses stop, cleanup and evidence writes into a replaced namespace", async () => {
   mode = "changed-root-before-stop";
-  await expect(createFirstPublicationPg18Fixture()).rejects.toThrow();
+  await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow();
   expect(commands).not.toContain("pg_ctl:stop");
   expect(realRead(join(root(), "foreign-marker"), "utf8")).toBe("untouched");
   expect(fs.readdirSync(root())).toEqual(["foreign-marker"]);
@@ -149,7 +153,7 @@ it("refuses stop, cleanup and evidence writes into a replaced namespace", async 
 });
 
 it("records redacted startup outcome and state evidence", async () => {
-  await expect(createFirstPublicationPg18Fixture()).rejects.toThrow();
+  await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow();
   const log = realRead(join(root(), "lifecycle.json"), "utf8");
   const events = JSON.parse(log) as { state: string; action?: string; exit?: number | null; signal?: string; spawnError?: string }[];
   expect(events.map((e) => e.state)).toEqual(expect.arrayContaining(["initialized", "start-requested", "uncertain"]));
@@ -162,7 +166,7 @@ it("records redacted startup outcome and state evidence", async () => {
 // Regression: successful shutdown reintroduces automatic data/socket deletion.
 it("retains the entire namespace after owned identity and verified shutdown", async () => {
   mode = "normal";
-  await expect(createFirstPublicationPg18Fixture()).rejects.toThrow("synthetic SQL setup refused");
+  await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow("synthetic SQL setup refused");
   expect(commands.filter((c) => c === "pg_ctl:stop")).toHaveLength(1);
   expect(fs.existsSync(join(root(), "data"))).toBe(true);
   expect(fs.existsSync(join(root(), "socket"))).toBe(true);
@@ -198,7 +202,7 @@ it("retains restarted data and socket bytes during verified-stop evidence write"
   jest.spyOn(fs, "lstatSync").mockImplementation(((path) => String(path) === `/proc/${restartedPid}` && restarted
     ? Object.assign(realLstat(scratch), { uid: 1000 }) : observedLstat(path)) as typeof fs.lstatSync);
 
-  await expect(createFirstPublicationPg18Fixture()).rejects.toThrow("synthetic SQL setup refused");
+  await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow("synthetic SQL setup refused");
   expect(restarted).toBe(true);
   expect(live).toBe(true);
   expect(fs.lstatSync(`/proc/${restartedPid}`).uid).toBe(1000);
