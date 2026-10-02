@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "environment": "production-hetzner",
+  "state": "/var/lib/social-monitor-release",
+  "inbox": "/var/lib/social-monitor-release/inbox",
+  "adapter": "/etc/social-monitor/release/operator-adapter",
+  "project": "REPLACE_WITH_DISCOVERED_PROJECT",
+  "project_directory": "/REPLACE_WITH_TRUSTED_APP_CONFIGURATION",
+  "compose_files": [
+    "/REPLACE_WITH_TRUSTED_APP_CONFIGURATION/compose.yml",
+    "/REPLACE_WITH_TRUSTED_APP_CONFIGURATION/compose.private.yml",
+    "/REPLACE_WITH_TRUSTED_APP_CONFIGURATION/compose.jev.yml"
+  ],
+  "env_files": [
+    "/REPLACE_WITH_OPERATOR_ENV_FILE_PATH"
+  ],
+  "required_non_targets": {
+    "jev-agent-runtime": "REPLACE_WITH_DISCOVERED_CONTAINER_NAME",
+    "jev-intelligence-worker": "REPLACE_WITH_DISCOVERED_CONTAINER_NAME",
+    "social-x-collector": "REPLACE_WITH_DISCOVERED_CONTAINER_NAME"
+  },
+  "fenced_units": [
+    "REPLACE_WITH_DISCOVERED_WRITER.timer",
+    "REPLACE_WITH_DISCOVERED_WRITER.service"
+  ],
+  "migration_root": "/REPLACE_WITH_CANDIDATE_PRISMA_MIGRATIONS_ROOT",
+  "max_archive_bytes": 10000000000,
+  "backup_max_age_seconds": 21600,
+  "evidence_max_age_seconds": 60,
+  "probe_attempts": 30,
+  "probe_interval_seconds": 2,
+  "backup_identity": {
+    "wrapper": "/usr/local/sbin/pgbackrest-with-cipher-pass",
+    "config_path": "/REPLACE_WITH_ROOT_BACKUP_CONFIG",
+    "stanza": "REPLACE_WITH_STANZA",
+    "repository": "1",
+    "repository_id": "REPLACE_WITH_REPOSITORY_ID",
+    "system_identifier": "REPLACE_WITH_PG_SYSTEM_IDENTIFIER"
+  }
+}
