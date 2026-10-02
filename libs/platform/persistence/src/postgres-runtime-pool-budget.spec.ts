@@ -11,6 +11,11 @@ import {
   BOUNDED_POSTGRES_TEST_POOL_MAXIMUMS,
 } from './postgres-runtime-pool-budget-test-inventory';
 import {
+  CommitAckClient,
+  CommitAckWire,
+  commitAckPool,
+} from './postgres-runtime-pool-commit-ack.spec-support';
+import {
   directDatabaseConstructions,
   directPoolOptions,
   expectedSourceList,
@@ -198,6 +203,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // Cursor cleanup regression uses installed Pool lifecycle with a controlled wire client and an unused pool.
     expect(rawConstructions).toEqual(expectedSourceList(`
       libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts:Pool
+      libs/platform/persistence/src/postgres-runtime-pool-commit-ack.spec-support.ts:Pool
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:Pool
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:PrismaPg
       libs/platform/persistence/src/postgres-runtime-pool.ts:Pool
@@ -280,6 +286,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-daily-cursor-fixture-cleanup.spec.ts:Pool
       scripts/lib/reader-summary-daily-cursor-fixture-cleanup.spec.ts:Pool
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts:Pool
+      scripts/lib/reader-summary-first-publication-pg18-crash.spec-support.ts:Pool
+      scripts/lib/reader-summary-first-publication-pg18.spec-support.ts:Pool
       scripts/lib/reader-summary-production-day-scope.ts:Pool
       scripts/lib/reader-summary-promotion-v2-historical-postgres.ts:Pool
       scripts/lib/reader-summary-quality-dashboard-report-builder.ts:Pool
@@ -346,7 +354,11 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // releases/ends it in finally; its sibling spec spies on the CJS constructor.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts
+      libs/platform/persistence/src/commit-ack-wiring.spec.ts
+      libs/platform/persistence/src/commit-ack.spec.ts
       libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts
+      libs/platform/persistence/src/postgres-runtime-pool-commit-ack.spec-support.ts
+      libs/platform/persistence/src/postgres-runtime-pool-commit-ack.ts
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts
       libs/platform/persistence/src/postgres-runtime-pool.spec.ts
       libs/platform/persistence/src/postgres-runtime-pool.ts
@@ -404,6 +416,12 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-daily-production-owner-topology-postgres.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.spec.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts
+      scripts/lib/reader-summary-first-publication-pg18-composition.spec-support.ts
+      scripts/lib/reader-summary-first-publication-pg18-crash.spec-support.ts
+      scripts/lib/reader-summary-first-publication-pg18-lifecycle.spec.ts
+      scripts/lib/reader-summary-first-publication-pg18-prisma.spec-support.ts
+      scripts/lib/reader-summary-first-publication-pg18-snapshot.spec-support.ts
+      scripts/lib/reader-summary-first-publication-pg18.spec-support.ts
       scripts/lib/reader-summary-large-daily-publication-postgres-contract.ts
       scripts/lib/reader-summary-linear-utf16-postgres-contract.ts
       scripts/lib/reader-summary-new-input-refresh-native-concurrency.ts
@@ -967,5 +985,70 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     const mcpMain = readSource('apps/social-research-mcp/src/main.ts');
     expect(grpcMain).toMatch(/runtime\s*\.close\(\)\s*\.catch\(/s);
     expect(mcpMain).toMatch(/runtime\.close\(\)\.catch\(/s);
+  });
+});
+
+describe('socketless COMMIT acknowledgement pool bounds', () => {
+  it('keeps the synthetic constructor reachable only from its exact test consumers', () => {
+    const helper = 'libs/platform/persistence/src/postgres-runtime-pool-commit-ack.spec-support.ts';
+    const consumers = [...runtimeSourceFiles('apps'), ...runtimeSourceFiles('libs'), ...runtimeSourceFiles('scripts'), ...runtimeSourceFiles('prisma')]
+      .filter((path) => path !== helper && path !== 'libs/platform/persistence/src/postgres-runtime-pool-budget-test-inventory.ts')
+      .filter((path) => readSource(path).includes('postgres-runtime-pool-commit-ack.spec-support'))
+      .sort();
+    expect(consumers).toEqual([
+      'libs/platform/persistence/src/commit-ack-wiring.spec.ts',
+      'libs/platform/persistence/src/commit-ack.spec.ts',
+      'libs/platform/persistence/src/postgres-runtime-pool-budget.spec.ts',
+    ]);
+  });
+
+  it.each([undefined, 1, 2] as const)('bounds actual synthetic leases for max=%s', async (maximum) => {
+    const pool = commitAckPool(maximum);
+    const acquire = () => pool.connect();
+    const held: Array<Awaited<ReturnType<typeof acquire>>> = [];
+    try {
+      // Check before acquisition so a wrong Client fails without opening a socket.
+      expect(Reflect.get(pool.options, 'Client')).toBe(CommitAckClient);
+      expect(pool.options.min).toBe(0);
+      expect(pool.options.max).toBe(maximum ?? 1);
+      for (let index = 0; index < (maximum ?? 1); index += 1) {
+        const client = await acquire();
+        held.push(client);
+        expect(client).toBeInstanceOf(CommitAckClient);
+        expect(Reflect.get(client, 'wire')).toBeInstanceOf(CommitAckWire);
+      }
+      const next = acquire();
+      expect(pool.totalCount).toBe(maximum ?? 1);
+      expect(pool.waitingCount).toBe(1);
+      const released = held.shift();
+      released?.release();
+      const reacquired = await next;
+      held.push(reacquired);
+      expect(reacquired).toBe(released);
+      expect(pool.totalCount).toBe(maximum ?? 1);
+      expect(pool.waitingCount).toBe(0);
+    } finally {
+      for (const client of held) client.release();
+      await pool.end();
+    }
+  });
+
+  it.each([0, -1, 3, 1.5, NaN, Infinity])('rejects unbounded or unsupported max=%s before construction', (maximum) => {
+    expect(() => commitAckPool(maximum as 1)).toThrow(RangeError);
+  });
+
+  it('retains independent native constructor bounds without executing native helpers', () => {
+    for (const path of [
+      'scripts/lib/reader-summary-first-publication-pg18-crash.spec-support.ts',
+      'scripts/lib/reader-summary-first-publication-pg18.spec-support.ts',
+    ]) {
+      const options = directPoolOptions(readSource(path));
+      expect(options).toHaveLength(1);
+      // These baseline constructors omit min; installed pg-pool defaults it to 0.
+      for (const option of options) {
+        expect(/\bmin:\s*([^,\s}]+)/.exec(option)?.[1] ?? '0').toBe('0');
+        expect(option).not.toContain('...');
+      }
+    }
   });
 });

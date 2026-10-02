@@ -58,8 +58,12 @@ export class CommitAckClient extends Client {
   }
 }
 
-export function commitAckPool(max = 1): Pool {
+export function commitAckPool(max: 1 | 2 = 1): Pool {
+  if (max !== 1 && max !== 2) {
+    throw new RangeError('Synthetic COMMIT acknowledgement pool max must be 1 or 2');
+  }
   return new Pool({
+    min: 0,
     max,
     idleTimeoutMillis: 0,
     Client: CommitAckClient,
