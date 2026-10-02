@@ -1,12 +1,19 @@
+import { randomUUID, createHash } from "node:crypto";
+import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
+import { reserveFirstPublicationDay } from "./reader-summary-first-publication-reservation";
+import { createReaderSummaryPublicationRunningFixture } from "./reader-summary-publication-postgres-running-fixture";
+import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
 import { createFirstpubPg18Lifecycle } from "./reader-summary-first-publication-pg18-lifecycle.spec-support";
 import { readPublicationBootstrapSql } from "./reader-summary-publication-bootstrap-sql";
 import { provisionReaderSummaryPublicationFixtureScope, readerSummaryPublicationFixtureScope } from "./reader-summary-publication-postgres-fixture-scope";
-import { guardRootClientDuringInteractiveTransaction } from "../../libs/platform/persistence/src/postgres-runtime-pool-transaction-guard";
-import type { PrismaSummaryTransactionOptions, PrismaTransactionalSummaryClient } from "../../libs/summary/adapters/persistence/prisma/prisma-summary-transaction";
-import type { PrismaReaderSummaryClient } from "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-client";
+import { createNativeFirstpubPrismaConnection, closeFirstpubPrismaOwners, expectFirstpubPrismaSqlState,
+  type NativeFirstpubPrismaConnection, type NativeFirstpubTransactionHooks } from "./reader-summary-first-publication-pg18-prisma.spec-support";
+import type { PrismaTransactionalSummaryClient } from "../../libs/summary/adapters/persistence/prisma/prisma-summary-transaction";
+export { nativeFirstpubPrismaClient } from "./reader-summary-first-publication-pg18-prisma.spec-support";
+export type { NativeFirstpubTransactionHooks } from "./reader-summary-first-publication-pg18-prisma.spec-support";
 
 export const firstpubContractMigration = "20261001220000_reader_summary_first_publication_finite_contract";
 export const pg18FixtureScope = readerSummaryPublicationFixtureScope;
@@ -16,7 +23,7 @@ export type NativeFirstpubClaimFixture = Readonly<{
   socketHost: string; database: string;
 }>;
 
-/** No connection URL, shared server, Docker, installation, passwords or TCP.
+/** No external connection URL, shared server, Docker, installation, passwords or TCP.
  * A native PG18 binary directory is mandatory. Missing proof fails, never skips.
  * /proc/<this pid>/cwd is only a short alias to our owned workspace: Unix socket
  * paths otherwise exceed sun_path's limit in long worker workspace names. */
@@ -25,6 +32,9 @@ export async function createFirstPublicationPg18Fixture() {
       process.getuid() === 0 || process.geteuid() === 0 || process.getuid() !== process.geteuid()) {
     throw new Error("FIRSTPUB native fixture requires an admitted nonroot identity before namespace creation");
   }
+  // A required generated graph must be loadable before creating any native
+  // namespace. The unchanged loader fails instead of generating or skipping.
+  loadPrismaRuntimeClient();
   const bin = process.env.FIRSTPUB_NATIVE_PG18_BIN ?? "/usr/lib/postgresql/18/bin";
   const required = ["initdb", "pg_ctl", "postgres"].map((name) => join(bin, name));
   if (!required.every(existsSync)) {
@@ -34,12 +44,36 @@ export async function createFirstPublicationPg18Fixture() {
   const { root, host } = lifecycle;
   const database = "firstpub_synthetic";
   const pools = new Set<Pool>();
+  const prismaOwners = new Set<NativeFirstpubPrismaConnection>();
+  let prismaConstructionFailure: unknown;
+  let prismaConstructionFailed = false;
+  const assertPrismaConstructionCertain = () => {
+    if (prismaConstructionFailed) {
+      throw new AggregateError([prismaConstructionFailure], `Prisma construction cleanup uncertain; retained ${root}`);
+    }
+  };
+  const openPrisma = async (hooks: NativeFirstpubTransactionHooks = {}, db = database) => {
+    let connection: NativeFirstpubPrismaConnection;
+    try { connection = await createNativeFirstpubPrismaConnection({ socketHost: host, database: db }, hooks); }
+    catch (error) { prismaConstructionFailed = true; prismaConstructionFailure = error; throw error; }
+    const owner = new Proxy(connection, {
+      get(target, property) {
+        if (property === "close") return async () => { await target.close(); prismaOwners.delete(owner); };
+        const value: unknown = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    prismaOwners.add(owner);
+    return owner;
+  };
   const pool = (user: string, db = database) => {
     const value = new Pool({ host, port: 5432, user, database: db, max: 4, connectionTimeoutMillis: 5000 });
     pools.add(value); return value;
   };
   const closePool = async (value: Pool) => { await value.end(); pools.delete(value); };
   const stop = async () => {
+    await closeFirstpubPrismaOwners(prismaOwners);
+    assertPrismaConstructionCertain();
     await Promise.all([...pools].map(closePool));
     lifecycle.stop();
   };
@@ -94,18 +128,31 @@ export async function createFirstPublicationPg18Fixture() {
       if (!/^(jobs|artifacts|publications|slots|daily_model_jobs)_(failed|unknown)$/u.test(name)) {
         throw new Error("Unknown bounded synthetic claim case");
       }
+      if (prismaOwners.size !== 0) throw new Error("Close owned Prisma leases before switching to a claim clone");
       const clone = `firstpub_synthetic_claim_${name}`;
       await server.query(`CREATE DATABASE ${clone} TEMPLATE firstpub_synthetic_template`);
       const cloneAdmin = pool("firstpub_synthetic_super", clone);
       const cloneMigrator = pool("firstpub_synthetic_migrator", clone);
       const cloneFinite = pool("firstpub_synthetic_finite", clone);
+      let operationError: unknown;
+      let operationFailed = false;
       try {
         await cloneMigrator.query(contractSql);
-        await operation({ admin: cloneAdmin, finite: cloneFinite, client: nativeFirstpubPrismaClient(cloneFinite), socketHost: host, database: clone });
-      } finally {
+        const client = await openPrisma({}, clone);
+        await operation({ admin: cloneAdmin, finite: cloneFinite, client, socketHost: host, database: clone });
+      } catch (error) { operationFailed = true; operationError = error; }
+      try {
+        // Config ownership must be released before dropping the clone or using
+        // the main DB. Failed cleanup retains the clone and owned namespace.
+        await closeFirstpubPrismaOwners(prismaOwners);
+        assertPrismaConstructionCertain();
         await Promise.all([cloneAdmin, cloneMigrator, cloneFinite].map(closePool));
-        await server.query(`DROP DATABASE ${clone}`);
+        if (!operationFailed) await server.query(`DROP DATABASE ${clone}`);
+      } catch (cleanupError) {
+        if (operationFailed) throw new AggregateError([operationError, cleanupError], `Claim failed and cleanup uncertain; retained ${root}`);
+        throw cleanupError;
       }
+      if (operationFailed) throw operationError;
     };
     const principal = (user: string) => {
       if (!/^firstpub_synthetic_(finite|bypass|super_member|missing|owner_set|schema_set)$/u.test(user)) {
@@ -113,7 +160,7 @@ export async function createFirstPublicationPg18Fixture() {
       }
       return pool(user);
     };
-    return { admin, finite, root, installContract, withClaimCase, principal, stop, client: nativeFirstpubPrismaClient(finite) };
+    return { admin, finite, root, installContract, withClaimCase, principal, stop, openPrisma };
   } catch (error) {
     if (!lifecycle.isOwned()) throw error;
     try { await stop(); } catch (shutdownError) { throw new AggregateError([error, shutdownError], `Own PG18 fixture failed; retained ${root}`); }
@@ -121,58 +168,82 @@ export async function createFirstPublicationPg18Fixture() {
   }
 }
 
-/** Executes the actual adapter callback and unchanged tenant middleware over
- * native PG connections; template parameters stay separate from SQL text. */
-export type NativeFirstpubTransactionHooks = Readonly<{
-  afterTenantContext?: () => Promise<void>;
-  afterDeadline?: () => Promise<void>;
-}>;
 
-export function nativeFirstpubPrismaClient(
-  pool: Pool, hooks: NativeFirstpubTransactionHooks = {},
-): PrismaTransactionalSummaryClient {
-  const sql = (query: TemplateStringsArray) => query.reduce((result, part, i) => result + (i ? `$${i}` : "") + part, "");
-  const raw = {
-    $transaction: async <T>(callback: (tx: PrismaReaderSummaryClient) => Promise<T>, options?: PrismaSummaryTransactionOptions) => {
-      const connection = await pool.connect();
-      try {
-        if (options?.isolationLevel !== undefined &&
-            options.isolationLevel !== "Serializable" && options.isolationLevel !== "ReadCommitted") {
-          throw new Error("Native firstpub fixture does not support the requested isolation");
+// Migrated native matrix: the frozen legacy helper still expects pg errors.
+const start = new Date("2026-09-29T00:00:00.000Z"), end = new Date("2026-09-30T00:00:00.000Z");
+const day = { ...pg18FixtureScope, startedAt: start.toISOString(), endedAt: end.toISOString() };
+const periodKey = `daily:${day.startedAt}:${day.endedAt}:UTC`;
+
+/** Every case commits its claim in an independent, empty synthetic DB clone.
+ * No ledger is deleted, trigger disabled, or impossible FAILED publication
+ * status fabricated. Slots/publications have no caller-failure status: both
+ * failed and UNKNOWN describe the caller after that durable commit. */
+export async function proveNativeFirstpubPrismaClaimMatrix(
+  withClaimCase: (name: NativeFirstpubClaimCase, operation: (fixture: NativeFirstpubClaimFixture) => Promise<void>) => Promise<void>,
+): Promise<void> {
+  for (const category of ["jobs", "artifacts", "publications", "slots", "daily_model_jobs"] as const) {
+    for (const outcome of ["failed", "unknown"] as const) {
+      await withClaimCase(`${category}_${outcome}`, async (f) => {
+        const status = outcome === "failed" ? "FAILED" : "RUNNING";
+        const params = [randomUUID(), day.tenantId, day.workspaceId, start, end, periodKey, status];
+        if (category === "jobs") {
+          await f.admin.query(`INSERT INTO reader_summary_jobs(id,tenant_id,workspace_id,scope_type,scope_key,cadence,
+            period_started_at,period_ended_at,period_timezone,period_key,status,idempotency_key,requested_at,created_at,updated_at)
+            VALUES($1,$2,$3,'workspace','workspace','daily',$4,$5,'UTC',$6,$7,$1::text,$5,$5,$5)`, params);
+        } else if (category === "artifacts") {
+          await f.admin.query(`INSERT INTO reader_summary_artifacts(id,tenant_id,workspace_id,scope_type,scope_key,cadence,
+            period_started_at,period_ended_at,period_timezone,period_key,status,model_version,prompt_version,headline,
+            artifact_payload,citations,quality_signals,created_at,updated_at)
+            VALUES($1,$2,$3,'workspace','workspace','daily',$4,$5,'UTC',$6,$7,'synthetic','synthetic','synthetic',
+              '{}','[]','{}',$5,$5)`, params);
+        } else if (category === "slots") {
+          await reserveFirstPublicationDay(f.client, day, new Date());
+        } else if (category === "publications") {
+          const seed = await f.admin.connect();
+          const fixture = await (async () => {
+            try { return await createReaderSummaryPublicationRunningFixture(seed, "NO_SIGNAL", "2026-09-29", { providerEvidence: "none" }); }
+            finally { seed.release(); }
+          })();
+          const payload = JSON.stringify(fixture.payload);
+          const rows = await runWithTenantDatabaseAccess(day, () => f.client.$queryRaw<readonly { outcome: string }[]>`
+            SELECT * FROM public.publish_reader_summary(${payload}::jsonb)`);
+          expect(rows).toHaveLength(1);
+          expect(rows[0]?.outcome).toBe("published");
+          // Publication, artifact and job FKs remain real. This scenario does
+          // not corrupt parents merely to isolate one OR predicate.
+        } else {
+          const canonical = Buffer.from("{}", "utf8");
+          const digest = createHash("sha256").update(canonical).digest("hex");
+          await f.admin.query(`INSERT INTO reader_summary_daily_source_authorities
+            (tenant_id,workspace_id,requested_utc_date,ingestion_cutoff,canonical_record,canonical_bytes,canonical_sha256,created_at)
+            VALUES($1,$2,'2026-09-29',$3,'{}',$4,$5,$3)`, [day.tenantId, day.workspaceId, end, canonical, digest]);
+          await f.admin.query(`INSERT INTO reader_summary_daily_model_jobs
+            (tenant_id,workspace_id,requested_utc_date,identity,source_authority_sha256,provider,model,reasoning_effort,
+              runtime_engine,state,reserved_at,running_at,failed_ambiguous_at)
+            VALUES($1,$2,'2026-09-29',$3,$4,'synthetic','synthetic','synthetic','synthetic',$5,$6,$6,
+              CASE WHEN $5='FAILED_AMBIGUOUS' THEN $6::timestamptz ELSE NULL END)`,
+          [day.tenantId, day.workspaceId, randomUUID(), digest, outcome === "failed" ? "FAILED_AMBIGUOUS" : "RUNNING", end]);
         }
-        await connection.query(`BEGIN ISOLATION LEVEL ${options?.isolationLevel === "Serializable" ? "SERIALIZABLE" : "READ COMMITTED"}`);
-        let contextConfigured = false;
-        let deadlineConfigured = false;
-        const tx = {
-          $queryRaw: async (query: TemplateStringsArray, ...values: unknown[]) => {
-            const statement = sql(query);
-            const result = await connection.query(statement, values);
-            if (!deadlineConfigured && statement.includes("set_config('statement_timeout'")) {
-              deadlineConfigured = true;
-              await hooks.afterDeadline?.();
-            }
-            return result.rows;
-          },
-          $executeRaw: async (query: TemplateStringsArray, ...values: unknown[]) => (await connection.query(sql(query), values)).rowCount,
-          $executeRawUnsafe: async (query: string, ...values: unknown[]) => {
-            const result = await connection.query(query, values);
-            if (!contextConfigured && query.includes("set_config('social_monitor.tenant_id'")) {
-              contextConfigured = true;
-              await hooks.afterTenantContext?.();
-            }
-            return result.rowCount;
-          },
-        };
-        const result = await callback(tx as unknown as PrismaReaderSummaryClient);
-        const commit = await connection.query("COMMIT");
-        // PostgreSQL returns command ROLLBACK for COMMIT on an aborted tx.
-        // Treating that as success would manufacture a durability proof.
-        if (commit.command !== "COMMIT") throw new Error("Native firstpub transaction did not commit");
-        return result;
-      } catch (error) { await connection.query("ROLLBACK"); throw error; }
-      finally { connection.release(); }
-    },
-    $queryRaw: async (query: TemplateStringsArray, ...values: unknown[]) => (await pool.query(sql(query), values)).rows,
-  };
-  return guardRootClientDuringInteractiveTransaction(raw) as unknown as PrismaTransactionalSummaryClient;
+        // Check committed rows through an independent new finite connection.
+        const connection = await f.finite.connect();
+        try {
+          await connection.query(`SELECT set_config('social_monitor.tenant_id',$1,false),
+            set_config('social_monitor.workspace_id',$2,false),set_config('social_monitor.system_access','false',false)`,
+          [day.tenantId, day.workspaceId]);
+          const table = {
+            jobs: "reader_summary_jobs", artifacts: "reader_summary_artifacts", publications: "reader_summary_publications",
+            slots: "reader_summary_publication_slots", daily_model_jobs: "reader_summary_daily_model_jobs",
+          }[category];
+          const rows = await connection.query(`SELECT count(*) FROM public.${table}`);
+          expect(Number(rows.rows[0].count)).toBe(1);
+        } finally { connection.release(); }
+        let providerEffects = 0;
+        await expectFirstpubPrismaSqlState((async () => {
+          await reserveFirstPublicationDay(f.client, day, new Date());
+          providerEffects++;
+        })(), "P0001");
+        expect(providerEffects).toBe(0);
+      });
+    }
+  }
 }

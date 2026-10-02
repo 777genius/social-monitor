@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import { ReaderSummaryJob, buildReaderSummaryPeriod } from "@social-monitor/summary/domain";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { PrismaReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-publication";
+import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import type { ReaderSummaryPublicationCommand } from "@social-monitor/summary/ports";
 import { runSerializableReaderSummaryTransaction } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-transaction";
 import { readerSummaryFirstPublicationPrefix } from "@social-monitor/summary/application/contracts/reader-summary-first-publication-authority";
@@ -10,9 +12,9 @@ import { reserveFirstPublicationDay } from "./reader-summary-first-publication-r
 import { captureFirstPublicationInventory, readFirstPublicationObservationScope } from "./reader-summary-first-publication-inventory";
 import { ReaderSummaryDayDatasetGuard } from "./reader-summary-day-dataset-guard";
 import { createReaderSummaryPublicationRunningFixture } from "./reader-summary-publication-postgres-running-fixture";
-import { createFirstPublicationPg18Fixture, nativeFirstpubPrismaClient, pg18FixtureScope } from "./reader-summary-first-publication-pg18.spec-support";
+import { createFirstPublicationPg18Fixture, proveNativeFirstpubPrismaClaimMatrix, pg18FixtureScope } from "./reader-summary-first-publication-pg18.spec-support";
 import { installFirstpubSnapshotDiagnostics } from "./reader-summary-first-publication-pg18-snapshot.spec-support";
-import { proveNativeFirstpubClaimMatrix } from "./reader-summary-first-publication-pg18-claims.spec-support";
+import { expectFirstpubPrismaSqlState, type NativeFirstpubPrismaConnection } from "./reader-summary-first-publication-pg18-prisma.spec-support";
 import { proveNativeFirstpubProcessCrash } from "./reader-summary-first-publication-pg18-crash.spec-support";
 
 const start = new Date("2026-09-29T00:00:00.000Z"), end = new Date("2026-09-30T00:00:00.000Z");
@@ -22,6 +24,7 @@ const day = { ...pg18FixtureScope, startedAt: start.toISOString(), endedAt: end.
 // missing native binary is a failed required proof, never a skipped green test.
 it("native disposable PG18 proves finite ACL, durable reservation and the full firstpub publication callback", async () => {
   const f = await createFirstPublicationPg18Fixture();
+  let client: NativeFirstpubPrismaConnection;
   const params = [day.tenantId, day.workspaceId, start, end];
   const session = await f.finite.connect().catch(async (error: unknown) => {
     try { await f.stop(); }
@@ -33,7 +36,9 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
   const directInsert = `INSERT INTO reader_summary_publication_slots
     (tenant_id,workspace_id,scope_type,scope_key,cadence,period_started_at,period_ended_at,period_timezone,updated_at)
     VALUES($1,$2,'workspace','workspace','daily',$3,$4,'UTC',clock_timestamp())`;
-  const reserve = () => reserveFirstPublicationDay(f.client, day, new Date());
+  const reserve = () => reserveFirstPublicationDay(client, day, new Date());
+  let operationError: unknown;
+  let operationFailed = false;
   try {
     expect((await f.admin.query("SHOW server_version_num")).rows[0].server_version_num).toMatch(/^18\d{4}$/u);
     await context();
@@ -121,8 +126,30 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
         }
       } finally { principal.release(); }
     }
+    // Real callback failure after a genuine reservation result must roll back
+    // its null slot. Independent clone: no day reset or recovery of a claim.
+    await f.withClaimCase("slots_failed", async (aborted) => {
+      const failure = new Error("NATIVE_PRISMA_CALLBACK_REFUSAL");
+      await expect(runWithTenantDatabaseAccess(day, () => aborted.client.$transaction(async (tx) => {
+        const settings = await tx.$queryRaw<readonly { isolation: string; tenant: string; workspace: string; system: string; principal: string }[]>`
+          SELECT current_setting('transaction_isolation') AS isolation,
+            current_setting('social_monitor.tenant_id') AS tenant,
+            current_setting('social_monitor.workspace_id') AS workspace,
+            current_setting('social_monitor.system_access') AS system, session_user::text AS principal`;
+        expect(settings).toEqual([{ isolation: "read committed", tenant: day.tenantId,
+          workspace: day.workspaceId, system: "false", principal: "firstpub_synthetic_finite" }]);
+        expect(() => aborted.client.$queryRaw`SELECT 1`).toThrow("Root Prisma client cannot be used");
+        const rows = await tx.$queryRaw<readonly { reserved: boolean }[]>`
+          SELECT public.reserve_reader_summary_first_publication(${day.tenantId}::uuid,
+            ${day.workspaceId}::uuid, ${start}, ${end}, ${new Date()}) AS reserved`;
+        expect(rows).toEqual([{ reserved: true }]);
+        throw failure;
+      }, { isolationLevel: "ReadCommitted", maxWait: 30_000, timeout: 30_000 }))).rejects.toBe(failure);
+      expect((await aborted.admin.query("SELECT count(*)::integer AS slots FROM reader_summary_publication_slots")).rows)
+        .toEqual([{ slots: 0 }]);
+    });
     await installFirstpubSnapshotDiagnostics(f.admin);
-    await proveNativeFirstpubClaimMatrix((name, operation) => f.withClaimCase(name, async (claim) => {
+    await proveNativeFirstpubPrismaClaimMatrix((name, operation) => f.withClaimCase(name, async (claim) => {
       await operation(claim);
       if (!name.startsWith("daily_model_jobs_")) return;
       // For both failed and UNKNOWN claims, execute the exact three-column
@@ -141,7 +168,8 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
         try { await ownerSession.query("ROLLBACK"); } finally { ownerSession.release(); }
       }
     }));
-    await f.withClaimCase("slots_unknown", proveNativeFirstpubProcessCrash);
+    client = await f.openPrisma();
+    expect(client).toBeInstanceOf(PrismaSummaryConnection);
     // NEW GREEN may expose only counts/digest and bounded EXECUTE. Direct
     // protected writes and private parent/engagement SELECT remain forbidden.
     await expect(session.query(directInsert, params)).rejects.toMatchObject({ code: "42501" });
@@ -159,7 +187,7 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
     await expect(session.query(call, [...params, new Date()])).rejects.toMatchObject({ code: "42501" });
     await context();
     await f.admin.query("UPDATE workspaces SET deleted_at = clock_timestamp() WHERE id=$1", [day.workspaceId]);
-    await expect(reserve()).rejects.toMatchObject({ code: "P0001" });
+    await expectFirstpubPrismaSqlState(reserve(), "P0001");
     await f.admin.query("UPDATE workspaces SET deleted_at = NULL WHERE id=$1", [day.workspaceId]);
 
     // Concrete reservation schedule: middleware has executed its SELECT;
@@ -177,7 +205,7 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
         [failedId, day.tenantId, day.workspaceId, start, end, buildReaderSummaryPeriod({ cadence: "daily", timezone: "UTC", startedAt: start, endedAt: end }).periodKey]);
       } finally { ordinaryWriter.release(); }
     };
-    const reservationClient = nativeFirstpubPrismaClient(f.finite, { afterTenantContext: commitFailedJob });
+    const reservationClient = await f.openPrisma({ afterTenantContext: commitFailedJob });
     // OLD snapshot predicate behind a trusted lock function still misses the
     // committed claim. This diagnostic does not insert or call a provider.
     await expect(runWithTenantDatabaseAccess(day, () => runSerializableReaderSummaryTransaction(
@@ -191,18 +219,24 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
     await f.admin.query("DELETE FROM reader_summary_jobs WHERE id=$1", [failedId]);
     // NEW executes the complete reservation callback, including the actual
     // middleware SELECT before the intervening commit; the error propagates.
-    await expect(reserveFirstPublicationDay(reservationClient, day, new Date())).rejects.toMatchObject({ code: "P0001" });
+    await expectFirstpubPrismaSqlState(reserveFirstPublicationDay(reservationClient, day, new Date()), "P0001");
     await f.admin.query("DELETE FROM reader_summary_jobs WHERE id=$1", [failedId]);
-    // Catching a statement failure must not make COMMIT's ROLLBACK response
-    // look like a durable successful callback in the native Prisma bridge.
-    await expect(runWithTenantDatabaseAccess(day, () => f.client.$transaction(async (tx) => {
-      await expect(tx.$queryRaw`SELECT 1 / 0`).rejects.toMatchObject({ code: "22012" });
-      return "must not commit";
-    }))).rejects.toThrow("did not commit");
+    // Retain the original swallowed-statement COMMIT invariant as a required
+    // genuine-engine proof. Defer its assertion until the other schedules have
+    // executed, so a Prisma acknowledgement of an aborted tx cannot hide them.
+    // No extra query forces an abort and no fixture COMMIT/error is invented.
+    let genuineStatementFailureObserved = false;
+    const abortedTransactionOutcome = await Promise.allSettled([
+      runWithTenantDatabaseAccess(day, () => client.$transaction(async (tx) => {
+        await expectFirstpubPrismaSqlState(tx.$queryRaw`SELECT 1 / 0`, "22012");
+        genuineStatementFailureObserved = true;
+        return "must not commit";
+      }, { isolationLevel: "ReadCommitted", maxWait: 30_000, timeout: 30_000 })),
+    ]);
     const writer = await f.finite.connect();
     try {
       await writer.query("BEGIN; LOCK TABLE reader_summary_jobs IN ROW EXCLUSIVE MODE");
-      await expect(reserve()).rejects.toMatchObject({ code: "55P03" });
+      await expectFirstpubPrismaSqlState(reserve(), "55P03");
     } finally {
       try { await writer.query("ROLLBACK"); }
       finally { writer.release(); }
@@ -237,26 +271,26 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
         VALUES($1,$2,$3,$4,$5,$6,'rss',$1::text,'synthetic:'||$5::text,'synthetic','synthetic',$7,$8,$8)`, [feed, day.tenantId, day.workspaceId, interest, source, binding, start, observed]);
     }
     const asOf = new Date();
-    const inventory = await captureFirstPublicationInventory({ client: f.client, ...pg18FixtureScope,
+    const inventory = await captureFirstPublicationInventory({ client, ...pg18FixtureScope,
       startedAt: start, endedAt: end, generatedAt: asOf });
     expect(inventory.datasetManifest.dataset.feedRowCount).toBe(422);
     expect(inventory.coverage).toBe("UNPROVEN");
-    expect(await readFirstPublicationObservationScope(f.client, inventory.datasetManifest)).toBe(inventory.observationScopeSha256);
+    expect(await readFirstPublicationObservationScope(client, inventory.datasetManifest)).toBe(inventory.observationScopeSha256);
     const makeGuard = async () => {
-      const guard = new ReaderSummaryDayDatasetGuard(f.client, inventory.datasetManifest, "a".repeat(64), () => new Date(), undefined, inventory);
+      const guard = new ReaderSummaryDayDatasetGuard(client, inventory.datasetManifest, "a".repeat(64), () => new Date(), undefined, inventory);
       await guard.assertCurrent("before_evidence_selection");
       await guard.assertCurrent("after_evidence_selection"); return guard;
     };
     // A mismatched canonical join may never be hidden by an inner join or
     // by shrinking the expected inventory to the 398 in-day observations.
     await f.admin.query("UPDATE feed_items SET canonical_url='synthetic:missing-join' WHERE id=(SELECT id FROM feed_items LIMIT 1)");
-    await expect(readFirstPublicationObservationScope(f.client, inventory.datasetManifest)).rejects.toThrow("canonical join");
+    await expect(readFirstPublicationObservationScope(client, inventory.datasetManifest)).rejects.toThrow("canonical join");
     await f.admin.query("UPDATE feed_items f SET canonical_url=s.canonical_url FROM source_items s WHERE s.id=f.source_item_id");
     await f.admin.query("UPDATE source_bindings SET deleted_at=clock_timestamp() WHERE id=$1", [binding]);
-    await expect(readFirstPublicationObservationScope(f.client, inventory.datasetManifest)).rejects.toThrow("canonical join");
+    await expect(readFirstPublicationObservationScope(client, inventory.datasetManifest)).rejects.toThrow("canonical join");
     await f.admin.query("UPDATE source_bindings SET deleted_at=NULL WHERE id=$1", [binding]);
     const guard = await makeGuard();
-    await runWithTenantDatabaseAccess(day, () => f.client.$transaction(async (tx) => {
+    await runWithTenantDatabaseAccess(day, () => client.$transaction(async (tx) => {
       await guard.assertCurrentForPublicationTransaction(tx);
       const competitor = await f.admin.connect();
       try {
@@ -272,16 +306,24 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
       try { return await createReaderSummaryPublicationRunningFixture(seed, "NO_SIGNAL", "2026-09-29", { providerEvidence: "none" }); }
       finally { seed.release(); }
     })();
+    // Exercise an actual generated delegate as well as the real raw-query path.
+    const persisted = await runWithTenantDatabaseAccess(day, () => client.readerSummaryJob.findFirst({
+      where: { tenantId: day.tenantId, workspaceId: day.workspaceId, id: fixture.jobId },
+    }));
+    expect(persisted).toMatchObject({ id: fixture.jobId, tenantId: day.tenantId, workspaceId: day.workspaceId, status: "RUNNING" });
+    expect(persisted?.requestedAt).toBeInstanceOf(Date);
     const idempotencyKey = `${readerSummaryFirstPublicationPrefix}${day.workspaceId}:2026-09-29`;
     await f.admin.query("UPDATE reader_summary_jobs SET idempotency_key=$1 WHERE id=$2", [idempotencyKey, fixture.jobId]);
     const finalJob = ReaderSummaryJob.rehydrate({ id: fixture.jobId, tenantId: tenantId(day.tenantId), workspaceId: workspaceId(day.workspaceId),
       scope: { type: "workspace" }, period: buildReaderSummaryPeriod({ cadence: "daily", timezone: "UTC", startedAt: start, endedAt: end }),
       status: "completed", idempotencyKey, requestedAt: new Date(), startedAt: new Date(), completedAt: new Date(), readerSummaryId: fixture.artifactId });
     const command = { finalJob } as ReaderSummaryPublicationCommand; // Daily v2 locates the persisted fixture; it reads no caller artifact bytes.
-    const commitDatasetChange = async () => {
+    const commitDatasetChange = async (tx: PrismaReaderSummaryClient) => {
+      const deadline = await tx.$queryRaw<readonly { timeout: string }[]>`SELECT current_setting('statement_timeout') AS timeout`;
+      expect(deadline).toEqual([{ timeout: "5min" }]);
       await f.admin.query("UPDATE source_items SET body='intervening committed change' WHERE id=(SELECT id FROM source_items LIMIT 1)");
     };
-    const publicationClient = nativeFirstpubPrismaClient(f.finite, { afterDeadline: commitDatasetChange });
+    const publicationClient = await f.openPrisma({ afterDeadline: commitDatasetChange });
     // OLD full adapter order: real middleware, real deadline, trusted lock,
     // then the same manifest/digest validation sees its stale snapshot. Abort
     // deliberately before the publisher; no stale publication is produced.
@@ -294,7 +336,7 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
         await staleGuard.assertCurrent("before_publication");
         throw new Error("OLD_SERIALIZABLE_ACCEPTED_COMMITTED_DATASET_CHANGE");
       }).publish(command))).rejects.toThrow("OLD_SERIALIZABLE_ACCEPTED_COMMITTED_DATASET_CHANGE");
-    expect(await readFirstPublicationObservationScope(f.client, inventory.datasetManifest)).not.toBe(inventory.observationScopeSha256);
+    expect(await readFirstPublicationObservationScope(client, inventory.datasetManifest)).not.toBe(inventory.observationScopeSha256);
     await f.admin.query("UPDATE source_items SET body='synthetic'");
     const publicationGuard = await makeGuard();
     await expect(runWithTenantDatabaseAccess(day, () => new PrismaReaderSummaryPublication(
@@ -303,8 +345,31 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
     await f.admin.query("UPDATE source_items SET body='synthetic'");
     const finalGuard = await makeGuard();
     await expect(runWithTenantDatabaseAccess(day, () => new PrismaReaderSummaryPublication(
-      f.client, (tx) => finalGuard.assertCurrentForPublicationTransaction(tx), "first_publication_sep29").publish(command))).resolves.toBe("published");
+      client, (tx) => finalGuard.assertCurrentForPublicationTransaction(tx), "first_publication_sep29").publish(command))).resolves.toBe("published");
     expect((await f.admin.query("SELECT current_publication_id FROM reader_summary_publication_slots")).rows[0].current_publication_id).toBe(fixture.artifactId);
-    await expect(reserve()).rejects.toMatchObject({ code: "P0001" });
-  } finally { session.release(); await f.stop(); }
+    await expectFirstpubPrismaSqlState(reserve(), "P0001");
+    expect(genuineStatementFailureObserved).toBe(true);
+    expect(abortedTransactionOutcome[0]?.status).toBe("rejected");
+  } catch (error) { operationFailed = true; operationError = error; }
+  session.release();
+  const [cleanup] = await Promise.allSettled([f.stop()]);
+  if (cleanup.status === "rejected") {
+    if (operationFailed) throw new AggregateError([operationError, cleanup.reason as unknown], `Native proof failed and close uncertain; retained ${f.root}`);
+    throw cleanup.reason;
+  }
+  if (operationFailed) throw operationError;
+}, 120_000);
+
+// This retains the original protected child/refusal assertions independently.
+// Its frozen parent still expects raw pg SQLSTATE; it is NOT certified by the
+// Prisma bridge gate and requires its own exact independent review/execution.
+it("separate original native OS crash/refusal proof (not Prisma bridge certification)", async () => {
+  const f = await createFirstPublicationPg18Fixture();
+  const [operation] = await Promise.allSettled([f.withClaimCase("slots_unknown", proveNativeFirstpubProcessCrash)]);
+  const [cleanup] = await Promise.allSettled([f.stop()]);
+  if (operation.status === "rejected" && cleanup.status === "rejected") {
+    throw new AggregateError([operation.reason as unknown, cleanup.reason as unknown], `OS proof failed and close uncertain; retained ${f.root}`);
+  }
+  if (operation.status === "rejected") throw operation.reason;
+  if (cleanup.status === "rejected") throw cleanup.reason;
 }, 120_000);
