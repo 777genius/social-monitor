@@ -52,8 +52,95 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
     await expect(session.query(directInsert, params)).rejects.toMatchObject({ code: "P0001" });
     await f.admin.query("REVOKE INSERT ON reader_summary_publication_slots FROM social_monitor_summary_once");
     await f.installContract();
+    // Independent PostgreSQL privilege contract. Runtime SELECT cannot lend
+    // the SECURITY DEFINER its missing fifth-ledger column privileges.
+    const owner = "social_monitor_reader_summary_publication_owner";
+    const ledger = "public.reader_summary_daily_model_jobs";
+    expect((await f.admin.query(`SELECT pg_catalog.has_table_privilege($1,$2,'SELECT') AS broad`,
+      [owner, ledger])).rows).toEqual([{ broad: false }]);
+    const columns = await f.admin.query(`SELECT a.attname,
+      pg_catalog.has_column_privilege($1,a.attrelid,a.attnum,'SELECT') AS readable
+      FROM pg_catalog.pg_attribute a WHERE a.attrelid=$2::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`, [owner, ledger]);
+    expect(columns.rows.filter((row) => row.readable).map((row) => row.attname).sort())
+      .toEqual(["requested_utc_date", "tenant_id", "workspace_id"]);
+    expect((await f.admin.query(`SELECT c.relowner::regrole::text AS owner,c.relforcerowsecurity AS forced
+      FROM pg_catalog.pg_class c WHERE c.oid=$1::regclass`, [ledger])).rows)
+      .toEqual([{ owner: "social_monitor_public_schema_owner", forced: true }]);
+    expect((await f.admin.query(`SELECT rolcanlogin,rolsuper,rolbypassrls FROM pg_catalog.pg_roles
+      WHERE rolname=$1`, [owner])).rows).toEqual([{ rolcanlogin: false, rolsuper: false, rolbypassrls: false }]);
+    // This fresh empty clone must succeed, independently of the main schedule
+    // and before any competing claim. Failed/unknown daily claims below must
+    // yield P0001, never permission denied on the fifth ledger.
+    await f.withClaimCase("jobs_unknown", async (empty) => {
+      await expect(reserveFirstPublicationDay(empty.client, day, new Date())).resolves.toBeUndefined();
+      expect((await empty.admin.query("SELECT current_publication_id FROM reader_summary_publication_slots")).rows)
+        .toEqual([{ current_publication_id: null }]);
+    });
+    // Real LOGIN attributes/memberships in the disposable cluster only. Direct
+    // EXECUTE for the missing member isolates admission from function ACL denial.
+    await f.admin.query(`CREATE ROLE firstpub_synthetic_bypass LOGIN NOSUPERUSER BYPASSRLS;
+      CREATE ROLE firstpub_synthetic_super_member LOGIN SUPERUSER NOBYPASSRLS;
+      CREATE ROLE firstpub_synthetic_missing LOGIN NOSUPERUSER NOBYPASSRLS;
+      CREATE ROLE firstpub_synthetic_owner_set LOGIN NOSUPERUSER NOBYPASSRLS;
+      CREATE ROLE firstpub_synthetic_schema_set LOGIN NOSUPERUSER NOBYPASSRLS;
+      GRANT social_monitor_summary_once TO firstpub_synthetic_bypass,firstpub_synthetic_super_member,firstpub_synthetic_owner_set,firstpub_synthetic_schema_set;
+      GRANT social_monitor_reader_summary_publication_owner TO firstpub_synthetic_owner_set WITH INHERIT FALSE, SET TRUE;
+      GRANT social_monitor_public_schema_owner TO firstpub_synthetic_schema_set WITH INHERIT FALSE, SET TRUE;
+      GRANT USAGE ON SCHEMA public TO firstpub_synthetic_missing;
+      GRANT EXECUTE ON FUNCTION public.observe_reader_summary_first_publication(uuid,uuid,timestamptz,timestamptz,timestamptz)
+        TO firstpub_synthetic_missing`);
+    const observe = `SELECT * FROM public.observe_reader_summary_first_publication($1,$2,$3,$4,$5)`;
+    for (const user of ["finite", "bypass", "super_member", "missing", "owner_set", "schema_set"] as const) {
+      const principal = await f.principal(`firstpub_synthetic_${user}`).connect();
+      try {
+        const identity = (await principal.query(`SELECT session_user::text AS name,r.rolsuper,r.rolbypassrls,
+          pg_catalog.pg_has_role(session_user,'social_monitor_summary_once','USAGE') AS capable,
+          pg_catalog.pg_has_role(session_user,'social_monitor_reader_summary_publication_owner','SET') AS owner_set,
+          pg_catalog.pg_has_role(session_user,'social_monitor_public_schema_owner','SET') AS schema_set
+          FROM pg_catalog.pg_roles r WHERE r.rolname=session_user`)).rows[0];
+        expect(identity.name).toBe(`firstpub_synthetic_${user}`);
+        expect(identity.rolsuper).toBe(user === "super_member");
+        expect(identity.rolbypassrls).toBe(user === "bypass");
+        expect(identity.capable).toBe(user !== "missing");
+        expect(identity.owner_set).toBe(user === "owner_set" || user === "super_member");
+        expect(identity.schema_set).toBe(user === "schema_set" || user === "super_member");
+        await principal.query(`SELECT set_config('social_monitor.tenant_id',$1,false),
+          set_config('social_monitor.workspace_id',$2,false),set_config('social_monitor.system_access','false',false)`, params.slice(0, 2));
+        if (user === "finite") {
+          expect((await principal.query(observe, [...params, new Date()])).rows).toHaveLength(1);
+          for (const invalidTime of ["infinity", "-infinity", null]) {
+            await expect(principal.query(observe, [...params, invalidTime])).rejects.toMatchObject({ code: "42501" });
+          }
+          await principal.query("SELECT set_config('social_monitor.system_access','true',false)");
+          await expect(principal.query(observe, [...params, new Date()])).rejects.toMatchObject({ code: "42501" });
+          await principal.query("SELECT set_config('social_monitor.system_access','false',false),set_config('social_monitor.workspace_id','',false)");
+          await expect(principal.query(observe, [...params, new Date()])).rejects.toMatchObject({ code: "42501" });
+        } else {
+          await expect(principal.query(observe, [...params, new Date()])).rejects.toMatchObject({ code: "42501" });
+        }
+      } finally { principal.release(); }
+    }
     await installFirstpubSnapshotDiagnostics(f.admin);
-    await proveNativeFirstpubClaimMatrix(f.withClaimCase);
+    await proveNativeFirstpubClaimMatrix((name, operation) => f.withClaimCase(name, async (claim) => {
+      await operation(claim);
+      if (!name.startsWith("daily_model_jobs_")) return;
+      // For both failed and UNKNOWN claims, execute the exact three-column
+      // read as the inaccessible owner with FORCE RLS still enabled. Catalog
+      // ACL booleans alone do not prove that this owner can read scoped rows.
+      const ownerSession = await claim.admin.connect();
+      try {
+        await ownerSession.query("BEGIN; SET LOCAL ROLE social_monitor_reader_summary_publication_owner");
+        await ownerSession.query(`SELECT set_config('social_monitor.tenant_id',$1,true),
+          set_config('social_monitor.workspace_id',$2,true),set_config('social_monitor.system_access','false',true)`, params.slice(0, 2));
+        const actual = await ownerSession.query(`SELECT tenant_id::text,workspace_id::text,requested_utc_date::text
+          FROM public.reader_summary_daily_model_jobs WHERE tenant_id=$1 AND workspace_id=$2
+            AND requested_utc_date=DATE '2026-09-29'`, params.slice(0, 2));
+        expect(actual.rows).toEqual([{ tenant_id: day.tenantId, workspace_id: day.workspaceId, requested_utc_date: "2026-09-29" }]);
+      } finally {
+        try { await ownerSession.query("ROLLBACK"); } finally { ownerSession.release(); }
+      }
+    }));
     await f.withClaimCase("slots_unknown", proveNativeFirstpubProcessCrash);
     // NEW GREEN may expose only counts/digest and bounded EXECUTE. Direct
     // protected writes and private parent/engagement SELECT remain forbidden.

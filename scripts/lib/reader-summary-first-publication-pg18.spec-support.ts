@@ -1,7 +1,7 @@
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
+import { createFirstpubPg18Lifecycle } from "./reader-summary-first-publication-pg18-lifecycle.spec-support";
 import { readPublicationBootstrapSql } from "./reader-summary-publication-bootstrap-sql";
 import { provisionReaderSummaryPublicationFixtureScope, readerSummaryPublicationFixtureScope } from "./reader-summary-publication-postgres-fixture-scope";
 import { guardRootClientDuringInteractiveTransaction } from "../../libs/platform/persistence/src/postgres-runtime-pool-transaction-guard";
@@ -21,27 +21,19 @@ export type NativeFirstpubClaimFixture = Readonly<{
  * /proc/<this pid>/cwd is only a short alias to our owned workspace: Unix socket
  * paths otherwise exceed sun_path's limit in long worker workspace names. */
 export async function createFirstPublicationPg18Fixture() {
+  if (typeof process.getuid !== "function" || typeof process.geteuid !== "function" ||
+      process.getuid() === 0 || process.geteuid() === 0 || process.getuid() !== process.geteuid()) {
+    throw new Error("FIRSTPUB native fixture requires an admitted nonroot identity before namespace creation");
+  }
   const bin = process.env.FIRSTPUB_NATIVE_PG18_BIN ?? "/usr/lib/postgresql/18/bin";
   const required = ["initdb", "pg_ctl", "postgres"].map((name) => join(bin, name));
   if (!required.every(existsSync)) {
     throw new Error(`Native disposable PG18 proof unavailable: installed initdb/pg_ctl/postgres missing in ${bin}; no install or shared-server fallback allowed`);
   }
-  const version = spawnSync(required[2]!, ["--version"], { encoding: "utf8" });
-  if (version.status !== 0 || !/PostgreSQL\) 18\./u.test(version.stdout)) throw new Error("Native PostgreSQL 18 is required");
-  const root = mkdtempSync(join(process.cwd(), ".firstpub-native-pg18-"));
-  const data = join(root, "data");
-  const socket = join(root, "socket");
-  mkdirSync(socket, { mode: 0o700 });
-  const host = `/proc/${process.pid}/cwd/${root.slice(process.cwd().length + 1)}/socket`;
-  const log = join(root, "server.log");
+  const lifecycle = createFirstpubPg18Lifecycle(bin);
+  const { root, host } = lifecycle;
   const database = "firstpub_synthetic";
   const pools = new Set<Pool>();
-  let started = false;
-  const command = (name: string, args: string[]) => {
-    const result = spawnSync(join(bin, name), args, { encoding: "utf8", timeout: 30_000 });
-    writeFileSync(join(root, `${name}-${args.includes("stop") ? "stop" : "start"}.log`), result.stdout + result.stderr);
-    if (result.status !== 0) throw new Error(`Own PG18 ${name} failed; retained evidence: ${root}`);
-  };
   const pool = (user: string, db = database) => {
     const value = new Pool({ host, port: 5432, user, database: db, max: 4, connectionTimeoutMillis: 5000 });
     pools.add(value); return value;
@@ -49,23 +41,10 @@ export async function createFirstPublicationPg18Fixture() {
   const closePool = async (value: Pool) => { await value.end(); pools.delete(value); };
   const stop = async () => {
     await Promise.all([...pools].map(closePool));
-    if (started) {
-      command("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
-      const status = spawnSync(join(bin, "pg_ctl"), ["-D", data, "status"], { encoding: "utf8" });
-      if (status.status !== 3 || existsSync(join(data, "postmaster.pid"))) {
-        throw new Error(`Own cluster shutdown uncertain; namespace retained: ${root}`);
-      }
-      started = false;
-    }
-    // Preserve command/server evidence; remove only our verified stopped data.
-    rmSync(data, { recursive: true, force: true });
-    rmSync(socket, { recursive: true, force: true });
+    lifecycle.stop();
   };
   try {
-    command("initdb", ["-D", data, "-U", "firstpub_synthetic_super", "--auth-local=trust", "--auth-host=reject", "--no-locale", "--encoding=UTF8"]);
-    writeFileSync(join(data, "postgresql.auto.conf"), `listen_addresses = ''\nunix_socket_directories = '${host}'\nunix_socket_permissions = 0700\n`);
-    started = true; // A failed observation cannot prove the server never started.
-    command("pg_ctl", ["-D", data, "-l", log, "-w", "start"]);
+    lifecycle.initializeAndStart();
     const server = pool("firstpub_synthetic_super", "postgres");
     await server.query(`CREATE ROLE firstpub_synthetic_legacy LOGIN NOSUPERUSER NOBYPASSRLS;
       CREATE ROLE firstpub_synthetic_migrator LOGIN NOSUPERUSER NOBYPASSRLS CREATEROLE INHERIT;
@@ -128,8 +107,15 @@ export async function createFirstPublicationPg18Fixture() {
         await server.query(`DROP DATABASE ${clone}`);
       }
     };
-    return { admin, finite, root, installContract, withClaimCase, stop, client: nativeFirstpubPrismaClient(finite) };
+    const principal = (user: string) => {
+      if (!/^firstpub_synthetic_(finite|bypass|super_member|missing|owner_set|schema_set)$/u.test(user)) {
+        throw new Error("Unknown bounded synthetic principal");
+      }
+      return pool(user);
+    };
+    return { admin, finite, root, installContract, withClaimCase, principal, stop, client: nativeFirstpubPrismaClient(finite) };
   } catch (error) {
+    if (!lifecycle.isOwned()) throw error;
     try { await stop(); } catch (shutdownError) { throw new AggregateError([error, shutdownError], `Own PG18 fixture failed; retained ${root}`); }
     throw error;
   }

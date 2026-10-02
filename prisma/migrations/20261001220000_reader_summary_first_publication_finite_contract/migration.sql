@@ -34,6 +34,10 @@ GRANT MAINTAIN ON public.reader_summary_jobs, public.reader_summary_daily_model_
   public.source_catalog_entries, public.source_item_engagement_snapshots,
   public.source_item_engagement_observations, public.tenants, public.workspaces
   TO social_monitor_reader_summary_publication_owner;
+-- The fifth absence predicate reads only these columns; MAINTAIN cannot
+-- supply SELECT. Grant from the established table-owner context above.
+GRANT SELECT(tenant_id, workspace_id, requested_utc_date)
+  ON public.reader_summary_daily_model_jobs TO social_monitor_reader_summary_publication_owner;
 GRANT SELECT ON public.source_item_engagement_snapshots,
   public.source_item_engagement_observations TO social_monitor_reader_summary_publication_owner;
 -- Preserve the existing full parent-row digest byte contract. Every current
@@ -65,6 +69,8 @@ BEGIN
       IS DISTINCT FROM target_workspace_id::text
     OR COALESCE(pg_catalog.current_setting('social_monitor.system_access', true), '')
       NOT IN ('', 'false')
+    OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = session_user
+      AND NOT rolsuper AND NOT rolbypassrls)
     OR NOT pg_catalog.pg_has_role(session_user, 'social_monitor_summary_once', 'USAGE')
     OR pg_catalog.pg_has_role(session_user, 'social_monitor_reader_summary_publication_owner', 'SET')
     OR pg_catalog.pg_has_role(session_user, 'social_monitor_public_schema_owner', 'SET') THEN
