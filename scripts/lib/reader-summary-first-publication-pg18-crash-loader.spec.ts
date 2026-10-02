@@ -127,6 +127,9 @@ function observeSharedLoaderState() {
   record(host.Error); record(Error); record(host.EventTarget.prototype);
   record(EventEmitter.prototype);
   for (const runtime of new Set([process, host.process])) {
+    // Ordinary own properties matter too: first worker_threads initialization
+    // changes chdir without changing emit, symbols or listener registrations.
+    record(runtime); record(runtime.versions);
     const emit = runtime.emit;
     const symbols = Object.getOwnPropertySymbols(runtime);
     const instance = Reflect.get(runtime, Symbol.for("ts-node.register.instance")) as unknown;
@@ -215,6 +218,14 @@ it.each(["pinned project", "root project TS5011"])("contains actual compiler hoo
       const redirected = privateRequire.resolve("source-map-support");
       expect(redirected).toContain("/@cspotcode/source-map-support/");
       expect(privateRequire("source-map-support")).toBe(isolated.module._cache[redirected]!.exports);
+      // The actual pinned install path needs the main-thread query. Every
+      // unused worker capability, including future names, must fail closed.
+      const workerThreads = privateRequire("worker_threads") as { isMainThread: boolean };
+      expect(workerThreads.isMainThread).toBe(true);
+      expect(privateRequire("node:worker_threads")).toBe(workerThreads);
+      for (const capability of ["Worker", "MessageChannel", "parentPort", "threadId", "futureCapability"]) {
+        expect(() => Reflect.get(workerThreads, capability)).toThrow("Worker runtime forbidden");
+      }
       if (prior) {
         expect(isolated.module._cache).not.toBe(prior.isolation.module._cache);
         expect(registration).not.toBe(Reflect.get(prior.isolation.process, Symbol.for("ts-node.register.instance")));

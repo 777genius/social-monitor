@@ -35,6 +35,15 @@ export function loadCuratedFirstpubCrashChild(
   const privateGlobal = runInContext("globalThis", context) as Record<PropertyKey, unknown>;
   const cache: Record<string, TestModule> = Object.create(null) as Record<string, TestModule>;
   const forbiddenProcess = () => { throw new Error("OS processes forbidden in loader regression"); };
+  // Pinned source-map-support asks only whether this main-shaped fake child is
+  // a worker. Node's first worker_threads import replaces host process.chdir.
+  // Answer that query locally; no other thread capability belongs to this test.
+  const workerThreads = new Proxy(Object.freeze({ isMainThread: true }), {
+    get: (target, key) => {
+      if (key === "isMainThread") return target.isMainThread;
+      throw new Error("Worker runtime forbidden in loader regression");
+    },
+  });
   const extensions: Record<string, (mod: TestModule, file: string) => void> = {
     ".js": (mod, file) => mod._compile(readFileSync(file, "utf8"), file),
     ".json": (mod, file) => { mod.exports = JSON.parse(readFileSync(file, "utf8")) as unknown; },
@@ -124,6 +133,7 @@ export function loadCuratedFirstpubCrashChild(
       if (Object.hasOwn(dependencies, name)) return dependencies[name];
       if (name === "module" || name === "node:module") return moduleFacade;
       if (name === "process" || name === "node:process") return fakeProcess;
+      if (name === "worker_threads" || name === "node:worker_threads") return workerThreads;
       // ts-node imports REPL eagerly, but compilation never uses it. Loading
       // Node's REPL initializes domain and patches host EventEmitter/process.
       // Permit the unused import, fail closed on any interactive capability.
