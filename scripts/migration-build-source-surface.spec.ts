@@ -17,7 +17,20 @@ function config(name: string) {
 }
 
 // Reviewed source/destination allowlist, independent of Dockerfile parsing.
+// Four public Sep24 entrypoints and their newly packaged typed script closure.
+// recover-rss-sep24-verified.ts is already pinned below; test fixtures stay excluded.
+const sep24Scripts = [
+  'scripts/materialize-social-sep24-private-inputs.ts',
+  'scripts/export-reddit-sep24-public.ts',
+  'scripts/export-rss-sep24-selected.ts',
+  'scripts/diagnose-rss-sep24-source-only.ts',
+  'scripts/lib/social-source-private-input-contract.ts',
+  'scripts/lib/social-source-private-input-database.ts',
+  'scripts/lib/social-source-private-input-files.ts',
+  'scripts/lib/social-source-private-input-materializer.ts',
+];
 const expectedScripts = [
+  ...sep24Scripts,
   'scripts/check-feed-promotion-index-recovery.ts',
   'scripts/recover-hn-verified-remainder.ts',
   'scripts/import-hn-verified-remainder.ts',
@@ -60,7 +73,8 @@ function scriptCopies(dockerfile: string): ScriptCopy[] {
   const instructions = dockerfile.split(/\r?\n/)
     .filter((line) => !/^\s*#/.test(line)).join('\n')
     .replace(/\\[ \t]*\n\s*/g, ' ').split('\n');
-  return instructions.flatMap((line) => {
+  const finalStage = instructions.findLastIndex((line) => /^\s*FROM\s/i.test(line));
+  return instructions.slice(finalStage + 1).flatMap((line) => {
     if (!/^\s*COPY\s/i.test(line)) return [];
     const tokens = line.trim().split(/\s+/).slice(1);
     if (tokens.slice(0, -1).some((token) => ['.', './', '*', './*'].includes(token))) {
@@ -150,6 +164,23 @@ describe('migration image production compilation', () => {
     const mutated = dockerfile.replace('scripts/run-with-timeout.mjs ', '');
     expect(mutated).not.toBe(dockerfile);
     expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
+  });
+
+  it.each(sep24Scripts)('rejects a recipe missing approved Sep24 source: %s', (source) => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const mutated = dockerfile.replace(`${source} `, '');
+    expect(mutated).not.toBe(dockerfile);
+    expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
+  });
+
+  it('rejects an extra explicit script and copies confined to a stale stage', () => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    expect(() => expectScriptSurface(scriptCopies(
+      `${dockerfile}\nCOPY scripts/unapproved.ts ./scripts/\n`,
+    ))).toThrow();
+    expect(() => expectScriptSurface(scriptCopies(
+      `${dockerfile}\nFROM node:22 AS empty\n`,
+    ))).toThrow();
   });
 
   it('reports an unresolved real CLI dependency when a transitive library is not copied', () => {
