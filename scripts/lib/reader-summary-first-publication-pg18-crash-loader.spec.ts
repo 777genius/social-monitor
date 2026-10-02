@@ -11,6 +11,7 @@ import { guardRootClientDuringInteractiveTransaction } from "../../libs/platform
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import type { PrismaSummaryTransactionOptions, PrismaTransactionalSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-transaction";
 import type { FirstpubCrashReservation } from "./reader-summary-first-publication-pg18-composition.spec-support";
+import { expectFirstpubPrismaSqlState } from "./reader-summary-first-publication-pg18-prisma.spec-support";
 import { loadCuratedFirstpubCrashChild } from "./reader-summary-first-publication-pg18-crash-loader.spec-support";
 
 jest.mock("node:child_process", () => ({ fork: jest.fn(), spawnSync: jest.fn(() => { throw new Error("Native commands forbidden"); }) }));
@@ -89,6 +90,7 @@ it("loads the exact crash child with the pinned test project and curated environ
         },
       }, {
         pg: { Pool: FakePool },
+        "./reader-summary-first-publication-pg18-prisma.spec-support": { expectFirstpubPrismaSqlState },
         "./reader-summary-first-publication-reservation": reservation,
         "./reader-summary-first-publication-pg18.spec-support": {
           ...fixture,
@@ -103,7 +105,13 @@ it("loads the exact crash child with the pinned test project and curated environ
     return child as unknown as ChildProcess;
   }) as typeof fork);
   const adminQuery = jest.fn().mockResolvedValue({ rows: [{ count: "1" }] });
-  const refusingClient = { $transaction: jest.fn().mockRejectedValue(Object.assign(new Error("synthetic consumed slot"), { code: "P0001" })) };
+  // Bounded synthetic observation of the pinned diagnostic contract, not a
+  // generated error instance or evidence of a genuine OS/database refusal.
+  const refusal = Object.assign(new Error("synthetic consumed slot"), {
+    name: "PrismaClientKnownRequestError", clientVersion: "7.9.1", code: "P2010",
+    meta: { driverAdapterError: { cause: { originalCode: "P0001" } } },
+  });
+  const refusingClient = { $transaction: jest.fn().mockRejectedValue(refusal) };
   try {
     const proof = proveNativeFirstpubProcessCrash({
       database: "firstpub_synthetic_claim_slots_unknown",
@@ -237,7 +245,7 @@ it.each(["pinned project", "root project TS5011"])("contains actual compiler hoo
     let failure: unknown;
     try {
       observed = loadCuratedFirstpubCrashChild(entry, options, { once, send }, {
-        pg: { Pool: ForbiddenPool }, "./reader-summary-first-publication-reservation": {},
+        pg: { Pool: ForbiddenPool }, "./reader-summary-first-publication-pg18-prisma.spec-support": { expectFirstpubPrismaSqlState }, "./reader-summary-first-publication-reservation": {},
         "./reader-summary-first-publication-pg18.spec-support": {},
       });
     } catch (error) { failure = error; }

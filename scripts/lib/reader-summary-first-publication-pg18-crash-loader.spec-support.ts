@@ -29,8 +29,11 @@ export function loadCuratedFirstpubCrashChild(
     nextTick: process.nextTick, stdout: { isTTY: false }, send: ipc.send,
   });
   const localOnce = events.once.bind(events);
-  fakeProcess.once = ((event: string, listener: (message: unknown) => void) =>
-    event === "message" ? ipc.once(event, listener) : localOnce(event, listener)) as typeof events.once;
+  fakeProcess.once = (event, listener) => {
+    if (event === "message") ipc.once(event, listener);
+    else localOnce(event, listener);
+    return fakeProcess;
+  };
   const context = createContext({ process: fakeProcess, Buffer, console, setTimeout, clearTimeout, setImmediate });
   const privateGlobal = runInContext("globalThis", context) as Record<PropertyKey, unknown>;
   const cache: Record<string, TestModule> = Object.create(null) as Record<string, TestModule>;

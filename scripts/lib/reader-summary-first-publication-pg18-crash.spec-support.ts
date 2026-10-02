@@ -4,6 +4,8 @@ import { Pool } from "pg";
 import { reserveFirstPublicationDay } from "./reader-summary-first-publication-reservation";
 import { reserveFirstpubCrashDay, pg18FixtureScope, type NativeFirstpubClaimFixture } from "./reader-summary-first-publication-pg18.spec-support";
 
+import { expectFirstpubPrismaSqlState } from "./reader-summary-first-publication-pg18-prisma.spec-support";
+
 const day = { ...pg18FixtureScope, startedAt: "2026-09-29T00:00:00.000Z", endedAt: "2026-09-30T00:00:00.000Z" };
 const crashDatabase = "firstpub_synthetic_claim_slots_unknown";
 
@@ -41,7 +43,7 @@ export async function proveNativeFirstpubProcessCrash(f: NativeFirstpubClaimFixt
     expect((await exited).signal).toBe("SIGKILL");
     const rows = await f.admin.query("SELECT count(*) FROM public.reader_summary_publication_slots WHERE current_publication_id IS NULL");
     expect(Number(rows.rows[0].count)).toBe(1);
-    await expect(reserveFirstPublicationDay(f.client, day, new Date())).rejects.toMatchObject({ code: "P0001" });
+    await expectFirstpubPrismaSqlState(reserveFirstPublicationDay(f.client, day, new Date()), "P0001");
   } finally {
     if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
       child.kill("SIGKILL");

@@ -22,7 +22,7 @@ let statuses: number;
 const priorBin = process.env.FIRSTPUB_NATIVE_PG18_BIN;
 const realRead = fs.readFileSync, realStat = fs.statSync, realLstat = fs.lstatSync;
 const realRealpath = fs.realpathSync;
-const realWrite = fs.writeFileSync;
+const realWrite = fs.writeFileSync, realOpen = fs.openSync, realClose = fs.closeSync;
 const pid = 424242;
 const result = (status: number | null, stdout = "", signal: NodeJS.Signals | null = null, code?: string) => ({
   status, stdout, stderr: "synthetic output must not be persisted", signal,
@@ -111,7 +111,7 @@ afterEach(() => {
 });
 
 it.each(["getuid", "geteuid"] as const)("rejects root %s before creating a namespace or issuing any command", async (kind) => {
-  jest.mocked(process[kind]).mockReturnValue(0);
+  jest.spyOn(process, kind).mockReturnValue(0);
   await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow(/nonroot/u);
   expect(namespace()).toBeUndefined(); expect(commands).toEqual([]);
 });
@@ -183,8 +183,17 @@ it("retains restarted data and socket bytes during verified-stop evidence write"
   const dataBytes = Buffer.from("test-owned data evidence\0\xff", "latin1");
   const socketBytes = Buffer.from("test-owned socket evidence\0\xfe", "latin1");
   let restarted = false;
+  const evidenceFds = new Set<number>();
+  jest.spyOn(fs, "openSync").mockImplementation((path, flags, fileMode) => {
+    const fd = realOpen(path, flags, fileMode);
+    if (String(path).endsWith("/lifecycle.json")) evidenceFds.add(fd);
+    return fd;
+  });
+  jest.spyOn(fs, "closeSync").mockImplementation((fd) => {
+    try { realClose(fd); } finally { evidenceFds.delete(fd); }
+  });
   jest.spyOn(fs, "writeFileSync").mockImplementation(((path, value, options) => {
-    if (!restarted && String(path).endsWith("/lifecycle.json") && String(value).includes('"verified-stopped"')) {
+    if (!restarted && typeof path === "number" && evidenceFds.has(path) && String(value).includes('"verified-stopped"')) {
       // Actual status3, original PID-file absence and original /proc absence
       // have already been observed. Restart only at the evidence-write boundary.
       expect(live).toBe(false);
@@ -203,6 +212,7 @@ it("retains restarted data and socket bytes during verified-stop evidence write"
     ? Object.assign(realLstat(scratch), { uid: 1000 }) : observedLstat(path)) as typeof fs.lstatSync);
 
   await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow("synthetic SQL setup refused");
+  expect(evidenceFds.size).toBe(0);
   expect(restarted).toBe(true);
   expect(live).toBe(true);
   expect(fs.lstatSync(`/proc/${restartedPid}`).uid).toBe(1000);

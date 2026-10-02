@@ -1,5 +1,5 @@
-import { spawnSync } from "node:child_process";
-import { constants, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { closeSync, constants, openSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 type State = "namespace-created" | "initialized" | "start-requested" | "owned-postmaster" | "uncertain" | "verified-stopped";
@@ -24,6 +24,7 @@ export function createFirstpubPg18Lifecycle(bin: string) {
   const children = new Map<string, { dev: number; ino: number }>();
   children.set(socket, lstatSync(socket));
   let state: State = "namespace-created";
+  const isUncertain = () => state === "uncertain";
   let owned: Identity | undefined;
   let startRequestedAt: number | undefined;
   const evidence: unknown[] = [];
@@ -34,7 +35,18 @@ export function createFirstpubPg18Lifecycle(bin: string) {
       throw new Error("Owned evidence namespace identity changed; no evidence write attempted");
     }
     evidence.push({ state, ...entry });
-    writeFileSync(join(root, "lifecycle.json"), JSON.stringify(evidence, null, 2) + "\n", { mode: 0o600, flag: constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW });
+    const fd = openSync(join(root, "lifecycle.json"),
+      constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
+    let writeFailed = false;
+    let writeFailure: unknown;
+    try { writeFileSync(fd, JSON.stringify(evidence, null, 2) + "\n"); }
+    catch (error) { writeFailed = true; writeFailure = error; }
+    try { closeSync(fd); }
+    catch (closeFailure) {
+      if (writeFailed) throw new AggregateError([writeFailure, closeFailure], "Owned lifecycle evidence write and close failed; namespace retained");
+      throw closeFailure;
+    }
+    if (writeFailed) throw writeFailure;
   };
   const uncertain = (reason: string): never => {
     state = "uncertain"; record({ reason });
@@ -61,7 +73,7 @@ export function createFirstpubPg18Lifecycle(bin: string) {
     }
   };
   const command = (name: "postgres" | "initdb" | "pg_ctl", action: string, args: string[]) => {
-    let result: ReturnType<typeof spawnSync>;
+    let result: SpawnSyncReturns<string>;
     try { result = spawnSync(join(bin, name), args, { encoding: "utf8", timeout: 30_000 }); }
     catch {
       record({ command: name, action, exit: null, signal: null, spawnError: "THROWN" });
@@ -132,7 +144,7 @@ export function createFirstpubPg18Lifecycle(bin: string) {
       if (!succeeded(start)) return uncertain("startup observation failed");
       owned = confirm(); state = "owned-postmaster"; record({});
     } catch (error) {
-      if (state === "uncertain") throw error;
+      if (isUncertain()) throw error;
       state = "uncertain";
       const code = (error as NodeJS.ErrnoException).code;
       record({ identityObservation: "failed", observationError: code && /^[A-Z0-9_]+$/u.test(code) ? code : "UNKNOWN" });
@@ -154,7 +166,7 @@ export function createFirstpubPg18Lifecycle(bin: string) {
       // This verifies the owned stop observation, not a continuing liveness
       // lease. A same-UID restart can follow it: retain data/socket and evidence.
     } catch (error) {
-      if (state === "uncertain") throw error;
+      if (isUncertain()) throw error;
       state = "uncertain";
       const code = (error as NodeJS.ErrnoException).code;
       record({ identityObservation: "failed", observationError: code && /^[A-Z0-9_]+$/u.test(code) ? code : "UNKNOWN" });
