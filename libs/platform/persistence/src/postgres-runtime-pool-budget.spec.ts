@@ -17,6 +17,21 @@ import {
   runtimeSourceFiles,
 } from './postgres-runtime-pool-budget-test-source';
 
+function expectRawDependencySyntax(path: string, source: string): void {
+  if (path === 'scripts/lib/social-source-private-input-database.spec.ts') {
+    // Permit only the exact constructor-spy binding, never another raw load.
+    const spyBinding = "const pg = require(" + "'pg') as typeof Pg;";
+    expect(source.split(spyBinding)).toHaveLength(2);
+    expect(source).toContain("jest.spyOn(pg, 'Pool').mockImplementation(");
+    expect(source).toContain('finally { constructor.mockRestore(); }');
+    expect(source).not.toMatch(/new\s+(?:pg|Pg)\s*\.\s*(?:Pool|Client)\s*\(/);
+    source = source.replace(spyBinding, '');
+  }
+  expect(source).not.toMatch(
+    /(?:require\s*\(\s*['"](?:pg|@prisma\/adapter-pg)['"]\s*\)|import\s*\(\s*['"](?:pg|@prisma\/adapter-pg)['"]\s*\)|import\s+\*\s+as\s+\w+\s+from\s+['"](?:pg|@prisma\/adapter-pg)['"])/,
+  );
+}
+
 describe('production PostgreSQL construction and entrypoint inventory', () => {
   const boundedPostgresTestOnlyFiles = BOUNDED_POSTGRES_TEST_ONLY_FILES;
   const sourceFiles = [...runtimeSourceFiles('apps'), ...runtimeSourceFiles('libs')];
@@ -150,6 +165,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-value-postgres-fixture.ts:Pool
       scripts/lib/reader-value-postgres-fixture.ts:Pool
       scripts/lib/reader-value-postgres-fixture.ts:Pool
+      scripts/lib/social-source-private-input-database.ts:Pool
       scripts/lib/yesterday-social-replay-support.ts:Pool
       scripts/prepare-reader-summary-successor-fixture.ts:Pool
       scripts/prepare-reader-summary-successor-fixture.ts:Pool
@@ -202,6 +218,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // The replay dispatch spec imports pg only to assert its throwing mock stays unused.
     // Cursor cleanup helper imports only the Pool type; its spec exercises the installed Pool lifecycle.
     // The socket regression spec and publication helpers import only client types.
+    // Private-input reading constructs one min=0/max=1 pool per invocation and
+    // releases/ends it in finally; its sibling spec spies on the CJS constructor.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts
       libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts
@@ -309,6 +327,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-weekly-review-manifest-postgres-contract.ts
       scripts/lib/reader-value-assessment-publication-acl.ts
       scripts/lib/reader-value-postgres-fixture.ts
+      scripts/lib/social-source-private-input-database.spec.ts
+      scripts/lib/social-source-private-input-database.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.ts
       scripts/lib/yesterday-replay-dispatch.spec.ts
@@ -331,10 +351,19 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       test/feed-reader-summary-coverage-pool.integration.spec.ts
     `));
     for (const path of rawDependencyFiles) {
-      expect(readSource(path)).not.toMatch(
-        /(?:require\s*\(\s*['"](?:pg|@prisma\/adapter-pg)['"]\s*\)|import\s*\(\s*['"](?:pg|@prisma\/adapter-pg)['"]\s*\)|import\s+\*\s+as\s+\w+\s+from\s+['"](?:pg|@prisma\/adapter-pg)['"])/,
-      );
+      expectRawDependencySyntax(path, readSource(path));
     }
+  });
+
+  it.each([
+    "require(" + "'pg')",
+    "import(" + "'pg')",
+    "require(" + "'@prisma/adapter-pg')",
+    "import * as bypass from " + "'pg'",
+    'new pg.Pool({ min: 0, max: 1 })',
+  ])('rejects an additional raw bypass in the exact constructor-spy spec: %s', (bypass) => {
+    const path = 'scripts/lib/social-source-private-input-database.spec.ts';
+    expect(() => expectRawDependencySyntax(path, `${readSource(path)}\n${bypass}`)).toThrow();
   });
 
   it('requires explicit min=0 and max on every direct pool outside the shared factory', () => {
