@@ -1,0 +1,419 @@
+"""Behavioral tests. Each regression comment states the change that makes it red."""
+import fcntl
+import json
+from pathlib import Path
+import random
+import tempfile
+import unittest
+from archive import inspect_archive
+from contract import Denied, atomic, parse, read_json
+from test_support import (SHA, RUN, PREVIOUS, MIGRATION, archive, mutate, receive,
+                          run, setup)
+
+KEY = SHA + '-' + RUN
+
+
+class ReleaseTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.config = setup(self.root)
+        self.state = self.root / 'state'
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def ok(self, command, data=b''):
+        result = run(self.root, command, data)
+        self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
+        return json.loads(result.stdout)
+
+    def denied(self, command, reason, data=b''):
+        result = run(self.root, command, data)
+        self.assertEqual(result.returncode, 1, (result.stdout, result.stderr))
+        self.assertEqual(json.loads(result.stdout)['denied'], reason)
+
+    def admitted(self):
+        result, image = receive(self.root)
+        self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
+        self.ok('admit ' + SHA + ' ' + RUN)
+        return image
+
+    def commands(self):
+        path = self.root / 'commands.jsonl'
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    # Regression: a forced command accepts shell punctuation, extra arguments or unknown services.
+    def test_grammar_fuzz(self):
+        valid = ['status', 'preflight', f'admit {SHA} {RUN}', f'activate {SHA} {RUN}',
+                 f'verify {SHA} {RUN}', f'rollback {SHA} {RUN}', f'receipt {KEY}',
+                 f'receipt {KEY}-rollback',
+                 f'receive {SHA} {RUN} sha256:{"d" * 64} sha256:{"e" * 64} 100']
+        for command in valid:
+            parse(command)
+        invalid = ['', 'up api', 'activate api', 'status ', ' status', 'STATUS', 'status\n',
+                   f'admit {SHA.upper()} {RUN}', f'admit {SHA} 0', f'admit {SHA} 01',
+                   f'receive {SHA} {RUN} sha256:{"d" * 63} sha256:{"e" * 64} 1']
+        random.seed(12)
+        for _ in range(200):
+            command = random.choice(valid)
+            index = random.randrange(len(command) + 1)
+            invalid.append(command[:index] + random.choice([';', '$', '`', '\n', '\t', '/', '\\', '"'])
+                           + command[index:])
+        for command in invalid:
+            with self.assertRaises(Denied, msg=command):
+                parse(command)
+        self.denied('status;echo', 'grammar')
+        self.assertEqual(self.commands(), [])
+
+    # Regression: preflight creates a receipt, loads an image or starts a service.
+    def test_preflight_is_read_only(self):
+        before = {str(p): p.read_bytes() for p in self.state.rglob('*') if p.is_file()}
+        self.ok('preflight')
+        after = {str(p): p.read_bytes() for p in self.state.rglob('*') if p.is_file()}
+        self.assertEqual(before, after)
+        self.assertFalse(any('up' in c or 'load' in c for c in self.commands()))
+
+    # Regression: a configured non-target selector accidentally points at API and weakens the fence.
+    def test_non_target_selectors_must_match_service(self):
+        config_path = self.root / 'config.json'
+        config = json.loads(config_path.read_text())
+        config['required_non_targets']['jev-agent-runtime'] = 'api'
+        config_path.write_text(json.dumps(config))
+        self.denied('preflight', 'non-target-selector')
+        self.assertFalse(any('up' in c for c in self.commands()))
+
+    # Regression: import occurs before archive byte length and SHA256 are checked.
+    def test_receive_integrity_and_no_startup(self):
+        path, image, checksum = archive(self.root)
+        command = f'receive {SHA} {RUN} {checksum} {image} {path.stat().st_size}'
+        self.denied(command, 'archive-short', path.read_bytes()[:-1])
+        self.denied(command, 'archive-long', path.read_bytes() + b'x')
+        bad = bytearray(path.read_bytes())
+        bad[-1] = 1
+        self.denied(command, 'archive-digest', bytes(bad))
+        self.ok(command, path.read_bytes())
+        self.ok(command, path.read_bytes())
+        self.assertEqual(len(list((self.state / 'imports').glob('*.json'))), 1)
+        self.assertFalse(any('load' in c or 'up' in c for c in self.commands()))
+        self.assertEqual(len(list((self.state / 'inbox').iterdir())), 1)
+
+    # Regression: an archive can load a foreign tag or labels for another CI run/revision.
+    def test_archive_image_and_label_binding(self):
+        for options, reason in [({'tags': ['shared:mutable']}, 'archive-tags-forbidden'),
+                                ({'labels': {'org.opencontainers.image.revision': 'f' * 40,
+                                             'social-monitor.ci-run-id': RUN}}, 'image-labels'),
+                                ({'link': True}, 'migration-link-forbidden'),
+                                ({'whiteout': True}, 'migration-layout')]:
+            path, image, checksum = archive(self.root, **options)
+            with self.assertRaisesRegex(Denied, reason):
+                inspect_archive(path, checksum, image, SHA, RUN, '/app/prisma/migrations')
+        path, image, checksum = archive(self.root)
+        with self.assertRaisesRegex(Denied, 'image-config-digest'):
+            inspect_archive(path, checksum, PREVIOUS, SHA, RUN, '/app/prisma/migrations')
+
+    # Regression: activation bypasses the same-pair admission or nonwaiting lock.
+    def test_admission_lock_identity_latch(self):
+        result = run(self.root, f'activate {SHA} {RUN}')
+        self.assertNotEqual(result.returncode, 0)
+        with (self.state / 'controller.lock').open('r') as stream:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.denied('status', 'busy')
+        mutate(self.root, identity='wrong')
+        self.denied('status', 'machine-id')
+        mutate(self.root, identity='b28fc7b17042414386eb9b114046e50c')
+        atomic(self.state / 'latch.json', {'reason': 'synthetic'}, immutable=True)
+        self.denied(f'activate {SHA} {RUN}', 'latched')
+        self.assertFalse(any('up' in c for c in self.commands()))
+
+    # Regression: a copied admission for another sha/run grants startup for an unadmitted pair.
+    def test_admission_is_bound_to_exact_pair(self):
+        self.admitted()
+        other_sha, other_run = 'd' * 40, '124'
+        old = read_json(self.state / 'admissions' / (KEY + '.json'))
+        atomic(self.state / 'admissions' / (other_sha + '-' + other_run + '.json'), old)
+        self.denied(f'activate {other_sha} {other_run}', 'admission-binding')
+        self.assertFalse(any('up' in c or 'load' in c for c in self.commands()))
+
+    # Regression: pending migrations, writable PG role, stale backup or sensitive diff are admitted.
+    def test_admission_fails_closed(self):
+        result, _ = receive(self.root)
+        self.assertEqual(result.returncode, 0)
+        for change, reason, undo in [({'migrations': []}, 'migration-required', {'migrations': [MIGRATION]}),
+                                    ({'read_only': False}, 'database-evidence', {'read_only': True}),
+                                    ({'backup_at': 1}, 'stale-evidence', {'backup_at': None}),
+                                    ({'schema_changed': True}, 'sensitive-change', {'schema_changed': False}),
+                                    ({'main_sha': 'f' * 40}, 'stale-main-skip', {'main_sha': SHA}),
+                                    ({'bad_binding': True}, 'adapter-binding', {'bad_binding': False})]:
+            mutate(self.root, **change)
+            self.denied(f'admit {SHA} {RUN}', reason)
+            if undo.get('backup_at', 'missing') is None:
+                import time
+                undo['backup_at'] = int(time.time())
+            mutate(self.root, **undo)
+        self.assertEqual(list((self.state / 'admissions').iterdir()), [])
+        self.assertFalse(any('up' in c or 'load' in c for c in self.commands()))
+
+    # Regression: activation pins the shared tag/JEv, loses env-file/secret mounts or claims success without probes.
+    def test_activation_is_api_only_and_receipt_is_immutable(self):
+        image = self.admitted()
+        before = json.loads((self.root / 'fake.json').read_text())['containers']
+        receipt = self.ok(f'activate {SHA} {RUN}')
+        self.assertEqual(receipt['outcome'], 'activated')
+        self.assertEqual(receipt['scope'], ['api'])
+        self.assertEqual(receipt['snapshot_before_hash'], receipt['snapshot_after_hash'])
+        state = json.loads((self.root / 'fake.json').read_text())
+        self.assertEqual(state['containers'], before)
+        self.assertEqual(state['target']['image'], image)
+        override = read_json(self.state / 'overrides' / (KEY + '.json'))
+        self.assertEqual(override, {'services': {'api': {'image': image}}})
+        up = [c for c in self.commands() if 'up' in c]
+        self.assertEqual(len(up), 1)
+        self.assertEqual(up[0][-7:], ['up', '-d', '--no-deps', '--no-build', '--pull', 'never', 'api'])
+        original = (self.state / 'receipts' / (KEY + '.json')).read_bytes()
+        self.ok(f'activate {SHA} {RUN}')
+        self.ok(f'verify {SHA} {RUN}')
+        self.assertEqual((self.state / 'receipts' / (KEY + '.json')).read_bytes(), original)
+        self.assertEqual(len([c for c in self.commands() if 'up' in c]), 1)
+
+    # Regression: readiness failure returns zero or leaves the candidate active.
+    def test_readiness_rollback_nonzero_and_latch(self):
+        image = self.admitted()
+        mutate(self.root, unready=[image])
+        self.denied(f'activate {SHA} {RUN}', 'rolled-back')
+        self.assertEqual(self.ok('receipt ' + KEY)['outcome'], 'rolled-back')
+        self.assertEqual(json.loads((self.root / 'fake.json').read_text())['target']['image'], PREVIOUS)
+        self.denied(f'activate {SHA} {RUN}', 'already-rolled-back')
+
+    # Regression: failed rollback allows another activate instead of persisting a latch.
+    def test_rollback_failure_durable_latch(self):
+        image = self.admitted()
+        mutate(self.root, unready=[image, PREVIOUS])
+        self.denied(f'activate {SHA} {RUN}', 'rollback-failed-latched')
+        latch = (self.state / 'latch.json').read_bytes()
+        self.denied(f'activate {SHA} {RUN}', 'latched')
+        self.assertEqual((self.state / 'latch.json').read_bytes(), latch)
+        self.assertEqual(list((self.state / 'receipts').iterdir()), [])
+
+    # Regression: a SIGKILL after Compose succeeds creates a second up or unverified success.
+    def test_crash_recovery_verifies_existing_target(self):
+        image = self.admitted()
+        mutate(self.root, crash_up=True)
+        result = run(self.root, f'activate {SHA} {RUN}')
+        self.assertEqual(result.returncode, -9, (result.stdout, result.stderr))
+        self.assertEqual(json.loads((self.root / 'fake.json').read_text())['target']['image'], image)
+        self.assertEqual(self.ok(f'activate {SHA} {RUN}')['outcome'], 'activated')
+        self.assertEqual(len([c for c in self.commands() if 'up' in c]), 1)
+
+    # Regression: an interrupted release for another pair or stale-main recovery starts a new target.
+    def test_crash_recovery_stale_main_rolls_back(self):
+        self.admitted()
+        mutate(self.root, crash_up=True)
+        self.assertEqual(run(self.root, f'activate {SHA} {RUN}').returncode, -9)
+        self.denied('activate ' + 'd' * 40 + ' 124', 'unfinished-release')
+        mutate(self.root, main_sha='f' * 40)
+        self.denied(f'activate {SHA} {RUN}', 'rolled-back')
+        self.assertEqual(json.loads((self.root / 'fake.json').read_text())['target']['image'], PREVIOUS)
+
+    # Regression: recovery housekeeping failure rolls back an already published activation receipt.
+    def test_recovery_retention_failure_preserves_verified_receipt(self):
+        image = self.admitted()
+        mutate(self.root, crash_up=True, fail_retention=True)
+        self.assertEqual(run(self.root, f'activate {SHA} {RUN}').returncode, -9)
+        self.denied(f'activate {SHA} {RUN}', 'fake-command-failed')
+        original = (self.state / 'receipts' / (KEY + '.json')).read_bytes()
+        fake = json.loads((self.root / 'fake.json').read_text())
+        self.assertEqual(fake['target']['image'], image)
+        self.assertFalse((self.state / 'latch.json').exists())
+        mutate(self.root, fail_retention=False)
+        self.assertEqual(self.ok(f'activate {SHA} {RUN}')['outcome'], 'activated')
+        self.assertEqual((self.state / 'receipts' / (KEY + '.json')).read_bytes(), original)
+        self.assertEqual(len([c for c in self.commands() if 'up' in c]), 1)
+
+    # Regression: final receipt names the admission backup instead of the fresh activation proof.
+    def test_activation_receipt_records_current_backup(self):
+        import time
+        now = int(time.time())
+        mutate(self.root, backup_at=now - 10)
+        self.admitted()
+        original = read_json(self.state / 'admissions' / (KEY + '.json'))
+        mutate(self.root, backup_at=now)
+        receipt = self.ok(f'activate {SHA} {RUN}')
+        self.assertEqual(receipt['backup']['verified_at'], now)
+        self.assertEqual(read_json(self.state / 'admissions' / (KEY + '.json')), original)
+
+    # Regression: resume verifies a fresh backup but publishes the older pre-crash backup proof.
+    def test_recovery_receipt_records_current_backup(self):
+        import time
+        now = int(time.time())
+        mutate(self.root, backup_at=now - 10)
+        self.admitted()
+        mutate(self.root, crash_up=True)
+        self.assertEqual(run(self.root, f'activate {SHA} {RUN}').returncode, -9)
+        mutate(self.root, backup_at=now)
+        receipt = self.ok(f'activate {SHA} {RUN}')
+        self.assertEqual(receipt['backup']['verified_at'], now)
+
+    # Regression: rolling back an older release changes a newer unfinished release's previous target.
+    def test_rollback_cannot_cross_unfinished_release(self):
+        image = self.admitted()
+        self.ok(f'activate {SHA} {RUN}')
+        pending = read_json(self.state / 'transactions' / (KEY + '.json'))
+        pending.pop('outcome')
+        pending['phase'] = 'activating'
+        pending['admission'].update(sha='d' * 40, ci_run_id='124',
+                                    image_id='sha256:' + 'e' * 64, previous_image_id=image)
+        atomic(self.state / 'transactions' / ('d' * 40 + '-124.json'), pending)
+        before = len([c for c in self.commands() if 'up' in c])
+        self.denied(f'rollback {SHA} {RUN}', 'unfinished-release')
+        self.assertEqual(len([c for c in self.commands() if 'up' in c]), before)
+        self.assertEqual(json.loads((self.root / 'fake.json').read_text())['target']['image'], image)
+
+    # Regression: explicit rollback starts without fresh backup and disabled legacy workflow evidence.
+    def test_explicit_rollback_refreshes_release_prerequisites(self):
+        import time
+        self.admitted()
+        self.ok(f'activate {SHA} {RUN}')
+        before = len([c for c in self.commands() if 'up' in c])
+        mutate(self.root, backup_at=1)
+        self.denied(f'rollback {SHA} {RUN}', 'stale-evidence')
+        mutate(self.root, backup_at=int(time.time()), legacy='active')
+        self.denied(f'rollback {SHA} {RUN}', 'preflight-unconfigured')
+        self.assertEqual(len([c for c in self.commands() if 'up' in c]), before)
+        mutate(self.root, legacy='disabled_manually')
+        self.assertEqual(self.ok(f'rollback {SHA} {RUN}')['outcome'], 'rolled-back')
+
+    # Regression: rollback overwrites the activation receipt or cannot reconcile a previous image.
+    def test_explicit_rollback_preserves_activation_evidence(self):
+        self.admitted()
+        self.ok(f'activate {SHA} {RUN}')
+        original = (self.state / 'receipts' / (KEY + '.json')).read_bytes()
+        self.assertEqual(self.ok(f'rollback {SHA} {RUN}')['outcome'], 'rolled-back')
+        self.assertEqual(self.ok('receipt ' + KEY + '-rollback')['outcome'], 'rolled-back')
+        self.assertEqual((self.state / 'receipts' / (KEY + '.json')).read_bytes(), original)
+        self.ok(f'rollback {SHA} {RUN}')
+
+    # Regression: compose metadata for a non-target changes or a non-target starts during activation.
+    def test_scope_and_snapshot_drift_fail_closed(self):
+        self.admitted()
+        mutate(self.root, scope_mutation=True)
+        self.denied(f'activate {SHA} {RUN}', 'rollback-failed-latched')
+        self.assertFalse(any('up' in c for c in self.commands()))
+
+    # Regression: changed independently inspected revision labels pass admission reuse.
+    def test_revision_proof_is_required(self):
+        self.admitted()
+        mutate(self.root, wrong_revision='f' * 40)
+        self.denied(f'activate {SHA} {RUN}', 'previous-revision')
+        self.assertEqual(list((self.state / 'receipts').iterdir()), [])
+        self.assertFalse(any('up' in c or 'load' in c for c in self.commands()))
+
+    # Regression: non-target/timer changes during up still publish an activated receipt.
+    def test_non_target_drift_latches_without_success(self):
+        self.admitted()
+        mutate(self.root, drift_non_target=True)
+        self.denied(f'activate {SHA} {RUN}', 'rollback-failed-latched')
+        self.assertEqual(list((self.state / 'receipts').iterdir()), [])
+
+    # Regression: changed fenced timer metadata after admission is ignored before startup.
+    def test_fenced_timer_change_prevents_startup(self):
+        self.admitted()
+        mutate(self.root, unit_start='1234')
+        self.denied(f'activate {SHA} {RUN}', 'non-target-changed')
+        self.assertFalse(any('up' in c for c in self.commands()))
+
+    # Regression: replacing admitted archive bytes after receive bypasses import revalidation.
+    def test_admitted_archive_tampering_never_loads(self):
+        self.admitted()
+        path = self.state / 'inbox' / (KEY + '.tar')
+        data = bytearray(path.read_bytes())
+        data[-1] ^= 1
+        path.write_bytes(data)
+        self.denied(f'activate {SHA} {RUN}', 'archive-digest')
+        self.assertFalse(any('load' in c or 'up' in c for c in self.commands()))
+
+    # Regression: crash after receipt link but before transaction fsync cannot reconcile rollback.
+    def test_rollback_receipt_publication_recovery(self):
+        image = self.admitted()
+        mutate(self.root, unready=[image])
+        self.denied(f'activate {SHA} {RUN}', 'rolled-back')
+        path = self.state / 'transactions' / (KEY + '.json')
+        tx = read_json(path)
+        tx.pop('outcome')
+        atomic(path, tx)
+        original = (self.state / 'receipts' / (KEY + '.json')).read_bytes()
+        self.denied(f'activate {SHA} {RUN}', 'rolled-back')
+        self.assertEqual((self.state / 'receipts' / (KEY + '.json')).read_bytes(), original)
+        self.assertFalse((self.state / 'latch.json').exists())
+
+    # Regression: rollback for an old receipt overwrites a newer independently changed target.
+    def test_explicit_rollback_refuses_other_target(self):
+        self.admitted()
+        self.ok(f'activate {SHA} {RUN}')
+        fake = json.loads((self.root / 'fake.json').read_text())
+        fake['target']['image'] = 'sha256:' + '8' * 64
+        (self.root / 'fake.json').write_text(json.dumps(fake))
+        count = len([c for c in self.commands() if 'up' in c])
+        self.denied(f'rollback {SHA} {RUN}', 'rollback-not-current')
+        self.assertEqual(len([c for c in self.commands() if 'up' in c]), count)
+
+    # Regression: retention invokes broad prune or deletes foreign/used image tags.
+    def test_retention_keeps_three_and_only_removes_owned_unused_tags(self):
+        from controller import Controller
+        from host import Host
+        from test_support import HERE
+        import subprocess
+        import sys
+        class Commands(Host):
+            def command(inner, argv, data=None):
+                result = subprocess.run([sys.executable, '-B', str(HERE / 'fake_command.py'),
+                                         str(self.root), *argv], input=data, capture_output=True, check=True)
+                return result.stdout
+        images = ['sha256:' + c * 64 for c in '12345']
+        atomic(self.state / 'retention.json', images)
+        mutate(self.root, used_images={images[0]: 'synthetic-running-container'},
+               tags={'smrel-keep-' + image[7:]: image for image in images})
+        for index in range(3):
+            atomic(self.state / 'receipts' / (str(index) + '.json'), {
+                'image_id': images[4 - index], 'previous_image_id': images[3 - index],
+                'timings': {'started_at_ns': 3 - index}})
+        Controller(self.config, Commands(self.config)).retention()
+        self.assertEqual(read_json(self.state / 'retention.json'), images[2:][::-1] + [images[0]])
+        removed = [c[-1] for c in self.commands() if c[1:3] == ['image', 'rm']]
+        self.assertEqual(removed, ['smrel-keep-' + images[1][7:]])
+        self.assertFalse(any('prune' in c for c in self.commands()))
+        # Repeating housekeeping must skip an already removed tag and retain used ownership.
+        Controller(self.config, Commands(self.config)).retention()
+        self.assertEqual(len([c for c in self.commands() if c[1:3] == ['image', 'rm']]), 1)
+
+    # Regression: racing immutable publication lets both conflicting writers overwrite a receipt.
+    def test_racing_atomic_publication(self):
+        import subprocess
+        import sys
+        from test_support import HERE
+        path = self.state / 'receipts' / 'race.json'
+        code = ("import sys; from pathlib import Path; from contract import atomic; "
+                "atomic(Path(sys.argv[1]), {'writer':sys.argv[2]}, immutable=True)")
+        processes = [subprocess.Popen([sys.executable, '-B', '-c', code, str(path), str(i)],
+                                     cwd=HERE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                     for i in range(8)]
+        statuses = []
+        for process in processes:
+            process.communicate(timeout=10)
+            statuses.append(process.returncode)
+        self.assertEqual(statuses.count(0), 1)
+        self.assertIn(read_json(path)['writer'], [str(i) for i in range(8)])
+        self.assertFalse(list(path.parent.glob('.pending-*')))
+
+    # Regression: a reader sees partial JSON or an append-only file can be overwritten.
+    def test_atomic_no_overwrite(self):
+        path = self.state / 'receipts' / 'synthetic.json'
+        atomic(path, {'complete': True}, immutable=True)
+        with self.assertRaisesRegex(Denied, 'immutable-conflict'):
+            atomic(path, {'complete': False}, immutable=True)
+        self.assertEqual(read_json(path), {'complete': True})
+        self.assertEqual(list(path.parent.glob('.pending-*')), [])
+
+
+if __name__ == '__main__':
+    unittest.main()
