@@ -1,0 +1,10 @@
+# Exact unit-glob paths assigned to distinct suite/contract gates.
+# E2E (*.e2e-spec.ts), Node (*.test.mjs/cjs) and Flutter are not candidates.
+# Real PostgreSQL row-lock proof: reader_value_v3_postgres18, not the unit job.
+libs/ingestion/adapters/persistence/prisma/prisma-article-capture.postgres.spec.ts
+# Opt-in real PostgreSQL pool proof; unit mode intentionally skips this suite.
+libs/platform/persistence/src/postgres-runtime-pool-prisma-concurrency.spec.ts
+# Dedicated disposable PostgreSQL proof: scripts/check-rss-sep24-postgres.sh.
+scripts/import-rss-sep24-verified.postgres.spec.ts
+# Required canary runner contract: backend_build_contracts, executed once there.
+scripts/lib/reader-promotion-v2-production-canary-runner.spec.ts

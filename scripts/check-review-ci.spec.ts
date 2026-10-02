@@ -1,18 +1,14 @@
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import { runInNewContext } from "node:vm";
 
 const workflow = readFileSync(".github/workflows/pull-request.yml", "utf8");
 const checker = readFileSync("scripts/check-review-ci.mjs", "utf8");
-const yaml = createRequire(`${process.cwd()}/scripts/check-review-ci.mjs`)("js-yaml");
-// Exercise the same pure helper used by check:review-ci without production checks.
-const helper = checker.slice(
-  checker.indexOf("const findJob ="),
-  checker.indexOf("violations.push(...backendUnitShardingViolations(workflow));"),
-);
-const check = (source: string): string[] => runInNewContext(
-  `${helper}\nbackendUnitShardingViolations(source)`, { source, yaml },
-);
+// Exercise the imported semantic contract directly, without production checks.
+const check = (source: string): string[] => JSON.parse(execFileSync(process.execPath, [
+  "--input-type=module", "-e",
+  "import {readFileSync} from 'node:fs'; import {backendUnitShardingViolations as check} from './scripts/ci/review-ci/backend-unit-contract.mjs'; console.log(JSON.stringify(check(readFileSync(0, 'utf8'))));",
+], { input: source, encoding: "utf8" }));
 
 describe("backend unit whole-corpus CI sharding", () => {
   it("accepts the complete contract", () => expect(check(workflow)).toEqual([]));
@@ -32,16 +28,16 @@ describe("backend unit whole-corpus CI sharding", () => {
     },
   );
   it.each([
-    ["node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=2048 -- ", ""],
-    ["--timeout-ms 900000", "--timeout-ms 600000"],
-    ["--timeout-ms 900000", "--timeout-ms 900001"],
-    ["--timeout-ms 900000", "--timeout-ms 0"],
-    ["node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4", "npm test -- --shard=${{ matrix.shard }}/4"],
-    ["node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4", "true"],
+    ["node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ", ""],
+    ["--timeout-ms 2700000", "--timeout-ms 600000"],
+    ["--timeout-ms 2700000", "--timeout-ms 2700001"],
+    ["--timeout-ms 2700000", "--timeout-ms 0"],
+    ["node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4", "npm test -- --shard=${{ matrix.shard }}/4"],
+    ["node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4", "true"],
     ["--shard=${{ matrix.shard }}/4", "--shard=${{ matrix.shard }}/4 --testPathIgnorePatterns=retained-metric"],
     ["--shard=${{ matrix.shard }}/4", "--shard=${{ matrix.shard }}/4 --testNamePattern=small"],
     ["      - name: Run backend unit tests", "      - name: Run backend unit tests\n        if: false"],
-    ["--max-old-space-size=2048", "--max-old-space-size=1536"],
+    ["--max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4", "--max-old-space-size=1536 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4"],
     ["--runInBand ", ""],
     ["[1, 2, 3, 4]", "[1, 2, 3]"],
     ["[1, 2, 3, 4]", "[1, 2, 3, 3]"],
@@ -49,7 +45,7 @@ describe("backend unit whole-corpus CI sharding", () => {
     ["--shard=${{ matrix.shard }}/4", "--shard=${{ matrix.shard }}/5"],
     ["--shard=${{ matrix.shard }}/4", "--shard=${{ matrix.shard }}/4 --passWithNoTests"],
     ["--shard=${{ matrix.shard }}/4", "--shard=${{ matrix.shard }}/4 --testPathPatterns=small"],
-    ["needs: backend_unit_shards", "needs: static_quality"],
+    ["needs: [backend_unit_shards, backend_build_contracts]", "needs: static_quality"],
     ["if: always()", "if: success()"],
     ['= "success"', '!= "failure"'],
     ['= "success"', '= "success" || true'],
