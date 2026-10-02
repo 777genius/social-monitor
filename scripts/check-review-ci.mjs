@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync } from "node:fs";
+import { load as loadYaml } from "js-yaml";
 import { backendUnitShardingViolations, coverageWorkflowViolations } from "./ci/review-ci/backend-unit-contract.mjs";
 
 const workflowPath = ".github/workflows/pull-request.yml";
@@ -512,6 +513,41 @@ if (
   );
 }
 
+// Parse the Flutter stanza semantically; retain the stable version-file contract.
+const flutterCacheViolations = (source) => {
+  let doc;
+  try { doc = loadYaml(source); } catch { return ["invalid Flutter workflow YAML"]; }
+  const steps = doc?.jobs?.frontend?.steps;
+  if (!Array.isArray(steps)) return ["missing Flutter steps"];
+  const setups = steps.filter((step) => typeof step?.uses === "string" && step.uses.startsWith("subosito/flutter-action@"));
+  const versions = steps.filter((step) => step?.id === "flutter_version");
+  const setup = setups[0];
+  const version = versions[0];
+  const expectedSuffix = "${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter_version.outputs.version }}-${{ hashFiles('apps/frontend/**/pubspec.lock') }}";
+  const expectedRun = [
+    "node <<'NODE'",
+    "const fs = require('node:fs');",
+    "const version = JSON.parse(fs.readFileSync('apps/frontend/.fvmrc', 'utf8')).flutter;",
+    "if (!/^\\d+\\.\\d+\\.\\d+$/.test(version)) throw new Error('Flutter must have an exact stable SDK version');",
+    "fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\\n`);",
+    "NODE",
+  ].join("\n");
+  if (setups.length !== 1 || versions.length !== 1 || steps.indexOf(version) >= steps.indexOf(setup) ||
+      setup.uses !== "subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2" ||
+      setup.if !== undefined || setup["continue-on-error"] !== undefined ||
+      version.if !== undefined || version["continue-on-error"] !== undefined ||
+      typeof version.run !== "string" || version.run.trim() !== expectedRun || version["working-directory"] !== undefined ||
+      setup.with?.channel !== "stable" || setup.with?.["flutter-version-file"] !== "apps/frontend/.fvmrc" ||
+      setup.with?.["flutter-version"] !== undefined || setup.with?.cache !== true || setup.with?.["pub-cache"] !== true ||
+      setup.with?.["cache-key"] !== `flutter-sdk-${expectedSuffix}` ||
+      setup.with?.["pub-cache-key"] !== `flutter-pub-${expectedSuffix}` ||
+      setup.with?.["cache-path"] !== undefined || setup.with?.["pub-cache-path"] !== undefined) {
+    return ["Flutter cache must use the pinned stable SDK, exact resolved version, OS/architecture and all frontend lockfiles"];
+  }
+  return [];
+};
+violations.push(...flutterCacheViolations(workflow));
+
 const requireScopedFlutterAppTests = (source, sourcePath) => {
   if (!/^\s*flutter test app\/test\s*$/mu.test(source)) {
     violations.push(
@@ -543,6 +579,7 @@ const requiredFragments = [
   "frontend:",
   "npx eslint .",
   "npx tsc --noEmit",
+  "node --test scripts/ci/*.test.mjs",
   "npm run check:architecture",
   "npm run check:user-auth-boundary",
   "npm run check:tenant-rls-postgres",
