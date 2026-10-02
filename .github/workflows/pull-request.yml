@@ -52,6 +52,7 @@ jobs:
           npm run check:persistence-readiness
           npm run check:observability
           npm run check:review-ci
+          node --test scripts/ci/*.test.mjs
 
   security_contracts:
     name: Security and public contracts
@@ -472,13 +473,25 @@ jobs:
       - name: Check out the review commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
+      - name: Resolve the exact Flutter cache version
+        id: flutter_version
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const version = JSON.parse(fs.readFileSync('apps/frontend/.fvmrc', 'utf8')).flutter;
+          if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Flutter must have an exact stable SDK version');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
+          NODE
+
       - name: Set up Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           channel: stable
           flutter-version-file: apps/frontend/.fvmrc
-          cache: false
-          pub-cache: false
+          cache: true
+          pub-cache: true
+          cache-key: flutter-sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter_version.outputs.version }}-${{ hashFiles('apps/frontend/**/pubspec.lock') }}
+          pub-cache-key: flutter-pub-${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter_version.outputs.version }}-${{ hashFiles('apps/frontend/**/pubspec.lock') }}
 
       - name: Resolve exact Flutter dependencies
         working-directory: apps/frontend

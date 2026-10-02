@@ -33,6 +33,7 @@ const config: Config = {
   collectCoverageFrom: ['apps/**/*.ts', 'libs/**/*.ts', '!**/*.spec.ts'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/prisma/generated/'],
   testEnvironment: 'node',
+  testSequencer: '<rootDir>/scripts/ci/jest-duration-sequencer.cjs',
 };
 
 export default config;

@@ -1,4 +1,10 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { dirname, resolve } from "node:path";
+import { createRequire } from "node:module";
+const { load, dump } = createRequire(resolve("package.json"))("js-yaml") as {
+  load(source: string): unknown; dump(value: unknown): string;
+};
 import { execFileSync } from "node:child_process";
 import { runInNewContext } from "node:vm";
 
@@ -138,4 +144,105 @@ describe("offline paired selector npm gate", () => {
     expect(checkCommand({ "check:reader-paired-experiment": command.replace(before, after) })).not.toEqual([]);
   });
   it("rejects a missing gate", () => expect(checkCommand({})).not.toEqual([]));
+});
+
+// The guard parses YAML; execute the resolver and independently hash real lockfile
+// contents to prove cache invalidation rather than only matching key source text.
+const flutterHelper = checker.slice(
+  checker.indexOf('const flutterCacheViolations ='),
+  checker.indexOf('violations.push(...flutterCacheViolations(workflow));'),
+);
+const checkFlutterCache = (source: string): string[] => runInNewContext(
+  `${flutterHelper}\nflutterCacheViolations(source)`, { source, loadYaml: load },
+);
+const frontendSteps = (load(workflow) as { jobs: { frontend: { steps: Array<{
+  id?: string; run?: string; uses?: string; with?: Record<string, unknown>;
+}> } } }).jobs.frontend.steps;
+
+describe('exact Flutter cache contract', () => {
+  it('accepts parsed workflow including equivalent YAML serialization', () => {
+    expect(checkFlutterCache(workflow)).toEqual([]);
+    expect(checkFlutterCache(dump(load(workflow)))).toEqual([]);
+  });
+  it.each([
+    ['cache: true', 'cache: false'], ['pub-cache: true', 'pub-cache: false'],
+    ['channel: stable', 'channel: beta'],
+    ['flutter-version-file: apps/frontend/.fvmrc', 'flutter-version-file: apps/frontend/app/.fvmrc'],
+    ['${{ runner.arch }}', 'x64'], ['${{ runner.os }}', 'Linux'],
+    ['${{ steps.flutter_version.outputs.version }}', '3.41.x'],
+    ["hashFiles('apps/frontend/**/pubspec.lock')", "hashFiles('apps/frontend/app/pubspec.lock')"],
+    ['id: flutter_version', 'id: wrong_version'],
+    [".flutter;", ".flutter.split('.').slice(0, 2).join('.');"],
+    ['          channel: stable', '          flutter-version: 3.41.x\n          channel: stable'],
+    ['      - name: Set up Flutter', '      - name: Set up Flutter\n        if: false'],
+    ['        id: flutter_version', '        id: flutter_version\n        continue-on-error: true'],
+  ])('rejects cache drift %s', (before, after) => {
+    expect(workflow).toContain(before);
+    expect(checkFlutterCache(workflow.replace(before, after))).not.toEqual([]);
+  });
+  it('executes exact version resolver and invalidates both keys for every frontend lock and SDK/runner change', () => {
+    mkdirSync(resolve('node_modules/.cicd-evidence'), { recursive: true });
+    const directory = mkdtempSync(resolve('node_modules/.cicd-evidence/flutter-cache-'));
+    const lockPaths = readdirSync('apps/frontend', { recursive: true, encoding: 'utf8' })
+      .filter((path) => path === 'pubspec.lock' || path.endsWith('/pubspec.lock'))
+      .map((path) => 'apps/frontend/' + path).sort();
+    expect(lockPaths.length).toBeGreaterThanOrEqual(1);
+    const fixtureLocks = [...new Set([...lockPaths, 'apps/frontend/app/pubspec.lock',
+      'apps/frontend/features/feed/pubspec.lock', 'apps/frontend/packages/shared_kernel/pubspec.lock'])].sort();
+    const versionStep = frontendSteps.find((step) => step.id === 'flutter_version');
+    const setup = frontendSteps.find((step) => step.uses?.startsWith('subosito/flutter-action@'));
+    const versionFile = resolve(directory, 'apps/frontend/.fvmrc');
+    const output = resolve(directory, 'output');
+    const exact = JSON.parse(readFileSync('apps/frontend/.fvmrc', 'utf8')).flutter as string;
+    const resolvedVersion = (version: string): string => {
+      writeFileSync(versionFile, JSON.stringify({ flutter: version }));
+      writeFileSync(output, '');
+      execFileSync('bash', ['-euc', versionStep?.run ?? 'false'], {
+        cwd: directory, env: { ...process.env, GITHUB_OUTPUT: output,
+          PATH: `${resolve(directory, 'bin')}:${process.env.PATH ?? ''}` }, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      const resolved = readFileSync(output, 'utf8').trim().match(/^version=(\d+\.\d+\.\d+)$/u)?.[1];
+      if (resolved === undefined) throw new Error('missing resolved Flutter version');
+      return resolved;
+    };
+    const keys = (version: string, os = 'Linux', arch = 'X64'): string[] => {
+      // GitHub hashFiles combines SHA256 digests of every matched file.
+      const hash = createHash('sha256');
+      for (const path of fixtureLocks) hash.update(createHash('sha256').update(readFileSync(resolve(directory, path))).digest());
+      const lockHash = hash.digest('hex');
+      return ['cache-key', 'pub-cache-key'].map((key) => String(setup?.with?.[key]).replace(/\$\{\{\s*(.*?)\s*\}\}/gu, (_, expression: string) => {
+        const values: Record<string, string> = { 'runner.os': os, 'runner.arch': arch,
+          'steps.flutter_version.outputs.version': version, "hashFiles('apps/frontend/**/pubspec.lock')": lockHash };
+        if (values[expression] === undefined) throw new Error(`unsupported cache expression ${expression}`);
+        return values[expression];
+      }));
+    };
+    try {
+      mkdirSync(resolve(directory, 'apps/frontend'), { recursive: true });
+      mkdirSync(resolve(directory, 'bin'));
+      symlinkSync(process.execPath, resolve(directory, 'bin/node'));
+      for (const path of fixtureLocks) {
+        mkdirSync(dirname(resolve(directory, path)), { recursive: true });
+        writeFileSync(resolve(directory, path), lockPaths.includes(path) ? readFileSync(path) : '# synthetic workspace lock\n');
+      }
+      expect(resolvedVersion(exact)).toBe(exact);
+      const original = keys(exact);
+      const next = exact.replace(/\d+$/u, (patch) => String(Number(patch) + 1));
+      expect(resolvedVersion(next)).toBe(next);
+      for (const variant of [keys(next), keys(exact, 'macOS'), keys(exact, 'Linux', 'ARM64')]) {
+        expect(variant[0]).not.toBe(original[0]); expect(variant[1]).not.toBe(original[1]);
+      }
+      for (const path of fixtureLocks) {
+        const file = resolve(directory, path);
+        const before = readFileSync(file);
+        writeFileSync(file, Buffer.concat([before, Buffer.from('\n# synthetic lock change\n')]));
+        const changed = keys(exact);
+        expect(changed[0]).not.toBe(original[0]); expect(changed[1]).not.toBe(original[1]);
+        writeFileSync(file, before);
+      }
+      writeFileSync(resolve(directory, 'apps/frontend/code.dart'), '// synthetic UI-only change');
+      expect(keys(exact)).toEqual(original);
+      for (const invalid of ['stable', '3.41.x', '3.41', '3.41.9-beta']) expect(() => resolvedVersion(invalid)).toThrow();
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 });
