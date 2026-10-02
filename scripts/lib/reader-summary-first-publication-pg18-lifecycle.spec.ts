@@ -18,6 +18,7 @@ let statuses: number;
 const priorBin = process.env.FIRSTPUB_NATIVE_PG18_BIN;
 const realRead = fs.readFileSync, realStat = fs.statSync, realLstat = fs.lstatSync;
 const realRealpath = fs.realpathSync;
+const realWrite = fs.writeFileSync;
 const pid = 424242;
 const result = (status: number | null, stdout = "", signal: NodeJS.Signals | null = null, code?: string) => ({
   status, stdout, stderr: "synthetic output must not be persisted", signal,
@@ -157,13 +158,54 @@ it("records redacted startup outcome and state evidence", async () => {
   expect(log).not.toContain("synthetic output");
 });
 
-it("removes only data/socket after owned identity and verified shutdown", async () => {
+// Invariant: a verified stop retains the complete namespace and truthful evidence.
+// Regression: successful shutdown reintroduces automatic data/socket deletion.
+it("retains the entire namespace after owned identity and verified shutdown", async () => {
   mode = "normal";
   await expect(createFirstPublicationPg18Fixture()).rejects.toThrow("synthetic SQL setup refused");
   expect(commands.filter((c) => c === "pg_ctl:stop")).toHaveLength(1);
-  expect(fs.existsSync(join(root(), "data"))).toBe(false);
-  expect(fs.existsSync(join(root(), "socket"))).toBe(false);
+  expect(fs.existsSync(join(root(), "data"))).toBe(true);
+  expect(fs.existsSync(join(root(), "socket"))).toBe(true);
   expect(fs.existsSync(root())).toBe(true);
   const evidence = JSON.parse(realRead(join(root(), "lifecycle.json"), "utf8")) as { state: string; identity?: object }[];
-  expect(evidence.at(-1)).toMatchObject({ state: "verified-stopped", identity: { pid, uid: 1000, startTicks: "98765" } });
+  expect(evidence.at(-1)).toMatchObject({ state: "verified-stopped", namespace: "retained", identity: { pid, uid: 1000, startTicks: "98765" } });
+});
+
+// Invariant: a new live PID at the former cleanup boundary cannot lose any bytes.
+// Regression: directory inode checks admit recursive deletion after a restart.
+it("retains restarted data and socket bytes during verified-stop evidence write", async () => {
+  mode = "normal";
+  const restartedPid = pid + 1;
+  const dataBytes = Buffer.from("test-owned data evidence\0\xff", "latin1");
+  const socketBytes = Buffer.from("test-owned socket evidence\0\xfe", "latin1");
+  let restarted = false;
+  jest.spyOn(fs, "writeFileSync").mockImplementation(((path, value, options) => {
+    if (!restarted && String(path).endsWith("/lifecycle.json") && String(value).includes('"verified-stopped"')) {
+      // Actual status3, original PID-file absence and original /proc absence
+      // have already been observed. Restart only at the evidence-write boundary.
+      expect(live).toBe(false);
+      expect(statuses).toBe(3);
+      expect(fs.existsSync(join(root(), "data", "postmaster.pid"))).toBe(false);
+      expect(() => fs.lstatSync(`/proc/${pid}`)).toThrow();
+      restarted = true; live = true;
+      realWrite(join(root(), "data", "postmaster.pid"), `${restartedPid}\n`);
+      realWrite(join(root(), "data", "retained-marker"), dataBytes);
+      realWrite(join(root(), "socket", "retained-marker"), socketBytes);
+    }
+    return realWrite(path, value, options);
+  }) as typeof fs.writeFileSync);
+  const observedLstat = jest.mocked(fs.lstatSync).getMockImplementation()!;
+  jest.spyOn(fs, "lstatSync").mockImplementation(((path) => String(path) === `/proc/${restartedPid}` && restarted
+    ? Object.assign(realLstat(scratch), { uid: 1000 }) : observedLstat(path)) as typeof fs.lstatSync);
+
+  await expect(createFirstPublicationPg18Fixture()).rejects.toThrow("synthetic SQL setup refused");
+  expect(restarted).toBe(true);
+  expect(live).toBe(true);
+  expect(fs.lstatSync(`/proc/${restartedPid}`).uid).toBe(1000);
+  expect(commands.filter((c) => c === "pg_ctl:stop")).toHaveLength(1);
+  expect(realRead(join(root(), "data", "postmaster.pid"), "utf8")).toBe(`${restartedPid}\n`);
+  expect(realRead(join(root(), "data", "retained-marker"))).toEqual(dataBytes);
+  expect(realRead(join(root(), "socket", "retained-marker"))).toEqual(socketBytes);
+  const evidence = JSON.parse(realRead(join(root(), "lifecycle.json"), "utf8")) as { state: string }[];
+  expect(evidence.at(-1)).toMatchObject({ state: "verified-stopped", namespace: "retained" });
 });

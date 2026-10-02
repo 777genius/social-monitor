@@ -1,12 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { constants, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { constants, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 type State = "namespace-created" | "initialized" | "start-requested" | "owned-postmaster" | "uncertain" | "verified-stopped";
 type Identity = Readonly<{ pid: number; uid: number; executable: string; startTicks: string; data: string; startedAt: number }>;
 
-/** Private native FIRSTPUB fixture only. Uncertainty is terminal for automatic
- * lifecycle work: evidence stays in place for a separately reviewed recovery. */
+/** Private native FIRSTPUB fixture only. Stop may be verified, but the entire
+ * namespace is always retained, never automatically cleaned. Uncertainty is
+ * terminal for automatic lifecycle work; this fixture grants no cleanup authority. */
 export function createFirstpubPg18Lifecycle(bin: string) {
   if (typeof process.getuid !== "function" || typeof process.geteuid !== "function" ||
       process.getuid() === 0 || process.geteuid() === 0 || process.getuid() !== process.geteuid()) {
@@ -149,10 +150,9 @@ export function createFirstpubPg18Lifecycle(bin: string) {
       const status = command("pg_ctl", "status", ["-D", data, "status"]);
       if (status.status !== 3 || status.signal || status.error || !absent(join(data, "postmaster.pid")) ||
           !absent(`/proc/${owned.pid}`)) return uncertain("shutdown not verified");
-      validateNamespace(); state = "verified-stopped"; record({ identity: owned });
-      // Validation and verified shutdown precede every recursive removal.
-      validateNamespace(); rmSync(data, { recursive: true });
-      validateNamespace(); rmSync(socket, { recursive: true });
+      validateNamespace(); state = "verified-stopped"; record({ identity: owned, namespace: "retained" });
+      // This verifies the owned stop observation, not a continuing liveness
+      // lease. A same-UID restart can follow it: retain data/socket and evidence.
     } catch (error) {
       if (state === "uncertain") throw error;
       state = "uncertain";

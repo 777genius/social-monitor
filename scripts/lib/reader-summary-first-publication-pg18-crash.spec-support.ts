@@ -16,7 +16,7 @@ export async function proveNativeFirstpubProcessCrash(f: NativeFirstpubClaimFixt
     cwd: process.cwd(),
     execArgv: ["-r", resolve("node_modules/ts-node/register/transpile-only"), "-r", resolve("node_modules/tsconfig-paths/register")],
     // No inherited database URLs, passwords, provider settings or secrets.
-    env: { NODE_ENV: "test", TS_NODE_TRANSPILE_ONLY: "true" },
+    env: { NODE_ENV: "test", TS_NODE_TRANSPILE_ONLY: "true", TS_NODE_PROJECT: resolve("test/tsconfig.jest.json") },
     stdio: ["ignore", "ignore", "ignore", "ipc"],
   });
   const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolveExit) => {
