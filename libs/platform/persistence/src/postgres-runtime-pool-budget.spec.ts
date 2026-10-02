@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import * as ts from 'typescript';
 import {
   POSTGRES_RUNTIME_CONNECTION_FACTORIES,
@@ -17,6 +18,15 @@ import {
   readSource,
   runtimeSourceFiles,
 } from './postgres-runtime-pool-budget-test-source';
+
+function withFallibleSiblingSetup(source: string): string {
+  return source.replace(' as unknown as Pg.Pool);\n    try {', ` as unknown as Pg.Pool),
+      reader = (() : ReturnType<typeof databaseSnapshotReader> => {
+        if (rows.length) throw new Error('synthetic setup failure');
+        return databaseSnapshotReader('synthetic-db-composition');
+      })();
+    try {`).replace("      const reader = databaseSnapshotReader('synthetic-db-composition');\n", '');
+}
 
 function expectRawDependencySyntax(path: string, source: string): void {
   if (path === 'scripts/lib/social-source-private-input-database.spec.ts') {
@@ -97,6 +107,9 @@ function expectSpyNamespaceUsage(path: string, source: string, spyBinding: strin
   const block = statement.parent;
   if (!ts.isVariableStatement(statement) || !ts.isBlock(block)) {
     throw new Error('Constructor spy must be scoped to its test block');
+  }
+  if (statement.declarationList.declarations.length !== 1) {
+    throw new Error('Constructor spy must be the sole declaration before its protected try');
   }
   const cleanup = block.statements[block.statements.indexOf(statement) + 1];
   const restoreStatement = cleanup && ts.isTryStatement(cleanup) &&
@@ -480,6 +493,56 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
   it('admits the genuine installed constructor spy and its type-only pool reference', () => {
     const path = 'scripts/lib/social-source-private-input-database.spec.ts';
     expect(() => expectRawDependencySyntax(path, readSource(path))).not.toThrow();
+  });
+
+  it('rejects fallible sibling setup before the constructor spy enters its finally', () => {
+    const path = 'scripts/lib/social-source-private-input-database.spec.ts';
+    expect(() => expectRawDependencySyntax(path, withFallibleSiblingSetup(readSource(path)))).toThrow();
+  });
+
+  it.each([false, true])('observes fake constructor restoration on setup failure (sibling=%s)', (sibling) => {
+    const path = 'scripts/lib/social-source-private-input-database.spec.ts';
+    const source = sibling ? withFallibleSiblingSetup(readSource(path)) : readSource(path);
+    const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+    let statement: ts.VariableStatement | undefined;
+    const visit = (node: ts.Node): void => {
+      if (ts.isVariableStatement(node) && node.declarationList.declarations.some(
+        (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === 'constructor',
+      )) statement = node;
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    if (!statement || !ts.isBlock(statement.parent)) throw new Error('Missing synthetic spy control');
+    const cleanup = statement.parent.statements[statement.parent.statements.indexOf(statement) + 1];
+    if (!cleanup || !ts.isTryStatement(cleanup) || !cleanup.finallyBlock) {
+      throw new Error('Missing synthetic restoration control');
+    }
+    // Execute only the real declaration and finally against a fake export.
+    // Ordinary setup throws inside try in the admitted shape, before try in its sibling variant.
+    const body = `${statement.getText(file)}\ntry { setup(); } finally ${cleanup.finallyBlock.getText(file)}`;
+    const constructorCalls = jest.fn();
+    const original = () => { constructorCalls(); throw new Error('Synthetic constructor must stay unused'); };
+    const pg = { Pool: original };
+    const setup = jest.fn(() => { throw new Error('synthetic setup failure'); });
+    try {
+      expect(() => runInNewContext(ts.transpileModule(`(() => { ${body} })();`, {
+        compilerOptions: { target: ts.ScriptTarget.ES2022 },
+      }).outputText, {
+        jest, pg, fake: { pool: {} }, on: jest.fn(), rows: [{}],
+        databaseSnapshotReader: () => async () => [], setup,
+      })).toThrow('synthetic setup failure');
+      expect(pg.Pool === original).toBe(!sibling);
+      expect(constructorCalls).not.toHaveBeenCalled();
+      if (sibling) expect(pg.Pool).not.toHaveBeenCalled();
+      expect(setup).toHaveBeenCalledTimes(sibling ? 0 : 1);
+      let admitted = true;
+      try { expectRawDependencySyntax(path, source); } catch { admitted = false; }
+      // Admission must never approve a setup failure that leaves its spy installed.
+      expect(admitted && pg.Pool !== original).toBe(false);
+    } finally {
+      if (pg.Pool !== original && jest.isMockFunction(pg.Pool)) pg.Pool.mockRestore();
+    }
+    expect(pg.Pool).toBe(original);
   });
 
   it('admits harmless constructor text and formatted genuine mock and restore calls', () => {
