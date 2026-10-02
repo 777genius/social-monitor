@@ -95,11 +95,13 @@ export function createFirstpubPg18Lifecycle(bin: string) {
     }
     const pid = Number(lines[0]);
     const startedAt = Number(lines[2]);
+    // PostgreSQL writes the ready status as an eight-byte, space-padded field.
+    const ready = lines[7] === "ready" || lines[7] === "ready   ";
     record({ pidObservation: { pid, dataMatches: lines[1] === data,
-      socketMatches: lines[4] === host, ready: lines[7] === "ready", startedAt } });
+      socketMatches: lines[4] === host, ready, startedAt } });
     if (!Number.isSafeInteger(pid) || pid === process.pid || lines[1] !== data ||
         !/^[1-9]\d*$/u.test(lines[2] ?? "") || lines[3] !== "5432" ||
-        lines[4] !== host || lines[7] !== "ready" || startRequestedAt === undefined ||
+        lines[4] !== host || !ready || startRequestedAt === undefined ||
         startedAt < startRequestedAt || startedAt > Math.floor(Date.now() / 1000)) throw new Error("Postmaster namespace identity mismatch");
     const proc = `/proc/${pid}`;
     const procUid = statSync(proc).uid;

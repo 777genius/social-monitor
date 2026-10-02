@@ -57,30 +57,36 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
     await expect(session.query(directInsert, params)).rejects.toMatchObject({ code: "P0001" });
     await f.admin.query("REVOKE INSERT ON reader_summary_publication_slots FROM social_monitor_summary_once");
     await f.installContract();
-    // Independent PostgreSQL privilege contract. Runtime SELECT cannot lend
-    // the SECURITY DEFINER its missing fifth-ledger column privileges.
-    const owner = "social_monitor_reader_summary_publication_owner";
-    const ledger = "public.reader_summary_daily_model_jobs";
-    expect((await f.admin.query(`SELECT pg_catalog.has_table_privilege($1,$2,'SELECT') AS broad`,
-      [owner, ledger])).rows).toEqual([{ broad: false }]);
-    const columns = await f.admin.query(`SELECT a.attname,
-      pg_catalog.has_column_privilege($1,a.attrelid,a.attnum,'SELECT') AS readable
-      FROM pg_catalog.pg_attribute a WHERE a.attrelid=$2::regclass
-        AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`, [owner, ledger]);
-    expect(columns.rows.filter((row) => row.readable).map((row) => row.attname).sort())
-      .toEqual(["requested_utc_date", "tenant_id", "workspace_id"]);
-    expect((await f.admin.query(`SELECT c.relowner::regrole::text AS owner,c.relforcerowsecurity AS forced
-      FROM pg_catalog.pg_class c WHERE c.oid=$1::regclass`, [ledger])).rows)
-      .toEqual([{ owner: "social_monitor_public_schema_owner", forced: true }]);
-    expect((await f.admin.query(`SELECT rolcanlogin,rolsuper,rolbypassrls FROM pg_catalog.pg_roles
-      WHERE rolname=$1`, [owner])).rows).toEqual([{ rolcanlogin: false, rolsuper: false, rolbypassrls: false }]);
     // This fresh empty clone must succeed, independently of the main schedule
     // and before any competing claim. Failed/unknown daily claims below must
     // yield P0001, never permission denied on the fifth ledger.
     await f.withClaimCase("jobs_unknown", async (empty) => {
+      // C1 historically grants table SELECT to this owner. Preserve it in
+      // the main DB. This clone's preparation revokes the legacy grant BEFORE
+      // installing the contract: table REVOKE also removes column grants.
+      // The committed contract must supply all three column grants itself.
+      // Independent PostgreSQL privilege contract. Runtime SELECT cannot lend
+      // the SECURITY DEFINER its missing fifth-ledger column privileges.
+      const owner = "social_monitor_reader_summary_publication_owner";
+      const ledger = "public.reader_summary_daily_model_jobs";
+      expect((await empty.admin.query(`SELECT pg_catalog.has_table_privilege($1,$2,'SELECT') AS broad`,
+        [owner, ledger])).rows).toEqual([{ broad: false }]);
+      const columns = await empty.admin.query(`SELECT a.attname,
+        pg_catalog.has_column_privilege($1,a.attrelid,a.attnum,'SELECT') AS readable
+        FROM pg_catalog.pg_attribute a WHERE a.attrelid=$2::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`, [owner, ledger]);
+      expect(columns.rows.filter((row) => row.readable).map((row) => row.attname).sort())
+        .toEqual(["requested_utc_date", "tenant_id", "workspace_id"]);
+      expect((await empty.admin.query(`SELECT c.relowner::regrole::text AS owner,c.relforcerowsecurity AS forced
+        FROM pg_catalog.pg_class c WHERE c.oid=$1::regclass`, [ledger])).rows)
+        .toEqual([{ owner: "social_monitor_public_schema_owner", forced: true }]);
+      expect((await empty.admin.query(`SELECT rolcanlogin,rolsuper,rolbypassrls FROM pg_catalog.pg_roles
+        WHERE rolname=$1`, [owner])).rows).toEqual([{ rolcanlogin: false, rolsuper: false, rolbypassrls: false }]);
       await expect(reserveFirstPublicationDay(empty.client, day, new Date())).resolves.toBeUndefined();
       expect((await empty.admin.query("SELECT current_publication_id FROM reader_summary_publication_slots")).rows)
         .toEqual([{ current_publication_id: null }]);
+    }, async (auditor) => {
+      await auditor.query("REVOKE SELECT ON public.reader_summary_daily_model_jobs FROM social_monitor_reader_summary_publication_owner");
     });
     // Real LOGIN attributes/memberships in the disposable cluster only. Direct
     // EXECUTE for the missing member isolates admission from function ACL denial.
@@ -201,7 +207,7 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
           set_config('social_monitor.workspace_id',$2,false),set_config('social_monitor.system_access','false',false)`, params.slice(0, 2));
         await ordinaryWriter.query(`INSERT INTO reader_summary_jobs(id,tenant_id,workspace_id,scope_type,scope_key,cadence,
           period_started_at,period_ended_at,period_timezone,period_key,status,idempotency_key,requested_at,created_at,updated_at)
-          VALUES($1,$2,$3,'workspace','workspace','daily',$4,$5,'UTC',$6,'FAILED',$1::text,$5,$5,$5)`,
+          VALUES($1,$2,$3,'workspace','workspace','daily',$4,$5,'UTC',$6,'FAILED',$1::uuid::text,$5,$5,$5)`,
         [failedId, day.tenantId, day.workspaceId, start, end, buildReaderSummaryPeriod({ cadence: "daily", timezone: "UTC", startedAt: start, endedAt: end }).periodKey]);
       } finally { ordinaryWriter.release(); }
     };
@@ -265,10 +271,10 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
       const source = randomUUID(), feed = randomUUID(), observed = new Date((i < 398 ? start : end).getTime() + 1000);
       await f.admin.query(`INSERT INTO source_items(id,tenant_id,workspace_id,source_binding_id,provider_key,provider_item_id,
         canonical_url,title,body,published_at,content_hash,observed_at,metadata)
-        VALUES($1,$2,$3,$4,'rss',$1::text,'synthetic:'||$1::text,'synthetic','synthetic',$5,$6,$7,'{}')`, [source, day.tenantId, day.workspaceId, binding, start, "a".repeat(64), observed]);
+        VALUES($1,$2,$3,$4,'rss',$1::uuid::text,'synthetic:'||$1::uuid::text,'synthetic','synthetic',$5,$6,$7,'{}')`, [source, day.tenantId, day.workspaceId, binding, start, "a".repeat(64), observed]);
       await f.admin.query(`INSERT INTO feed_items(id,tenant_id,workspace_id,interest_id,source_item_id,source_binding_id,
         provider_key,dedupe_key,canonical_url,title,body_preview,published_at,observed_at,updated_at)
-        VALUES($1,$2,$3,$4,$5,$6,'rss',$1::text,'synthetic:'||$5::text,'synthetic','synthetic',$7,$8,$8)`, [feed, day.tenantId, day.workspaceId, interest, source, binding, start, observed]);
+        VALUES($1,$2,$3,$4,$5,$6,'rss',$1::uuid::text,'synthetic:'||$5::uuid::text,'synthetic','synthetic',$7,$8,$8)`, [feed, day.tenantId, day.workspaceId, interest, source, binding, start, observed]);
     }
     const asOf = new Date();
     const inventory = await captureFirstPublicationInventory({ client, ...pg18FixtureScope,
@@ -329,7 +335,7 @@ it("native disposable PG18 proves finite ACL, durable reservation and the full f
     // deliberately before the publisher; no stale publication is produced.
     await expect(runWithTenantDatabaseAccess(day, () => new PrismaReaderSummaryPublication(
       publicationClient, async (tx) => {
-        await tx.$queryRaw`SELECT firstpub_snapshot_probe.lock_dataset()`;
+        await tx.$queryRaw`SELECT firstpub_snapshot_probe.lock_dataset()::text`;
         const staleGuard = new ReaderSummaryDayDatasetGuard(tx, inventory.datasetManifest, "a".repeat(64), () => new Date(), undefined, inventory);
         await staleGuard.assertCurrent("before_evidence_selection");
         await staleGuard.assertCurrent("after_evidence_selection");

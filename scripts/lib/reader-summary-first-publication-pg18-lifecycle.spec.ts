@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { join } from "node:path";
+import type * as Pg from "pg";
 import { createFirstPublicationPg18Fixture } from "./reader-summary-first-publication-pg18.spec-support";
 
 // Explicitly selects lifecycle fault/retention coverage, without an application
@@ -11,7 +12,7 @@ jest.mock("node:child_process", () => ({ spawnSync: jest.fn() }));
 jest.mock("pg", () => ({ Pool: jest.fn().mockImplementation(() => ({
   query: jest.fn().mockRejectedValue(new Error("synthetic SQL setup refused")),
   end: jest.fn().mockResolvedValue(undefined),
-})) }));
+})), types: jest.requireActual<typeof Pg>("pg").types }));
 
 const spawn = jest.mocked(spawnSync);
 let scratch: string, bin: string;
@@ -19,6 +20,7 @@ let commands: string[];
 let mode: string;
 let live: boolean;
 let statuses: number;
+let postmasterStatus: string;
 const priorBin = process.env.FIRSTPUB_NATIVE_PG18_BIN;
 const realRead = fs.readFileSync, realStat = fs.statSync, realLstat = fs.lstatSync;
 const realRealpath = fs.realpathSync;
@@ -41,6 +43,7 @@ beforeEach(() => {
   jest.spyOn(process, "getuid").mockReturnValue(1000);
   jest.spyOn(process, "geteuid").mockReturnValue(1000);
   commands = []; mode = "timeout"; live = false; statuses = 0;
+  postmasterStatus = "ready";
   spawn.mockImplementation((file, args) => {
     const argv = args as string[];
     const name = String(file).split("/").at(-1)!;
@@ -51,7 +54,7 @@ beforeEach(() => {
     if (name === "initdb") { fs.mkdirSync(data); return result(0); }
     if (action === "start") {
       live = true;
-      if (mode !== "missing-pid") fs.writeFileSync(join(data, "postmaster.pid"), mode === "empty-pid" ? "" : `${pid}\n${data}\n${Math.floor(Date.now() / 1000)}\n5432\n${`/proc/${process.pid}/cwd/${namespace()}/socket`}\n\n\nready\n`);
+      if (mode !== "missing-pid") fs.writeFileSync(join(data, "postmaster.pid"), mode === "empty-pid" ? "" : `${pid}\n${data}\n${Math.floor(Date.now() / 1000)}\n5432\n${`/proc/${process.pid}/cwd/${namespace()}/socket`}\n\n\n${postmasterStatus}\n`);
       if (mode === "timeout") return result(null, "", "SIGTERM", "ETIMEDOUT");
       if (mode === "signal") return result(null, "", "SIGKILL");
       if (mode === "spawn-error") return result(null, "", null, "ENOENT");
@@ -108,6 +111,24 @@ afterEach(() => {
   else process.env.FIRSTPUB_NATIVE_PG18_BIN = priorBin;
   // Test-owned fake files only. No native process was started by these tests.
   fs.rmSync(scratch, { recursive: true, force: true });
+});
+
+// A real PG18 postmaster writes ready plus three spaces. Admission still
+// requires the complete independent process identity and verified shutdown.
+it.each(["ready", "ready   "])("admits the genuine ready status format and verifies owned shutdown: %j", async (status) => {
+  mode = "normal"; postmasterStatus = status;
+  await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow("synthetic SQL setup refused");
+  expect(commands.filter((command) => command === "pg_ctl:stop")).toHaveLength(1);
+  const evidence = JSON.parse(realRead(join(root(), "lifecycle.json"), "utf8")) as { state: string }[];
+  expect(evidence.at(-1)).toMatchObject({ state: "verified-stopped", identity: { pid, uid: 1000, startTicks: "98765" } });
+  expect(fs.existsSync(join(root(), "data"))).toBe(true);
+});
+
+it.each(["starting", "standby ", "stopping", "", "readyx", " ready", "ready\t"])("refuses non-ready or malformed status without shutdown: %j", async (status) => {
+  mode = "normal"; postmasterStatus = status;
+  await expect(createFirstPublicationPg18Fixture(offlineLifecycle)).rejects.toThrow(/uncertain/u);
+  expect(commands).not.toContain("pg_ctl:stop");
+  expect(fs.existsSync(join(root(), "data"))).toBe(true);
 });
 
 it.each(["getuid", "geteuid"] as const)("rejects root %s before creating a namespace or issuing any command", async (kind) => {

@@ -3,7 +3,8 @@ import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistenc
 import { reserveFirstPublicationDay } from "./reader-summary-first-publication-reservation";
 import { createReaderSummaryPublicationRunningFixture } from "./reader-summary-publication-postgres-running-fixture";
 import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, mkdirSync, cpSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
 import { createFirstpubPg18Lifecycle } from "./reader-summary-first-publication-pg18-lifecycle.spec-support";
@@ -42,7 +43,7 @@ export async function createFirstPublicationPg18Fixture(
   // namespace. The unchanged loader fails instead of generating or skipping.
   requireFirstpubGeneratedPrerequisite(composition, loadPrismaRuntimeClient);
   const bin = process.env.FIRSTPUB_NATIVE_PG18_BIN ?? "/usr/lib/postgresql/18/bin";
-  const required = ["initdb", "pg_ctl", "postgres"].map((name) => join(bin, name));
+  const required = ["initdb", "pg_ctl", "postgres", ...(composition.kind === "genuine" ? ["psql"] : [])].map((name) => join(bin, name));
   if (!required.every(existsSync)) {
     throw new Error(`Native disposable PG18 proof unavailable: installed initdb/pg_ctl/postgres missing in ${bin}; no install or shared-server fallback allowed`);
   }
@@ -94,29 +95,68 @@ export async function createFirstPublicationPg18Fixture(
       CREATE ROLE social_monitor_summary_once NOLOGIN NOSUPERUSER NOBYPASSRLS;
       CREATE ROLE firstpub_synthetic_finite LOGIN NOSUPERUSER NOBYPASSRLS;
       GRANT social_monitor_summary_once TO firstpub_synthetic_finite;
-      CREATE ROLE social_monitor_reader_summary_daily_terminal LOGIN NOSUPERUSER NOBYPASSRLS;`);
+      CREATE ROLE social_monitor_reader_summary_daily_terminal LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
+      ALTER ROLE social_monitor_reader_summary_daily_terminal SET search_path TO pg_catalog, public;`);
     await server.query(`CREATE DATABASE ${database} OWNER firstpub_synthetic_legacy`);
     const legacy = pool("firstpub_synthetic_legacy");
     let migrator = pool("firstpub_synthetic_migrator");
     let admin = pool("firstpub_synthetic_super");
-    await admin.query("GRANT ALL ON DATABASE firstpub_synthetic TO firstpub_synthetic_migrator; GRANT firstpub_synthetic_legacy TO firstpub_synthetic_migrator");
+    await admin.query("GRANT ALL ON DATABASE firstpub_synthetic TO firstpub_synthetic_migrator; GRANT firstpub_synthetic_legacy TO firstpub_synthetic_migrator WITH ADMIN TRUE, INHERIT FALSE, SET TRUE");
     const migrations = readdirSync(resolve("prisma/migrations")).filter((p) => existsSync(resolve("prisma/migrations", p, "migration.sql"))).sort();
-    for (const name of migrations.filter((n) => n < "20260716170000_reader_summary_fail_closed_publication")) {
-      await legacy.query(readFileSync(resolve("prisma/migrations", name, "migration.sql"), "utf8"));
+    const baselineMigrations = migrations.filter((n) => n < "20260716170000_reader_summary_fail_closed_publication");
+    if (composition.kind === "genuine") {
+      // Bootstrap audits the real Prisma migration ledger as well as domain
+      // relations. Execute the ordered baseline with the pinned real engine;
+      // do not fabricate a migration table or claim manually applied history.
+      const migrationRoot = join(root, "baseline-migrations");
+      mkdirSync(migrationRoot);
+      for (const name of baselineMigrations) {
+        cpSync(resolve("prisma/migrations", name), join(migrationRoot, name), { recursive: true });
+      }
+      writeFileSync(join(migrationRoot, "migration_lock.toml"), 'provider = "postgresql"\n', { flag: "wx", mode: 0o600 });
+      const configPath = join(root, "baseline-prisma.config.ts");
+      const url = `postgresql://firstpub_synthetic_legacy@localhost/${database}?host=${encodeURIComponent(host)}`;
+      writeFileSync(configPath, `import { defineConfig } from "prisma/config"; export default defineConfig(${JSON.stringify({
+        schema: resolve("prisma/schema.prisma"), migrations: { path: migrationRoot }, datasource: { url },
+      })});`, { flag: "wx", mode: 0o600 });
+      const baselineOutput = execFileSync(process.execPath, [resolve("node_modules/prisma/build/index.js"), "migrate", "deploy", "--config", configPath], {
+        timeout: 60000, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
+      });
+      writeFileSync(join(root, "baseline-prisma-deploy.log"), baselineOutput, { flag: "wx", mode: 0o600 });
+    } else {
+      // Existing explicit offline lifecycle compositions never acquire the
+      // real migration engine or a generated Prisma connection.
+      for (const name of baselineMigrations) {
+        await legacy.query(readFileSync(resolve("prisma/migrations", name, "migration.sql"), "utf8"));
+      }
     }
     const bootstrap = (phase: "pre" | "post") => readPublicationBootstrapSql(resolve(`ops/deploy/reader-summary-publication-${phase}-migration.sql`))
       .replace(/:'runtime_role'/gu, "'firstpub_synthetic_legacy'")
-      .replace(/:'system_runtime_role'/gu, "'firstpub_synthetic_legacy'");
+      .replace(/:'system_runtime_role'/gu, "'firstpub_synthetic_legacy'")
+      .replace(/:"runtime_role"/gu, '"firstpub_synthetic_legacy"')
+      .replace(/:"system_runtime_role"/gu, '"firstpub_synthetic_legacy"');
     await migrator.query(bootstrap("pre"));
     for (const name of migrations.filter((n) => n >= "20260716170000_reader_summary_fail_closed_publication" && n !== firstpubContractMigration)) {
-      await migrator.query(readFileSync(resolve("prisma/migrations", name, "migration.sql"), "utf8"));
+      const migrationPath = resolve("prisma/migrations", name, "migration.sql");
+      if (composition.kind === "genuine") {
+        // psql preserves the committed file's real statement boundaries.
+        // A multi-statement pg query implicitly wraps online concurrent index
+        // commands in a transaction, contrary to these migration contracts.
+        const output = execFileSync(join(bin, "psql"), ["-X", "-v", "ON_ERROR_STOP=1", "-h", host,
+          "-U", "firstpub_synthetic_migrator", "-d", database, "-f", migrationPath], {
+          timeout: 60000, env: process.env, stdio: "pipe",
+        });
+        writeFileSync(join(root, `${name}.psql.log`), output, { flag: "wx", mode: 0o600 });
+      } else {
+        await migrator.query(readFileSync(migrationPath, "utf8"));
+      }
     }
     await migrator.query(bootstrap("post"));
     const scopeConnection = await admin.connect();
     try { await provisionReaderSummaryPublicationFixtureScope(scopeConnection); }
     finally { scopeConnection.release(); }
     await admin.query(`GRANT USAGE ON SCHEMA public TO social_monitor_summary_once;
-      GRANT SELECT,INSERT,UPDATE ON reader_summary_jobs,reader_summary_artifacts TO social_monitor_summary_once;
+      GRANT SELECT ON reader_summary_jobs,reader_summary_artifacts TO social_monitor_summary_once;
       GRANT SELECT ON reader_summary_publications,reader_summary_publication_slots,reader_summary_daily_model_jobs,
         feed_items,source_items,source_bindings,interests,source_catalog_entries TO social_monitor_summary_once;
       GRANT EXECUTE ON FUNCTION public.publish_reader_summary(jsonb) TO social_monitor_summary_once;`);
@@ -132,8 +172,28 @@ export async function createFirstPublicationPg18Fixture(
     const contractSql = readFileSync(resolve("prisma/migrations", firstpubContractMigration, "migration.sql"), "utf8")
         .replaceAll("00000000-0000-7000-8000-000000006101", pg18FixtureScope.tenantId)
         .replaceAll("00000000-0000-7000-8000-000000006102", pg18FixtureScope.workspaceId);
-    const installContract = async () => { await migrator.query(contractSql); };
-    const withClaimCase = async (name: NativeFirstpubClaimCase, operation: (fixture: NativeFirstpubClaimFixture) => Promise<void>) => {
+    // The original pre-contract rejection cases require a read-only finite
+    // baseline. UPDATE itself permits EXCLUSIVE locks in PostgreSQL. Restore
+    // the existing scenario writer rights only after the contract is present,
+    // preserving ordinary-writer concurrency cases rather than deleting them.
+    const grantScenarioWriter = async (auditor: Pool) => {
+      await auditor.query("GRANT INSERT,UPDATE ON reader_summary_jobs,reader_summary_artifacts TO social_monitor_summary_once");
+    };
+    const installContract = async () => {
+      await migrator.query(contractSql);
+      await grantScenarioWriter(admin);
+      if (composition.kind === "genuine") {
+        const privileges = await admin.query(`SELECT c.relowner::regrole::text AS owner,c.relacl::text AS acl,
+          pg_catalog.has_table_privilege('social_monitor_reader_summary_publication_owner',c.oid,'SELECT') AS broad,
+          (SELECT json_agg(json_build_object('role',granted.rolname,'inherit',m.inherit_option,'set',m.set_option))
+            FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles granted ON granted.oid=m.roleid
+            WHERE m.member='social_monitor_reader_summary_publication_owner'::regrole) AS memberships
+          FROM pg_catalog.pg_class c WHERE c.oid='public.reader_summary_daily_model_jobs'::regclass`);
+        writeFileSync(join(root, "firstpub-owner-privileges.json"), JSON.stringify(privileges.rows), { flag: "wx", mode: 0o600 });
+      }
+    };
+    const withClaimCase = async (name: NativeFirstpubClaimCase, operation: (fixture: NativeFirstpubClaimFixture) => Promise<void>,
+      prepareBeforeContract?: (auditor: Pool) => Promise<void>) => {
       if (!/^(jobs|artifacts|publications|slots|daily_model_jobs)_(failed|unknown)$/u.test(name)) {
         throw new Error("Unknown bounded synthetic claim case");
       }
@@ -146,7 +206,9 @@ export async function createFirstPublicationPg18Fixture(
       let operationError: unknown;
       let operationFailed = false;
       try {
+        if (prepareBeforeContract !== undefined) await prepareBeforeContract(cloneAdmin);
         await cloneMigrator.query(contractSql);
+        await grantScenarioWriter(cloneAdmin);
         const client = await openPrisma({}, clone);
         await operation({ admin: cloneAdmin, finite: cloneFinite, client, socketHost: host, database: clone });
       } catch (error) { operationFailed = true; operationError = error; }
@@ -211,7 +273,7 @@ export async function proveNativeFirstpubPrismaClaimMatrix(
         if (category === "jobs") {
           await f.admin.query(`INSERT INTO reader_summary_jobs(id,tenant_id,workspace_id,scope_type,scope_key,cadence,
             period_started_at,period_ended_at,period_timezone,period_key,status,idempotency_key,requested_at,created_at,updated_at)
-            VALUES($1,$2,$3,'workspace','workspace','daily',$4,$5,'UTC',$6,$7,$1::text,$5,$5,$5)`, params);
+            VALUES($1,$2,$3,'workspace','workspace','daily',$4,$5,'UTC',$6,$7,$1::uuid::text,$5,$5,$5)`, params);
         } else if (category === "artifacts") {
           await f.admin.query(`INSERT INTO reader_summary_artifacts(id,tenant_id,workspace_id,scope_type,scope_key,cadence,
             period_started_at,period_ended_at,period_timezone,period_key,status,model_version,prompt_version,headline,
