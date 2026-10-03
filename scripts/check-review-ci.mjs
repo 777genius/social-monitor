@@ -1,9 +1,60 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { lstatSync, readFileSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { load as loadYaml } from "js-yaml";
 import { backendUnitShardingViolations, coverageWorkflowViolations } from "./ci/review-ci/backend-unit-contract.mjs";
 
+export function releaseGateCiViolations(source) {
+  let doc;
+  try { doc = loadYaml(source); } catch { return ["invalid YAML for release controller gate"]; }
+  const job = doc?.jobs?.static_quality;
+  const steps = job?.steps;
+  const fail = ["Static architecture and quality must run the system Python 3.12, hash-locked root controller gate on a disposable GitHub runner"];
+  if (job?.name !== "Static architecture and quality" || job["runs-on"] !== "ubuntu-24.04" ||
+      job.needs !== undefined || job.if !== undefined || job["continue-on-error"] !== undefined ||
+      job.environment !== undefined || Object.keys(doc.env ?? {}).some((key) => key !== "DATABASE_URL") ||
+      job.env !== undefined ||
+      doc.defaults !== undefined || job.defaults !== undefined ||
+      !Array.isArray(steps)) return fail;
+  const setups = steps.filter((step) => step.uses?.startsWith("actions/setup-python@"));
+  const gates = steps.filter((step) => step.run?.includes("ops/release/hetzner/check.sh"));
+  const checkouts = steps.filter((step) => step.uses?.startsWith("actions/checkout@"));
+  const checkout = checkouts[0];
+  const gate = gates[0];
+  if (setups.length !== 0 || gates.length !== 1 || checkouts.length !== 1 ||
+      checkout.uses !== "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10" ||
+      checkout.env !== undefined || Object.keys(checkout.with ?? {}).length !== 2 ||
+      checkout.with?.ref !== "${{ github.sha }}" || checkout.with?.["persist-credentials"] !== false ||
+      Object.keys(gate.env ?? {}).length !== 1 ||
+      gate.env?.RELEASE_GATE_VENV !== "${{ runner.temp }}/release-gate-venv" ||
+      steps.indexOf(checkout) !== 0 || steps.indexOf(gate) !== 1 ||
+      [checkout, gate].some((step) => step.if !== undefined || step["continue-on-error"] !== undefined ||
+        step["working-directory"] !== undefined || (step.shell !== undefined && step.shell !== "bash")) ||
+      /\$\{\{\s*secrets\./u.test(JSON.stringify({ env: doc.env, job }))) return fail;
+  // Check resolved YAML command boundaries, accepting comments and indentation.
+  // Ubuntu system Python matches the disposable chroot ABI; /root excludes runner-owned /opt.
+  const commands = gate.run.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+  const expected = [
+    "set -euo pipefail",
+    "test \"${GITHUB_ACTIONS:-}\" = true",
+    "test \"${RUNNER_ENVIRONMENT:-}\" = github-hosted",
+    "test \"$(id -u)\" -ne 0",
+    "command -v shellcheck",
+    "docker compose version",
+    "docker pull postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+    "/usr/bin/python3.12 -m venv --copies \"$RELEASE_GATE_VENV\"",
+    "\"$RELEASE_GATE_VENV/bin/python3\" -m pip install --require-hashes -r ops/release/hetzner/requirements.txt",
+    "sudo test ! -e /root/social-monitor-release-contract-tests",
+    "sudo mkdir -p /root/social-monitor-release-contract-tests/ops/release /root/social-monitor-release-contract-tests/node_modules",
+    "sudo cp -R ops/release/hetzner /root/social-monitor-release-contract-tests/ops/release/",
+    "sudo cp -R \"$RELEASE_GATE_VENV\" /root/social-monitor-release-contract-tests/python",
+    "sudo env PATH=\"/root/social-monitor-release-contract-tests/python/bin:$PATH\" bash /root/social-monitor-release-contract-tests/ops/release/hetzner/check.sh",
+  ];
+  return commands.length === expected.length && commands.every((line, index) => line === expected[index]) ? [] : fail;
+}
+
+export function runReviewCi() {
 const workflowPath = ".github/workflows/pull-request.yml";
 const workflow = readFileSync(workflowPath, "utf8");
 const productionWorkflowPath = ".github/workflows/production-deploy.yml";
@@ -32,6 +83,7 @@ const transitionProtectedPath = "ops/deploy/production-transition-protected.mani
 const transitionProtected = readFileSync(transitionProtectedPath, "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const violations = [];
+violations.push(...releaseGateCiViolations(workflow));
 const subscriptionRuntimeAuthPoolE2eCommand =
   "node --test --test-concurrency=1 apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs apps/agent-runtime/bin/subscription-runtime-failure-details.test.mjs apps/agent-runtime/bin/pinned-codex-native-binary.test.mjs apps/agent-runtime/src/source-content-assessment-pool.test.mjs";
 const dailyCursorPostgres18Command =
@@ -700,3 +752,6 @@ if (violations.length > 0) {
 }
 
 console.log("Pull request workflow contract OK");
+}
+
+if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) runReviewCi();

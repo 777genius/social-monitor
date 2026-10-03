@@ -20,12 +20,34 @@ env:
 jobs:
   static_quality:
     name: Static architecture and quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
       - name: Check out the review commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify release controller contracts
+        env:
+          RELEASE_GATE_VENV: ${{ runner.temp }}/release-gate-venv
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS:-}" = true
+          test "${RUNNER_ENVIRONMENT:-}" = github-hosted
+          test "$(id -u)" -ne 0
+          command -v shellcheck
+          docker compose version
+          docker pull postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+          /usr/bin/python3.12 -m venv --copies "$RELEASE_GATE_VENV"
+          "$RELEASE_GATE_VENV/bin/python3" -m pip install --require-hashes -r ops/release/hetzner/requirements.txt
+          sudo test ! -e /root/social-monitor-release-contract-tests
+          sudo mkdir -p /root/social-monitor-release-contract-tests/ops/release /root/social-monitor-release-contract-tests/node_modules
+          sudo cp -R ops/release/hetzner /root/social-monitor-release-contract-tests/ops/release/
+          sudo cp -R "$RELEASE_GATE_VENV" /root/social-monitor-release-contract-tests/python
+          sudo env PATH="/root/social-monitor-release-contract-tests/python/bin:$PATH" bash /root/social-monitor-release-contract-tests/ops/release/hetzner/check.sh
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
