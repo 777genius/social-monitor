@@ -88,8 +88,8 @@ ExecStart=/usr/bin/node /opt/social-monitor-agent-runtime/releases/<product-sha>
 Environment=AGENT_RUNTIME_CLI_PATH=/opt/social-monitor-agent-runtime/releases/<product-sha>/apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs
 ```
 
-The release command requires working `npm ci` and pinned `tsc`/`tsc-alias`
-binaries in the clean product checkout. If its pinned lockfile or dependency installation fails,
+The release command requires working `npm ci` and pinned `tsc` binary and TypeScript compiler library
+plus `scripts/rewrite-build-aliases.mjs` in the clean product checkout. If its pinned lockfile or dependency installation fails,
 no archive should be promoted. The synthetic packaging and verifier tests do
 not start the service:
 
@@ -353,3 +353,15 @@ Codex install step.
 For MiMo-only strict mode, the health RPC inspects the pinned installation
 without running a CLI task. Other modes probe `AGENT_RUNTIME_CLI_PATH` without
 an input task.
+
+
+The build helper parses the inherited TypeScript config and emitted module syntax
+with the locked TypeScript library. It rewrites configured aliases to existing
+emitted JS/declaration targets, matching exact entries before the longest wildcard
+prefix. The host command passes its isolated `--outDir`; the helper never writes
+source `dist` during host packaging. Missing alias targets or unsafe output paths
+fail the build. It changes only module specifier text and leaves `.map` files and
+sourceMappingURL comments unchanged. Like the previous post-emit alias step,
+changed specifier lengths can leave compiler map columns stale; no map accuracy
+improvement is claimed. The helper and compiler stay build-time tools and are
+not added to the release helper closure or production dependencies.

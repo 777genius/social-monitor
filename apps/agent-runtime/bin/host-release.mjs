@@ -325,7 +325,7 @@ async function build(args) {
       "-p", "tsconfig.build.json", "--outDir", compiled,
       "--tsBuildInfoFile", join(scratch, "tsconfig.build.tsbuildinfo"),
     ], sourceRoot);
-    await run(join(sourceRoot, "node_modules/.bin/tsc-alias"), [
+    await run(process.execPath, [join(sourceRoot, "scripts/rewrite-build-aliases.mjs"),
       "-p", "tsconfig.build.json", "--outDir", compiled,
     ], sourceRoot);
     if (await gitOutput(["status", "--porcelain", "--untracked-files=all"])) {
