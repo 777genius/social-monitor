@@ -906,6 +906,7 @@ def api_environment():
             'DATABASE_URL': 'postgresql://e2e_api:synthetic-e2e-only@postgres:5432/e2e',
             'COLLECTOR_RUNTIME_PROFILE': 'in-memory',
             'REDIS_URL': 'redis://redis:6379/0', 'SOCIAL_MONITOR_METRICS_MODE': 'in-memory',
+            'POSTGRES_RUNTIME_PROCESS': 'api-gateway',
             'MONITORING_PERSISTENCE': 'prisma', 'POSTGRES_RUNTIME_POOL_MIN': '0',
             'POSTGRES_RUNTIME_POOL_MAX': '2', 'POSTGRES_RUNTIME_POOL_CONNECTION_TIMEOUT_MS': '5000',
             'POSTGRES_RUNTIME_POOL_IDLE_TIMEOUT_MS': '10000',
