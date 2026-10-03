@@ -907,6 +907,8 @@ def api_environment():
             'COLLECTOR_RUNTIME_PROFILE': 'in-memory',
             'REDIS_URL': 'redis://redis:6379/0', 'SOCIAL_MONITOR_METRICS_MODE': 'in-memory',
             'POSTGRES_RUNTIME_PROCESS': 'api-gateway',
+            # All-zero TEST-only synthetic vault key.
+            'SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY': 'A' * 43 + '=',
             'MONITORING_PERSISTENCE': 'prisma', 'POSTGRES_RUNTIME_POOL_MIN': '0',
             'POSTGRES_RUNTIME_POOL_MAX': '2', 'POSTGRES_RUNTIME_POOL_CONNECTION_TIMEOUT_MS': '5000',
             'POSTGRES_RUNTIME_POOL_IDLE_TIMEOUT_MS': '10000',
