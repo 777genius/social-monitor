@@ -54,6 +54,45 @@ export function releaseGateCiViolations(source) {
   return commands.length === expected.length && commands.every((line, index) => line === expected[index]) ? [] : fail;
 }
 
+export function hetznerReleaseCiViolations(source, scripts) {
+  const fail = ["Static architecture and quality must run the exact unconditional Hetzner strict typecheck and native tests once after Node 22 and npm ci"];
+  const expected = {
+    "check:hetzner-release-typecheck": "tsc -p scripts/ci/tsconfig.hetzner-release.json",
+    "check:hetzner-release-tests": "node --experimental-strip-types --test scripts/ci/hetzner-release-authority.test.mts scripts/ci/hetzner-release-observe.test.mts scripts/ci/review-ci/release-workflow-contract.test.mts",
+    "check:hetzner-release-contract": "node --experimental-strip-types scripts/ci/check-hetzner-release-workflow.mts",
+  };
+  if (Object.entries(expected).some(([key, value]) => scripts?.[key] !== value)) return fail;
+  let doc;
+  try { doc = loadYaml(source); } catch { return fail; }
+  const job = doc?.jobs?.static_quality;
+  const steps = job?.steps;
+  if (!Array.isArray(steps) || job.if !== undefined || job.needs !== undefined ||
+      job["continue-on-error"] !== undefined || doc.defaults !== undefined ||
+      job.defaults !== undefined) return fail;
+  const nodes = steps.filter((step) => step.uses === "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e");
+  const installs = steps.filter((step) => step.run?.trim() === "npm ci");
+  const node = nodes[0], install = installs[0];
+  if (nodes.length !== 1 || installs.length !== 1 || node.with?.["node-version"] !== 22 ||
+      steps.indexOf(node) >= steps.indexOf(install)) return fail;
+  const commands = ["npm run check:hetzner-release-typecheck", "npm run check:hetzner-release-tests"];
+  const matches = steps.filter((step) => commands.some((command) => step.run?.includes(command)));
+  const gate = matches[0];
+  const safe = (step) => step.if === undefined && step["continue-on-error"] === undefined &&
+    step["working-directory"] === undefined && step.env === undefined &&
+    Object.keys(step).every((key) => ["name", "uses", "with", "run", "shell"].includes(key)) &&
+    (step.shell === undefined || step.shell === "bash");
+  if (matches.length !== 1 || steps.indexOf(gate) <= steps.indexOf(install) ||
+      ![node, install, gate].every(safe) ||
+      gate.run?.trim() !== ["set -euo pipefail", ...commands].join("\n")) return fail;
+  for (const command of commands) {
+    const occurrences = Object.values(doc.jobs ?? {}).flatMap((candidate) => candidate.steps ?? [])
+      .reduce((count, step) => count + (typeof step.run === "string"
+        ? step.run.split(command).length - 1 : 0), 0);
+    if (occurrences !== 1) return fail;
+  }
+  return [];
+}
+
 export function runReviewCi() {
 const workflowPath = ".github/workflows/pull-request.yml";
 const workflow = readFileSync(workflowPath, "utf8");
@@ -84,6 +123,21 @@ const transitionProtected = readFileSync(transitionProtectedPath, "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const violations = [];
 violations.push(...releaseGateCiViolations(workflow));
+violations.push(...hetznerReleaseCiViolations(workflow, packageJson.scripts));
+try {
+  // Keep bare Node 22 imports of this JavaScript module free of TypeScript.
+  // Only the fixed child entry point enables native type stripping.
+  execFileSync(process.execPath, [
+    "--experimental-strip-types", "scripts/ci/check-hetzner-release-workflow.mts",
+  ], {
+    timeout: 30000, maxBuffer: 65536,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+} catch {
+  violations.push(
+    ".github/workflows/hetzner-release.yml: parsed release workflow guard failed or exceeded its finite execution bounds; run npm run check:hetzner-release-contract",
+  );
+}
 const subscriptionRuntimeAuthPoolE2eCommand =
   "node --test --test-concurrency=1 apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs apps/agent-runtime/bin/subscription-runtime-failure-details.test.mjs apps/agent-runtime/bin/pinned-codex-native-binary.test.mjs apps/agent-runtime/src/source-content-assessment-pool.test.mjs";
 const dailyCursorPostgres18Command =

@@ -1,0 +1,229 @@
+name: Hetzner release
+
+on:
+  workflow_run:
+    workflows: [Pull request checks]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Exact successful main push CI run ID
+        required: true
+        type: string
+      action:
+        description: Explicit bounded release action
+        required: true
+        default: preflight
+        type: choice
+        options: [preflight, activate, rollback-previous]
+      rollback_sha:
+        description: Full activation receipt SHA; rollback currently denies
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      phase: ${{ steps.candidate.outputs.phase || 'disabled-skipped' }}
+      lane: ${{ steps.candidate.outputs.lane || 'skip' }}
+      sha: ${{ steps.candidate.outputs.sha }}
+      run: ${{ steps.candidate.outputs.run }}
+      artifact: ${{ steps.candidate.outputs.artifact }}
+      manifest_hash: ${{ steps.candidate.outputs.manifest_hash }}
+    steps:
+      - &mode
+        name: Require explicitly configured mode
+        id: mode
+        shell: bash
+        env:
+          HETZNER_RELEASE_MODE: ${{ vars.HETZNER_RELEASE_MODE }}
+        run: |
+          set -euo pipefail
+          case "${HETZNER_RELEASE_MODE:-}" in
+            preflight|manual|auto) printf 'enabled=true\n' >> "$GITHUB_OUTPUT" ;;
+            *) printf 'enabled=false\n' >> "$GITHUB_OUTPUT"; printf 'Hetzner release: disabled-skipped\n' >> "$GITHUB_STEP_SUMMARY" ;;
+          esac
+      - &main
+        name: Independently observe current main
+        id: main
+        if: steps.mode.outputs.enabled == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ runner.temp }}/hetzner-gh-${{ github.job }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$GITHUB_REPOSITORY" = 777genius/social-monitor
+          test ! -e "$GH_CONFIG_DIR"
+          mkdir -m 700 "$GH_CONFIG_DIR"
+          trap 'rm -rf -- "$GH_CONFIG_DIR"' EXIT
+          observed="$(timeout 60 gh api --hostname github.com --method GET repos/777genius/social-monitor/git/ref/heads/main --jq 'if .ref == "refs/heads/main" and .object.type == "commit" then .object.sha else error("main") end' 2>/dev/null)"
+          [[ "$observed" =~ ^[0-9a-f]{40}$ ]]
+          printf 'sha=%s\n' "$observed" >> "$GITHUB_OUTPUT"
+      - &checkout
+        name: Check out trusted main
+        if: steps.mode.outputs.enabled == 'true'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: 777genius/social-monitor
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - &head
+        name: Verify trusted checkout before executing scripts
+        if: steps.mode.outputs.enabled == 'true'
+        shell: bash
+        env:
+          TRUSTED_MAIN: ${{ steps.main.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TRUSTED_MAIN" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse --verify HEAD)" = "$TRUSTED_MAIN"
+      - &node
+        name: Set up Node 22
+        if: steps.mode.outputs.enabled == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+      - name: Verify and download candidate data
+        id: candidate
+        if: steps.mode.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ runner.temp }}/hetzner-gh-${{ github.job }}
+          HETZNER_RELEASE_MODE: ${{ vars.HETZNER_RELEASE_MODE }}
+          TRUSTED_MAIN: ${{ steps.main.outputs.sha }}
+        run: node --experimental-strip-types scripts/ci/hetzner-release-observe.mts candidate
+
+  preflight:
+    needs: candidate
+    if: needs.candidate.outputs.phase == 'ready' && needs.candidate.outputs.lane == 'preflight'
+    concurrency:
+      group: social-monitor-hetzner-production
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-hetzner
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - *mode
+      - *main
+      - *checkout
+      - *head
+      - *node
+      - &gate
+        name: Independently authorize the host phase
+        id: gate
+        if: steps.mode.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ runner.temp }}/hetzner-gh-${{ github.job }}
+          HETZNER_RELEASE_MODE: ${{ vars.HETZNER_RELEASE_MODE }}
+          TRUSTED_MAIN: ${{ steps.main.outputs.sha }}
+          EXPECTED_SHA: ${{ needs.candidate.outputs.sha }}
+          EXPECTED_RUN: ${{ needs.candidate.outputs.run }}
+          EXPECTED_ARTIFACT: ${{ needs.candidate.outputs.artifact }}
+          EXPECTED_MANIFEST_HASH: ${{ needs.candidate.outputs.manifest_hash }}
+          EXPECTED_LANE: ${{ needs.candidate.outputs.lane }}
+        run: node --experimental-strip-types scripts/ci/hetzner-release-observe.mts gate
+      - name: Observe bounded host preflight
+        if: steps.gate.outputs.phase == 'ready' && steps.gate.outputs.lane == 'preflight'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ runner.temp }}/hetzner-gh-${{ github.job }}
+          HETZNER_RELEASE_MODE: ${{ vars.HETZNER_RELEASE_MODE }}
+          TRUSTED_MAIN: ${{ steps.main.outputs.sha }}
+          EXPECTED_SHA: ${{ needs.candidate.outputs.sha }}
+          EXPECTED_RUN: ${{ needs.candidate.outputs.run }}
+          EXPECTED_ARTIFACT: ${{ needs.candidate.outputs.artifact }}
+          EXPECTED_MANIFEST_HASH: ${{ needs.candidate.outputs.manifest_hash }}
+          EXPECTED_LANE: ${{ needs.candidate.outputs.lane }}
+          HETZNER_HOST: ${{ vars.HETZNER_HOST }}
+          HETZNER_PORT: ${{ vars.HETZNER_PORT }}
+          HETZNER_PRIVATE_KEY: ${{ secrets.HETZNER_PRIVATE_KEY }}
+          HETZNER_KNOWN_HOSTS: ${{ secrets.HETZNER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          private="$(mktemp -d "$RUNNER_TEMP/hetzner-private-XXXXXXXX")"
+          trap 'rm -rf -- "$private"' EXIT
+          export HETZNER_PRIVATE_DIRECTORY="$private"
+          node --experimental-strip-types scripts/ci/hetzner-release-observe.mts preflight
+      - name: Preserve finite preflight receipt
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: hetzner-preflight-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/hetzner-receipts-${{ github.job }}/receipt.jsonl
+            ${{ runner.temp }}/hetzner-receipts-${{ github.job }}/phases.jsonl
+          if-no-files-found: ignore
+          retention-days: 90
+
+  activate:
+    needs: candidate
+    if: needs.candidate.outputs.phase == 'ready' && needs.candidate.outputs.lane == 'activate'
+    concurrency:
+      group: social-monitor-hetzner-production
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production-hetzner
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - *mode
+      - *main
+      - *checkout
+      - *head
+      - *node
+      - *gate
+      - name: Deliver through the existing bounded client
+        if: steps.gate.outputs.phase == 'ready' && steps.gate.outputs.lane == 'activate'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ runner.temp }}/hetzner-gh-${{ github.job }}
+          HETZNER_RELEASE_MODE: ${{ vars.HETZNER_RELEASE_MODE }}
+          TRUSTED_MAIN: ${{ steps.main.outputs.sha }}
+          EXPECTED_SHA: ${{ needs.candidate.outputs.sha }}
+          EXPECTED_RUN: ${{ needs.candidate.outputs.run }}
+          EXPECTED_ARTIFACT: ${{ needs.candidate.outputs.artifact }}
+          EXPECTED_MANIFEST_HASH: ${{ needs.candidate.outputs.manifest_hash }}
+          EXPECTED_LANE: ${{ needs.candidate.outputs.lane }}
+          HETZNER_HOST: ${{ vars.HETZNER_HOST }}
+          HETZNER_PORT: ${{ vars.HETZNER_PORT }}
+          HETZNER_PRIVATE_KEY: ${{ secrets.HETZNER_PRIVATE_KEY }}
+          HETZNER_KNOWN_HOSTS: ${{ secrets.HETZNER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          private="$(mktemp -d "$RUNNER_TEMP/hetzner-private-XXXXXXXX")"
+          trap 'rm -rf -- "$private"' EXIT
+          export HETZNER_PRIVATE_DIRECTORY="$private"
+          node --experimental-strip-types scripts/ci/hetzner-release-observe.mts activate
+      - name: Preserve finite activation receipt
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: hetzner-activate-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/hetzner-receipts-${{ github.job }}/receipt.jsonl
+            ${{ runner.temp }}/hetzner-receipts-${{ github.job }}/phases.jsonl
+          if-no-files-found: ignore
+          retention-days: 90

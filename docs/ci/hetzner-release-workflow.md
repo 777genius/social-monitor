@@ -1,0 +1,76 @@
+# Hetzner release workflow draft
+
+This draft adds bounded candidate observation, host preflight and API activation
+through the existing release client. It targets only `production-hetzner`.
+It does not install or provision the controller, execute candidate SQL, or enable
+automatic release. Technical review does not publish this workflow.
+
+## Modes and dispatch
+
+An unset or unknown `HETZNER_RELEASE_MODE` produces `disabled-skipped` before
+event, GitHub or host access. `preflight` allows observation only. `manual` allows
+an explicit owner dispatch to activate; completed CI events still use preflight.
+Only configured `auto` selects activation from completed CI events.
+
+Manual dispatch requires actor `777genius`, repository `777genius/social-monitor`
+and `refs/heads/main`. Supply the exact successful main push `ci_run_id` and
+choose `preflight` or `activate`. `rollback-previous` deliberately fails with
+`rollback-unsupported`, including when a valid full `rollback_sha` is supplied:
+a bounded rollback runner is outside this draft. Do not replay activation as recovery.
+
+## Authority and data
+
+Each job observes current main before checkout and compares the checked-out SHA
+before executing repository scripts. GitHub observations require the exact active
+CI workflow, successful main push run and attempt, all sixteen successful jobs,
+matching repository identities, and the manually disabled legacy workflow.
+Pagination must be complete; closing observations reject races. Stable stale
+main produces `stale-main-skipped`. Host gates compare candidate outputs, and
+receive/admit/activate reobserve authority before transport.
+
+Only host jobs qualified by candidate phase `ready` and their exact lane enter
+the shared `social-monitor-hetzner-production` concurrency group, with
+`cancel-in-progress: false`. There is no workflow-level concurrency group, and
+candidate jobs cannot occupy or replace a pending production job. GitHub allows
+one running and one pending job per group; a newer qualified job replaces the
+pending job even with cancellation disabled. Qualified newer same-SHA/main events
+may therefore supersede pending events. Closing authority observations still
+reject stale SHAs before host writes.
+
+The unique artifact binds name, run, SHA, repository IDs, digest, size and expiry.
+Its ZIP contains exactly `candidate.tar`, `candidate.tar.sha256`, `manifest.json`,
+`phases.json`, `image-id.txt` and `source-sha.txt`; producer `build-image.txt` is
+excluded. The tar stays opaque data. Manifest, qualified phase and sidecar
+bindings must agree. Private scratch/config/key files are removed; only finite
+receipt/phase artifacts remain, retained for 90 days.
+
+Activation is sent once. An uncertain response triggers read-only status,
+preflight and exact receipt reconciliation through the unchanged client.
+Unproven reconciliation fails and requires operator review; there is no write retry.
+
+## Static verification and remaining qualification
+
+After Node 22 and locked dependencies are installed, `static_quality` runs the
+standalone strict NodeNext typecheck once and each authority, observer and YAML
+contract test once. Its first checkout and root controller gate retain their
+original order. The existing `check:review-ci` also invokes the canonical parsed
+release workflow guard through a bounded Node child process; importing its
+JavaScript module does not load TypeScript. Malformed YAML, duplicate mapping
+keys, literal merge keys and policy mutations fail with finite diagnostics.
+
+Run the same bounded checks locally with existing dependencies:
+
+```sh
+npm run check:hetzner-release-typecheck
+npm run check:hetzner-release-tests
+npm run check:hetzner-release-contract
+npm run check:review-ci
+```
+
+The `production_runtime` candidate build remains unchanged until root proves the
+full disposable native product E2E. Wiring that qualified producer, production
+qualification, actionlint/shellcheck verification, exact-head CI and separate
+technical review remain pending. The sixteen CI check names are preserved.
+Provisioning and first-publication migration remain pending owner approval.
+No mode, secret or environment is enabled by these checks, and this draft makes
+no production-readiness claim.
