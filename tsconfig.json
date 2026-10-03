@@ -56,5 +56,5 @@
       "@social-monitor/usage/*": ["libs/usage/*"]
     }
   },
-  "exclude": ["node_modules", "dist", "coverage", "prisma/generated"]
+  "exclude": ["node_modules", "dist", "coverage", "prisma/generated", "scripts/ci/**/*.mts"]
 }

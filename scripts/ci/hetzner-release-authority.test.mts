@@ -181,7 +181,7 @@ test('JSON duplicate keys, excessive depth, invalid UTF-8, overflow and size can
     assert.throws(() => A.parseJson(Buffer.from(source)));
   assert.throws(() => A.parseJson(Buffer.from([0xff])));
   assert.throws(() => A.parseJson(Buffer.from('{}'), 1), code('json-size'));
-  assert.deepEqual(A.parseJson(Buffer.from('{"ns":1750000000123456789}')), { ns: 1750000000123456789 });
+  assert.deepEqual(A.parseJson(Buffer.from('{"ns":1750000000123456789}')), { ns: Number('1750000000123456789') });
   const env = { GH_TOKEN: 'fixture-not-a-credential', GH_CONFIG_DIR: '/tmp/hetzner-fixture',
     BASH_ENV: '/untrusted', NODE_OPTIONS: '--untrusted', PATH: '/untrusted', HOME: '/untrusted' };
   const cleared = A.githubEnvironment(env);
