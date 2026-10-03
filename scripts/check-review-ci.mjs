@@ -10,26 +10,24 @@ export function releaseGateCiViolations(source) {
   try { doc = loadYaml(source); } catch { return ["invalid YAML for release controller gate"]; }
   const job = doc?.jobs?.static_quality;
   const steps = job?.steps;
-  const fail = ["Static architecture and quality must run the pinned, hash-locked root controller gate on a disposable GitHub runner"];
-  if (job?.name !== "Static architecture and quality" || job["runs-on"] !== "ubuntu-latest" ||
+  const fail = ["Static architecture and quality must run the system Python 3.12, hash-locked root controller gate on a disposable GitHub runner"];
+  if (job?.name !== "Static architecture and quality" || job["runs-on"] !== "ubuntu-24.04" ||
       job.needs !== undefined || job.if !== undefined || job["continue-on-error"] !== undefined ||
       job.environment !== undefined || doc.defaults !== undefined || job.defaults !== undefined ||
       !Array.isArray(steps)) return fail;
   const setups = steps.filter((step) => step.uses?.startsWith("actions/setup-python@"));
   const gates = steps.filter((step) => step.run?.includes("ops/release/hetzner/check.sh"));
   const checkout = steps.find((step) => step.uses?.startsWith("actions/checkout@"));
-  const setup = setups[0], gate = gates[0];
-  if (setups.length !== 1 || gates.length !== 1 || !checkout ||
+  const gate = gates[0];
+  if (setups.length !== 0 || gates.length !== 1 || !checkout ||
       checkout.with?.ref !== "${{ github.sha }}" || checkout.with?.["persist-credentials"] !== false ||
-      setup.uses !== "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" ||
-      String(setup.with?.["python-version"]) !== "3.12" ||
       gate.env?.RELEASE_GATE_VENV !== "${{ runner.temp }}/release-gate-venv" ||
-      steps.indexOf(checkout) >= steps.indexOf(setup) || steps.indexOf(setup) >= steps.indexOf(gate) ||
-      [checkout, setup, gate].some((step) => step.if !== undefined || step["continue-on-error"] !== undefined ||
+      steps.indexOf(checkout) >= steps.indexOf(gate) ||
+      [checkout, gate].some((step) => step.if !== undefined || step["continue-on-error"] !== undefined ||
         step["working-directory"] !== undefined || (step.shell !== undefined && step.shell !== "bash")) ||
       /\$\{\{\s*secrets\./u.test(JSON.stringify({ env: doc.env, job }))) return fail;
   // Check resolved YAML command boundaries, accepting comments and indentation.
-  // Stage source and copied Python beneath root-owned ancestors; preserve native PG fixtures.
+  // Ubuntu system Python matches the disposable chroot ABI; /root excludes runner-owned /opt.
   const commands = gate.run.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
   const expected = [
     "set -euo pipefail",
@@ -39,13 +37,13 @@ export function releaseGateCiViolations(source) {
     "command -v shellcheck",
     "docker compose version",
     "docker pull postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
-    "python3 -m venv --copies \"$RELEASE_GATE_VENV\"",
+    "/usr/bin/python3.12 -m venv --copies \"$RELEASE_GATE_VENV\"",
     "\"$RELEASE_GATE_VENV/bin/python3\" -m pip install --require-hashes -r ops/release/hetzner/requirements.txt",
-    "test ! -e /opt/social-monitor-release-contract-tests",
-    "sudo mkdir -p /opt/social-monitor-release-contract-tests/ops/release /opt/social-monitor-release-contract-tests/node_modules",
-    "sudo cp -R ops/release/hetzner /opt/social-monitor-release-contract-tests/ops/release/",
-    "sudo cp -R \"$RELEASE_GATE_VENV\" /opt/social-monitor-release-contract-tests/python",
-    "sudo env PATH=\"/opt/social-monitor-release-contract-tests/python/bin:$PATH\" bash /opt/social-monitor-release-contract-tests/ops/release/hetzner/check.sh",
+    "sudo test ! -e /root/social-monitor-release-contract-tests",
+    "sudo mkdir -p /root/social-monitor-release-contract-tests/ops/release /root/social-monitor-release-contract-tests/node_modules",
+    "sudo cp -R ops/release/hetzner /root/social-monitor-release-contract-tests/ops/release/",
+    "sudo cp -R \"$RELEASE_GATE_VENV\" /root/social-monitor-release-contract-tests/python",
+    "sudo env PATH=\"/root/social-monitor-release-contract-tests/python/bin:$PATH\" bash /root/social-monitor-release-contract-tests/ops/release/hetzner/check.sh",
   ];
   return commands.length === expected.length && commands.every((line, index) => line === expected[index]) ? [] : fail;
 }

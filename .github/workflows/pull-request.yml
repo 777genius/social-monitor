@@ -20,7 +20,7 @@ env:
 jobs:
   static_quality:
     name: Static architecture and quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
@@ -29,11 +29,6 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-
-      - name: Set up controller contract Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
 
       - name: Verify release controller contracts
         env:
@@ -46,13 +41,13 @@ jobs:
           command -v shellcheck
           docker compose version
           docker pull postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
-          python3 -m venv --copies "$RELEASE_GATE_VENV"
+          /usr/bin/python3.12 -m venv --copies "$RELEASE_GATE_VENV"
           "$RELEASE_GATE_VENV/bin/python3" -m pip install --require-hashes -r ops/release/hetzner/requirements.txt
-          test ! -e /opt/social-monitor-release-contract-tests
-          sudo mkdir -p /opt/social-monitor-release-contract-tests/ops/release /opt/social-monitor-release-contract-tests/node_modules
-          sudo cp -R ops/release/hetzner /opt/social-monitor-release-contract-tests/ops/release/
-          sudo cp -R "$RELEASE_GATE_VENV" /opt/social-monitor-release-contract-tests/python
-          sudo env PATH="/opt/social-monitor-release-contract-tests/python/bin:$PATH" bash /opt/social-monitor-release-contract-tests/ops/release/hetzner/check.sh
+          sudo test ! -e /root/social-monitor-release-contract-tests
+          sudo mkdir -p /root/social-monitor-release-contract-tests/ops/release /root/social-monitor-release-contract-tests/node_modules
+          sudo cp -R ops/release/hetzner /root/social-monitor-release-contract-tests/ops/release/
+          sudo cp -R "$RELEASE_GATE_VENV" /root/social-monitor-release-contract-tests/python
+          sudo env PATH="/root/social-monitor-release-contract-tests/python/bin:$PATH" bash /root/social-monitor-release-contract-tests/ops/release/hetzner/check.sh
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
