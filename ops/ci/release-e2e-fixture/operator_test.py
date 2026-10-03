@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -234,6 +235,37 @@ class NativeHashContracts(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
 
+    def test_initialize_include_is_public_empty_and_github_stays_private_under_umask(self):
+        include, github_dir = self.root / 'include', self.root / 'github'
+        paths = {'INCLUDE_DIR': str(include), 'GH_DIR': str(github_dir),
+                 'SERVICE': str(self.root / 'service'), 'PASS': str(self.root / 'pass'),
+                 'CONFIG': str(self.root / 'config')}
+        core = {'backup_identity': {'config_path': str(self.root / 'backup.conf')}}
+        for name, value in paths.items():
+            context = patch.object(native, name, value)
+            context.start()
+            self.addCleanup(context.stop)
+        with patch.object(native, 'private_file_digest', return_value='sha256:' + 'a' * 64), \
+             patch.object(native, 'test_shape'), \
+             patch.object(native, 'TestConfiguration'), patch.object(native, 'Runner'), \
+             patch.object(native.operator_database, 'identity',
+                          return_value={'system_identifier': '1234567'}), \
+             patch.object(native.operator_backup, 'repository_identity'):
+            previous_umask = os.umask(0o077)
+            try:
+                native.initialize(core)
+            finally:
+                os.umask(previous_umask)
+        self.assertEqual(include.stat().st_uid, 0)
+        self.assertEqual(github_dir.stat().st_uid, 0)
+        self.assertEqual(stat.S_IMODE(include.stat().st_mode), 0o755)
+        self.assertEqual(stat.S_IMODE(github_dir.stat().st_mode), 0o700)
+        self.assertEqual(list(include.iterdir()), [])
+        self.assertEqual(list(github_dir.iterdir()), [])
+        from operator_config import empty_directory
+        empty_directory(include)
+        empty_directory(github_dir)
+
     def native_file(self, size=17 * 1024**2 + 7):
         path = self.root / 'native'
         checksum = hashlib.sha256()
@@ -324,6 +356,230 @@ class NativeHashContracts(unittest.TestCase):
         with patch.object(native.os, 'fstat', side_effect=growing):
             with self.assertRaisesRegex(Denied, '^test-native-changed$'):
                 native.native_file_digest(path)
+
+
+@unittest.skipUnless(os.getuid() == 0 and os.geteuid() == 0,
+                     'fault contracts require root-owned temporary state')
+class NetworkFaultContracts(unittest.TestCase):
+    """Bounded filesystem/boundary contracts, not native Docker/HTTP E2E proof."""
+
+    def setUp(self):
+        from types import SimpleNamespace
+        self.temp = tempfile.TemporaryDirectory(prefix='sm-e2e-fault-', dir='/run')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.state = self.root / 'state'
+        self.state.mkdir(mode=0o700)
+        self.state.chmod(0o700)
+        for family in ('imports', 'admissions', 'transactions'):
+            (self.state / family).mkdir(mode=0o700)
+        self.config = {'state': str(self.state), 'project_directory': str(self.root),
+                       'project': 'sm-rc-e2e-' + '1' * 16}
+        self.release = {'sha': 'a' * 40, 'ci_run_id': '7',
+                        'archive_sha256': 'sha256:' + 'b' * 64,
+                        'image_id': 'sha256:' + 'c' * 64}
+        self.key = self.release['sha'] + '-7'
+        self.previous = 'sha256:' + 'd' * 64
+        self.admission = {**self.release, 'previous_image_id': self.previous}
+        self.authority = driver.authority(self.release, 'e' * 40)
+        self.write(self.state / 'imports' / (self.key + '.json'), self.release)
+        self.write(self.state / 'admissions' / (self.key + '.json'), self.admission)
+        self.write(self.root / 'authority.json', self.authority)
+        self.addCleanup(patch.stopall)
+        patch.object(operator, 'ROOT', self.root).start()
+        patch.object(operator, 'FAULT_STATE', self.state).start()
+        self.bridge = SimpleNamespace(
+            decode=native.decode, exact=native.exact,
+            operator_probe=SimpleNamespace(INSPECT=native.operator_probe.INSPECT,
+                                          inspect=self.native_inspect))
+        patch.object(operator, 'native', return_value=self.bridge).start()
+        self.controller = SimpleNamespace(invariant=lambda admission: (
+            None, {'image': admission['previous_image_id']}))
+        self.row = self.api('1' * 64, self.previous)
+        self.events = []
+        self.fail_disconnect = False
+        patch.object(operator, 'run', side_effect=self.command).start()
+
+    def write(self, path, value):
+        from contract import atomic
+        atomic(path, value)
+
+    def api(self, identifier, image):
+        return {'id': identifier, 'image': image, 'started': '2026-10-03T00:00:00Z',
+                'running': True, 'project': self.config['project'], 'service': 'api'}
+
+    def command(self, argv, **kwargs):
+        self.events.append(tuple(argv))
+        if argv[:3] == ['/usr/bin/docker', 'ps', '-q']:
+            self.assertEqual(argv, [
+                '/usr/bin/docker', 'ps', '-q', '--no-trunc', '--filter',
+                'label=com.docker.compose.project=' + self.config['project'], '--filter',
+                'label=com.docker.compose.service=api'])
+            return (self.row['id'] + '\n').encode()
+        if argv[:3] == ['/usr/bin/docker', 'inspect', '--format']:
+            self.assertEqual(argv, ['/usr/bin/docker', 'inspect', '--format',
+                                    native.operator_probe.INSPECT, self.row['id']])
+            return operator.canonical(self.row)
+        self.assertEqual(argv, ['/usr/bin/docker', 'network', 'disconnect',
+                                self.config['project'] + '_default', self.row['id']])
+        if self.fail_disconnect:
+            raise operator.Refused('observation-command-failed')
+        return b''
+
+    def native_inspect(self, runner, identifier):
+        self.events.append(('native-identification', identifier))
+        self.assertEqual(identifier, self.row['id'])
+        return {**self.row, 'project': 'platform-social-monitor'}
+
+    def arm(self, rollback=False):
+        return operator.arm_network_fault(
+            'arm-rollback-network-fault' if rollback else 'arm-network-fault',
+            self.key, self.config, self.controller)
+
+    def transaction(self):
+        self.write(self.state / 'transactions' / (self.key + '.json'),
+                   {'admission': self.admission})
+
+    def probe(self):
+        request = {'container_id': self.row['id'], 'image_id': self.row['image'],
+                   'sha': self.release['sha'] if self.row['image'] == self.release['image_id']
+                   else self.authority['production_revision']}
+        operator.probe_network_fault(request, self.config, self.bridge, object())
+
+    def plan(self):
+        return operator.fault_plan(self.config, self.key)[1]
+
+    def disconnects(self):
+        return [event for event in self.events
+                if event[:3] == ('/usr/bin/docker', 'network', 'disconnect')]
+
+    def test_arming_uses_real_protected_files_and_preserves_baseline_probe(self):
+        self.arm(True)
+        for name in ('network-fault.json', 'network-fault-arm.json'):
+            path = self.state / name
+            self.assertEqual(path.stat().st_uid, 0)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        self.probe()
+        self.assertEqual(self.disconnects(), [])
+        self.assertEqual(self.plan()['disconnected'], [])
+        with self.assertRaisesRegex(operator.Refused, '^network-fault-already-armed$'):
+            self.arm(True)
+
+    def test_candidate_then_recreated_previous_once_and_repair_is_not_disconnected(self):
+        self.arm(True)
+        self.transaction()
+        self.row = self.api('2' * 64, self.release['image_id'])
+        self.events.clear()
+        self.probe()
+        first_disconnect = self.disconnects()[0]
+        self.assertLess(self.events.index(('native-identification', self.row['id'])),
+                        self.events.index(first_disconnect))
+        self.probe()
+        self.row = self.api('3' * 64, self.previous)
+        self.probe()
+        self.probe()
+        plan = self.plan()
+        self.assertEqual(plan['candidate_id'], '2' * 64)
+        self.assertEqual(plan['previous_id'], '3' * 64)
+        self.assertEqual(plan['disconnected'], ['2' * 64, '3' * 64])
+        self.assertEqual(len(self.disconnects()), 2)
+        self.write(self.state / 'transactions' / (self.key + '.json'),
+                   {'admission': self.admission, 'outcome': 'rolled-back'})
+        self.probe()
+        self.assertEqual(len(self.disconnects()), 2)
+
+    def test_candidate_only_plan_allows_genuine_rollback_probe(self):
+        self.arm()
+        self.transaction()
+        self.row = self.api('2' * 64, self.release['image_id'])
+        self.probe()
+        self.row = self.api('3' * 64, self.previous)
+        self.probe()
+        self.assertEqual(len(self.disconnects()), 1)
+        self.assertIsNone(self.plan()['previous_id'])
+
+    def test_failed_disconnect_does_not_publish_completed_marker(self):
+        self.arm(True)
+        self.transaction()
+        self.row = self.api('2' * 64, self.release['image_id'])
+        self.fail_disconnect = True
+        with self.assertRaisesRegex(operator.Refused, '^observation-command-failed$'):
+            self.probe()
+        self.assertEqual(self.plan()['disconnected'], [])
+        self.assertIsNone(self.plan()['candidate_id'])
+
+    def test_foreign_labels_and_changed_baseline_are_refused_before_disconnect(self):
+        self.arm(True)
+        for field, value in (('project', 'foreign'), ('service', 'postgres'),
+                             ('running', False), ('id', '4' * 64)):
+            with self.subTest(field=field):
+                self.row = self.api('1' * 64, self.previous)
+                self.row[field] = value
+                with self.assertRaises(operator.Refused):
+                    self.probe()
+        self.assertEqual(self.disconnects(), [])
+
+    def test_plan_grammar_order_permissions_and_binding_fail_closed(self):
+        self.arm(True)
+        path = self.state / 'network-fault.json'
+        original = operator.read_json(path)
+        changes = (
+            {'extra': True}, {'mode': 'arbitrary'},
+            {'version': True}, {'key': 'foreign'},
+            {'candidate_image': self.previous}, {'baseline_id': 'short'},
+            {'previous_id': '3' * 64, 'disconnected': ['3' * 64]},
+            {'candidate_id': '2' * 64, 'disconnected': []},
+        )
+        for change in changes:
+            with self.subTest(change=change):
+                self.write(path, {**original, **change})
+                with self.assertRaises(operator.Refused):
+                    self.plan()
+        self.write(path, original)
+        path.chmod(0o644)
+        with self.assertRaisesRegex(operator.Refused, '^network-fault-plan-mode$'):
+            self.plan()
+        path.chmod(0o600)
+        self.write(self.state / 'imports' / (self.key + '.json'),
+                   {**self.release, 'archive_bytes': 1})
+        with self.assertRaisesRegex(operator.Refused, '^network-fault-plan-binding$'):
+            self.plan()
+        self.assertEqual(self.disconnects(), [])
+
+    def test_transaction_and_recreated_target_changes_are_refused(self):
+        self.transaction()
+        with self.assertRaisesRegex(operator.Refused, '^network-fault-before-transaction$'):
+            self.arm(True)
+        (self.state / 'transactions' / (self.key + '.json')).unlink()
+        self.arm(True)
+        self.row = self.api('2' * 64, self.release['image_id'])
+        with self.assertRaisesRegex(operator.Refused, '^network-fault-live-transaction$'):
+            self.probe()
+        self.transaction()
+        self.probe()
+        self.row = self.api('4' * 64, self.release['image_id'])
+        with self.assertRaisesRegex(operator.Refused, '^network-fault-container-changed$'):
+            self.probe()
+        self.assertEqual(len(self.disconnects()), 1)
+
+    def test_changed_authority_admission_or_transaction_is_refused(self):
+        self.arm(True)
+        paths = (
+            (self.root / 'authority.json', self.authority, {'configured': False}),
+            (self.state / 'admissions' / (self.key + '.json'), self.admission,
+             {'previous_image_id': 'sha256:' + 'f' * 64}),
+        )
+        for path, original, change in paths:
+            with self.subTest(path=path):
+                self.write(path, {**original, **change})
+                with self.assertRaises(Exception):
+                    self.plan()
+                self.write(path, original)
+        self.write(self.state / 'transactions' / (self.key + '.json'),
+                   {'admission': {**self.admission, 'extra': True}})
+        with self.assertRaisesRegex(operator.Refused, '^network-fault-transaction-binding$'):
+            self.plan()
+        self.assertEqual(self.disconnects(), [])
 
 
 if __name__ == '__main__':

@@ -180,7 +180,9 @@ def probe(request, config):
     bridge = native()
     configuration = bridge.TestConfiguration()
     need(configuration.core == config, 'probe-components-changed')
-    return stamp(request, bridge.probe(configuration, bridge.Runner(), request))
+    runner = bridge.Runner()
+    probe_network_fault(request, config, bridge, runner)
+    return stamp(request, bridge.probe(configuration, runner, request))
 
 
 def backup(request, config):
@@ -323,6 +325,180 @@ def verify_toolchain():
     return {'version': 1, 'toolchain_verified': True}
 
 
+FAULT_STATE = Path('/var/lib/social-monitor-release')
+FAULT_MODES = ('candidate', 'failed-rollback')
+FAULT_FIELDS = {
+    'version', 'key', 'mode', 'project', 'import_sha256', 'admission_sha256',
+    'authority_sha256', 'config_sha256', 'candidate_image', 'previous_image',
+    'baseline_id', 'candidate_id', 'previous_id', 'disconnected',
+}
+
+
+def fault_paths(config):
+    need(os.getuid() == 0 and os.geteuid() == 0, 'root-network-fault-required')
+    need(config.get('state') == str(FAULT_STATE)
+         and config.get('project_directory') == str(ROOT)
+         and re.fullmatch(r'sm-rc-e2e-[0-9a-f]{16}', config.get('project', '')),
+         'network-fault-scope')
+    info = FAULT_STATE.lstat()
+    need(stat.S_ISDIR(info.st_mode) and info.st_uid == 0
+         and stat.S_IMODE(info.st_mode) == 0o700, 'network-fault-state')
+    return FAULT_STATE / 'network-fault.json', FAULT_STATE / 'network-fault-arm.json'
+
+
+def fault_json(path, protected=False):
+    from contract import read_json as state_json
+    path = private(path)
+    if protected:
+        need(stat.S_IMODE(path.stat().st_mode) == 0o600, 'network-fault-plan-mode')
+    value = state_json(path)
+    need(isinstance(value, dict), 'network-fault-object')
+    return value
+
+
+def fault_context(key, config):
+    need(isinstance(key, str)
+         and re.fullmatch(r'[0-9a-f]{40}-[1-9][0-9]{0,14}', key),
+         'network-fault-key')
+    state = Path(config['state'])
+    item = fault_json(state / 'imports' / (key + '.json'))
+    admission = fault_json(state / 'admissions' / (key + '.json'))
+    authority = read_json(ROOT / 'authority.json')
+    release = {k: item[k] for k in ('sha', 'ci_run_id', 'archive_sha256', 'image_id')}
+    binding(release)
+    need(key == release['sha'] + '-' + release['ci_run_id']
+         and all(admission.get(k) == v for k, v in release.items()),
+         'network-fault-admission-binding')
+    github('release-evidence', {
+        **release, 'production_revision': authority['production_revision']}, authority)
+    previous = admission.get('previous_image_id')
+    need(isinstance(previous, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', previous)
+         and previous != release['image_id'], 'network-fault-previous-image')
+    values = {
+        'version': 1, 'key': key, 'project': config['project'],
+        'import_sha256': digest(item), 'admission_sha256': digest(admission),
+        'authority_sha256': digest(authority), 'config_sha256': digest(config),
+        'candidate_image': release['image_id'], 'previous_image': previous,
+    }
+    return values, admission, authority
+
+
+def fault_plan(config, key=None):
+    path, arm_path = fault_paths(config)
+    need(path.exists() and arm_path.exists(), 'network-fault-plan-missing')
+    plan, arm = fault_json(path, True), fault_json(arm_path, True)
+    need(set(plan) == FAULT_FIELDS and set(arm) == FAULT_FIELDS
+         and type(plan['version']) is int and plan['version'] == 1
+         and plan['mode'] in FAULT_MODES, 'network-fault-plan-shape')
+    values, admission, authority = fault_context(plan['key'], config)
+    need(key is None or plan['key'] == key, 'network-fault-plan-key')
+    need(all(plan[k] == v for k, v in values.items()), 'network-fault-plan-binding')
+    markers = ('candidate_id', 'previous_id', 'disconnected')
+    need(all(plan[k] == arm[k] for k in FAULT_FIELDS - set(markers))
+         and arm['candidate_id'] is None and arm['previous_id'] is None
+         and arm['disconnected'] == [], 'network-fault-arm-changed')
+    need(isinstance(plan['baseline_id'], str)
+         and re.fullmatch(r'[0-9a-f]{64}', plan['baseline_id']),
+         'network-fault-baseline-id')
+    for field in ('candidate_id', 'previous_id'):
+        identifier = plan[field]
+        need(identifier is None or isinstance(identifier, str)
+             and re.fullmatch(r'[0-9a-f]{64}', identifier), 'network-fault-marker-id')
+    completed = [plan[k] for k in ('candidate_id', 'previous_id') if plan[k] is not None]
+    need(type(plan['disconnected']) is list and plan['disconnected'] == completed
+         and len(set(completed)) == len(completed)
+         and plan['baseline_id'] not in completed
+         and (plan['previous_id'] is None or plan['candidate_id'] is not None
+              and plan['mode'] == 'failed-rollback'), 'network-fault-marker-order')
+    tx_path = Path(config['state']) / 'transactions' / (plan['key'] + '.json')
+    tx = fault_json(tx_path) if tx_path.exists() or tx_path.is_symlink() else None
+    need(tx is None or tx.get('admission') == admission, 'network-fault-transaction-binding')
+    need(tx is not None or not completed, 'network-fault-transaction-missing')
+    if tx is not None and 'outcome' in tx:
+        need(tx['outcome'] == 'rolled-back' and plan['candidate_id'] is not None
+             and (plan['mode'] == 'candidate' or plan['previous_id'] is not None),
+             'network-fault-terminal-state')
+    return path, plan, admission, authority, tx
+
+
+def fault_live_api(config, bridge):
+    raw = run(['/usr/bin/docker', 'ps', '-q', '--no-trunc', '--filter',
+               'label=com.docker.compose.project=' + config['project'], '--filter',
+               'label=com.docker.compose.service=api'])
+    ids = raw.decode('ascii').split()
+    need(len(ids) == 1 and re.fullmatch(r'[0-9a-f]{64}', ids[0]),
+         'network-fault-api-count')
+    value = bridge.decode(run(['/usr/bin/docker', 'inspect', '--format',
+                               bridge.operator_probe.INSPECT, ids[0]]), 4096)
+    bridge.exact(value, ('id', 'image', 'started', 'running', 'project', 'service'))
+    need(value['id'] == ids[0] and value['project'] == config['project']
+         and value['service'] == 'api' and value['running'] is True
+         and isinstance(value['started'], str) and value['started']
+         and isinstance(value['image'], str)
+         and re.fullmatch(r'sha256:[0-9a-f]{64}', value['image']),
+         'network-fault-api-ownership')
+    return value
+
+
+def arm_network_fault(verb, key, config, controller):
+    from contract import atomic
+    path, arm_path = fault_paths(config)
+    need(not path.exists() and not path.is_symlink()
+         and not arm_path.exists() and not arm_path.is_symlink(),
+         'network-fault-already-armed')
+    values, admission, _ = fault_context(key, config)
+    tx_path = Path(config['state']) / 'transactions' / (key + '.json')
+    need(not tx_path.exists() and not tx_path.is_symlink(), 'network-fault-before-transaction')
+    _, target = controller.invariant(admission)
+    row = fault_live_api(config, native())
+    need(target['image'] == values['previous_image']
+         and row['image'] == values['previous_image'], 'network-fault-current-baseline')
+    plan = {
+        **values, 'mode': 'failed-rollback' if verb == 'arm-rollback-network-fault' else 'candidate',
+        'baseline_id': row['id'], 'candidate_id': None, 'previous_id': None, 'disconnected': [],
+    }
+    atomic(arm_path, plan, immutable=True)
+    atomic(path, plan, immutable=True)
+    fault_plan(config, key)
+    return {'version': 1, 'network_fault_armed': True}
+
+
+def probe_network_fault(request, config, bridge, runner):
+    """Runs under the caller's controller lock; never acquire that lock here."""
+    from contract import atomic
+    path, arm_path = fault_paths(config)
+    if not any(p.exists() or p.is_symlink() for p in (path, arm_path)):
+        return
+    path, plan, _, authority, tx = fault_plan(config)
+    row = fault_live_api(config, bridge)
+    need(row['id'] == request['container_id'] and row['image'] == request['image_id'],
+         'network-fault-probe-target')
+    field = 'candidate_id' if row['image'] == plan['candidate_image'] else 'previous_id'
+    need(row['image'] == plan['candidate_image' if field == 'candidate_id' else 'previous_image']
+         and request['sha'] == (plan['key'].rsplit('-', 1)[0] if field == 'candidate_id'
+                                else authority['production_revision']), 'network-fault-probe-binding')
+    # Use the native identification as well as the untranslated Docker labels.
+    observed = bridge.operator_probe.inspect(runner, request['container_id'])
+    need(observed['id'] == row['id'] and observed['image'] == row['image'],
+         'network-fault-native-target')
+    if field == 'previous_id' and plan['candidate_id'] is None:
+        need(row['id'] == plan['baseline_id'], 'network-fault-baseline-changed')
+        return
+    if plan[field] is not None:
+        need(row['id'] == plan[field], 'network-fault-container-changed')
+        return
+    need(tx is not None and 'outcome' not in tx and row['id'] != plan['baseline_id'],
+         'network-fault-live-transaction')
+    if field == 'previous_id' and plan['mode'] == 'candidate':
+        return
+    need(fault_live_api(config, bridge) == row, 'network-fault-inspect-race')
+    run(['/usr/bin/docker', 'network', 'disconnect', config['project'] + '_default', row['id']])
+    plan[field] = row['id']
+    plan['disconnected'].append(row['id'])
+    atomic(path, plan)
+
+
+
 def owner_action(verb, request, config):
     """Finite TEST faults/repair; no invented controller recovery override."""
     need(os.getuid() == 0 and os.geteuid() == 0, 'root-owner-action-required')
@@ -338,6 +514,15 @@ def owner_action(verb, request, config):
         need(key == item['sha'] + '-' + item['ci_run_id'], 'owner-import-binding')
         authority = read_json(ROOT / 'authority.json')
         need({k: item[k] for k in authority['binding']} == authority['binding'], 'owner-authority-binding')
+        if verb in ('arm-network-fault', 'arm-rollback-network-fault'):
+            return arm_network_fault(verb, key, config, Controller(config, Host(config)))
+        if verb == 'network-fault-status':
+            _, plan, _, _, _ = fault_plan(config, key)
+            return {
+                'version': 1, 'candidate_id': plan['candidate_id'],
+                'previous_id': plan['previous_id'], 'disconnected': plan['disconnected'],
+            }
+
         if verb == 'archive-drift':
             need(not (state / 'transactions' / (key + '.json')).exists(), 'archive-fault-before-transaction')
             path = state / 'inbox' / (key + '.tar')
@@ -417,7 +602,9 @@ def dispatch(verb, request):
     if verb == 'export-evidence':
         need(request == {}, 'export-request')
         return export_evidence(config)
-    if verb in ('archive-drift', 'interrupt-outcome', 'repair-latch'):
+    if verb in ('archive-drift', 'interrupt-outcome', 'repair-latch',
+                'arm-network-fault', 'arm-rollback-network-fault',
+                'network-fault-status'):
         return owner_action(verb, request, config)
     raise Refused('unknown-observer-operation')
 

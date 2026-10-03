@@ -200,8 +200,10 @@ def initialize(core):
             'backup_config_sha256': private_file_digest(core['backup_identity']['config_path']),
             'wrapper_sha256': private_file_digest(EXECUTABLES['backup'])}
     test_shape(core, data)
-    for path in (INCLUDE_DIR, GH_DIR):
-        Path(path).mkdir(mode=0o700)
+    for path, mode in ((INCLUDE_DIR, 0o755), (GH_DIR, 0o700)):
+        directory = Path(path)
+        directory.mkdir(mode=mode)
+        directory.chmod(mode)
     write_private(SERVICE, b'[e2e_observer]\nhost=/var/run/postgresql\nport=5432\n'
                   b'dbname=e2e\nuser=e2e_observer\nconnect_timeout=5\n')
     write_private(PASS, b'*:*:e2e:e2e_observer:synthetic-e2e-only\n')

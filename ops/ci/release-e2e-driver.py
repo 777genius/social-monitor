@@ -5,7 +5,7 @@ No default Docker endpoint, image builds/pulls, external authority or credential
 discovery. The harness may use only provision/cleanup and drive SSH itself.
 """
 import hashlib
-from concurrent.futures import ThreadPoolExecutor
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -39,6 +39,13 @@ class Refused(Exception):
 def need(condition, reason):
     if not condition:
         raise Refused(reason)
+
+
+_files_spec = importlib.util.spec_from_file_location(
+    'release_e2e_local_files', Path(__file__).resolve().with_name('release-e2e-local-files.py'))
+_files = importlib.util.module_from_spec(_files_spec)
+_files_spec.loader.exec_module(_files)
+LocalFiles = _files.LocalFiles
 
 
 def canonical(value):
@@ -126,9 +133,16 @@ def command(argv, *, data=None, source=None, timeout=180, env=None, allow_failur
             process.stderr.close()
 
 
-def validate_fixture(path):
-    path = regular(path)
-    fixture = read_json(path)
+def validate_fixture(path, *, cleanup_only=False, files=None):
+    if files is None:
+        with LocalFiles(path, need) as protected:
+            return validate_fixture(path, cleanup_only=cleanup_only, files=protected)
+    path = Path(path)
+    fixture = files.fixture()
+    return validate_fixture_value(path, fixture, cleanup_only=cleanup_only)
+
+
+def validate_fixture_value(path, fixture, *, cleanup_only=False):
     need(set(fixture) == {'version', 'directory', 'project', 'candidate_directory',
                          'baseline_image_id', 'candidate'} and fixture['version'] == 1,
          'fixture-schema')
@@ -157,6 +171,11 @@ def validate_fixture(path):
          and inventory == sorted(inventory, key=lambda m: m['name'])
          and len({m['name'] for m in inventory}) == len(inventory), 'migration-inventory')
     candidate_dir = Path(fixture['candidate_directory'])
+    need(candidate_dir.is_absolute() and '..' not in candidate_dir.parts
+         and str(candidate_dir) == fixture['candidate_directory']
+         and candidate_dir != directory, 'candidate-directory')
+    if cleanup_only:
+        return fixture
     need(candidate_dir.is_absolute() and candidate_dir == candidate_dir.resolve()
          and candidate_dir.is_dir() and candidate_dir != directory, 'candidate-directory')
     need(read_json(candidate_dir / 'manifest.json') == candidate, 'manifest-binding')
@@ -212,8 +231,10 @@ def prerequisites(path):
 
 
 class Driver:
-    def __init__(self, fixture_path):
-        self.f = validate_fixture(fixture_path)
+    def __init__(self, fixture_path, *, cleanup_only=False):
+        self.files = LocalFiles(fixture_path, need)
+        self.f = validate_fixture(fixture_path, cleanup_only=cleanup_only, files=self.files)
+        self.cleanup_only = cleanup_only
         self.directory = Path(self.f['directory'])
         self.runtime = self.directory / 'runtime'
         self.state_path = self.directory / '.driver.json'
@@ -291,11 +312,11 @@ class Driver:
         need(code != 0, 'candidate-must-be-absent')
 
     def persist(self, **fields):
-        old = read_json(self.state_path) if self.state_path.exists() else {}
-        write_json(self.state_path, {**old, **fields})
+        old = self.files.state() or {}
+        self.files.write_state({**old, **fields})
 
     def load(self, check_consumer=True):
-        state = read_json(self.state_path)
+        state = self.files.state()
         need(state.get('fixture_digest') == digest(self.f), 'fixture-state-binding')
         self.p = state['prerequisites']
         need(os.environ.get('DOCKER_HOST') == self.p['consumer_host'], 'consumer-context-changed')
@@ -510,6 +531,7 @@ class Driver:
             self.remove_producer_container(name)
 
     def provision(self):
+        self.files.recheck()
         need(not self.state_path.exists() and not self.runtime.exists(), 'fixture-already-started')
         self.p = prerequisites(os.environ.get('SM_RELEASE_E2E_PREREQUISITES', ''))
         self.check_consumer()
@@ -553,6 +575,7 @@ class Driver:
         need(verified == {k: self.c[k] for k in ('migrations', 'image_graph')},
              'actual-image-inventory-mismatch')
         self.runtime.mkdir(mode=0o700)
+        self.files.pin_runtime()
         socket_directory = self.runtime / 'pgsocket'
         socket_directory.mkdir(mode=0o755)
         os.chown(socket_directory, 999, 999)
@@ -752,34 +775,31 @@ class Driver:
         self.receive()
         self.ssh('admit ' + self.key())
         before = self.non_targets()
-        disconnected = []
-        stop = __import__('threading').Event()
         network = self.project + '_default'
-        def isolate_targets():
-            deadline, candidate_seen = time.monotonic() + 180, False
-            while not stop.wait(0.1):
-                need(time.monotonic() < deadline, 'fault-observation-deadline')
-                try:
-                    row = self.container('api')
-                except Refused:
-                    continue
-                target = row['Image'] == self.c['image_id']
-                previous = candidate_seen and fail_previous and row['Image'] == self.f['baseline_image_id']
-                if (target or previous) and row['Id'] not in disconnected:
-                    candidate_seen = candidate_seen or target
-                    self.docker('network', 'disconnect', network, row['Id'])
-                    disconnected.append(row['Id'])
-                    if previous or target and not fail_previous:
-                        return
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            fault = pool.submit(isolate_targets)
-            try:
-                result = self.ssh('activate ' + self.key(),
-                    denied='rollback-failed-latched' if fail_previous else 'rolled-back')
-                fault.result(timeout=10)
-                need(disconnected and self.non_targets() == before, 'real-fault-not-observed')
-            finally:
-                stop.set()
+        original_id = self.container('api')['Id']
+        self.operator_action('arm-rollback-network-fault' if fail_previous else 'arm-network-fault')
+        result = self.ssh('activate ' + self.key(),
+            denied='rollback-failed-latched' if fail_previous else 'rolled-back')
+        proof = self.operator_action('network-fault-status')
+        candidate_id, previous_id = proof.get('candidate_id'), proof.get('previous_id')
+        disconnected = proof.get('disconnected')
+        need(proof.get('version') == 1 and isinstance(candidate_id, str)
+             and re.fullmatch(r'[0-9a-f]{64}', candidate_id)
+             and candidate_id != original_id and isinstance(disconnected, list)
+             and all(isinstance(item, str) and re.fullmatch(r'[0-9a-f]{64}', item)
+                     for item in disconnected)
+             and len(set(disconnected)) == len(disconnected), 'network-fault-proof')
+        row = self.container('api')
+        need(row['Image'] == self.f['baseline_image_id'] and row['State']['Running'] is True
+             and row['Id'] not in (candidate_id, original_id)
+             and self.non_targets() == before, 'real-fault-not-observed')
+        need((isinstance(previous_id, str) and re.fullmatch(r'[0-9a-f]{64}', previous_id)
+              and row['Id'] == previous_id and disconnected == [candidate_id, previous_id]
+              and network not in row['NetworkSettings']['Networks']) if fail_previous else
+             (previous_id is None and disconnected == [candidate_id]
+              and network in row['NetworkSettings']['Networks']), 'network-fault-targets')
+        need(self.docker('container', 'inspect', candidate_id, allow_failure=True)[0] != 0,
+             'fault-candidate-not-removed')
         if fail_previous:
             need(self.ssh('status')['latch'] is True, 'durable-latch-missing')
             self.ssh('activate ' + self.key(), denied='latched')
@@ -801,9 +821,11 @@ class Driver:
 
     def run(self, operation):
         need(operation in OPERATIONS, 'unknown-operation')
+        need(not self.cleanup_only or operation == 'cleanup', 'cleanup-only-driver')
+        self.files.recheck()
         if operation == 'provision':
             return self.provision()
-        if operation == 'cleanup' and not self.state_path.exists():
+        if operation == 'cleanup' and self.files.state() is None:
             return {'version': 1, 'cleaned': True, 'resources': 0}
         self.load(check_consumer=operation != 'cleanup')
         if operation == 'cleanup':
@@ -843,7 +865,8 @@ class Driver:
         # Each daemon must independently prove identity and all ownership before deletion.
         count, unresolved = 0, {}
         kinds = ('container', 'network', 'volume')
-        state = read_json(self.state_path)
+        self.files.recheck()
+        state = self.files.state()
         try:
             self.check_consumer()
             owned = []
@@ -887,11 +910,7 @@ class Driver:
         # Keep evidence and archives; keys are disposable after verified consumer cleanup.
         if 'consumer' not in unresolved:
             try:
-                paths = (self.directory / 'id_ed25519', self.directory / 'id_ed25519.pub',
-                         self.runtime / 'ssh_host_ed25519_key', self.runtime / 'ssh_host_ed25519_key.pub')
-                need(all(not path.is_symlink() for path in paths), 'cleanup-symlink')
-                for path in paths:
-                    path.unlink(missing_ok=True)
+                self.files.delete_keys()
             except Exception as error:
                 unresolved['keys'] = str(error) if isinstance(error, Refused) else 'key-cleanup-failed'
         self.persist(cleaned=not unresolved, cleanup_unresolved=unresolved)
@@ -963,7 +982,7 @@ def components(project, migration_root, system_id, archive_bytes):
 if __name__ == '__main__':
     try:
         need(len(sys.argv) == 3, 'usage-operation-fixture')
-        answer = Driver(Path(sys.argv[2])).run(sys.argv[1])
+        answer = Driver(Path(sys.argv[2]), cleanup_only=sys.argv[1] == 'cleanup').run(sys.argv[1])
         print(canonical(answer).decode())
     except Exception as error:
         reason = str(error) if isinstance(error, Refused) else 'driver-operation-failed'

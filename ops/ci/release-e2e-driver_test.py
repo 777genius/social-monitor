@@ -47,6 +47,7 @@ class FixtureContracts(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='sm-release-e2e-')
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
+        self.root.chmod(0o700)
         self.candidate = self.root / 'candidate'
         self.candidate.mkdir()
         archive = self.candidate / 'candidate.tar'
@@ -186,8 +187,179 @@ class FixtureContracts(unittest.TestCase):
         self.assertEqual(set(self.root.iterdir()), before)
 
     def test_cleanup_without_ownership_state_cannot_touch_daemon(self):
-        with patch.object(driver.Driver, 'docker', side_effect=AssertionError('unexpected daemon')):
-            self.assertEqual(driver.Driver(self.path).run('cleanup')['resources'], 0)
+        shutil = __import__('shutil')
+        shutil.rmtree(self.candidate)
+        with patch.object(driver, 'command', side_effect=AssertionError('unexpected daemon')):
+            self.assertEqual(driver.Driver(self.path, cleanup_only=True).run('cleanup')['resources'], 0)
+
+    def cleanup_daemon(self, instance, foreign=False, attack=None):
+        consumer = 'unix:///tmp/sm-rc-e2e-consumer-contract/docker.sock'
+        producer = 'unix:///tmp/sm-rc-e2e-producer-contract/docker.sock'
+        instance.persist(fixture_digest=driver.digest(self.fixture), prepared=False,
+                         prerequisites={'consumer_host': consumer, 'consumer_id': 'consumer-contract',
+                                        'producer_host': producer, 'producer_id': 'producer-contract'})
+        resources = {'owned-api': instance.project, 'foreign-api': 'foreign-project'}
+        deleted = []
+        project_filter = 'label=com.docker.compose.project=' + instance.project
+
+        def command(argv, **kwargs):
+            self.assertEqual(argv[:2], ['docker', '--host'])
+            host, args = argv[2], argv[3:]
+            if args == ['info', '--format', '{{json .}}']:
+                return 0, driver.canonical({
+                    'ID': 'consumer-contract' if host == consumer else 'producer-contract',
+                    'OSType': 'linux',
+                    'DriverStatus': [['driver-type', 'io.containerd.snapshotter.v1']]})
+            if args == ['version', '--format', '{{json .Server}}']:
+                return 0, driver.canonical({'Version': '29.8.1'})
+            if args == ['compose', 'version', '--short']:
+                return 0, b'5.5.1\n'
+            if host == producer and args[:2] == ['ps', '-aq']:
+                return 0, b''
+            if host == consumer and args[:2] == ['ps', '-aq']:
+                self.assertEqual(args[-2:], ['--filter', project_filter])
+                names = ['foreign-api'] if foreign else [
+                    name for name, project in resources.items() if project == instance.project]
+                return 0, '\n'.join(names).encode()
+            if args[:2] in (['network', 'ls'], ['volume', 'ls']):
+                return 0, b''
+            if args[:2] == ['container', 'inspect']:
+                name = args[2]
+                return 0, driver.canonical([{'Id': name, 'Config': {'Labels': {
+                    'com.docker.compose.project': resources[name],
+                    'com.docker.compose.service': 'api'}}}])
+            if args[:3] == ['container', 'rm', '-f']:
+                self.assertEqual(host, consumer)
+                self.assertEqual(resources[args[3]], instance.project)
+                deleted.append(args[3])
+                del resources[args[3]]
+                if attack:
+                    attack()
+                return 0, b''
+            self.fail('unexpected daemon command: ' + repr(args))
+
+        return consumer, command, resources, deleted
+
+    def test_cleanup_survives_lost_or_changed_candidate_artifacts(self):
+        import shutil
+        archive = self.candidate / 'candidate.tar'
+        original = archive.read_bytes()
+        for damage in ('lost-archive', 'changed-size', 'missing-directory', 'corrupt-manifest'):
+            with self.subTest(damage=damage):
+                self.candidate.mkdir(exist_ok=True)
+                archive.write_bytes(original)
+                archive.chmod(0o600)
+                driver.write_json(self.candidate / 'manifest.json', self.manifest)
+                if damage == 'lost-archive':
+                    archive.unlink()
+                elif damage == 'changed-size':
+                    archive.write_bytes(original + b'extra')
+                elif damage == 'missing-directory':
+                    shutil.rmtree(self.candidate)
+                else:
+                    (self.candidate / 'manifest.json').write_bytes(b'invalid json')
+                with self.assertRaises(Exception):
+                    driver.Driver(self.path)
+                instance = driver.Driver(self.path, cleanup_only=True)
+                consumer, command, resources, deleted = self.cleanup_daemon(instance)
+                with patch.dict(os.environ, {'DOCKER_HOST': consumer}), \
+                     patch.object(driver, 'command', side_effect=command):
+                    result = instance.run('cleanup')
+                self.assertTrue(result['cleaned'])
+                self.assertEqual(deleted, ['owned-api'])
+                self.assertEqual(resources, {'foreign-api': 'foreign-project'})
+
+    def test_modified_protected_binding_denies_cleanup_without_daemon_actions(self):
+        instance = driver.Driver(self.path, cleanup_only=True)
+        self.cleanup_daemon(instance)
+        self.change(candidate={**self.manifest, 'image_id': 'sha256:' + '1' * 64})
+        with patch.object(driver, 'command', side_effect=AssertionError('unexpected daemon')):
+            with self.assertRaisesRegex(driver.Refused, 'fixture-protected-binding-changed'):
+                instance.run('cleanup')
+
+    def test_unprivileged_fixture_owner_and_public_directory_are_refused(self):
+        for mode, uid in ((0o755, 0), (0o700, 65534)):
+            with self.subTest(mode=mode, uid=uid):
+                self.root.chmod(mode)
+                os.chown(self.root, uid, -1)
+                try:
+                    with patch.object(driver, 'command', side_effect=AssertionError('unexpected daemon')):
+                        with self.assertRaisesRegex(driver.Refused, 'fixture-directory-protection'):
+                            driver.Driver(self.path, cleanup_only=True)
+                finally:
+                    os.chown(self.root, 0, -1)
+                    self.root.chmod(0o700)
+        self.path.chmod(0o644)
+        with self.assertRaisesRegex(driver.Refused, 'fixture-file-protection'):
+            driver.Driver(self.path, cleanup_only=True)
+
+    def test_runtime_rename_to_symlink_preserves_real_foreign_hostkeys(self):
+        with tempfile.TemporaryDirectory() as outside:
+            external = Path(outside)
+            names = ('ssh_host_ed25519_key', 'ssh_host_ed25519_key.pub')
+            for name in names:
+                (external / name).write_bytes(b'foreign host key')
+            runtime = self.root / 'runtime'
+            runtime.mkdir(mode=0o700)
+            for name in names:
+                (runtime / name).write_bytes(b'owned host key')
+            instance = driver.Driver(self.path, cleanup_only=True)
+            def attack():
+                runtime.rename(self.root / 'renamed-runtime')
+                runtime.symlink_to(external, target_is_directory=True)
+            consumer, command, resources, deleted = self.cleanup_daemon(instance, attack=attack)
+            with patch.dict(os.environ, {'DOCKER_HOST': consumer}), \
+                 patch.object(driver, 'command', side_effect=command):
+                result = instance.run('cleanup')
+            self.assertEqual(result['unresolved_cleanup'], {'keys': 'runtime-directory-changed'})
+            self.assertEqual(deleted, ['owned-api'])
+            self.assertEqual(resources, {'foreign-api': 'foreign-project'})
+            for name in names:
+                self.assertEqual((external / name).read_bytes(), b'foreign host key')
+                self.assertEqual((self.root / 'renamed-runtime' / name).read_bytes(), b'owned host key')
+
+    def test_replaced_runtime_directory_is_not_adopted_for_key_deletion(self):
+        runtime = self.root / 'runtime'
+        runtime.mkdir(mode=0o700)
+        instance = driver.Driver(self.path, cleanup_only=True)
+        runtime.rename(self.root / 'old-runtime')
+        runtime.mkdir(mode=0o700)
+        key = runtime / 'ssh_host_ed25519_key'
+        key.write_bytes(b'replacement key')
+        with self.assertRaisesRegex(driver.Refused, 'runtime-directory-changed'):
+            instance.files.delete_keys()
+        self.assertEqual(key.read_bytes(), b'replacement key')
+
+    def test_symlinked_fixture_ancestor_is_refused(self):
+        with tempfile.TemporaryDirectory() as outside:
+            alias = Path(outside) / 'alias'
+            alias.symlink_to(self.root, target_is_directory=True)
+            with self.assertRaisesRegex(driver.Refused, '^noncanonical-input$'):
+                driver.Driver(alias / 'fixture.json', cleanup_only=True)
+        self.assertEqual(driver.read_json(self.path), self.fixture)
+
+    def test_replaced_fixture_directory_cannot_delete_external_keys(self):
+        instance = driver.Driver(self.path, cleanup_only=True)
+        old = self.root.with_name(self.root.name + '-original')
+        self.root.rename(old)
+        self.addCleanup(__import__('shutil').rmtree, old)
+        self.root.mkdir(mode=0o700)
+        key = self.root / 'id_ed25519'
+        key.write_bytes(b'external replacement key')
+        with self.assertRaisesRegex(driver.Refused, 'fixture-directory-changed'):
+            instance.files.delete_keys()
+        self.assertEqual(key.read_bytes(), b'external replacement key')
+
+    def test_cleanup_candidate_loss_does_not_authorize_foreign_daemon_resource(self):
+        (self.candidate / 'candidate.tar').unlink()
+        instance = driver.Driver(self.path, cleanup_only=True)
+        consumer, command, resources, deleted = self.cleanup_daemon(instance, foreign=True)
+        with patch.dict(os.environ, {'DOCKER_HOST': consumer}), \
+             patch.object(driver, 'command', side_effect=command):
+            result = instance.run('cleanup')
+        self.assertEqual(result['unresolved_cleanup']['consumer'], 'cleanup-ownership')
+        self.assertEqual(deleted, [])
+        self.assertEqual(resources, {'owned-api': instance.project, 'foreign-api': 'foreign-project'})
 
     def test_context_drift_fails_before_daemon_command(self):
         instance = driver.Driver(self.path)
