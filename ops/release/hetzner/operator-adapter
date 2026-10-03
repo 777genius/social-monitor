@@ -1,0 +1,12 @@
+#!/bin/sh
+# Host.evidence supplies one fixed verb; bindings arrive only on stdin.
+if [ "$#" -ne 1 ]; then
+  printf '%s\n' 'operator-denied' >&2
+  exit 1
+fi
+case "$1" in
+  preflight|postgres-identity|database|backup|release-evidence|probe) ;;
+  *) printf '%s\n' 'operator-denied' >&2; exit 1 ;;
+esac
+exec /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+  /opt/social-monitor-release-python/bin/python3 -I -B /opt/social-monitor-release/operator_adapter.py "$1"

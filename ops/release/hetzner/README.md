@@ -24,12 +24,14 @@ Use Python 3 and Compose with `--no-env-resolution`. The gate uses only the fixe
 `/opt/social-monitor-release-python/bin/python3` interpreter, in isolated mode
 with a cleared environment. Provision that interpreter and all its dependencies
 root owned, without group/world writes, outside every candidate/project directory.
-Install official PyYAML 6.0.3 using the hash-pinned `requirements.txt`, never
+Create the venv with `--copies`: the fixed interpreter must be a regular file,
+never an interpreter symlink. Clear the environment before interpreter startup
+and keep `-I -B` on the fixed entrypoints. Install official PyYAML 6.0.3 using the hash-pinned `requirements.txt`, never
 from a candidate package, interpreter, import path or requirements file:
 
 ```sh
 # Operator installation, from the independently reviewed root-owned lock.
-/usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin /usr/bin/python3 -m venv /opt/social-monitor-release-python
+/usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin /usr/bin/python3 -m venv --copies /opt/social-monitor-release-python
 /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin /opt/social-monitor-release-python/bin/python3 -I -m pip install --require-hashes --no-deps -r /opt/social-monitor-release/requirements.txt
 ```
 
