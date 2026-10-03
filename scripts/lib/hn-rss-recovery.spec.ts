@@ -33,7 +33,7 @@ const withoutJournalDir = (values: readonly string[]): string[] => {
 const runSyntheticProcess = (script: string, values: readonly string[]): Promise<{ code: number | null; signal: NodeJS.Signals | null; output: string; error: string }> =>
   new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["-r", "ts-node/register/transpile-only", "-r", "tsconfig-paths/register", script, ...values], {
-      cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"],
+      cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"], timeout: 10_000, killSignal: "SIGKILL",
       env: { PATH: process.env.PATH ?? "", TZ: "UTC", TS_NODE_PROJECT: join(process.cwd(), "tsconfig.build.json"),
         ...(process.env.NODE_PATH === undefined ? {} : { NODE_PATH: process.env.NODE_PATH }) },
     });
@@ -42,7 +42,10 @@ const runSyntheticProcess = (script: string, values: readonly string[]): Promise
     child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
     child.stderr.on("data", (chunk: Buffer) => { error += chunk.toString(); });
     child.on("error", reject);
-    child.on("close", (code, signal) => resolve({ code, signal, output: output.trim(), error: error.trim() }));
+    child.on("close", (code, signal) => {
+      if (child.killed) { reject(new Error("Synthetic recovery process exceeded its 10-second deadline")); return; }
+      resolve({ code, signal, output: output.trim(), error: error.trim() });
+    });
   });
 
 describe("HN/RSS recovery plan and journal", () => {
@@ -293,7 +296,7 @@ describe("HN/RSS recovery plan and journal", () => {
     expect(raced.map((value) => value.code)).toEqual([0, 0]);
     expect(raced.map((value) => value.output).sort()).toEqual(["REFUSED", "RESERVED"]);
     expect((await worker()).output).toBe("REFUSED");
-  });
+  }, 25_000); // Two sequential phases, each child bounded to 10 seconds.
 
   it("keeps a committed effect uncertain across a process crash and rejects another CLI journal directory", async () => {
     const other = mkdtempSync(join(tmpdir(), "hn-rss-replay-dir-"));
@@ -326,7 +329,7 @@ describe("HN/RSS recovery plan and journal", () => {
       rmSync(other, { recursive: true, force: true });
       rmSync(effects, { recursive: true, force: true });
     }
-  });
+  }, 35_000); // Three sequential phases; the final two CLI processes run together.
 
   it("leaves failed acquisition reserved for manual reconciliation", async () => {
     const request = parseRecoveryArgs(args(directory), now);

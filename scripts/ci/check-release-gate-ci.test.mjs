@@ -41,6 +41,18 @@ for (const [label, mutate] of [
   ['production credential', (w) => gate(w).env.TOKEN = '${{ secrets.PRODUCTION_TOKEN }}'],
   ['persisted checkout credentials', (w) => w.jobs.static_quality.steps[0].with['persist-credentials'] = true],
   ['wrong checkout revision', (w) => w.jobs.static_quality.steps[0].with.ref = 'main'],
+  ['second checkout before gate', (w) => w.jobs.static_quality.steps.splice(1, 0, globalThis.structuredClone(w.jobs.static_quality.steps[0]))],
+  ['second checkout after gate', (w) => w.jobs.static_quality.steps.push(globalThis.structuredClone(w.jobs.static_quality.steps[0]))],
+  ['unpinned gate checkout', (w) => w.jobs.static_quality.steps[0].uses = 'actions/checkout@main'],
+  ['unexpected checkout options', (w) => w.jobs.static_quality.steps[0].with.path = 'other-source'],
+  ['startup injection before gate', (w) => w.jobs.static_quality.steps.splice(1, 0, { run: 'echo BASH_ENV=startup.sh >> "$GITHUB_ENV"' })],
+  ...['workflow', 'job', 'gate'].flatMap((scope) => ['BASH_ENV', 'PATH'].map((key) => [
+    `unexpected ${key} in ${scope} environment`, (w) => {
+      const owner = scope === 'workflow' ? w : scope === 'job' ? w.jobs.static_quality : gate(w);
+      owner.env = { ...owner.env, [key]: 'untrusted-override' };
+    },
+  ])),
+
   ['floating runner distro', (w) => w.jobs.static_quality['runs-on'] = 'ubuntu-latest'],
   ['toolcache Python instead of system ABI', replace('/usr/bin/python3.12 -m venv', 'python3 -m venv')],
   ['wrong system Python', replace('/usr/bin/python3.12 -m venv', '/usr/bin/python3.13 -m venv')],

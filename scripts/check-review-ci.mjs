@@ -13,16 +13,22 @@ export function releaseGateCiViolations(source) {
   const fail = ["Static architecture and quality must run the system Python 3.12, hash-locked root controller gate on a disposable GitHub runner"];
   if (job?.name !== "Static architecture and quality" || job["runs-on"] !== "ubuntu-24.04" ||
       job.needs !== undefined || job.if !== undefined || job["continue-on-error"] !== undefined ||
-      job.environment !== undefined || doc.defaults !== undefined || job.defaults !== undefined ||
+      job.environment !== undefined || Object.keys(doc.env ?? {}).some((key) => key !== "DATABASE_URL") ||
+      job.env !== undefined ||
+      doc.defaults !== undefined || job.defaults !== undefined ||
       !Array.isArray(steps)) return fail;
   const setups = steps.filter((step) => step.uses?.startsWith("actions/setup-python@"));
   const gates = steps.filter((step) => step.run?.includes("ops/release/hetzner/check.sh"));
-  const checkout = steps.find((step) => step.uses?.startsWith("actions/checkout@"));
+  const checkouts = steps.filter((step) => step.uses?.startsWith("actions/checkout@"));
+  const checkout = checkouts[0];
   const gate = gates[0];
-  if (setups.length !== 0 || gates.length !== 1 || !checkout ||
+  if (setups.length !== 0 || gates.length !== 1 || checkouts.length !== 1 ||
+      checkout.uses !== "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10" ||
+      checkout.env !== undefined || Object.keys(checkout.with ?? {}).length !== 2 ||
       checkout.with?.ref !== "${{ github.sha }}" || checkout.with?.["persist-credentials"] !== false ||
+      Object.keys(gate.env ?? {}).length !== 1 ||
       gate.env?.RELEASE_GATE_VENV !== "${{ runner.temp }}/release-gate-venv" ||
-      steps.indexOf(checkout) >= steps.indexOf(gate) ||
+      steps.indexOf(checkout) !== 0 || steps.indexOf(gate) !== 1 ||
       [checkout, gate].some((step) => step.if !== undefined || step["continue-on-error"] !== undefined ||
         step["working-directory"] !== undefined || (step.shell !== undefined && step.shell !== "bash")) ||
       /\$\{\{\s*secrets\./u.test(JSON.stringify({ env: doc.env, job }))) return fail;
