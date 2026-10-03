@@ -474,6 +474,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/prepare-reader-summary-successor-fixture.ts
       scripts/read-reader-summary-daily-terminal-set-receipt.spec.ts
       scripts/read-reader-summary-daily-terminal-set-receipt.ts
+      scripts/reader-summary-publication-fixture-firstpub-role.spec.ts
+      scripts/reader-summary-publication-fixture-firstpub-role.ts
       scripts/reader-summary-publication-postgres-legacy.ts
       scripts/reader-summary-publication-postgres-privileges.ts
       scripts/reader-summary-publication-postgres-runtime-guard.ts
@@ -748,6 +750,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     expect(productionImporters).toEqual([
       'scripts/check-reader-summary-publication-postgres.spec.ts',
       'scripts/lib/reader-summary-successor-fixture-migrations.ts',
+      'scripts/reader-summary-publication-fixture-firstpub-role.spec.ts',
     ]);
     expect(readSource('package.json')).toContain(
       'check:reader-summary-publication-postgres',
