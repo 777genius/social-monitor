@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { compareRuns, fetchRun, summarizeRun } from './actions-timing-report.mjs';
 const head = 'a'.repeat(40);
 const at = (minute) => `2026-10-02T00:${String(minute).padStart(2, '0')}:00Z`;
@@ -7,6 +12,35 @@ const run = { id: 42, head_sha: head, run_attempt: 2, status: 'completed', concl
   created_at: at(0), run_started_at: at(1), updated_at: at(10) };
 const job = (id, start, end) => ({ id, name: `job ${id}`, created_at: at(0), started_at: at(start),
   completed_at: at(end), status: 'completed', conclusion: 'success' });
+
+test('CLI invoked through a symlink prints a complete JSON timing report', (t) => {
+  const scratch = mkdtempSync(join(tmpdir(), 'actions-timing-cli-'));
+  try {
+    const entry = join(scratch, 'timing.mjs');
+    try { symlinkSync(fileURLToPath(new URL('./actions-timing-report.mjs', import.meta.url)), entry); }
+    catch (error) {
+      if (!['EPERM', 'EACCES', 'ENOSYS', 'ENOTSUP'].includes(error.code)) throw error;
+      t.skip(`OS cannot create a symlink: ${error.code}`);
+      return;
+    }
+    writeFileSync(join(scratch, 'gh'), `#!${process.execPath}\n` +
+      `const endpoint = process.argv[process.argv.length - 1];\n` +
+      `if (process.argv.slice(2, 5).join(' ') !== 'api --method GET') process.exit(2);\n` +
+      `const responses = ${JSON.stringify({
+        'repos/test/repo/actions/runs/42': run,
+        'repos/test/repo/actions/runs/42/attempts/2/jobs?per_page=100&page=1':
+          { total_count: 2, jobs: [job(1, 1, 6), job(2, 2, 9)] },
+      })};\nif (!responses[endpoint]) process.exit(3);\n` +
+      `console.log(JSON.stringify(responses[endpoint]));\n`, { mode: 0o755 });
+    for (const flags of [[], ['--preserve-symlinks-main']]) {
+      const stdout = execFileSync(process.execPath, [...flags, entry, '--repo', 'test/repo', '--run', '42', '--head', head], {
+        encoding: 'utf8', timeout: 10000,
+        env: { PATH: scratch },
+      });
+      assert.deepEqual(JSON.parse(stdout), summarizeRun(run, [job(1, 1, 6), job(2, 2, 9)], head));
+    }
+  } finally { rmSync(scratch, { recursive: true, force: true }); }
+});
 
 test('overlapping jobs sum runner minutes independently of run wall clock', () => {
   const result = summarizeRun(run, [job(1, 1, 6), job(2, 2, 9)], head);
