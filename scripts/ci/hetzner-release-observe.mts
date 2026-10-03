@@ -291,6 +291,10 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
   await mkdir(ghDirectory, { mode: 0o700 }); await canonical(ghDirectory);
   let scratch: string | undefined, publicDirectory: string | undefined;
   try {
+    if (trigger.lane === 'skip') {
+      await outputs({ phase: 'ineligible-skipped', lane: 'skip' });
+      await summary('ineligible-skipped', 'skip'); return;
+    }
     if (action === 'preflight' || action === 'activate') {
       A.requireValue(trigger.lane === action && job === action, 'host-lane');
       const destination = join(root, `hetzner-receipts-${job}`);

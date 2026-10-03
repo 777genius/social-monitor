@@ -167,13 +167,40 @@ test('mode selection precedes payload access; dispatch requires exact owner/main
   assert.throws(() => dispatch('preflight'), code('activation-mode'));
   assert.throws(() => dispatch('manual', 'other'), code('dispatch-owner'));
   assert.throws(() => dispatch('manual', '777genius', 'refs/heads/feature'), code('dispatch-owner'));
-  const automatic = { repository: event.repository, action: 'completed', workflow_run: { id: 123 } };
+  const automatic = { repository: event.repository, action: 'completed',
+    workflow_run: { id: 123, event: 'push', head_branch: 'main', conclusion: 'success' } };
   for (const mode of ['preflight', 'manual', 'auto'])
     assert.equal(A.releaseTrigger(mode, automatic, 'workflow_run', '', '777genius/social-monitor', '').lane,
       mode === 'auto' ? 'activate' : 'preflight');
   assert.throws(() => A.releaseTrigger('manual', { ...event, inputs: {
     ci_run_id: runId, action: 'rollback-previous', rollback_sha: sha } },
   'workflow_dispatch', '777genius', '777genius/social-monitor', 'refs/heads/main'), code('rollback-unsupported'));
+});
+
+test('completed workflow payloads only select eligible runs; ineligible runs skip before ID parsing', async () => {
+  const run: Row = { id: 123, event: 'push', head_branch: 'main', conclusion: 'success' };
+  const event = { repository: { full_name: A.REPOSITORY }, action: 'completed', workflow_run: run };
+  const trigger = (value: unknown) =>
+    A.releaseTrigger('auto', value, 'workflow_run', '', A.REPOSITORY, '');
+  for (const change of [{ event: 'pull_request' }, { conclusion: 'failure' },
+    { conclusion: 'cancelled' }, { head_branch: 'feature' }, { event: undefined },
+    { head_branch: undefined }, { conclusion: undefined }]) {
+    assert.deepEqual(trigger({ ...event, workflow_run: { ...run, ...change, id: 'invalid' } }),
+      { run: '', lane: 'skip' });
+  }
+  for (const invalid of [undefined, '123', 0, 1.5, Number.MAX_SAFE_INTEGER + 1])
+    assert.throws(() => trigger({ ...event, workflow_run: { ...run, id: invalid } }), code('numeric-id'));
+  assert.throws(() => trigger({ ...event, action: 'requested' }), code('trigger-action'));
+  assert.throws(() => trigger({ ...event, repository: { full_name: 'other/repo' } }),
+    code('trigger-repository'));
+  const selected = trigger(event);
+  assert.deepEqual(selected, { run: runId, lane: 'activate' });
+  for (const change of [{ event: 'pull_request' }, { conclusion: 'failure' },
+    { conclusion: 'cancelled' }, { head_branch: 'feature' }]) {
+    const f = fixture(); Object.assign(f.run, change);
+    await assert.rejects(A.observeAuthority(f.get, selected.run), code('run-authority'));
+    assert.deepEqual(f.calls, ['', 'actions/workflows/pull-request.yml', 'actions/runs/123']);
+  }
 });
 
 test('JSON duplicate keys, excessive depth, invalid UTF-8, overflow and size cannot be evidence', async () => {

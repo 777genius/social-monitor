@@ -79,7 +79,11 @@ export function releaseTrigger(mode: string | undefined, event: unknown, name: s
   requireValue(object(envelope.repository).full_name === REPOSITORY, 'trigger-repository');
   if (name === 'workflow_run') {
     requireValue(envelope.action === 'completed', 'trigger-action');
-    return { run: id(object(envelope.workflow_run).id), lane: mode === 'auto' ? 'activate' : 'preflight' };
+    const run = object(envelope.workflow_run);
+    // Payload fields can only exclude a run; observeAuthority authorizes it.
+    if (run.event !== 'push' || run.head_branch !== 'main' || run.conclusion !== 'success')
+      return { run: '', lane: 'skip' };
+    return { run: id(run.id), lane: mode === 'auto' ? 'activate' : 'preflight' };
   }
   requireValue(name === 'workflow_dispatch' && actor === '777genius'
     && ref === 'refs/heads/main', 'dispatch-owner');

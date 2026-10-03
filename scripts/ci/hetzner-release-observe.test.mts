@@ -187,6 +187,44 @@ test('native disabled CLI exits before event, GitHub, private directory or crede
   }
 });
 
+test('native ineligible CLI skips every lane without GitHub token or SSH configuration and cleans scratch', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sm-release-ineligible-'));
+  const eventPath = join(root, 'event.json'), output = join(root, 'output'), summary = join(root, 'summary');
+  try {
+    for (const change of [{ event: 'pull_request' }, { conclusion: 'failure' },
+      { conclusion: 'cancelled' }, { head_branch: 'feature' }, { event: undefined },
+      { head_branch: undefined }, { conclusion: undefined }]) {
+      await writeFile(eventPath, JSON.stringify({ repository: { full_name: A.REPOSITORY },
+        action: 'completed', workflow_run: { id: 'invalid', event: 'push',
+          head_branch: 'main', conclusion: 'success', ...change } }));
+      for (const action of ['candidate', 'gate', 'preflight', 'activate']) {
+        await writeFile(output, ''); await writeFile(summary, '');
+        const job = action === 'gate' ? 'candidate' : action;
+        const env: NodeJS.ProcessEnv = { PATH: '/usr/bin:/bin', HETZNER_RELEASE_MODE: 'auto',
+          RUNNER_TEMP: root, GITHUB_JOB: job, GH_CONFIG_DIR: join(root, `hetzner-gh-${job}`),
+          GITHUB_EVENT_PATH: eventPath, GITHUB_EVENT_NAME: 'workflow_run',
+          GITHUB_REPOSITORY: A.REPOSITORY, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary };
+        assert.equal(env.GH_TOKEN, undefined);
+        assert.equal(env.HETZNER_PRIVATE_KEY, undefined);
+        assert.equal(env.HETZNER_HOST, undefined);
+        assert.throws(() => A.githubGet(env),
+          (error: unknown) => error instanceof A.AuthorityError && error.code === 'github-token-missing');
+        const result = spawnSync(process.execPath, ['--experimental-strip-types',
+          'scripts/ci/hetzner-release-observe.mts', action],
+        { cwd: resolve('.'), env, timeout: 10000, maxBuffer: 65536 });
+        assert.ifError(result.error); assert.equal(result.status, 0, result.stderr.toString());
+        assert.deepEqual(A.parseJson(result.stdout), { phase: 'ineligible-skipped', lane: 'skip' });
+        assert.equal(result.stderr.toString().includes('"phase":"failed"'), false);
+        assert.equal(await readFile(output, 'utf8'), 'phase=ineligible-skipped\nlane=skip\n');
+        assert.equal(await readFile(summary, 'utf8'), 'Hetzner release: ineligible-skipped; phase skip.\n');
+        assert.deepEqual((await readdir(root)).sort(), ['event.json', 'output', 'summary']);
+        await assert.rejects(lstat(env.GH_CONFIG_DIR as string), { code: 'ENOENT' });
+      }
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+  await assert.rejects(lstat(root), { code: 'ENOENT' });
+});
+
 test('guarded writes reject changed authority before transport; rollback is outside the draft', async () => {
   let transported = 0;
   const transport: Transport = async () => { transported++; return response({}); };
