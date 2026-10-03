@@ -140,7 +140,7 @@ test("four-job shared contract provisions before the final tail and passes the e
     "./reader-summary-publication-postgres-runtime-guard",
   ]) jest.doMock(path, generic);
   jest.doMock("./lib/reader-summary-publication-postgres-fixture-scope", () => generic({
-    requiredReaderSummaryPublicationAdminDatabaseUrl: () => "postgresql://fixture_admin:fixture_test_password@127.0.0.1:5432/postgres",
+    requiredReaderSummaryPublicationAdminDatabaseUrl: () => "postgresql://fixture_admin:social_monitor_local_password@127.0.0.1:5432/postgres",
   }));
   jest.doMock("./lib/reader-summary-publication-postgres-migrations", () => generic({
     createReaderSummaryPublicationMigrationWorkspace: () => ({}),
