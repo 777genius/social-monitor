@@ -14,7 +14,7 @@ COPY --chown=0:0 --chmod=0644 ops/ci/release-e2e-native.py /opt/social-monitor-r
 COPY --chown=0:0 --chmod=0755 ops/ci/release-e2e-fixture/operator.py /opt/social-monitor-release-e2e/operator.py
 COPY --chown=0:0 --chmod=0755 ops/ci/release-e2e-fixture/entrypoint.sh /opt/social-monitor-release-e2e/entrypoint.sh
 RUN /usr/bin/gcc -static -O2 -Wall -Wextra -Werror -o /opt/social-monitor-release/restricted-executor /opt/social-monitor-release/restricted-executor.c \
-    && chmod 0755 /opt/social-monitor-release/restricted-executor \
+    && chmod 0755 /opt/social-monitor-release/restricted-executor /opt/social-monitor-release \
     && install -o root -g root -m 0700 /opt/social-monitor-release/restricted-executor /opt/social-monitor-release/root-executor \
     && /opt/social-monitor-release-python/bin/python3 -I -B -c 'import json,sys; assert json.load(open("/opt/social-monitor-release-e2e/toolchain.json"))["base_image"] == sys.argv[1]' "$FIXTURE_BASE" \
     && /opt/social-monitor-release-python/bin/python3 -I -B /opt/social-monitor-release-e2e/operator.py verify-toolchain </dev/null \
