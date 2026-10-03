@@ -35,7 +35,9 @@ const namespace = () => fs.readdirSync(scratch).find((p) => p.startsWith(".first
 const root = () => join(scratch, namespace()!);
 
 beforeEach(() => {
-  scratch = fs.mkdtempSync(join(process.cwd(), ".cache/firstpub-lifecycle-test-"));
+  const scratchParent = join(process.cwd(), ".cache");
+  fs.mkdirSync(scratchParent, { recursive: true });
+  scratch = fs.mkdtempSync(join(scratchParent, "firstpub-lifecycle-test-"));
   bin = join(scratch, "bin"); fs.mkdirSync(bin);
   for (const name of ["initdb", "pg_ctl", "postgres"]) fs.writeFileSync(join(bin, name), "synthetic only");
   process.env.FIRSTPUB_NATIVE_PG18_BIN = bin;

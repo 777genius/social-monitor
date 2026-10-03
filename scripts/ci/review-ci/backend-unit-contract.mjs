@@ -61,6 +61,38 @@ const checkoutStep = (full = false) => ({ uses: checkout, with: {
 } });
 const nodeStep = (cache = true) => ({ uses: node, with: { 'node-version': 22, ...(cache ? { cache: 'npm' } : {}) } });
 const setup = (full = false) => [checkoutStep(full), nodeStep(), { run: 'npm ci' }, { run: 'npm run prisma:generate' }];
+// Exact authenticated, nonroot, runner-only prerequisite; no shard-specific admission.
+const nativePg18 = [
+  "set -euo pipefail",
+  "# Package installation is authorized only on a disposable GitHub-hosted Ubuntu runner.",
+  "test \"${GITHUB_ACTIONS:-}\" = true",
+  "test \"${RUNNER_ENVIRONMENT:-}\" = github-hosted",
+  "test \"${RUNNER_OS:-}\" = Linux",
+  "test \"$(id -u)\" -ne 0",
+  ". /etc/os-release",
+  "test \"$ID\" = ubuntu",
+  "[[ \"$VERSION_CODENAME\" =~ ^[a-z]+$ ]]",
+  "pgdg_scratch=\"$(mktemp -d \"$RUNNER_TEMP/firstpub-pgdg-XXXXXXXX\")\"",
+  "trap 'rm -rf -- \"$pgdg_scratch\"' EXIT",
+  "mkdir -m 700 \"$pgdg_scratch/gnupg\"",
+  "curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 60 https://www.postgresql.org/media/keys/ACCC4CF8.asc -o \"$pgdg_scratch/pgdg.asc\"",
+  "pgdg_fingerprint=\"$(gpg --batch --homedir \"$pgdg_scratch/gnupg\" --show-keys --with-colons \"$pgdg_scratch/pgdg.asc\" | awk -F: '$1 == \"fpr\" { print $10; exit }')\"",
+  "test \"$pgdg_fingerprint\" = B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8",
+  "sudo install -m 644 \"$pgdg_scratch/pgdg.asc\" /usr/share/keyrings/firstpub-pgdg.asc",
+  "printf 'deb [signed-by=/usr/share/keyrings/firstpub-pgdg.asc] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\\n' \"$VERSION_CODENAME\" | sudo tee /etc/apt/sources.list.d/firstpub-pgdg.list > /dev/null",
+  "sudo timeout 180 apt-get update",
+  "sudo env DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install --yes --no-install-recommends postgresql-common",
+  "# Install executables only: do not create or start a package-managed cluster.",
+  "printf 'create_main_cluster = false\\n' | sudo tee /etc/postgresql-common/createcluster.conf > /dev/null",
+  "sudo env DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install --yes --no-install-recommends postgresql-18 postgresql-client-18",
+  "for pg18_tool in initdb pg_ctl postgres psql; do",
+  "  pg18_executable=\"/usr/lib/postgresql/18/bin/$pg18_tool\"",
+  "  test -x \"$pg18_executable\"",
+  "  pg18_version=\"$(\"$pg18_executable\" --version)\"",
+  "  [[ \"$pg18_version\" =~ ^$pg18_tool\\ \\(PostgreSQL\\)\\ 18\\. ]]",
+  "  printf '%s\\n' \"$pg18_version\"",
+  "done",
+].join('\n');
 const matrix = { 'fail-fast': false, matrix: { shard: [1, 2, 3, 4] } };
 
 export function backendUnitShardingViolations(source) {
@@ -84,6 +116,7 @@ export function backendUnitShardingViolations(source) {
   const jobs = workflow.jobs ?? {};
   jobChecks(jobs.backend_unit_shards, 'backend_unit_shards', `Backend unit shard ${shard}/4`, [
     ...setup(),
+    { run: nativePg18 },
     { run: `set -euo pipefail\nmkdir -p reports\n${ignore}\n${inventory}` },
     { run: `set -euo pipefail\n${ignore}\n${jest} --shard=${shard}/4 ${selector} --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json` },
     { uses: upload, with: { name: `backend-unit-report-${shard}`, path: 'reports/*.json', 'if-no-files-found': 'error', 'retention-days': 1 } },
