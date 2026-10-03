@@ -45,10 +45,14 @@ jobs:
           test "$(id -u)" -ne 0
           command -v shellcheck
           docker compose version
+          docker pull postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
           python3 -m venv --copies "$RELEASE_GATE_VENV"
           "$RELEASE_GATE_VENV/bin/python3" -m pip install --require-hashes -r ops/release/hetzner/requirements.txt
-          # Root is needed only for deterministic file-mode contracts on this disposable runner.
-          sudo env PATH="$RELEASE_GATE_VENV/bin:$PATH" bash ops/release/hetzner/check.sh
+          test ! -e /opt/social-monitor-release-contract-tests
+          sudo mkdir -p /opt/social-monitor-release-contract-tests/ops/release /opt/social-monitor-release-contract-tests/node_modules
+          sudo cp -R ops/release/hetzner /opt/social-monitor-release-contract-tests/ops/release/
+          sudo cp -R "$RELEASE_GATE_VENV" /opt/social-monitor-release-contract-tests/python
+          sudo env PATH="/opt/social-monitor-release-contract-tests/python/bin:$PATH" bash /opt/social-monitor-release-contract-tests/ops/release/hetzner/check.sh
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e

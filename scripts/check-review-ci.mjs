@@ -29,18 +29,23 @@ export function releaseGateCiViolations(source) {
         step["working-directory"] !== undefined || (step.shell !== undefined && step.shell !== "bash")) ||
       /\$\{\{\s*secrets\./u.test(JSON.stringify({ env: doc.env, job }))) return fail;
   // Check resolved YAML command boundaries, accepting comments and indentation.
-  // The sudo PATH must select copied venv executables rather than system Python.
+  // Stage source and copied Python beneath root-owned ancestors; preserve native PG fixtures.
   const commands = gate.run.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
   const expected = [
     "set -euo pipefail",
-    'test "${GITHUB_ACTIONS:-}" = true',
-    'test "${RUNNER_ENVIRONMENT:-}" = github-hosted',
-    'test "$(id -u)" -ne 0',
+    "test \"${GITHUB_ACTIONS:-}\" = true",
+    "test \"${RUNNER_ENVIRONMENT:-}\" = github-hosted",
+    "test \"$(id -u)\" -ne 0",
     "command -v shellcheck",
     "docker compose version",
-    'python3 -m venv --copies "$RELEASE_GATE_VENV"',
-    '"$RELEASE_GATE_VENV/bin/python3" -m pip install --require-hashes -r ops/release/hetzner/requirements.txt',
-    'sudo env PATH="$RELEASE_GATE_VENV/bin:$PATH" bash ops/release/hetzner/check.sh',
+    "docker pull postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+    "python3 -m venv --copies \"$RELEASE_GATE_VENV\"",
+    "\"$RELEASE_GATE_VENV/bin/python3\" -m pip install --require-hashes -r ops/release/hetzner/requirements.txt",
+    "test ! -e /opt/social-monitor-release-contract-tests",
+    "sudo mkdir -p /opt/social-monitor-release-contract-tests/ops/release /opt/social-monitor-release-contract-tests/node_modules",
+    "sudo cp -R ops/release/hetzner /opt/social-monitor-release-contract-tests/ops/release/",
+    "sudo cp -R \"$RELEASE_GATE_VENV\" /opt/social-monitor-release-contract-tests/python",
+    "sudo env PATH=\"/opt/social-monitor-release-contract-tests/python/bin:$PATH\" bash /opt/social-monitor-release-contract-tests/ops/release/hetzner/check.sh",
   ];
   return commands.length === expected.length && commands.every((line, index) => line === expected[index]) ? [] : fail;
 }
