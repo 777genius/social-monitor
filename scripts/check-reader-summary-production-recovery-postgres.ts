@@ -61,6 +61,7 @@ type PublicationPrivilegesModule = Readonly<{
     readonly runtimeRole: string;
     readonly serverAdminDatabaseUrl: string;
   }): Promise<void>;
+  provisionPublicationFixtureFirstPublicationRole(pool: RecoveryPool): Promise<Readonly<{ oid: number }>>;
   provisionPublicationFixtureDailyTerminalRole(params: {
     readonly dailyTerminalPassword: string;
     readonly migrationAdminRole: string;
@@ -96,10 +97,9 @@ type PublicationPrivilegesModule = Readonly<{
     readonly fixtureDatabaseCreated: boolean;
     readonly fixtureMigrationAdminRoleCreated: boolean;
     readonly fixtureRuntimeRoleCreated: boolean;
-    readonly fixtureDailyTerminalRoleCreated?: boolean;
+    readonly fixtureDailyTerminalRoleCreated?: boolean; readonly fixtureFirstPublicationRoleOwnership?: Readonly<{ oid: number }>;
   }): Promise<void>;
 }>;
-
 const runtimeRequire = createRequire(join(process.cwd(), "package.json"));
 const { Pool } = runtimeRequire("pg") as PostgresRuntimeModule;
 (
@@ -123,7 +123,7 @@ const {
   makePublicationFixtureRuntimeDatabaseOwner,
   publicationDatabaseUrl,
   publicationProtectedRolePresence,
-  provisionPublicationFixtureDailyTerminalRole,
+  provisionPublicationFixtureDailyTerminalRole, provisionPublicationFixtureFirstPublicationRole,
   publicationRuntimeDatabaseUrl,
   quotePostgresIdentifier,
   quotePostgresLiteral,
@@ -210,8 +210,7 @@ let dailyActivationDefinerRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
-let fixtureDailyTerminalRoleCreated = false;
-
+let fixtureDailyTerminalRoleCreated = false; let fixtureFirstPublicationRoleOwnership: Readonly<{ oid: number }> | undefined;
 class DeterministicDailyRecoveryRuntime {
   readonly runtimeEngine = "subscription-runtime-cli" as const;
   private readonly canonicalResponseBytes = canonicalJsonBytes({
@@ -524,6 +523,7 @@ const main = async (): Promise<void> => {
       serverAdminDatabaseUrl,
     });
     fixtureRuntimeRoleCreated = true;
+    fixtureFirstPublicationRoleOwnership = await provisionPublicationFixtureFirstPublicationRole(serverAdmin);
     fixtureDailyTerminalRoleCreated =
       await provisionPublicationFixtureDailyTerminalRole({
         dailyTerminalPassword,
@@ -975,7 +975,7 @@ const main = async (): Promise<void> => {
         fixtureDatabaseCreated,
         fixtureMigrationAdminRoleCreated,
         fixtureRuntimeRoleCreated,
-        fixtureDailyTerminalRoleCreated,
+        fixtureDailyTerminalRoleCreated, fixtureFirstPublicationRoleOwnership,
       });
     } finally {
       await serverAdmin.end();

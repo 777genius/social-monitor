@@ -185,6 +185,7 @@ ReaderSummaryEvidenceSelectorPort, ReaderSummarySupplementalEvidenceSelectorPort
       approvedSameStoryRelations: graduatedRelations,
       sourceWindow: {
         ...authoritativeCandidateSelection.sourceWindow,
+        ...(params.sourceWindowIdentity === undefined ? {} : { windowId: params.sourceWindowIdentity }),
         periodStartedAt: params.period.startedAt,
         periodEndedAt: params.period.endedAt,
         ingestionCutoff,

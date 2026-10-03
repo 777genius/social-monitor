@@ -107,25 +107,26 @@ test("builds a deterministic, extractable host release from a disposable synthet
   await copyFile(new URL("./host-release.mjs", import.meta.url), join(source, "apps/agent-runtime/bin/host-release.mjs"));
   const fakeGit = await put(fakeBin, "git", `#!/bin/sh\nif [ "$1" = "rev-parse" ]; then printf '%s\\n' '${commit}'; fi\n`);
   await chmod(fakeGit, 0o755);
-  const fakeTsc = await put(source, "node_modules/.bin/tsc", `#!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-const args = process.argv.slice(2);
-const value = (flag) => args[args.indexOf(flag) + 1];
-if (value("-p") !== "tsconfig.build.json" || !value("--outDir") || !value("--tsBuildInfoFile")) process.exit(2);
-const out = value("--outDir");
-for (const name of ["apps/agent-runtime/src/main.js", "libs/contracts/generated/grpc/agent_runtime/v1/agent_runtime.js"]) {
-  mkdirSync(join(out, name, ".."), { recursive: true });
-  writeFileSync(join(out, name), "fresh compiled bytes\\n");
-}
-writeFileSync(value("--tsBuildInfoFile"), "fresh incremental state\\n");
-`);
-  await chmod(fakeTsc, 0o755);
-  const fakeAlias = await put(source, "node_modules/.bin/tsc-alias", `#!/usr/bin/env node
-const args = process.argv.slice(2);
-if (args[args.indexOf("-p") + 1] !== "tsconfig.build.json" || !args[args.indexOf("--outDir") + 1]) process.exit(2);
-`);
-  await chmod(fakeAlias, 0o755);
+  // Real pinned compiler and alias CLI; installation/codegen remain synthetic.
+  await cp(join(process.cwd(), "node_modules/typescript"),
+    join(source, "node_modules/typescript"), { recursive: true });
+  await put(source, "scripts/rewrite-build-aliases.mjs",
+    await readFile(new URL("../../../scripts/rewrite-build-aliases.mjs", import.meta.url)));
+  await put(source, "tsconfig.json", JSON.stringify({ compilerOptions: {
+    module: "commonjs", target: "ES2022", rootDir: ".", outDir: "dist",
+    declaration: true, incremental: true, baseUrl: ".", types: [],
+    ignoreDeprecations: "6.0", paths: {
+      "@social-monitor/contracts": ["libs/contracts/generated/grpc/agent_runtime/v1/agent_runtime.ts"],
+    },
+  }, include: ["apps/**/*.ts", "libs/**/*.ts"] }));
+  await put(source, "tsconfig.build.json", '{"extends":"./tsconfig.json"}');
+  await put(source, "libs/contracts/generated/grpc/agent_runtime/v1/agent_runtime.ts",
+    'export const value = "fresh compiled bytes\\n";');
+  await put(source, "apps/agent-runtime/src/main.ts",
+    'export { value } from "@social-monitor/contracts";');
+  const realTsc = await put(source, "node_modules/.bin/tsc",
+    '#!/usr/bin/env node\nrequire("../typescript/lib/tsc.js");\n');
+  await chmod(realTsc, 0o755);
   const fakeNpm = await put(fakeBin, "npm", `#!/usr/bin/env node
 import { chmodSync, cpSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
 if (process.argv[2] === "run" && process.argv[3] === "prisma:generate") process.exit(0);
@@ -210,7 +211,17 @@ writeFileSync("node_modules/synthetic.test.js", "excluded");
     (error) => error.message === `Release has unsafe ancestor: ${temp}`);
   }
   assert.equal((await stat(join(extracted, "dist/apps/agent-runtime/src/main.js"))).isFile(), true);
-  assert.equal(await readFile(join(extracted, "dist/apps/agent-runtime/src/main.js"), "utf8"), "fresh compiled bytes\n");
+  const compiledMain = await readFile(join(extracted, "dist/apps/agent-runtime/src/main.js"), "utf8");
+  assert.match(compiledMain, /require\("\.\.\/\.\.\/\.\.\/libs\/contracts\/generated\/grpc\/agent_runtime\/v1\/agent_runtime"\)/);
+  const execute = spawnSync(process.execPath, ["-e",
+    'process.stdout.write(require(process.argv[1]).value)',
+    join(extracted, "dist/apps/agent-runtime/src/main.js")], { encoding: "utf8", cwd: source });
+  assert.equal(execute.status, 0, execute.stderr);
+  assert.equal(execute.stdout, "fresh compiled bytes\n");
+  assert.match(await readFile(join(extracted, "dist/apps/agent-runtime/src/main.d.ts"), "utf8"),
+    /from "\.\.\/\.\.\/\.\.\/libs\/contracts\/generated\/grpc\/agent_runtime\/v1\/agent_runtime"/);
+  await assert.rejects(stat(join(extracted, "scripts/rewrite-build-aliases.mjs")), /ENOENT/);
+  await assert.rejects(stat(join(extracted, "node_modules/typescript")), /ENOENT/);
   assert.equal(await readFile(join(source, "dist/apps/agent-runtime/src/main.js"), "utf8"), staleEntrypoint);
   await assert.rejects(stat(join(extracted, "dist/apps/agent-runtime/stale.js")), /ENOENT/);
   await assert.rejects(stat(join(extracted, "dist/libs/stale.js")), /ENOENT/);

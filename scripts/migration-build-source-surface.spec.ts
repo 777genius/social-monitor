@@ -37,6 +37,7 @@ const expectedScripts = [
   'scripts/import-hn-verified-sep28.ts',
   'scripts/import-rss-sep24-verified.ts',
   'scripts/recover-rss-sep24-verified.ts',
+  'scripts/rewrite-build-aliases.mjs',
   'scripts/run-with-timeout.mjs',
   'scripts/run-reader-summary-clean-real-day-collection.ts',
   'scripts/lib/clean-real-day-collection-report.ts',

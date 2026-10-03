@@ -8,13 +8,14 @@ type Client = Readonly<{ query<T = Record<string, unknown>>(sql: string, values?
 type PoolClient = Client & Readonly<{ release(): void }>; type Pool = Client & Readonly<{ connect(): Promise<PoolClient>; end(): Promise<void> }>;
 type PgModule = Readonly<{ Pool: new (config: Readonly<{ connectionString: string; max: number }>) => Pool }>;
 type PrivilegesModule = Readonly<{
+  provisionPublicationFixtureFirstPublicationRole(pool: Pool): Promise<Readonly<{ oid: number }>>;
   publicationProtectedRolePresence(pool: Pool): Promise<Readonly<{ capability: boolean; owner: boolean; schemaOwner: boolean; tenantSystemCapability: boolean; dailyActivationDefiner: boolean }>>;
   publicationDatabaseUrl(adminUrl: string, database: string): string; publicationRuntimeDatabaseUrl(url: string, role: string, password: string): string;
   quotePostgresIdentifier(value: string): string; quotePostgresLiteral(value: string): string;
   createPublicationFixtureRuntimeRole(input: Readonly<{ databaseName: string; migrationAdminRole: string; runtimePassword: string; runtimeRole: string; serverAdminDatabaseUrl: string }>): Promise<void>; provisionPublicationFixtureProtectedRoles(input: Readonly<{ serverAdmin: Pool; migrationAdmin: Pool; migrationAdminRole: string }>): Promise<void>;
   makePublicationFixtureRuntimeDatabaseOwner(input: Readonly<{ databaseName: string; migrationAdminDatabaseUrl: string; migrationAdminRole: string; runtimeRole: string; systemRuntimeRole: string; targetDatabaseUrl: string }>): Promise<void>;
   grantLegacyMigrationOwnership(url: string, role: string): Promise<void>; runReaderSummaryPublicationBootstrapSql(phase: "pre" | "post", url: string, role: string, systemRuntimeRole?: string): Promise<void>;
-  dropPublicationFixtureDatabaseAndRoles(input: Readonly<{ serverAdmin: Pool; databaseName: string; migrationAdminRole: string; runtimeRole: string; ownerRolePreexisting: boolean; capabilityRolePreexisting: boolean; schemaOwnerRolePreexisting: boolean; tenantSystemCapabilityRolePreexisting: boolean; dailyActivationDefinerRolePreexisting: boolean; fixtureDatabaseCreated: boolean; fixtureMigrationAdminRoleCreated: boolean; fixtureRuntimeRoleCreated: boolean; fixtureDailyTerminalRoleCreated?: boolean; systemRuntimeRole?: string; systemRuntimeRoleCreated?: boolean }>): Promise<void>;
+  dropPublicationFixtureDatabaseAndRoles(input: Readonly<{ serverAdmin: Pool; databaseName: string; migrationAdminRole: string; runtimeRole: string; ownerRolePreexisting: boolean; capabilityRolePreexisting: boolean; schemaOwnerRolePreexisting: boolean; tenantSystemCapabilityRolePreexisting: boolean; dailyActivationDefinerRolePreexisting: boolean; fixtureDatabaseCreated: boolean; fixtureMigrationAdminRoleCreated: boolean; fixtureRuntimeRoleCreated: boolean; fixtureDailyTerminalRoleCreated?: boolean; fixtureFirstPublicationRoleOwnership?: Readonly<{ oid: number }>; systemRuntimeRole?: string; systemRuntimeRoleCreated?: boolean }>): Promise<void>;
 }>;
 const runtimeRequire = createRequire(join(process.cwd(), "package.json"));
 const { Pool } = runtimeRequire("pg") as PgModule;
@@ -899,6 +900,7 @@ const main = async (): Promise<void> => {
   let ownerRolePreexisting = false, capabilityRolePreexisting = false, schemaOwnerRolePreexisting = false,
     tenantSystemCapabilityRolePreexisting = false, dailyActivationDefinerRolePreexisting = false, fixtureDatabaseCreated = false, fixtureMigrationAdminRoleCreated = false,
     fixtureRuntimeRoleCreated = false, fixtureSystemRuntimeRoleCreated = false, fixtureTerminalRoleCreated = false;
+  let fixtureFirstPublicationRoleOwnership: Readonly<{ oid: number }> | undefined;
   try {
     const protectedRoles = await privileges.publicationProtectedRolePresence(serverAdmin);
     ownerRolePreexisting = protectedRoles.owner; capabilityRolePreexisting = protectedRoles.capability; schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
@@ -933,6 +935,7 @@ const main = async (): Promise<void> => {
       databaseName, migrationAdminDatabaseUrl: adminDatabaseUrl,
       migrationAdminRole, runtimeRole, systemRuntimeRole, targetDatabaseUrl,
     });
+    fixtureFirstPublicationRoleOwnership = await privileges.provisionPublicationFixtureFirstPublicationRole(serverAdmin);
     preparePrePublicationMigrations(workspace);
     await privileges.grantLegacyMigrationOwnership(adminDatabaseUrl, runtimeRole);
     applyOrderedReaderSummaryMigrations(runtimeDatabaseUrl, workspace);
@@ -977,7 +980,7 @@ const main = async (): Promise<void> => {
       schemaOwnerRolePreexisting, tenantSystemCapabilityRolePreexisting, dailyActivationDefinerRolePreexisting,
       fixtureDatabaseCreated, fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,
-      fixtureDailyTerminalRoleCreated: fixtureTerminalRoleCreated,
+      fixtureDailyTerminalRoleCreated: fixtureTerminalRoleCreated, fixtureFirstPublicationRoleOwnership,
       systemRuntimeRole,
       systemRuntimeRoleCreated: fixtureSystemRuntimeRoleCreated,
     });

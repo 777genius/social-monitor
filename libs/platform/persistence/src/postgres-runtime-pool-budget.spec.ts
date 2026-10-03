@@ -198,6 +198,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // Cursor cleanup regression uses installed Pool lifecycle with a controlled wire client and an unused pool.
     expect(rawConstructions).toEqual(expectedSourceList(`
       libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts:Pool
+      libs/platform/persistence/src/postgres-runtime-pool-commit-ack.spec-support.ts:Pool
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:Pool
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:PrismaPg
       libs/platform/persistence/src/postgres-runtime-pool.ts:Pool
@@ -280,6 +281,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-daily-cursor-fixture-cleanup.spec.ts:Pool
       scripts/lib/reader-summary-daily-cursor-fixture-cleanup.spec.ts:Pool
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts:Pool
+      scripts/lib/reader-summary-first-publication-pg18-crash.spec-support.ts:Pool
+      scripts/lib/reader-summary-first-publication-pg18.spec-support.ts:Pool
       scripts/lib/reader-summary-production-day-scope.ts:Pool
       scripts/lib/reader-summary-promotion-v2-historical-postgres.ts:Pool
       scripts/lib/reader-summary-quality-dashboard-report-builder.ts:Pool
@@ -346,7 +349,11 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // releases/ends it in finally; its sibling spec spies on the CJS constructor.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts
+      libs/platform/persistence/src/commit-ack-wiring.spec.ts
+      libs/platform/persistence/src/commit-ack.spec.ts
       libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts
+      libs/platform/persistence/src/postgres-runtime-pool-commit-ack.spec-support.ts
+      libs/platform/persistence/src/postgres-runtime-pool-commit-ack.ts
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts
       libs/platform/persistence/src/postgres-runtime-pool.spec.ts
       libs/platform/persistence/src/postgres-runtime-pool.ts
@@ -404,6 +411,12 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-daily-production-owner-topology-postgres.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.spec.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts
+      scripts/lib/reader-summary-first-publication-pg18-composition.spec-support.ts
+      scripts/lib/reader-summary-first-publication-pg18-crash.spec-support.ts
+      scripts/lib/reader-summary-first-publication-pg18-lifecycle.spec.ts
+      scripts/lib/reader-summary-first-publication-pg18-prisma.spec-support.ts
+      scripts/lib/reader-summary-first-publication-pg18-snapshot.spec-support.ts
+      scripts/lib/reader-summary-first-publication-pg18.spec-support.ts
       scripts/lib/reader-summary-large-daily-publication-postgres-contract.ts
       scripts/lib/reader-summary-linear-utf16-postgres-contract.ts
       scripts/lib/reader-summary-new-input-refresh-native-concurrency.ts
@@ -461,6 +474,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/prepare-reader-summary-successor-fixture.ts
       scripts/read-reader-summary-daily-terminal-set-receipt.spec.ts
       scripts/read-reader-summary-daily-terminal-set-receipt.ts
+      scripts/reader-summary-publication-fixture-firstpub-role.spec.ts
+      scripts/reader-summary-publication-fixture-firstpub-role.ts
       scripts/reader-summary-publication-postgres-legacy.ts
       scripts/reader-summary-publication-postgres-privileges.ts
       scripts/reader-summary-publication-postgres-runtime-guard.ts
@@ -735,6 +750,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     expect(productionImporters).toEqual([
       'scripts/check-reader-summary-publication-postgres.spec.ts',
       'scripts/lib/reader-summary-successor-fixture-migrations.ts',
+      'scripts/reader-summary-publication-fixture-firstpub-role.spec.ts',
     ]);
     expect(readSource('package.json')).toContain(
       'check:reader-summary-publication-postgres',

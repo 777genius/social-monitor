@@ -1,3 +1,5 @@
+import { dropPublicationFixtureFirstPublicationRole, type PublicationFixtureFirstPublicationRoleOwnership } from "./reader-summary-publication-fixture-firstpub-role";
+export { provisionPublicationFixtureFirstPublicationRole, type PublicationFixtureFirstPublicationRoleOwnership } from "./reader-summary-publication-fixture-firstpub-role";
 import { readPublicationBootstrapSql } from "./lib/reader-summary-publication-bootstrap-sql";
 import { Pool, type PoolClient } from "pg";
 import { assertPostgres18CreatorAndPsqlRegression } from "./reader-summary-publication-postgres18-regression";
@@ -624,10 +626,15 @@ export const dropPublicationFixtureDatabaseAndRoles = async (params: {
   readonly schemaOwnerRolePreexisting: boolean; readonly tenantSystemCapabilityRolePreexisting: boolean; readonly dailyActivationDefinerRolePreexisting: boolean;
   readonly fixtureDatabaseCreated: boolean; readonly fixtureMigrationAdminRoleCreated: boolean;
   readonly fixtureRuntimeRoleCreated: boolean; readonly fixtureDailyTerminalRoleCreated?: boolean;
+  readonly fixtureFirstPublicationRoleOwnership?: PublicationFixtureFirstPublicationRoleOwnership;
   readonly systemRuntimeRole?: string; readonly systemRuntimeRoleCreated?: boolean;
 }): Promise<void> => {
   if (params.fixtureDatabaseCreated) {
     await params.serverAdmin.query(`DROP DATABASE ${quoteIdentifier(params.databaseName)} WITH (FORCE)`);
+  }
+  if (params.fixtureFirstPublicationRoleOwnership !== undefined) {
+    assert(params.fixtureDatabaseCreated, "first publication fixture database cleanup is uncertain");
+    await dropPublicationFixtureFirstPublicationRole(params.serverAdmin, params.fixtureFirstPublicationRoleOwnership);
   }
   if (params.systemRuntimeRoleCreated === true && params.systemRuntimeRole !== undefined) {
     await params.serverAdmin.query(`DROP ROLE ${quoteIdentifier(params.systemRuntimeRole)}`);
