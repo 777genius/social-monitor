@@ -10,6 +10,9 @@ test -d /srv/fixture
 test -S /run/sm-release-consumer/docker.sock
 test -f /srv/fixture/authorized.pub
 test -f /srv/fixture/ssh_host_ed25519_key
+test -f /srv/fixture/ssh_host_ed25519_key.pub
+test "$(ssh-keygen -y -f /srv/fixture/ssh_host_ed25519_key)" = \
+    "$(cut -d ' ' -f 1,2 /srv/fixture/ssh_host_ed25519_key.pub)"
 # Root copies only the driver's finite trusted setup files, never candidate code.
 mkdir -p /etc/social-monitor/release /etc/pgbackrest /run/sshd /var/lib/pgbackrest
 chown 999:999 /var/lib/pgbackrest
@@ -19,6 +22,7 @@ chmod 0700 /srv/fixture
 chmod 0600 /srv/fixture/authority.json /srv/fixture/consumer.json /srv/fixture/toolchain.json /srv/fixture/compose.json /srv/fixture/metadata.env
 install -o root -g root -m 0644 /srv/fixture/backup.conf /etc/pgbackrest/e2e.conf
 install -o root -g root -m 0600 /srv/fixture/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key
+install -o root -g root -m 0644 /srv/fixture/ssh_host_ed25519_key.pub /etc/ssh/ssh_host_ed25519_key.pub
 # Machine identity is the controller's literal authorized ID in this container only.
 printf '%s\n' b28fc7b17042414386eb9b114046e50c >/etc/machine-id
 chmod 0644 /etc/machine-id

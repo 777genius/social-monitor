@@ -198,6 +198,10 @@ def initialize(config):
          and config.get('project_directory') == str(ROOT)
          and config.get('state') == '/var/lib/social-monitor-release'
          and config.get('adapter') == '/etc/social-monitor/release/operator-adapter', 'initialization-scope')
+    state = Path(config['state'])
+    need(not state.exists() and not state.is_symlink(), 'state-already-installed')
+    state.mkdir(mode=0o700)
+    state.chmod(0o700)
     for family in ('inbox', 'admissions', 'receipts', 'transactions', 'overrides', 'imports'):
         path = Path(config['state']) / family
         path.mkdir(parents=True, exist_ok=True, mode=0o700)
