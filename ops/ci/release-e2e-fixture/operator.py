@@ -229,11 +229,11 @@ def initialize(config):
 def prepare_backup(config):
     # Only the fixed disposable config/stanza/repository. No request options.
     args = [config['backup_identity']['wrapper'], '--config=/etc/pgbackrest/e2e.conf',
-            '--stanza=production-main', '--repo=1']
+            '--stanza=production-main']
     need(config['backup_identity']['stanza'] == 'production-main'
          and config['backup_identity']['config_path'] == '/etc/pgbackrest/e2e.conf', 'backup-scope')
     run(args + ['stanza-create'])
-    run(args + ['--type=full', 'backup'], timeout=120)
+    run(args + ['--repo=1', '--type=full', 'backup'], timeout=120)
     return {'version': 1, 'backup_command_completed': True}
 
 
