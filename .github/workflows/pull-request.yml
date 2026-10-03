@@ -61,6 +61,12 @@ jobs:
       - name: Generate the pinned Prisma client
         run: npm run prisma:generate
 
+      - name: Verify Hetzner release types and native contracts
+        run: |
+          set -euo pipefail
+          npm run check:hetzner-release-typecheck
+          npm run check:hetzner-release-tests
+
       - name: Verify static quality
         env:
           NODE_OPTIONS: --max-old-space-size=4096

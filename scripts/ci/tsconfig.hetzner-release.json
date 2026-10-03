@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2023", "module": "NodeNext", "moduleResolution": "NodeNext",
+    "strict": true, "noUncheckedIndexedAccess": true, "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true, "noEmit": true, "types": ["node"], "skipLibCheck": false
+  },
+  "files": [
+    "check-hetzner-release-workflow.mts",
+    "hetzner-release-client.d.mts", "hetzner-release-authority.mts",
+    "hetzner-release-authority.test.mts", "hetzner-release-observe.mts",
+    "hetzner-release-observe.test.mts", "review-ci/release-workflow-contract.mts",
+    "review-ci/release-workflow-contract.test.mts"
+  ]
+}
