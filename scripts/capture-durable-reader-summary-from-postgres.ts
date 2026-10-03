@@ -275,6 +275,29 @@ async function main(): Promise<void> {
           timestampPolicy: recoveryTimestampPolicy.policy,
         })
       : null);
+    // Serving health/configuration and canonical identity are read-only. Pin
+    // them before consuming the finite day; keep policy writes and dataset
+    // revalidation behind reservation. Other modes retain their original timing.
+    const resolveServingPreflight = async () => {
+      const servingAuthority = await resolveReaderSummaryServingAuthority({
+        summaryModelMode: modelMode,
+        topicLabelerMode,
+        env: process.env,
+        agentRuntimeClient,
+        checkedAt: clock.now().toISOString(),
+      });
+      if (firstPublication !== undefined) assertFirstPublicationServingAuthority(servingAuthority);
+      const attemptIdentity = readerSummaryProductionDayAttemptIdentity({
+        tenantId: tenant,
+        workspaceId: workspace,
+        periodKey: period.periodKey,
+        servingAuthority,
+        sourceProvenance: firstPublication?.sourceProvenance ?? sourceProvenance!,
+      });
+      return { servingAuthority, attemptIdentity };
+    };
+    const firstPublicationPreflight = firstPublication === undefined
+      ? undefined : await resolveServingPreflight();
     await firstPublication?.reserve();
     await revalidateProductionDayPromotionInput({
       promotionRebuild,
@@ -348,21 +371,8 @@ async function main(): Promise<void> {
         })
       : publicationWiring.inventory!;
 
-    const servingAuthority = await resolveReaderSummaryServingAuthority({
-      summaryModelMode: modelMode,
-      topicLabelerMode,
-      env: process.env,
-      agentRuntimeClient,
-      checkedAt: clock.now().toISOString(),
-    });
-    if (firstPublication !== undefined) assertFirstPublicationServingAuthority(servingAuthority);
-    const attemptIdentity = readerSummaryProductionDayAttemptIdentity({
-      tenantId: tenant,
-      workspaceId: workspace,
-      periodKey: period.periodKey,
-      servingAuthority,
-      sourceProvenance: firstPublication?.sourceProvenance ?? sourceProvenance!,
-    });
+    const { servingAuthority, attemptIdentity } = firstPublicationPreflight ??
+      await resolveServingPreflight();
 
     const requestReaderSummary = new RequestReaderSummaryUseCase(
       readerSummaryJobs,

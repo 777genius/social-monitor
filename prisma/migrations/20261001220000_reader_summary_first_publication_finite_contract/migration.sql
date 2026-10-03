@@ -54,7 +54,7 @@ CREATE FUNCTION public.assert_reader_summary_first_publication_scope(
   period_start timestamptz, period_end timestamptz, as_of timestamptz
 ) RETURNS void
 LANGUAGE plpgsql VOLATILE PARALLEL UNSAFE
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $function$
 BEGIN
   IF target_tenant_id IS DISTINCT FROM '00000000-0000-7000-8000-000000006101'::uuid
@@ -90,7 +90,7 @@ CREATE FUNCTION public.reserve_reader_summary_first_publication(
   period_start timestamptz, period_end timestamptz, admitted_at timestamptz
 ) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER VOLATILE PARALLEL UNSAFE
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $function$
 BEGIN
   -- Middleware SELECTs may have run already. VOLATILE's post-lock SQL reads
@@ -132,7 +132,7 @@ CREATE FUNCTION public.lock_reader_summary_first_publication_dataset(
   period_start timestamptz, period_end timestamptz, as_of timestamptz
 ) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER VOLATILE PARALLEL UNSAFE
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $function$
 BEGIN
   IF pg_catalog.current_setting('transaction_isolation') <> 'read committed' THEN
@@ -152,7 +152,7 @@ CREATE FUNCTION public.observe_reader_summary_first_publication(
   period_start timestamptz, period_end timestamptz, as_of timestamptz
 ) RETURNS TABLE("visibleCount" integer, "validCount" integer, "scopeValid" boolean, sha256 text)
 LANGUAGE plpgsql SECURITY DEFINER VOLATILE PARALLEL UNSAFE
-SET search_path = pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $function$
 BEGIN
   PERFORM public.assert_reader_summary_first_publication_scope(
