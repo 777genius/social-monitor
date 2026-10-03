@@ -41,7 +41,14 @@ synthetic revision label, social-monitor.e2e-baseline=true and
 social-monitor.e2e-source-sha equal candidate SHA. This proves lifecycle, not
 historically deployed dee891 compatibility. Admission later loads
 the actual externally built candidate archive into the initially empty consumer.
-The network is internal and SSH is published on a random loopback port only. The
+The default application network remains internal, with no published or exposed
+ports on its services. SSH joins only the owned noninternal `ssh_transport`
+bridge so Docker29 can publish its random loopback port. SSH accesses PostgreSQL
+through the TEST Unix socket and checks readiness through Docker exec. The outer
+DIND remains `--network none`, with no host ports or host Docker socket; the child
+transport cannot reach the external host. Both network names are checked for
+collisions before ownership state is written, and labelled cleanup covers both.
+The
 SSH fixture uses the exact root-installed release controller, isolated Python and
 PyYAML 6.0.3. Its e2e login shell is the unchanged non-setuid static C executor.
 It accepts only `-c /usr/bin/sudo -n /opt/social-monitor-release/root-executor`.

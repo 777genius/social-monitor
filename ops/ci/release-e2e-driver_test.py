@@ -112,6 +112,79 @@ class FixtureContracts(unittest.TestCase):
         self.assertEqual(model['services']['ssh']['ports'][0]['host_ip'], '127.0.0.1')
         self.assertEqual(model['volumes']['docker']['driver_opts']['device'], '/run/sm-release-consumer')
 
+    def test_compose_isolates_application_network_from_loopback_ssh_transport(self):
+        instance = driver.Driver(self.path)
+        instance.p = {'postgres_image_id': BASELINE, 'fixture_image_id': IMAGE,
+                      'redis_image_id': 'sha256:' + '1' * 64}
+        model = json.loads(driver.canonical(instance.compose_model()))
+        self.assertEqual(set(model['networks']), {'default', 'ssh_transport'})
+        self.assertIs(model['networks']['default']['internal'], True)
+        self.assertIs(model['networks']['ssh_transport']['internal'], False)
+        self.assertEqual(model['networks']['ssh_transport']['driver'], 'bridge')
+        self.assertEqual(model['services']['ssh']['networks'], ['ssh_transport'])
+        self.assertEqual(model['services']['ssh']['ports'], [
+            {'target': 22, 'published': '0', 'host_ip': '127.0.0.1', 'protocol': 'tcp'}])
+        self.assertEqual(set(model['services']), {*driver.SERVICES, 'redis'})
+        for name, service in model['services'].items():
+            with self.subTest(service=name):
+                self.assertNotIn('network_mode', service)
+                if name != 'ssh':
+                    self.assertNotIn('networks', service)
+                    self.assertNotIn('ports', service)
+                    self.assertNotIn('expose', service)
+
+    def test_named_ssh_transport_collision_refuses_before_state_or_mutation(self):
+        instance = driver.Driver(self.path)
+        consumer = 'unix:///tmp/sm-rc-e2e-consumer-contract/docker.sock'
+        producer = 'unix:///tmp/sm-rc-e2e-producer-contract/docker.sock'
+        prerequisite_path = '/tmp/sm-rc-e2e-inputs-contract/prerequisites.json'
+        prerequisites = {'consumer_host': consumer, 'consumer_id': 'consumer-contract',
+                         'producer_host': producer, 'producer_id': 'producer-contract'}
+        project_filter = 'label=com.docker.compose.project=' + instance.project
+        observations = {
+            (consumer, 'version', '--format', '{{json .Server}}'):
+                driver.canonical({'Version': '29.8.1'}),
+            (consumer, 'info', '--format', '{{json .}}'):
+                driver.canonical({'ID': prerequisites['consumer_id'], 'OSType': 'linux',
+                                  'DriverStatus': [['driver-type', 'io.containerd.snapshotter.v1']]}),
+            (consumer, 'compose', 'version', '--short'): b'5.5.1\n',
+            (producer, 'info', '--format', '{{json .}}'):
+                driver.canonical({'ID': prerequisites['producer_id']}),
+            (producer, 'version', '--format', '{{json .Server}}'):
+                driver.canonical({'Version': '29.8.1'}),
+            (producer, 'image', 'inspect', IMAGE): driver.canonical([{'Id': IMAGE}]),
+            (consumer, 'ps', '-aq', '--filter', project_filter): b'',
+            (consumer, 'network', 'ls', '-q', '--filter', project_filter): b'',
+            (consumer, 'volume', 'ls', '-q', '--filter', project_filter): b'',
+            (consumer, 'volume', 'ls', '--format', '{{.Name}}'): b'',
+            # An unlabelled or foreign-labelled network is absent from the
+            # project-label query above but present in this global name query.
+            (consumer, 'network', 'ls', '--format', '{{.Name}}'):
+                (instance.project + '_ssh_transport\n').encode(),
+        }
+        observed = []
+
+        def command(argv, **kwargs):
+            self.assertEqual(argv[:2], ['docker', '--host'])
+            self.assertEqual(kwargs, {})
+            key = tuple(argv[2:])
+            self.assertIn(key, observations, 'unexpected Docker command or mutation')
+            observed.append(key)
+            return 0, observations[key]
+
+        before = set(self.root.iterdir())
+        with patch.dict(os.environ, {'DOCKER_HOST': consumer,
+                                    'SM_RELEASE_E2E_PREREQUISITES': prerequisite_path}), \
+             patch.object(driver, 'prerequisites', return_value=prerequisites) as inputs, \
+             patch.object(driver, 'command', side_effect=command):
+            with self.assertRaisesRegex(driver.Refused, '^fixture-resource-name-collision$'):
+                instance.provision()
+        inputs.assert_called_once_with(prerequisite_path)
+        self.assertCountEqual(observed, list(observations))
+        self.assertFalse(instance.state_path.exists())
+        self.assertFalse(instance.runtime.exists())
+        self.assertEqual(set(self.root.iterdir()), before)
+
     def test_cleanup_without_ownership_state_cannot_touch_daemon(self):
         with patch.object(driver.Driver, 'docker', side_effect=AssertionError('unexpected daemon')):
             self.assertEqual(driver.Driver(self.path).run('cleanup')['resources'], 0)

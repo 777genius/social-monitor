@@ -326,6 +326,7 @@ class Driver:
                 volumes=pg_mounts + [bind(self.runtime / 'backup.conf', '/etc/pgbackrest/e2e.conf')]),
             'ssh': service(self.p['fixture_image_id'],
                 ports=[{'target': 22, 'published': '0', 'host_ip': '127.0.0.1', 'protocol': 'tcp'}],
+                networks=['ssh_transport'],
                 volumes=[{**bind(self.runtime, str(ROOT)), 'read_only': False},
                          volume('docker', '/run/sm-release-consumer'),
                          volume('pgdata', '/var/lib/postgresql', True),
@@ -334,7 +335,8 @@ class Driver:
             'redis': service(self.p['redis_image_id'], command=['redis-server', '--save', '',
                                                                      '--appendonly', 'no'])},
             'volumes': {name: {} for name in ('pgdata', 'pgsocket', 'backup')},
-            'networks': {'default': {'internal': True}}}
+            'networks': {'default': {'internal': True},
+                         'ssh_transport': {'driver': 'bridge', 'internal': False}}}
         # This bind-backed named volume exists only inside the separate outer DIND.
         # The root must launch that daemon on this fixed in-container socket path.
         model['volumes']['docker'] = {'driver': 'local', 'driver_opts': {
@@ -525,7 +527,8 @@ class Driver:
         network_names = set(self.docker('network', 'ls', '--format', '{{.Name}}')[1].decode().split())
         need(not volume_names.intersection(self.project + '_' + name
                                           for name in ('pgdata', 'pgsocket', 'backup', 'docker'))
-             and self.project + '_default' not in network_names, 'fixture-resource-name-collision')
+             and not network_names.intersection(self.project + '_' + name
+                 for name in ('default', 'ssh_transport')), 'fixture-resource-name-collision')
         # Persist ownership only after ruling out preexisting resources, before
         # our first mutation; a refused collision must never authorize cleanup.
         self.persist(version=1, fixture_digest=digest(self.f), prerequisites=self.p, prepared=False)
