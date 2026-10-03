@@ -11,7 +11,7 @@ test -S /run/sm-release-consumer/docker.sock
 test -f /srv/fixture/authorized.pub
 test -f /srv/fixture/ssh_host_ed25519_key
 test -f /srv/fixture/ssh_host_ed25519_key.pub
-test "$(ssh-keygen -y -f /srv/fixture/ssh_host_ed25519_key)" = \
+test "$(ssh-keygen -y -f /srv/fixture/ssh_host_ed25519_key | cut -d ' ' -f 1,2)" = \
     "$(cut -d ' ' -f 1,2 /srv/fixture/ssh_host_ed25519_key.pub)"
 # Root copies only the driver's finite trusted setup files, never candidate code.
 mkdir -p /etc/social-monitor/release /etc/pgbackrest /run/sshd /var/lib/pgbackrest
