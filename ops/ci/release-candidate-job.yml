@@ -1,0 +1,63 @@
+# Authored job fragment only. No triggers; integration into a workflow belongs
+# to the root reviewer. Replace the existing production_runtime job in review,
+# retaining its required check name and three existing gate commands.
+production_runtime:
+  name: Production container and deploy lifecycle
+  runs-on: ubuntu-latest
+  timeout-minutes: 45
+  permissions:
+    contents: read
+  steps:
+    - name: Check out the actual CI commit
+      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Set up Node.js
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      with:
+        node-version: 22
+    - name: Set up the native candidate store
+      uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5.5.0
+      with:
+        version: v29.8.2
+        daemon-config: '{"features":{"containerd-snapshotter":true}}'
+    - name: Verify production container and deploy lifecycle
+      run: |
+        set -euo pipefail
+        npm run check:container
+        npm run check:runtime-compose
+        npm run check:production-deploy-lifecycle
+    - name: Verify candidate policy
+      run: node --test scripts/ci/release-candidate.test.mjs ops/release/e2e/harness.test.mjs
+    - name: Build and qualify the API candidate once
+      env:
+        CANDIDATE_DIRECTORY: ${{ runner.temp }}/api-candidate-${{ github.run_id }}
+      run: |
+        set -euo pipefail
+        node scripts/ci/release-candidate.mjs \
+          --directory "$CANDIDATE_DIRECTORY" \
+          --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" \
+          --controller-dir ops/release/hetzner
+    - name: Upload the qualified immutable candidate
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      with:
+        name: api-candidate-${{ github.sha }}-${{ github.run_id }}
+        path: |
+          ${{ runner.temp }}/api-candidate-${{ github.run_id }}/candidate.tar
+          ${{ runner.temp }}/api-candidate-${{ github.run_id }}/candidate.tar.sha256
+          ${{ runner.temp }}/api-candidate-${{ github.run_id }}/manifest.json
+          ${{ runner.temp }}/api-candidate-${{ github.run_id }}/phases.json
+          ${{ runner.temp }}/api-candidate-${{ github.run_id }}/image-id.txt
+          ${{ runner.temp }}/api-candidate-${{ github.run_id }}/source-sha.txt
+        if-no-files-found: error
+        retention-days: 1
+    - name: Preserve phase evidence on qualification failure
+      if: failure()
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      with:
+        name: api-candidate-phases-${{ github.sha }}-${{ github.run_id }}
+        path: ${{ runner.temp }}/api-candidate-${{ github.run_id }}/phases.json
+        if-no-files-found: ignore
+        retention-days: 1
