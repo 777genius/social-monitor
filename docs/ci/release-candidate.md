@@ -36,7 +36,16 @@ bytes. Upload-only retry also checks the durable qualified-manifest checksum,
 skipping completed qualification. It resumes only the missing phase, never builds again. Interrupted build
 intent without a durable IID is ambiguous and requires operator reconciliation;
 it fails rather than starting a second build. A surviving `producer.lock` after
-SIGKILL also requires reconciliation; automatic stale-lock takeover is forbidden.
+SIGKILL or OOM also requires manual reconciliation; automatic stale-lock takeover
+is forbidden. A dead producer PID does not prove its Docker child has finished.
+Before removing a retained lock, an operator must prevent competing producers,
+verify that every child build/save has completed, and independently verify the
+retained IID/archive against this source/run and the daemon graph. Keep ambiguous
+pending bytes for investigation; process death is never authorization to retry a
+build or save. Removing a lock while another owner can acquire it risks unlinking
+that new owner's lock. Only after this reconciliation may the same directory be
+resumed; otherwise retain the lock and fail closed. Ordinary unwinding attempts
+lock unlink even when closing its file handle reports an error.
 If archive publication succeeds but the exported journal rename fails, retry
 reconciles the retained final archive using its actual hash/byte count and the
 independent controller verifier, binding source/run/image and the full daemon

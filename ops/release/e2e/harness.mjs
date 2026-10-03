@@ -113,6 +113,15 @@ export function validateReceipt(receipt, manifest, baselineId, outcome) {
   return receipt;
 }
 
+export async function createDisposableFixture({ candidateDirectory, baselineId, manifest }) {
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'sm-release-e2e-')));
+  const project = 'sm-rc-e2e-' + randomBytes(8).toString('hex');
+  const fixture = path.join(directory, 'fixture.json');
+  await atomic(fixture, { version: 1, directory, project, candidate_directory: await realpath(candidateDirectory),
+    baseline_image_id: baselineId, candidate: manifest });
+  return { directory, project, fixture, resolvePath: value => fixturePath(directory, value) };
+}
+
 export async function harness({ candidateDirectory, controllerDir, driver, baselineId }) {
   assert.ok(typeof baselineId === 'string' && DIGEST.test(baselineId), 'full-baseline-image-id-required');
   driver = await realpath(driver);
@@ -122,11 +131,8 @@ export async function harness({ candidateDirectory, controllerDir, driver, basel
     sha: manifest.sha, runId: manifest.ci_run_id }, manifest);
   assert.deepEqual(verified, manifest);
   const archive = path.join(candidateDirectory, 'candidate.tar');
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'sm-release-e2e-'));
-  const project = 'sm-rc-e2e-' + randomBytes(8).toString('hex');
-  const fixture = path.join(directory, 'fixture.json');
-  await atomic(fixture, { version: 1, directory, project, candidate_directory: await realpath(candidateDirectory),
-    baseline_image_id: baselineId, candidate: manifest });
+  const disposable = await createDisposableFixture({ candidateDirectory, baselineId, manifest });
+  const { directory, project, fixture } = disposable;
   const operation = async verb => JSON.parse(await command(driver, [verb, fixture], { cwd: directory, timeout: 300_000 }));
   let provisioned = false;
   try {
@@ -134,8 +140,8 @@ export async function harness({ candidateDirectory, controllerDir, driver, basel
     const connection = await operation('provision');
     assert.equal(connection.version, 1);
     assert.ok(Number.isInteger(connection.ssh_port) && connection.ssh_port > 1024 && connection.ssh_port < 65536);
-    const key = await fixturePath(directory, connection.ssh_key);
-    const hosts = await fixturePath(directory, connection.known_hosts);
+    const key = await disposable.resolvePath(connection.ssh_key);
+    const hosts = await disposable.resolvePath(connection.known_hosts);
     const ssh = ['-F', '/dev/null', '-i', key, '-p', String(connection.ssh_port),
       '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
       '-o', 'UserKnownHostsFile=' + hosts, '-o', 'ConnectTimeout=10', 'e2e@127.0.0.1'];

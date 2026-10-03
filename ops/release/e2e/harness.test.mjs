@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import process from 'node:process';
+import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { command } from '../../../scripts/ci/release-candidate.mjs';
-import { controllerDenial, requireGrammarDenial, validateReceipt, validateSshPort } from './harness.mjs';
+import { controllerDenial, createDisposableFixture, requireGrammarDenial, validateReceipt, validateSshPort } from './harness.mjs';
 
-// Pure contract regressions only; this file does not claim real Docker/SSH/PG.
+// Contract and filesystem regressions; this file does not claim real Docker/SSH/PG.
 const hash = c => 'sha256:' + c.repeat(64);
 const source = 'c9dd4f5b903c777a6a378e3233b5353d08702424';
 const candidate = { sha: source, ci_run_id: '123', archive_sha256: hash('a'),
@@ -93,4 +96,31 @@ test('unknown SSH verb requires exit 1 and exact grammar denial, not a transport
     [1, ''], [1, 'malformed'], [1, '{"denied":"invalid-host-state"}'],
     [1, '{"denied":"grammar","extra":true}'],
   ]) await assert.rejects(requireGrammarDenial(response(exitCode, stdout)));
+});
+
+
+test('disposable fixture containment accepts a symlink temporary parent and refuses escapes', async t => {
+  const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), 'sm-fixture-path-test-')));
+  t.after(() => rm(parent, { recursive: true, force: true }));
+  const alias = path.join(parent, 'temporary-alias');
+  await symlink(parent, alias);
+  const previous = process.env.TMPDIR;
+  let disposable;
+  try {
+    process.env.TMPDIR = alias;
+    disposable = await createDisposableFixture({ candidateDirectory: parent, baselineId: baseline, manifest: candidate });
+  } finally {
+    if (previous === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = previous;
+  }
+  const key = path.join(disposable.directory, 'synthetic-key');
+  await writeFile(key, 'synthetic fixture file');
+  assert.equal(await disposable.resolvePath(key), await realpath(key));
+  assert.equal(disposable.directory, await realpath(disposable.directory));
+  const outside = path.join(parent, 'foreign');
+  await writeFile(outside, 'foreign fixture file');
+  await assert.rejects(disposable.resolvePath(outside), /ssh-path-outside-fixture/);
+  const escape = path.join(disposable.directory, 'escape');
+  await symlink(outside, escape);
+  await assert.rejects(disposable.resolvePath(escape), /ssh-path-outside-fixture/);
 });

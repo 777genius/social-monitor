@@ -360,8 +360,8 @@ export async function candidate(options, run = command, emit = value => process.
     emit(state);
     return manifest;
   } finally {
-    await handle.close();
-    await unlink(lock);
+    try { await handle.close(); }
+    finally { await unlink(lock); }
   }
 }
 

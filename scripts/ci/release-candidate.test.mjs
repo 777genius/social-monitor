@@ -376,4 +376,74 @@ try {
   // Retained-export reconciliation and corrupt/graph cases use the real
   // verifier; qualified upload-only retry adds no proof.
   assert.equal(calls.filter(c => c[0] === 'python3').length, 3);
+
+  await t.test('lock close EIO still removes lock and qualified resume never rebuilds or saves', async () => {
+    const target = await temporary(t);
+    const closePreload = path.join(support, 'close-fault.mjs');
+    await writeFile(closePreload, `
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
+const open = fs.open;
+fs.open = async (...args) => {
+  const handle = await open(...args);
+  if (args[0].endsWith('/producer.lock')) {
+    const close = handle.close.bind(handle);
+    handle.close = async () => {
+      await close();
+      throw Object.assign(new Error('lock-close-EIO'), { code: 'EIO' });
+    };
+  }
+  return handle;
+};
+syncBuiltinESMExports();
+`);
+    const before = await readFile(log, 'utf8');
+    const failed = JSON.parse(await command(process.execPath, ['--import', closePreload, runner, target]));
+    assert.deepEqual(failed, { error: 'EIO' });
+    assert.equal((await readJson(path.join(target, 'phases.json'))).phase, 'qualified');
+    await assert.rejects(readFile(path.join(target, 'producer.lock')), { code: 'ENOENT' });
+    assert.deepEqual(await checksum(path.join(target, 'candidate.tar')), sum);
+    assert.deepEqual((await execute(target)).manifest, proof);
+    const delta = (await readFile(log, 'utf8')).slice(before.length).trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(delta.filter(c => c[0] === 'docker' && c[1] === 'build').length, 1);
+    assert.equal(delta.filter(c => c[0] === 'docker' && c[2] === 'save').length, 1);
+    assert.equal(delta.filter(c => c[0] === 'python3').length, 1);
+  });
+
+  await t.test('SIGKILL retains ambiguous lock and refuses resume even with a valid final archive', async () => {
+    const target = await temporary(t);
+    const deathPreload = path.join(support, 'death-fault.mjs');
+    await writeFile(deathPreload, `
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
+const rename = fs.rename;
+fs.rename = async (from, to) => {
+  if (to.endsWith('/phases.json')
+      && JSON.parse(await fs.readFile(from, 'utf8')).phase === 'exported') {
+    process.kill(process.pid, 'SIGKILL');
+    await new Promise(() => {});
+  }
+  return rename(from, to);
+};
+syncBuiltinESMExports();
+`);
+    const before = await readFile(log, 'utf8');
+    await assert.rejects(command(process.execPath, ['--import', deathPreload, runner, target]), error => {
+      assert.equal(error.exitCode, null);
+      return /command-failed/.test(error.message);
+    });
+    const lockBytes = await readFile(path.join(target, 'producer.lock'));
+    assert.equal((await readJson(path.join(target, 'phases.json'))).phase, 'built');
+    assert.deepEqual(await checksum(path.join(target, 'candidate.tar')), sum);
+    assert.deepEqual(await qualify({ directory: target, sha, runId: '123', controllerDir },
+      { image_id: proof.image_id, archive_sha256: sum.sha256, archive_bytes: sum.bytes }), proof);
+    const stoppedCalls = await readFile(log, 'utf8');
+    assert.deepEqual(await execute(target), { error: 'EEXIST' });
+    assert.equal(await readFile(log, 'utf8'), stoppedCalls);
+    assert.deepEqual(await readFile(path.join(target, 'producer.lock')), lockBytes);
+    const delta = stoppedCalls.slice(before.length).trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(delta.filter(c => c[0] === 'docker' && c[1] === 'build').length, 1);
+    assert.equal(delta.filter(c => c[0] === 'docker' && c[2] === 'save').length, 1);
+    assert.deepEqual(await checksum(path.join(target, 'candidate.tar')), sum);
+  });
 });
