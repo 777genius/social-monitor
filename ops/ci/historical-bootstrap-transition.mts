@@ -64,6 +64,8 @@ async function inventory(root: string, rows: Migration[]): Promise<void> {
   }
 }
 async function run(o: Options): Promise<void> {
+  const deadline = Date.now() + 1_200_000;
+  let commandDeadline = deadline - 240_000;
   const root = o['test-directory']; await directory(root, true); await directory(o.source);
   const rootIdentity = await lstat(root);
   await directory(o.candidate, true);
@@ -74,11 +76,10 @@ async function run(o: Options): Promise<void> {
   need(/^unix:\/\/\/[A-Za-z0-9_./-]+\/docker\.sock$/.test(host), 'explicit-unix-daemon');
   const socket = host.slice(7);
   need(await realpath(socket) === socket && (await lstat(socket)).isSocket(), 'canonical-daemon-socket');
-  let deadline = Date.now() + 1_200_000;
   const env = { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: root, LC_ALL: 'C',
     GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', DOCKER_CONFIG: path.join(root, 'docker-config') };
   const execute = async (program: string, args: string[], data = '', allowed = false, timeout = 60_000): Promise<Result> => {
-    const budget = Math.min(timeout, deadline - Date.now()); need(budget > 0, 'deadline');
+    const budget = Math.min(timeout, commandDeadline - Date.now()); need(budget > 0, 'deadline');
     const c = spawn(program, args, { cwd: o.source, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
     let size = 0, overflow = false, timedOut = false; const out: Buffer[] = [], err: Buffer[] = [];
     const collect = (chunks: Buffer[]) => (b: Buffer): void => {
@@ -407,10 +408,10 @@ async function run(o: Options): Promise<void> {
     const restored = await api('restored-old-api', HISTORICAL.image_id, 'e2e_restore'); await probe(restored, 'restored-historical-api-102');
     await record('restore-pre103', { catalog_sha256: hash(canonical(await catalog('e2e_restore'))), dump_sha256: dump.sha256 });
     await artifacts(o.candidate, binding); await json(o.acceptance, o['acceptance-sha256']);
-    await json(o['historical-receipt'], o['historical-receipt-sha256']); state.outcome = 'cases-passed';
+    await json(o['historical-receipt'], o['historical-receipt-sha256']); need(Date.now() < commandDeadline, 'deadline'); state.outcome = 'cases-passed';
   } catch (e) { failure = reason(e); state.outcome = 'failed'; state.failure = failure; }
   finally {
-    deadline = Date.now() + 240_000; const errors: string[] = [];
+    commandDeadline = deadline; const errors: string[] = [];
     for (const r of [...resources].reverse()) {
       if (r.pending || !r.id) { errors.push('unresolved-create-' + r.role); continue; }
       try {
@@ -420,6 +421,7 @@ async function run(o: Options): Promise<void> {
     }
     state.cleanup_errors = errors; state.cleanup_verified = errors.length === 0;
     if (errors.length) { state.outcome = 'failed'; failure = 'cleanup-incomplete'; }
+    if (Date.now() >= deadline) { state.outcome = 'failed'; failure = 'deadline'; }
     await save();
   }
   need(failure === null && state.cleanup_verified === true, failure ?? 'incomplete');
