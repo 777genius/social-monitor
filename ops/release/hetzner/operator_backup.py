@@ -122,7 +122,7 @@ def select_info(raw, config, now):
     records = decode(raw, 2 * 1024**2)
     require(isinstance(records, list) and len(records) == 1, 'operator-info-stanza')
     record = records[0]
-    exact(record, ('name', 'status', 'db', 'backup', 'repo', 'cipher'))
+    exact(record, ('name', 'status', 'db', 'backup', 'repo', 'cipher', 'archive'))
     require(record['name'] == config.core['backup_identity']['stanza']
             and type(record['status'].get('code')) is int and record['status']['code'] == 0,
             'operator-info-status')
@@ -130,8 +130,9 @@ def select_info(raw, config, now):
     require(isinstance(repos, list) and len(repos) == 1 and repos[0].get('key') == 1
             and type(repos[0]['key']) is int and type(repos[0]['status'].get('code')) is int
             and repos[0]['status']['code'] == 0, 'operator-info-repo')
-    dbs, backups = record['db'], record['backup']
+    dbs, backups, archives = record['db'], record['backup'], record['archive']
     require(isinstance(dbs, list) and isinstance(backups, list) and len(dbs) <= 1000
+            and isinstance(archives, list) and len(archives) <= 1000
             and len(backups) <= 10000, 'operator-info-count')
     db_index = {}
     for db in dbs:
@@ -140,7 +141,29 @@ def select_info(raw, config, now):
                 and db['repo-key'] == 1 and (db['id'], db['repo-key']) not in db_index,
                 'operator-info-db')
         uint64(db['system-id'])
+        require(match(r'[1-9][0-9]{0,2}(?:\.[0-9]{1,2})?', db['version']),
+                'operator-info-db-version')
         db_index[(db['id'], db['repo-key'])] = db
+    archive_keys = set()
+    for archive in archives:
+        exact(archive, ('database', 'id', 'min', 'max'))
+        exact(archive['database'], ('id', 'repo-key'))
+        dbref = archive['database']
+        require(type(dbref['id']) is int and dbref['id'] > 0
+                and type(dbref['repo-key']) is int and dbref['repo-key'] == 1
+                and (dbref['id'], dbref['repo-key']) in db_index,
+                'operator-info-archive-db-join')
+        db = db_index[(dbref['id'], dbref['repo-key'])]
+        require(isinstance(archive['id'], str) and len(archive['id']) <= 32
+                and archive['id'] == db['version'] + '-' + str(db['id']),
+                'operator-info-archive-id')
+        key = (dbref['id'], dbref['repo-key'], archive['id'])
+        require(key not in archive_keys, 'operator-info-archive-duplicate')
+        archive_keys.add(key)
+        minimum, maximum = archive['min'], archive['max']
+        require((minimum is None and maximum is None)
+                or (match(r'[0-9A-F]{24}', minimum) and match(r'[0-9A-F]{24}', maximum)
+                    and minimum <= maximum), 'operator-info-archive-wal')
     candidates, labels = [], set()
     for item in backups:
         require(isinstance(item, dict) and set(item) <= {
