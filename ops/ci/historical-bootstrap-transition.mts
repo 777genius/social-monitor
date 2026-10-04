@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { lstat, mkdir, open, readFile, readdir, realpath, rename } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, open, readFile, readdir, realpath, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -144,10 +144,14 @@ async function run(o: Options): Promise<void> {
   need(same(tracked.sort(), expectedTracked.sort()), 'tracked-migrations');
   const recipe = path.join(o.source, 'ops/ci/release-database-plan.py');
   need((await fileHash(recipe)).sha256 === hash(await git(['show', BASE + ':ops/ci/release-database-plan.py'])), 'frozen-database-recipe');
-  for (const relative of ['ops/deploy/reader-summary-publication-pre-migration.sql',
-    'ops/deploy/reader-summary-publication-post-migration.sql', 'scripts/sql/reader-summary-publication-tenant-ownership.sql'])
-    need((await fileHash(path.join(o.source, relative), 16_000_000)).sha256
-      === hash(await git(['show', BASE + ':' + relative])), 'bootstrap-prerequisite');
+  const bootstrapSources = ['ops/deploy/reader-summary-publication-pre-migration.sql',
+    'ops/deploy/reader-summary-publication-post-migration.sql', 'scripts/sql/reader-summary-publication-tenant-ownership.sql'];
+  const bootstrapHashes: Record<string, string> = {};
+  for (const relative of bootstrapSources) {
+    const expected = hash(await git(['show', BASE + ':' + relative]));
+    need((await fileHash(path.join(o.source, relative), 16_000_000)).sha256 === expected, 'bootstrap-prerequisite');
+    bootstrapHashes[path.basename(relative)] = expected;
+  }
   // Read-only prerequisite checks precede every Docker mutation. Images must already be loaded.
   await mkdir(env.DOCKER_CONFIG, { mode: 0o700 });
   const raw = async (args: string[], data = '', allowed = false, timeout = 60_000): Promise<Result> => {
@@ -317,8 +321,15 @@ async function run(o: Options): Promise<void> {
       && p.historical_create_sql.length < 2000 && Object.keys(p.api_environment).length < 100
       && p.api_environment.MONITORING_PERSISTENCE === 'prisma'
       && p.api_environment.SOCIAL_MONITOR_RUNTIME_PROFILE === 'deterministic-test', 'recipe-contract');
-    for (const [name, file] of Object.entries(p.bootstrap_files))
-      need((await fileHash(file, 16_000_000)).sha256 === 'sha256:' + p.bootstrap_hashes[name], 'bootstrap-checksum');
+    exact(p.bootstrap_files, Object.keys(bootstrapHashes)); exact(p.bootstrap_hashes, Object.keys(bootstrapHashes));
+    const stagedBootstrap = path.join(root, 'bootstrap'); await mkdir(stagedBootstrap, { mode: 0o700 });
+    for (const relative of bootstrapSources) {
+      const name = path.basename(relative), original = p.bootstrap_files[name], expected = bootstrapHashes[name];
+      need(original === path.join(o.source, relative) && expected && 'sha256:' + p.bootstrap_hashes[name] === expected
+        && (await fileHash(original, 16_000_000)).sha256 === expected, 'bootstrap-checksum');
+      const target = path.join(stagedBootstrap, name); await copyFile(original, target); await chmod(target, 0o444);
+      need((await fileHash(target, 16_000_000)).sha256 === expected, 'bootstrap-copy');
+    }
     pg = await create('container', 'postgres', PG, ['--network-alias', 'postgres', '--mount',
       'type=volume,source=' + volume.id + ',target=/var/lib/postgresql', '-e', 'POSTGRES_DB=e2e',
       '-e', 'POSTGRES_PASSWORD=synthetic-e2e-only', '-e', 'PGDATA=/var/lib/postgresql/18/docker',
@@ -343,10 +354,17 @@ async function run(o: Options): Promise<void> {
       return { ...result, code: s.ExitCode };
     };
     need((await prisma('first10', HISTORICAL.image_id, [], true)).code === 0, 'first10-failed');
+    await directory(stagedBootstrap, true);
+    need(same((await readdir(stagedBootstrap)).sort(), Object.keys(bootstrapHashes).sort()), 'bootstrap-inventory');
+    for (const name of Object.keys(bootstrapHashes))
+      need((await fileHash(path.join(stagedBootstrap, name), 16_000_000)).sha256 === bootstrapHashes[name], 'bootstrap-copy-changed');
+    await exec(pg, ['mkdir', '-p', '/tmp/sm-e2e-bootstrap']); await inspect(pg);
+    await docker(['cp', stagedBootstrap + '/.', pg.id + ':/tmp/sm-e2e-bootstrap']);
     const bootstrap = async (phase: 'pre' | 'post'): Promise<void> => {
-      const name = 'reader-summary-publication-' + phase + '-migration.sql', file = p.bootstrap_files[name]; need(file, 'bootstrap-file');
-      need((await fileHash(file, 16_000_000)).sha256 === 'sha256:' + p.bootstrap_hashes[name], 'bootstrap-changed');
-      await sql(await readFile(file, 'utf8'), 'e2e', 'sm_e2e_migrator');
+      need(pg, 'owned-postgres-required'); await sql('SELECT 1;');
+      await exec(pg, ['psql', '-XqAt', '-U', 'sm_e2e_migrator', '-d', 'e2e', '-v', 'ON_ERROR_STOP=1',
+        '-v', 'runtime_role=e2e_api', '-v', 'system_runtime_role=e2e_system',
+        '-f', '/tmp/sm-e2e-bootstrap/reader-summary-publication-' + phase + '-migration.sql']);
     };
     await bootstrap('pre'); await sql(p.historical_create_sql, 'e2e', 'sm_e2e_migrator');
     need((await prisma('historical102', HISTORICAL.image_id, ['migrate', 'deploy'])).code === 0, 'historical102-failed');
