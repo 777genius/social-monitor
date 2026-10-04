@@ -90,10 +90,10 @@ count as success. Cleanup uses exact recorded identifiers with label/image/netwo
 daemon checks, never prune. Inspect retained IDs manually under the same fences;
 do not rerun against that directory or silently adopt resources by name.
 
-The coordinator completed an actual isolated execution on 2026-10-04 in 66.232
-seconds, using helper commit 59c66a9dc7c96fc5d225ec28f57598efd7a3a008 and accepted
-candidate 31e1953614710b802fb43eb9d5f2bfd0beea78b3. All recorded cases and owned-resource
-cleanup passed. The restored catalogue matched the pre-migration catalogue; a real
+The coordinator completed an actual isolated execution on 2026-10-04 in 66.282
+seconds, using helper commit 3c732bde136a0c8721fc391fab014e04b6630137 and accepted
+candidate 31e1953614710b802fb43eb9d5f2bfd0beea78b3. All 14 recorded cases and owned-resource
+cleanup passed. The final TCP listener readiness check also passed. The restored catalogue matched the pre-migration catalogue; a real
 PUBLIC SELECT grant made effective access and the catalogue differ, and REVOKE
 restored both. NULL relation ACLs use PostgreSQL owner defaults for tables/views and
 sequences; explicit ACLs, grantors and grant options remain part of the comparison.
