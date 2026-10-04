@@ -55,8 +55,9 @@ async function json(file: string, expected?: string): Promise<unknown> {
 }
 async function inventory(root: string, rows: Migration[]): Promise<void> {
   await directory(root);
-  need(same((await readdir(root)).sort(), [...rows.map(r => r.name), 'migration_lock.toml'].sort()), 'sql-inventory');
-  await fileHash(path.join(root, 'migration_lock.toml'));
+  const names = (await readdir(root)).sort(), lock = names.includes('migration_lock.toml');
+  need(same(names, [...rows.map(r => r.name), ...(lock ? ['migration_lock.toml'] : [])].sort()), 'sql-inventory');
+  if (lock) await fileHash(path.join(root, 'migration_lock.toml'));
   for (const r of rows) {
     const dir = path.join(root, r.name); await directory(dir);
     need(same(await readdir(dir), ['migration.sql']), 'sql-unknown-file');
@@ -137,7 +138,10 @@ async function run(o: Options): Promise<void> {
   need((await git(['rev-parse', '--verify', 'HEAD^{commit}'])).trim() === binding.sha
     && !(await git(['status', '--porcelain', '--untracked-files=all'])).trim(), 'exact-clean-candidate-checkout');
   await inventory(path.join(o.source, 'prisma/migrations'), m.migrations);
-  need((await git(['ls-files', 'prisma/migrations'])).trim().split('\n').length === 104, 'tracked-migrations');
+  const tracked = (await git(['ls-files', 'prisma/migrations'])).trim().split('\n');
+  const expectedTracked = m.migrations.map(r => 'prisma/migrations/' + r.name + '/migration.sql');
+  if (tracked.includes('prisma/migrations/migration_lock.toml')) expectedTracked.push('prisma/migrations/migration_lock.toml');
+  need(same(tracked.sort(), expectedTracked.sort()), 'tracked-migrations');
   const recipe = path.join(o.source, 'ops/ci/release-database-plan.py');
   need((await fileHash(recipe)).sha256 === hash(await git(['show', BASE + ':ops/ci/release-database-plan.py'])), 'frozen-database-recipe');
   for (const relative of ['ops/deploy/reader-summary-publication-pre-migration.sql',

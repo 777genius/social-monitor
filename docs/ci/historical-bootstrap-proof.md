@@ -23,7 +23,7 @@ Do not install the dependency tree merely to run this helper.
 Prepare an empty canonical 0700 TEST directory outside both input directories.
 Supply a separate, exact, clean candidate checkout and the six accepted artifact
 files (`candidate.tar`, checksum sidecar, manifest, phases, image ID, source SHA).
-Both finite JSON receipts must be trusted coordinator outputs, with independently
+The migration lock file is optional, as in the candidate archive contract; every\nSQL migration must match the manifest and the exact tracked source roster.\nBoth finite JSON receipts must be trusted coordinator outputs, with independently
 selected SHA256 hashes. They are TEST input attestations, never production authority.
 Do not manufacture acceptance assertions to get through the guard.
 
