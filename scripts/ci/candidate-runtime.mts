@@ -1,12 +1,12 @@
 import { spawn } from 'node:child_process';
-import { chmod, copyFile, lstat, mkdir, open, readFile, readdir, rename, unlink } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, open, readdir, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import {
   DIGEST, SHA, RUN, ID, PG, REDIS, ROLES, need, object, array, exact, same, hash,
-  directory, fileHash, jsonFile, artifacts, history, ready, proof, owned,
+  directory, fileHash, jsonFile, artifacts, history, ready, proof, owned, containerNetwork,
 } from './candidate-runtime-contract.mts';
 import type { Binding, Manifest, Resource, Role, Row, RuntimeProof } from './candidate-runtime-contract.mts';
 
@@ -148,7 +148,7 @@ export async function runtime(o: Options): Promise<RuntimeProof> {
     'fixed-runtime-source');
   const ci = process.env.GITHUB_ACTIONS === 'true';
   const host = process.env.DOCKER_HOST || '';
-  need(host.length > 0 && host.length <= 512 && !/[\x00-\x20\x7f]/.test(host)
+  need(host.length > 0 && host.length <= 512 && !Array.from(host).some(c => c.charCodeAt(0) <= 32 || c.charCodeAt(0) === 127)
     && (ci || /^unix:\/\/\/[A-Za-z0-9_./-]*\/(?:sm-rc-e2e-producer-|sm-ci-runtime-test-)[A-Za-z0-9_-]+\/docker\.sock$/.test(host)),
     'isolated-ci-or-test-daemon-required');
   if (ci) need(process.env.GITHUB_SHA === o.binding.sha
@@ -256,13 +256,9 @@ export async function runtime(o: Options): Promise<RuntimeProof> {
     const v = owned(rows[0], r, state.nonce, o.binding);
     if (r.kind === 'container') {
       const h = object(v.HostConfig), mounts = array(v.Mounts), config = object(v.Config);
-      const network = resource('network'), networks = object(object(v.NetworkSettings).Networks);
-      need(h.NetworkMode === (r.role === 'extract' ? 'none' : network.name), 'container-network-mode');
-      need(r.role === 'extract' ? Object.keys(networks).length === 0
-        : Object.keys(networks).length === 1 && object(networks[network.name]).NetworkID === network.id,
-        'container-network-binding');
-      if (['postgres', 'redis', 'api'].includes(r.role))
-        need(array(object(networks[network.name]).Aliases).includes(r.role), 'container-network-alias');
+      const network = resource('network');
+      if (r.role !== 'extract') await inspect(network);
+      containerNetwork(v, r, network);
       if (r.role === 'postgres') {
         const mount = object(mounts[0]);
         need(mounts.length === 1 && mount.Type === 'volume' && mount.Name === resource('pgdata').name

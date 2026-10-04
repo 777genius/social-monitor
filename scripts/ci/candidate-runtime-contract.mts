@@ -60,6 +60,39 @@ export function same(a: unknown, b: unknown): boolean { return canonical(a) === 
 export function hash(value: string | Buffer): string {
   return 'sha256:' + createHash('sha256').update(value).digest('hex');
 }
+export function containerNetwork(value: Row, r: Resource, network: Resource): void {
+  need(r.kind === 'container', 'container-network-resource');
+  const h = object(value.HostConfig), networks = object(object(value.NetworkSettings).Networks);
+  const name = r.role === 'extract' ? 'none' : network.name;
+  need(h.NetworkMode === name, 'container-network-mode');
+  need(Object.keys(networks).length === 1 && Object.hasOwn(networks, name),
+    'container-network-binding');
+  const endpoint = object(networks[name]);
+  const disconnected = endpoint.EndpointID === '' && endpoint.IPAMConfig === null
+    && ['Gateway', 'IPAddress', 'MacAddress', 'IPv6Gateway', 'GlobalIPv6Address']
+      .every(key => endpoint[key] === '')
+    && endpoint.IPPrefixLen === 0 && endpoint.GlobalIPv6PrefixLen === 0;
+  if (r.role === 'extract') {
+    need(endpoint.NetworkID === '' && disconnected
+      && ['Aliases', 'Links', 'DNSNames'].every(key => endpoint[key] === null
+        || Array.isArray(endpoint[key]) && endpoint[key].length === 0), 'extract-network-connectivity');
+    return;
+  }
+  need(network.kind === 'network' && network.role === 'network'
+    && typeof network.id === 'string' && ID.test(network.id), 'container-network-owner');
+  if (endpoint.NetworkID === '') {
+    // Docker 29 records configuration before START, without an acquired network binding.
+    const s = object(value.State), zero = /^0001-01-01T00:00:00(?:\.0{1,9})?Z$/;
+    need(s.Status === 'created' && s.Running === false && s.Paused === false
+      && s.Restarting === false && s.Dead === false && s.OOMKilled === false
+      && s.Pid === 0 && s.ExitCode === 0 && s.Error === ''
+      && typeof s.StartedAt === 'string' && zero.test(s.StartedAt)
+      && typeof s.FinishedAt === 'string' && zero.test(s.FinishedAt)
+      && disconnected, 'container-network-unstarted');
+  } else need(endpoint.NetworkID === network.id, 'container-network-binding');
+  if (['postgres', 'redis', 'api'].includes(r.role))
+    need(array(endpoint.Aliases).includes(r.role), 'container-network-alias');
+}
 async function trustedAncestors(file: string, reason: string): Promise<void> {
   need(path.isAbsolute(file) && path.normalize(file) === file, reason);
   const root = path.parse(file).root;
@@ -228,7 +261,7 @@ export function proof(value: unknown, binding: Binding, daemon: string, m: Manif
     && [binding.image_id, binding.archive_sha256, binding.manifest_sha256].every(v => DIGEST.test(v)),
     'proof-identity');
   need(v.daemon_id === daemon && daemon.length > 0 && daemon.length <= 128
-    && !/[\x00-\x20\x7f]/.test(daemon), 'proof-daemon');
+    && !Array.from(daemon).some(c => c.charCodeAt(0) <= 32 || c.charCodeAt(0) === 127), 'proof-daemon');
   need(typeof v.postgres_system_identifier === 'string'
     && /^[1-9][0-9]{0,19}$/.test(v.postgres_system_identifier)
     && BigInt(v.postgres_system_identifier) <= 18446744073709551615n

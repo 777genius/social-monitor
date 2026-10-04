@@ -95,7 +95,7 @@ export function validateRuntimeProof(value, binding, manifest) {
     && [value.image_id, value.archive_sha256, value.manifest_sha256,
       value.history_sha256].every(d => DIGEST.test(d)), 'runtime-proof-digest');
   requireValue(value.daemon_id.length > 0 && value.daemon_id.length <= 128
-    && !/[\x00-\x20\x7f]/.test(value.daemon_id), 'runtime-proof-daemon');
+    && !Array.from(value.daemon_id).some(c => c.charCodeAt(0) <= 32 || c.charCodeAt(0) === 127), 'runtime-proof-daemon');
   requireValue(typeof value.postgres_system_identifier === 'string'
     && /^[1-9][0-9]{0,19}$/.test(value.postgres_system_identifier)
     && BigInt(value.postgres_system_identifier) <= 18446744073709551615n

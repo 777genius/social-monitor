@@ -3,9 +3,9 @@ import { chmod, chown, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from '
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { artifacts, directory, fileHash, hash, canonical, history, manifest, owned, proof, ready } from './candidate-runtime-contract.mts';
+import { artifacts, directory, fileHash, hash, canonical, history, manifest, owned, proof, ready, containerNetwork, object } from './candidate-runtime-contract.mts';
 import { parseArgs } from './candidate-runtime.mts';
-import type { Binding, Resource, RuntimeProof } from './candidate-runtime-contract.mts';
+import type { Binding, Resource, RuntimeProof, Row } from './candidate-runtime-contract.mts';
 
 const digest = (c: string): string => 'sha256:' + c.repeat(64);
 const sha = 'c9dd4f5b903c777a6a378e3233b5353d08702424';
@@ -128,4 +128,125 @@ test('runtime CLI has only the seven fixed required arguments', () => {
   assert.throws(() => parseArgs(args.slice(0, -2)));
   assert.throws(() => parseArgs([...args, '--callback', '/foreign']));
   assert.throws(() => parseArgs([...args, '--source', '/other']));
+});
+
+// Relevant fields transcribed from the independent Docker 29.8.2 observations.
+const nativeNetwork: Resource = { role: 'network', kind: 'network',
+  name: 'sm-ci-runtime-diag-b8614d677bde0685', reference: null, image: null,
+  id: '13dd3ceb8756651a5ecc4cd0031129c7f3d13edc19d7a7c1ac8111874d7dd08d', pending: false };
+const nativeRedis: Resource = { role: 'redis', kind: 'container',
+  name: 'sm-ci-runtime-diag-b8614d677bde0685-redis', reference: null, image: null,
+  id: '5e85302fd825f2772bc55a40db895b6d30dab6b17482261688bb1a65cb4d0e1d', pending: false };
+const nativeCreated = {
+  State: { Status: 'created', Running: false, Paused: false, Restarting: false,
+    OOMKilled: false, Dead: false, Pid: 0, ExitCode: 0, Error: '',
+    StartedAt: '0001-01-01T00:00:00Z', FinishedAt: '0001-01-01T00:00:00Z' },
+  HostConfig: { NetworkMode: 'sm-ci-runtime-diag-b8614d677bde0685' },
+  NetworkSettings: { Networks: { 'sm-ci-runtime-diag-b8614d677bde0685': {
+    IPAMConfig: null, Links: null, Aliases: ['redis'], DriverOpts: null, GwPriority: 0,
+    NetworkID: '', EndpointID: '', Gateway: '', IPAddress: '', MacAddress: '',
+    IPPrefixLen: 0, IPv6Gateway: '', GlobalIPv6Address: '', GlobalIPv6PrefixLen: 0, DNSNames: null,
+  } } },
+};
+const nativeRunning = {
+  State: { Status: 'running', Running: true, Paused: false, Restarting: false,
+    OOMKilled: false, Dead: false, Pid: 4043, ExitCode: 0, Error: '',
+    StartedAt: '2026-10-04T03:03:29.300348216Z', FinishedAt: '0001-01-01T00:00:00Z' },
+  HostConfig: { NetworkMode: 'sm-ci-runtime-diag-b8614d677bde0685' },
+  NetworkSettings: { Networks: { 'sm-ci-runtime-diag-b8614d677bde0685': {
+    IPAMConfig: null, Links: null, Aliases: ['redis'], DriverOpts: null, GwPriority: 0,
+    NetworkID: '13dd3ceb8756651a5ecc4cd0031129c7f3d13edc19d7a7c1ac8111874d7dd08d',
+    EndpointID: '8ef21eec45f2b202b7046f6e81ec2ab72d075c1630a74018c79b3ae33f58b42d',
+    Gateway: '', IPAddress: '172.19.0.2', MacAddress: 'ae:f6:c0:bb:d4:0e', IPPrefixLen: 16,
+    IPv6Gateway: '', GlobalIPv6Address: '', GlobalIPv6PrefixLen: 0,
+    DNSNames: ['sm-ci-runtime-diag-b8614d677bde0685-redis', 'redis', '5e85302fd825'],
+  } } },
+};
+const nativeExited = {
+  State: { Status: 'exited', Running: false, Paused: false, Restarting: false,
+    OOMKilled: false, Dead: false, Pid: 0, ExitCode: 0, Error: '',
+    StartedAt: '2026-10-04T03:03:29.300348216Z', FinishedAt: '2026-10-04T03:03:29.876924927Z' },
+  HostConfig: { NetworkMode: 'sm-ci-runtime-diag-b8614d677bde0685' },
+  NetworkSettings: { Networks: { 'sm-ci-runtime-diag-b8614d677bde0685': {
+    IPAMConfig: null, Links: null, Aliases: ['redis'], DriverOpts: null, GwPriority: 0,
+    NetworkID: '13dd3ceb8756651a5ecc4cd0031129c7f3d13edc19d7a7c1ac8111874d7dd08d',
+    EndpointID: '', Gateway: '', IPAddress: '', MacAddress: '', IPPrefixLen: 0,
+    IPv6Gateway: '', GlobalIPv6Address: '', GlobalIPv6PrefixLen: 0,
+    DNSNames: ['sm-ci-runtime-diag-b8614d677bde0685-redis', 'redis', '5e85302fd825'],
+  } } },
+};
+const nativeExtract = {
+  State: { Status: 'created', Running: false, Paused: false, Restarting: false,
+    OOMKilled: false, Dead: false, Pid: 0, ExitCode: 0, Error: '',
+    StartedAt: '0001-01-01T00:00:00Z', FinishedAt: '0001-01-01T00:00:00Z' },
+  HostConfig: { NetworkMode: 'none' },
+  NetworkSettings: { Networks: { none: {
+    IPAMConfig: null, Links: null, Aliases: null, DriverOpts: null, GwPriority: 0,
+    NetworkID: '', EndpointID: '', Gateway: '', IPAddress: '', MacAddress: '',
+    IPPrefixLen: 0, IPv6Gateway: '', GlobalIPv6Address: '', GlobalIPv6PrefixLen: 0, DNSNames: null,
+  } } },
+};
+function changeEndpoint(row: Row, name: string, patch: Row): Row {
+  const changed = structuredClone(row);
+  Object.assign(object(object(object(changed.NetworkSettings).Networks)[name]), patch);
+  return changed;
+}
+
+test('native created, running and exited bindings retain the owned network fence', () => {
+  // The old equality check rejects nativeCreated: its NetworkID is empty before START.
+  for (const row of [nativeCreated, nativeRunning, nativeExited]) {
+    assert.doesNotThrow(() => containerNetwork(row, nativeRedis, nativeNetwork));
+    for (const id of ['f'.repeat(64), null, undefined])
+      assert.throws(() => containerNetwork(changeEndpoint(row, nativeNetwork.name,
+        { NetworkID: id }), nativeRedis, nativeNetwork));
+    assert.throws(() => containerNetwork({ ...row,
+      HostConfig: { NetworkMode: 'bridge' } }, nativeRedis, nativeNetwork));
+    const endpoint = row.NetworkSettings.Networks[nativeNetwork.name as
+      keyof typeof row.NetworkSettings.Networks];
+    for (const networks of [{ foreign: endpoint }, {},
+      { ...row.NetworkSettings.Networks, foreign: endpoint }])
+      assert.throws(() => containerNetwork({ ...row,
+        NetworkSettings: { Networks: networks } }, nativeRedis, nativeNetwork));
+    assert.throws(() => containerNetwork(changeEndpoint(row, nativeNetwork.name,
+      { Aliases: [] }), nativeRedis, nativeNetwork));
+    assert.throws(() => containerNetwork(row, nativeRedis, { ...nativeNetwork, id: null }));
+    // A never-started configuration is fenced by the caller's owned-network inspect.
+    if (row !== nativeCreated)
+      assert.throws(() => containerNetwork(row, nativeRedis, { ...nativeNetwork, id: 'f'.repeat(64) }));
+  }
+});
+
+test('empty configured network IDs require a consistent never-started lifecycle', () => {
+  for (const row of [nativeRunning, nativeExited])
+    assert.throws(() => containerNetwork(changeEndpoint(row, nativeNetwork.name,
+      { NetworkID: '' }), nativeRedis, nativeNetwork));
+  for (const patch of [{ Status: 'exited' }, { Running: true }, { Paused: true },
+    { Restarting: true }, { Dead: true }, { OOMKilled: true }, { Pid: 4043 },
+    { ExitCode: 1 }, { Error: 'failed' }, { StartedAt: nativeRunning.State.StartedAt },
+    { StartedAt: undefined }, { FinishedAt: nativeExited.State.FinishedAt }])
+    assert.throws(() => containerNetwork({ ...nativeCreated,
+      State: { ...nativeCreated.State, ...patch } }, nativeRedis, nativeNetwork));
+  for (const patch of [{ EndpointID: 'e'.repeat(64) }, { IPAddress: '172.19.0.2' },
+    { Gateway: '172.19.0.1' }, { MacAddress: 'ae:f6:c0:bb:d4:0e' }, { IPPrefixLen: 16 },
+    { IPv6Gateway: 'fd00::1' }, { GlobalIPv6Address: 'fd00::2' },
+    { GlobalIPv6PrefixLen: 64 }, { IPAMConfig: { IPv4Address: '172.19.0.2' } }])
+    assert.throws(() => containerNetwork(changeEndpoint(nativeCreated, nativeNetwork.name,
+      patch), nativeRedis, nativeNetwork));
+});
+
+test('native extract uses the single none entry and denies connectivity', () => {
+  const extract: Resource = { ...nativeRedis, role: 'extract' };
+  // The old zero-key check rejects this literal native extract observation.
+  assert.doesNotThrow(() => containerNetwork(nativeExtract, extract, nativeNetwork));
+  for (const networks of [{}, { bridge: nativeExtract.NetworkSettings.Networks.none },
+    { host: nativeExtract.NetworkSettings.Networks.none },
+    { ...nativeExtract.NetworkSettings.Networks, bridge: nativeRunning.NetworkSettings.Networks[nativeNetwork.name as keyof typeof nativeRunning.NetworkSettings.Networks] }])
+    assert.throws(() => containerNetwork({ ...nativeExtract,
+      NetworkSettings: { Networks: networks } }, extract, nativeNetwork));
+  for (const patch of [{ NetworkID: nativeNetwork.id }, { EndpointID: 'e'.repeat(64) },
+    { IPAddress: '172.19.0.2' }, { Gateway: '172.19.0.1' }, { MacAddress: 'ae:f6:c0:bb:d4:0e' },
+    { IPPrefixLen: 16 }, { IPv6Gateway: 'fd00::1' }, { GlobalIPv6Address: 'fd00::2' },
+    { GlobalIPv6PrefixLen: 64 }, { Aliases: ['redis'] }, { Links: ['foreign'] },
+    { DNSNames: ['foreign'] }, { IPAMConfig: { IPv4Address: '172.19.0.2' } }])
+    assert.throws(() => containerNetwork(changeEndpoint(nativeExtract, 'none', patch), extract, nativeNetwork));
 });
