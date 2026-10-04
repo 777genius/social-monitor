@@ -23,7 +23,9 @@ async function fixture(body: (root: string, directory: string, bytes: Buffer) =>
   const bytes = Buffer.from('candidate-data-only; no tar extraction or execution\n');
   const manifest = { sha, ci_run_id: run, archive_sha256: digest(bytes), image_id: image,
     archive_bytes: bytes.length, migrations: [{ name: '20261001000000_initial',
-      checksum: createHash('sha256').update('fixture SQL inventory only').digest('hex') }],
+      checksum: createHash('sha256').update('fixture SQL inventory only').digest('hex') },
+      { name: '20261002000000_second',
+        checksum: createHash('sha256').update('second fixture SQL inventory only').digest('hex') }],
     image_graph: { kind: 'oci-manifest', root_digest: image,
       descriptor: { mediaType: 'application/vnd.oci.image.manifest.v1+json', digest: image, size: 10 },
       config_digest: 'sha256:' + 'c'.repeat(64),
@@ -31,15 +33,25 @@ async function fixture(body: (root: string, directory: string, bytes: Buffer) =>
       layers: [{ mediaType: 'application/vnd.oci.image.layer.v1.tar', digest: 'sha256:' + 'd'.repeat(64), size: 10 }],
       diff_ids: ['sha256:' + 'e'.repeat(64)] } };
   const manifestBytes = Buffer.from(JSON.stringify(manifest) + '\n');
+  // Synthetic TEST identities; independently serialize the complete migration inventory.
+  const runtimeProof = { schema: 'social-monitor-candidate-runtime-v1', sha, ci_run_id: run,
+    image_id: image, archive_sha256: manifest.archive_sha256,
+    manifest_sha256: digest(manifestBytes), daemon_id: 'TEST:ephemeral-ci-daemon',
+    postgres_system_identifier: '123456789', postgres_major: 18,
+    api_container_id: 'f'.repeat(64), api_started_at: '2026-10-04T00:00:00.000Z',
+    history_sha256: digest(Buffer.from(JSON.stringify(manifest.migrations
+      .map(({ name, checksum }) => ({ checksum, name }))))),
+    postgres_pool_ok: true, cleanup_verified: true };
   try {
     await mkdir(directory, { mode: 0o700 });
     const contents: Record<string, Buffer | string> = {
       'candidate.tar': bytes, 'manifest.json': manifestBytes,
       'candidate.tar.sha256': manifest.archive_sha256.slice(7) + '  candidate.tar\n',
       'source-sha.txt': sha + '\n', 'image-id.txt': image + '\n',
-      'phases.json': JSON.stringify({ version: 1, sha, ci_run_id: run, phase: 'qualified',
+      'phases.json': JSON.stringify({ version: 2, sha, ci_run_id: run, phase: 'qualified',
         image_id: image, archive_sha256: manifest.archive_sha256,
-        archive_bytes: bytes.length, manifest_sha256: digest(manifestBytes) }) + '\n',
+        archive_bytes: bytes.length, manifest_sha256: digest(manifestBytes),
+        runtime_proof: runtimeProof }) + '\n',
     };
     for (const [name, value] of Object.entries(contents))
       await writeFile(join(directory, name), value, { mode: 0o600 });
@@ -61,6 +73,74 @@ with zipfile.ZipFile(target, 'w', compression=zipfile.ZIP_STORED) as output:
     if mode == 'duplicate': output.writestr('source-sha.txt', b'duplicate')
 `, directory, target, mode], { timeout: 30000, maxBuffer: 65536, stdio: ['ignore', 'pipe', 'ignore'] });
 }
+
+test('qualified metadata cannot bypass version 2 runtime proof or exact artifact bindings', async () => {
+  const changes: Record<string, unknown>[] = [
+    { version: 1, runtime_proof: undefined }, { runtime_proof: undefined }, { runtime_proof: null },
+    { runtime_proof: {} }, { phase: 'archive-qualified' }, { phase: 'exported' }, { phase: 'preparing' },
+    { sha: 'f'.repeat(40) }, { ci_run_id: '124' }, { image_id: 'sha256:' + 'f'.repeat(64) },
+    { archive_sha256: image }, { archive_bytes: 1 }, { manifest_sha256: image }, { daemon_id: 'TEST:extra' },
+  ];
+  for (const change of changes) await fixture(async (_root, directory) => {
+    const path = join(directory, 'phases.json');
+    const value = A.object(A.parseJson(await readFile(path)));
+    await writeFile(path, JSON.stringify({ ...value, ...change }));
+    await assert.rejects(O.validateCandidate(directory, authority), JSON.stringify(change));
+  });
+});
+
+test('filesystem runtime proofs deny contradictory bindings and incomplete or malformed smoke evidence', async () => {
+  const changes: Record<string, unknown>[] = [
+    { schema: 'unknown-runtime-proof' }, { sha: 'f'.repeat(40) },
+    { ci_run_id: '124' }, { image_id: 'sha256:' + 'f'.repeat(64) },
+    { archive_sha256: image }, { manifest_sha256: image },
+    { daemon_id: 'TEST daemon' }, { daemon_id: 'TEST/daemon' },
+    { daemon_id: 'short' }, { daemon_id: 'T'.repeat(129) },
+    { postgres_major: 17 },
+    { postgres_system_identifier: '0' }, { postgres_system_identifier: '18446744073709551616' },
+    { postgres_system_identifier: '7688442011877063482' },
+    { api_container_id: 'TEST:invalid-container' },
+    { api_started_at: 'not-a-date' }, { api_started_at: '0001-01-01T00:00:00Z' },
+    { history_sha256: digest(Buffer.from('[]')) },
+    { postgres_pool_ok: false }, { cleanup_verified: false },
+    { postgres_pool_ok: undefined }, { cleanup_verified: undefined }, { daemon_id: undefined },
+    { unexpected: true },
+  ];
+  for (const change of changes) await fixture(async (_root, directory) => {
+    const path = join(directory, 'phases.json');
+    const phases = A.object(A.parseJson(await readFile(path)));
+    const proof = A.object(phases.runtime_proof);
+    await writeFile(path,
+      JSON.stringify({ ...phases, runtime_proof: { ...proof, ...change } }));
+    await assert.rejects(O.validateCandidate(directory, authority), JSON.stringify(change));
+  });
+});
+
+test('strict filesystem JSON parsing rejects duplicate phase and runtime proof keys', async () => {
+  for (const scope of ['phase', 'proof']) {
+    await fixture(async (_root, directory) => {
+      const path = join(directory, 'phases.json');
+      const raw = await readFile(path, 'utf8');
+      const duplicate = scope === 'phase' ? raw.replace('"version":2', '"version":2,"version":2')
+        : raw.replace('"cleanup_verified":true', '"cleanup_verified":true,"cleanup_verified":true');
+      assert.notEqual(duplicate, raw);
+      await writeFile(path, duplicate);
+      await assert.rejects(O.validateCandidate(directory, authority));
+    });
+  }
+});
+
+test('valid version 2 proof accepts a historical ephemeral CI daemon identity', async () => {
+  await fixture(async (_root, directory) => {
+    const path = join(directory, 'phases.json');
+    const phases = A.object(A.parseJson(await readFile(path)));
+    const proof = A.object(phases.runtime_proof);
+    proof.daemon_id = 'TEST:another-ephemeral-ci-daemon';
+    await writeFile(path, JSON.stringify(phases));
+    const accepted = await O.validateCandidate(directory, authority);
+    assert.equal(accepted.value.sha, sha);
+  });
+});
 
 test('genuine stdlib ZIP yields six exact files; archive bytes remain opaque data', async () => {
   await fixture(async (root, directory, bytes) => {

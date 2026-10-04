@@ -12,6 +12,8 @@ import type { Authority, Get, Trigger } from './hetzner-release-authority.mjs';
 // CommonJS root compiler as well as the standalone NodeNext compiler to check this.
 const A: typeof import('./hetzner-release-authority.mjs') =
   createRequire(resolve('scripts/ci/hetzner-release-observe.mts'))('./hetzner-release-authority.mts');
+const R: typeof import('./candidate-runtime-contract.mts') =
+  createRequire(resolve('scripts/ci/hetzner-release-observe.mts'))('./candidate-runtime-contract.mts');
 const MACHINE = 'b28fc7b17042414386eb9b114046e50c';
 const FILES = ['candidate.tar', 'candidate.tar.sha256', 'manifest.json', 'phases.json', 'image-id.txt', 'source-sha.txt'];
 const LIMIT = 10_000_000_000;
@@ -158,14 +160,25 @@ export async function validateCandidate(directory: string, authority: Authority)
   A.requireValue(names.length === FILES.length && FILES.every(name => names.includes(name)), 'candidate-files');
   const manifest = join(directory, 'manifest.json'), archive = join(directory, 'candidate.tar');
   const bytes = await boundedBytes(manifest, 65536);
-  const value = validateManifest(A.parseJson(bytes, 65536), authority.sha, authority.run);
+  const parsed = A.parseJson(bytes, 65536);
+  const value = validateManifest(parsed, authority.sha, authority.run);
+  const runtimeManifest = R.manifest(parsed);
   const manifestHash = 'sha256:' + createHash('sha256').update(bytes).digest('hex');
   const phases = A.exact(A.parseJson(await boundedBytes(join(directory, 'phases.json'), 65536)),
-    ['version', 'sha', 'ci_run_id', 'phase', 'image_id', 'archive_sha256', 'archive_bytes', 'manifest_sha256']);
-  A.requireValue(phases.version === 1 && phases.phase === 'qualified' && phases.sha === value.sha
+    ['version', 'sha', 'ci_run_id', 'phase', 'image_id', 'archive_sha256', 'archive_bytes',
+      'manifest_sha256', 'runtime_proof']);
+  A.requireValue(phases.version === 2 && phases.phase === 'qualified' && phases.sha === value.sha
     && phases.ci_run_id === value.ci_run_id && phases.image_id === value.image_id
     && phases.archive_sha256 === value.archive_sha256 && phases.archive_bytes === value.archive_bytes
     && phases.manifest_sha256 === manifestHash, 'qualified-manifest-binding');
+  const runtimeProof = A.object(phases.runtime_proof);
+  const daemon = A.text(runtimeProof.daemon_id,
+    /^[A-Za-z0-9:_-]{8,128}$/u, 'runtime-proof-daemon');
+  // This is the historical CI producer daemon, whose live binding was checked
+  // during qualification; production's current daemon is not that identity.
+  R.proof(runtimeProof, { sha: value.sha, ci_run_id: value.ci_run_id,
+    image_id: value.image_id, archive_sha256: value.archive_sha256,
+    manifest_sha256: manifestHash }, daemon, runtimeManifest);
   const expectedText = [['source-sha.txt', value.sha + '\n'], ['image-id.txt', value.image_id + '\n'],
     ['candidate.tar.sha256', value.archive_sha256.slice(7) + '  candidate.tar\n']] as const;
   for (const [name, expected] of expectedText) {

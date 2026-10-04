@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Producer only: no registry, SSH, deployment, migration execution or tag writes.
+// Candidate producer and disposable runtime qualifier; no deployment or tag writes.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { directory as trustedDirectory } from './candidate-runtime-contract.mts';
 
 export const SHA = /^[0-9a-f]{40}$/;
 export const DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -80,9 +81,45 @@ export function validateManifest(value) {
   return value;
 }
 
+export function validateRuntimeProof(value, binding, manifest) {
+  exact(value, ['schema', 'sha', 'ci_run_id', 'image_id', 'archive_sha256',
+    'manifest_sha256', 'daemon_id', 'postgres_system_identifier', 'postgres_major',
+    'api_container_id', 'api_started_at', 'history_sha256', 'postgres_pool_ok',
+    'cleanup_verified'], 'runtime-proof-fields');
+  requireValue(value.schema === 'social-monitor-candidate-runtime-v1', 'runtime-proof-schema');
+  for (const key of ['sha', 'ci_run_id', 'image_id', 'archive_sha256',
+    'manifest_sha256', 'daemon_id']) {
+    requireValue(typeof value[key] === 'string' && value[key] === binding[key],
+      'runtime-proof-binding');
+  }
+  requireValue(SHA.test(value.sha) && RUN.test(value.ci_run_id)
+    && [value.image_id, value.archive_sha256, value.manifest_sha256,
+      value.history_sha256].every(d => DIGEST.test(d)), 'runtime-proof-digest');
+  requireValue(value.daemon_id.length > 0 && value.daemon_id.length <= 128
+    && !Array.from(value.daemon_id).some(c => c.charCodeAt(0) <= 32 || c.charCodeAt(0) === 127), 'runtime-proof-daemon');
+  requireValue(typeof value.postgres_system_identifier === 'string'
+    && /^[1-9][0-9]{0,19}$/.test(value.postgres_system_identifier)
+    && BigInt(value.postgres_system_identifier) <= 18446744073709551615n
+    && value.postgres_system_identifier !== '7688442011877063482'
+    && value.postgres_major === 18, 'runtime-proof-postgres');
+  requireValue(typeof value.api_container_id === 'string'
+    && /^[0-9a-f]{64}$/.test(value.api_container_id)
+    && typeof value.api_started_at === 'string' && value.api_started_at.length <= 64
+    && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/.test(value.api_started_at)
+    && !value.api_started_at.startsWith('0001-')
+    && Number.isFinite(Date.parse(value.api_started_at)), 'runtime-proof-api');
+  const history = manifest.migrations.map(({ name, checksum }) => ({ checksum, name }));
+  requireValue(value.history_sha256 === 'sha256:' + createHash('sha256')
+    .update(JSON.stringify(history)).digest('hex'), 'runtime-proof-history');
+  requireValue(value.postgres_pool_ok === true && value.cleanup_verified === true,
+    'runtime-proof-incomplete');
+  return value;
+}
+
 export async function regular(file, limit) {
   const info = await lstat(file);
-  requireValue(info.isFile() && info.size > 0 && info.size <= limit, 'regular-file-size');
+  requireValue(info.isFile() && info.size > 0 && info.size <= limit
+    && !(info.mode & 0o022), 'regular-file-size');
   return info;
 }
 export async function readJson(file) {
@@ -120,10 +157,11 @@ export async function atomic(file, value) {
 // Bounded argv-only process seam. The test seam proves orchestration policy,
 // while the independent Python archive validator proves real artifact content.
 export async function command(program, args, { cwd, output, input, limit = JSON_LIMIT,
-  timeout = 150_000, inherit = false } = {}) {
+  timeout = 150_000, inherit = false, inheritStderr = false } = {}) {
   const handle = output ? await open(output, 'wx', 0o600) : null;
   const child = spawn(program, args, { cwd, shell: false,
-    stdio: [input ? 'pipe' : 'ignore', 'pipe', inherit ? 'inherit' : 'ignore'] });
+    stdio: [input ? 'pipe' : 'ignore', 'pipe',
+      inherit || inheritStderr ? 'inherit' : 'ignore'] });
   let inputError;
   const inputStream = input ? createReadStream(input) : null;
   if (inputStream) {
@@ -196,6 +234,9 @@ async function nativeDaemon(run) {
     && ['x86_64', 'amd64'].includes(info.Architecture)
     && info.DriverStatus?.some(row => row[0] === 'driver-type'
       && row[1] === 'io.containerd.snapshotter.v1'), 'docker29-native-store-required');
+  requireValue(typeof info.ID === 'string' && /^[A-Za-z0-9:_-]{8,128}$/.test(info.ID),
+    'native-daemon-id');
+  return info.ID;
 }
 async function receipt(file) {
   try { return await readJson(file); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
@@ -207,6 +248,22 @@ async function safeDirectory(directory, cwd) {
     try {
       const info = await lstat(ancestor);
       requireValue(info.isDirectory() && await realpath(ancestor) === ancestor, 'candidate-symlink');
+      // Admit the full existing ancestry before mkdir or any producer work.
+      // The shared guard permits sticky boundaries as ancestors, not endpoints.
+      let boundary = ancestor;
+      for (;;) {
+        const parent = await lstat(boundary);
+        if (!(parent.mode & 0o022) || !(parent.mode & 0o1000)) {
+          await trustedDirectory(boundary);
+          break;
+        }
+        requireValue(parent.isDirectory()
+          && (parent.uid === 0 || parent.uid === process.geteuid?.())
+          && await realpath(boundary) === boundary, 'untrusted-directory');
+        const next = path.dirname(boundary);
+        requireValue(next !== boundary, 'untrusted-directory');
+        boundary = next;
+      }
       break;
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
@@ -215,11 +272,15 @@ async function safeDirectory(directory, cwd) {
   }
   await mkdir(directory, { recursive: true, mode: 0o700 });
   requireValue(await realpath(directory) === directory, 'candidate-symlink');
+  const protectedDirectory = await lstat(directory);
+  requireValue((protectedDirectory.mode & 0o777) === 0o700
+    && protectedDirectory.uid === process.getuid?.(), 'candidate-directory-permissions');
+  await trustedDirectory(directory, true);
   const sourceRoot = await realpath(cwd);
   requireValue(directory !== sourceRoot && !directory.startsWith(sourceRoot + path.sep), 'candidate-outside-checkout');
   const files = await readdir(directory);
   const owned = ['producer.lock', 'phases.json', 'build-image.txt', 'source.tar', 'candidate.tar',
-    'manifest.json', 'candidate.tar.sha256', 'image-id.txt', 'source-sha.txt'];
+    'manifest.json', 'candidate.tar.sha256', 'image-id.txt', 'source-sha.txt', 'runtime-private'];
   requireValue(files.length <= 16 && files.every(name => owned.includes(name)
     || owned.some(base => name === base + '.pending')), 'candidate-directory-not-owned');
   requireValue(files.length === 0 || files.includes('phases.json'), 'candidate-directory-not-owned');
@@ -247,19 +308,30 @@ export async function candidate(options, run = command, emit = value => process.
   const iid = path.join(options.directory, 'build-image.txt');
   try {
     await source(options, run);
-    await nativeDaemon(run);
+    const daemonId = await nativeDaemon(run);
     let state = await receipt(phases);
     if (state) {
-      exact(state, ['version', 'sha', 'ci_run_id', 'phase', 'image_id', 'archive_sha256', 'archive_bytes', 'manifest_sha256'], 'phase-fields');
-      requireValue(state.version === 1 && state.sha === options.sha && state.ci_run_id === options.runId
-        && ['preparing', 'building', 'built', 'exported', 'qualified'].includes(state.phase), 'resume-identity-mismatch');
+      exact(state, ['version', 'sha', 'ci_run_id', 'phase', 'image_id', 'archive_sha256',
+        'archive_bytes', 'manifest_sha256', ...(state.version === 2 ? ['runtime_proof'] : [])], 'phase-fields');
+      requireValue([1, 2].includes(state.version) && state.sha === options.sha && state.ci_run_id === options.runId
+        && ['preparing', 'building', 'built', 'exported', 'qualified',
+          ...(state.version === 2 ? ['archive-qualified'] : [])].includes(state.phase), 'resume-identity-mismatch');
       requireValue(['preparing', 'building'].includes(state.phase) ? state.image_id === null
         : typeof state.image_id === 'string' && DIGEST.test(state.image_id), 'resume-image-id');
-      requireValue(state.phase === 'qualified' ? typeof state.manifest_sha256 === 'string'
+      requireValue(['archive-qualified', 'qualified'].includes(state.phase) ? typeof state.manifest_sha256 === 'string'
         && DIGEST.test(state.manifest_sha256) : state.manifest_sha256 === null, 'resume-manifest-proof');
+      requireValue(['exported', 'archive-qualified', 'qualified'].includes(state.phase)
+        ? typeof state.archive_sha256 === 'string' && DIGEST.test(state.archive_sha256)
+          && Number.isSafeInteger(state.archive_bytes) && state.archive_bytes > 0
+          && state.archive_bytes <= ARCHIVE_LIMIT
+        : state.archive_sha256 === null && state.archive_bytes === null, 'resume-archive-proof');
+      if (state.version === 2) requireValue(state.phase === 'qualified'
+        ? state.runtime_proof && typeof state.runtime_proof === 'object'
+        : state.runtime_proof === null, 'resume-runtime-proof');
     } else {
-      state = { version: 1, sha: options.sha, ci_run_id: options.runId, phase: 'preparing',
-        image_id: null, archive_sha256: null, archive_bytes: null, manifest_sha256: null };
+      state = { version: 2, sha: options.sha, ci_run_id: options.runId, phase: 'preparing',
+        image_id: null, archive_sha256: null, archive_bytes: null, manifest_sha256: null,
+        runtime_proof: null };
       await atomic(phases, state);
       await atomic(path.join(options.directory, 'source-sha.txt'), options.sha + '\n');
       emit(state);
@@ -332,7 +404,8 @@ export async function candidate(options, run = command, emit = value => process.
     // Upload-only retry verifies exactly the previously proved bytes and identity,
     // without rerunning the completed archive qualification phase.
     const manifestPath = path.join(options.directory, 'manifest.json');
-    if (state.phase === 'qualified') {
+    const completed = state.version === 2 && state.phase === 'qualified';
+    if (['archive-qualified', 'qualified'].includes(state.phase)) {
       const archive = await checksum(path.join(options.directory, 'candidate.tar'));
       requireValue(archive.sha256 === state.archive_sha256 && archive.bytes === state.archive_bytes,
         'export-identity-mismatch');
@@ -347,15 +420,41 @@ export async function candidate(options, run = command, emit = value => process.
       && observed.Descriptor.size === manifest.image_graph.descriptor.size, 'daemon-archive-graph-mismatch');
     await source(options, run);
     await image(options, state.image_id, run);
-    if (state.phase === 'qualified') {
+    requireValue(await nativeDaemon(run) === daemonId, 'native-daemon-changed');
+    if (completed) {
+      validateRuntimeProof(state.runtime_proof, { ...state, daemon_id: daemonId }, manifest);
       emit(state);
       return manifest;
     }
-    await atomic(manifestPath, manifest);
-    await atomic(path.join(options.directory, 'candidate.tar.sha256'), manifest.archive_sha256.slice(7) + '  candidate.tar\n');
-    await atomic(path.join(options.directory, 'image-id.txt'), state.image_id + '\n');
-    await atomic(path.join(options.directory, 'source-sha.txt'), options.sha + '\n');
-    state = { ...state, phase: 'qualified', manifest_sha256: (await checksum(manifestPath, JSON_LIMIT)).sha256 };
+    if (state.phase !== 'archive-qualified') {
+      await atomic(manifestPath, manifest);
+      await atomic(path.join(options.directory, 'candidate.tar.sha256'), manifest.archive_sha256.slice(7) + '  candidate.tar\n');
+      await atomic(path.join(options.directory, 'image-id.txt'), state.image_id + '\n');
+      await atomic(path.join(options.directory, 'source-sha.txt'), options.sha + '\n');
+      state = { ...state, version: 2, phase: 'archive-qualified',
+        manifest_sha256: (await checksum(manifestPath, JSON_LIMIT)).sha256, runtime_proof: null };
+      await atomic(phases, state);
+      emit(state);
+    }
+    const runtime = fileURLToPath(new URL('./candidate-runtime.mts', import.meta.url));
+    const runtimeProof = validateRuntimeProof(JSON.parse(await run(process.execPath,
+      ['--experimental-strip-types', runtime, '--directory', options.directory,
+        '--source', options.cwd, '--sha', options.sha, '--run-id', options.runId,
+        '--image-id', state.image_id, '--archive-sha256', state.archive_sha256,
+        '--manifest-sha256', state.manifest_sha256],
+      { cwd: options.cwd, timeout: 1_200_000, limit: 65_536, inheritStderr: true })),
+    { ...state, daemon_id: daemonId }, manifest);
+    await source(options, run);
+    requireValue(await nativeDaemon(run) === daemonId, 'native-daemon-changed');
+    const after = await image(options, state.image_id, run);
+    requireValue(JSON.stringify(after.RootFS.Layers) === JSON.stringify(manifest.image_graph.diff_ids)
+      && after.Descriptor.size === manifest.image_graph.descriptor.size, 'daemon-archive-graph-mismatch');
+    const archive = await checksum(path.join(options.directory, 'candidate.tar'));
+    requireValue(archive.sha256 === state.archive_sha256 && archive.bytes === state.archive_bytes,
+      'export-identity-mismatch');
+    requireValue((await checksum(manifestPath, JSON_LIMIT)).sha256 === state.manifest_sha256,
+      'qualified-manifest-changed');
+    state = { ...state, phase: 'qualified', runtime_proof: runtimeProof };
     await atomic(phases, state);
     emit(state);
     return manifest;

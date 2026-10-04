@@ -1,6 +1,6 @@
-# Authored job fragment only. No triggers; integration into a workflow belongs
-# to the root reviewer. Replace the existing production_runtime job in review,
-# retaining its required check name and three existing gate commands.
+# Reusable reference for pull-request.yml's production_runtime job; no triggers.
+# The parsed candidate workflow guard requires both job models to agree and
+# preserves the required check name and three existing gate commands.
 production_runtime:
   name: Production container and deploy lifecycle
   runs-on: ubuntu-latest
@@ -22,6 +22,7 @@ production_runtime:
       uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5.5.0
       with:
         version: v29.8.2
+        set-host: true
         daemon-config: '{"features":{"containerd-snapshotter":true}}'
     - name: Verify production container and deploy lifecycle
       run: |
@@ -30,7 +31,10 @@ production_runtime:
         npm run check:runtime-compose
         npm run check:production-deploy-lifecycle
     - name: Verify candidate policy
-      run: node --test scripts/ci/release-candidate.test.mjs ops/release/e2e/harness.test.mjs
+      run: |
+        set -euo pipefail
+        node --test scripts/ci/release-candidate.test.mjs ops/release/e2e/harness.test.mjs
+        node --experimental-strip-types --test scripts/ci/candidate-runtime.test.mts
     - name: Build and qualify the API candidate once
       env:
         CANDIDATE_DIRECTORY: ${{ runner.temp }}/api-candidate-${{ github.run_id }}

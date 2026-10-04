@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFile, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, chown, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test, { after } from 'node:test';
@@ -14,7 +15,7 @@ after(() => {
   if (ciEnvironment.sha !== undefined) process.env.GITHUB_SHA = ciEnvironment.sha;
   if (ciEnvironment.run !== undefined) process.env.GITHUB_RUN_ID = ciEnvironment.run;
 });
-import { candidate, checksum, command, qualify, readJson, validateManifest } from './release-candidate.mjs';
+import { candidate, checksum, command, qualify, readJson, validateManifest, validateRuntimeProof } from './release-candidate.mjs';
 
 const sha = 'c9dd4f5b903c777a6a378e3233b5353d08702424';
 const digest = character => 'sha256:' + character.repeat(64);
@@ -26,6 +27,16 @@ const graph = () => ({ kind: 'oci-manifest', root_digest: digest('a'),
   diff_ids: [digest('c')] });
 const manifest = () => ({ sha, ci_run_id: '123', archive_sha256: digest('d'), image_id: digest('a'),
   archive_bytes: 20480, image_graph: graph(), migrations: [{ name: '20260101000000_initial', checksum: 'e'.repeat(64) }] });
+
+function runtimeProof(m, manifestSha) {
+  return { schema: 'social-monitor-candidate-runtime-v1', sha: m.sha, ci_run_id: m.ci_run_id,
+    image_id: m.image_id, archive_sha256: m.archive_sha256, manifest_sha256: manifestSha,
+    daemon_id: 'candidate-test-daemon', postgres_system_identifier: '7688442011877063483',
+    postgres_major: 18, api_container_id: '1'.repeat(64), api_started_at: '2026-10-04T01:02:03.000000000Z',
+    history_sha256: 'sha256:' + createHash('sha256').update(JSON.stringify(
+      m.migrations.map(({ name, checksum }) => ({ checksum, name })))).digest('hex'),
+    postgres_pool_ok: true, cleanup_verified: true };
+}
 
 test('strict finite native manifest and migration grammar', () => {
   // Red trigger: accept an index/config identity, unknown field, unsafe name,
@@ -59,8 +70,19 @@ async function temporary(t) {
 function processFixture(directory) {
   const calls = [];
   let wrongImage = false, failQualification = true, failExport = false, failArchive = false;
+  let failRuntime = false;
   const run = async (program, args, options = {}) => {
     calls.push([program, ...args]);
+    assert.equal(options.inheritStderr, program === process.execPath ? true : undefined);
+    if (program === process.execPath) {
+      assert.equal(args[0], '--experimental-strip-types');
+      assert.equal(args[1], path.resolve('scripts/ci/candidate-runtime.mts'));
+      if (failRuntime) throw new Error('runtime-failed');
+      const m = await readJson(path.join(directory, 'manifest.json'));
+      const sum = await checksum(path.join(directory, 'manifest.json'));
+      assert.equal(args[args.indexOf('--manifest-sha256') + 1], sum.sha256);
+      return JSON.stringify(runtimeProof(m, sum.sha256));
+    }
     if (program === 'git') {
       if (args[0] === 'archive') { if (failArchive) throw new Error('snapshot-failed'); await writeFile(options.output, 'synthetic committed Git snapshot'); return ''; }
       return args[0] === 'rev-parse' ? sha + '\n' : '';
@@ -70,7 +92,7 @@ function processFixture(directory) {
       return JSON.stringify({ migrations: manifest().migrations, image_graph: graph() });
     }
     if (args[0] === 'version') return JSON.stringify({ Version: '29.8.1' });
-    if (args[0] === 'info') return JSON.stringify({ OSType: 'linux', Architecture: 'x86_64',
+    if (args[0] === 'info') return JSON.stringify({ ID: 'candidate-test-daemon', OSType: 'linux', Architecture: 'x86_64',
       DriverStatus: [['driver-type', 'io.containerd.snapshotter.v1']] });
     if (args[0] === 'build') { await writeFile(args[args.indexOf('--iidfile') + 1], digest('a')); return ''; }
     if (args[1] === 'inspect') return JSON.stringify([{ Id: wrongImage ? digest('f') : digest('a'),
@@ -87,7 +109,8 @@ function processFixture(directory) {
     set qualification(value) { failQualification = value; },
     set wrongImage(value) { wrongImage = value; },
     set failExport(value) { failExport = value; },
-    set failArchive(value) { failArchive = value; } };
+    set failArchive(value) { failArchive = value; },
+    set failRuntime(value) { failRuntime = value; } };
 }
 
 test('qualification/upload retry retains exact build and export and rereads identity', async t => {
@@ -106,6 +129,7 @@ test('qualification/upload retry retains exact build and export and rereads iden
   assert.equal(fixture.calls.filter(c => c[1] === 'build').length, 1);
   assert.equal(fixture.calls.filter(c => c[2] === 'save').length, 1);
   assert.equal(fixture.calls.filter(c => c[0] === 'python3').length, 2); // failed proof plus one success
+  assert.equal(fixture.calls.filter(c => c[0] === process.execPath).length, 1);
   assert.ok(fixture.calls.filter(c => c[1] === 'rev-parse').length >= 3);
   assert.ok(fixture.calls.filter(c => c[2] === 'inspect').length >= 3);
   const build = fixture.calls.find(c => c[1] === 'build');
@@ -128,6 +152,51 @@ test('qualification/upload retry retains exact build and export and rereads iden
   await writeFile(path.join(directory, 'candidate.tar'), 'mutated archive bytes');
   fixture.wrongImage = false;
   await assert.rejects(candidate(options, fixture.run, () => {}), /export-identity-mismatch/);
+});
+
+test('failed runtime retains archive-qualified bytes; resume runs only runtime', async t => {
+  const directory = await temporary(t), fixture = processFixture(directory);
+  const options = { directory, sha, runId: '123', controllerDir: '/synthetic/controller' };
+  fixture.qualification = false; fixture.failRuntime = true;
+  await assert.rejects(candidate(options, fixture.run, () => {}), /runtime-failed/);
+  const state = await readJson(path.join(directory, 'phases.json'));
+  assert.equal(state.version, 2); assert.equal(state.phase, 'archive-qualified');
+  assert.equal(state.runtime_proof, null);
+  const archive = await readFile(path.join(directory, 'candidate.tar'));
+  fixture.failRuntime = false;
+  await candidate(options, fixture.run, () => {});
+  await candidate(options, fixture.run, () => {});
+  assert.deepEqual(await readFile(path.join(directory, 'candidate.tar')), archive);
+  assert.equal(fixture.calls.filter(c => c[1] === 'build').length, 1);
+  assert.equal(fixture.calls.filter(c => c[2] === 'save').length, 1);
+  assert.equal(fixture.calls.filter(c => c[0] === 'python3').length, 1);
+  assert.equal(fixture.calls.filter(c => c[0] === process.execPath).length, 2);
+  const qualified = await readJson(path.join(directory, 'phases.json'));
+  const m = await readJson(path.join(directory, 'manifest.json'));
+  validateRuntimeProof(qualified.runtime_proof,
+    { ...qualified, daemon_id: 'candidate-test-daemon' }, m);
+  qualified.runtime_proof.cleanup_verified = false;
+  await writeFile(path.join(directory, 'phases.json'), JSON.stringify(qualified));
+  await assert.rejects(candidate(options, fixture.run, () => {}), /runtime-proof-incomplete/);
+});
+
+test('legacy archive-only qualified receipt requires runtime without build or save', async t => {
+  const directory = await temporary(t), fixture = processFixture(directory);
+  const options = { directory, sha, runId: '123', controllerDir: '/synthetic/controller' };
+  fixture.qualification = false;
+  await candidate(options, fixture.run, () => {});
+  const state = await readJson(path.join(directory, 'phases.json'));
+  delete state.runtime_proof; state.version = 1;
+  await writeFile(path.join(directory, 'phases.json'), JSON.stringify(state));
+  fixture.failRuntime = true;
+  await assert.rejects(candidate(options, fixture.run, () => {}), /runtime-failed/);
+  assert.equal((await readJson(path.join(directory, 'phases.json'))).phase, 'archive-qualified');
+  fixture.failRuntime = false;
+  await candidate(options, fixture.run, () => {});
+  assert.equal(fixture.calls.filter(c => c[1] === 'build').length, 1);
+  assert.equal(fixture.calls.filter(c => c[2] === 'save').length, 1);
+  assert.equal(fixture.calls.filter(c => c[0] === 'python3').length, 1);
+  assert.equal(fixture.calls.filter(c => c[0] === process.execPath).length, 3);
 });
 
 test('failed export resumes only export; ambiguous interrupted build never rebuilds', async t => {
@@ -162,6 +231,54 @@ test('candidate path and archive symlinks fail closed', async t => {
   const file = path.join(directory, 'real.tar'); await writeFile(file, 'bytes');
   await symlink(file, path.join(directory, 'candidate.tar'));
   await assert.rejects(checksum(path.join(directory, 'candidate.tar')), /regular-file-size/);
+});
+
+test('producer rejects attacker-owned ancestry before creation or resume', {
+  skip: process.platform !== 'linux' || process.getuid?.() !== 0
+    || process.geteuid?.() !== 0 ? 'requires root on Linux' : false,
+}, async t => {
+  const outer = await mkdtemp(path.join(os.tmpdir(), 'sm-candidate-ancestry-'));
+  const attacker = path.join(outer, 'attacker');
+  t.after(async () => {
+    try {
+      if (existsSync(attacker)) await chown(attacker, 0, 0);
+    } finally {
+      await rm(outer, { recursive: true, force: true });
+    }
+  });
+  await chmod(outer, 0o755);
+  await mkdir(attacker, { mode: 0o755 });
+  await chmod(attacker, 0o755);
+  await chown(attacker, 65534, 65534);
+  const parent = path.join(attacker, 'caller-private');
+  await mkdir(parent, { mode: 0o700 });
+  assert.equal((await lstat(outer)).mode & 0o777, 0o755);
+  assert.equal((await lstat(attacker)).uid, 65534);
+  assert.equal((await lstat(attacker)).mode & 0o777, 0o755);
+  assert.equal((await lstat(parent)).uid, 0);
+  assert.equal((await lstat(parent)).mode & 0o777, 0o700);
+  let calls = 0;
+  const run = async () => {
+    calls++;
+    throw new Error('runner-entered-before-admission');
+  };
+  for (const existing of [false, true]) {
+    const directory = path.join(parent, existing ? 'resume' : 'new');
+    const state = '{"version":2,"phase":"qualified"}\n';
+    if (existing) {
+      await mkdir(directory, { mode: 0o700 });
+      await writeFile(path.join(directory, 'phases.json'), state, { mode: 0o600 });
+      await writeFile(path.join(directory, 'producer.lock'), 'retained-lock', { mode: 0o600 });
+    }
+    await assert.rejects(candidate({ directory, sha, runId: '123', controllerDir: '/none' },
+      run, () => {}), /untrusted-directory/);
+    assert.equal(calls, 0);
+    if (existing) {
+      assert.deepEqual((await readdir(directory)).sort(), ['phases.json', 'producer.lock']);
+      assert.equal(await readFile(path.join(directory, 'phases.json'), 'utf8'), state);
+      assert.equal(await readFile(path.join(directory, 'producer.lock'), 'utf8'), 'retained-lock');
+    } else assert.equal(existsSync(directory), false);
+  }
 });
 
 // A separate stdlib fixture writer, rather than mocking the archive verifier.
@@ -285,6 +402,54 @@ test('real argv process receives exact binary source context and bounds stdout',
   await assert.rejects(command('python3', ['-I', '-B', '-c', 'print("x"*65)'], { limit: 64 }), /command-output-limit/);
 });
 
+test('command stderr subprocess fixture', {
+  skip: process.env.SM_CANDIDATE_STDERR_FIXTURE !== '1',
+}, async t => {
+  const directory = await temporary(t);
+  const args = ['--no-warnings', '--experimental-strip-types',
+    path.resolve('scripts/ci/candidate-runtime.mts'),
+    '--directory', directory, '--source', directory, '--sha', sha,
+    '--run-id', '123', '--image-id', digest('a'),
+    '--archive-sha256', digest('b'), '--manifest-sha256', digest('c')];
+  // The first invocation must stay silent; only the opt-in invocation emits.
+  for (const inheritStderr of [false, true]) {
+    await assert.rejects(command(process.execPath, args, { inheritStderr }), error => {
+      assert.equal(error.exitCode, 1);
+      assert.equal(error.stdout, '');
+      return /command-failed/.test(error.message);
+    });
+    const stdout = await command('python3', ['-I', '-B', '-c',
+      'print(\'{"proof":"captured"}\')'], { inheritStderr, limit: 64 });
+    assert.equal(stdout, '{"proof":"captured"}\n');
+    await assert.rejects(command('python3', ['-I', '-B', '-c',
+      'import sys; print(\'{"denied":"bounded"}\'); sys.exit(1)'],
+    { inheritStderr, limit: 64 }), error => {
+      assert.equal(error.exitCode, 1);
+      assert.equal(error.stdout, '{"denied":"bounded"}\n');
+      return true;
+    });
+    await assert.rejects(command('python3', ['-I', '-B', '-c', 'print("x"*65)'],
+      { inheritStderr, limit: 64 }), /command-output-limit/);
+  }
+});
+
+test('runtime stderr opt-in crosses the helper process boundary without forwarding stdout', () => {
+  const fixtureEnv = { ...process.env, SM_CANDIDATE_STDERR_FIXTURE: '1' };
+  delete fixtureEnv.NODE_TEST_CONTEXT;
+  const result = spawnSync(process.execPath, ['--no-warnings', '--experimental-strip-types',
+    '--test', '--test-name-pattern', '^command stderr subprocess fixture$',
+    path.resolve('scripts/ci/release-candidate.test.mjs')], {
+    env: fixtureEnv,
+    encoding: 'utf8', timeout: 30_000, maxBuffer: 262_144,
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0);
+  // Node's test runner forwards inherited child stderr as TAP diagnostics.
+  assert.equal(result.stderr, '');
+  assert.deepEqual(result.stdout.split('\n').filter(line => line.includes('candidate-runtime:')),
+    ['# candidate-runtime: runtime-directory']);
+});
+
 
 test('journal rename EIO reconciles verified retained export without another build/save', async t => {
   // Red trigger: successful save + archive rename + failed exported journal
@@ -316,10 +481,14 @@ syncBuiltinESMExports();
   const runner = path.join(support, 'producer-fixture.mjs');
   await writeFile(runner, `
 import { appendFile, copyFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { candidate, command } from ${JSON.stringify(path.resolve('scripts/ci/release-candidate.mjs'))};
 const proof = ${JSON.stringify(proof)};
+const runtimeProof = ${runtimeProof.toString()};
 const run = async (program, args, options = {}) => {
   await appendFile(${JSON.stringify(log)}, JSON.stringify([program, ...args]) + '\\n');
+  if (program === process.execPath) return JSON.stringify(runtimeProof(proof,
+    args[args.indexOf('--manifest-sha256') + 1]));
   if (program === 'python3') return command(program, args, options);
   if (program === 'git') {
     if (args[0] === 'archive') { await writeFile(options.output, 'synthetic committed snapshot'); return ''; }
@@ -327,7 +496,7 @@ const run = async (program, args, options = {}) => {
   }
   if (program !== 'docker') throw new Error('unexpected-program');
   if (args[0] === 'version') return JSON.stringify({ Version: '29.8.1' });
-  if (args[0] === 'info') return JSON.stringify({ OSType: 'linux', Architecture: 'amd64',
+  if (args[0] === 'info') return JSON.stringify({ ID: 'candidate-test-daemon', OSType: 'linux', Architecture: 'amd64',
     DriverStatus: [['driver-type', 'io.containerd.snapshotter.v1']] });
   if (args[0] === 'build') { await writeFile(args[args.indexOf('--iidfile') + 1], proof.image_id); return ''; }
   if (args[1] === 'save') { await copyFile(${JSON.stringify(archive)}, options.output); return ''; }

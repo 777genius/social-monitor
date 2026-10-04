@@ -74,7 +74,7 @@ export function hetznerReleaseCiViolations(source, scripts) {
   const fail = ["Static architecture and quality must run the exact unconditional Hetzner strict typecheck and native tests once after Node 22 and npm ci"];
   const expected = {
     "check:hetzner-release-typecheck": "tsc -p scripts/ci/tsconfig.hetzner-release.json",
-    "check:hetzner-release-tests": "node --experimental-strip-types --test scripts/ci/hetzner-release-authority.test.mts scripts/ci/hetzner-release-observe.test.mts scripts/ci/review-ci/release-workflow-contract.test.mts",
+    "check:hetzner-release-tests": "node --experimental-strip-types --test scripts/ci/hetzner-release-authority.test.mts scripts/ci/hetzner-release-observe.test.mts scripts/ci/review-ci/release-workflow-contract.test.mts scripts/ci/review-ci/candidate-workflow-contract.test.mts scripts/ci/candidate-runtime.test.mts",
     "check:hetzner-release-contract": "node --experimental-strip-types scripts/ci/check-hetzner-release-workflow.mts",
   };
   if (Object.entries(expected).some(([key, value]) => scripts?.[key] !== value)) return fail;
@@ -152,6 +152,19 @@ try {
 } catch {
   violations.push(
     ".github/workflows/hetzner-release.yml: parsed release workflow guard failed or exceeded its finite execution bounds; run npm run check:hetzner-release-contract",
+  );
+}
+try {
+  // Fixed typed entry point; preserve bare Node 22 imports of this module.
+  execFileSync(process.execPath, [
+    "--experimental-strip-types", "scripts/ci/check-release-candidate-workflow.mts",
+  ], {
+    timeout: 30000, maxBuffer: 65536,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+} catch {
+  violations.push(
+    ".github/workflows/pull-request.yml: parsed candidate workflow guard failed or exceeded its finite execution bounds; run node --experimental-strip-types scripts/ci/check-release-candidate-workflow.mts",
   );
 }
 const subscriptionRuntimeAuthPoolE2eCommand =
