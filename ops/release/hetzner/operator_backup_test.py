@@ -38,11 +38,15 @@ backrest-checksum="c63c26669942d9cbe7d8c2273d96ca823ef67926"
 NOW = 1790911380
 # Derived independently for {"type":"posix","path":"/fixture/repo"}, sorted JSON.
 REPO_CONFIG = b'[global]\nrepo1-type=posix\nrepo1-path=/fixture/repo\n[production-main]\npg1-path=/fixture/pg\n'
+# TEST synthetic data only: native capture, no real customer or production capture.
+RAW_NATIVE_INFO = (Path(__file__).parent / 'fixtures' / 'pgbackrest-2.59.1-test-info.json').read_bytes()
+NATIVE_INFO_NOW = 1791072350
 
 
 def info():
     return [{'name': 'production-main', 'status': {'code': 0, 'message': 'ok'},
              'cipher': 'none', 'repo': [{'key': 1, 'status': {'code': 0, 'message': 'ok'}}],
+             'archive': [],
              'db': [{'id': 1, 'repo-key': 1, 'system-id': int(SYSTEM_ID), 'version': '18'}],
              'backup': [{'label': '20261002-052243F', 'type': 'full', 'error': False,
                          'timestamp': {'start': 1790911363, 'stop': 1790911374},
@@ -54,6 +58,82 @@ def identity_row():
     return {'server_major': 18, 'system_identifier': SYSTEM_ID, 'database': 'fixture_db',
             'role': 'fixture_observer', 'port': '5432', 'transaction_read_only': True,
             'read_only_role': True, 'migrations': None, 'history_complete': None}
+
+
+class NativeInfoTests(unittest.TestCase):
+    def setUp(self):
+        self.config = FixtureConfig()
+        self.config.core['backup_identity']['stanza'] = 'production-main'
+        self.config.core['backup_identity']['system_identifier'] = '7692597092821086252'
+        self.config.core['backup_max_age_seconds'] = 3600
+
+    def test_raw_native_info_selects_independently_configured_full(self):
+        self.assertEqual(len(RAW_NATIVE_INFO), 849)
+        self.assertEqual(sha_bytes(RAW_NATIVE_INFO),
+                         'sha256:fc0341ecfeac4f5d1fc4e0ba0a0059bf87079a298c33cf74880b6ba313bacd1f')
+        result = backup.select_info(RAW_NATIVE_INFO, self.config, NATIVE_INFO_NOW)
+        self.assertEqual(result, {
+            'backup_id': '20261004-000546F',
+            'started_at': 1791072346, 'stop': 1791072349,
+            'database_id': 1, 'repo_key': 1,
+            'system_identifier': '7692597092821086252'})
+        self.assertIs(type(result['system_identifier']), str)
+
+    def test_no_archived_wal_metadata_remains_valid(self):
+        value = copy.deepcopy(decode(RAW_NATIVE_INFO))
+        value[0]['archive'] = []
+        self.assertEqual(backup.select_info(canonical(value), self.config, NATIVE_INFO_NOW)['backup_id'],
+                         '20261004-000546F')
+        value = copy.deepcopy(decode(RAW_NATIVE_INFO))
+        value[0]['archive'][0].update({'min': None, 'max': None})
+        self.assertEqual(backup.select_info(canonical(value), self.config, NATIVE_INFO_NOW),
+                         backup.select_info(RAW_NATIVE_INFO, self.config, NATIVE_INFO_NOW))
+
+    def test_malformed_foreign_and_duplicate_archive_metadata_deny(self):
+        changes = [
+            lambda v: v[0].pop('archive'),
+            lambda v: v[0].update({'archive': None}),
+            lambda v: v[0].update({'archive': {}}),
+            lambda v: v[0].update({'archive': [None]}),
+            lambda v: v[0].update({'archive': copy.deepcopy(v[0]['archive']) * 1001}),
+            lambda v: v[0]['archive'][0].update({'unknown': None}),
+            lambda v: v[0]['archive'][0].pop('database'),
+            lambda v: v[0]['archive'][0].update({'database': None}),
+            lambda v: v[0]['archive'][0]['database'].update({'unknown': 1}),
+            lambda v: v[0]['archive'][0]['database'].pop('id'),
+            lambda v: v[0]['archive'][0]['database'].update({'id': True}),
+            lambda v: v[0]['archive'][0]['database'].update({'id': 0}),
+            lambda v: v[0]['archive'][0]['database'].update({'id': -1}),
+            lambda v: v[0]['archive'][0]['database'].update({'id': '1'}),
+            lambda v: v[0]['archive'][0]['database'].update({'id': 2}),
+            lambda v: v[0]['archive'][0]['database'].update({'repo-key': True}),
+            lambda v: v[0]['archive'][0]['database'].update({'repo-key': 0}),
+            lambda v: v[0]['archive'][0]['database'].update({'repo-key': '1'}),
+            lambda v: v[0]['archive'][0]['database'].update({'repo-key': 2}),
+            lambda v: v[0]['archive'].append(copy.deepcopy(v[0]['archive'][0])),
+            lambda v: v[0]['archive'][0].update({'id': None}),
+            lambda v: v[0]['archive'][0].update({'id': '18-2'}),
+            lambda v: v[0]['archive'][0].update({'id': '19-1'}),
+            lambda v: v[0]['archive'][0].update({'id': '18-' + '1' * 100}),
+            lambda v: v[0]['db'][0].update({'version': True}),
+            lambda v: v[0]['db'][0].update({'version': None}),
+            lambda v: v[0]['db'][0].update({'version': '18' * 100}),
+            lambda v: v[0]['archive'][0].update({'min': None}),
+            lambda v: v[0]['archive'][0].update({'max': None}),
+            lambda v: v[0]['archive'][0].update({'min': 0}),
+            lambda v: v[0]['archive'][0].update({'max': False}),
+            lambda v: v[0]['archive'][0].update({'min': '00000001000000000000000a'}),
+            lambda v: v[0]['archive'][0].update({'max': '00000001000000000000003'}),
+            lambda v: v[0]['archive'][0].update({'min': '0' * 25}),
+            lambda v: v[0]['archive'][0].update({'min': '000000010000000000000004'}),
+            lambda v: v[0]['archive'][0].update({'max': '00000001000000000000000G'}),
+        ]
+        for index, change in enumerate(changes):
+            with self.subTest(index=index):
+                value = copy.deepcopy(decode(RAW_NATIVE_INFO))
+                change(value)
+                with self.assertRaises(Denied):
+                    backup.select_info(canonical(value), self.config, NATIVE_INFO_NOW)
 
 
 class NativeTests(unittest.TestCase):
