@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { copyFile, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, chown, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test, { after } from 'node:test';
@@ -229,6 +229,54 @@ test('candidate path and archive symlinks fail closed', async t => {
   const file = path.join(directory, 'real.tar'); await writeFile(file, 'bytes');
   await symlink(file, path.join(directory, 'candidate.tar'));
   await assert.rejects(checksum(path.join(directory, 'candidate.tar')), /regular-file-size/);
+});
+
+test('producer rejects attacker-owned ancestry before creation or resume', {
+  skip: process.platform !== 'linux' || process.getuid?.() !== 0
+    || process.geteuid?.() !== 0 ? 'requires root on Linux' : false,
+}, async t => {
+  const outer = await mkdtemp(path.join(os.tmpdir(), 'sm-candidate-ancestry-'));
+  const attacker = path.join(outer, 'attacker');
+  t.after(async () => {
+    try {
+      if (existsSync(attacker)) await chown(attacker, 0, 0);
+    } finally {
+      await rm(outer, { recursive: true, force: true });
+    }
+  });
+  await chmod(outer, 0o755);
+  await mkdir(attacker, { mode: 0o755 });
+  await chmod(attacker, 0o755);
+  await chown(attacker, 65534, 65534);
+  const parent = path.join(attacker, 'caller-private');
+  await mkdir(parent, { mode: 0o700 });
+  assert.equal((await lstat(outer)).mode & 0o777, 0o755);
+  assert.equal((await lstat(attacker)).uid, 65534);
+  assert.equal((await lstat(attacker)).mode & 0o777, 0o755);
+  assert.equal((await lstat(parent)).uid, 0);
+  assert.equal((await lstat(parent)).mode & 0o777, 0o700);
+  let calls = 0;
+  const run = async () => {
+    calls++;
+    throw new Error('runner-entered-before-admission');
+  };
+  for (const existing of [false, true]) {
+    const directory = path.join(parent, existing ? 'resume' : 'new');
+    const state = '{"version":2,"phase":"qualified"}\n';
+    if (existing) {
+      await mkdir(directory, { mode: 0o700 });
+      await writeFile(path.join(directory, 'phases.json'), state, { mode: 0o600 });
+      await writeFile(path.join(directory, 'producer.lock'), 'retained-lock', { mode: 0o600 });
+    }
+    await assert.rejects(candidate({ directory, sha, runId: '123', controllerDir: '/none' },
+      run, () => {}), /untrusted-directory/);
+    assert.equal(calls, 0);
+    if (existing) {
+      assert.deepEqual((await readdir(directory)).sort(), ['phases.json', 'producer.lock']);
+      assert.equal(await readFile(path.join(directory, 'phases.json'), 'utf8'), state);
+      assert.equal(await readFile(path.join(directory, 'producer.lock'), 'utf8'), 'retained-lock');
+    } else assert.equal(existsSync(directory), false);
+  }
 });
 
 // A separate stdlib fixture writer, rather than mocking the archive verifier.

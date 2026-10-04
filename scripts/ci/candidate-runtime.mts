@@ -410,7 +410,7 @@ export async function runtime(o: Options): Promise<RuntimeProof> {
     }
     const pgEnd = Math.min(deadline, Date.now() + 60_000); let pgReady = false;
     for (let attempt = 0; attempt < 45 && Date.now() < pgEnd; attempt++) {
-      if ((await exec('postgres', ['pg_isready', '-U', 'postgres', '-d', 'e2e'], '', 10_000, true)).code === 0) {
+      if ((await exec('postgres', ['pg_isready', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'e2e'], '', 10_000, true)).code === 0) {
         pgReady = true; break;
       }
       await delay(1000);

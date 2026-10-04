@@ -6,6 +6,7 @@ import { createReadStream } from 'node:fs';
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { directory as trustedDirectory } from './candidate-runtime-contract.mts';
 
 export const SHA = /^[0-9a-f]{40}$/;
 export const DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -246,6 +247,22 @@ async function safeDirectory(directory, cwd) {
     try {
       const info = await lstat(ancestor);
       requireValue(info.isDirectory() && await realpath(ancestor) === ancestor, 'candidate-symlink');
+      // Admit the full existing ancestry before mkdir or any producer work.
+      // The shared guard permits sticky boundaries as ancestors, not endpoints.
+      let boundary = ancestor;
+      for (;;) {
+        const parent = await lstat(boundary);
+        if (!(parent.mode & 0o022) || !(parent.mode & 0o1000)) {
+          await trustedDirectory(boundary);
+          break;
+        }
+        requireValue(parent.isDirectory()
+          && (parent.uid === 0 || parent.uid === process.geteuid?.())
+          && await realpath(boundary) === boundary, 'untrusted-directory');
+        const next = path.dirname(boundary);
+        requireValue(next !== boundary, 'untrusted-directory');
+        boundary = next;
+      }
       break;
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
@@ -257,6 +274,7 @@ async function safeDirectory(directory, cwd) {
   const protectedDirectory = await lstat(directory);
   requireValue((protectedDirectory.mode & 0o777) === 0o700
     && protectedDirectory.uid === process.getuid?.(), 'candidate-directory-permissions');
+  await trustedDirectory(directory, true);
   const sourceRoot = await realpath(cwd);
   requireValue(directory !== sourceRoot && !directory.startsWith(sourceRoot + path.sep), 'candidate-outside-checkout');
   const files = await readdir(directory);
