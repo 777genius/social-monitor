@@ -407,7 +407,7 @@
     "typescript-eslint": "^8.48.0"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.6.0"
   },
   "overrides": {
     "@eslint/eslintrc": "3.3.6",
