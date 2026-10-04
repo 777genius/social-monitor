@@ -369,6 +369,7 @@ class Controller:
                 self.retention()
                 return result
             admission = tx['admission']
+            self.retained_database(admission, tx.get('database'))
             if self.path('receipts', tx.get('receipt_key', key)).exists():
                 self.reconcile(key, tx)
             snapshot, target = self.invariant(admission)

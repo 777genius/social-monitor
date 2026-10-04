@@ -78,6 +78,62 @@ class ReleaseTests(unittest.TestCase):
         path = self.root / 'commands.jsonl'
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
+    # Red at 360f816: receiptless verify checks readiness but accepts malformed
+    # retained history in either journal observation, even with matching hashes.
+    def test_receiptless_verify_validates_both_retained_observations(self):
+        import copy
+        from datetime import timedelta
+        from prisma_history import summarize, timestamp, utc
+        image = self.admitted()
+        mutate(self.root, crash_up=True)
+        result = run(self.root, f'activate {SHA} {RUN}')
+        self.assertEqual(result.returncode, -9, (result.stdout, result.stderr))
+        target = read_json(self.root / 'fake.json')['target']
+        self.assertEqual(target['image'], image)
+        self.assertIs(target['running'], True)
+        tx_path = self.state / 'transactions' / (KEY + '.json')
+        self.assertEqual(list((self.state / 'receipts').iterdir()), [])
+        original = read_json(tx_path)
+        self.assertNotIn('outcome', original)
+        self.assertIs(self.ok(f'verify {SHA} {RUN}')['verified'], True)
+        # Age both retained observations beyond live freshness. Historical
+        # verification must accept them without obtaining replacement evidence.
+        for db in (original['database'], original['admission']['database']):
+            db['observed_at'] -= 600
+            proof = db['history']
+            proof['observed_at'] = utc((timestamp(proof['observed_at'])
+                                       - timedelta(seconds=600)).isoformat())
+            proof['sha256'] = digest({k: v for k, v in proof.items() if k != 'sha256'})
+        original['admission']['database_hash'] = digest(original['admission']['database'])
+        atomic(tx_path, original)
+        mutate(self.root, read_only=False, main_sha='f' * 40)
+        retained = tx_path.read_bytes()
+        self.assertIs(self.ok(f'verify {SHA} {RUN}')['verified'], True)
+        self.assertEqual(tx_path.read_bytes(), retained)
+        for observation in ('database', 'admission'):
+            for fault, reason in (('missing', 'history-shape'),
+                                  ('digest', 'history-digest'),
+                                  ('pending', 'database-evidence')):
+                with self.subTest(observation=observation, fault=fault):
+                    tx = copy.deepcopy(original)
+                    db = tx['database'] if observation == 'database' else tx['admission']['database']
+                    if fault == 'missing':
+                        db.pop('history')
+                    elif fault == 'digest':
+                        db['history']['sha256'] = 'sha256:' + '0' * 64
+                    else:
+                        proof = db['history']
+                        proof['rows'][-1]['finished_at'] = None
+                        proof['sha256'] = digest({k: v for k, v in proof.items() if k != 'sha256'})
+                        db['applied_migrations'], db['failed_migrations'] = summarize(proof)
+                    tx['admission']['database_hash'] = digest(tx['admission']['database'])
+                    atomic(tx_path, tx)
+                    retained = tx_path.read_bytes()
+                    self.denied(f'verify {SHA} {RUN}', reason)
+                    self.assertEqual(tx_path.read_bytes(), retained)
+                    self.assertEqual(list((self.state / 'receipts').iterdir()), [])
+        self.assertFalse((self.state / 'latch.json').exists())
+
     # Red at d6f23bd: matching journal/receipt and recomputed outer hashes bypass
     # all nested validation, including the admission observation, on reconciliation.
     def test_retained_history_denied_before_terminal_reconstruction(self):
