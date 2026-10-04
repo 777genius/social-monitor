@@ -79,6 +79,9 @@ separate first-release preparation is approved and qualified: actual deployed
 compatibility, missing migration, resolved historical migration evidence,
 independent observer/backup closure and fixed controller installation. A resolved
 rolled-back Prisma attempt with a later successful row is preserved audit history;
-the current conservative adapter still denies it. Do not delete or rewrite that
-history to pass admission, or treat disposable runtime proof as production parity.
+the adapter admits it only with the complete, validated history proof. Retained
+admissions and receipts validate the same proof without reapplying live-observation
+freshness limits. Missing migrations and sensitive schema or worker changes still
+deny ordinary activation. Do not delete or rewrite audit history to pass admission,
+or treat disposable runtime proof as production parity.
 No mode, secret or environment is enabled by these checks.

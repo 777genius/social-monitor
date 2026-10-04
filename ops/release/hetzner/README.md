@@ -152,7 +152,10 @@ assertions as successful evidence or fill unknown inputs with success defaults.
   immutable activation/rollback receipts retain `database` / `database_hash`
   plus the original `admission_database` / `admission_database_hash`. Every
   attempt survives in both proofs. Receipt reconciliation binds the fresh
-  observation to the journal. Historical records are not freshness-checked again.
+  observation to the journal. Before terminal reconstruction or publication, both
+  retained observations undergo full proof/digest/summary, outer identity/read-only,
+  configured-cluster and exact inventory validation. Historical records are not
+  freshness-checked again; live observations use the same validator plus age checks.
   Existing admissions without the new proof cannot activate.
 
   Final layered filesystem requires regular `root/<14digits_name>/migration.sql`

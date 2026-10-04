@@ -79,6 +79,7 @@ if command == 'operator-adapter':
                     {**rows[0], 'started_at': '2026-10-01T00:00:00.000002Z'}, *rows[1:]]
         identity = json.loads((root / 'config.json').read_text())['backup_identity']['system_identifier']
         context = history_context(rows, identity)
+        context.update(state.get('database_context', {}))
         proof = seal(context, rows)
         applied, failed = summarize(proof)
         result['observed_at'] = int(time.time())
