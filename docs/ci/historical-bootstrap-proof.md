@@ -81,6 +81,13 @@ unchanged owner memberships; old and candidate pool readiness on 103; image roll
 with 103 retained; and a separate fenced restore recovering 102/catalog/old readiness.
 No finite tenant is seeded and no reserve/publish function is invoked.
 
+The pending revision also distinguishes NULL ACLs from explicit empty ACL arrays.
+A TEST-only restored-database function checks default PUBLIC EXECUTE, a real
+revoke-all empty ACL, changed effective access and distinct catalogue fingerprints;
+dropping the probe must reproduce the original catalogue. Cleanup has its own
+four-minute command budget within the overall absolute deadline. The prior
+execution below does not qualify these new checks until a fresh run passes.
+
 `proof.json` records immutable bindings, daemon/PG IDs, exact owned resource IDs,
 case fingerprints, stable API image/ID/StartedAt and cleanup results. `pre103.dump`
 is retained in the private directory. Creates are journaled before invocation;
