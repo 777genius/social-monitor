@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -268,7 +268,7 @@ jobs:
     name: Backend build and unit tests
     needs: [backend_unit_shards, backend_build_contracts]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 10
 
     steps:

@@ -7,6 +7,16 @@ import { unitMutations, coverageMutations } from './fixtures/workflow-mutations.
 
 const unit = readFileSync('.github/workflows/pull-request.yml', 'utf8');
 const coverage = readFileSync('.github/workflows/coverage.yml', 'utf8');
+// Every other job performs heavy work on a full VM; slim is aggregate-only.
+const currentJobs = yaml.load(unit, { schema: yaml.JSON_SCHEMA }).jobs;
+for (const id of Object.keys(currentJobs).filter((id) => id !== 'backend_unit')) {
+  test(`unit: rejects slim runner for ${id}`, () => {
+    const workflow = yaml.load(unit, { schema: yaml.JSON_SCHEMA });
+    workflow.jobs[id]['runs-on'] = 'ubuntu-slim';
+    assert.ok(backendUnitShardingViolations(yaml.dump(workflow))
+      .includes(`${id}: only the lightweight backend_unit aggregate may use ubuntu-slim`));
+  });
+}
 for (const [label, source, check, mutations] of [
   ['unit', unit, backendUnitShardingViolations, unitMutations],
   ['coverage', coverage, coverageWorkflowViolations, coverageMutations],

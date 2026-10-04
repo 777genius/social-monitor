@@ -30,13 +30,13 @@ function parse(source) {
   return yaml.load(source, { schema: yaml.JSON_SCHEMA, json: false });
 }
 
-function jobChecks(job, id, expectedName, expectedSteps, errors, extra = [], requiredTimeout = null) {
+function jobChecks(job, id, expectedName, expectedSteps, errors, extra = [], requiredTimeout = null, expectedRunner = 'ubuntu-latest') {
   const reject = (message) => errors.push(`${id}: ${message}`);
   if (!keys(job, ['name', 'runs-on', 'timeout-minutes', 'steps', ...extra])) {
     reject('unknown execution keys, masking or skip policy');
     return;
   }
-  if (job.name !== expectedName || job['runs-on'] !== 'ubuntu-latest' ||
+  if (job.name !== expectedName || job['runs-on'] !== expectedRunner ||
       !Number.isInteger(job['timeout-minutes']) || job['timeout-minutes'] < 1 ||
       (requiredTimeout === null ? job['timeout-minutes'] > 45 : job['timeout-minutes'] !== requiredTimeout)) {
     reject('stable name, runner and bounded timeout required');
@@ -104,8 +104,8 @@ export function backendUnitShardingViolations(source) {
     push: { branches: ['main'] }, pull_request: null, merge_group: null, workflow_dispatch: null,
   })) errors.push('pull-request.yml: full push-main, PR, merge-group and dispatch triggers required');
   if (!equal(workflow.concurrency, {
-    group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}', 'cancel-in-progress': true,
-  })) errors.push('pull-request.yml: PR cancellation must be isolated from other main SHAs');
+    group: "${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.sha }}", 'cancel-in-progress': true,
+  })) errors.push('pull-request.yml: newer main must cancel obsolete main CI while PRs, merge-group and dispatch SHAs stay isolated');
   if (!equal(workflow.permissions, { contents: 'read' }) || workflow.defaults !== undefined ||
       !equal(Object.keys(workflow.env ?? {}), ['DATABASE_URL'])) errors.push('pull-request.yml: read-only authority and no hidden execution defaults');
   for (const job of Object.values(workflow.jobs ?? {})) {
@@ -141,8 +141,11 @@ export function backendUnitShardingViolations(source) {
     checkoutStep(), nodeStep(false),
     { uses: download, with: { pattern: 'backend-unit-report-*', path: 'unit-reports', 'merge-multiple': false } },
     { run: proof },
-  ], errors, ['needs', 'if']);
+  ], errors, ['needs', 'if'], 10, 'ubuntu-slim');
   for (const [id, job] of Object.entries(jobs)) {
+    if (id !== 'backend_unit' && [job?.['runs-on']].flat().includes('ubuntu-slim')) {
+      errors.push(`${id}: only the lightweight backend_unit aggregate may use ubuntu-slim`);
+    }
     if (id === 'backend_unit_shards') continue;
     for (const step of job?.steps ?? []) {
       if (typeof step.run === 'string' && (/(?:^|\s)npm\s+(?:run\s+)?test(?:\s|$)/u.test(step.run) ||
