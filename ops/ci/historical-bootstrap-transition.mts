@@ -423,6 +423,10 @@ async function run(o: Options): Promise<void> {
     if (errors.length) { state.outcome = 'failed'; failure = 'cleanup-incomplete'; }
     if (Date.now() >= deadline) { state.outcome = 'failed'; failure = 'deadline'; }
     await save();
+    if (Date.now() >= deadline) {
+      state.outcome = 'failed'; state.failure = 'deadline'; failure = 'deadline';
+      await save();
+    }
   }
   need(failure === null && state.cleanup_verified === true, failure ?? 'incomplete');
   process.stdout.write(canonical({ proof: path.join(root, 'proof.json'), scope: 'historical-api-schema-backup-restore-TEST', cleanup_verified: true }) + '\n');
