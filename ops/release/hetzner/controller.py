@@ -76,6 +76,9 @@ class Controller:
         for database in (admission['database'], observation):
             policies.historical_database(database, admission['migrations'],
                                          self.c['backup_identity']['system_identifier'])
+        require(all(observation[k] == admission['database'][k]
+                    for k in ('database', 'observer_role', 'port')),
+                'admission-database-identity')
 
     def preflight(self):
         before, target = self.host.snapshot()
@@ -269,7 +272,9 @@ class Controller:
                 self.invariant(admission)
                 require(self.release_evidence(admission, admission['previous_sha']) == admission['compatibility'], 'compatibility-changed')
                 tx['backup'] = self.backup(admission)
-                tx['database'] = self.database(admission)
+                database = self.database(admission)
+                self.retained_database(admission, database)
+                tx['database'] = database
                 # Persist the fresh proof before immutable receipt publication can crash.
                 atomic(self.path('transactions', key), tx)
                 if self.ready(admission['image_id'], admission['sha']):
@@ -285,6 +290,7 @@ class Controller:
         require(self.release_evidence(admission, admission['previous_sha']) == admission['compatibility'], 'compatibility-changed')
         backup = self.backup(admission)
         database = self.database(admission)
+        self.retained_database(admission, database)
         _, previous = self.invariant(admission)
         require(previous['image'] == admission['previous_image_id'], 'previous-drift')
         archive = self.inbox / (key + '.tar')

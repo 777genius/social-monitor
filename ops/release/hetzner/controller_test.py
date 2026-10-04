@@ -155,6 +155,8 @@ class ReleaseTests(unittest.TestCase):
                   ('database', 'observer_role', 'port', 'system_identifier')]
         cases += [(k, 'database-evidence') for k in
                   ('server_major', 'read_only_role', 'transaction_read_only')]
+        cases += [('identity_' + k, 'admission-database-identity') for k in
+                  ('database', 'observer_role', 'port')]
         for outcome, originals, published, image in (
                 ('activated', activated, receipt_path, activated[1]['image_id']),
                 ('rolled-back', rolled_back, rolled_back_path, PREVIOUS)):
@@ -176,10 +178,13 @@ class ReleaseTests(unittest.TestCase):
                             db['applied_migrations'][-1]['checksum'] = '0' * 64
                         elif fault == 'cluster':
                             db['system_identifier'] = db['history']['system_identifier'] = '2222222222222222222'
+                        elif fault.startswith('identity_'):
+                            field = fault.removeprefix('identity_')
+                            db[field] = db['history'][field] = '5433' if field == 'port' else 'other'
                         else:
                             db[fault] = {'server_major': 17, 'read_only_role': False,
                                 'transaction_read_only': False, 'port': '5433'}.get(fault, 'other')
-                        if fault in ('pending', 'inventory', 'cluster'):
+                        if fault in ('pending', 'inventory', 'cluster') or fault.startswith('identity_'):
                             proof = db['history']
                             proof['sha256'] = digest({k: v for k, v in proof.items() if k != 'sha256'})
                             if fault == 'pending':
@@ -262,6 +267,68 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(receipt['outcome'], 'rolled-back')
         self.assertEqual(read_json(self.root / 'fake.json')['target']['image'], PREVIOUS)
         self.assertFalse((self.state / 'latch.json').exists())
+
+    # Red: same-cluster fresh identity drift reaches import/up and new journal persistence.
+    def test_initial_activation_rejects_database_identity_drift_before_import(self):
+        self.admitted()
+        path = self.state / 'admissions' / (KEY + '.json')
+        original = path.read_bytes()
+        for field, value in (('database', 'other_db'), ('observer_role', 'other_observer'),
+                             ('port', '5433')):
+            with self.subTest(field=field):
+                mutate(self.root, database_context={field: value})
+                self.denied(f'activate {SHA} {RUN}', 'admission-database-identity')
+                self.assertEqual(path.read_bytes(), original)
+                self.assertEqual(list((self.state / 'transactions').iterdir()), [])
+                self.assertEqual(list((self.state / 'receipts').iterdir()), [])
+                self.assertFalse((self.state / 'retention.json').exists())
+                self.assertFalse(any('load' in c or 'up' in c for c in self.commands()))
+                self.assertEqual(read_json(self.root / 'fake.json')['target']['image'], PREVIOUS)
+
+    # Red: recovery journals fresh identity drift, contaminating the rollback proof
+    # and falsely latching after the original image is safely restored.
+    def test_interrupted_activation_identity_drift_rolls_back_with_original_proof(self):
+        for field, value in (('database', 'other_db'), ('observer_role', 'other_observer'),
+                             ('port', '5433')):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                setup(root)
+                result, image = receive(root)
+                self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
+                result = run(root, f'admit {SHA} {RUN}')
+                self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
+                mutate(root, crash_up=True)
+                result = run(root, f'activate {SHA} {RUN}')
+                self.assertEqual(result.returncode, -9, (result.stdout, result.stderr))
+                self.assertEqual(read_json(root / 'fake.json')['target']['image'], image)
+                state = root / 'state'
+                path = state / 'transactions' / (KEY + '.json')
+                original = read_json(path)
+                admission_path = state / 'admissions' / (KEY + '.json')
+                admitted = admission_path.read_bytes()
+                mutate(root, database_context={field: value})
+                result = run(root, f'activate {SHA} {RUN}')
+                self.assertEqual(result.returncode, 1, (result.stdout, result.stderr))
+                self.assertEqual(json.loads(result.stdout)['denied'], 'rolled-back')
+                tx = read_json(path)
+                self.assertEqual(tx['database'], original['database'])
+                self.assertEqual(tx['admission'], original['admission'])
+                self.assertEqual(admission_path.read_bytes(), admitted)
+                receipt = read_json(state / 'receipts' / (KEY + '.json'))
+                self.assertEqual(receipt['outcome'], 'rolled-back')
+                self.assertEqual(receipt['database'], original['database'])
+                self.assertEqual(receipt['database_hash'], digest(original['database']))
+                self.assertEqual(tx['outcome'], 'rolled-back')
+                self.assertEqual(read_json(root / 'fake.json')['target']['image'], PREVIOUS)
+                self.assertFalse((state / 'latch.json').exists())
+                published = state / 'receipts' / (KEY + '.json')
+                published_bytes = published.read_bytes()
+                result = run(root, f'rollback {SHA} {RUN}')
+                self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
+                self.assertEqual(json.loads(result.stdout), receipt)
+                self.assertEqual(published.read_bytes(), published_bytes)
+                commands = [json.loads(line) for line in (root / 'commands.jsonl').read_text().splitlines()]
+                self.assertEqual(len([c for c in commands if 'up' in c]), 2)
 
     # Regression: a forced command accepts shell punctuation, extra arguments or unknown services.
     def test_grammar_fuzz(self):
