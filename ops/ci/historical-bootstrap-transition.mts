@@ -340,7 +340,7 @@ async function run(o: Options): Promise<void> {
     await start(pg); await start(redis);
     let pgReady = false;
     for (let i = 0; i < 60; i++) {
-      if ((await exec(pg, ['pg_isready', '-U', 'postgres', '-d', 'e2e'], '', true)).code === 0) { pgReady = true; break; } await delay(1000);
+      if ((await exec(pg, ['pg_isready', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', 'e2e'], '', true)).code === 0) { pgReady = true; break; } await delay(1000);
     }
     need(pgReady && /^18[0-9]{4}$/.test(await sql('SHOW server_version_num;')), 'postgres18-required');
     await sql(p.roles_sql);

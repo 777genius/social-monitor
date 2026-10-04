@@ -77,8 +77,8 @@ Cases cover old API/102; verified `pg_dump -Fc`; real duplicate-function failure
 after preceding grants with ownership/ACL/function fingerprints unchanged; TEST
 Prisma rollback resolution retaining its failed attempt; one successful missing
 migration; all103 checksums and four finite function owners/search paths/ACLs;
-unchanged owner memberships; old and candidate pool readiness on103; image rollback
-with103 retained; and a separate fenced restore recovering102/catalog/old readiness.
+unchanged owner memberships; old and candidate pool readiness on 103; image rollback
+with 103 retained; and a separate fenced restore recovering 102/catalog/old readiness.
 No finite tenant is seeded and no reserve/publish function is invoked.
 
 `proof.json` records immutable bindings, daemon/PG IDs, exact owned resource IDs,
