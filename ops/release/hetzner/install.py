@@ -35,7 +35,7 @@ BASE_FILES = ('controller.py', 'contract.py', 'archive.py', 'bounds.py', 'eviden
 # Until the operator lane supplies this closure in the approved SHA, install denies.
 OPERATOR_FILES = ('operator-adapter', 'operator_adapter.py', 'operator_config.py',
                   'operator_github.py', 'operator_backup.py', 'operator_database.py',
-                  'operator_probe.py')
+                  'operator_probe.py', 'observer_token.py')
 WHEEL = 'pyyaml-6.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl'
 WHEEL_HASH = 'ba1cc08a7ccde2d2ec775841541641e4548226580ab850948cbfda66a1befcdc'
 SAFE_ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C',

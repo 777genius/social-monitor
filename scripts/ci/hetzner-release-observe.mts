@@ -12,6 +12,8 @@ import type { Authority, Get, Trigger } from './hetzner-release-authority.mjs';
 // CommonJS root compiler as well as the standalone NodeNext compiler to check this.
 const A: typeof import('./hetzner-release-authority.mjs') =
   createRequire(resolve('scripts/ci/hetzner-release-observe.mts'))('./hetzner-release-authority.mts');
+const T: typeof import('./hetzner-observer-token.mts') =
+  createRequire(resolve('scripts/ci/hetzner-release-observe.mts'))('./hetzner-observer-token.mts');
 const R: typeof import('./candidate-runtime-contract.mts') =
   createRequire(resolve('scripts/ci/hetzner-release-observe.mts'))('./candidate-runtime-contract.mts');
 const MACHINE = 'b28fc7b17042414386eb9b114046e50c';
@@ -340,6 +342,7 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
     }
     A.requireValue(publicDirectory, 'receipt-directory');
     const config = await provisionRunner(scratch, env), transport = sshTransport(config);
+    await T.configureObserverToken(transport, Buffer.from(env.GH_TOKEN ?? '', 'utf8'));
     const binding = { sha: authority.sha, ci_run_id: authority.run, artifact_id: authority.artifact,
       manifest_sha256: data.manifestHash, archive_sha256: data.value.archive_sha256, image_id: data.value.image_id };
     if (action === 'preflight') {

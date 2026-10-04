@@ -16,7 +16,7 @@ DIGEST = r'sha256:[0-9a-f]{64}'
 RUN = r'[1-9][0-9]{0,14}'
 KEY = rf'{SHA}-[1-9][0-9]{{0,14}}'
 GRAMMAR = {
-    'status': [], 'preflight': [],
+    'status': [], 'preflight': [], 'observer-token': [],
     'receive': [SHA, RUN, DIGEST, DIGEST, r'[1-9][0-9]{0,11}'],
     'admit': [SHA, RUN], 'activate': [SHA, RUN], 'verify': [SHA, RUN],
     'rollback': [SHA, RUN], 'receipt': [KEY + r'(?:-rollback)?'],

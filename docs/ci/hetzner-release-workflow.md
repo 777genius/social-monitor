@@ -44,6 +44,12 @@ excluded. The tar stays opaque data. Manifest, qualified phase and sidecar
 bindings must agree. Private scratch/config/key files are removed; only finite
 receipt/phase artifacts remain, retained for 90 days.
 
+Before host preflight or activation, the runner sends its existing read-only
+job `GH_TOKEN` over pinned SSH stdin using the fixed `observer-token` verb.
+The host rotates only its root-private observer token under the controller
+lock; no separate human token is required. Host release authority checks and
+the disabled default mode remain unchanged. Tokens never enter receipt artifacts.
+
 Activation is sent once. An uncertain response triggers read-only status,
 preflight and exact receipt reconciliation through the unchanged client.
 Unproven reconciliation fails and requires operator review; there is no write retry.

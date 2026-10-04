@@ -1,4 +1,5 @@
 import type { Readable } from 'node:stream';
+import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export interface Manifest {
   readonly sha: string; readonly ci_run_id: string;
@@ -17,7 +18,9 @@ export class ClientError extends Error { readonly code: string; constructor(code
 export function validateManifest(value: unknown, sha: string, run: string): Manifest;
 export function runnerConfig(path: string): Promise<RunnerConfig>;
 export function command(verb: string, args?: readonly string[]): string;
-export function sshTransport(config: RunnerConfig): Transport;
+export function sshTransport(config: RunnerConfig, spawnProcess?: (
+  command: string, args: readonly string[], options: SpawnOptionsWithoutStdio
+) => ChildProcessWithoutNullStreams): Transport;
 export function receipt(value: unknown, manifest: Manifest, admission: unknown): Record<string, Json>;
 export function deliver(options: {
   manifest: string; archive: string; sha: string; run: string; phases: string;

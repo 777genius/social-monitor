@@ -44,11 +44,12 @@ executor must discard caller environment (including shell/loader variables)
 before Bash, preserve only `SSH_ORIGINAL_COMMAND`, and invoke the gate. Use a
 separate pinned host key and `StrictHostKeyChecking=yes`; no generic shell sudo.
 
-## Eight verbs and archive contract
+## Nine verbs and archive contract
 
 ```
 status
 preflight
+observer-token
 receive <40hex-sha> <ci-run-id> sha256:<archive-64hex> sha256:<docker-id-64hex> <bytes>
 admit <sha> <ci-run-id>
 activate <sha> <ci-run-id>
@@ -56,6 +57,18 @@ verify <sha> <ci-run-id>
 rollback <sha> <ci-run-id>
 receipt <sha>-<ci-run-id>[-rollback]
 ```
+
+`observer-token` accepts only stdin: 20..4096 ASCII alphanumeric/underscore
+bytes, with EOF within one five-second monotonic deadline. Under the existing
+nonwaiting controller lock it validates the trusted observer installation and
+non-token inputs, atomically rotates only
+`/etc/social-monitor/release/github-readonly.token` as root-owned 0600, fsyncs
+the file and directory, then validates the complete observer configuration.
+It returns only `{"observer_token":"configured"}` or a finite denial. Ordinary
+observations still require the token; this verb grants no image/release authority.
+Actions sends its existing job token (`actions:read`, `contents:read`) through
+the same pinned SSH identity before either host phase. Later jobs rotate it;
+no human token or refresh daemon is needed. Release mode remains opt-in.
 
 Receive takes an exact binary byte count and EOF, with a single 120-second
 monotonic deadline for both. It takes a nonwaiting host flock, checks disk space,

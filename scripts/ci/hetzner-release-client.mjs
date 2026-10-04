@@ -96,7 +96,7 @@ export async function runnerConfig(path) {
 }
 export function command(verb, args = []) {
   const patterns = {
-    status: [], preflight: [], receive: [SHA, RUN, DIGEST, DIGEST, /^[1-9][0-9]{0,11}$/u],
+    status: [], preflight: [], 'observer-token': [], receive: [SHA, RUN, DIGEST, DIGEST, /^[1-9][0-9]{0,11}$/u],
     admit: [SHA, RUN], activate: [SHA, RUN], verify: [SHA, RUN], rollback: [SHA, RUN],
     receipt: [/^[0-9a-f]{40}-[1-9][0-9]{0,14}(?:-rollback)?$/u],
   };
@@ -122,7 +122,7 @@ export function sshTransport(config, spawnProcess = spawn) {
       { shell: false, env: ENV, stdio: ['pipe', 'pipe', 'pipe'] });
     let size = 0;
     const chunks = [];
-    const timer = setTimeout(() => child.kill('SIGKILL'), 600_000);
+    const timer = setTimeout(() => child.kill('SIGKILL'), wire === 'observer-token' ? 15_000 : 600_000);
     const closed = new Promise((accept, reject) => {
       child.once('error', () => reject(new ClientError('transport-uncertain')));
       child.once('close', (code) => accept(code));

@@ -74,7 +74,7 @@ export function hetznerReleaseCiViolations(source, scripts) {
   const fail = ["Static architecture and quality must run the exact unconditional Hetzner strict typecheck and native tests once after Node 22 and npm ci"];
   const expected = {
     "check:hetzner-release-typecheck": "tsc -p scripts/ci/tsconfig.hetzner-release.json",
-    "check:hetzner-release-tests": "node --experimental-strip-types --test scripts/ci/hetzner-release-authority.test.mts scripts/ci/hetzner-release-observe.test.mts scripts/ci/review-ci/release-workflow-contract.test.mts scripts/ci/review-ci/candidate-workflow-contract.test.mts scripts/ci/candidate-runtime.test.mts",
+    "check:hetzner-release-tests": "node --experimental-strip-types --test scripts/ci/hetzner-observer-token.test.mts scripts/ci/hetzner-release-authority.test.mts scripts/ci/hetzner-release-observe.test.mts scripts/ci/review-ci/release-workflow-contract.test.mts scripts/ci/review-ci/candidate-workflow-contract.test.mts scripts/ci/candidate-runtime.test.mts",
     "check:hetzner-release-contract": "node --experimental-strip-types scripts/ci/check-hetzner-release-workflow.mts",
   };
   if (Object.entries(expected).some(([key, value]) => scripts?.[key] !== value)) return fail;

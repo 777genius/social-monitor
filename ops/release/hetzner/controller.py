@@ -342,6 +342,9 @@ class Controller:
         verb, args = parse(command)
         self.fence()
         with Lock(self.state / 'controller.lock'):
+            if verb == 'observer-token':
+                from observer_token import configure
+                return configure(stream)
             if verb == 'status':
                 return {'latch': (self.state / 'latch.json').exists(), 'environment': 'production-hetzner'}
             if verb == 'preflight':

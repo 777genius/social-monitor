@@ -157,7 +157,7 @@ class Configuration:
         self.inputs[path], self.metadata[path] = value, before
         return value
 
-    def validate(self):
+    def validate_inputs(self):
         for path in EXECUTABLES.values():
             trusted(path)
             require(os.access(path, os.X_OK), 'operator-executable')
@@ -170,10 +170,17 @@ class Configuration:
                     'connect_timeout': '5'}
         require(service[self.db['service']] == expected, 'operator-service-binding')
         private_bytes(PASS, secret=True)  # libpq alone interprets the separately provisioned password.
+        for path in (SERVICE, PASS):
+            self.pin(path)
+        self.recheck()
+
+    def validate(self):
+        self.validate_inputs()
+        info = trusted(TOKEN).stat()
+        require(stat.S_IMODE(info.st_mode) == 0o600 and info.st_nlink == 1, 'operator-token')
         token = private_bytes(TOKEN, secret=True).strip()
         require(20 <= len(token) <= 4096 and re.fullmatch(rb'[A-Za-z0-9_]+', token), 'operator-token')
-        for path in (SERVICE, PASS, TOKEN):
-            self.pin(path)
+        self.pin(TOKEN)
         self.recheck()
 
     def recheck_inputs(self):
@@ -188,7 +195,7 @@ class Configuration:
         empty_directory(INCLUDE_DIR)
 
 
-def load():
+def load_installation():
     from contract import CONFIG as CORE_CONFIG, load_config
     core_before = private_file_digest(CORE_CONFIG)
     core = load_config()
@@ -204,5 +211,10 @@ def load():
                  '/opt/social-monitor-release-python/pyvenv.cfg',
                  *(str(INSTALL / (name + '.py')) for name in MODULES)):
         config.pin(path)
+    return config
+
+
+def load():
+    config = load_installation()
     config.validate()
     return config
