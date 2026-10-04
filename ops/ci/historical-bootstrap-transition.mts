@@ -304,8 +304,11 @@ async function run(o: Options): Promise<void> {
     };
     const extracted = await extract('extract-candidate', binding.image_id, m.migrations);
     const historicalExtracted = await extract('extract-historical', HISTORICAL.image_id, historicalRows);
-    need((await fileHash(path.join(extracted, 'migration_lock.toml'))).sha256
-      === (await fileHash(path.join(historicalExtracted, 'migration_lock.toml'))).sha256, 'historical-migration-lock');
+    const lockFile = 'migration_lock.toml';
+    const hasLock = (await readdir(extracted)).includes(lockFile);
+    need(hasLock === (await readdir(historicalExtracted)).includes(lockFile), 'historical-migration-lock-presence');
+    if (hasLock) need((await fileHash(path.join(extracted, lockFile))).sha256
+      === (await fileHash(path.join(historicalExtracted, lockFile))).sha256, 'historical-migration-lock');
     const initial = path.join(root, 'initial');
     const p = exact(parseJson(Buffer.from((await execute('python3', ['-I', '-B', recipe, '--manifest',
       path.join(o.candidate, 'manifest.json'), '--source', o.source, '--extracted', extracted, '--initial', initial])).stdout)),
