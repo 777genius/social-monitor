@@ -6,6 +6,11 @@ import { releaseGateCiViolations } from '../check-review-ci.mjs';
 
 const source = readFileSync(new URL('../../.github/workflows/pull-request.yml', import.meta.url), 'utf8');
 const gate = (w) => w.jobs.static_quality.steps.find((step) => step.run?.includes('ops/release/hetzner/check.sh'));
+const nativeCommands = [
+  'sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-e2e-driver_test.py',
+  'sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-e2e-fixture/operator_test.py',
+  'sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-database-plan_test.py',
+];
 const replace = (before, after) => (w) => {
   assert.ok(gate(w).run.includes(before), `absent mutation target: ${before}`);
   gate(w).run = gate(w).run.replace(before, after);
@@ -76,6 +81,30 @@ for (const [label, mutate] of [
   ["preserved source ownership", replace("sudo cp -R ops/release/hetzner", "sudo cp -a ops/release/hetzner")],
   ["missing copied trusted Python", replace("sudo cp -R \"$RELEASE_GATE_VENV\" /root/social-monitor-release-contract-tests/python\n", "")],
   ["runner-owned controller execution", replace("bash /root/social-monitor-release-contract-tests/ops/release/hetzner/check.sh", "bash ops/release/hetzner/check.sh")],
+  ['missing native import geometry', replace('sudo cp -R ops/ci /root/social-monitor-release-contract-tests/ops/\n', '')],
+  ['runner-owned native staging', replace('sudo cp -R ops/ci ', 'cp -R ops/ci ')],
+  ['wrong native staging geometry', replace('sudo cp -R ops/ci /root/social-monitor-release-contract-tests/ops/', 'sudo cp -R ops/ci /root/social-monitor-release-contract-tests/')],
+  ...nativeCommands.flatMap((command) => [
+    [`missing ${command}`, replace(`${command}\n`, '')],
+    [`duplicate ${command}`, (w) => gate(w).run += `${command}\n`],
+    [`separate duplicate ${command}`, (w) => w.jobs.static_quality.steps.push({ run: command })],
+    [`optional duplicate ${command}`, (w) => w.jobs.optional = { steps: [{ if: false, run: command }] }],
+    [`system Python for ${command}`, replace(command, command.replace('/root/social-monitor-release-contract-tests/python/bin/python3', '/usr/bin/python3.12'))],
+    [`missing isolation for ${command}`, replace(command, command.replace(' -I -B ', ' -B '))],
+    [`bytecode writes for ${command}`, replace(command, command.replace(' -I -B ', ' -I '))],
+    [`runner-owned source for ${command}`, replace(command, command.replace('/root/social-monitor-release-contract-tests/ops/ci/', 'ops/ci/'))],
+    [`before core gate ${command}`, (w) => {
+      const core = 'sudo env PATH="/root/social-monitor-release-contract-tests/python/bin:$PATH" bash /root/social-monitor-release-contract-tests/ops/release/hetzner/check.sh';
+      replace(`${command}\n`, '')(w);
+      replace(core, `${command}\n${core}`)(w);
+    }],
+  ]),
+  ["missing pinned fixture ops/deploy/reader-summary-publication-pre-migration.sql", replace("sudo cp ops/deploy/reader-summary-publication-pre-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/\n", '')],
+  ["missing pinned fixture ops/deploy/reader-summary-publication-post-migration.sql", replace("sudo cp ops/deploy/reader-summary-publication-post-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/\n", '')],
+  ["missing pinned fixture scripts/sql/reader-summary-publication-tenant-ownership.sql", replace("sudo cp scripts/sql/reader-summary-publication-tenant-ownership.sql /root/social-monitor-release-contract-tests/scripts/sql/\n", '')],
+  ['duplicate native source copy', (w) => w.jobs.static_quality.steps.push({
+    run: 'sudo cp -R ops/ci /root/social-monitor-release-contract-tests/ops/',
+  })],
   ['shared-host root execution', replace('test "${RUNNER_ENVIRONMENT:-}" = github-hosted\n', '')],
   ['masked contract failure', (w) => gate(w).run += ' || true\n'],
   ['early successful exit', (w) => gate(w).run = 'exit 0\n' + gate(w).run],
