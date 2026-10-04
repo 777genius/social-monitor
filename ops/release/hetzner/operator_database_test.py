@@ -1,6 +1,9 @@
 """All-history and separately bound PG18 observer contract fixtures."""
 import copy
 import unittest
+import time
+from test_support import history_context
+from prisma_history import utc
 from contract import Denied, canonical
 import evidence
 from operator_adapter import dispatch
@@ -9,23 +12,41 @@ import operator_database as database
 from operator_adapter_test import BINDING, FixtureConfig, FixtureRunner
 from operator_backup_test import identity_row
 
-ROW = {'name': '20261002000000_fixture', 'checksum': 'a' * 64,
+ROW = {'id': '00000000-0000-0000-0000-000000000001', 'applied_steps_count': 0, 'name': '20261002000000_fixture', 'checksum': 'a' * 64,
        'started_at': '2026-10-02 00:00:00+00', 'finished_at': '2026-10-02 00:00:01+00',
        'rolled_back_at': None}
 
 
 class DatabaseTests(unittest.TestCase):
+    # Red: the old adapter marks a rolled predecessor failed and its success duplicate.
+    def test_resolved_retry_is_admitted_without_losing_attempts(self):
+        value = identity_row()
+        value['migrations'] = [
+            {**ROW, 'id': '00000000-0000-0000-0000-000000000001', 'applied_steps_count': 0,
+             'finished_at': None, 'rolled_back_at': '2026-10-02 00:00:01+00'},
+            {**ROW, 'id': '00000000-0000-0000-0000-000000000002', 'applied_steps_count': 0,
+             'started_at': '2026-10-02 00:00:02+00', 'finished_at': '2026-10-02 00:00:03+00'}]
+        result = {**database.database(FixtureConfig(), self.observer(value)), 'observed_at': int(time.time())}
+        self.assertEqual(result['failed_migrations'], [])
+        evidence.database(result, [{'name': ROW['name'], 'checksum': ROW['checksum']}])
+        self.assertEqual(len(result['history']['rows']), 2)
+        self.assertEqual(result['history']['rows'][0]['rolled_back_at'], utc(value['migrations'][0]['rolled_back_at']))
+        self.assertEqual(result['history']['rows'][1]['id'], value['migrations'][1]['id'])
+
     def observer(self, value, config=None):
         def provider(argv, data, env):
             self.assertEqual(argv[0], '/usr/lib/postgresql/18/bin/psql')
             self.assertIn('--dbname=service=observer', argv)
             self.assertIn('--no-password', argv)
             self.assertNotIn('PGPASSWORD', env)
-            self.assertIn(b'BEGIN TRANSACTION READ ONLY', data)
+            self.assertIn(b'BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY', data)
             self.assertIn(b'ROLLBACK', data)
             result = copy.deepcopy(value)
             if result['migrations'] is not None and result['history_complete'] is None:
                 result['history_complete'] = True
+            if result['migrations'] is not None and result['history_context'] is None:
+                result['history_context'] = history_context(result['migrations'],
+                    result['system_identifier'], result['database'], result['role'], result['port'])
             return result
         return FixtureRunner(provider)
 
@@ -43,18 +64,22 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(result['method'], 'pg_control_system')
 
     def test_failed_pending_rolled_and_duplicate_history_are_not_hidden(self):
-        for changes in ({'finished_at': None}, {'rolled_back_at': '2026-10-02 00:00:02+00'},
-                        {'started_at': None}):
+        for changes in ({'finished_at': None},
+                        {'finished_at': None, 'rolled_back_at': '2026-10-02 00:00:02+00'}):
             value = identity_row()
-            value['migrations'] = [copy.deepcopy(ROW), {**ROW, 'name': '20261002000001_failed', **changes}]
-            result = database.database(FixtureConfig(), self.observer(value))
+            value['migrations'] = [copy.deepcopy(ROW),
+                {**ROW, 'id': '00000000-0000-0000-0000-000000000002',
+                 'name': '20261002000001_failed', **changes}]
+            result = {**database.database(FixtureConfig(), self.observer(value)), 'observed_at': int(time.time())}
             self.assertEqual(len(result['failed_migrations']), 1)
             self.assertEqual(len(result['applied_migrations']), 1)
             with self.assertRaises(Denied):
                 evidence.database(result, [{'name': ROW['name'], 'checksum': ROW['checksum']}])
+        for changes in ({'started_at': None}, {'rolled_back_at': '2026-10-02 00:00:02+00'}):
+            value = identity_row(); value['migrations'] = [{**ROW, **changes}]
+            with self.assertRaises(Denied): database.database(FixtureConfig(), self.observer(value))
         value = identity_row(); value['migrations'] = [copy.deepcopy(ROW), copy.deepcopy(ROW)]
-        result = database.database(FixtureConfig(), self.observer(value))
-        self.assertTrue(result['failed_migrations'])
+        with self.assertRaises(Denied): database.database(FixtureConfig(), self.observer(value))
 
     def test_filtered_history_or_replaced_migration_relation_deny(self):
         value = identity_row()
@@ -76,7 +101,7 @@ class DatabaseTests(unittest.TestCase):
             value = identity_row(); value['migrations'] = [{**ROW, **changes}]
             with self.assertRaises(Denied): database.database(FixtureConfig(), self.observer(value))
         value = identity_row(); value['migrations'] = [copy.deepcopy(ROW)]
-        result = database.database(FixtureConfig(), self.observer(value))
+        result = {**database.database(FixtureConfig(), self.observer(value)), 'observed_at': int(time.time())}
         with self.assertRaises(Denied):
             evidence.database(result, [{'name': ROW['name'], 'checksum': 'b' * 64}])
 

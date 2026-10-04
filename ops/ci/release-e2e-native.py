@@ -122,7 +122,7 @@ class TestConfiguration(Configuration):
                      '/opt/social-monitor-release-e2e/release-e2e-native.py',
                      *(str(CORE / (name + '.py')) for name in
                        ('controller', 'contract', 'host', 'compose_contract', 'evidence', 'archive',
-                        'bounds', 'operator_adapter', 'operator_config', 'operator_database',
+                        'bounds', 'prisma_history', 'operator_adapter', 'operator_config', 'operator_database',
                         'operator_backup', 'operator_probe', 'operator_github'))):
             self.pin(path)
         self.pin(EXECUTABLES['backup'], data['wrapper_sha256'])

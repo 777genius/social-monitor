@@ -113,6 +113,19 @@ def layer(entries):
     return data.getvalue()
 
 
+def history_context(rows, system_identifier='1111111111111111111', database='fixture_db',
+                    observer_role='fixture_observer', port='5432'):
+    """Explicitly synthetic full-visibility metadata for offline boundary fixtures."""
+    from datetime import datetime, timezone
+    return {'version': 1, 'system_identifier': system_identifier, 'database': database,
+            'observer_role': observer_role, 'port': port,
+            'observed_at': datetime.now(timezone.utc).isoformat(timespec='microseconds'),
+            'relation': {'schema': 'public', 'name': '_prisma_migrations', 'oid': 16384, 'kind': 'r'},
+            'snapshot': {'id': '100:100:', 'isolation': 'repeatable read', 'read_only': True},
+            'visibility': {'complete': True, 'select': True, 'rls_enabled': False, 'rls_forced': False},
+            'row_count': len(rows)}
+
+
 def setup(root):
     state = root / 'state'
     for folder in ('inbox', 'admissions', 'receipts', 'transactions', 'overrides', 'imports'):

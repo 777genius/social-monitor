@@ -10,7 +10,7 @@ import sys
 import time
 
 INSTALL = Path('/opt/social-monitor-release')
-MODULES = ('contract', 'evidence', 'operator_adapter', 'operator_config', 'operator_github',
+MODULES = ('contract', 'evidence', 'prisma_history', 'operator_adapter', 'operator_config', 'operator_github',
            'operator_backup', 'operator_database', 'operator_probe')
 
 # Only the fixed installed code directory enters the isolated interpreter path.

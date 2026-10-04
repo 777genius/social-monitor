@@ -716,7 +716,7 @@ class Driver:
             known = self.c['migrations'][0]
             name = unknown if operation == 'refuse-unknown-migration' else known['name']
             checksum = '0' * 64 if operation == 'refuse-unknown-migration' else known['checksum']
-            finish = 'NULL' if operation == 'refuse-pending-migration' else 'now()'
+            finish = 'NULL' if operation in ('refuse-pending-migration', 'refuse-rolled-migration') else 'now()'
             rolled = 'now()' if operation == 'refuse-rolled-migration' else 'NULL'
             try:
                 self.sql('INSERT INTO public."_prisma_migrations" '

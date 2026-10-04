@@ -65,8 +65,9 @@ class Controller:
 
     def database(self, item):
         evidence = self.host.evidence('database', self.binding(item))
-        policies.database(evidence, item['migrations'])
-        return evidence
+        return policies.database(evidence, item['migrations'],
+                                 self.c['backup_identity']['system_identifier'],
+                                 self.c['evidence_max_age_seconds'])
 
     def preflight(self):
         before, target = self.host.snapshot()
@@ -121,7 +122,7 @@ class Controller:
         admission = {**item, 'previous_image_id': previous['image'], 'previous_sha': previous_sha,
                      'snapshot_before': before, 'snapshot_before_hash': digest(before),
                      'compose_hash': self.host.compose_fingerprint(), 'backup': backup, 'compatibility': compatibility,
-                     'migration_status': 'unchanged', 'database_hash': digest(database)}
+                     'migration_status': 'unchanged', 'database': database, 'database_hash': digest(database)}
         path = self.path('admissions', key)
         if path.exists():
             old = read_json(path)
@@ -158,6 +159,9 @@ class Controller:
                    'snapshot_before_hash': admission['snapshot_before_hash'],
                    'snapshot_after_hash': digest(snapshot), 'backup': tx['backup'],
                    'migration_status': admission['migration_status'], 'probes': probes,
+                   'admission_database': admission['database'],
+                   'admission_database_hash': admission['database_hash'],
+                   'database': tx['database'], 'database_hash': digest(tx['database']),
                    'outcome': outcome, 'timings': {'started_at': tx['started_at'],
                                                 'finished_at': int(time.time()),
                                                 'started_at_ns': tx['started_at_ns']}}
@@ -199,6 +203,9 @@ class Controller:
                 and all(receipt.get(k) == admission[k] for k in
                         ('previous_image_id', 'previous_sha', 'image_graph', 'compatibility',
                          'snapshot_before_hash', 'migration_status'))
+                and receipt.get('admission_database') == admission['database']
+                and receipt.get('admission_database_hash') == admission['database_hash']
+                and digest(receipt.get('database')) == receipt.get('database_hash')
                 and receipt.get('scope') == ['api']
                 and receipt.get('snapshot_after_hash') == admission['snapshot_before_hash'], 'receipt-binding')
 
@@ -206,6 +213,7 @@ class Controller:
         admission = tx['admission']
         receipt = read_json(self.path('receipts', tx.get('receipt_key', key)))
         self.receipt_binding(receipt, admission)
+        require(receipt.get('database') == tx.get('database'), 'receipt-database-binding')
         self.invariant(admission)
         require(receipt['outcome'] in ('activated', 'rolled-back'), 'receipt-outcome')
         activated = receipt['outcome'] == 'activated'
@@ -237,6 +245,14 @@ class Controller:
             return receipt
         admission = read_json(self.path('admissions', key))
         require(admission['sha'] + '-' + admission['ci_run_id'] == key, 'admission-binding')
+        require(isinstance(admission.get('database'), dict)
+                and digest(admission['database']) == admission.get('database_hash'), 'admission-database-binding')
+        from prisma_history import summarize
+        applied, failed = summarize(admission['database'].get('history'))
+        require(not failed and applied == admission['database'].get('applied_migrations')
+                and admission['database'].get('failed_migrations') == []
+                and [{'name': r['name'], 'checksum': r['checksum']} for r in applied] == admission['migrations'],
+                'admission-database-binding')
         if tx_path.exists():
             tx = read_json(tx_path)
             require(tx['admission'] == admission, 'transaction-binding')
@@ -248,7 +264,9 @@ class Controller:
                 self.invariant(admission)
                 require(self.release_evidence(admission, admission['previous_sha']) == admission['compatibility'], 'compatibility-changed')
                 tx['backup'] = self.backup(admission)
-                self.database(admission)
+                tx['database'] = self.database(admission)
+                # Persist the fresh proof before immutable receipt publication can crash.
+                atomic(self.path('transactions', key), tx)
                 if self.ready(admission['image_id'], admission['sha']):
                     result = self.finish(key, tx, 'activated', {'target': True})
                     self.retention()
@@ -261,7 +279,7 @@ class Controller:
         require(self.previous_revision(admission['previous_image_id']) == admission['previous_sha'], 'previous-revision')
         require(self.release_evidence(admission, admission['previous_sha']) == admission['compatibility'], 'compatibility-changed')
         backup = self.backup(admission)
-        self.database(admission)
+        database = self.database(admission)
         _, previous = self.invariant(admission)
         require(previous['image'] == admission['previous_image_id'], 'previous-drift')
         archive = self.inbox / (key + '.tar')
@@ -274,7 +292,7 @@ class Controller:
         owned = list(dict.fromkeys(ledger + [admission['previous_image_id'], admission['image_id']]))
         atomic(ledger_path, owned)
         self.host.retain([admission['previous_image_id'], admission['image_id']])
-        tx = {'admission': admission, 'backup': backup, 'phase': 'activating', 'started_at': int(time.time()), 'started_at_ns': time.time_ns()}
+        tx = {'admission': admission, 'backup': backup, 'database': database, 'phase': 'activating', 'started_at': int(time.time()), 'started_at_ns': time.time_ns()}
         atomic(tx_path, tx, immutable=True)
         try:
             self.host.up(admission['image_id'], self.path('overrides', key), admission['compose_hash'])

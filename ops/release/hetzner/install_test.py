@@ -142,6 +142,29 @@ class BootstrapInputs(unittest.TestCase):
         with self.assertRaisesRegex(install.Denied, 'source-head'):
             install.git_check(self.root, 'b' * 40, ['controller.py'], git)
 
+    # Red: omitting the shared policy permits an installation without the mandatory verifier.
+    def test_history_policy_inventory_and_actual_installed_bytes_are_bound(self):
+        self.assertIn('prisma_history.py', install.BASE_FILES + install.OPERATOR_FILES)
+        area = self.root / 'ops/release/hetzner'; area.mkdir(parents=True)
+        source = area / 'prisma_history.py'
+        source.write_bytes(Path(install.__file__).with_name('prisma_history.py').read_bytes())
+        data = source.read_bytes()
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        def git(argv):
+            if 'rev-parse' in argv: return ('a'*40 + '\n').encode()
+            if 'ls-files' in argv:
+                return ('100644 ' + blob + ' 0\tops/release/hetzner/prisma_history.py\0').encode()
+            if 'ls-tree' in argv:
+                return ('100644 blob ' + blob + '\tops/release/hetzner/prisma_history.py\0').encode()
+            raise AssertionError('unexpected Git read')
+        assets = install.git_check(self.root, 'a'*40, ['prisma_history.py'], git)
+        destination = self.root / 'installed-history.py'
+        install.write_new(destination, assets['prisma_history.py'], 0o644)
+        self.assertEqual(destination.read_bytes(), data)
+        source.write_bytes(data + b'\n# altered\n')
+        with self.assertRaisesRegex(install.Denied, 'source-dirty'):
+            install.git_check(self.root, 'a'*40, ['prisma_history.py'], git)
+
     def test_new_asset_mode_ignores_umask_and_preserves_existing_assets(self):
         import os
         import stat

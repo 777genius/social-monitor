@@ -6,7 +6,7 @@ import random
 import tempfile
 import unittest
 from archive import inspect_archive
-from contract import Denied, atomic, parse, read_json
+from contract import Denied, atomic, digest, parse, read_json
 from test_support import (SHA, RUN, PREVIOUS, MIGRATION, archive, mutate, receive,
                           run, setup)
 
@@ -38,6 +38,41 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
         self.ok('admit ' + SHA + ' ' + RUN)
         return image
+
+    # Red: admission keeps only a hash, so no immutable record can show the retry rows.
+    def test_resolved_history_is_immutable_in_admission_activation_and_rollback_receipts(self):
+        mutate(self.root, resolved_retry=True)
+        self.admitted()
+        path = self.state / 'admissions' / (KEY + '.json')
+        original = path.read_bytes()
+        admission = read_json(path)
+        self.assertEqual(len(admission['database']['history']['rows']), 2)
+        self.assertEqual(admission['database_hash'], digest(admission['database']))
+        receipt = self.ok(f'activate {SHA} {RUN}')
+        self.assertEqual(receipt['admission_database'], admission['database'])
+        self.assertEqual(receipt['admission_database_hash'], admission['database_hash'])
+        self.assertEqual(len(receipt['database']['history']['rows']), 2)
+        self.assertEqual(receipt['database_hash'], digest(receipt['database']))
+        activated = (self.state / 'receipts' / (KEY + '.json')).read_bytes()
+        rollback = self.ok(f'rollback {SHA} {RUN}')
+        self.assertEqual(rollback['database'], receipt['database'])
+        self.assertEqual((self.state / 'receipts' / (KEY + '.json')).read_bytes(), activated)
+        self.assertEqual(path.read_bytes(), original)
+
+    # Red: recovery publishes fresh history before journaling it; a receipt crash
+    # then leaves the immutable receipt bound to a different database observation.
+    def test_recovery_history_survives_crash_after_receipt_publication(self):
+        mutate(self.root, resolved_retry=True)
+        self.admitted()
+        mutate(self.root, crash_up=True)
+        self.assertEqual(run(self.root, f'activate {SHA} {RUN}').returncode, -9)
+        mutate(self.root, crash_receipt=True)
+        self.assertEqual(run(self.root, f'activate {SHA} {RUN}').returncode, -9)
+        path = self.state / 'receipts' / (KEY + '.json')
+        original = path.read_bytes()
+        receipt = self.ok(f'activate {SHA} {RUN}')
+        self.assertEqual(receipt['database'], read_json(self.state / 'transactions' / (KEY + '.json'))['database'])
+        self.assertEqual(path.read_bytes(), original)
 
     def commands(self):
         path = self.root / 'commands.jsonl'

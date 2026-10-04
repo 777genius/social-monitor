@@ -9,6 +9,8 @@ import re
 import stat
 import tempfile
 import unittest
+import time
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 CI = Path(__file__).resolve().parents[1]
@@ -35,8 +37,16 @@ def observed_history(rows):
                 'server_major': 18, 'system_identifier': '1234567',
                 'database': 'e2e', 'role': 'e2e_observer', 'port': '5432',
                 'transaction_read_only': True, 'read_only_role': True,
-                'migrations': rows, 'history_complete': True})
-    return operator_database.database(Configuration(), Runner())
+                'migrations': rows, 'history_complete': True,
+                'history_context': {
+                    'version': 1, 'system_identifier': '1234567', 'database': 'e2e',
+                    'observer_role': 'e2e_observer', 'port': '5432',
+                    'observed_at': datetime.now(timezone.utc).isoformat(timespec='microseconds'),
+                    'relation': {'schema': 'public', 'name': '_prisma_migrations', 'oid': 16384, 'kind': 'r'},
+                    'snapshot': {'id': '100:100:', 'isolation': 'repeatable read', 'read_only': True},
+                    'visibility': {'complete': True, 'select': True, 'rls_enabled': False, 'rls_forced': False},
+                    'row_count': len(rows)}})
+    return {**operator_database.database(Configuration(), Runner()), 'observed_at': int(time.time())}
 
 
 class Daemons:
@@ -177,7 +187,7 @@ class RepairContracts(unittest.TestCase):
     def test_native_history_policy_and_driver_refusals_agree_and_restore_exact_rows(self):
         migration = self.manifest['migrations'][0]
         base = {
-            'id': 'original-row', 'name': migration['name'], 'checksum': migration['checksum'],
+            'id': '00000000-0000-0000-0000-000000000001', 'applied_steps_count': 1, 'name': migration['name'], 'checksum': migration['checksum'],
             'started_at': '2026-10-03 12:00:00+00', 'finished_at': '2026-10-03 12:01:00+00',
             'rolled_back_at': None}
         for operation, expected in (
@@ -197,7 +207,7 @@ class RepairContracts(unittest.TestCase):
                             query.split(' VALUES ', 1)[1])
                         self.assertIsNotNone(values)
                         identifier, checksum, name, finished, rolled = values.groups()
-                        rows.append({'id': identifier, 'name': name, 'checksum': checksum,
+                        rows.append({'id': identifier, 'applied_steps_count': 1, 'name': name, 'checksum': checksum,
                                      'started_at': '2026-10-03 12:00:00+00', 'finished_at':
                                      None if finished == 'NULL' else '2026-10-03 12:01:00+00',
                                      'rolled_back_at': None if rolled == 'NULL' else '2026-10-03 12:02:00+00'})
@@ -210,7 +220,7 @@ class RepairContracts(unittest.TestCase):
                     self.fail('unexpected SQL boundary query')
 
                 def ssh(verb, denied=None):
-                    observed = observed_history([{k: v for k, v in row.items() if k != 'id'} for row in rows])
+                    observed = observed_history(rows)
                     with self.assertRaises(Denied) as caught:
                         evidence.database(observed, self.manifest['migrations'])
                     reason = str(caught.exception)
