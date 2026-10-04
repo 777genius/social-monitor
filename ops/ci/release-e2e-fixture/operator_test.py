@@ -497,6 +497,48 @@ class NetworkFaultContracts(unittest.TestCase):
         self.probe()
         self.assertEqual(len(self.disconnects()), 1)
         self.assertIsNone(self.plan()['previous_id'])
+        completed_plan = self.plan()
+        tx_path = self.state / 'transactions' / (self.key + '.json')
+        terminal = {'admission': self.admission, 'outcome': 'rolled-back'}
+        self.write(tx_path, terminal)
+        self.probe()
+        self.probe()
+        self.assertEqual(self.plan(), completed_plan)
+        self.assertEqual(len(self.disconnects()), 1)
+
+        for outcome in ('activated', 'failed-rollback', None, True, {}, []):
+            with self.subTest(outcome=outcome):
+                self.write(tx_path, {**terminal, 'outcome': outcome})
+                with self.assertRaisesRegex(operator.Refused, '^network-fault-terminal-state$'):
+                    self.probe()
+        self.write(tx_path, {**terminal, 'admission': {**self.admission, 'extra': True}})
+        with self.assertRaisesRegex(operator.Refused, '^network-fault-transaction-binding$'):
+            self.probe()
+        self.write(tx_path, [])
+        with self.assertRaisesRegex(operator.Refused, '^network-fault-object$'):
+            self.probe()
+        self.write(tx_path, terminal)
+
+        previous_row = copy.deepcopy(self.row)
+        for change, reason in (
+                ({'id': '1' * 64}, 'network-fault-live-transaction'),
+                ({'id': '4' * 64, 'image': self.release['image_id']},
+                 'network-fault-container-changed'),
+                ({'image': 'sha256:' + 'f' * 64}, 'network-fault-probe-binding'),
+                ({'id': '4' * 64, 'project': 'foreign'}, 'network-fault-api-ownership'),
+                ({'id': '4' * 64, 'service': 'postgres'}, 'network-fault-api-ownership')):
+            with self.subTest(change=change):
+                self.row = {**previous_row, **change}
+                with self.assertRaisesRegex(operator.Refused, '^' + reason + '$'):
+                    self.probe()
+        self.row = previous_row
+        request = {'container_id': self.row['id'], 'image_id': self.previous,
+                   'sha': self.release['sha']}
+        with self.assertRaisesRegex(operator.Refused, '^network-fault-probe-binding$'):
+            operator.probe_network_fault(request, self.config, self.bridge, object())
+        self.probe()
+        self.assertEqual(self.plan(), completed_plan)
+        self.assertEqual(len(self.disconnects()), 1)
 
     def test_failed_disconnect_does_not_publish_completed_marker(self):
         self.arm(True)

@@ -487,7 +487,10 @@ def probe_network_fault(request, config, bridge, runner):
     if plan[field] is not None:
         need(row['id'] == plan[field], 'network-fault-container-changed')
         return
-    need(tx is not None and 'outcome' not in tx and row['id'] != plan['baseline_id'],
+    need(tx is not None
+         and ('outcome' not in tx or field == 'previous_id'
+              and plan['mode'] == 'candidate' and tx['outcome'] == 'rolled-back')
+         and row['id'] != plan['baseline_id'],
          'network-fault-live-transaction')
     if field == 'previous_id' and plan['mode'] == 'candidate':
         return
