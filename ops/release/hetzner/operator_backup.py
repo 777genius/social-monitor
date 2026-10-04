@@ -99,8 +99,10 @@ def repository_identity(config):
     require(not any(key.startswith('repo') and not key.startswith('repo1-') for key in options),
             'operator-backup-other-repo')
     kind = options.get('repo1-type')
-    require(kind in ('posix', 's3'), 'operator-repository-type')
-    fields = ('path',) if kind == 'posix' else ('path', 's3-endpoint', 's3-bucket', 's3-region')
+    require(kind in ('posix', 's3', 'sftp'), 'operator-repository-type')
+    fields = {'posix': ('path',),
+              's3': ('path', 's3-endpoint', 's3-bucket', 's3-region'),
+              'sftp': ('path', 'sftp-host', 'sftp-host-user', 'sftp-host-port')}[kind]
     observed = {'type': kind}
     for field in fields:
         value = options.get('repo1-' + field)
@@ -108,6 +110,10 @@ def repository_identity(config):
                 and not any(c in value for c in ('\n', '\r', '\0', '$', '?', '#', '@')),
                 'operator-repository-field')
         observed[field] = value
+    if kind == 'sftp':
+        port = observed['sftp-host-port']
+        require(match(r'[1-9][0-9]{0,4}', port) and int(port) <= 65535,
+                'operator-repository-port')
     require(observed['path'].startswith('/') and str(Path(observed['path'])) == observed['path']
             and '..' not in observed['path'].split('/'),
             'operator-repository-path')
