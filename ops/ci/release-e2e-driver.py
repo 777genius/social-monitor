@@ -48,6 +48,13 @@ _files_spec.loader.exec_module(_files)
 LocalFiles = _files.LocalFiles
 
 
+_database_spec = importlib.util.spec_from_file_location(
+    'release_database_plan', Path(__file__).resolve().with_name('release-database-plan.py'))
+_database = importlib.util.module_from_spec(_database_spec)
+_database_spec.loader.exec_module(_database)
+api_environment = _database.api_environment
+
+
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
 
@@ -381,22 +388,15 @@ class Driver:
         names = sorted(p.name for p in Path(self.p['sql_directory']).iterdir() if p.is_dir())
         need(names == [m['name'] for m in self.c['migrations']], 'approved-sql-inventory')
         bootstrap = Path(self.p['bootstrap_directory'])
-        hashes = {
-            'reader-summary-publication-pre-migration.sql':
-                '1d3d70d6587ab6c232a37fb1feaa0de098dee22bf973462b824b350407c428d0',
-            'reader-summary-publication-post-migration.sql':
-                '231876dc900c42981985d47ac073cfce7baa46805d3e5373c9a7863a470e3233',
-            'reader-summary-publication-tenant-ownership.sql':
-                'cd85a07a070102cb31b5b5e3523760111a6e2bc286fa307f43348366947b9d6a'}
+        hashes = _database.bootstrap_hashes()
         repository = Path(__file__).resolve().parents[2]
         for name, checksum in hashes.items():
-            source = repository / ('scripts/sql' if 'tenant-ownership' in name else 'ops/deploy') / name
+            source = repository / _database.bootstrap_relative_path(name)
             need(hash_file(regular(bootstrap / name))[7:] == checksum
                  and hash_file(source)[7:] == checksum, 'canonical-bootstrap-source-mismatch')
         initial = self.runtime / 'initial-migrations'
         initial.mkdir(mode=0o755)
-        first = [m for m in self.c['migrations']
-                 if m['name'] < '20260716170000_reader_summary_fail_closed_publication']
+        first = _database.initial_migrations(self.c['migrations'])
         need(len(first) == 10, 'historical-first10-required')
         extractor = self.project + '-sql-input'
         need(self.producer('container', 'inspect', extractor, allow_failure=True)[0] != 0,
@@ -422,30 +422,14 @@ class Driver:
                 shutil.copyfile(regular(lock), initial / lock.name)
         finally:
             self.remove_producer_container(extractor)
-        self.sql("CREATE ROLE sm_e2e_migrator LOGIN NOSUPERUSER NOCREATEDB CREATEROLE "
-                 "INHERIT NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-e2e-only'; "
-                 "CREATE ROLE e2e_api LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT "
-                 "NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-e2e-only'; "
-                 "CREATE ROLE e2e_system LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT "
-                 "NOREPLICATION NOBYPASSRLS; CREATE ROLE social_monitor_summary_once NOLOGIN "
-                 "NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; "
-                 "CREATE ROLE social_monitor_reader_summary_daily_terminal LOGIN NOSUPERUSER "
-                 "NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; "
-                 "ALTER ROLE social_monitor_reader_summary_daily_terminal SET search_path TO pg_catalog, public; "
-                 "GRANT social_monitor_reader_summary_daily_terminal TO sm_e2e_migrator "
-                 "WITH ADMIN TRUE, INHERIT FALSE, SET FALSE; "
-                 "GRANT e2e_api TO sm_e2e_migrator WITH ADMIN TRUE, INHERIT FALSE, SET TRUE; "
-                 "ALTER DATABASE e2e OWNER TO e2e_api; GRANT CREATE ON DATABASE e2e TO sm_e2e_migrator; "
-                 "GRANT USAGE,CREATE ON SCHEMA public TO sm_e2e_migrator;", 'postgres')
+        self.sql(_database.roles_sql(), 'postgres')
         phases = []
         try:
             for phase in ('first10', 'pre', 'historical-create-window', 'full103', 'post'):
                 if phase in ('first10', 'full103'):
                     self.migrate(initial if phase == 'first10' else None)
                 elif phase == 'historical-create-window':
-                    self.sql('SET ROLE social_monitor_public_schema_owner; GRANT CREATE ON SCHEMA public '
-                             'TO social_monitor_reader_summary_publication_owner '
-                             'GRANTED BY social_monitor_public_schema_owner; RESET ROLE;')
+                    self.sql(_database.historical_create_sql())
                 else:
                     destination = '/tmp/sm-e2e-bootstrap'
                     if phase == 'pre':
@@ -916,34 +900,6 @@ class Driver:
         self.persist(cleaned=not unresolved, cleanup_unresolved=unresolved)
         return {'version': 1, 'cleaned': not unresolved, 'resources': count,
                 'unresolved_cleanup': unresolved}
-
-
-def api_environment():
-    # Derived from the repository runtime selectors and actual readiness surface;
-    # private network, no real runtime agents, provider keys or startup writers.
-    return {'NODE_ENV': 'test', 'SOCIAL_MONITOR_RUNTIME_PROFILE': 'deterministic-test',
-            'DATABASE_URL': 'postgresql://e2e_api:synthetic-e2e-only@postgres:5432/e2e',
-            'COLLECTOR_RUNTIME_PROFILE': 'in-memory',
-            'REDIS_URL': 'redis://redis:6379/0', 'SOCIAL_MONITOR_METRICS_MODE': 'in-memory',
-            'POSTGRES_RUNTIME_PROCESS': 'api-gateway',
-            # All-zero TEST-only synthetic vault key.
-            'SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY': 'A' * 43 + '=',
-            'MONITORING_PERSISTENCE': 'prisma', 'POSTGRES_RUNTIME_POOL_MIN': '0',
-            'POSTGRES_RUNTIME_POOL_MAX': '2', 'POSTGRES_RUNTIME_POOL_CONNECTION_TIMEOUT_MS': '5000',
-            'POSTGRES_RUNTIME_POOL_IDLE_TIMEOUT_MS': '10000',
-            'READER_VALUE_SCORING_LOOP': 'disabled', 'INTELLIGENCE_READER_SUMMARY_JOB_LOOP': 'disabled',
-            'INGESTION_SCAN_SCHEDULER_LOOP': 'disabled', 'INGESTION_SCAN_QUEUE_DRAIN_LOOP': 'disabled',
-            'INTELLIGENCE_SUMMARY_JOB_LOOP': 'disabled', 'INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP': 'disabled',
-            'INTELLIGENCE_READER_SUMMARY_QUEUE_DRAIN_LOOP': 'disabled',
-            'INTELLIGENCE_AUTO_SUMMARY_SCHEDULER': 'disabled',
-            'INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP': 'disabled',
-            'DELIVERY_DIGEST_SCHEDULER_LOOP': 'disabled', 'DELIVERY_ATTEMPT_DISPATCH_LOOP': 'disabled',
-            'DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP': 'disabled', 'DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP': 'disabled',
-            'EVENT_RELAY_LOOP': 'disabled',
-            'INTELLIGENCE_SUMMARY_QUEUE_READER': 'in-memory', 'INGESTION_SCAN_QUEUE_READER': 'in-memory',
-            'SUMMARY_MODEL_PROVIDER': 'deterministic', 'READER_SUMMARY_MODEL_PROVIDER': 'deterministic',
-            'READER_SUMMARY_TOPIC_LABELER': 'deterministic', 'SUMMARY_MEMORY_MODE': 'disabled',
-            'DELIVERY_WEBHOOK_PROVIDER': 'in-memory', 'TRUSTED_WORKSPACE_ROLE_HEADER': 'disabled'}
 
 
 def authority(candidate, previous):
