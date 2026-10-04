@@ -468,7 +468,7 @@ async function run(o: Options): Promise<void> {
       && await canExecute() === 't', 'restore-function-default-acl-invalid');
     const defaultAcl = await catalog('e2e_restore');
     await sql('REVOKE EXECUTE ON FUNCTION ' + aclProbe + ' FROM PUBLIC, postgres;', 'e2e_restore');
-    need(await functionAcl("proacl='{}'::aclitem[]") === 't' && await canExecute() === 'f', 'restore-function-revoke-not-observed');
+    need(await functionAcl("proacl IS NOT NULL AND cardinality(proacl)=0") === 't' && await canExecute() === 'f', 'restore-function-revoke-not-observed');
     const emptyAcl = await catalog('e2e_restore');
     need(!same(defaultAcl, emptyAcl), 'restore-function-empty-acl-erased');
     await sql('DROP FUNCTION ' + aclProbe + ';', 'e2e_restore');
