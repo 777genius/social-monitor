@@ -34,7 +34,7 @@ The candidate receipt has exact fields `schema`, `binding`, `config_digest`,
 `social-monitor-bootstrap-candidate-acceptance-v1`; both acceptance assertions are
 true only after actual qualification. `binding` has exact fields `sha`, `ci_run_id`,
 `image_id`, `archive_sha256`, `manifest_sha256`, all copied from accepted immutable
-metadata. Config digest and archive size also bind that artifact. No candidate31
+metadata. Config digest and archive size also bind that artifact. No specific candidate
 identity is hardcoded; a later exactly qualified 103-migration candidate is supported.
 The qualified phases and native pool/history/cleanup proof are also validated.
 
@@ -76,7 +76,7 @@ SQL command first checks the owned PG identity and refuses production system ID
 Cases cover old API/102; verified `pg_dump -Fc`; real duplicate-function failure
 after preceding grants with ownership/ACL/function fingerprints unchanged; TEST
 Prisma rollback resolution retaining its failed attempt; one successful missing
-migration; all103 checksums and four finite function owners/search paths/ACLs;
+migration; all 103 checksums and four finite function owners/search paths/ACLs;
 unchanged owner memberships; old and candidate pool readiness on 103; image rollback
 with 103 retained; and a separate fenced restore recovering 102/catalog/old readiness.
 No finite tenant is seeded and no reserve/publish function is invoked.
