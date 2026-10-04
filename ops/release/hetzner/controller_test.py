@@ -106,6 +106,8 @@ class ReleaseTests(unittest.TestCase):
             proof['sha256'] = digest({k: v for k, v in proof.items() if k != 'sha256'})
         original['admission']['database_hash'] = digest(original['admission']['database'])
         atomic(tx_path, original)
+        # Keep all retained records coherent so age/history policy is exercised.
+        atomic(self.state / 'admissions' / (KEY + '.json'), original['admission'])
         mutate(self.root, read_only=False, main_sha='f' * 40)
         retained = tx_path.read_bytes()
         self.assertIs(self.ok(f'verify {SHA} {RUN}')['verified'], True)
@@ -128,6 +130,7 @@ class ReleaseTests(unittest.TestCase):
                         db['applied_migrations'], db['failed_migrations'] = summarize(proof)
                     tx['admission']['database_hash'] = digest(tx['admission']['database'])
                     atomic(tx_path, tx)
+                    atomic(self.state / 'admissions' / (KEY + '.json'), tx['admission'])
                     retained = tx_path.read_bytes()
                     self.denied(f'verify {SHA} {RUN}', reason)
                     self.assertEqual(tx_path.read_bytes(), retained)
@@ -203,8 +206,91 @@ class ReleaseTests(unittest.TestCase):
                         for verb in ('activate', 'rollback', 'verify'):
                             atomic(tx_path, tx)
                             atomic(published, receipt)
+                            # Bind all three records; malformed proof must reach policy.
+                            atomic(self.state / 'admissions' / (KEY + '.json'), tx['admission'])
                             self.denied(f'{verb} {SHA} {RUN}', reason)
                             self.assertNotIn('outcome', read_json(tx_path))
+
+    # Red: coherently reduced journal/receipt inventory passes history policy
+    # but must never replace the original immutable admission as the anchor.
+    def test_retained_transaction_requires_original_immutable_admission(self):
+        import copy
+        import evidence as policies
+        from prisma_history import summarize
+        image = self.admitted()
+        admission_path = self.state / 'admissions' / (KEY + '.json')
+        admitted = admission_path.read_bytes()
+        candidate_path = self.state / 'inbox' / (KEY + '.tar')
+        candidate = candidate_path.read_bytes()
+        self.ok(f'activate {SHA} {RUN}')
+        tx_path = self.state / 'transactions' / (KEY + '.json')
+        receipt_path = self.state / 'receipts' / (KEY + '.json')
+        activated = read_json(tx_path), read_json(receipt_path)
+        self.ok(f'rollback {SHA} {RUN}')
+        rollback_path = self.state / 'receipts' / (KEY + '-rollback.json')
+        restored = read_json(tx_path), read_json(rollback_path)
+        for originals, published, target in ((activated, receipt_path, image),
+                                             (restored, rollback_path, PREVIOUS)):
+            tx, receipt = copy.deepcopy(originals)
+            self.assertEqual(len(tx['admission']['migrations']), 1)
+            tx['admission']['migrations'] = []
+            for db in (tx['admission']['database'], tx['database']):
+                proof = db['history']
+                self.assertTrue(proof['rows'])
+                self.assertTrue(all(r['name'] == MIGRATION for r in proof['rows']))
+                proof['rows'] = []
+                proof['row_count'] = 0
+                proof['sha256'] = digest({k: v for k, v in proof.items() if k != 'sha256'})
+                db['applied_migrations'], db['failed_migrations'] = summarize(proof)
+                # This forgery is structurally valid under its reduced inventory.
+                policies.historical_database(db, [], self.config['backup_identity']['system_identifier'])
+            tx['admission']['database_hash'] = digest(tx['admission']['database'])
+            receipt['admission_database'] = tx['admission']['database']
+            receipt['admission_database_hash'] = tx['admission']['database_hash']
+            receipt['database'] = tx['database']
+            receipt['database_hash'] = digest(tx['database'])
+            tx.pop('outcome')
+            for with_receipt in (True, False):
+                for phase in ('candidate-up', 'rolling-back'):
+                    for verb in ('activate', 'verify', 'rollback'):
+                        with self.subTest(target=target, receipt=with_receipt, phase=phase, verb=verb):
+                            for path in (receipt_path, rollback_path):
+                                path.unlink(missing_ok=True)
+                            if with_receipt:
+                                atomic(published, receipt)
+                            tx['phase'] = phase
+                            atomic(tx_path, tx)
+                            fake = read_json(self.root / 'fake.json')
+                            fake['target']['image'] = target
+                            atomic(self.root / 'fake.json', fake)
+                            before = {p: p.read_bytes() for p in self.state.rglob('*') if p.is_file()}
+                            commands = self.commands()
+                            self.denied(f'{verb} {SHA} {RUN}', 'transaction-binding')
+                            self.assertEqual({p: p.read_bytes() for p in self.state.rglob('*') if p.is_file()}, before)
+                            self.assertEqual(self.commands(), commands)
+                            self.assertEqual(read_json(self.root / 'fake.json'), fake)
+                            self.assertEqual(admission_path.read_bytes(), admitted)
+                            self.assertEqual(candidate_path.read_bytes(), candidate)
+                            self.assertFalse((self.state / 'latch.json').exists())
+
+    # Red: an internally matching journal and immutable file copied from another
+    # pair must not be consumed under the requested key, even with a receipt.
+    def test_retained_transaction_anchor_uses_requested_pair(self):
+        self.admitted()
+        self.ok(f'activate {SHA} {RUN}')
+        admission_path = self.state / 'admissions' / (KEY + '.json')
+        tx_path = self.state / 'transactions' / (KEY + '.json')
+        tx = read_json(tx_path)
+        tx['admission'].update(sha='d' * 40, ci_run_id='124')
+        atomic(admission_path, tx['admission'])
+        atomic(tx_path, tx)
+        for verb in ('activate', 'verify', 'rollback'):
+            with self.subTest(verb=verb):
+                before = {p: p.read_bytes() for p in self.state.rglob('*') if p.is_file()}
+                commands = self.commands()
+                self.denied(f'{verb} {SHA} {RUN}', 'admission-binding')
+                self.assertEqual({p: p.read_bytes() for p in self.state.rglob('*') if p.is_file()}, before)
+                self.assertEqual(self.commands(), commands)
 
     # Red if shared structural validation reintroduces live freshness into recovery
     # or rollback tries to obtain a new migration observation before restoring.
@@ -229,6 +315,7 @@ class ReleaseTests(unittest.TestCase):
         tx['database'] = receipt['database']
         atomic(tx_path, tx)
         atomic(receipt_path, receipt)
+        atomic(self.state / 'admissions' / (KEY + '.json'), tx['admission'])
         original = receipt_path.read_bytes()
         mutate(self.root, read_only=False, main_sha='f' * 40)
         self.assertEqual(self.ok(f'activate {SHA} {RUN}')['outcome'], 'activated')

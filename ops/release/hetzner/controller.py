@@ -80,6 +80,12 @@ class Controller:
                     for k in ('database', 'observer_role', 'port')),
                 'admission-database-identity')
 
+    def transaction_admission(self, key, tx):
+        admission = read_json(self.path('admissions', key))
+        require(admission['sha'] + '-' + admission['ci_run_id'] == key, 'admission-binding')
+        require(tx.get('admission') == admission, 'transaction-binding')
+        return admission
+
     def preflight(self):
         before, target = self.host.snapshot()
         # Adapter must query current host state, not a cached fixture. No mkdir, writes or import.
@@ -161,7 +167,7 @@ class Controller:
         return False
 
     def finish(self, key, tx, outcome, probes):
-        admission = tx['admission']
+        admission = self.transaction_admission(key, tx)
         self.retained_database(admission, tx.get('database'))
         snapshot, target = self.invariant(admission)
         expected = admission['image_id'] if outcome == 'activated' else admission['previous_image_id']
@@ -191,7 +197,7 @@ class Controller:
         return receipt
 
     def rollback(self, key, tx):
-        admission = tx['admission']
+        admission = self.transaction_admission(key, tx)
         receipt_path = self.path('receipts', tx.get('receipt_key', key))
         if receipt_path.exists() and read_json(receipt_path).get('outcome') == 'rolled-back':
             return self.reconcile(key, tx)
@@ -224,7 +230,7 @@ class Controller:
                 and receipt.get('snapshot_after_hash') == admission['snapshot_before_hash'], 'receipt-binding')
 
     def reconcile(self, key, tx):
-        admission = tx['admission']
+        admission = self.transaction_admission(key, tx)
         receipt = read_json(self.path('receipts', tx.get('receipt_key', key)))
         self.receipt_binding(receipt, admission)
         require(receipt.get('database') == tx.get('database'), 'receipt-database-binding')
@@ -351,6 +357,7 @@ class Controller:
             if verb == 'activate':
                 return self.activate(key)
             tx = read_json(self.path('transactions', key))
+            self.transaction_admission(key, tx)
             if verb == 'rollback':
                 self.exclusive(key)
                 published = self.path('receipts', tx.get('receipt_key', key))
