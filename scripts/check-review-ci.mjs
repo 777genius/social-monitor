@@ -48,9 +48,25 @@ export function releaseGateCiViolations(source) {
     "sudo test ! -e /root/social-monitor-release-contract-tests",
     "sudo mkdir -p /root/social-monitor-release-contract-tests/ops/release /root/social-monitor-release-contract-tests/node_modules",
     "sudo cp -R ops/release/hetzner /root/social-monitor-release-contract-tests/ops/release/",
+    "sudo cp -R ops/ci /root/social-monitor-release-contract-tests/ops/",
+    "sudo mkdir -p /root/social-monitor-release-contract-tests/ops/deploy /root/social-monitor-release-contract-tests/scripts/sql",
+    "sudo cp ops/deploy/reader-summary-publication-pre-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/",
+    "sudo cp ops/deploy/reader-summary-publication-post-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/",
+    "sudo cp scripts/sql/reader-summary-publication-tenant-ownership.sql /root/social-monitor-release-contract-tests/scripts/sql/",
     "sudo cp -R \"$RELEASE_GATE_VENV\" /root/social-monitor-release-contract-tests/python",
     "sudo env PATH=\"/root/social-monitor-release-contract-tests/python/bin:$PATH\" bash /root/social-monitor-release-contract-tests/ops/release/hetzner/check.sh",
+    "sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-e2e-driver_test.py",
+    "sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-e2e-fixture/operator_test.py",
+    "sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-database-plan_test.py",
   ];
+  const nativeCommands = expected.filter((line) =>
+    line.startsWith("sudo cp -R ops/ci ") || line.startsWith("sudo cp ops/deploy/") ||
+    line.startsWith("sudo cp scripts/sql/") || line.includes("/python/bin/python3 -I -B "));
+  const runs = Object.values(doc.jobs ?? {}).flatMap((candidate) =>
+    Array.isArray(candidate?.steps) ? candidate.steps : [])
+    .filter((step) => typeof step?.run === "string").map((step) => step.run);
+  if (nativeCommands.some((command) =>
+    runs.reduce((count, run) => count + run.split(command).length - 1, 0) !== 1)) return fail;
   return commands.length === expected.length && commands.every((line, index) => line === expected[index]) ? [] : fail;
 }
 

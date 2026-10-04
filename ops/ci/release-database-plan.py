@@ -98,11 +98,29 @@ def api_environment():
             'DELIVERY_WEBHOOK_PROVIDER': 'in-memory', 'TRUSTED_WORKSPACE_ROLE_HEADER': 'disabled'}
 
 
+def trusted_ancestors(path, *, directory):
+    """Check from root downward so untrusted users cannot replace checked entries."""
+    trusted = {0, os.geteuid()}
+    chain = list(reversed(path.parents)) + [path]
+    for index, entry in enumerate(chain):
+        if index == len(chain) - 1 and not directory:
+            break
+        info = entry.lstat()
+        need(stat.S_ISDIR(info.st_mode) and info.st_uid in trusted,
+             'unsafe-ancestor')
+        if info.st_mode & 0o022:
+            need(info.st_mode & stat.S_ISVTX
+                 and index + 1 < len(chain)
+                 and chain[index + 1].lstat().st_uid in trusted,
+                 'unsafe-ancestor')
+
+
 def canonical_path(value, *, directory=False):
     need(type(value) is str, 'path-string-required')
     path = Path(value)
     need(path.is_absolute() and str(path) == value and '..' not in path.parts,
          'noncanonical-path')
+    trusted_ancestors(path, directory=directory)
     need(path == path.resolve(strict=True) and not path.is_symlink(), 'noncanonical-path')
     if directory:
         need(stat.S_ISDIR(path.lstat().st_mode), 'directory-required')
@@ -115,6 +133,7 @@ def read_regular(path, maximum):
     with os.fdopen(descriptor, 'rb') as stream:
         info = os.fstat(stream.fileno())
         need(stat.S_ISREG(info.st_mode) and 0 <= info.st_size <= maximum
+             and info.st_uid in {0, os.geteuid()}
              and not info.st_mode & 0o022, 'unsafe-file')
         data = stream.read(maximum + 1)
         need(len(data) <= maximum and len(data) == info.st_size, 'file-size-changed')

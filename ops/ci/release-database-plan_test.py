@@ -79,6 +79,48 @@ class DatabasePlanTests(unittest.TestCase):
             '--extracted', str(self.extracted), '--initial', str(self.initial)],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=15)
 
+    def attacker_owned_ancestor(self):
+        self.root.chmod(0o755)
+        attacker = self.root / 'attacker'
+        private = attacker / 'private'
+        attacker.mkdir()
+        private.mkdir(mode=0o700)
+        os.chown(attacker, 65534, -1)
+        self.addCleanup(os.chown, attacker, 0, -1)
+        return private
+
+    @unittest.skipUnless(sys.platform == 'linux' and os.geteuid() == 0,
+                         'requires Linux root for disposable-tree ownership changes')
+    def test_attacker_owned_ancestor_refuses_input_read(self):
+        private = self.attacker_owned_ancestor()
+        safe_output = self.root / 'safe-output'
+        safe_output.mkdir(mode=0o700)
+        self.initial = safe_output / 'initial'
+        self.manifest_path = private / 'manifest.json'
+        shutil.copyfile(self.root / 'manifest.json', self.manifest_path)
+        sentinel = private / 'sentinel'
+        sentinel.write_bytes(b'unchanged\n')
+        result = self.cli()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, b'')
+        self.assertIn(b'unsafe-ancestor', result.stderr)
+        self.assertFalse(self.initial.exists())
+        self.assertEqual(sentinel.read_bytes(), b'unchanged\n')
+
+    @unittest.skipUnless(sys.platform == 'linux' and os.geteuid() == 0,
+                         'requires Linux root for disposable-tree ownership changes')
+    def test_attacker_owned_ancestor_refuses_output_copy(self):
+        private = self.attacker_owned_ancestor()
+        self.initial = private / 'initial'
+        sentinel = private / 'sentinel'
+        sentinel.write_bytes(b'unchanged\n')
+        result = self.cli()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, b'')
+        self.assertIn(b'unsafe-ancestor', result.stderr)
+        self.assertFalse(self.initial.exists())
+        self.assertEqual(sentinel.read_bytes(), b'unchanged\n')
+
     def test_cli_partition_and_readonly_copy(self):
         result = self.cli()
         self.assertEqual(result.returncode, 0, result.stderr)
