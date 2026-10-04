@@ -333,7 +333,8 @@ async function run(o: Options): Promise<void> {
     pg = await create('container', 'postgres', PG, ['--network-alias', 'postgres', '--mount',
       'type=volume,source=' + volume.id + ',target=/var/lib/postgresql', '-e', 'POSTGRES_DB=e2e',
       '-e', 'POSTGRES_PASSWORD=synthetic-e2e-only', '-e', 'PGDATA=/var/lib/postgresql/18/docker',
-      '-e', 'POSTGRES_INITDB_ARGS=--auth-local=trust --auth-host=scram-sha-256']);
+      '-e', 'POSTGRES_INITDB_ARGS=--auth-local=trust --auth-host=scram-sha-256'],
+      ['postgres', '-c', 'log_error_verbosity=verbose', '-c', 'log_min_error_statement=panic']);
     const redis = await create('container', 'redis', REDIS, ['--network-alias', 'redis', '--tmpfs', '/data:rw,nosuid,nodev,size=16777216'],
       ['redis-server', '--save', '', '--appendonly', 'no']);
     await start(pg); await start(redis);
@@ -406,11 +407,21 @@ async function run(o: Options): Promise<void> {
     await sql('CREATE FUNCTION ' + collision + ' RETURNS void LANGUAGE plpgsql AS $$BEGIN RETURN; END$$; ALTER FUNCTION '
       + collision + ' OWNER TO ' + OWNER + ';');
     const failedBefore = await catalog();
+    const failureSince = new Date().toISOString();
     const failed = await prisma('candidate-failure', binding.image_id, ['migrate', 'deploy']);
-    need(failed.code !== 0 && /42723/.test(failed.stdout + failed.stderr)
-      && (failed.stdout + failed.stderr).includes(String(FUNCTIONS[0])), 'expected-real-duplicate-function-failure');
+    need(typeof failed.code === 'number' && failed.code !== 0, 'expected-real-duplicate-function-failure');
+    // Prisma can expose only the subsequent 25P02. Observe the original ERROR on this owned PG.
+    await inspect(pg);
+    const failureLogs = await docker(['logs', '--since', failureSince, '--tail', '2000', '--timestamps', String(pg.id)]);
+    const duplicateMessage = 'function "' + FUNCTIONS[0] + '" already exists with same argument types';
+    const errorRecords = (failureLogs.stdout + '\n' + failureLogs.stderr).split(/\r?\n/).filter(line => {
+      const record = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{1,9}Z) [^\r\n]*\[[0-9]+\] ERROR:\s+42723: (.*)$/.exec(line);
+      return record !== null && Date.parse(record[1]!) >= Date.parse(failureSince) && record[2] === duplicateMessage;
+    });
+    need(errorRecords.length === 1, 'expected-owned-postgres-duplicate-function-error');
     need(same(failedBefore, await catalog()), 'failed-sql-changed-catalog-or-acl');
-    await record('sql-failure-atomicity', { sqlstate: '42723', before: hash(canonical(failedBefore)), after: hash(canonical(await catalog())) });
+    await record('sql-failure-atomicity', { sqlstate: '42723', error_source: 'owned-test-postgres',
+      error_record_sha256: hash(errorRecords[0]!), before: hash(canonical(failedBefore)), after: hash(canonical(await catalog())) });
     need((await prisma('resolve-test-retry', binding.image_id, ['migrate', 'resolve', '--rolled-back', MISSING])).code === 0, 'test-resolve-failed');
     await sql('DROP FUNCTION ' + collision + ';'); need(same(before, await catalog()), 'collision-cleanup-catalog');
     need((await prisma('candidate103', binding.image_id, ['migrate', 'deploy'])).code === 0, 'candidate103-failed');
