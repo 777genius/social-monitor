@@ -82,6 +82,7 @@ jobs:
           set -euo pipefail
           npx eslint .
           npx tsc --noEmit
+          npx tsc -p ops/ci/tsconfig.historical-bootstrap.json
           npm run check:architecture
           npm run check:code-quality
           npm run check:source-line-cap
