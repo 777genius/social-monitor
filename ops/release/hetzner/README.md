@@ -185,6 +185,9 @@ assertions as successful evidence or fill unknown inputs with success defaults.
   string `system_identifier`. Provision these independently; example placeholders
   are intentionally invalid. The adapter must discover the actual configured repo
   endpoint/path identity and match `repository_id`, never copy it from caller input.
+  Native SFTP identity hashes canonical `{type,path,sftp-host,sftp-host-user,sftp-host-port}`
+  JSON with string values; the port must be explicit decimal `1..65535` without leading zeros.
+  Key-file, host-key, cipher and retention options remain bound by the exact config hash.
   Use the trusted wrapper with explicit `--config`, `--stanza`, `--repo` to observe
   JSON info and execute read-only `repo-get` of the exact successful full's manifest.
   Cipher handling stays inside the wrapper; no plaintext config or cipher is returned.

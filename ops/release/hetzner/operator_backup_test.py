@@ -39,6 +39,29 @@ backrest-checksum="c63c26669942d9cbe7d8c2273d96ca823ef67926"
 NOW = 1790911380
 # Derived independently for {"type":"posix","path":"/fixture/repo"}, sorted JSON.
 REPO_CONFIG = b'[global]\nrepo1-type=posix\nrepo1-path=/fixture/repo\n[production-main]\npg1-path=/fixture/pg\n'
+# Synthetic nonsecret options with the same native SFTP shape as the operator config.
+# Key-file paths are inert strings: no key material is read or supplied.
+SFTP_CONFIG = b'''[global]
+repo1-type=sftp
+repo1-path=/fixture/repo
+repo1-sftp-host=backup.example.invalid
+repo1-sftp-host-user=fixture-backup
+repo1-sftp-host-port=2222
+repo1-sftp-private-key-file=/fixture/keys/id
+repo1-sftp-public-key-file=/fixture/keys/id.pub
+repo1-sftp-host-key-check-type=fingerprint
+repo1-sftp-host-key-hash-type=sha256
+repo1-sftp-host-fingerprint=fixture-only-fingerprint
+repo1-cipher-type=aes-256-cbc
+repo1-retention-full=2
+repo1-retention-diff=7
+[production-main]
+pg1-path=/fixture/pg
+'''
+# Independent hashes of literal sorted JSON, with port represented as an INI string.
+SFTP_ID = 'repo-sha256-a79ff67e3a6b8c85ef2e20f132d31540cf6d48631fb6699266571283849ac6ab'
+POSIX_ID = 'repo-sha256-e8a6326bc53f87e6bfd762d918511652b21050d16b71012809db84533c4e556b'
+S3_ID = 'repo-sha256-afaed2024947515074e077b9cbc8e5257c569443b9fb82513db3110aecd9c7d2'
 # TEST synthetic data only: native capture, no real customer or production capture.
 RAW_NATIVE_INFO = (Path(__file__).parent / 'fixtures' / 'pgbackrest-2.59.1-test-info.json').read_bytes()
 NATIVE_INFO_NOW = 1791072350
@@ -59,6 +82,102 @@ def identity_row():
     return {'server_major': 18, 'system_identifier': SYSTEM_ID, 'database': 'fixture_db',
             'role': 'fixture_observer', 'port': '5432', 'transaction_read_only': True,
             'read_only_role': True, 'migrations': None, 'history_complete': None, 'history_context': None}
+
+
+class RepositoryIdentityTests(unittest.TestCase):
+    def observe(self, raw, repository_id=SFTP_ID, config_hash=None):
+        config = FixtureConfig()
+        config.core['backup_identity']['repository_id'] = repository_id
+        config.data['backup_config_sha256'] = config_hash or sha_bytes(raw)
+        # Only the existing private-file boundary is replaced; INI parsing,
+        # validation, canonical hashing and binding all execute normally.
+        with patch.object(backup, 'private_bytes', return_value=raw) as read:
+            result = backup.repository_identity(config)
+        read.assert_called_once_with(config.core['backup_identity']['config_path'])
+        return result
+
+    # Red: SFTP remains unsupported, port becomes an integer, or key/policy
+    # options enter the stable endpoint identity instead of just the config hash.
+    def test_native_sftp_shape_binds_independent_id_and_exact_config_hash(self):
+        self.assertEqual(self.observe(SFTP_CONFIG), (SFTP_ID, sha_bytes(SFTP_CONFIG)))
+        changed = SFTP_CONFIG.replace(b'retention-full=2', b'retention-full=3')
+        self.assertEqual(self.observe(changed), (SFTP_ID, sha_bytes(changed)))
+        with self.assertRaisesRegex(Denied, 'operator-backup-config-changed'):
+            self.observe(changed, config_hash=sha_bytes(SFTP_CONFIG))
+
+    # Red: omitting any endpoint field from the hash silently accepts a different repo.
+    def test_sftp_host_user_path_and_port_mismatches_deny(self):
+        for before, after in ((b'backup.example.invalid', b'other.example.invalid'),
+                              (b'fixture-backup', b'other-user'),
+                              (b'/fixture/repo', b'/fixture/other'),
+                              (b'port=2222', b'port=2223')):
+            with self.subTest(field=before):
+                with self.assertRaisesRegex(Denied, 'operator-repository-identity'):
+                    self.observe(SFTP_CONFIG.replace(before, after))
+
+    # Red: defaulting a missing port, unchecked int coercion, or accepting out-of-range ports.
+    def test_sftp_port_requires_bounded_explicit_decimal(self):
+        for port in (b'', b'0', b'65536', b'-1', b'+22', b'022', b'22.0', b'1e3',
+                     b'NaN', b'Infinity', b'true', b'\xd9\xa2\xd9\xa2', b'9' * 4097, None):
+            with self.subTest(port=port[:20] if port else port):
+                raw = (SFTP_CONFIG.replace(b'repo1-sftp-host-port=2222\n', b'') if port is None
+                       else SFTP_CONFIG.replace(b'port=2222', b'port=' + port))
+                with self.assertRaises(Denied):
+                    self.observe(raw)
+        # Independent literal-JSON hashes prove both inclusive range endpoints bind.
+        for port, repo_id in (
+                (b'1', 'repo-sha256-e23a1391dcdcdab9af52dc52627e8759594a1e6095697690f705111c20eb381c'),
+                (b'65535', 'repo-sha256-8f835c1b5173e73e5a9a7ca10a1bbec1eeaee393fc0f8e6ccf254d7f5b749b49')):
+            raw = SFTP_CONFIG.replace(b'port=2222', b'port=' + port)
+            self.assertEqual(self.observe(raw, repo_id), (repo_id, sha_bytes(raw)))
+
+    # Red: SFTP bypasses the existing finite field and canonical absolute path guards.
+    def test_sftp_fields_and_paths_keep_existing_guards(self):
+        for field, value in ((b'path', b'relative'), (b'path', b'/fixture/../repo'),
+                             (b'path', b'/fixture//repo'), (b'path', b'/fixture/repo/'),
+                             (b'sftp-host', b''), (b'sftp-host-user', b''),
+                             (b'sftp-host', b'x' * 4097), (b'sftp-host-user', b'x' * 4097)):
+            raw = SFTP_CONFIG.replace(b'repo1-' + field + b'=' +
+                                      ini(SFTP_CONFIG)['global']['repo1-' + field.decode()].encode(),
+                                      b'repo1-' + field + b'=' + value)
+            with self.subTest(field=field, value=value[:30]):
+                with self.assertRaises(Denied): self.observe(raw)
+        for field in (b'path', b'sftp-host', b'sftp-host-user'):
+            line = b'repo1-' + field + b'=' + ini(SFTP_CONFIG)['global']['repo1-' + field.decode()].encode() + b'\n'
+            with self.subTest(missing=field):
+                with self.assertRaises(Denied): self.observe(SFTP_CONFIG.replace(line, b''))
+            for bad in (b'\0', b'$', b'?', b'#', b'@'):
+                raw = SFTP_CONFIG.replace(b'repo1-' + field + b'=', b'repo1-' + field + b'=' + bad)
+                with self.subTest(field=field, bad=bad):
+                    with self.assertRaises(Denied): self.observe(raw)
+
+    # Red: accepting SFTP relaxes config source restrictions for overrides/includes/repos.
+    def test_sftp_config_source_guards_remain_closed(self):
+        for raw in (SFTP_CONFIG + b'repo1-path=/other\n',
+                    SFTP_CONFIG + b'[global:repo-get]\nrepo1-path=/other\n',
+                    SFTP_CONFIG.replace(b'repo1-path=', b'repo2-path='),
+                    SFTP_CONFIG.replace(b'[global]\n', b'[global]\ninclude=/fixture/extra\n')):
+            with self.assertRaises(Denied): self.observe(raw)
+
+    # Red: altering legacy field sets or canonical encoding changes existing IDs.
+    def test_posix_and_s3_ids_remain_byte_for_byte(self):
+        s3 = REPO_CONFIG.replace(b'type=posix', b'type=s3').replace(
+            b'repo1-path=', b'repo1-s3-endpoint=s3.example.invalid\n'
+            b'repo1-s3-bucket=fixture-bucket\nrepo1-s3-region=fixture-region\nrepo1-path=')
+        for raw, repo_id in ((REPO_CONFIG, POSIX_ID), (s3, S3_ID)):
+            with self.subTest(repo_id=repo_id):
+                self.assertEqual(self.observe(raw, repo_id), (repo_id, sha_bytes(raw)))
+                with self.assertRaisesRegex(Denied, 'operator-repository-identity'):
+                    self.observe(raw, SFTP_ID)
+                with self.assertRaises(Denied):
+                    self.observe(raw.replace(b'/fixture/repo', b'/fixture/../repo'), repo_id)
+        for field in (b's3-endpoint', b's3-bucket', b's3-region'):
+            value = ini(s3)['global']['repo1-' + field.decode()].encode()
+            with self.subTest(missing=field):
+                with self.assertRaises(Denied):
+                    self.observe(s3.replace(b'repo1-' + field + b'=' + value + b'\n', b''), S3_ID)
+        with self.assertRaisesRegex(Denied, 'operator-repository-type'):
+            self.observe(SFTP_CONFIG.replace(b'type=sftp', b'type=azure'))
 
 
 class NativeInfoTests(unittest.TestCase):
@@ -181,6 +300,34 @@ class NativeTests(unittest.TestCase):
 
 
 class BackupJoinTests(unittest.TestCase):
+    # Red: SFTP identity fails the real backup/manifest joins or the core evidence
+    # binding, or the second config read allows changed reviewed options.
+    def test_sftp_identity_joins_native_backup_and_core_evidence(self):
+        config = FixtureConfig()
+        config.data['backup_config_sha256'] = sha_bytes(SFTP_CONFIG)
+        config.core['backup_identity']['repository_id'] = SFTP_ID
+        def provider(argv, data, env):
+            if argv[0].endswith('/psql'): return identity_row()
+            self.assertIn('--config-include-path=/etc/social-monitor/release/pgbackrest-empty', argv)
+            return info() if argv[-1] == 'info' else NATIVE
+        runner = FixtureRunner(provider)
+        with patch.object(backup, 'private_bytes', return_value=SFTP_CONFIG) as read:
+            value = backup.backup(config, runner, BINDING, NOW)
+        self.assertEqual(read.call_count, 2)
+        self.assertEqual(len(runner.calls), 4)
+        live = {'method': 'pg_control_system', 'server_major': 18,
+                'system_identifier': SYSTEM_ID, 'observed_at': NOW}
+        with patch('contract.time.time', return_value=NOW):
+            receipt = evidence.backup(value, BINDING, config.core, live=live,
+                                      config_hash=sha_bytes(SFTP_CONFIG))
+        self.assertEqual(receipt['repository_id'], SFTP_ID)
+        self.assertEqual(receipt['config_sha256'], sha_bytes(SFTP_CONFIG))
+        self.assertEqual(receipt['manifest']['sha256'], sha_bytes(NATIVE))
+        changed = SFTP_CONFIG.replace(b'retention-full=2', b'retention-full=3')
+        with patch.object(backup, 'private_bytes', side_effect=[SFTP_CONFIG, changed]):
+            with self.assertRaisesRegex(Denied, 'operator-backup-config-changed'):
+                backup.backup(config, FixtureRunner(provider), BINDING, NOW)
+
     def test_exact_native_observations_consumed_by_core(self):
         config = FixtureConfig()
         config.data['backup_config_sha256'] = sha_bytes(REPO_CONFIG)
