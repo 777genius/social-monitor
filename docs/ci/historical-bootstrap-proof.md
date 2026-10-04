@@ -81,12 +81,13 @@ unchanged owner memberships; old and candidate pool readiness on 103; image roll
 with 103 retained; and a separate fenced restore recovering 102/catalog/old readiness.
 No finite tenant is seeded and no reserve/publish function is invoked.
 
-The pending revision also distinguishes NULL ACLs from explicit empty ACL arrays.
+The catalogue distinguishes NULL ACLs from explicit zero-element ACL arrays.
 A TEST-only restored-database function checks default PUBLIC EXECUTE, a real
-revoke-all empty ACL, changed effective access and distinct catalogue fingerprints;
-dropping the probe must reproduce the original catalogue. Cleanup has its own
-four-minute command budget within the overall absolute deadline. The prior
-execution below does not qualify these new checks until a fresh run passes.
+revoke-all ACL, changed effective access and distinct catalogue fingerprints;
+dropping the probe must reproduce the original catalogue. Zero elements are
+observed by cardinality, since PostgreSQL's revoked ACL is not equal to the
+empty SQL array literal. Cleanup has its own four-minute command budget within
+the overall absolute deadline.
 
 `proof.json` records immutable bindings, daemon/PG IDs, exact owned resource IDs,
 case fingerprints, stable API image/ID/StartedAt and cleanup results. `pre103.dump`
@@ -97,12 +98,14 @@ count as success. Cleanup uses exact recorded identifiers with label/image/netwo
 daemon checks, never prune. Inspect retained IDs manually under the same fences;
 do not rerun against that directory or silently adopt resources by name.
 
-The coordinator completed an actual isolated execution on 2026-10-04 in 66.282
-seconds, using helper commit 3c732bde136a0c8721fc391fab014e04b6630137 and accepted
-candidate 31e1953614710b802fb43eb9d5f2bfd0beea78b3. All 14 recorded cases and owned-resource
-cleanup passed. The final TCP listener readiness check also passed. The restored catalogue matched the pre-migration catalogue; a real
+The coordinator completed an actual isolated execution on 2026-10-04 in 72.591
+seconds, using helper commit 70bb837ed2b452728f3528d425428cf963222b37 and accepted
+candidate 31e1953614710b802fb43eb9d5f2bfd0beea78b3. All 15 recorded cases and cleanup of all 15 owned
+Docker resources passed. The final TCP listener readiness check also passed. The restored catalogue matched the pre-migration catalogue; a real
 PUBLIC SELECT grant made effective access and the catalogue differ, and REVOKE
-restored both. NULL relation ACLs use PostgreSQL owner defaults for tables/views and
+restored both. The function NULL/zero-element ACL regression also passed.
+Executing that new regression against the previous aggregate projection failed
+at restore-function-empty-acl-erased with all 14 owned resources cleaned. NULL relation ACLs use PostgreSQL owner defaults for tables/views and
 sequences; explicit ACLs, grantors and grant options remain part of the comparison.
 
 Evidence belongs to that exact invocation and candidate. A future candidate needs
