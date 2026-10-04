@@ -441,6 +441,22 @@ async function run(o: Options): Promise<void> {
     need((await exec(pg, ['sha256sum', '/tmp/pre103.dump'])).stdout.split(' ')[0] === dump.sha256.slice(7), 'restore-archive-changed');
     await exec(pg, ['pg_restore', '--clean', '--if-exists', '--exit-on-error', '-U', 'postgres', '-d', 'e2e_restore', '/tmp/pre103.dump']);
     await history(historicalRows, 'e2e_restore'); need(same(before, await catalog('e2e_restore')), 'restore-pre103-catalog');
+    // A real added PUBLIC privilege must survive owner-default ACL normalization.
+    const aclTarget = 'public.reader_summary_daily_canonical_recovery_v4_authorities';
+    const canSelect = async (): Promise<string> => sql(
+      "SELECT has_table_privilege('e2e_api','" + aclTarget + "','SELECT');", 'e2e_restore');
+    need(await canSelect() === 'f', 'restore-acl-target-already-readable');
+    await sql('GRANT SELECT ON TABLE ' + aclTarget + ' TO PUBLIC;', 'e2e_restore');
+    need(await canSelect() === 't', 'restore-public-grant-not-observed');
+    const widened = await catalog('e2e_restore');
+    need(!same(before, widened), 'restore-public-grant-erased');
+    await sql('REVOKE SELECT ON TABLE ' + aclTarget + ' FROM PUBLIC;', 'e2e_restore');
+    need(await canSelect() === 'f' && same(before, await catalog('e2e_restore')), 'restore-public-revoke-drift');
+    await record('restore-acl-public-grant-detected', {
+      original_select: false, granted_select: true, revoked_select: false,
+      original_catalog_sha256: hash(canonical(before)), widened_catalog_sha256: hash(canonical(widened)),
+      revoked_catalog_sha256: hash(canonical(await catalog('e2e_restore'))),
+    });
     const restored = await api('restored-old-api', HISTORICAL.image_id, 'e2e_restore'); await probe(restored, 'restored-historical-api-102');
     await record('restore-pre103', { catalog_sha256: hash(canonical(await catalog('e2e_restore'))), dump_sha256: dump.sha256 });
     await artifacts(o.candidate, binding); await json(o.acceptance, o['acceptance-sha256']);
@@ -471,10 +487,11 @@ const HTTP = `const http=require('node:http');let size=0;const r=http.get('http:
 res=>{const b=[];res.on('data',v=>{size+=v.length;if(size>262144)process.exit(2);b.push(v)});
 res.on('end',()=>{try{console.log(JSON.stringify({http_status:res.statusCode,body:JSON.parse(Buffer.concat(b))}))}catch{process.exit(3)}})});
 r.setTimeout(5000,()=>r.destroy());r.on('error',()=>process.exit(4));setTimeout(()=>process.exit(5),7000).unref();`;
-// Stable names instead of OIDs let a separately restored database be compared.
+// Stable names and effective owner-default relation ACLs permit a faithful dump/restore comparison.
+// Explicit ACLs, including grantors and grant options, remain unchanged.
 const CATALOG = `SELECT json_build_object(
 'schema',(SELECT json_agg(json_build_array(nspname,nspowner::regrole::text,(SELECT array_agg(x::text ORDER BY x::text) FROM unnest(nspacl)x)) ORDER BY nspname) FROM pg_namespace WHERE nspname='public'),
-'relations',(SELECT json_agg(json_build_array(relname,relkind,relowner::regrole::text,(SELECT array_agg(x::text ORDER BY x::text) FROM unnest(relacl)x)) ORDER BY relname) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'),
+'relations',(SELECT json_agg(json_build_array(relname,relkind,relowner::regrole::text,(SELECT array_agg(x::text ORDER BY x::text) FROM unnest(coalesce(relacl, CASE WHEN relkind='S' THEN acldefault('s',relowner) WHEN relkind IN ('r','v','m','p','f') THEN acldefault('r',relowner) END))x)) ORDER BY relname) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'),
 'columns',(SELECT json_agg(json_build_array(c.relname,a.attname,(SELECT array_agg(x::text ORDER BY x::text) FROM unnest(a.attacl)x)) ORDER BY c.relname,a.attnum) FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND a.attnum>0 AND NOT a.attisdropped),
 'functions',(SELECT json_agg(json_build_array(proname,pg_get_function_identity_arguments(p.oid),proowner::regrole::text,(SELECT array_agg(x::text ORDER BY x::text) FROM unnest(proacl)x),proconfig,pg_get_functiondef(p.oid)) ORDER BY proname,pg_get_function_identity_arguments(p.oid)) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prokind IN ('f','p')),
 'defaults',(SELECT json_agg(json_build_array(defaclrole::regrole::text,n.nspname,defaclobjtype,(SELECT array_agg(x::text ORDER BY x::text) FROM unnest(defaclacl)x)) ORDER BY defaclrole::regrole::text,n.nspname,defaclobjtype) FROM pg_default_acl a LEFT JOIN pg_namespace n ON n.oid=a.defaclnamespace),
