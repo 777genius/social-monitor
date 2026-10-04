@@ -190,3 +190,38 @@ class RealCompose(ComposeFixture):
             path.write_bytes(original)
         self.assertEqual(self.host.compose_fingerprint(), fingerprint)
         self.assertEqual(len(self.host.ups), 1)
+
+
+    def test_real_profiled_services_relative_mount_and_inactive_private_drift(self):
+        layout = self.root / 'private-api'
+        layout.mkdir()
+        self.config['project_directory'] = str(layout)
+        self.host = ConfigOnlyHost(self.config)
+        (layout / 'api-entrypoint.sh').write_text('# synthetic fixture only\n')
+        worker_env = layout / 'private-worker.env'
+        worker_env.write_text('WORKER_MODE=one\n')
+        source = (
+            'services:\n  api:\n    image: sandbox:base\n    profiles: [api]\n'
+            '    volumes: ["./api-entrypoint.sh:/app/api-entrypoint.sh:ro"]\n'
+            '  sibling:\n    image: sandbox:worker\n    profiles: [worker]\n'
+            '    env_file: [private-worker.env]\n')
+        self.source.write_text(source)
+        model = self.host.model()
+        self.assertEqual(set(model['services']), {'api', 'sibling'})
+        self.assertEqual(model['services']['api']['profiles'], ['api'])
+        self.assertEqual(model['services']['sibling']['profiles'], ['worker'])
+        self.assertEqual(model['services']['api']['volumes'][0]['source'], str(layout / 'api-entrypoint.sh'))
+        self.assertTrue(model['services']['api']['volumes'][0]['read_only'])
+        fingerprint = self.host.compose_fingerprint()
+        self.host.up(PREVIOUS, self.root / 'override.json', fingerprint)
+        self.assertEqual(len(self.host.ups), 1)
+        self.assertNotIn('--profile', self.host.ups[0])
+        self.assertEqual(self.host.ups[0][-7:], ['up', '-d', '--no-deps', '--no-build', '--pull', 'never', 'api'])
+        worker_env.write_text('WORKER_MODE=two\n')
+        with self.assertRaisesRegex(Denied, 'trusted-compose-changed'):
+            self.host.up(PREVIOUS, self.root / 'override.json', fingerprint)
+        worker_env.write_text('WORKER_MODE=one\n')
+        self.source.write_text(source.replace('profiles: [worker]', 'profiles: [other-worker]'))
+        with self.assertRaisesRegex(Denied, 'trusted-compose-changed'):
+            self.host.up(PREVIOUS, self.root / 'override.json', fingerprint)
+        self.assertEqual(len(self.host.ups), 1)
