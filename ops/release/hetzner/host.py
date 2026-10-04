@@ -47,7 +47,7 @@ class Host:
         fixed_roots(self.c['compose_files'], self.private_digest)
         # Metadata only: never resolve env_file contents into the persisted model.
         return json.loads(self.command(self.compose(override) +
-                                       ['config', '--no-interpolate', '--no-env-resolution',
+                                       ['--profile', '*', 'config', '--no-interpolate', '--no-env-resolution',
                                         '--format', 'json']))
 
     def private_digest(self, path):

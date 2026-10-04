@@ -78,6 +78,18 @@ class WireAndBoundsTests(unittest.TestCase):
             with self.assertRaises(Denied):
                 request('backup', canonical({**BINDING, key: wrong}))
 
+    def test_only_verified_project_directory_layouts_accepted(self):
+        fixture = FixtureConfig()
+        for directory in ('/srv/platform/projects/social-monitor',
+                          '/srv/platform/projects/social-monitor/deploy/private-api'):
+            config = Configuration({**fixture.core, 'project_directory': directory}, copy.deepcopy(fixture.data))
+            self.assertEqual(config.core['project_directory'], directory)
+        for directory in ('/tmp/social-monitor', '/srv/platform/projects/social-monitor/deploy',
+                          '/srv/platform/projects/social-monitor/deploy/private-api/nested',
+                          '/srv/platform/projects/social-monitor/deploy/private-api/../'):
+            with self.assertRaisesRegex(Denied, 'operator-project'):
+                Configuration({**fixture.core, 'project_directory': directory}, copy.deepcopy(fixture.data))
+
     def test_real_process_environment_size_status_and_deadline(self):
         runner = Runner(seconds=4, command_seconds=1, checker=lambda p: Path(p).resolve())
         with patch.dict(os.environ, {'PGPASSWORD': 'fixture-only', 'GH_TOKEN': 'fixture-only'}):

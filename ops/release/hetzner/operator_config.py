@@ -122,7 +122,9 @@ class Configuration:
         exact(data, ('version', 'database', 'backup_config_sha256', 'wrapper_sha256'))
         require(type(data['version']) is int and data['version'] == 1, 'operator-version')
         require(core['project'] == 'platform-social-monitor'
-                and core['project_directory'] == '/srv/platform/projects/social-monitor', 'operator-project')
+                and core['project_directory'] in ('/srv/platform/projects/social-monitor',
+                                                 '/srv/platform/projects/social-monitor/deploy/private-api'),
+                'operator-project')
         identity = core['backup_identity']
         require(identity['wrapper'] == EXECUTABLES['backup']
                 and identity['config_path'] == '/etc/pgbackrest/production-main.conf'
