@@ -23,7 +23,9 @@ Do not install the dependency tree merely to run this helper.
 Prepare an empty canonical 0700 TEST directory outside both input directories.
 Supply a separate, exact, clean candidate checkout and the six accepted artifact
 files (`candidate.tar`, checksum sidecar, manifest, phases, image ID, source SHA).
-The migration lock file is optional, as in the candidate archive contract; every\nSQL migration must match the manifest and the exact tracked source roster.\nBoth finite JSON receipts must be trusted coordinator outputs, with independently
+The migration lock file is optional, as in the candidate archive contract; every
+SQL migration must match the manifest and the exact tracked source roster.
+Both finite JSON receipts must be trusted coordinator outputs, with independently
 selected SHA256 hashes. They are TEST input attestations, never production authority.
 Do not manufacture acceptance assertions to get through the guard.
 
@@ -88,8 +90,16 @@ count as success. Cleanup uses exact recorded identifiers with label/image/netwo
 daemon checks, never prune. Inspect retained IDs manually under the same fences;
 do not rerun against that directory or silently adopt resources by name.
 
-Qualification remains pending until the coordinator executes and reviews this
-actual fixture. Scope is historical API/schema/migration/backup-restore TEST
-compatibility. Worker-task/provider parity, production install/systemd/SSH closure,
-production backup/restore qualification and all remaining audit116 bootstrap gates
-still require their own evidence and approval; this helper grants no release permission.
+The coordinator completed an actual isolated execution on 2026-10-04 in 66.232
+seconds, using helper commit 59c66a9dc7c96fc5d225ec28f57598efd7a3a008 and accepted
+candidate 31e1953614710b802fb43eb9d5f2bfd0beea78b3. All recorded cases and owned-resource
+cleanup passed. The restored catalogue matched the pre-migration catalogue; a real
+PUBLIC SELECT grant made effective access and the catalogue differ, and REVOKE
+restored both. NULL relation ACLs use PostgreSQL owner defaults for tables/views and
+sequences; explicit ACLs, grantors and grant options remain part of the comparison.
+
+Evidence belongs to that exact invocation and candidate. A future candidate needs
+its own accepted artifact and fresh fixture execution. Scope is historical
+API/schema/migration/backup-restore TEST compatibility. Worker-task/provider parity,
+production install/systemd/SSH closure and production backup/restore qualification
+need their own evidence. This helper grants no production change or release permission.
