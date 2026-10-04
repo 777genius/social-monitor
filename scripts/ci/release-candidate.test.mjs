@@ -14,7 +14,7 @@ after(() => {
   if (ciEnvironment.sha !== undefined) process.env.GITHUB_SHA = ciEnvironment.sha;
   if (ciEnvironment.run !== undefined) process.env.GITHUB_RUN_ID = ciEnvironment.run;
 });
-import { candidate, checksum, command, qualify, readJson, validateManifest } from './release-candidate.mjs';
+import { candidate, checksum, command, qualify, readJson, validateManifest, validateRuntimeProof } from './release-candidate.mjs';
 
 const sha = 'c9dd4f5b903c777a6a378e3233b5353d08702424';
 const digest = character => 'sha256:' + character.repeat(64);
@@ -26,6 +26,16 @@ const graph = () => ({ kind: 'oci-manifest', root_digest: digest('a'),
   diff_ids: [digest('c')] });
 const manifest = () => ({ sha, ci_run_id: '123', archive_sha256: digest('d'), image_id: digest('a'),
   archive_bytes: 20480, image_graph: graph(), migrations: [{ name: '20260101000000_initial', checksum: 'e'.repeat(64) }] });
+
+function runtimeProof(m, manifestSha) {
+  return { schema: 'social-monitor-candidate-runtime-v1', sha: m.sha, ci_run_id: m.ci_run_id,
+    image_id: m.image_id, archive_sha256: m.archive_sha256, manifest_sha256: manifestSha,
+    daemon_id: 'candidate-test-daemon', postgres_system_identifier: '7688442011877063483',
+    postgres_major: 18, api_container_id: '1'.repeat(64), api_started_at: '2026-10-04T01:02:03.000000000Z',
+    history_sha256: 'sha256:' + createHash('sha256').update(JSON.stringify(
+      m.migrations.map(({ name, checksum }) => ({ checksum, name })))).digest('hex'),
+    postgres_pool_ok: true, cleanup_verified: true };
+}
 
 test('strict finite native manifest and migration grammar', () => {
   // Red trigger: accept an index/config identity, unknown field, unsafe name,
@@ -59,8 +69,18 @@ async function temporary(t) {
 function processFixture(directory) {
   const calls = [];
   let wrongImage = false, failQualification = true, failExport = false, failArchive = false;
+  let failRuntime = false;
   const run = async (program, args, options = {}) => {
     calls.push([program, ...args]);
+    if (program === process.execPath) {
+      assert.equal(args[0], '--experimental-strip-types');
+      assert.equal(args[1], path.resolve('scripts/ci/candidate-runtime.mts'));
+      if (failRuntime) throw new Error('runtime-failed');
+      const m = await readJson(path.join(directory, 'manifest.json'));
+      const sum = await checksum(path.join(directory, 'manifest.json'));
+      assert.equal(args[args.indexOf('--manifest-sha256') + 1], sum.sha256);
+      return JSON.stringify(runtimeProof(m, sum.sha256));
+    }
     if (program === 'git') {
       if (args[0] === 'archive') { if (failArchive) throw new Error('snapshot-failed'); await writeFile(options.output, 'synthetic committed Git snapshot'); return ''; }
       return args[0] === 'rev-parse' ? sha + '\n' : '';
@@ -70,7 +90,7 @@ function processFixture(directory) {
       return JSON.stringify({ migrations: manifest().migrations, image_graph: graph() });
     }
     if (args[0] === 'version') return JSON.stringify({ Version: '29.8.1' });
-    if (args[0] === 'info') return JSON.stringify({ OSType: 'linux', Architecture: 'x86_64',
+    if (args[0] === 'info') return JSON.stringify({ ID: 'candidate-test-daemon', OSType: 'linux', Architecture: 'x86_64',
       DriverStatus: [['driver-type', 'io.containerd.snapshotter.v1']] });
     if (args[0] === 'build') { await writeFile(args[args.indexOf('--iidfile') + 1], digest('a')); return ''; }
     if (args[1] === 'inspect') return JSON.stringify([{ Id: wrongImage ? digest('f') : digest('a'),
@@ -87,7 +107,8 @@ function processFixture(directory) {
     set qualification(value) { failQualification = value; },
     set wrongImage(value) { wrongImage = value; },
     set failExport(value) { failExport = value; },
-    set failArchive(value) { failArchive = value; } };
+    set failArchive(value) { failArchive = value; },
+    set failRuntime(value) { failRuntime = value; } };
 }
 
 test('qualification/upload retry retains exact build and export and rereads identity', async t => {
@@ -106,6 +127,7 @@ test('qualification/upload retry retains exact build and export and rereads iden
   assert.equal(fixture.calls.filter(c => c[1] === 'build').length, 1);
   assert.equal(fixture.calls.filter(c => c[2] === 'save').length, 1);
   assert.equal(fixture.calls.filter(c => c[0] === 'python3').length, 2); // failed proof plus one success
+  assert.equal(fixture.calls.filter(c => c[0] === process.execPath).length, 1);
   assert.ok(fixture.calls.filter(c => c[1] === 'rev-parse').length >= 3);
   assert.ok(fixture.calls.filter(c => c[2] === 'inspect').length >= 3);
   const build = fixture.calls.find(c => c[1] === 'build');
@@ -128,6 +150,51 @@ test('qualification/upload retry retains exact build and export and rereads iden
   await writeFile(path.join(directory, 'candidate.tar'), 'mutated archive bytes');
   fixture.wrongImage = false;
   await assert.rejects(candidate(options, fixture.run, () => {}), /export-identity-mismatch/);
+});
+
+test('failed runtime retains archive-qualified bytes; resume runs only runtime', async t => {
+  const directory = await temporary(t), fixture = processFixture(directory);
+  const options = { directory, sha, runId: '123', controllerDir: '/synthetic/controller' };
+  fixture.qualification = false; fixture.failRuntime = true;
+  await assert.rejects(candidate(options, fixture.run, () => {}), /runtime-failed/);
+  const state = await readJson(path.join(directory, 'phases.json'));
+  assert.equal(state.version, 2); assert.equal(state.phase, 'archive-qualified');
+  assert.equal(state.runtime_proof, null);
+  const archive = await readFile(path.join(directory, 'candidate.tar'));
+  fixture.failRuntime = false;
+  await candidate(options, fixture.run, () => {});
+  await candidate(options, fixture.run, () => {});
+  assert.deepEqual(await readFile(path.join(directory, 'candidate.tar')), archive);
+  assert.equal(fixture.calls.filter(c => c[1] === 'build').length, 1);
+  assert.equal(fixture.calls.filter(c => c[2] === 'save').length, 1);
+  assert.equal(fixture.calls.filter(c => c[0] === 'python3').length, 1);
+  assert.equal(fixture.calls.filter(c => c[0] === process.execPath).length, 2);
+  const qualified = await readJson(path.join(directory, 'phases.json'));
+  const m = await readJson(path.join(directory, 'manifest.json'));
+  validateRuntimeProof(qualified.runtime_proof,
+    { ...qualified, daemon_id: 'candidate-test-daemon' }, m);
+  qualified.runtime_proof.cleanup_verified = false;
+  await writeFile(path.join(directory, 'phases.json'), JSON.stringify(qualified));
+  await assert.rejects(candidate(options, fixture.run, () => {}), /runtime-proof-incomplete/);
+});
+
+test('legacy archive-only qualified receipt requires runtime without build or save', async t => {
+  const directory = await temporary(t), fixture = processFixture(directory);
+  const options = { directory, sha, runId: '123', controllerDir: '/synthetic/controller' };
+  fixture.qualification = false;
+  await candidate(options, fixture.run, () => {});
+  const state = await readJson(path.join(directory, 'phases.json'));
+  delete state.runtime_proof; state.version = 1;
+  await writeFile(path.join(directory, 'phases.json'), JSON.stringify(state));
+  fixture.failRuntime = true;
+  await assert.rejects(candidate(options, fixture.run, () => {}), /runtime-failed/);
+  assert.equal((await readJson(path.join(directory, 'phases.json'))).phase, 'archive-qualified');
+  fixture.failRuntime = false;
+  await candidate(options, fixture.run, () => {});
+  assert.equal(fixture.calls.filter(c => c[1] === 'build').length, 1);
+  assert.equal(fixture.calls.filter(c => c[2] === 'save').length, 1);
+  assert.equal(fixture.calls.filter(c => c[0] === 'python3').length, 1);
+  assert.equal(fixture.calls.filter(c => c[0] === process.execPath).length, 3);
 });
 
 test('failed export resumes only export; ambiguous interrupted build never rebuilds', async t => {
@@ -316,10 +383,14 @@ syncBuiltinESMExports();
   const runner = path.join(support, 'producer-fixture.mjs');
   await writeFile(runner, `
 import { appendFile, copyFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { candidate, command } from ${JSON.stringify(path.resolve('scripts/ci/release-candidate.mjs'))};
 const proof = ${JSON.stringify(proof)};
+const runtimeProof = ${runtimeProof.toString()};
 const run = async (program, args, options = {}) => {
   await appendFile(${JSON.stringify(log)}, JSON.stringify([program, ...args]) + '\\n');
+  if (program === process.execPath) return JSON.stringify(runtimeProof(proof,
+    args[args.indexOf('--manifest-sha256') + 1]));
   if (program === 'python3') return command(program, args, options);
   if (program === 'git') {
     if (args[0] === 'archive') { await writeFile(options.output, 'synthetic committed snapshot'); return ''; }
@@ -327,7 +398,7 @@ const run = async (program, args, options = {}) => {
   }
   if (program !== 'docker') throw new Error('unexpected-program');
   if (args[0] === 'version') return JSON.stringify({ Version: '29.8.1' });
-  if (args[0] === 'info') return JSON.stringify({ OSType: 'linux', Architecture: 'amd64',
+  if (args[0] === 'info') return JSON.stringify({ ID: 'candidate-test-daemon', OSType: 'linux', Architecture: 'amd64',
     DriverStatus: [['driver-type', 'io.containerd.snapshotter.v1']] });
   if (args[0] === 'build') { await writeFile(args[args.indexOf('--iidfile') + 1], proof.image_id); return ''; }
   if (args[1] === 'save') { await copyFile(${JSON.stringify(archive)}, options.output); return ''; }
