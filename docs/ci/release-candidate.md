@@ -1,14 +1,16 @@
 # Native API release candidate
 
-This patch adds a producer and an authored job fragment, with no active workflow
-or production change. The starting source is main
-`3854c9d491d156e6fb2ade0492ad2f5bf0ea1eb7`. Every candidate records the actual clean
-checkout's full HEAD and numeric CI run ID. PR jobs normally check out a merge
+The required production_runtime job builds, exports and qualifies one immutable
+API candidate. Every candidate records the actual clean checkout's full HEAD and
+numeric CI run ID. PR jobs normally check out a merge
 commit: that commit is the source, and must never be described as the PR head.
 Public PR output has no deployment authority. Only the controller's separate
 current-main, completed-CI and independent operator evidence can admit deployment.
 
-Run with Node 22, Python 3 and native Docker 29 on linux/amd64:
+Run with Node 22, Python 3 and native Docker 29 on linux/amd64. DOCKER_HOST must
+explicitly select the isolated producer; local qualification accepts only the
+canonical TEST producer namespace. The workflow pins Docker 29.8.2 and exports
+the setup action's host with set-host:true:
 
 ```sh
 node scripts/ci/release-candidate.mjs \
@@ -65,18 +67,34 @@ independent PG18 admission policy; the producer does not claim database parity.
 
 `manifest.json` has exactly Controller v1's `receive` import-object fields:
 `sha`, `ci_run_id`, `archive_sha256`, `image_id`, `archive_bytes`, `migrations`,
-`image_graph`. That object is unversioned in the supplied contract; local phase
-receipts use `version:1`. The archive, manifest and checksum outputs are finite,
+`image_graph`. That object is unversioned in the supplied contract; qualified local phase
+receipts use `version:2` and bind the runtime_proof. The archive, manifest and checksum outputs are finite,
 regular, atomically published files. The archive is at most 10 GB. Controller
 processing bounds also apply (2 GiB member, 8 GiB expanded layers, 120 seconds).
 
-The authored `ops/ci/release-candidate-job.yml` preserves `production_runtime`'s
-name and three existing gate commands. The root must integrate the controller
-source and job together, review the pinned setup-Docker action/version, and run
-real Docker qualification. The fragment is inert and grants only `contents:read`;
-no secrets, OIDC write or production action. Focused tests currently use the
-read-only supplied controller copy in `node_modules/.cicd-evidence/controller`;
-after integration they also support the installed repository controller path.
+The authored job fragment and active pull-request workflow preserve the existing
+job name, three gate commands and contents:read permission. After archive proof,
+the runtime creates its own internal network, PostgreSQL 18 volume and Redis,
+prepares all 103 migration directories through the shared verified database plan,
+and starts the exact candidate with synthetic credentials and disabled loops.
+It verifies the complete finished migration inventory and the actual API
+postgres_runtime_pool query through /ready. No production DB or provider is used.
+
+The runtime proof binds source/run/image/archive/manifest, producer daemon,
+disposable PostgreSQL system identifier, API container/start time and canonical
+history digest. Successful qualification requires verified removal of every
+owned runtime resource. Historical producer daemon identity is part of the proof;
+the delivery consumer has its own independently observed identity. A completed
+retry verifies retained proof and bytes without build/export/runtime effects.
+Interrupted runtime cleanup uses durable resource ownership and only the
+unfinished runtime phase may resume. Version 1 archive-qualified receipts can
+upgrade by running runtime qualification without rebuilding or re-exporting.
+
+Exactly six public files are uploaded for one day. runtime-private ownership,
+failure details and SQL logs stay private; CI errors expose only finite safe
+reason tokens. The consumer validates version 2 runtime proof and exact artifact
+bindings before host access. This proves disposable runtime qualification,
+not production schema parity or deployed-to-candidate compatibility.
 
 ```sh
 node --test scripts/ci/release-candidate.test.mjs ops/release/e2e/harness.test.mjs
@@ -133,8 +151,10 @@ tags and baseline rollback. Controller-owned immutable retention aliases remain
 under the controller policy.
 The harness keeps finite evidence under its random temporary directory.
 
-The actual fixture driver and final controller/operator adapter seam are not
-merged here. Real Docker 29.8.1 cross-daemon load, forced-command SSH, PG18
-admission/backup and rollback remain root qualification work. Missing fixtures,
-wrong denial reasons, transport errors and absent receipts fail closed. There is
-no mock-backed real E2E claim. Production Docker must not be upgraded by this patch.
+The integrated native fixture has passed actual cross-daemon delivery, forced
+SSH, PG18 admission, pgBackRest full-backup proof, activation, reconciliation,
+rollback and owned cleanup, including forced rollback and failed rollback latch.
+GitHub authority and systemctl in that fixture remain explicitly modeled; its
+same-source synthetic baseline does not prove historical deployed compatibility.
+Production installation, missing SQL and independently reviewed compatibility
+remain separate first-release work. No production release is enabled here.

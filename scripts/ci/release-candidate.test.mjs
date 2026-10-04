@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmod, chown, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -72,6 +73,7 @@ function processFixture(directory) {
   let failRuntime = false;
   const run = async (program, args, options = {}) => {
     calls.push([program, ...args]);
+    assert.equal(options.inheritStderr, program === process.execPath ? true : undefined);
     if (program === process.execPath) {
       assert.equal(args[0], '--experimental-strip-types');
       assert.equal(args[1], path.resolve('scripts/ci/candidate-runtime.mts'));
@@ -398,6 +400,54 @@ test('real argv process receives exact binary source context and bounds stdout',
     return true;
   });
   await assert.rejects(command('python3', ['-I', '-B', '-c', 'print("x"*65)'], { limit: 64 }), /command-output-limit/);
+});
+
+test('command stderr subprocess fixture', {
+  skip: process.env.SM_CANDIDATE_STDERR_FIXTURE !== '1',
+}, async t => {
+  const directory = await temporary(t);
+  const args = ['--no-warnings', '--experimental-strip-types',
+    path.resolve('scripts/ci/candidate-runtime.mts'),
+    '--directory', directory, '--source', directory, '--sha', sha,
+    '--run-id', '123', '--image-id', digest('a'),
+    '--archive-sha256', digest('b'), '--manifest-sha256', digest('c')];
+  // The first invocation must stay silent; only the opt-in invocation emits.
+  for (const inheritStderr of [false, true]) {
+    await assert.rejects(command(process.execPath, args, { inheritStderr }), error => {
+      assert.equal(error.exitCode, 1);
+      assert.equal(error.stdout, '');
+      return /command-failed/.test(error.message);
+    });
+    const stdout = await command('python3', ['-I', '-B', '-c',
+      'print(\'{"proof":"captured"}\')'], { inheritStderr, limit: 64 });
+    assert.equal(stdout, '{"proof":"captured"}\n');
+    await assert.rejects(command('python3', ['-I', '-B', '-c',
+      'import sys; print(\'{"denied":"bounded"}\'); sys.exit(1)'],
+    { inheritStderr, limit: 64 }), error => {
+      assert.equal(error.exitCode, 1);
+      assert.equal(error.stdout, '{"denied":"bounded"}\n');
+      return true;
+    });
+    await assert.rejects(command('python3', ['-I', '-B', '-c', 'print("x"*65)'],
+      { inheritStderr, limit: 64 }), /command-output-limit/);
+  }
+});
+
+test('runtime stderr opt-in crosses the helper process boundary without forwarding stdout', () => {
+  const fixtureEnv = { ...process.env, SM_CANDIDATE_STDERR_FIXTURE: '1' };
+  delete fixtureEnv.NODE_TEST_CONTEXT;
+  const result = spawnSync(process.execPath, ['--no-warnings', '--experimental-strip-types',
+    '--test', '--test-name-pattern', '^command stderr subprocess fixture$',
+    path.resolve('scripts/ci/release-candidate.test.mjs')], {
+    env: fixtureEnv,
+    encoding: 'utf8', timeout: 30_000, maxBuffer: 262_144,
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0);
+  // Node's test runner forwards inherited child stderr as TAP diagnostics.
+  assert.equal(result.stderr, '');
+  assert.deepEqual(result.stdout.split('\n').filter(line => line.includes('candidate-runtime:')),
+    ['# candidate-runtime: runtime-directory']);
 });
 
 

@@ -493,8 +493,19 @@ export async function runtime(o: Options): Promise<RuntimeProof> {
     postgres_pool_ok: true, cleanup_verified: true }, o.binding, daemonId, m);
   state.status = 'complete'; state.proof = result; await save(); return result;
 }
+export function failureReason(error: unknown): string {
+  if (!(error instanceof Error)) return 'unclassified';
+  const message = error.message;
+  const match = message.match(/^[a-z0-9-]{1,64}$/);
+  // JavaScript's $ can match before a final newline; require the entire message.
+  return match?.[0] === message ? message : 'unclassified';
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  runtime(parseArgs(process.argv.slice(2))).then(value => {
+  Promise.resolve().then(() => runtime(parseArgs(process.argv.slice(2)))).then(value => {
     process.stdout.write(JSON.stringify(value) + '\n');
-  }).catch(() => { process.stderr.write('candidate-runtime: qualification-failed\n'); process.exitCode = 1; });
+  }).catch((error: unknown) => {
+    process.stderr.write('candidate-runtime: ' + failureReason(error) + '\n');
+    process.exitCode = 1;
+  });
 }

@@ -1,11 +1,53 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { chmod, chown, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { artifacts, directory, fileHash, hash, canonical, history, manifest, owned, proof, ready, containerNetwork, object } from './candidate-runtime-contract.mts';
-import { parseArgs } from './candidate-runtime.mts';
+import { failureReason, parseArgs } from './candidate-runtime.mts';
 import type { Binding, Resource, RuntimeProof, Row } from './candidate-runtime-contract.mts';
+
+test('failure reasons admit only complete bounded lowercase tokens', () => {
+  for (const message of ['probe-denied', '0', 'a'.repeat(64)])
+    assert.equal(failureReason(new Error(message)), message);
+  for (const message of ['', 'a'.repeat(65), 'Probe-denied', 'probe_denied',
+    '/private/credential', 'postgresql://user:secret@host/db', 'opaque sensitive marker',
+    '{"secret":"value"}', 'probe-denied\n', 'probe-denied\r', 'probe-denied\r\n',
+    'probe-denied\u0000', 'é']) {
+    assert.equal(failureReason(new Error(message)), 'unclassified');
+  }
+  for (const value of [null, undefined, 'probe-denied', { message: 'probe-denied' }])
+    assert.equal(failureReason(value), 'unclassified');
+});
+
+test('spawned runtime CLI emits safe reasons and redacts actual filesystem errors', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'sm-runtime-stderr-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await chmod(root, 0o700);
+  const runtime = fileURLToPath(new URL('./candidate-runtime.mts', import.meta.url));
+  const invoke = (directory: string) => spawnSync(process.execPath,
+    ['--no-warnings', '--experimental-strip-types', runtime,
+      '--directory', directory, '--source', root,
+      '--sha', 'c9dd4f5b903c777a6a378e3233b5353d08702424', '--run-id', '123',
+      '--image-id', 'sha256:' + 'a'.repeat(64),
+      '--archive-sha256', 'sha256:' + 'b'.repeat(64),
+      '--manifest-sha256', 'sha256:' + 'c'.repeat(64)],
+    { encoding: 'utf8', timeout: 15_000, maxBuffer: 65_536 });
+  // Identical admitted source/directory paths fail before any daemon access.
+  const approved = invoke(root);
+  assert.ifError(approved.error);
+  assert.equal(approved.status, 1);
+  assert.equal(approved.stdout, '');
+  assert.equal(approved.stderr, 'candidate-runtime: runtime-directory\n');
+  // ENOENT naturally includes this path in error.message; it must not escape.
+  const redacted = invoke(path.join(root, 'missing-opaque-sensitive-marker'));
+  assert.ifError(redacted.error);
+  assert.equal(redacted.status, 1);
+  assert.equal(redacted.stdout, '');
+  assert.equal(redacted.stderr, 'candidate-runtime: unclassified\n');
+});
 
 const digest = (c: string): string => 'sha256:' + c.repeat(64);
 const sha = 'c9dd4f5b903c777a6a378e3233b5353d08702424';

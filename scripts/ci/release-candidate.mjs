@@ -157,10 +157,11 @@ export async function atomic(file, value) {
 // Bounded argv-only process seam. The test seam proves orchestration policy,
 // while the independent Python archive validator proves real artifact content.
 export async function command(program, args, { cwd, output, input, limit = JSON_LIMIT,
-  timeout = 150_000, inherit = false } = {}) {
+  timeout = 150_000, inherit = false, inheritStderr = false } = {}) {
   const handle = output ? await open(output, 'wx', 0o600) : null;
   const child = spawn(program, args, { cwd, shell: false,
-    stdio: [input ? 'pipe' : 'ignore', 'pipe', inherit ? 'inherit' : 'ignore'] });
+    stdio: [input ? 'pipe' : 'ignore', 'pipe',
+      inherit || inheritStderr ? 'inherit' : 'ignore'] });
   let inputError;
   const inputStream = input ? createReadStream(input) : null;
   if (inputStream) {
@@ -441,7 +442,7 @@ export async function candidate(options, run = command, emit = value => process.
         '--source', options.cwd, '--sha', options.sha, '--run-id', options.runId,
         '--image-id', state.image_id, '--archive-sha256', state.archive_sha256,
         '--manifest-sha256', state.manifest_sha256],
-      { cwd: options.cwd, timeout: 1_200_000, limit: 65_536 })),
+      { cwd: options.cwd, timeout: 1_200_000, limit: 65_536, inheritStderr: true })),
     { ...state, daemon_id: daemonId }, manifest);
     await source(options, run);
     requireValue(await nativeDaemon(run) === daemonId, 'native-daemon-changed');

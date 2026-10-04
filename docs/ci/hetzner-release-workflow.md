@@ -67,10 +67,18 @@ npm run check:hetzner-release-contract
 npm run check:review-ci
 ```
 
-The `production_runtime` candidate build remains unchanged until root proves the
-full disposable native product E2E. Wiring that qualified producer, production
-qualification, actionlint/shellcheck verification, exact-head CI and separate
-technical review remain pending. The sixteen CI check names are preserved.
-Provisioning and first-publication migration remain pending owner approval.
-No mode, secret or environment is enabled by these checks, and this draft makes
-no production-readiness claim.
+The required production_runtime job now builds and exports the exact candidate
+once, verifies its native archive, and qualifies the actual API against a fresh
+PostgreSQL 18 database and full migration history. The observer requires its
+version 2 runtime proof. Native delivery, backup, reconciliation, rollback and
+failed rollback latch have been qualified in disposable fixtures; their GitHub
+authority/systemctl are modeled and their baseline is synthetic same-source.
+
+The sixteen CI names remain unchanged. Production stays disabled until the
+separate first-release preparation is approved and qualified: actual deployed
+compatibility, missing migration, resolved historical migration evidence,
+independent observer/backup closure and fixed controller installation. A resolved
+rolled-back Prisma attempt with a later successful row is preserved audit history;
+the current conservative adapter still denies it. Do not delete or rewrite that
+history to pass admission, or treat disposable runtime proof as production parity.
+No mode, secret or environment is enabled by these checks.
