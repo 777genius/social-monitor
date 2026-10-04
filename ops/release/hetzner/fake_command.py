@@ -64,12 +64,29 @@ if command == 'operator-adapter':
         result.update(server_major=18, method='pg_controldata',
                       system_identifier=state.get('live_system_identifier', '1111111111111111111'))
     elif verb == 'database':
+        from test_support import history_context
+        from prisma_history import seal, summarize
+        from uuid import UUID
+        rows = [{'id': str(UUID(int=i+1)), 'applied_steps_count': 0,
+                 'name': name, 'checksum': state.get('sql_checksum', hashlib.sha256(b'SELECT 1;').hexdigest()),
+                 'started_at': '2026-10-01T00:00:00Z',
+                 'finished_at': state.get('migration_finished', '2026-10-01T00:00:01Z'),
+                 'rolled_back_at': state.get('migration_rolled_back')}
+                for i, name in enumerate(state.get('migrations', ['20261001000000_initial']))]
+        if state.get('resolved_retry') and rows:
+            rows = [{**rows[0], 'id': str(UUID(int=10001)), 'finished_at': None,
+                     'rolled_back_at': '2026-10-01T00:00:00.000001Z'},
+                    {**rows[0], 'started_at': '2026-10-01T00:00:00.000002Z'}, *rows[1:]]
+        identity = json.loads((root / 'config.json').read_text())['backup_identity']['system_identifier']
+        context = history_context(rows, identity)
+        context.update(state.get('database_context', {}))
+        proof = seal(context, rows)
+        applied, failed = summarize(proof)
+        result['observed_at'] = int(time.time())
         result.update(server_major=18, read_only_role=state.get('read_only', True),
-                      transaction_read_only=True, failed_migrations=[],
-                      applied_migrations=[{'name': name, 'checksum': state.get('sql_checksum', hashlib.sha256(b'SELECT 1;').hexdigest()),
-                          'finished_at': state.get('migration_finished', '2026-10-01T00:00:00Z'),
-                          'rolled_back_at': state.get('migration_rolled_back')}
-                          for name in state.get('migrations', ['20261001000000_initial'])])
+                      transaction_read_only=True, system_identifier=identity,
+                      database=context['database'], observer_role=context['observer_role'], port=context['port'],
+                      failed_migrations=failed, applied_migrations=applied, history=proof)
     elif verb == 'preflight':
         result.update(configured=True, legacy_workflow=state.get('legacy', 'disabled_manually'))
     elif verb == 'probe':

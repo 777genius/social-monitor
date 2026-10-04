@@ -113,10 +113,13 @@ class Corrections(unittest.TestCase):
     # Red if a checksum-valid but pending or rolled-back row counts as successfully applied.
     def test_database_statuses_denied(self):
         self.assertEqual(receive(self.root)[0].returncode, 0)
-        for flags in ({'migration_finished': None}, {'migration_finished': 'done', 'migration_rolled_back': 'done'},
-                      {'migration_rolled_back': None, 'sql_checksum': 'f' * 64}):
+        for flags, reason in (
+                ({'migration_finished': None}, 'database-evidence'),
+                ({'migration_finished': '2026-10-01T00:00:01Z',
+                  'migration_rolled_back': '2026-10-01T00:00:02Z'}, 'fake-command-failed'),
+                ({'migration_rolled_back': None, 'sql_checksum': 'f' * 64}, 'migration-required')):
             mutate(self.root, **flags)
-            self.denied(f'admit {SHA} {RUN}', 'migration-required')
+            self.denied(f'admit {SHA} {RUN}', reason)
         self.no_execution()
 
     # Red if fresh verification masks an ancient full, or error/status failures and dump lane are accepted.

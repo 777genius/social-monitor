@@ -9,7 +9,7 @@ production operation, candidate program or migration was executed here.
 ## Trust and installation
 
 Only machine `b28fc7b17042414386eb9b114046e50c` is authorized. Install
-`controller.py`, `contract.py`, `archive.py`, `bounds.py`, `evidence.py`, `host.py`,
+`controller.py`, `contract.py`, `archive.py`, `bounds.py`, `evidence.py`, `prisma_history.py`, `host.py`,
 `compose_contract.py`, `requirements.txt` and executable `release-gate.sh` under `/opt/social-monitor-release`, root owned,
 without symlinks or group/world writes. Never install test files/fake adapters.
 An operator separately provisions root-owned `/etc/social-monitor/release/components.conf`
@@ -115,17 +115,66 @@ assertions as successful evidence or fill unknown inputs with success defaults.
   path classification. Admission binds production revision, delta and proof
   hashes; new activation revalidates the same evidence. The known production
   `dee89140...` to candidate delta still needs actual independent review.
-* `database`: query system `postgresql@18-main` through a separately provisioned
-  read-only role and transaction. Return `server_major:18`, `read_only_role:true`,
-  `transaction_read_only:true`, `failed_migrations:[]`, and `applied_migrations`
-  rows `{name,checksum,finished_at,rolled_back_at:null}`. Finished timestamps
-  must be nonempty; checksum is lowercase SHA256 of exact SQL bytes. Detect all
-  failed/pending/rolled-back histories; never suppress them from failed evidence.
+* `database`: use the separately provisioned read-only PG18 observer. Outer
+  adapter response `version:1` stays unchanged; the adapter and core must upgrade
+  together. Missing history proof fails closed. The mandatory `history` v1 object
+  has exactly `version`, `system_identifier`, `database`, `observer_role`, `port`,
+  `relation:{schema,name,oid,kind}`, `snapshot:{id,isolation,read_only}`,
+  `visibility:{complete,select,rls_enabled,rls_forced}`, UTC `observed_at`,
+  `row_count`, `rows`, and `sha256`. Identity, catalogs, count and **all unfiltered**
+  `_prisma_migrations` rows come from one read-only REPEATABLE READ transaction.
+  `observed_at` uses the collecting statement start, so a success committed after
+  BEGIN and before the first snapshot is not incorrectly dated after observation.
+  Each row has exactly `{id,name,checksum,started_at,finished_at,rolled_back_at,
+  applied_steps_count}`. Producer normalizes UTC with six microsecond digits;
+  core checks canonical bytes and recomputes SHA256 of the complete object except
+  `sha256`, using `contract.canonical` (sorted JSON keys, compact separators).
+  Rows sort by name, normalized start, UUID. Limit: 10,000 attempts and the existing
+  2 MiB observation/response budgets. Observer SELECT and an ordinary public table
+  without enabled or forced RLS are required; a digest does not authenticate
+  visibility or SQL effects. Trusted observer provisioning remains an owner task.
+
+  The pure `prisma_history.py` policy is shared by adapter and core and is part of
+  the finite installed/integrity-checked inventory. It requires unique UUIDs,
+  strict finite fields/types, nonnegative integer steps (boolean denied), starts,
+  timezone-aware real dates and consistent terminal states. Each name needs one
+  final finished/nonrolled success. Every predecessor must be unfinished and
+  explicitly rolled back, have the same checksum, and end at or after its own
+  start and **strictly before** the next start. Equal boundaries deny. Zero steps
+  are permitted; this evidence makes no claim about SQL effects. Pending,
+  conflicting or unresolved groups stay denied. Core derives and compares retained
+  `applied_migrations` / `failed_migrations` summaries, joins the proof to outer
+  database/role/port/cluster fields and the root-configured cluster, and checks
+  proof freshness against the configured evidence age and outer observation.
+
+  Admission stores the finite `database` observation and `database_hash` in its
+  immutable record. Activation/recovery journals keep their fresh observation;
+  immutable activation/rollback receipts retain `database` / `database_hash`
+  plus the original `admission_database` / `admission_database_hash`. Every
+  attempt survives in both proofs. Receipt reconciliation binds the fresh
+  observation to the journal. Before terminal reconstruction or publication, both
+  retained observations undergo full proof/digest/summary, outer identity/read-only,
+  configured-cluster and exact inventory validation. Historical records are not
+  freshness-checked again; live observations use the same validator plus age checks.
+  Existing admissions without the new proof cannot activate.
+
   Final layered filesystem requires regular `root/<14digits_name>/migration.sql`
-  only (plus optional root migration_lock.toml), no nested aliases/links. Final
-  names **and checksums** must equal successful database rows before image
-  execution or candidate credentials. Whiteouts/opaque dirs/type replacements
-  obey final filesystem semantics. No Prisma migration command is permitted.
+  only (plus optional root migration_lock.toml), no nested aliases/links. Exact
+  successful names **and checksums** must equal candidate SQL. Missing or unknown
+  migrations and schema/worker-sensitive deltas remain independent denials, even
+  with legitimate retries or compatibility approval. Whiteouts/opaque dirs/type
+  replacements obey final filesystem semantics. No Prisma migration command,
+  bootstrap/adoption authority, release-mode enablement or production operation
+  is added. The known 102/103 inventory and sensitive deployed delta remain denied.
+
+  Focused offline tests: `prisma_history_test.py`, `operator_database_test.py`,
+  controller/corrections/review tests, and affected CI producer fixtures. Native
+  `operator_database_catalog_test.py` requires the cached pinned PG18 image,
+  root and Docker; it owns a new TEST container with no network/host ports and
+  deletes only its captured ID. It exercises real retries, microseconds, an
+  intervening writer in a stable observer snapshot, SELECT denial, RLS denial and
+  the existing column/security-definer authority regressions. Missing prerequisites
+  fail the test rather than silently skipping it.
 * `postgres-identity`: empty request; independently observe the configured live PG
   cluster using `pg_controldata` or read-only SQL `pg_control_system()`. Return
   `method:"pg_controldata"` or `"pg_control_system"`, `server_major:18`, decimal

@@ -4,6 +4,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 from contract import Denied, canonical, digest
+from test_support import history_context
 import evidence
 import operator_backup as backup
 from operator_config import sha_bytes, SYSTEM_ID, ini
@@ -57,7 +58,7 @@ def info():
 def identity_row():
     return {'server_major': 18, 'system_identifier': SYSTEM_ID, 'database': 'fixture_db',
             'role': 'fixture_observer', 'port': '5432', 'transaction_read_only': True,
-            'read_only_role': True, 'migrations': None, 'history_complete': None}
+            'read_only_role': True, 'migrations': None, 'history_complete': None, 'history_context': None}
 
 
 class NativeInfoTests(unittest.TestCase):
@@ -225,7 +226,9 @@ class BackupJoinTests(unittest.TestCase):
             if argv[0].endswith('/psql'):
                 value = identity_row()
                 if b'public._prisma_migrations' in data:
-                    value.update({'migrations': [], 'history_complete': True})
+                    value.update({'migrations': [], 'history_complete': True,
+                        'history_context': history_context([], value['system_identifier'],
+                            value['database'], value['role'], value['port'])})
                 return value
             if argv[0].endswith('/docker'):
                 if argv[1] == 'exec':

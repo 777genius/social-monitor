@@ -282,7 +282,7 @@ def verify_toolchain():
                       run(['/usr/bin/psql', '--version']).strip()), 'psql18-version')
     files = metadata['files']
     required = {str(EXECUTOR), str(ROOT_EXECUTOR), *(str(CORE / n) for n in (
-        'controller.py', 'contract.py', 'archive.py', 'bounds.py', 'evidence.py', 'host.py',
+        'controller.py', 'contract.py', 'archive.py', 'bounds.py', 'evidence.py', 'prisma_history.py', 'host.py',
         'compose_contract.py', 'release-gate.sh', 'requirements.txt', 'install.py',
         'restricted-executor.c', 'operator_adapter.py', 'operator_config.py',
         'operator_github.py', 'operator_backup.py', 'operator_database.py', 'operator_probe.py'))}

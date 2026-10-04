@@ -1,10 +1,11 @@
 """One separately provisioned local PG18 observer connection for SQL and identity."""
-from datetime import datetime
+from prisma_history import seal, summarize
 from contract import require
-from operator_config import EXECUTABLES, PASS, SERVICE, decode, exact, match, uint64
+from operator_config import EXECUTABLES, PASS, SERVICE, decode, exact, uint64
 
 IDENTITY_SQL = """
-BEGIN TRANSACTION READ ONLY;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET LOCAL TIME ZONE 'UTC';
 SET LOCAL statement_timeout = '10000ms';
 SET LOCAL search_path = pg_catalog, public;
 SELECT json_build_object(
@@ -33,11 +34,12 @@ SELECT json_build_object(
    AND has_schema_privilege(r.oid, n.oid, 'CREATE'))
  AND NOT EXISTS (SELECT FROM pg_roles WHERE pg_has_role(oid, 'MEMBER')
    AND has_database_privilege(oid, current_database(), 'CREATE,TEMP')),
- 'migrations', %s, 'history_complete', %s);
+ 'migrations', %s, 'history_complete', %s, 'history_context', %s);
 ROLLBACK;
 """
 HISTORY_SQL = """(SELECT coalesce(json_agg(json_build_object(
- 'name', migration_name, 'checksum', checksum,
+ 'id', id, 'name', migration_name, 'checksum', checksum,
+ 'applied_steps_count', applied_steps_count,
  'finished_at', finished_at::text, 'rolled_back_at', rolled_back_at::text,
  'started_at', started_at::text) ORDER BY migration_name, id), '[]'::json)
  FROM public._prisma_migrations)"""
@@ -45,7 +47,26 @@ HISTORY_SQL = """(SELECT coalesce(json_agg(json_build_object(
 HISTORY_COMPLETE_SQL = """(SELECT count(*) = 1 FROM pg_class c
  JOIN pg_namespace n ON n.oid=c.relnamespace
  WHERE n.nspname='public' AND c.relname='_prisma_migrations'
- AND c.relkind='r' AND NOT c.relrowsecurity AND has_table_privilege(c.oid, 'SELECT'))"""
+ AND c.relkind='r' AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity
+ AND has_table_privilege(c.oid, 'SELECT'))"""
+
+HISTORY_CONTEXT_SQL = """json_build_object(
+ 'version', 1, 'system_identifier', (SELECT system_identifier::text FROM pg_control_system()),
+ 'database', current_database(), 'observer_role', current_user, 'port', current_setting('port'),
+ 'observed_at', statement_timestamp()::text,
+ 'relation', (SELECT json_build_object('schema', n.nspname, 'name', c.relname,
+   'oid', c.oid::bigint, 'kind', c.relkind) FROM pg_class c
+   JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='public' AND c.relname='_prisma_migrations'),
+ 'snapshot', json_build_object('id', pg_current_snapshot()::text,
+   'isolation', current_setting('transaction_isolation'),
+   'read_only', current_setting('transaction_read_only')='on'),
+ 'visibility', (SELECT json_build_object('complete', %s,
+   'select', has_table_privilege(c.oid, 'SELECT'), 'rls_enabled', c.relrowsecurity,
+   'rls_forced', c.relforcerowsecurity) FROM pg_class c
+   JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='public' AND c.relname='_prisma_migrations'),
+ 'row_count', (SELECT count(*) FROM public._prisma_migrations))""" % HISTORY_COMPLETE_SQL
 
 
 def observe(config, runner, history=False):
@@ -53,11 +74,12 @@ def observe(config, runner, history=False):
     raw = runner.run([EXECUTABLES['psql'], '-X', '-q', '-A', '-t', '--no-password',
                       '--set=ON_ERROR_STOP=1', '--dbname=service=' + config.db['service'], '-f', '-'],
                      data=(IDENTITY_SQL % (HISTORY_SQL if history else 'null',
-                                          HISTORY_COMPLETE_SQL if history else 'null')).encode(),
+                                          HISTORY_COMPLETE_SQL if history else 'null',
+                                          HISTORY_CONTEXT_SQL if history else 'null')).encode(),
                      env={'PGSERVICEFILE': SERVICE, 'PGPASSFILE': PASS}, limit=2 * 1024**2)
     value = decode(raw, 2 * 1024**2)
     exact(value, ('server_major', 'system_identifier', 'database', 'role', 'port',
-                  'transaction_read_only', 'read_only_role', 'migrations', 'history_complete'))
+                  'transaction_read_only', 'read_only_role', 'migrations', 'history_complete', 'history_context'))
     require(type(value['server_major']) is int and value['server_major'] == 18
             and value['database'] == config.db['database'] and value['role'] == config.db['role']
             and value['port'] == config.db['port']
@@ -73,38 +95,19 @@ def observe(config, runner, history=False):
 
 def identity(config, runner):
     value = observe(config, runner)
-    require(value['migrations'] is None, 'operator-identity-shape')
+    require(value['migrations'] is None and value['history_context'] is None, 'operator-identity-shape')
     return {'method': 'pg_control_system', 'server_major': 18,
             'system_identifier': value['system_identifier']}
 
 
 def database(config, runner):
     value = observe(config, runner, history=True)
-    rows = value['migrations']
-    require(isinstance(rows, list) and len(rows) <= 10000, 'operator-history-count')
-    applied, failed, names = [], [], set()
-    for row in rows:
-        exact(row, ('name', 'checksum', 'finished_at', 'rolled_back_at', 'started_at'))
-        require(match(r'[0-9]{14}_[a-zA-Z0-9_-]{1,180}', row['name'])
-                and match(r'[0-9a-f]{64}', row['checksum']), 'operator-history-row')
-        for key in ('started_at', 'finished_at', 'rolled_back_at'):
-            require(row[key] is None or match(
-                r'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?[+-][0-9]{2}(?::[0-9]{2})?',
-                row[key]), 'operator-history-time')
-        try:
-            parsed = {key: datetime.fromisoformat(row[key]) for key in
-                      ('started_at', 'finished_at', 'rolled_back_at') if row[key] is not None}
-            require(all(value.tzinfo is not None for value in parsed.values())
-                    and all(parsed[key] >= parsed['started_at'] for key in
-                            ('finished_at', 'rolled_back_at') if key in parsed and 'started_at' in parsed),
-                    'operator-history-time-order')
-        except ValueError:
-            require(False, 'operator-history-time')
-        valid = (row['started_at'] is not None and row['finished_at'] is not None
-                 and row['rolled_back_at'] is None and row['name'] not in names)
-        names.add(row['name'])
-        finite = {k: row[k] for k in ('name', 'checksum', 'finished_at', 'rolled_back_at')}
-        (applied if valid else failed).append(finite)
+    proof = seal(value['history_context'], value['migrations'])
+    require(all(proof[k] == value[v] for k, v in (
+        ('system_identifier', 'system_identifier'), ('database', 'database'),
+        ('observer_role', 'role'), ('port', 'port'))), 'operator-history-binding')
+    applied, failed = summarize(proof)
     return {'server_major': 18, 'system_identifier': value['system_identifier'],
+            'database': value['database'], 'observer_role': value['role'], 'port': value['port'],
             'read_only_role': True, 'transaction_read_only': True,
-            'failed_migrations': failed, 'applied_migrations': applied}
+            'history': proof, 'failed_migrations': failed, 'applied_migrations': applied}

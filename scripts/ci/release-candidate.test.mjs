@@ -331,8 +331,18 @@ test('actual independent controller verifies OCI graph and SQL bytes, refuses un
       assert.equal(proof.migrations[0].checksum, written.sql_checksum);
       assert.notEqual(proof.image_graph.config_digest, proof.image_id);
       // Actual controller database policy rejects unknown history/checksums.
-      const code = "import sys,json; sys.path.insert(0,sys.argv[1]); import evidence; evidence.database(json.loads(sys.argv[2]),json.loads(sys.argv[3]))";
-      const applied = proof.migrations.map(m => ({ ...m, finished_at: 'synthetic-finished', rolled_back_at: null }));
+      const code = `import sys,json,time
+from datetime import datetime,timezone
+sys.path.insert(0,sys.argv[1])
+import evidence
+from prisma_history import seal
+v=json.loads(sys.argv[2]); rows=v['applied_migrations']
+attempts=[dict(r,id='00000000-0000-0000-0000-%012d'%(i+1),started_at='2026-01-01T00:00:00Z',applied_steps_count=0) for i,r in enumerate(rows)]
+context=dict(version=1,system_identifier='1234567',database='test_db',observer_role='test_observer',port='5432',observed_at=datetime.now(timezone.utc).isoformat(),row_count=len(attempts),relation=dict(schema='public',name='_prisma_migrations',oid=16384,kind='r'),snapshot=dict(id='100:100:',isolation='repeatable read',read_only=True),visibility=dict(complete=True,select=True,rls_enabled=False,rls_forced=False))
+v.update(history=seal(context,attempts),system_identifier='1234567',database='test_db',observer_role='test_observer',port='5432',observed_at=int(time.time()))
+v['applied_migrations']=[{k:r[k] for k in ('name','checksum','finished_at','rolled_back_at')} for r in v['history']['rows']]
+evidence.database(v,json.loads(sys.argv[3]))`;
+      const applied = proof.migrations.map(m => ({ ...m, finished_at: '2026-01-01T00:00:01Z', rolled_back_at: null }));
       const database = rows => ({ server_major: 18, read_only_role: true, transaction_read_only: true,
         failed_migrations: [], applied_migrations: rows });
       const policy = rows => command('python3', ['-I', '-B', '-c', code, controllerDir,
@@ -340,7 +350,7 @@ test('actual independent controller verifies OCI graph and SQL bytes, refuses un
       await policy(applied);
       await assert.rejects(policy([{ ...applied[0], checksum: '0'.repeat(64) }]), /command-failed/);
       await assert.rejects(policy([...applied, { name: '20260102000000_unknown', checksum: '0'.repeat(64),
-        finished_at: 'synthetic-finished', rolled_back_at: null }]), /command-failed/);
+        finished_at: '2026-01-01T00:00:01Z', rolled_back_at: null }]), /command-failed/);
       await assert.rejects(qualify({ ...options, sha: 'f'.repeat(40) }, binding), /command-failed/);
       await assert.rejects(qualify(options, { ...binding, image_id: digest('f') }), /command-failed/);
       const bytes = await readFile(path.join(directory, 'candidate.tar'));

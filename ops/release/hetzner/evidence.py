@@ -1,5 +1,7 @@
 """Fail-closed policies for independently gathered release, SQL and backup evidence."""
 import re
+import time
+from prisma_history import summarize, timestamp
 from contract import DIGEST, digest, fresh, require
 
 
@@ -34,21 +36,39 @@ def compatibility(evidence, revision, candidate):
             'paths_sha256': digest(paths), 'compatibility_sha256': digest(proof)}
 
 
-def database(evidence, migrations):
-    require(evidence.get('server_major') == 18 and evidence.get('read_only_role') is True
-            and evidence.get('transaction_read_only') is True
-            and evidence.get('failed_migrations') == [], 'database-evidence')
-    rows = evidence.get('applied_migrations')
-    require(isinstance(rows, list), 'migration-required')
-    actual = []
-    for row in rows:
-        require(isinstance(row, dict) and isinstance(row.get('name'), str)
-                and re.fullmatch(r'[0-9a-f]{64}', row.get('checksum', ''))
-                and isinstance(row.get('finished_at'), str) and row['finished_at']
-                and row.get('rolled_back_at', 'missing') is None, 'migration-required')
-        actual.append({'name': row['name'], 'checksum': row['checksum']})
-    require(len({r['name'] for r in actual}) == len(actual)
-            and sorted(actual, key=lambda r: r['name']) == migrations, 'migration-required')
+def historical_database(evidence, migrations, system_identifier=None):
+    """Validate retained observation authority and every attempt, without live age checks."""
+    require(isinstance(evidence, dict), 'database-evidence')
+    require(type(evidence.get('server_major')) is int and evidence['server_major'] == 18
+            and evidence.get('read_only_role') is True
+            and evidence.get('transaction_read_only') is True, 'database-evidence')
+    proof = evidence.get('history')
+    applied, failed = summarize(proof)
+    require(all(proof[k] == evidence.get(k) for k in
+                ('system_identifier', 'database', 'observer_role', 'port'))
+            and (system_identifier is None or proof['system_identifier'] == system_identifier),
+            'history-binding')
+    require(type(evidence.get('observed_at')) is int and evidence['observed_at'] >= 0
+            and timestamp(proof['observed_at']).timestamp() <= evidence['observed_at'] + 1,
+            'stale-evidence')
+    require(evidence.get('applied_migrations') == applied and evidence.get('failed_migrations') == failed,
+            'history-summary')
+    require(not failed, 'database-evidence')
+    actual = [{'name': r['name'], 'checksum': r['checksum']} for r in applied]
+    require(actual == migrations, 'migration-required')
+    # Persist only the finite observation contract, including every attempt.
+    fields = ('server_major', 'system_identifier', 'database', 'observer_role', 'port',
+              'read_only_role', 'transaction_read_only', 'history', 'applied_migrations',
+              'failed_migrations', 'observed_at', 'version', 'sha', 'ci_run_id', 'archive_sha256', 'image_id')
+    return {k: evidence[k] for k in fields if k in evidence}
+
+
+def database(evidence, migrations, system_identifier=None, max_age=300):
+    observation = historical_database(evidence, migrations, system_identifier)
+    observed = timestamp(observation['history']['observed_at']).timestamp()
+    require(0 <= time.time() - observed <= max_age
+            and 0 <= observation['observed_at'] + 1 - observed <= max_age + 1, 'stale-evidence')
+    return observation
 
 
 def backup(evidence, binding, config, lane='migration-free', live=None, config_hash=None):

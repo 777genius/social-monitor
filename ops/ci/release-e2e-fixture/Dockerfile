@@ -5,7 +5,7 @@ ARG FIXTURE_BASE
 FROM ${FIXTURE_BASE}
 ARG FIXTURE_BASE
 USER root
-COPY --chown=0:0 --chmod=0644 ops/release/hetzner/controller.py ops/release/hetzner/contract.py ops/release/hetzner/archive.py ops/release/hetzner/bounds.py ops/release/hetzner/evidence.py ops/release/hetzner/host.py ops/release/hetzner/compose_contract.py ops/release/hetzner/requirements.txt /opt/social-monitor-release/
+COPY --chown=0:0 --chmod=0644 ops/release/hetzner/controller.py ops/release/hetzner/contract.py ops/release/hetzner/archive.py ops/release/hetzner/bounds.py ops/release/hetzner/evidence.py ops/release/hetzner/prisma_history.py ops/release/hetzner/host.py ops/release/hetzner/compose_contract.py ops/release/hetzner/requirements.txt /opt/social-monitor-release/
 COPY --chown=0:0 --chmod=0755 ops/release/hetzner/release-gate.sh /opt/social-monitor-release/release-gate.sh
 # Canonical unchanged source; compile normally with install.py's exact flags.
 COPY --chown=0:0 --chmod=0644 ops/release/hetzner/operator_adapter.py ops/release/hetzner/operator_config.py ops/release/hetzner/operator_github.py ops/release/hetzner/operator_backup.py ops/release/hetzner/operator_database.py ops/release/hetzner/operator_probe.py ops/release/hetzner/restricted-executor.c ops/release/hetzner/install.py /opt/social-monitor-release/

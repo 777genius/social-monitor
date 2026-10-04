@@ -5,16 +5,22 @@ writers pass the old predicate, but must fail production IDENTITY_SQL. One
 class owns one networkless disposable container; no host/database credentials.
 """
 import json
+from contextlib import contextmanager
 import os
 from pathlib import Path
 import re
+import select
 import subprocess
 import tempfile
 import time
 import unittest
 import uuid
 
-from operator_database import IDENTITY_SQL, HISTORY_SQL, HISTORY_COMPLETE_SQL
+from operator_database import IDENTITY_SQL, HISTORY_SQL, HISTORY_COMPLETE_SQL, HISTORY_CONTEXT_SQL
+from contract import Denied
+from prisma_history import seal, summarize
+import operator_database
+import evidence
 
 IMAGE = 'postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722'
 # Frozen rejected predicate, executed against catalogs, never a query-text test.
@@ -59,11 +65,11 @@ REVOKE EXECUTE ON FUNCTION public.elevated_writer() FROM PUBLIC;
 REVOKE EXECUTE ON PROCEDURE public.elevated_procedure() FROM PUBLIC;
 CREATE TABLE public._prisma_migrations (
  id text, migration_name text, checksum text, started_at timestamptz,
- finished_at timestamptz, rolled_back_at timestamptz);
+ finished_at timestamptz, rolled_back_at timestamptz, applied_steps_count integer);
 INSERT INTO public._prisma_migrations VALUES
- ('1','20261002000000_finished', repeat('a',64), now(), now(), NULL),
- ('2','20261002000001_pending', repeat('b',64), now(), NULL, NULL),
- ('3','20261002000002_rolled', repeat('c',64), now(), NULL, now());
+ ('00000000-0000-0000-0000-000000000001','20261002000000_finished', repeat('a',64), now(), now(), NULL, 1),
+ ('00000000-0000-0000-0000-000000000002','20261002000001_pending', repeat('b',64), now(), NULL, NULL, 0),
+ ('00000000-0000-0000-0000-000000000003','20261002000002_rolled', repeat('c',64), now(), NULL, now(), 0);
 GRANT SELECT ON public._prisma_migrations TO fixture_observer;
 RESET ROLE;
 """
@@ -136,7 +142,8 @@ class DatabaseCatalogTests(unittest.TestCase):
 
     def observation(self, expected, history=False):
         value = json.loads(self.sql(IDENTITY_SQL % (
-            HISTORY_SQL if history else 'null', HISTORY_COMPLETE_SQL if history else 'null'),
+            HISTORY_SQL if history else 'null', HISTORY_COMPLETE_SQL if history else 'null',
+            HISTORY_CONTEXT_SQL if history else 'null'),
             'fixture_observer'))
         self.assertEqual(value['server_major'], 18)
         self.assertIs(type(value['system_identifier']), str)
@@ -206,6 +213,98 @@ class DatabaseCatalogTests(unittest.TestCase):
         finally:
             self.sql('DROP FUNCTION public.unknown_reader();')
         self.observation(True)
+
+    # Red: old observation lacks IDs/steps/snapshot and rejects this legitimate retry.
+    def test_all_attempts_consistent_snapshot_and_denied_visibility(self):
+        original = self.sql('SELECT coalesce(json_agg(m),\'[]\') FROM public._prisma_migrations m;')
+        sql = IDENTITY_SQL % (HISTORY_SQL, HISTORY_COMPLETE_SQL, HISTORY_CONTEXT_SQL)
+        test = self
+        class Config:
+            db = {'service': 'TEST_catalog', 'database': 'sm_catalog', 'role': 'fixture_observer', 'port': '5432'}
+            core = {'backup_identity': {'system_identifier': test.system_id}}
+            def recheck(self): pass
+        class Runner:
+            def run(self, argv, data, **kwargs):
+                return test.sql(data.decode(), 'fixture_observer').encode()
+        try:
+            self.sql("TRUNCATE public._prisma_migrations; INSERT INTO public._prisma_migrations VALUES "
+                "('00000000-0000-0000-0000-000000000011','20260101000000_TEST_retry',repeat('a',64),"
+                "'2026-01-01T00:00:00.123456Z',NULL,'2026-01-01T00:00:01.123456Z',0),"
+                "('00000000-0000-0000-0000-000000000012','20260101000000_TEST_retry',repeat('a',64),"
+                "'2026-01-01T00:00:01.123457Z','2026-01-01T00:00:02.123456Z',NULL,0);")
+            result = {**operator_database.database(Config(), Runner()), 'observed_at': int(time.time())}
+            retained = evidence.database(result, [{'name': '20260101000000_TEST_retry', 'checksum': 'a'*64}],
+                                         self.system_id)
+            self.assertEqual(len(retained['history']['rows']), 2)
+            self.assertEqual(retained['history']['rows'][0]['rolled_back_at'], '2026-01-01T00:00:01.123456Z')
+            # Establish the real transaction's snapshot, commit another row on a second
+            # connection, then execute the collector's unchanged SELECT and ROLLBACK.
+            prefix, query = sql.split('SELECT json_build_object(', 1)
+            argv = ['/usr/bin/docker', '--config', str(self.cli_config),
+                    '--host=unix:///var/run/docker.sock', 'exec', '-i', self.cid,
+                    'psql', '-X', '-qAt', '--no-password', '--set=ON_ERROR_STOP=1',
+                    '--username=fixture_observer', '--dbname=sm_catalog', '-f', '-']
+            @contextmanager
+            def observer(marker):
+                child = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, text=True, env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'})
+                try:
+                    child.stdin.write(prefix + marker + '\n'); child.stdin.flush()
+                    self.assertTrue(select.select([child.stdout], [], [], 15)[0], 'observer barrier timed out')
+                    yield child, child.stdout.readline().strip()
+                finally:
+                    if child.poll() is None: child.kill()
+                    child.wait()
+                    for pipe in (child.stdin, child.stdout, child.stderr): pipe.close()
+
+            # Red with transaction_timestamp(): a success committed after BEGIN
+            # but before the first snapshot appears newer than the observation.
+            # psql's client echo does not acquire a PostgreSQL snapshot.
+            with observer('\\echo TEST-BEGIN-BEFORE-SNAPSHOT') as (child, marker):
+                self.assertEqual(marker, 'TEST-BEGIN-BEFORE-SNAPSHOT')
+                self.sql("UPDATE public._prisma_migrations SET finished_at=clock_timestamp() "
+                         "WHERE id='00000000-0000-0000-0000-000000000012';")
+                out, err = child.communicate('SELECT json_build_object(' + query, timeout=20)
+                self.assertEqual(child.returncode, 0, err)
+                raw = json.loads(out)
+                proof = seal(raw['history_context'], raw['migrations'])
+                self.assertEqual(proof['row_count'], 2)
+                self.assertEqual(summarize(proof)[1], [])
+                self.assertNotEqual(proof['rows'][1]['finished_at'], '2026-01-01T00:00:02.123456Z')
+
+            with observer('SELECT pg_current_snapshot();') as (child, snapshot):
+                self.assertRegex(snapshot, r'^[0-9]+:[0-9]+:')
+                self.sql("INSERT INTO public._prisma_migrations VALUES "
+                    "('00000000-0000-0000-0000-000000000013','20260102000000_TEST_pending',repeat('b',64),"
+                    "now(),NULL,NULL,0);")
+                out, err = child.communicate('SELECT json_build_object(' + query, timeout=20)
+                self.assertEqual(child.returncode, 0, err)
+                raw = json.loads(out)
+                proof = seal(raw['history_context'], raw['migrations'])
+                self.assertEqual(proof['snapshot']['id'], snapshot)
+                self.assertEqual(proof['row_count'], 2)
+                self.assertEqual(len(proof['rows']), 2)
+                self.assertEqual(summarize(proof)[1], [])
+            newer = operator_database.database(Config(), Runner())
+            self.assertEqual(newer['history']['row_count'], 3)
+            self.assertEqual(len(newer['failed_migrations']), 1)
+            self.sql('REVOKE SELECT ON public._prisma_migrations FROM fixture_observer;')
+            try:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    operator_database.database(Config(), Runner())
+            finally:
+                self.sql('GRANT SELECT ON public._prisma_migrations TO fixture_observer;')
+            for clause in ('ENABLE ROW LEVEL SECURITY', 'DISABLE ROW LEVEL SECURITY; ALTER TABLE public._prisma_migrations FORCE ROW LEVEL SECURITY'):
+                self.sql('ALTER TABLE public._prisma_migrations ' + clause + ';')
+                with self.assertRaises(Denied): operator_database.database(Config(), Runner())
+                self.sql('ALTER TABLE public._prisma_migrations DISABLE ROW LEVEL SECURITY; '
+                         'ALTER TABLE public._prisma_migrations NO FORCE ROW LEVEL SECURITY;')
+        finally:
+            self.sql('ALTER TABLE public._prisma_migrations DISABLE ROW LEVEL SECURITY; '
+                     'ALTER TABLE public._prisma_migrations NO FORCE ROW LEVEL SECURITY; '
+                     'TRUNCATE public._prisma_migrations; INSERT INTO public._prisma_migrations '
+                     "SELECT * FROM json_populate_recordset(NULL::public._prisma_migrations, '"
+                     + original.replace("'", "''") + "');")
 
 
 if __name__ == '__main__':
