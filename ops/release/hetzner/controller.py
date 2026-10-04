@@ -69,6 +69,14 @@ class Controller:
                                  self.c['backup_identity']['system_identifier'],
                                  self.c['evidence_max_age_seconds'])
 
+    def retained_database(self, admission, observation):
+        require(isinstance(admission.get('database'), dict)
+                and digest(admission['database']) == admission.get('database_hash'),
+                'admission-database-binding')
+        for database in (admission['database'], observation):
+            policies.historical_database(database, admission['migrations'],
+                                         self.c['backup_identity']['system_identifier'])
+
     def preflight(self):
         before, target = self.host.snapshot()
         # Adapter must query current host state, not a cached fixture. No mkdir, writes or import.
@@ -130,6 +138,7 @@ class Controller:
             require(all(old.get(k) == admission.get(k) for k in
                         ('image_id', 'archive_sha256', 'previous_image_id', 'compose_hash',
                          'snapshot_before_hash', 'sha', 'ci_run_id', 'compatibility')), 'admission-conflict')
+            self.retained_database(old, old.get('database'))
             return old
         atomic(path, admission, immutable=True)
         return admission
@@ -150,6 +159,7 @@ class Controller:
 
     def finish(self, key, tx, outcome, probes):
         admission = tx['admission']
+        self.retained_database(admission, tx.get('database'))
         snapshot, target = self.invariant(admission)
         expected = admission['image_id'] if outcome == 'activated' else admission['previous_image_id']
         require(target['image'] == expected and target['running'] is True, 'finish-image')
@@ -199,6 +209,7 @@ class Controller:
             raise Denied('rollback-failed-latched') from None
 
     def receipt_binding(self, receipt, admission):
+        self.retained_database(admission, receipt.get('database'))
         require(all(receipt.get(k) == v for k, v in self.binding(admission).items())
                 and all(receipt.get(k) == admission[k] for k in
                         ('previous_image_id', 'previous_sha', 'image_graph', 'compatibility',
@@ -245,14 +256,7 @@ class Controller:
             return receipt
         admission = read_json(self.path('admissions', key))
         require(admission['sha'] + '-' + admission['ci_run_id'] == key, 'admission-binding')
-        require(isinstance(admission.get('database'), dict)
-                and digest(admission['database']) == admission.get('database_hash'), 'admission-database-binding')
-        from prisma_history import summarize
-        applied, failed = summarize(admission['database'].get('history'))
-        require(not failed and applied == admission['database'].get('applied_migrations')
-                and admission['database'].get('failed_migrations') == []
-                and [{'name': r['name'], 'checksum': r['checksum']} for r in applied] == admission['migrations'],
-                'admission-database-binding')
+        self.retained_database(admission, admission.get('database'))
         if tx_path.exists():
             tx = read_json(tx_path)
             require(tx['admission'] == admission, 'transaction-binding')
@@ -261,6 +265,7 @@ class Controller:
                 raise Denied('rolled-back')
             # An interrupted up may have succeeded; only real verification can finalize it.
             try:
+                self.retained_database(admission, tx.get('database'))
                 self.invariant(admission)
                 require(self.release_evidence(admission, admission['previous_sha']) == admission['compatibility'], 'compatibility-changed')
                 tx['backup'] = self.backup(admission)
@@ -346,6 +351,7 @@ class Controller:
                 if published.exists():
                     receipt = read_json(published)
                     self.receipt_binding(receipt, tx['admission'])
+                    require(receipt.get('database') == tx.get('database'), 'receipt-database-binding')
                     if receipt['outcome'] == 'rolled-back':
                         return self.reconcile(key, tx)
                     require(receipt['outcome'] == 'activated', 'receipt-outcome')

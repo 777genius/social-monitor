@@ -78,6 +78,135 @@ class ReleaseTests(unittest.TestCase):
         path = self.root / 'commands.jsonl'
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
+    # Red at d6f23bd: matching journal/receipt and recomputed outer hashes bypass
+    # all nested validation, including the admission observation, on reconciliation.
+    def test_retained_history_denied_before_terminal_reconstruction(self):
+        import copy
+        self.admitted()
+        mutate(self.root, crash_receipt=True)
+        self.assertEqual(run(self.root, f'activate {SHA} {RUN}').returncode, -9)
+        tx_path = self.state / 'transactions' / (KEY + '.json')
+        receipt_path = self.state / 'receipts' / (KEY + '.json')
+        activated = read_json(tx_path), read_json(receipt_path)
+        mutate(self.root, crash_receipt=True)
+        self.assertEqual(run(self.root, f'rollback {SHA} {RUN}').returncode, -9)
+        rolled_back_path = self.state / 'receipts' / (KEY + '-rollback.json')
+        rolled_back = read_json(tx_path), read_json(rolled_back_path)
+        cases = [('missing', 'history-shape'), ('digest', 'history-digest'),
+                 ('pending', 'database-evidence'), ('summary', 'history-summary'),
+                 ('inventory', 'migration-required'), ('cluster', 'history-binding')]
+        cases += [(k, 'history-binding') for k in
+                  ('database', 'observer_role', 'port', 'system_identifier')]
+        cases += [(k, 'database-evidence') for k in
+                  ('server_major', 'read_only_role', 'transaction_read_only')]
+        for outcome, originals, published, image in (
+                ('activated', activated, receipt_path, activated[1]['image_id']),
+                ('rolled-back', rolled_back, rolled_back_path, PREVIOUS)):
+            for observation in ('admission_database', 'database'):
+                for fault, reason in cases:
+                    with self.subTest(outcome=outcome, observation=observation, fault=fault):
+                        tx, receipt = copy.deepcopy(originals)
+                        db = receipt[observation]
+                        if fault == 'missing':
+                            db.pop('history')
+                        elif fault == 'digest':
+                            db['history']['sha256'] = 'sha256:' + '0' * 64
+                        elif fault == 'pending':
+                            db['history']['rows'][-1]['finished_at'] = None
+                        elif fault == 'summary':
+                            db['applied_migrations'] = []
+                        elif fault == 'inventory':
+                            db['history']['rows'][-1]['checksum'] = '0' * 64
+                            db['applied_migrations'][-1]['checksum'] = '0' * 64
+                        elif fault == 'cluster':
+                            db['system_identifier'] = db['history']['system_identifier'] = '2222222222222222222'
+                        else:
+                            db[fault] = {'server_major': 17, 'read_only_role': False,
+                                'transaction_read_only': False, 'port': '5433'}.get(fault, 'other')
+                        if fault in ('pending', 'inventory', 'cluster'):
+                            proof = db['history']
+                            proof['sha256'] = digest({k: v for k, v in proof.items() if k != 'sha256'})
+                            if fault == 'pending':
+                                from prisma_history import summarize
+                                db['applied_migrations'], db['failed_migrations'] = summarize(proof)
+                        receipt[observation + '_hash'] = digest(db)
+                        if observation == 'admission_database':
+                            tx['admission']['database'] = db
+                            tx['admission']['database_hash'] = digest(db)
+                        else:
+                            tx['database'] = db
+                        fake = read_json(self.root / 'fake.json')
+                        fake['target']['image'] = image
+                        atomic(self.root / 'fake.json', fake)
+                        # Each public reconstruction route sees matching durable records.
+                        for verb in ('activate', 'rollback', 'verify'):
+                            atomic(tx_path, tx)
+                            atomic(published, receipt)
+                            self.denied(f'{verb} {SHA} {RUN}', reason)
+                            self.assertNotIn('outcome', read_json(tx_path))
+
+    # Red if shared structural validation reintroduces live freshness into recovery
+    # or rollback tries to obtain a new migration observation before restoring.
+    def test_historical_proof_reconciles_and_restores_without_fresh_database(self):
+        from datetime import timedelta
+        from prisma_history import timestamp, utc
+        self.admitted()
+        mutate(self.root, crash_receipt=True)
+        self.assertEqual(run(self.root, f'activate {SHA} {RUN}').returncode, -9)
+        tx_path = self.state / 'transactions' / (KEY + '.json')
+        receipt_path = self.state / 'receipts' / (KEY + '.json')
+        tx, receipt = read_json(tx_path), read_json(receipt_path)
+        for observation in ('admission_database', 'database'):
+            db = receipt[observation]
+            db['observed_at'] -= 600
+            proof = db['history']
+            proof['observed_at'] = utc((timestamp(proof['observed_at']) - timedelta(seconds=600)).isoformat())
+            proof['sha256'] = digest({k: v for k, v in proof.items() if k != 'sha256'})
+            receipt[observation + '_hash'] = digest(db)
+        tx['admission']['database'] = receipt['admission_database']
+        tx['admission']['database_hash'] = receipt['admission_database_hash']
+        tx['database'] = receipt['database']
+        atomic(tx_path, tx)
+        atomic(receipt_path, receipt)
+        original = receipt_path.read_bytes()
+        mutate(self.root, read_only=False, main_sha='f' * 40)
+        self.assertEqual(self.ok(f'activate {SHA} {RUN}')['outcome'], 'activated')
+        mutate(self.root, crash_receipt=True)
+        self.assertEqual(run(self.root, f'rollback {SHA} {RUN}').returncode, -9)
+        self.assertEqual(self.ok(f'rollback {SHA} {RUN}')['outcome'], 'rolled-back')
+        self.assertEqual(read_json(self.root / 'fake.json')['target']['image'], PREVIOUS)
+        self.assertEqual(receipt_path.read_bytes(), original)
+        self.assertFalse((self.state / 'latch.json').exists())
+
+    # Red if interrupted recovery replaces malformed retained evidence with a
+    # fresh observation and reports success. Restoration must still precede denial.
+    def test_interrupted_recovery_invalid_retained_proof_restores_and_latches(self):
+        self.admitted()
+        mutate(self.root, crash_up=True)
+        self.assertEqual(run(self.root, f'activate {SHA} {RUN}').returncode, -9)
+        path = self.state / 'transactions' / (KEY + '.json')
+        tx = read_json(path)
+        tx['database']['history']['sha256'] = 'sha256:' + '0' * 64
+        atomic(path, tx)
+        self.denied(f'activate {SHA} {RUN}', 'rollback-failed-latched')
+        self.assertEqual(read_json(self.root / 'fake.json')['target']['image'], PREVIOUS)
+        self.assertNotIn('outcome', read_json(path))
+        self.assertEqual(list((self.state / 'receipts').iterdir()), [])
+        self.assertTrue((self.state / 'latch.json').exists())
+
+    # Red if missing fresh migration evidence blocks safe interrupted restoration
+    # even though both retained observations still prove unchanged migrations.
+    def test_interrupted_recovery_restores_with_retained_proof_when_live_database_denied(self):
+        self.admitted()
+        mutate(self.root, crash_up=True)
+        self.assertEqual(run(self.root, f'activate {SHA} {RUN}').returncode, -9)
+        mutate(self.root, read_only=False)
+        self.denied(f'activate {SHA} {RUN}', 'rolled-back')
+        receipt = self.ok('receipt ' + KEY)
+        self.assertEqual(receipt['outcome'], 'rolled-back')
+        self.assertEqual(read_json(self.root / 'fake.json')['target']['image'], PREVIOUS)
+        self.assertFalse((self.state / 'latch.json').exists())
+
     # Regression: a forced command accepts shell punctuation, extra arguments or unknown services.
     def test_grammar_fuzz(self):
         valid = ['status', 'preflight', f'admit {SHA} {RUN}', f'activate {SHA} {RUN}',
