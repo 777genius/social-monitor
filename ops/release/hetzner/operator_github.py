@@ -9,13 +9,14 @@ REPO = '777genius/social-monitor'
 CI = 'pull-request.yml'
 JOBS = {
     'Static architecture and quality', 'Security and public contracts',
-    *('Backend unit shard ' + str(i) + '/4' for i in range(1, 5)),
+    *('Backend unit shard ' + str(i) + '/6' for i in range(1, 7)),
     'Backend build and sandbox contracts', 'Backend build and unit tests',
     'Backend end-to-end tests', 'PostgreSQL tenant isolation',
     'Reader Promotion V2 canary PostgreSQL 18',
     'Feed promotion snapshot and native plans PostgreSQL 18',
     'Reader-summary weekly review manifest PostgreSQL 18',
     'Reader Value V3 PostgreSQL 18 contracts',
+    'Production immutable candidate', 'Production deploy lifecycle fixtures',
     'Production container and deploy lifecycle', 'Flutter architecture and tests',
 }
 
