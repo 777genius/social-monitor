@@ -53,23 +53,31 @@ test('untrustworthy execution, omitted/duplicate inventory and suite times are r
   ]) { const data = input(); mutate(data); assert.throws(() => refreshDurations(data)); }
 });
 
-test('committed manifest carries measured provenance and 995 canonical durations', () => {
+test('committed manifest carries measured provenance and 1008 canonical durations', () => {
   const manifest = JSON.parse(readFileSync('ops/ci/jest-durations.json', 'utf8'));
-  assert.equal(manifest.source.headSha, '1360f9326dcf78ed9d43ef2c6733957c12ecfb71');
-  assert.equal(manifest.source.runId, 37040676496);
-  assert.equal(Object.keys(manifest.durationsMs).length, 995);
+  assert.equal(manifest.source.headSha, '597a01cd6fdcd30f74d4854182c296a3ec02bdad');
+  assert.equal(manifest.source.runId, 37231862752);
+  assert.equal(manifest.source.conclusion, 'success');
+  assert.equal(manifest.source.archiveSha256, 'a924383f379e89bf03cce4320af181ab235256cd5a52b3f7206c19d2af2337f8');
+  assert.deepEqual(manifest.source.reportSha256, [
+    'ed03db09e5ac166aa557cd79055a183302f2dd85cc697d53cd5243bf565ede52',
+    'da65858c586325b77360a4a20c36c2f85d98f33c8deeb1ef4688d4da41570204',
+    '7d604953dcf7a42d3dc16a33e46d4c952c0778a6b0a2d82bc542ccffb551a8f6',
+    '4d1a021bdbf0dc94e5b04c6e7529b8d34f3864bd6256aaf649c1d41d7b1a098a',
+  ]);
+  assert.equal(Object.keys(manifest.durationsMs).length, 1008);
 });
 
 // Optional real artifacts are local-only ignored inputs materialized by the host.
 const realDirectory = 'node_modules/.cicd-evidence/gha-ci-pr1-unit-reports';
 let realBinding;
 try { realBinding = JSON.parse(readFileSync('node_modules/.cicd-evidence/gha-source-binding.json', 'utf8')); } catch { /* not present on generic CI */ }
-test('host reports independently match every seed weight, successful complete 995-suite union', { skip: !realBinding }, () => {
+test('host reports independently match every seed weight, successful complete 1008-suite union', { skip: !realBinding }, () => {
   const reports = loadShardReports(realDirectory);
   const result = refreshDurations({ reports, binding: realBinding, sourceSha: realBinding.head_sha,
     reportRoot: '/home/runner/work/social-monitor/social-monitor' });
-  assert.equal(result.proof.suites, 995);
+  assert.equal(result.proof.suites, 1008);
   assert.deepEqual(result.manifest.durationsMs, JSON.parse(readFileSync('ops/ci/jest-durations.json', 'utf8')).durationsMs);
   assert.deepEqual(reports.map((report) => report.execution.testResults.reduce((sum, suite) => sum + suite.endTime - suite.startTime, 0)),
-    [201434, 503306, 258616, 513490]);
+    [227551, 511606, 513980, 559555]);
 });
