@@ -1,8 +1,6 @@
-# Reusable reference for pull-request.yml's production_runtime job; no triggers.
-# The parsed candidate workflow guard requires both job models to agree and
-# preserves the required check name and three existing gate commands.
-production_runtime:
-  name: Production container and deploy lifecycle
+# Canonical independent candidate/lifecycle graph and required fail-closed aggregate.
+production_candidate:
+  name: Production immutable candidate
   runs-on: ubuntu-latest
   timeout-minutes: 45
   permissions:
@@ -24,12 +22,6 @@ production_runtime:
         version: v29.8.2
         set-host: true
         daemon-config: '{"features":{"containerd-snapshotter":true}}'
-    - name: Verify production container and deploy lifecycle
-      run: |
-        set -euo pipefail
-        npm run check:container
-        npm run check:runtime-compose
-        npm run check:production-deploy-lifecycle
     - name: Verify candidate policy
       run: |
         set -euo pipefail
@@ -65,3 +57,42 @@ production_runtime:
         path: ${{ runner.temp }}/api-candidate-${{ github.run_id }}/phases.json
         if-no-files-found: ignore
         retention-days: 1
+
+production_lifecycle:
+  name: Production deploy lifecycle fixtures
+  runs-on: ubuntu-latest
+  timeout-minutes: 45
+  permissions:
+    contents: read
+  steps:
+    - name: Check out the actual CI commit
+      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Set up Node.js
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      with:
+        node-version: 22
+    - name: Verify production container and deploy lifecycle
+      run: |
+        set -euo pipefail
+        npm run check:container
+        npm run check:runtime-compose
+        npm run check:production-deploy-lifecycle
+
+production_runtime:
+  name: Production container and deploy lifecycle
+  needs: [production_candidate, production_lifecycle]
+  if: always()
+  runs-on: ubuntu-latest
+  timeout-minutes: 5
+  permissions:
+    contents: read
+  steps:
+    - name: Require both independent production checks
+      run: |
+        set -euo pipefail
+        test "${{ needs.production_candidate.result }}" = "success"
+        test "${{ needs.production_lifecycle.result }}" = "success"

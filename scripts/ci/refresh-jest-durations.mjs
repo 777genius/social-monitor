@@ -55,7 +55,9 @@ export function main(args) {
     options[args[index]] = args[index + 1];
   }
   if ([...allowed].slice(0, 5).some((key) => !options[key])) fail('usage: --reports DIR --binding FILE --source-sha SHA --report-root ROOT --out FILE [--current-inventory FILE]');
-  const reports = loadShardReports(options['--reports']);
+  // This refresh CLI intentionally reads the actual historical four-report source.
+  // Pipeline completeness independently supplies --shards 6; never relabel provenance.
+  const reports = loadShardReports(options['--reports'], 4);
   const result = refreshDurations({ reports, binding: boundedJson(options['--binding'], 65536),
     sourceSha: options['--source-sha'], reportRoot: options['--report-root'],
     currentInventory: options['--current-inventory'] ? boundedJson(options['--current-inventory'], 4 * 1024 * 1024) : undefined });

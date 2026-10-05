@@ -8,14 +8,16 @@ const sha = 'a'.repeat(40), other = 'b'.repeat(40), runId = '123';
 type Row = Record<string, unknown>;
 const names = [
   'Static architecture and quality', 'Security and public contracts',
-  'Backend unit shard 1/4', 'Backend unit shard 2/4',
-  'Backend unit shard 3/4', 'Backend unit shard 4/4',
+  'Backend unit shard 1/6', 'Backend unit shard 2/6',
+  'Backend unit shard 3/6', 'Backend unit shard 4/6',
+  'Backend unit shard 5/6', 'Backend unit shard 6/6',
   'Backend build and sandbox contracts', 'Backend build and unit tests',
   'Backend end-to-end tests', 'PostgreSQL tenant isolation',
   'Reader Promotion V2 canary PostgreSQL 18',
   'Feed promotion snapshot and native plans PostgreSQL 18',
   'Reader-summary weekly review manifest PostgreSQL 18',
   'Reader Value V3 PostgreSQL 18 contracts',
+  'Production immutable candidate', 'Production deploy lifecycle fixtures',
   'Production container and deploy lifecycle', 'Flutter architecture and tests',
 ];
 function fixture() {
@@ -55,11 +57,11 @@ function fixture() {
 const code = (wanted: string) => (error: unknown): boolean =>
   error instanceof A.AuthorityError && error.code === wanted;
 
-test('public API-shaped main push with all sixteen successful jobs becomes ready', async () => {
+test('public API-shaped main push with all twenty successful jobs becomes ready', async () => {
   const f = fixture(), result = await A.observeAuthority(f.get, runId);
   assert.equal(result.phase, 'ready');
   if (result.phase !== 'ready') assert.fail('qualified main must be ready');
-  assert.equal(result.authority.jobs.length, 16);
+  assert.equal(result.authority.jobs.length, 20);
   assert.equal(result.authority.attempt, 2);
   assert.equal(result.authority.artifact, '50');
   assert.equal(f.calls.filter(path => path === 'actions/runs/123').length, 2);
@@ -80,6 +82,26 @@ test('missing, duplicate, skipped and mismatched attempt/SHA/run jobs cannot aut
     await assert.rejects(A.observeAuthority(f.get, runId));
   }
 });
+
+// Regression: aggregate success cannot hide an absent/failed child or shard six.
+for (const name of ['Backend unit shard 5/6', 'Backend unit shard 6/6',
+  'Production immutable candidate', 'Production deploy lifecycle fixtures',
+  'Production container and deploy lifecycle']) {
+  for (const state of ['missing', 'duplicate', 'skipped', 'failure', 'cancelled', 'wrong-job', 'wrong-sha']) {
+    test(`release authority rejects ${name}: ${state} despite successful run and aggregate`, async () => {
+      const f = fixture(), index = f.jobs.findIndex(job => job.name === name);
+      assert.ok(index >= 0);
+      const job = f.jobs[index]!;
+      if (state === 'missing') f.jobs.splice(index, 1);
+      else if (state === 'duplicate') f.jobs.push({ ...job, id: 3000 });
+      else if (state === 'wrong-job') job.name = 'Unrequired replacement';
+      else if (state === 'wrong-sha') job.head_sha = other;
+      else job.conclusion = state;
+      await assert.rejects(A.observeAuthority(f.get, runId));
+      assert.equal(f.calls.some(path => path.includes('/artifacts?')), false);
+    });
+  }
+}
 
 test('fork, workflow identity, event, main branch and run identity mismatches deny', async () => {
   const changes: ((f: ReturnType<typeof fixture>) => void)[] = [

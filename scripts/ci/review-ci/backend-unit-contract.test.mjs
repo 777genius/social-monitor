@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import yaml from 'js-yaml';
 import { backendUnitShardingViolations, coverageWorkflowViolations } from './backend-unit-contract.mjs';
@@ -80,3 +83,33 @@ for (const [regression, mutate] of [
     assert.notDeepEqual(backendUnitShardingViolations(yaml.dump(workflow)), []);
   });
 }
+
+// Regression: matrix shape cannot prove that downloaded coverage data contains
+// every expected artifact exactly once. Exercise the actual static shell guard.
+test('coverage data guard rejects missing, extra and malformed artifact directories', () => {
+  const workflow = yaml.load(coverage, { schema: yaml.JSON_SCHEMA });
+  const script = workflow.jobs.backend_unit_coverage.steps[1].run;
+  assert.equal(typeof script, 'string');
+  for (const mutation of ['complete', 'missing-sixth', 'extra-seventh', 'duplicate-name', 'empty-lcov', 'extra-file']) {
+    const directory = mkdtempSync(join(tmpdir(), 'sm-coverage-data-'));
+    try {
+      for (let shard = 1; shard <= 6; shard++) {
+        const folder = join(directory, 'coverage-data', `backend-unit-coverage-${shard}`);
+        mkdirSync(folder, { recursive: true });
+        writeFileSync(join(folder, 'lcov.info'), 'TN:synthetic\n');
+      }
+      const root = join(directory, 'coverage-data');
+      if (mutation === 'missing-sixth') rmSync(join(root, 'backend-unit-coverage-6'), { recursive: true });
+      if (mutation === 'extra-seventh') mkdirSync(join(root, 'backend-unit-coverage-7'));
+      if (mutation === 'duplicate-name') {
+        rmSync(join(root, 'backend-unit-coverage-6'), { recursive: true });
+        mkdirSync(join(root, 'backend-unit-coverage-5-copy'));
+      }
+      if (mutation === 'empty-lcov') writeFileSync(join(root, 'backend-unit-coverage-6', 'lcov.info'), '');
+      if (mutation === 'extra-file') writeFileSync(join(root, 'backend-unit-coverage-6', 'run.sh'), 'exit 0');
+      const result = spawnSync('bash', ['-c', script], { cwd: directory, timeout: 5000 });
+      assert.ifError(result.error);
+      assert.equal(result.status === 0, mutation === 'complete', mutation);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }
+});

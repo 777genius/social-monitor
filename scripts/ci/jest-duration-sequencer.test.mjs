@@ -29,7 +29,7 @@ test('LPT has independently expected bins, canonical path ties and median unknow
 test('permutations and any denominator keep every suite exactly once', () => {
   const suites = tests(['a', 'b', 'c', 'd', 'e']);
   const durationsMs = { 'a.spec.ts': 10, 'b.spec.ts': 2, 'deleted.spec.ts': 6 };
-  for (const shardCount of [1, 2, 3, 4, 7, 1000000000]) {
+  for (const shardCount of [1, 2, 3, 4, 6, 7, 1000000000]) {
     const options = { shardCount, rootDir, durationsMs };
     const expected = names(assignShards(suites, options));
     for (const order of [suites, [...suites].reverse(), [...suites.slice(2), ...suites.slice(0, 2)]]) {
@@ -97,7 +97,7 @@ test('real installed Jest --listTests --shard supports the public sequencer API'
     { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }));
     const full = list().sort();
     assert.equal(full.length, 5);
-    for (const count of [3, 7]) {
+    for (const count of [3, 6, 7]) {
       const union = Array.from({ length: count }, (_, i) => list(`${i + 1}/${count}`)).flat();
       assert.equal(new Set(union).size, full.length);
       assert.deepEqual(union.sort(), full);

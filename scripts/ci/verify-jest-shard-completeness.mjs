@@ -35,6 +35,7 @@ export function unitIgnorePattern(exclusions) {
 
 // trackedPaths is supplied by git ls-files, never by an artifact's claimed inventory.
 export function verifyShardReports({ reports, trackedPaths, exclusions = [], root = '.', shardCount = 4 }) {
+  if (!integer(shardCount, 1) || shardCount > 100) fail('invalid shard count');
   if (!Array.isArray(reports) || reports.length !== shardCount) fail('missing shard report');
   const candidates = new Set(trackedPaths.filter((path) => path.endsWith('.spec.ts')).map((path) => unitPath(path, root)));
   for (const path of exclusions) {
@@ -87,11 +88,12 @@ function readJson(path) {
 }
 
 export function loadShardReports(directory, shardCount = 4) {
+  if (!integer(shardCount, 1) || shardCount > 100) fail('invalid shard count');
   const stat = lstatSync(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) fail('invalid report directory');
   const entries = readdirSync(directory).sort();
   const expected = Array.from({ length: shardCount }, (_, index) => `backend-unit-report-${index + 1}`);
-  if (JSON.stringify(entries) !== JSON.stringify(expected)) fail('unexpected artifact names or missing shard artifact');
+  if (JSON.stringify(entries) !== JSON.stringify([...expected].sort())) fail('unexpected artifact names or missing shard artifact');
   return expected.map((name, index) => {
     const folder = resolve(directory, name);
     const stat = lstatSync(folder);
@@ -109,15 +111,18 @@ export function main(args) {
     console.log(unitIgnorePattern(parseExclusions(readFileSync(args[1], 'utf8'))));
     return;
   }
-  if (args.length !== 6 || args[0] !== '--reports' || args[2] !== '--root' || args[4] !== '--exclusions') {
-    fail('usage: --reports DIR --root ROOT --exclusions FILE');
+  if (![6, 8].includes(args.length) || args[0] !== '--reports' || args[2] !== '--root' || args[4] !== '--exclusions' || (args.length === 8 &&
+      (args[6] !== '--shards' || !/^[1-9][0-9]*$/u.test(args[7])))) {
+    fail('usage: --reports DIR --root ROOT --exclusions FILE [--shards COUNT]');
   }
+  const shardCount = args.length === 8 ? Number(args[7]) : 4;
+  if (!integer(shardCount, 1) || shardCount > 100) fail('invalid shard count');
   const root = resolve(args[3]);
   const trackedPaths = execFileSync('git', ['ls-files', '-z', '--', '*.spec.ts'], {
     cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
   }).split('\0').filter(Boolean);
-  const result = verifyShardReports({ root, trackedPaths,
-    exclusions: parseExclusions(readFileSync(args[5], 'utf8')), reports: loadShardReports(args[1]) });
+  const result = verifyShardReports({ root, trackedPaths, shardCount,
+    exclusions: parseExclusions(readFileSync(args[5], 'utf8')), reports: loadShardReports(args[1], shardCount) });
   console.log(`Jest completeness proved: ${result.shards} shards, ${result.suites} suites, ${result.tests} tests`);
 }
 

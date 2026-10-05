@@ -132,13 +132,13 @@ jobs:
           npm run check:tenant-db-guards
 
   backend_unit_shards:
-    name: Backend unit shard ${{ matrix.shard }}/4
+    name: Backend unit shard ${{ matrix.shard }}/6
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
 
     steps:
       - name: Check out the review commit
@@ -202,7 +202,7 @@ jobs:
         run: |
           set -euo pipefail
           unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"
-          node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4 --testPathIgnorePatterns="$unit_ignore" --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json
+          node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/6 --testPathIgnorePatterns="$unit_ignore" --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json
 
       - name: Upload unit execution and inventory data
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -297,7 +297,7 @@ jobs:
           merge-multiple: false
 
       - name: Prove complete and unique unit suite execution
-        run: node scripts/ci/verify-jest-shard-completeness.mjs --reports unit-reports --root . --exclusions ops/ci/jest-inventory-exclusions.txt
+        run: node scripts/ci/verify-jest-shard-completeness.mjs --reports unit-reports --root . --exclusions ops/ci/jest-inventory-exclusions.txt --shards 6
 
   backend_e2e:
     name: Backend end-to-end tests
@@ -507,8 +507,8 @@ jobs:
           npm run check:reader-summary-v3-postgres
           npx jest --config jest.config.ts --runInBand --runTestsByPath libs/ingestion/adapters/persistence/prisma/prisma-article-capture.postgres.spec.ts
 
-  production_runtime:
-    name: Production container and deploy lifecycle
+  production_candidate:
+    name: Production immutable candidate
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -530,12 +530,6 @@ jobs:
           version: v29.8.2
           set-host: true
           daemon-config: '{"features":{"containerd-snapshotter":true}}'
-      - name: Verify production container and deploy lifecycle
-        run: |
-          set -euo pipefail
-          npm run check:container
-          npm run check:runtime-compose
-          npm run check:production-deploy-lifecycle
       - name: Verify candidate policy
         run: |
           set -euo pipefail
@@ -571,6 +565,45 @@ jobs:
           path: ${{ runner.temp }}/api-candidate-${{ github.run_id }}/phases.json
           if-no-files-found: ignore
           retention-days: 1
+
+  production_lifecycle:
+    name: Production deploy lifecycle fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the actual CI commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+      - name: Verify production container and deploy lifecycle
+        run: |
+          set -euo pipefail
+          npm run check:container
+          npm run check:runtime-compose
+          npm run check:production-deploy-lifecycle
+
+  production_runtime:
+    name: Production container and deploy lifecycle
+    needs: [production_candidate, production_lifecycle]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require both independent production checks
+        run: |
+          set -euo pipefail
+          test "${{ needs.production_candidate.result }}" = "success"
+          test "${{ needs.production_lifecycle.result }}" = "success"
 
   frontend:
     name: Flutter architecture and tests

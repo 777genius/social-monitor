@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
 import { addResult, createEmptyTestResult, formatTestResults, makeEmptyAggregatedTestResult } from '@jest/test-result';
-import { loadShardReports, parseExclusions, unitIgnorePattern, verifyShardReports } from './verify-jest-shard-completeness.mjs';
+import { loadShardReports, main, parseExclusions, unitIgnorePattern, verifyShardReports } from './verify-jest-shard-completeness.mjs';
 import { completeReports } from './review-ci/fixtures/jest-reports.mjs';
 
 // Regression: treating E2E/Node suites as unit candidates, or rejecting a reviewed
@@ -163,4 +164,84 @@ test('shared selector excludes exact distinct-suite paths only', () => {
   for (const path of ['/checkout/node_modules/a.spec.ts', '/checkout/dist/a.spec.ts', '/checkout/prisma/generated/a.spec.ts']) {
     assert.equal(pattern.test(path), true);
   }
+});
+
+// Regression: a four-report historical source must remain accepted by default,
+// while the six-shard pipeline rejects the same source and any incomplete union.
+test('six-shard proof is explicit and rejects historical four-report pipeline input', () => {
+  const value = { ...completeReports(6), shardCount: 6 };
+  assert.deepEqual(verifyShardReports(value), { shards: 6, suites: 6, tests: 6 });
+  assert.throws(() => verifyShardReports({ ...completeReports(), shardCount: 6 }));
+  for (const [label, mutate] of [
+    ['missing sixth', (v) => v.reports.pop()],
+    ['extra report', (v) => v.reports.push(globalThis.structuredClone(v.reports[0]))],
+    ['duplicate sixth id', (v) => v.reports[5].shard = 5],
+    ['duplicate sixth suite', (v) => v.reports[5].execution.testResults[0].name = v.reports[0].execution.testResults[0].name],
+    ['sixth failed', (v) => v.reports[5].execution.success = false],
+    ['sixth skipped', (v) => v.reports[5].execution.testResults[0].status = 'skipped'],
+  ]) {
+    const bad = globalThis.structuredClone(value); mutate(bad);
+    assert.throws(() => verifyShardReports(bad), undefined, label);
+  }
+});
+
+// Regression: coercing malformed counts or accepting an omitted sixth artifact
+// could silently reduce pipeline completeness to the old four-shard shape.
+test('shard counts are strict bounded numbers in CLI and verifier contracts', () => {
+  for (const shardCount of [0, -1, 1.5, NaN, Infinity, '6', 101]) {
+    assert.throws(() => verifyShardReports({ ...completeReports(6), shardCount }));
+    assert.throws(() => loadShardReports('/unused', shardCount), /invalid shard count/u);
+  }
+  for (const count of ['0', '-1', '1.5', '6junk', '6e0', '06', ' 6', 'Infinity', '101', '9007199254740993']) {
+    assert.throws(() => main(['--reports', '/unused', '--root', '.', '--exclusions', '/unused', '--shards', count]));
+  }
+});
+
+test('six artifact directories reject the missing sixth and any extra artifact', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'sm-ci-six-reports-'));
+  const value = { ...completeReports(6), shardCount: 6 };
+  try {
+    for (const report of value.reports) {
+      const folder = join(directory, `backend-unit-report-${report.shard}`);
+      mkdirSync(folder);
+      writeFileSync(join(folder, 'inventory.json'), JSON.stringify(report.inventory));
+      writeFileSync(join(folder, 'execution.json'), JSON.stringify(report.execution));
+    }
+    assert.equal(verifyShardReports({ ...value, reports: loadShardReports(directory, 6) }).suites, 6);
+    assert.throws(() => loadShardReports(directory));
+    const extra = join(directory, 'backend-unit-report-7'); mkdirSync(extra);
+    assert.throws(() => loadShardReports(directory, 6)); rmSync(extra, { recursive: true });
+    rmSync(join(directory, 'backend-unit-report-6'), { recursive: true });
+    assert.throws(() => loadShardReports(directory, 6));
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+// Regression: library-only tests would miss an unwired CLI denominator. These
+// reports are synthetic verifier fixtures, not evidence of passing unit tests.
+test('actual CLI proves six synthetic reports against the real tracked inventory', () => {
+  const root = process.cwd();
+  const exclusions = parseExclusions(readFileSync('ops/ci/jest-inventory-exclusions.txt', 'utf8'));
+  const inventory = execFileSync('git', ['ls-files', '-z', '--', '*.spec.ts'], { encoding: 'utf8' })
+    .split('\0').filter(path => path && !exclusions.includes(path)).map(path => resolve(root, path));
+  const directory = mkdtempSync(join(tmpdir(), 'sm-ci-six-cli-'));
+  try {
+    for (let shard = 1; shard <= 6; shard++) {
+      const folder = join(directory, `backend-unit-report-${shard}`);
+      mkdirSync(folder);
+      const results = inventory.filter((_, index) => index % 6 === shard - 1).map(name => ({
+        name, status: 'passed', assertionResults: [{ status: 'passed' }],
+      }));
+      writeFileSync(join(folder, 'inventory.json'), JSON.stringify(inventory));
+      writeFileSync(join(folder, 'execution.json'), JSON.stringify({
+        success: true, wasInterrupted: false, numTotalTests: results.length,
+        numTotalTestSuites: results.length, numFailedTests: 0, numFailedTestSuites: 0,
+        numRuntimeErrorTestSuites: 0, testResults: results,
+      }));
+    }
+    const args = ['scripts/ci/verify-jest-shard-completeness.mjs', '--reports', directory,
+      '--root', root, '--exclusions', 'ops/ci/jest-inventory-exclusions.txt', '--shards', '6'];
+    assert.match(execFileSync(process.execPath, args, { encoding: 'utf8' }),
+      new RegExp(`6 shards, ${inventory.length} suites, ${inventory.length} tests`));
+    assert.throws(() => execFileSync(process.execPath, args.slice(0, -2), { stdio: 'ignore' }));
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
