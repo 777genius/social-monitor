@@ -318,6 +318,46 @@ class ProbeTests(unittest.TestCase):
 
 
 class GitHubTests(unittest.TestCase):
+    def test_current_workflow_jobs_are_required_independently_of_operator_fixture(self):
+        import yaml
+        root = Path(__file__).resolve().parents[3]
+        workflow = yaml.safe_load((root / '.github/workflows/pull-request.yml').read_text())
+        names = []
+        for job in workflow['jobs'].values():
+            if 'strategy' in job:
+                names.extend(job['name'].replace('${{ matrix.shard }}', str(shard))
+                             for shard in job['strategy']['matrix']['shard'])
+            else:
+                names.append(job['name'])
+        self.assertEqual(len(names), 20)
+        self.assertEqual(len(set(names)), len(names))
+        self.assertEqual(set(names), github.JOBS)
+        run = {'id': 123, 'run_attempt': 2, 'head_sha': BINDING['sha']}
+        jobs = [{'id': i + 1, 'name': name, 'run_id': 123, 'run_attempt': 2,
+                 'head_sha': BINDING['sha'], 'status': 'completed', 'conclusion': 'success'}
+                for i, name in enumerate(names)]
+        observer = github.GitHub(None, None)
+        def observed(rows):
+            with patch.object(observer, 'get', return_value={'total_count': len(rows), 'jobs': rows}):
+                return observer.jobs(run)
+        self.assertEqual({job['name'] for job in observed(jobs)}, set(names))
+        for name in ('Backend unit shard 6/6', 'Production immutable candidate',
+                     'Production deploy lifecycle fixtures'):
+            for state in ('missing', 'duplicate', 'skipped', 'failure', 'cancelled', 'wrong-sha'):
+                with self.subTest(name=name, state=state):
+                    rows = copy.deepcopy(jobs)
+                    job = next(row for row in rows if row['name'] == name)
+                    if state == 'missing':
+                        rows.remove(job)
+                    elif state == 'duplicate':
+                        rows.append({**job, 'id': 999})
+                    elif state == 'wrong-sha':
+                        job['head_sha'] = BASE
+                    else:
+                        job['conclusion'] = state
+                    with self.assertRaises(Denied):
+                        observed(rows)
+
     def fixture(self, modifier=None):
         run = {'id': 123, 'run_attempt': 2, 'workflow_id': 5, 'head_sha': BINDING['sha'],
                'head_branch': 'main', 'event': 'push', 'status': 'completed', 'conclusion': 'success',

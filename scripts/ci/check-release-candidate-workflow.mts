@@ -61,18 +61,39 @@ function run(step: Mapping | undefined, expected: string, env?: Mapping): boolea
 }
 
 export function candidateWorkflowViolations(workflow: unknown, fragment: unknown): string[] {
-  const fail = [`${WORKFLOW}: production_runtime must match ${FRAGMENT} and run the unconditional, read-only, exact-SHA candidate contract`];
-  if (!mapping(workflow) || !mapping(fragment) || !onlyKeys(fragment, ['production_runtime']) ||
-      !mapping(workflow.jobs) || !mapping(workflow.jobs.production_runtime) ||
-      !mapping(fragment.production_runtime)) return fail;
-  const job = workflow.jobs.production_runtime;
-  if (!isDeepStrictEqual(job, fragment.production_runtime) || !isDeepStrictEqual(workflow.permissions, { contents: 'read' }) ||
-      !isDeepStrictEqual(workflow.env, ROOT_ENV) || workflow.defaults !== undefined ||
-      !onlyKeys(job, ['name', 'runs-on', 'timeout-minutes', 'permissions', 'steps']) ||
-      job.name !== 'Production container and deploy lifecycle' ||
-      job['runs-on'] !== 'ubuntu-latest' || job['timeout-minutes'] !== 45 ||
-      !isDeepStrictEqual(job.permissions, { contents: 'read' }) || !Array.isArray(job.steps) ||
-      job.steps.length !== 8 || !job.steps.every(mapping)) return fail;
+  const fail = [`${WORKFLOW}: candidate/lifecycle graph must match ${FRAGMENT}, preserve independent exact-SHA checks and require both successes`];
+  const ids = ['production_candidate', 'production_lifecycle', 'production_runtime'];
+  if (!mapping(workflow) || !mapping(fragment) || !onlyKeys(fragment, ids) ||
+      Object.keys(fragment).length !== ids.length || !mapping(workflow.jobs) ||
+      !isDeepStrictEqual(workflow.permissions, { contents: 'read' }) ||
+      !isDeepStrictEqual(workflow.env, ROOT_ENV) || workflow.defaults !== undefined) return fail;
+  for (const id of ids) {
+    const job = workflow.jobs[id];
+    if (!mapping(job) || !isDeepStrictEqual(job, fragment[id]) ||
+        !onlyKeys(job, ['name', 'runs-on', 'timeout-minutes', 'permissions', 'steps',
+          ...(id === 'production_runtime' ? ['needs', 'if'] : [])]) ||
+        job['runs-on'] !== 'ubuntu-latest' ||
+        job['timeout-minutes'] !== (id === 'production_runtime' ? 5 : 45) ||
+        !isDeepStrictEqual(job.permissions, { contents: 'read' }) ||
+        !Array.isArray(job.steps) || !job.steps.every(mapping)) return fail;
+  }
+  const job = workflow.jobs.production_candidate as Mapping;
+  const lifecycle = workflow.jobs.production_lifecycle as Mapping;
+  const aggregate = workflow.jobs.production_runtime as Mapping;
+  const lifecycleSteps = lifecycle.steps as Mapping[];
+  const aggregateSteps = aggregate.steps as Mapping[];
+  const checkoutOptions = { ref: '${{ github.sha }}', 'fetch-depth': 0, 'persist-credentials': false };
+  if (job.name !== 'Production immutable candidate' || (job.steps as Mapping[]).length !== 7 ||
+      lifecycle.name !== 'Production deploy lifecycle fixtures' || lifecycleSteps.length !== 3 ||
+      !action(lifecycleSteps[0], CHECKOUT, checkoutOptions) ||
+      !action(lifecycleSteps[1], NODE, { 'node-version': 22 }) ||
+      !run(lifecycleSteps[2], ['set -euo pipefail', ...GATES].join('\n')) ||
+      aggregate.name !== 'Production container and deploy lifecycle' ||
+      !isDeepStrictEqual(aggregate.needs, ['production_candidate', 'production_lifecycle']) ||
+      aggregate.if !== 'always()' || aggregateSteps.length !== 1 ||
+      !run(aggregateSteps[0], ['set -euo pipefail',
+        'test "${{ needs.production_candidate.result }}" = "success"',
+        'test "${{ needs.production_lifecycle.result }}" = "success"'].join('\n'))) return fail;
   const steps = job.steps as Mapping[];
   if (!action(steps[0], CHECKOUT, {
     ref: '${{ github.sha }}',
@@ -81,19 +102,18 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
       !action(steps[2], DOCKER, {
         version: 'v29.8.2', 'set-host': true,
         'daemon-config': '{"features":{"containerd-snapshotter":true}}',
-      }) || !run(steps[3], ['set -euo pipefail', ...GATES].join('\n')) ||
-      !run(steps[4], ['set -euo pipefail',
+      }) || !run(steps[3], ['set -euo pipefail',
         'node --test scripts/ci/release-candidate.test.mjs ops/release/e2e/harness.test.mjs',
         'node --experimental-strip-types --test scripts/ci/candidate-runtime.test.mts'].join('\n')) ||
-      !run(steps[5], HELPER, {
+      !run(steps[4], HELPER, {
         CANDIDATE_DIRECTORY: DIRECTORY,
       })) return fail;
-  if (!action(steps[6], UPLOAD, {
+  if (!action(steps[5], UPLOAD, {
     name: 'api-candidate-${{ github.sha }}-${{ github.run_id }}',
     path: FILES.map((file) => `${DIRECTORY}/${file}`).join('\n') + '\n',
     'if-no-files-found': 'error', 'retention-days': 1,
   })) return fail;
-  const evidence = steps[7];
+  const evidence = steps[6];
   if (evidence === undefined || !onlyKeys(evidence, ['name', 'if', 'uses', 'with']) ||
       typeof evidence.name !== 'string' || evidence.name.length === 0 ||
       evidence.if !== 'failure()' || evidence.uses !== UPLOAD ||
@@ -102,6 +122,18 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
         path: `${DIRECTORY}/phases.json`,
         'if-no-files-found': 'ignore', 'retention-days': 1,
       })) return fail;
+  // A second producer/upload elsewhere in this run could undermine build-once
+  // authority despite the canonical child being correct.
+  for (const [id, other] of Object.entries(workflow.jobs)) {
+    if (ids.includes(id)) continue;
+    if (!mapping(other) || !Array.isArray(other.steps)) return fail;
+    for (const step of other.steps) {
+      if (!mapping(step)) return fail;
+      if ((typeof step.run === 'string' && /release-candidate\.mjs|docker\s+(?:build|save)\b/u.test(step.run)) ||
+          (step.uses === UPLOAD && mapping(step.with) &&
+            typeof step.with.name === 'string' && step.with.name.startsWith('api-candidate-'))) return fail;
+    }
+  }
   return [];
 }
 

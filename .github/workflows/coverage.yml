@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   backend_unit_coverage:
-    name: Backend coverage shard ${{ matrix.shard }}/4
+    name: Backend coverage shard ${{ matrix.shard }}/6
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -24,16 +24,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
 
     steps:
       - name: Download coverage data from the successful tested run
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
-          name: backend-unit-coverage-${{ matrix.shard }}
+          pattern: backend-unit-coverage-*
+          merge-multiple: false
           path: coverage-data
           github-token: ${{ github.token }}
           run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Require exactly six isolated coverage artifacts
+        run: |
+          set -euo pipefail
+          shopt -s nullglob dotglob
+          artifacts=(coverage-data/*)
+          test "${#artifacts[@]}" -eq 6
+          for shard in 1 2 3 4 5 6; do
+            directory="coverage-data/backend-unit-coverage-$shard"
+            test -d "$directory"
+            test ! -L "$directory"
+            files=("$directory"/*)
+            test "${#files[@]}" -eq 1
+            test -f "$directory/lcov.info"
+            test ! -L "$directory/lcov.info"
+            test -s "$directory/lcov.info"
+          done
 
       - name: Upload coverage data attributed to the tested head SHA
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
@@ -41,7 +59,7 @@ jobs:
           use_oidc: true
           fail_ci_if_error: false
           disable_search: true
-          files: coverage-data/lcov.info
+          files: coverage-data/backend-unit-coverage-${{ matrix.shard }}/lcov.info
           override_commit: ${{ github.event.workflow_run.head_sha }}
           override_pr: ${{ github.event.workflow_run.pull_requests[0].number }}
           flags: backend-unit

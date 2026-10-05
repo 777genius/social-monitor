@@ -320,7 +320,7 @@ test('guarded writes reject changed authority before transport; rollback is outs
     if (path === 'git/ref/heads/main') return { ref: 'refs/heads/main', object: { type: 'commit', sha } };
     if (path === 'actions/workflows/production-deploy.yml') return { id: 40,
       path: '.github/workflows/production-deploy.yml', state: 'disabled_manually' };
-    if (path.includes('/jobs?')) return { total_count: 16, jobs: A.JOBS.map((name, i) =>
+    if (path.includes('/jobs?')) return { total_count: A.JOBS.length, jobs: A.JOBS.map((name, i) =>
       ({ id: 1000 + i, run_id: 123, run_attempt: 2, head_sha: sha, status: 'completed', conclusion: 'success', name })) };
     if (path.includes('/artifacts?')) return { total_count: 1, artifacts: [{ id: 51,
       name: authority.artifactName, expired: false, size_in_bytes: 4096, digest: image,

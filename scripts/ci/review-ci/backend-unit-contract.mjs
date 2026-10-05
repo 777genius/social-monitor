@@ -13,7 +13,7 @@ const jest = 'node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-opti
 const ignore = 'unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"';
 const selector = '--testPathIgnorePatterns="$unit_ignore"';
 const inventory = 'node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --testPathIgnorePatterns="$unit_ignore" --listTests --json > reports/inventory.json';
-const proof = 'node scripts/ci/verify-jest-shard-completeness.mjs --reports unit-reports --root . --exclusions ops/ci/jest-inventory-exclusions.txt';
+const proof = 'node scripts/ci/verify-jest-shard-completeness.mjs --reports unit-reports --root . --exclusions ops/ci/jest-inventory-exclusions.txt --shards 6';
 const canary = 'set -euo pipefail\nnode --test scripts/lib/reader-promotion-v2-production-canary-control.test.mjs\nnode scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=1024 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath scripts/lib/reader-promotion-v2-production-canary-runner.spec.ts\nbash ops/deploy/production-runtime/reader-promotion-v2-production-canary.test.sh';
 const normalize = (value) => typeof value === 'string' ? value.trim().split(/\r?\n/u)
   .map((line) => line.trim().replace(/[ \t]+/gu, ' ')).filter(Boolean).join('\n') : value;
@@ -93,7 +93,23 @@ const nativePg18 = [
   "  printf '%s\\n' \"$pg18_version\"",
   "done",
 ].join('\n');
-const matrix = { 'fail-fast': false, matrix: { shard: [1, 2, 3, 4] } };
+const coverageProof = [
+  'set -euo pipefail',
+  'shopt -s nullglob dotglob',
+  'artifacts=(coverage-data/*)',
+  'test "${#artifacts[@]}" -eq 6',
+  'for shard in 1 2 3 4 5 6; do',
+  '  directory="coverage-data/backend-unit-coverage-$shard"',
+  '  test -d "$directory"',
+  '  test ! -L "$directory"',
+  '  files=("$directory"/*)',
+  '  test "${#files[@]}" -eq 1',
+  '  test -f "$directory/lcov.info"',
+  '  test ! -L "$directory/lcov.info"',
+  '  test -s "$directory/lcov.info"',
+  'done',
+].join('\n');
+const matrix = { 'fail-fast': false, matrix: { shard: [1, 2, 3, 4, 5, 6] } };
 
 export function backendUnitShardingViolations(source) {
   let workflow;
@@ -114,15 +130,15 @@ export function backendUnitShardingViolations(source) {
     }
   }
   const jobs = workflow.jobs ?? {};
-  jobChecks(jobs.backend_unit_shards, 'backend_unit_shards', `Backend unit shard ${shard}/4`, [
+  jobChecks(jobs.backend_unit_shards, 'backend_unit_shards', `Backend unit shard ${shard}/6`, [
     ...setup(),
     { run: nativePg18 },
     { run: `set -euo pipefail\nmkdir -p reports\n${ignore}\n${inventory}` },
-    { run: `set -euo pipefail\n${ignore}\n${jest} --shard=${shard}/4 ${selector} --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json` },
+    { run: `set -euo pipefail\n${ignore}\n${jest} --shard=${shard}/6 ${selector} --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json` },
     { uses: upload, with: { name: `backend-unit-report-${shard}`, path: 'reports/*.json', 'if-no-files-found': 'error', 'retention-days': 1 } },
     { uses: upload, with: { name: `backend-unit-coverage-${shard}`, path: 'coverage/lcov.info', 'if-no-files-found': 'error', 'retention-days': 1 } },
   ], errors, ['strategy'], 60);
-  if (!equal(jobs.backend_unit_shards?.strategy, matrix)) errors.push('backend_unit_shards: all four shards with one consistent denominator required');
+  if (!equal(jobs.backend_unit_shards?.strategy, matrix)) errors.push('backend_unit_shards: all six shards with one consistent denominator required');
   jobChecks(jobs.backend_build_contracts, 'backend_build_contracts', 'Backend build and sandbox contracts', [
     ...setup(true),
     { run: 'npm run check:reader-paired-experiment' }, { run: 'npm run build' },
@@ -173,11 +189,12 @@ export function coverageWorkflowViolations(source) {
   if (job?.if !== "github.event.workflow_run.conclusion == 'success'" ||
       !equal(job?.permissions, { actions: 'read', contents: 'read', 'id-token': 'write' }) ||
       !equal(job?.strategy, matrix)) errors.push('coverage.yml: success-only OIDC upload scoped to one job required');
-  jobChecks(job, 'backend_unit_coverage', `Backend coverage shard ${shard}/4`, [
-    { uses: download, with: { name: `backend-unit-coverage-${shard}`, path: 'coverage-data',
+  jobChecks(job, 'backend_unit_coverage', `Backend coverage shard ${shard}/6`, [
+    { uses: download, with: { pattern: 'backend-unit-coverage-*', 'merge-multiple': false, path: 'coverage-data',
       'github-token': '${{ github.token }}', 'run-id': '${{ github.event.workflow_run.id }}' } },
+    { run: coverageProof },
     { uses: codecov, with: { use_oidc: true, fail_ci_if_error: false, disable_search: true,
-      files: 'coverage-data/lcov.info', override_commit: '${{ github.event.workflow_run.head_sha }}',
+      files: `coverage-data/backend-unit-coverage-${shard}/lcov.info`, override_commit: '${{ github.event.workflow_run.head_sha }}',
       override_pr: '${{ github.event.workflow_run.pull_requests[0].number }}',
       flags: 'backend-unit', name: `backend-unit-shard-${shard}` } },
   ], errors, ['if', 'permissions', 'strategy']);

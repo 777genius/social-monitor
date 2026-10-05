@@ -9,14 +9,16 @@ export const RUN = /^[1-9][0-9]{0,14}$/u;
 export const DIGEST = /^sha256:[0-9a-f]{64}$/u;
 export const JOBS = Object.freeze([
   'Static architecture and quality', 'Security and public contracts',
-  'Backend unit shard 1/4', 'Backend unit shard 2/4',
-  'Backend unit shard 3/4', 'Backend unit shard 4/4',
+  'Backend unit shard 1/6', 'Backend unit shard 2/6',
+  'Backend unit shard 3/6', 'Backend unit shard 4/6',
+  'Backend unit shard 5/6', 'Backend unit shard 6/6',
   'Backend build and sandbox contracts', 'Backend build and unit tests',
   'Backend end-to-end tests', 'PostgreSQL tenant isolation',
   'Reader Promotion V2 canary PostgreSQL 18',
   'Feed promotion snapshot and native plans PostgreSQL 18',
   'Reader-summary weekly review manifest PostgreSQL 18',
   'Reader Value V3 PostgreSQL 18 contracts',
+  'Production immutable candidate', 'Production deploy lifecycle fixtures',
   'Production container and deploy lifecycle', 'Flutter architecture and tests',
 ]);
 export class AuthorityError extends Error {

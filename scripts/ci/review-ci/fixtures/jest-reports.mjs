@@ -1,7 +1,11 @@
 // Synthetic reports contain no provider payloads or secrets.
-export function completeReports() {
+export function completeReports(shardCount = 4) {
   const trackedPaths = ['libs/a.spec.ts', 'libs/b.spec.ts', 'scripts/c.spec.ts', 'apps/d.spec.ts', 'test/separate.spec.ts', 'test/api.e2e-spec.ts', 'scripts/native.test.mjs'];
   const inventory = trackedPaths.slice(0, 4);
+  for (let index = 4; index < shardCount; index++) {
+    const path = `libs/shard-${index + 1}.spec.ts`;
+    trackedPaths.push(path); inventory.push(path);
+  }
   return { root: '/checkout', trackedPaths, exclusions: ['test/separate.spec.ts'],
     reports: inventory.map((name, index) => ({ shard: index + 1,
       inventory: inventory.map((path) => `/checkout/${path}`),
