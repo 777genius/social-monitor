@@ -3,11 +3,63 @@
 // Jest's sequencer is CJS; inherit sort/cacheResults unchanged (failed tests first).
 const { default: TestSequencer } = require('@jest/test-sequencer');
 const { lstatSync, readFileSync } = require('node:fs');
+const { createHash } = require('node:crypto');
 const { resolve, relative, sep } = require('node:path');
 const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_SUITES = 20000;
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const fail = (message) => { throw new Error(message); };
+const sha256 = (value) => typeof value === 'string' && /^[0-9a-f]{64}$/u.test(value);
+const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
+const inventoryDigest = (paths) => createHash('sha256').update(JSON.stringify([...paths].sort())).digest('hex');
+
+function canonicalInputPath(value) {
+  if (typeof value !== 'string' || !value || value.length > 1024 ||
+      [...value].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127 || '\\:*?[]'.includes(character)) ||
+      value.split('/').some((part) => !part || part === '.' || part === '..')) fail('invalid source path');
+  return value;
+}
+
+// Metadata describes the GitHub artifacts; the transfer archive is a separate,
+// operator-attested binding covering both source folders, not an artifact ZIP.
+function validateSources(sources) {
+  if (!Array.isArray(sources) || sources.length !== 2) fail('exactly two source runs required');
+  const runs = new Set();
+  const artifacts = new Set();
+  const folders = new Set();
+  for (const source of sources) {
+    if (!source || !positiveInteger(source.runId) || runs.has(source.runId) ||
+        typeof source.headSha !== 'string' || !/^[0-9a-f]{40}$/u.test(source.headSha) ||
+        source.conclusion !== 'success' || source.shardCount !== 6 ||
+        typeof source.reportRoot !== 'string' || !source.reportRoot.startsWith('/') ||
+        !Array.isArray(source.reportFiles) || source.reportFiles.length !== 12 ||
+        !Array.isArray(source.githubArtifacts) || source.githubArtifacts.length !== 6) fail('invalid or duplicate source run');
+    runs.add(source.runId);
+    canonicalInputPath(source.reports);
+    if (folders.has(source.reports)) fail('duplicate source reports');
+    folders.add(source.reports);
+    const expected = new Set(Array.from({ length: 6 }, (_, index) => `backend-unit-report-${index + 1}`));
+    const files = new Set();
+    for (const file of source.reportFiles) {
+      if (!file || !sha256(file.sha256)) fail('invalid source report digest');
+      canonicalInputPath(file.path);
+      if (files.has(file.path)) fail('duplicate source report');
+      files.add(file.path);
+    }
+    for (const name of expected) {
+      for (const kind of ['execution', 'inventory']) {
+        if (!files.has(`${source.reports}/${name}/${kind}.json`)) fail('incomplete source report binding');
+      }
+    }
+    for (const artifact of source.githubArtifacts) {
+      if (!artifact || !positiveInteger(artifact.id) || artifacts.has(artifact.id) ||
+          !expected.delete(artifact.name) || artifact.expired !== false ||
+          typeof artifact.digest !== 'string' || !/^sha256:[0-9a-f]{64}$/u.test(artifact.digest) ||
+          artifact.workflow_run?.id !== source.runId || artifact.workflow_run?.head_sha !== source.headSha) fail('invalid source artifact binding');
+      artifacts.add(artifact.id);
+    }
+  }
+}
 
 function canonicalPath(value) {
   if (typeof value !== 'string' || value.length > 1024 || !value.endsWith('.spec.ts') ||
@@ -21,11 +73,10 @@ function canonicalPath(value) {
 function parseManifest(source) {
   if (typeof source !== 'string' || Buffer.byteLength(source) > MAX_BYTES) fail('oversized duration manifest');
   const data = JSON.parse(source);
-  if (!data || data.schemaVersion !== 1 || !data.source ||
-      !/^[0-9a-f]{40}$/u.test(data.source.headSha) ||
-      !Number.isSafeInteger(data.source.runId) || data.source.runId < 1 ||
-      data.source.conclusion !== 'success' || !data.durationsMs ||
+  if (!data || ![1, 2].includes(data.schemaVersion) || !data.durationsMs ||
       typeof data.durationsMs !== 'object' || Array.isArray(data.durationsMs)) fail('invalid duration manifest schema');
+  if (data.schemaVersion === 1 && (!data.source || !/^[0-9a-f]{40}$/u.test(data.source.headSha) ||
+      !positiveInteger(data.source.runId) || data.source.conclusion !== 'success')) fail('invalid duration manifest schema');
   const entries = Object.entries(data.durationsMs);
   if (!entries.length || entries.length > MAX_SUITES) fail('invalid duration manifest suite count');
   let total = 0;
@@ -34,6 +85,16 @@ function parseManifest(source) {
     if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) fail('invalid suite duration');
     total += ms;
     if (!Number.isFinite(total) || total > Number.MAX_SAFE_INTEGER) fail('duration total overflow');
+  }
+  if (data.schemaVersion === 2) {
+    if (data.policy !== 'max-of-two-successful-runs' || !sha256(data.fullTransferArchiveSha256) ||
+        data.inventorySha256 !== inventoryDigest(entries.map(([path]) => path))) fail('invalid multi-run policy or inventory binding');
+    validateSources(data.sources);
+    for (const source of data.sources) {
+      if (source.proof?.shards !== 6 || source.proof?.suites !== entries.length ||
+          !positiveInteger(source.proof?.tests)) fail('incomplete source proof');
+    }
+    if (entries.some(([, ms]) => !Number.isSafeInteger(ms))) fail('invalid actual suite duration');
   }
   return data;
 }
@@ -89,4 +150,5 @@ class DurationSequencer extends TestSequencer {
 }
 
 module.exports = DurationSequencer;
-Object.assign(module.exports, { canonicalPath, parseManifest, readManifest, medianDuration, assignShards });
+Object.assign(module.exports, { canonicalPath, canonicalInputPath, validateSources, inventoryDigest,
+  parseManifest, readManifest, medianDuration, assignShards });
