@@ -49,6 +49,8 @@ export function releaseGateCiViolations(source) {
     "sudo mkdir -p /root/social-monitor-release-contract-tests/ops/release /root/social-monitor-release-contract-tests/node_modules",
     "sudo cp -R ops/release/hetzner /root/social-monitor-release-contract-tests/ops/release/",
     "sudo cp -R ops/ci /root/social-monitor-release-contract-tests/ops/",
+    "sudo mkdir -p /root/social-monitor-release-contract-tests/.github/workflows",
+    "sudo cp .github/workflows/pull-request.yml /root/social-monitor-release-contract-tests/.github/workflows/",
     "sudo mkdir -p /root/social-monitor-release-contract-tests/ops/deploy /root/social-monitor-release-contract-tests/scripts/sql",
     "sudo cp ops/deploy/reader-summary-publication-pre-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/",
     "sudo cp ops/deploy/reader-summary-publication-post-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/",
@@ -60,7 +62,8 @@ export function releaseGateCiViolations(source) {
     "sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-database-plan_test.py",
   ];
   const nativeCommands = expected.filter((line) =>
-    line.startsWith("sudo cp -R ops/ci ") || line.startsWith("sudo cp ops/deploy/") ||
+    line.startsWith("sudo cp -R ops/ci ") || line.startsWith("sudo cp .github/workflows/") ||
+    line.startsWith("sudo cp ops/deploy/") ||
     line.startsWith("sudo cp scripts/sql/") || line.includes("/python/bin/python3 -I -B "));
   const runs = Object.values(doc.jobs ?? {}).flatMap((candidate) =>
     Array.isArray(candidate?.steps) ? candidate.steps : [])

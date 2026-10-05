@@ -81,6 +81,7 @@ for (const [label, mutate] of [
   ["preserved source ownership", replace("sudo cp -R ops/release/hetzner", "sudo cp -a ops/release/hetzner")],
   ["missing copied trusted Python", replace("sudo cp -R \"$RELEASE_GATE_VENV\" /root/social-monitor-release-contract-tests/python\n", "")],
   ["runner-owned controller execution", replace("bash /root/social-monitor-release-contract-tests/ops/release/hetzner/check.sh", "bash ops/release/hetzner/check.sh")],
+  ['missing workflow authority input', replace('sudo cp .github/workflows/pull-request.yml /root/social-monitor-release-contract-tests/.github/workflows/\n', '')],
   ['missing native import geometry', replace('sudo cp -R ops/ci /root/social-monitor-release-contract-tests/ops/\n', '')],
   ['runner-owned native staging', replace('sudo cp -R ops/ci ', 'cp -R ops/ci ')],
   ['wrong native staging geometry', replace('sudo cp -R ops/ci /root/social-monitor-release-contract-tests/ops/', 'sudo cp -R ops/ci /root/social-monitor-release-contract-tests/')],
