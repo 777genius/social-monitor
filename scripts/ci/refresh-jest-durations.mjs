@@ -41,10 +41,10 @@ export function refreshDurations({ reports, binding, sourceSha, reportRoot, curr
   return { manifest, proof, unknown, deleted };
 }
 
-function boundedBytes(path, maxBytes) {
+function boundedBytes(path, maxBytes, strictPhysicalPath = false) {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > maxBytes ||
-      realpathSync(path) !== resolve(path)) fail('invalid JSON input file');
+      (strictPhysicalPath && realpathSync(path) !== resolve(path))) fail('invalid JSON input file');
   const bytes = readFileSync(path);
   if (bytes.length > maxBytes) fail('oversized JSON input file');
   return bytes;
@@ -55,15 +55,18 @@ export function refreshMultiDurations({ declaration, inputRoot, currentInventory
   sequencer.validateSources(declaration?.sources);
   if (typeof declaration.fullTransferArchiveSha256 !== 'string' ||
       !/^[0-9a-f]{64}$/u.test(declaration.fullTransferArchiveSha256)) fail('missing full transfer archive binding');
+  // The operator-selected root may be an alias (including macOS /tmp).
+  // Below its physical path, every report file and ancestor must remain physical.
+  const trustedRoot = realpathSync(inputRoot);
   const sources = [];
   let durationsMs;
   for (const declared of [...declaration.sources].sort((a, b) => a.runId - b.runId)) {
     const reportFiles = [...declared.reportFiles].sort((a, b) => a.path < b.path ? -1 : 1);
     for (const file of reportFiles) {
-      const digest = createHash('sha256').update(boundedBytes(resolve(inputRoot, file.path), 128 * 1024 * 1024)).digest('hex');
+      const digest = createHash('sha256').update(boundedBytes(resolve(trustedRoot, file.path), 128 * 1024 * 1024, true)).digest('hex');
       if (digest !== file.sha256) fail('source report digest mismatch');
     }
-    const reports = loadShardReports(resolve(inputRoot, declared.reports), 6);
+    const reports = loadShardReports(resolve(trustedRoot, declared.reports), 6);
     const result = refreshDurations({ reports, sourceSha: declared.headSha, reportRoot: declared.reportRoot,
       binding: { head_sha: declared.headSha, run_id: declared.runId, conclusion: declared.conclusion,
         report_archive_sha256: declaration.fullTransferArchiveSha256 } });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -154,6 +154,77 @@ test('real six-report CLI preserves the slow outlier with MAX and canonical sour
   cli(directory, declaration);
   assert.equal(readFileSync(resolve(directory, 'out.json'), 'utf8'), first);
 }));
+
+test('new CLI and loader accept trusted operator root aliases with identical manifests', () => withSources((directory, declaration) => {
+  const alias = resolve(directory, 'operator-root');
+  symlinkSync(directory, alias, 'dir');
+  const inventory = ['a', 'b', 'c', 'd', 'e', 'f'].map((name) => `${name}.spec.ts`);
+  writeFileSync(resolve(directory, 'current.json'), JSON.stringify(inventory));
+  const physicalSummary = cli(directory, declaration, ['--current-inventory', resolve(directory, 'current.json')]);
+  const physicalBytes = readFileSync(resolve(directory, 'out.json'));
+  assert.deepEqual(cli(alias, declaration, ['--current-inventory', resolve(alias, 'current.json')]), physicalSummary);
+  assert.deepEqual(readFileSync(resolve(alias, 'out.json')), physicalBytes);
+  assert.deepEqual(refreshMultiDurations({ declaration, inputRoot: alias, currentInventory: inventory }).manifest,
+    JSON.parse(physicalBytes));
+}));
+
+test('legacy four-report CLI accepts trusted parent aliases with identical manifests', () => withSources((directory) => {
+  const alias = resolve(directory, 'operator-root');
+  symlinkSync(directory, alias, 'dir');
+  for (const shard of [5, 6]) rmSync(resolve(directory, `run-1/backend-unit-report-${shard}`), { recursive: true });
+  const inventory = ['a', 'b', 'c', 'd'].map((name) => `/repo/${name}.spec.ts`);
+  for (let shard = 1; shard <= 4; shard++) {
+    writeFileSync(resolve(directory, `run-1/backend-unit-report-${shard}/inventory.json`), JSON.stringify(inventory));
+  }
+  writeFileSync(resolve(directory, 'binding.json'), JSON.stringify(binding));
+  writeFileSync(resolve(directory, 'current.json'), JSON.stringify(inventory.map((path) => path.slice(6))));
+  const run = (root) => execFileSync(process.execPath, ['scripts/ci/refresh-jest-durations.mjs',
+    '--reports', resolve(root, 'run-1'), '--binding', resolve(root, 'binding.json'), '--source-sha', sourceSha,
+    '--report-root', '/repo', '--current-inventory', resolve(root, 'current.json'), '--out', resolve(root, 'legacy.json')],
+  { encoding: 'utf8', stdio: 'pipe' });
+  const physicalSummary = run(directory);
+  const physicalBytes = readFileSync(resolve(directory, 'legacy.json'));
+  assert.equal(run(alias), physicalSummary);
+  assert.deepEqual(readFileSync(resolve(alias, 'legacy.json')), physicalBytes);
+  assert.equal(JSON.parse(physicalSummary).shards, 4);
+  for (const path of ['binding.json', 'current.json', 'run-1/backend-unit-report-1/execution.json',
+    'run-1/backend-unit-report-1/inventory.json', 'run-1/backend-unit-report-1', 'run-1']) {
+    const original = resolve(directory, path);
+    const target = resolve(directory, 'legacy-target');
+    renameSync(original, target); symlinkSync(target, original);
+    try { assert.throws(() => run(alias)); } finally { rmSync(original); renameSync(target, original); }
+  }
+}));
+
+test('trusted root alias does not admit report subtree or JSON file symlinks', () => {
+  for (const relative of ['nested', 'nested/run-1', 'nested/run-1/backend-unit-report-1',
+    'nested/run-1/backend-unit-report-1/execution.json', 'nested/run-1/backend-unit-report-1/inventory.json',
+    'sources.json', 'current.json']) withSources((directory, declaration) => {
+    mkdirSync(resolve(directory, 'nested'));
+    for (const source of declaration.sources) {
+      renameSync(resolve(directory, source.reports), resolve(directory, 'nested', source.reports));
+      source.reports = `nested/${source.reports}`;
+      for (const file of source.reportFiles) file.path = `nested/${file.path}`;
+    }
+    const alias = resolve(directory, 'operator-root');
+    symlinkSync(directory, alias, 'dir');
+    writeFileSync(resolve(directory, 'sources.json'), JSON.stringify(declaration));
+    writeFileSync(resolve(directory, 'current.json'), JSON.stringify(['a', 'b', 'c', 'd', 'e', 'f'].map((name) => `${name}.spec.ts`)));
+    const run = (root) => execFileSync(process.execPath, ['scripts/ci/refresh-jest-durations.mjs',
+      '--sources', resolve(root, 'sources.json'), '--current-inventory', resolve(root, 'current.json'),
+      '--out', resolve(root, 'out.json')], { stdio: 'pipe' });
+    run(alias);
+    const original = resolve(directory, relative);
+    const target = resolve(directory, 'target');
+    renameSync(original, target); symlinkSync(target, original);
+    for (const root of [directory, alias]) {
+      assert.throws(() => run(root), /invalid JSON input file/u);
+      if (relative.startsWith('nested')) {
+        assert.throws(() => refreshMultiDurations({ declaration, inputRoot: root }), /invalid JSON input file/u);
+      }
+    }
+  });
+});
 
 test('multi-source rejects duplicate, incomplete, failed, stale or mismatched declarations', () => withSources((directory, declaration) => {
   for (const mutate of [
