@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import yaml from 'js-yaml';
@@ -90,4 +92,45 @@ test('coverage metadata and downloaded-file behavior', () => {
     'scripts/ci/review-ci/coverage-data.test.mts'], {
     timeout: 15000, env: { ...process.env, NODE_TEST_CONTEXT: undefined },
   });
+});
+
+// Execute the actual inventory and runtime shell with synthetic node argv capture.
+// This proves Bash array expansion and one execution per shard without running Jest.
+test('unit worker argv is bounded to shard2 and inventory is always serial', () => {
+  const steps = currentJobs.backend_unit_shards.steps;
+  const inventory = steps.find((step) => step.name === 'List the complete unit inventory before sharding').run;
+  const runtime = steps.find((step) => step.name === 'Run backend unit tests once with coverage').run;
+  const capture = `node() {
+    if [ "$1" = scripts/ci/verify-jest-shard-completeness.mjs ]; then
+      printf '%s' '/synthetic-excluded/'
+    else
+      printf '%s\\0' "$@" >> "$ARGV_FILE"
+    fi
+  }\n`;
+  const directory = mkdtempSync(join(tmpdir(), 'unit-workers-'));
+  try {
+    for (let shard = 1; shard <= 6; shard += 1) {
+      for (const [kind, shell] of [['inventory', inventory], ['runtime', runtime]]) {
+        const argvFile = join(directory, `${kind}-${shard}`);
+        execFileSync('bash', ['-c', capture + shell.replaceAll('${{ matrix.shard }}', String(shard))], {
+          cwd: directory, timeout: 5000, env: { ...process.env, ARGV_FILE: argvFile },
+        });
+        const args = readFileSync(argvFile, 'utf8').split('\0').slice(0, -1);
+        assert.deepEqual(args, [
+          'scripts/run-with-timeout.mjs', '--timeout-ms', kind === 'inventory' ? '120000' : '2700000',
+          '--node-options', kind === 'inventory' ? '--max-old-space-size=2048' : '--max-old-space-size=4096',
+          '--', './node_modules/.bin/jest', '--config', 'jest.config.ts',
+          kind === 'runtime' && shard === 2 ? '--maxWorkers=2' : '--runInBand',
+          ...(kind === 'runtime' ? [`--shard=${shard}/6`] : []),
+          '--testPathIgnorePatterns=/synthetic-excluded/',
+          ...(kind === 'inventory' ? ['--listTests', '--json'] : [
+            '--coverage', '--coverageDirectory=coverage', '--coverageReporters=lcovonly',
+            '--json', '--outputFile=reports/execution.json',
+          ]),
+        ]);
+      }
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

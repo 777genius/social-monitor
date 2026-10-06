@@ -9,7 +9,7 @@ const upload = 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
 const download = 'actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131';
 const codecov = 'codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f';
 const shard = '${{ matrix.shard }}';
-const jest = 'node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand';
+const jest = 'node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts';
 const ignore = 'unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"';
 const selector = '--testPathIgnorePatterns="$unit_ignore"';
 const inventory = 'node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --testPathIgnorePatterns="$unit_ignore" --listTests --json > reports/inventory.json';
@@ -154,11 +154,19 @@ export function backendUnitShardingViolations(source) {
     }
   }
   const jobs = workflow.jobs ?? {};
+  jobChecks(jobs.security_contracts, 'security_contracts', 'Security and public contracts', [
+    { uses: checkout }, nodeStep(), { run: 'npm ci' }, { run: 'npm run prisma:generate' },
+    { run: ['set -euo pipefail', ...[
+      'secrets', 'dependencies', 'runtime-profile-guards', 'auth-boundary', 'user-auth-boundary',
+      'read-api-key-scope', 'write-api-key-scope', 'security-final-sweep', 'backend-ops-readiness',
+      'api-health', 'openapi', 'mobile-client-contract', 'events', 'migrations', 'tenant-db-guards',
+    ].map((gate) => `npm run check:${gate}`)].join('\n') },
+  ], errors, [], 45);
   jobChecks(jobs.backend_unit_shards, 'backend_unit_shards', `Backend unit shard ${shard}/6`, [
-    ...setup(),
+    ...setup().map((step) => step.run === 'npm ci' ? { run: 'npm ci --prefer-offline --no-audit' } : step),
     { run: nativePg18 },
     { run: `set -euo pipefail\nmkdir -p reports\n${ignore}\n${inventory}` },
-    { run: `set -euo pipefail\n${ignore}\n${jest} --shard=${shard}/6 ${selector} --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json` },
+    { run: `set -euo pipefail\n${ignore}\n# Provisional shard2 pilot; keep all other executions serial.\nunit_workers=(--runInBand)\nif [ "${shard}" = 2 ]; then\n  unit_workers=(--maxWorkers=2)\nfi\n${jest} "\${unit_workers[@]}" --shard=${shard}/6 ${selector} --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json` },
     { uses: upload, with: { name: `backend-unit-report-${shard}`, path: 'reports/*.json', 'if-no-files-found': 'error', 'retention-days': 1 } },
     { uses: upload, with: { name: `backend-unit-coverage-${shard}`, path: 'coverage/lcov.info', 'if-no-files-found': 'error', 'retention-days': 1 } },
   ], errors, ['strategy'], 60);
@@ -187,6 +195,11 @@ export function backendUnitShardingViolations(source) {
       errors.push(`${id}: only the lightweight backend_unit and production_runtime aggregates may use ubuntu-slim`);
     }
     if (id === 'backend_unit_shards') continue;
+    for (const step of job?.steps ?? []) {
+      if (typeof step.run === 'string' && /\bnpm ci\b/u.test(step.run) && step.run !== 'npm ci') {
+        errors.push(`${id}: unit installation flags must stay local to the six-shard job`);
+      }
+    }
     for (const step of job?.steps ?? []) {
       if (typeof step.run === 'string' && (/(?:^|\s)npm\s+(?:run\s+)?test(?:\s|$)/u.test(step.run) ||
           (/jest\b/u.test(step.run) && /--config[= ]jest.config.ts/u.test(step.run) && !/--runTestsByPath\b/u.test(step.run)))) {

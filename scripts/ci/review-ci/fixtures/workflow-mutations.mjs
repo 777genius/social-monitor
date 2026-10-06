@@ -1,5 +1,25 @@
 // Each label states the CI regression the mutated workflow must reject.
 export const unitMutations = [
+  // Regression: optimization flags must not suppress lifecycle scripts or
+  // weaken the standalone audit; concurrency stays a shard2-only experiment.
+  ['unit install drops offline preference', (w) => replaceRun(w, 'backend_unit_shards', ' --prefer-offline', '')],
+  ['unit install drops no-audit scope', (w) => replaceRun(w, 'backend_unit_shards', ' --no-audit', '')],
+  ['unit lifecycle scripts disabled', (w) => replaceRun(w, 'backend_unit_shards', 'npm ci --prefer-offline --no-audit', 'npm ci --prefer-offline --no-audit --ignore-scripts')],
+  ['unit dev dependencies omitted', (w) => replaceRun(w, 'backend_unit_shards', 'npm ci --prefer-offline --no-audit', 'npm ci --prefer-offline --no-audit --omit=dev')],
+  ['Prisma generation omitted', (w) => replaceRun(w, 'backend_unit_shards', 'npm run prisma:generate', 'true')],
+  ['no-audit copied into security install', (w) => replaceRun(w, 'security_contracts', 'npm ci', 'npm ci --no-audit')],
+  ['standalone dependency audit omitted', (w) => replaceRun(w, 'security_contracts', 'npm run check:dependencies', 'true')],
+  ['standalone dependency audit masked', (w) => replaceRun(w, 'security_contracts', 'npm run check:dependencies', 'npm run check:dependencies || true')],
+  ['global advisory suppression', (w) => w.env.NPM_CONFIG_AUDIT = 'false'],
+  ['all shards use two workers', (w) => replaceRun(w, 'backend_unit_shards', 'unit_workers=(--runInBand)', 'unit_workers=(--maxWorkers=2)')],
+  ['pilot expanded beyond shard2', (w) => replaceRun(w, 'backend_unit_shards', '"${{ matrix.shard }}" = 2', '"${{ matrix.shard }}" != 6')],
+  ['pilot moved to shard3', (w) => replaceRun(w, 'backend_unit_shards', '"${{ matrix.shard }}" = 2', '"${{ matrix.shard }}" = 3')],
+  ['four-worker pilot', (w) => replaceRun(w, 'backend_unit_shards', '--maxWorkers=2', '--maxWorkers=4')],
+  ['percentage-worker pilot', (w) => replaceRun(w, 'backend_unit_shards', '--maxWorkers=2', '--maxWorkers=50%')],
+  ['unbounded Jest defaults', (w) => replaceRun(w, 'backend_unit_shards', '"${unit_workers[@]}" ', '')],
+  ['inventory uses two workers', (w) => replaceRun(w, 'backend_unit_shards', '--runInBand --testPathIgnorePatterns=', '--maxWorkers=2 --testPathIgnorePatterns=')],
+  ['worker array appended to override pilot', (w) => replaceRun(w, 'backend_unit_shards', 'unit_workers=(--maxWorkers=2)', 'unit_workers+=(--maxWorkers=2)')],
+  ['unit execution duplicated', (w) => { const step = lastRun(w, 'backend_unit_shards'); w.jobs.backend_unit_shards.steps.push({ ...step }); }],
   ['missing shard', (w) => w.jobs.backend_unit_shards.strategy.matrix.shard.pop()],
   ['duplicate shard', (w) => w.jobs.backend_unit_shards.strategy.matrix.shard[3] = 3],
   ['matrix exclusion silently removes shard', (w) => w.jobs.backend_unit_shards.strategy.matrix.exclude = [{ shard: 4 }]],

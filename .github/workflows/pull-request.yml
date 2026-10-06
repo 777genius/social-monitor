@@ -156,7 +156,7 @@ jobs:
           cache: npm
 
       - name: Install exact dependencies
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit
 
       - name: Generate the pinned Prisma client
         run: npm run prisma:generate
@@ -204,7 +204,12 @@ jobs:
         run: |
           set -euo pipefail
           unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"
-          node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/6 --testPathIgnorePatterns="$unit_ignore" --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json
+          # Provisional shard2 pilot; keep all other executions serial.
+          unit_workers=(--runInBand)
+          if [ "${{ matrix.shard }}" = 2 ]; then
+            unit_workers=(--maxWorkers=2)
+          fi
+          node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts "${unit_workers[@]}" --shard=${{ matrix.shard }}/6 --testPathIgnorePatterns="$unit_ignore" --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json
 
       - name: Upload unit execution and inventory data
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
