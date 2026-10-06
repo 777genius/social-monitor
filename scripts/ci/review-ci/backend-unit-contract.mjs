@@ -3,6 +3,10 @@ import yaml from 'js-yaml';
 // js-yaml is already reproducibly locked at the root by ESLint's dependency graph.
 // Parse the full document with duplicate-key rejection. Commands below use a
 // deliberately small shell language: fixed argv, or fail-fast sequential lines.
+export const ciVmRunner = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}";
+export const nativeRunnerEnvironment = Object.freeze({
+  CI_NATIVE_RUNNER: ciVmRunner, CI_NATIVE_ENVIRONMENT: '${{ runner.environment }}',
+});
 const checkout = 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10';
 const node = 'actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e';
 const upload = 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f';
@@ -30,7 +34,7 @@ function parse(source) {
   return yaml.load(source, { schema: yaml.JSON_SCHEMA, json: false });
 }
 
-function jobChecks(job, id, expectedName, expectedSteps, errors, extra = [], requiredTimeout = null, expectedRunner = 'ubuntu-latest') {
+function jobChecks(job, id, expectedName, expectedSteps, errors, extra = [], requiredTimeout = null, expectedRunner = ciVmRunner) {
   const reject = (message) => errors.push(`${id}: ${message}`);
   if (!keys(job, ['name', 'runs-on', 'timeout-minutes', 'steps', ...extra])) {
     reject('unknown execution keys, masking or skip policy');
@@ -66,13 +70,18 @@ const setup = (full = false) => [checkoutStep(full), nodeStep(), { run: 'npm ci'
 // Exact authenticated, nonroot, runner-only prerequisite; no shard-specific admission.
 const nativePg18 = [
   "set -euo pipefail",
-  "# Package installation is authorized only on a disposable GitHub-hosted Ubuntu runner.",
+  "# Package installation is authorized only on the selected disposable CI VM.",
   "test \"${GITHUB_ACTIONS:-}\" = true",
-  "test \"${RUNNER_ENVIRONMENT:-}\" = github-hosted",
+  "test \"${RUNNER_ENVIRONMENT:-}\" = \"$CI_NATIVE_ENVIRONMENT\"",
+  "case \"$CI_NATIVE_RUNNER:$CI_NATIVE_ENVIRONMENT\" in",
+  "  ubuntu-24.04:github-hosted|ubicloud-standard-4:self-hosted) ;;",
+  "  *) printf 'Unsupported native CI runner\\n' >&2; exit 1 ;;",
+  "esac",
   "test \"${RUNNER_OS:-}\" = Linux",
   "test \"$(id -u)\" -ne 0",
   ". /etc/os-release",
   "test \"$ID\" = ubuntu",
+  "test \"$VERSION_ID\" = 24.04",
   "[[ \"$VERSION_CODENAME\" =~ ^[a-z]+$ ]]",
   "pgdg_scratch=\"$(mktemp -d \"$RUNNER_TEMP/firstpub-pgdg-XXXXXXXX\")\"",
   "trap 'rm -rf -- \"$pgdg_scratch\"' EXIT",
@@ -164,7 +173,7 @@ export function backendUnitShardingViolations(source) {
   ], errors, [], 45);
   jobChecks(jobs.backend_unit_shards, 'backend_unit_shards', `Backend unit shard ${shard}/6`, [
     ...setup().map((step) => step.run === 'npm ci' ? { run: 'npm ci --prefer-offline --no-audit' } : step),
-    { run: nativePg18 },
+    { run: nativePg18, env: nativeRunnerEnvironment },
     { run: `set -euo pipefail\nmkdir -p reports\n${ignore}\n${inventory}` },
     { run: `set -euo pipefail\n${ignore}\n# Provisional shard2 pilot; keep all other executions serial.\nunit_workers=(--runInBand)\nif [ "${shard}" = 2 ]; then\n  unit_workers=(--maxWorkers=2)\nfi\n${jest} "\${unit_workers[@]}" --shard=${shard}/6 ${selector} --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json` },
     { uses: upload, with: { name: `backend-unit-report-${shard}`, path: 'reports/*.json', 'if-no-files-found': 'error', 'retention-days': 1 } },
@@ -189,7 +198,7 @@ export function backendUnitShardingViolations(source) {
     checkoutStep(), nodeStep(false),
     { uses: download, with: { pattern: 'backend-unit-report-*', path: 'unit-reports', 'merge-multiple': false } },
     { run: proof },
-  ], errors, ['needs', 'if'], 10, 'ubuntu-slim');
+  ], errors, ['needs', 'if'], 10, ciVmRunner);
   for (const [id, job] of Object.entries(jobs)) {
     if (!['backend_unit', 'production_runtime'].includes(id) && [job?.['runs-on']].flat().includes('ubuntu-slim')) {
       errors.push(`${id}: only the lightweight backend_unit and production_runtime aggregates may use ubuntu-slim`);
@@ -241,6 +250,6 @@ export function coverageWorkflowViolations(source) {
       files: `coverage-data/backend-unit-coverage-${shard}/lcov.info`, override_commit: '${{ github.event.workflow_run.head_sha }}',
       override_pr: '${{ github.event.workflow_run.pull_requests[0].number }}',
       flags: 'backend-unit', name: `backend-unit-shard-${shard}` } },
-  ], errors, ['if', 'permissions', 'strategy', 'needs'], 10);
+  ], errors, ['if', 'permissions', 'strategy', 'needs'], 10, 'ubuntu-latest');
   return errors;
 }

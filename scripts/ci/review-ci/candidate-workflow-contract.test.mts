@@ -79,7 +79,7 @@ const mutations: [string, (w: Workflow) => void][] = [
   ['lifecycle wrong SHA', (w) => (w.jobs.production_lifecycle.steps[0]!.with as Step).ref = 'main'],
   ['lifecycle failure masked', (w) => w.jobs.production_lifecycle.steps[2]!['continue-on-error'] = true],
   ['lifecycle gate skipped', (w) => w.jobs.production_lifecycle.steps[2]!.if = false],
-  ['aggregate uses full VM', (w) => w.jobs.production_runtime['runs-on'] = 'ubuntu-latest'],
+  ['aggregate bypasses selected VM', (w) => w.jobs.production_runtime['runs-on'] = 'ubuntu-latest'],
   ['aggregate timeout drift', (w) => w.jobs.production_runtime['timeout-minutes'] = 10],
   ['aggregate heavy work added', (w) => w.jobs.production_runtime.steps.push({ name: 'Install', run: 'npm ci' })],
   ['aggregate not always', (w) => w.jobs.production_runtime.if = 'success()'],
@@ -92,7 +92,7 @@ const mutations: [string, (w: Workflow) => void][] = [
   ['checkout credentials', (w) => options(w, 0)['persist-credentials'] = true],
   ['shallow checkout', (w) => options(w, 0)['fetch-depth'] = 1],
   ['floating checkout action', (w) => step(w, 0).uses = 'actions/checkout@main'],
-  ...['check:container', 'check:runtime-compose', 'check:production-deploy-lifecycle'].map(
+  ...['check:container', 'check:runtime-compose', 'check:production-lifecycle-runner:containment', 'check:production-deploy-lifecycle'].map(
     (gate): [string, (w: Workflow) => void] => [
       `missing ${gate}`, (w) => w.jobs.production_lifecycle.steps[2]!.run = String(w.jobs.production_lifecycle.steps[2]!.run).replace(`npm run ${gate}\n`, ''),
     ],
@@ -173,3 +173,50 @@ test('actual aggregate shell fails closed for every nonsuccess child result', ()
     }
   }
 });
+
+// Exercise the actual admission shell before OS/package/root operations.
+// Removing the allowlist, context binding or nonroot guard makes these red.
+for (const jobId of ['static_quality', 'backend_unit_shards']) {
+  test(`native admission for ${jobId} rejects untrusted runner tuples before writes`, () => {
+    const jobs = (load(source, { schema: CORE_SCHEMA, json: false }) as {
+      jobs: Record<string, Job>;
+    }).jobs;
+    const guarded = jobs[jobId!]!.steps.filter(value =>
+      typeof (value.env as Record<string, unknown> | undefined)?.CI_NATIVE_RUNNER === 'string');
+    assert.equal(guarded.length, 1, 'exactly one native preparation step');
+    const command = guarded[0]?.run;
+    assert.equal(typeof command, 'string');
+    const boundary = (command as string).indexOf('\n. /etc/os-release\n');
+    assert.ok(boundary > 0, 'guard must precede system operations');
+    const admission = (command as string).slice(0, boundary);
+    assert.equal(/\b(?:sudo|apt-get|curl|docker|npm)\b/u.test(admission), false);
+    const root = process.getuid?.() === 0;
+    const identity = root ? { uid: 65534, gid: 65534 } : {};
+    const invoke = (label: string, environment: string, context: string,
+      githubActions = 'true', asRoot = false) => {
+      const result = spawnSync('bash', ['-c', admission], {
+        cwd: '/tmp', encoding: 'utf8', timeout: 5000,
+        ...(asRoot ? {} : identity),
+        env: {
+          PATH: '/usr/bin:/bin', GITHUB_ACTIONS: githubActions,
+          RUNNER_OS: 'Linux', RUNNER_ARCH: 'X64',
+          RUNNER_ENVIRONMENT: environment, CI_NATIVE_RUNNER: label,
+          CI_NATIVE_ENVIRONMENT: context,
+        },
+      });
+      assert.ifError(result.error);
+      assert.equal(result.signal, null);
+      return result.status;
+    };
+    assert.equal(invoke('ubuntu-24.04', 'github-hosted', 'github-hosted'), 0);
+    assert.equal(invoke('ubicloud-standard-4', 'self-hosted', 'self-hosted'), 0);
+    assert.notEqual(invoke('self-hosted', 'self-hosted', 'self-hosted'), 0);
+    assert.notEqual(invoke('ubicloud-standard-8', 'self-hosted', 'self-hosted'), 0);
+    assert.notEqual(invoke('ubuntu-24.04', 'self-hosted', 'self-hosted'), 0);
+    assert.notEqual(invoke('ubicloud-standard-4', 'self-hosted', 'github-hosted'), 0);
+    assert.notEqual(invoke('ubicloud-standard-4', 'github-hosted', 'self-hosted'), 0);
+    assert.notEqual(invoke('', 'self-hosted', 'self-hosted'), 0);
+    assert.notEqual(invoke('ubicloud-standard-4', 'self-hosted', 'self-hosted', 'false'), 0);
+    if (root) assert.notEqual(invoke('ubicloud-standard-4', 'self-hosted', 'self-hosted', 'true', true), 0);
+  });
+}

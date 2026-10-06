@@ -31,7 +31,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
     const inspect = jest.fn(async (command: string, backend?: "xiaomi-mimo-token-plan") => {
       expect(command).toBe("/synthetic/never-executed");
       expect(backend).toBe("xiaomi-mimo-token-plan");
-      return { ...installation(command), mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.5" };
+      return { ...installation(command), mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.6" };
     });
     const executor = new SubscriptionRuntimeCliExecutor({
       command: "/synthetic/never-executed",
@@ -39,7 +39,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       allowedModelBackends: ["xiaomi-mimo-token-plan"],
       installationInspector: { inspect },
     });
-    expect(await executor.checkHealth()).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.5" });
+    expect(await executor.checkHealth()).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.6" });
     expect(inspect).toHaveBeenCalledTimes(1);
   });
   it("rejects MiMo without a key file before installation or execution", async () => {
@@ -97,7 +97,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       };
       expect(result.status).toBe("completed");
       expect(result.executionAttestation?.model).toBe("mimo-v2.6-pro");
-      expect(result.executionAttestation?.runtimePackageVersion).toBe("0.1.0-main.40-sm-mimo.5");
+      expect(result.executionAttestation?.runtimePackageVersion).toBe("0.1.0-main.40-sm-mimo.6");
       expect(captured.path).toBe("/run/synthetic/mimo-key");
       expect(captured.hasToken).toBe(false);
       expect(captured.codexAuthPath).toBeUndefined();
@@ -718,7 +718,7 @@ const installationInspector = {
   inspect: async (command: string, modelBackend?: "xiaomi-mimo-token-plan") => ({
     ...installation(command),
     ...(modelBackend === "xiaomi-mimo-token-plan"
-      ? { mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.5" }
+      ? { mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.6" }
       : {}),
   }),
 };

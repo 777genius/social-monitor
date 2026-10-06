@@ -61,7 +61,7 @@ for (const [regression, mutate] of [
   ['native installation failure masked', (w) => prerequisites(w)['continue-on-error'] = true],
   ['native shell failure masked', (w) => prerequisites(w).run += '\ntrue'],
   ...[
-    ['shared-host installation', 'test "${RUNNER_ENVIRONMENT:-}" = github-hosted'],
+    ['shared-host installation', 'test "${RUNNER_ENVIRONMENT:-}" = "$CI_NATIVE_ENVIRONMENT"'],
     ['root native execution', 'test "$(id -u)" -ne 0'],
     ['unauthenticated package signing key', 'test "$pgdg_fingerprint" = B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8'],
     ['automatic package-managed cluster creation', "printf 'create_main_cluster = false\\n'"],

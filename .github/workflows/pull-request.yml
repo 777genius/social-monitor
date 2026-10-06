@@ -20,7 +20,7 @@ env:
 jobs:
   static_quality:
     name: Static architecture and quality
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
 
     steps:
@@ -33,11 +33,20 @@ jobs:
       - name: Verify release controller contracts
         env:
           RELEASE_GATE_VENV: ${{ runner.temp }}/release-gate-venv
+          CI_NATIVE_RUNNER: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+          CI_NATIVE_ENVIRONMENT: ${{ runner.environment }}
         run: |
           set -euo pipefail
           test "${GITHUB_ACTIONS:-}" = true
-          test "${RUNNER_ENVIRONMENT:-}" = github-hosted
+          test "${RUNNER_ENVIRONMENT:-}" = "$CI_NATIVE_ENVIRONMENT"
+          case "$CI_NATIVE_RUNNER:$CI_NATIVE_ENVIRONMENT" in
+            ubuntu-24.04:github-hosted|ubicloud-standard-4:self-hosted) ;;
+            *) printf 'Unsupported native CI runner\n' >&2; exit 1 ;;
+          esac
           test "$(id -u)" -ne 0
+          test "${RUNNER_OS:-}:${RUNNER_ARCH:-}" = Linux:X64
+          . /etc/os-release
+          test "$ID:$VERSION_ID" = ubuntu:24.04
           command -v shellcheck
           docker compose version
           docker pull postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
@@ -95,7 +104,7 @@ jobs:
 
   security_contracts:
     name: Security and public contracts
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
     steps:
@@ -135,7 +144,7 @@ jobs:
 
   backend_unit_shards:
     name: Backend unit shard ${{ matrix.shard }}/6
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -162,15 +171,23 @@ jobs:
         run: npm run prisma:generate
 
       - name: Supply genuine native PostgreSQL 18 executables
+        env:
+          CI_NATIVE_RUNNER: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+          CI_NATIVE_ENVIRONMENT: ${{ runner.environment }}
         run: |
           set -euo pipefail
-          # Package installation is authorized only on a disposable GitHub-hosted Ubuntu runner.
+          # Package installation is authorized only on the selected disposable CI VM.
           test "${GITHUB_ACTIONS:-}" = true
-          test "${RUNNER_ENVIRONMENT:-}" = github-hosted
+          test "${RUNNER_ENVIRONMENT:-}" = "$CI_NATIVE_ENVIRONMENT"
+          case "$CI_NATIVE_RUNNER:$CI_NATIVE_ENVIRONMENT" in
+            ubuntu-24.04:github-hosted|ubicloud-standard-4:self-hosted) ;;
+            *) printf 'Unsupported native CI runner\n' >&2; exit 1 ;;
+          esac
           test "${RUNNER_OS:-}" = Linux
           test "$(id -u)" -ne 0
           . /etc/os-release
           test "$ID" = ubuntu
+          test "$VERSION_ID" = 24.04
           [[ "$VERSION_CODENAME" =~ ^[a-z]+$ ]]
           pgdg_scratch="$(mktemp -d "$RUNNER_TEMP/firstpub-pgdg-XXXXXXXX")"
           trap 'rm -rf -- "$pgdg_scratch"' EXIT
@@ -229,7 +246,7 @@ jobs:
 
   backend_build_contracts:
     name: Backend build and sandbox contracts
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
     steps:
@@ -275,7 +292,7 @@ jobs:
     name: Backend build and unit tests
     needs: [backend_unit_shards, backend_build_contracts]
     if: always()
-    runs-on: ubuntu-slim
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 10
 
     steps:
@@ -308,7 +325,7 @@ jobs:
 
   backend_e2e:
     name: Backend end-to-end tests
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
     steps:
@@ -332,7 +349,7 @@ jobs:
 
   postgres_rls:
     name: PostgreSQL tenant isolation
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
       postgres:
@@ -372,7 +389,7 @@ jobs:
 
   reader_promotion_v2_canary_postgres18:
     name: Reader Promotion V2 canary PostgreSQL 18
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
       - name: Check out the review commit
@@ -383,7 +400,7 @@ jobs:
 
   feed_promotion_snapshot_postgres18:
     name: Feed promotion snapshot and native plans PostgreSQL 18
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
       postgres:
@@ -426,7 +443,7 @@ jobs:
 
   reader_summary_weekly_review_manifest_postgres18:
     name: Reader-summary weekly review manifest PostgreSQL 18
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
       postgres:
@@ -470,7 +487,7 @@ jobs:
 
   reader_value_v3_postgres18:
     name: Reader Value V3 PostgreSQL 18 contracts
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     services:
       postgres:
@@ -516,7 +533,7 @@ jobs:
 
   production_candidate:
     name: Production immutable candidate
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
       contents: read
@@ -575,7 +592,7 @@ jobs:
 
   production_lifecycle:
     name: Production deploy lifecycle fixtures
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
       contents: read
@@ -595,13 +612,14 @@ jobs:
           set -euo pipefail
           npm run check:container
           npm run check:runtime-compose
+          npm run check:production-lifecycle-runner:containment
           npm run check:production-deploy-lifecycle
 
   production_runtime:
     name: Production container and deploy lifecycle
     needs: [production_candidate, production_lifecycle]
     if: always()
-    runs-on: ubuntu-slim
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -614,7 +632,7 @@ jobs:
 
   frontend:
     name: Flutter architecture and tests
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
     steps:
