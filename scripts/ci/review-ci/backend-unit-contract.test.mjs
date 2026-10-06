@@ -91,3 +91,13 @@ test('coverage metadata and downloaded-file behavior', () => {
     timeout: 15000, env: { ...process.env, NODE_TEST_CONTEXT: undefined },
   });
 });
+
+// Regression: checking only the workflow text cannot establish selection output,
+// moved native consumers, fail-closed process exits or the concrete pilot argv.
+// The behavioral fixture exercises real helper and workflow shell boundaries.
+test('native selection, bootstrap and worker pilot behavior', () => {
+  execFileSync(process.execPath, ['--experimental-strip-types', '--test',
+    'scripts/ci/review-ci/native-pg18-selection.test.mts'], {
+    timeout: 30000, env: { ...process.env, NODE_TEST_CONTEXT: undefined },
+  });
+});
