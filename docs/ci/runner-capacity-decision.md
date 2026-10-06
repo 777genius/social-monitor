@@ -64,3 +64,28 @@ If a new platform becomes warranted, evaluate
 and isolate untrusted fork code: GitHub
 [warns that public forks can execute unsafe code on self-hosted runners](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/add-runners).
 No runner provisioning, production credentials, or CD activation is authorized by this decision.
+
+
+## Native CI qualification amendment - 2026-10-07
+
+The owner requested autonomous removal of the persistent runner queue, including
+the jobs left outside the first pilot. The pull-request workflow now selects only
+`ubicloud-standard-4` for the configured managed route, with pinned
+`ubuntu-24.04` as the fallback. External or unidentified fork heads always use
+GitHub-hosted Ubuntu. Unsupported variable values cannot select arbitrary hosts.
+
+Native setup binds the selected label to GitHub's runner environment context,
+requires a nonroot Linux x64 process and verifies the Ubuntu 24.04 distribution
+before privileged writes. Signed PostgreSQL 18 installation, genuine executable
+checks, root filesystem boundaries, cgroup containment, complete suite inventory,
+six shards, coverage artifacts and all required results remain enforced.
+
+Candidate and lifecycle jobs in pull-request CI qualify test artifacts; they do
+not activate production. Actual deployment workflows retain their existing
+GitHub runners and authority checks. The Hetzner release candidate job now rejects
+disabled modes and irrelevant completed CI events before runner allocation,
+while keeping its independent in-job authority checks.
+
+Expansion requires successful real managed-runner native qualification and an
+independent review of the exact implementation before merge. The first pilot's
+20 green jobs alone do not establish compatibility of this expanded contract.

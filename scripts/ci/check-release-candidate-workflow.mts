@@ -10,6 +10,7 @@ const { CORE_SCHEMA, load } = require('js-yaml') as {
   readonly CORE_SCHEMA: object;
   load(source: string, options: { schema: object; json: false }): unknown;
 };
+const CI_VM_RUNNER = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}";
 const WORKFLOW = '.github/workflows/pull-request.yml';
 const FRAGMENT = 'ops/ci/release-candidate-job.yml';
 const CHECKOUT = 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10';
@@ -70,14 +71,12 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
   for (const id of ids) {
     const job = workflow.jobs[id];
     const reviewed = fragment[id];
-    // The owned workflow moves only this bash aggregate to slim; retain the
-    // reviewed ops fragment's complete job contract with this one runner update.
-    const expected = id === 'production_runtime' && mapping(reviewed) && reviewed['runs-on'] === 'ubuntu-latest'
-      ? { ...reviewed, 'runs-on': 'ubuntu-slim' } : reviewed;
+    // Routing is qualified independently; the complete execution plan stays exact.
+    const expected = reviewed;
     if (!mapping(job) || !isDeepStrictEqual(job, expected) ||
         !onlyKeys(job, ['name', 'runs-on', 'timeout-minutes', 'permissions', 'steps',
           ...(id === 'production_runtime' ? ['needs', 'if'] : [])]) ||
-        job['runs-on'] !== (id === 'production_runtime' ? 'ubuntu-slim' : 'ubuntu-latest') ||
+        job['runs-on'] !== CI_VM_RUNNER ||
         job['timeout-minutes'] !== (id === 'production_runtime' ? 5 : 45) ||
         !isDeepStrictEqual(job.permissions, { contents: 'read' }) ||
         !Array.isArray(job.steps) || !job.steps.every(mapping)) return fail;

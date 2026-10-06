@@ -106,7 +106,7 @@ for (const [label, mutate] of [
   ['duplicate native source copy', (w) => w.jobs.static_quality.steps.push({
     run: 'sudo cp -R ops/ci /root/social-monitor-release-contract-tests/ops/',
   })],
-  ['shared-host root execution', replace('test "${RUNNER_ENVIRONMENT:-}" = github-hosted\n', '')],
+  ['shared-host root execution', replace('test "${RUNNER_ENVIRONMENT:-}" = "$CI_NATIVE_ENVIRONMENT"\n', '')],
   ['masked contract failure', (w) => gate(w).run += ' || true\n'],
   ['early successful exit', (w) => gate(w).run = 'exit 0\n' + gate(w).run],
   ['folded command boundaries', (w) => gate(w).run = gate(w).run.replaceAll('\n', ' ')],
