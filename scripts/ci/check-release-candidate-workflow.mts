@@ -69,10 +69,15 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
       !isDeepStrictEqual(workflow.env, ROOT_ENV) || workflow.defaults !== undefined) return fail;
   for (const id of ids) {
     const job = workflow.jobs[id];
-    if (!mapping(job) || !isDeepStrictEqual(job, fragment[id]) ||
+    const reviewed = fragment[id];
+    // The owned workflow moves only this bash aggregate to slim; retain the
+    // reviewed ops fragment's complete job contract with this one runner update.
+    const expected = id === 'production_runtime' && mapping(reviewed) && reviewed['runs-on'] === 'ubuntu-latest'
+      ? { ...reviewed, 'runs-on': 'ubuntu-slim' } : reviewed;
+    if (!mapping(job) || !isDeepStrictEqual(job, expected) ||
         !onlyKeys(job, ['name', 'runs-on', 'timeout-minutes', 'permissions', 'steps',
           ...(id === 'production_runtime' ? ['needs', 'if'] : [])]) ||
-        job['runs-on'] !== 'ubuntu-latest' ||
+        job['runs-on'] !== (id === 'production_runtime' ? 'ubuntu-slim' : 'ubuntu-latest') ||
         job['timeout-minutes'] !== (id === 'production_runtime' ? 5 : 45) ||
         !isDeepStrictEqual(job.permissions, { contents: 'read' }) ||
         !Array.isArray(job.steps) || !job.steps.every(mapping)) return fail;

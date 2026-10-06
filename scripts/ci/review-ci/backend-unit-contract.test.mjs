@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import yaml from 'js-yaml';
 import { backendUnitShardingViolations, coverageWorkflowViolations } from './backend-unit-contract.mjs';
@@ -10,14 +8,14 @@ import { unitMutations, coverageMutations } from './fixtures/workflow-mutations.
 
 const unit = readFileSync('.github/workflows/pull-request.yml', 'utf8');
 const coverage = readFileSync('.github/workflows/coverage.yml', 'utf8');
-// Every other job performs heavy work on a full VM; slim is aggregate-only.
+// Heavy work needs a full VM; only the two reviewed aggregates may use slim.
 const currentJobs = yaml.load(unit, { schema: yaml.JSON_SCHEMA }).jobs;
-for (const id of Object.keys(currentJobs).filter((id) => id !== 'backend_unit')) {
+for (const id of Object.keys(currentJobs).filter((id) => !['backend_unit', 'production_runtime'].includes(id))) {
   test(`unit: rejects slim runner for ${id}`, () => {
     const workflow = yaml.load(unit, { schema: yaml.JSON_SCHEMA });
     workflow.jobs[id]['runs-on'] = 'ubuntu-slim';
     assert.ok(backendUnitShardingViolations(yaml.dump(workflow))
-      .includes(`${id}: only the lightweight backend_unit aggregate may use ubuntu-slim`));
+      .includes(`${id}: only the lightweight backend_unit and production_runtime aggregates may use ubuntu-slim`));
   });
 }
 for (const [label, source, check, mutations] of [
@@ -84,32 +82,12 @@ for (const [regression, mutate] of [
   });
 }
 
-// Regression: matrix shape cannot prove that downloaded coverage data contains
-// every expected artifact exactly once. Exercise the actual static shell guard.
-test('coverage data guard rejects missing, extra and malformed artifact directories', () => {
-  const workflow = yaml.load(coverage, { schema: yaml.JSON_SCHEMA });
-  const script = workflow.jobs.backend_unit_coverage.steps[1].run;
-  assert.equal(typeof script, 'string');
-  for (const mutation of ['complete', 'missing-sixth', 'extra-seventh', 'duplicate-name', 'empty-lcov', 'extra-file']) {
-    const directory = mkdtempSync(join(tmpdir(), 'sm-coverage-data-'));
-    try {
-      for (let shard = 1; shard <= 6; shard++) {
-        const folder = join(directory, 'coverage-data', `backend-unit-coverage-${shard}`);
-        mkdirSync(folder, { recursive: true });
-        writeFileSync(join(folder, 'lcov.info'), 'TN:synthetic\n');
-      }
-      const root = join(directory, 'coverage-data');
-      if (mutation === 'missing-sixth') rmSync(join(root, 'backend-unit-coverage-6'), { recursive: true });
-      if (mutation === 'extra-seventh') mkdirSync(join(root, 'backend-unit-coverage-7'));
-      if (mutation === 'duplicate-name') {
-        rmSync(join(root, 'backend-unit-coverage-6'), { recursive: true });
-        mkdirSync(join(root, 'backend-unit-coverage-5-copy'));
-      }
-      if (mutation === 'empty-lcov') writeFileSync(join(root, 'backend-unit-coverage-6', 'lcov.info'), '');
-      if (mutation === 'extra-file') writeFileSync(join(root, 'backend-unit-coverage-6', 'run.sh'), 'exit 0');
-      const result = spawnSync('bash', ['-c', script], { cwd: directory, timeout: 5000 });
-      assert.ifError(result.error);
-      assert.equal(result.status === 0, mutation === 'complete', mutation);
-    } finally { rmSync(directory, { recursive: true, force: true }); }
-  }
+// Execute the actual metadata and per-shard guards using credential-free fixtures.
+// Explicit stripping keeps the npm gate compatible with the Node 22.6 floor;
+// the CI TypeScript project independently typechecks this test's contracts.
+test('coverage metadata and downloaded-file behavior', () => {
+  execFileSync(process.execPath, ['--experimental-strip-types', '--test',
+    'scripts/ci/review-ci/coverage-data.test.mts'], {
+    timeout: 15000, env: { ...process.env, NODE_TEST_CONTEXT: undefined },
+  });
 });

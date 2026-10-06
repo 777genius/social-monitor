@@ -661,7 +661,7 @@ const flutterCacheViolations = (source) => {
   const versions = steps.filter((step) => step?.id === "flutter_version");
   const setup = setups[0];
   const version = versions[0];
-  const expectedSuffix = "${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter_version.outputs.version }}-${{ hashFiles('apps/frontend/**/pubspec.lock') }}";
+  const expectedSuffix = "${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter_version.outputs.version }}";
   const expectedRun = [
     "node <<'NODE'",
     "const fs = require('node:fs');",
@@ -678,9 +678,9 @@ const flutterCacheViolations = (source) => {
       setup.with?.channel !== "stable" || setup.with?.["flutter-version-file"] !== "apps/frontend/.fvmrc" ||
       setup.with?.["flutter-version"] !== undefined || setup.with?.cache !== true || setup.with?.["pub-cache"] !== true ||
       setup.with?.["cache-key"] !== `flutter-sdk-${expectedSuffix}` ||
-      setup.with?.["pub-cache-key"] !== `flutter-pub-${expectedSuffix}` ||
+      setup.with?.["pub-cache-key"] !== `flutter-pub-${expectedSuffix}-\${{ hashFiles('apps/frontend/**/pubspec.lock') }}` ||
       setup.with?.["cache-path"] !== undefined || setup.with?.["pub-cache-path"] !== undefined) {
-    return ["Flutter cache must use the pinned stable SDK, exact resolved version, OS/architecture and all frontend lockfiles"];
+    return ["Flutter cache must use the pinned stable SDK, exact resolved version and OS/architecture; only pub cache includes all frontend lockfiles"];
   }
   return [];
 };
