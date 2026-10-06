@@ -89,7 +89,7 @@ test("builds a deterministic, extractable host release from a disposable synthet
       "node_modules/dev-only": { version: "1.0.0", dev: true },
     },
   }));
-  for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz", "vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.5.tgz"]) {
+  for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz", "vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.6.tgz"]) {
     await put(source, `vendor/${name}`, "synthetic vendor archive\n");
   }
   const staleEntrypoint = "stale source dist entrypoint must never ship\n";
