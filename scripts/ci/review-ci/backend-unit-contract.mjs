@@ -215,7 +215,7 @@ export function coverageWorkflowViolations(source) {
   jobChecks(preflight, 'coverage_artifacts', 'Coverage artifact completeness', [
     { run: coverageMetadataProof, env: { GH_TOKEN: '${{ github.token }}', GH_REPO: '${{ github.repository }}',
       RUN_ID: '${{ github.event.workflow_run.id }}', HEAD_SHA: '${{ github.event.workflow_run.head_sha }}' } },
-  ], errors, ['if', 'permissions'], 5);
+  ], errors, ['if', 'permissions'], 5, 'ubuntu-slim');
   const job = workflow?.jobs?.backend_unit_coverage;
   if (job?.if !== "github.event.workflow_run.conclusion == 'success'" ||
       !equal(job?.permissions, { actions: 'read', contents: 'read', 'id-token': 'write' }) ||

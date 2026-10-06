@@ -15,7 +15,7 @@ jobs:
   coverage_artifacts:
     name: Coverage artifact completeness
     if: github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 5
     permissions:
       actions: read
