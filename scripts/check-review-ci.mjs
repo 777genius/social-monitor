@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { load as loadYaml } from "js-yaml";
-import { backendUnitShardingViolations, coverageWorkflowViolations } from "./ci/review-ci/backend-unit-contract.mjs";
+import { backendUnitShardingViolations, coverageWorkflowViolations, ciVmRunner, nativeRunnerEnvironment } from "./ci/review-ci/backend-unit-contract.mjs";
 
 // Control flow is reviewed as a whole, not inferred from command substrings.
 // Seal both small supervisors and their ownership token; runtime proofs exercise real children.
@@ -27,7 +27,7 @@ export function releaseGateCiViolations(source, assets) {
   const job = doc?.jobs?.static_quality;
   const steps = job?.steps;
   const fail = ["Static architecture and quality must run the system Python 3.12, hash-locked root controller gate on a disposable GitHub runner"];
-  if (job?.name !== "Static architecture and quality" || job["runs-on"] !== "ubuntu-24.04" ||
+  if (job?.name !== "Static architecture and quality" || job["runs-on"] !== ciVmRunner ||
       job.needs !== undefined || job.if !== undefined || job["continue-on-error"] !== undefined ||
       job.environment !== undefined || Object.keys(doc.env ?? {}).some((key) => key !== "DATABASE_URL") ||
       job.env !== undefined ||
@@ -42,8 +42,10 @@ export function releaseGateCiViolations(source, assets) {
       checkout.uses !== "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10" ||
       Object.keys(checkout.with ?? {}).length !== 2 ||
       checkout.with?.ref !== "${{ github.sha }}" || checkout.with?.["persist-credentials"] !== false ||
-      !safe(gate, ["name", "run", "env", "shell"]) || Object.keys(gate.env ?? {}).length !== 1 ||
+      !safe(gate, ["name", "run", "env", "shell"]) || Object.keys(gate.env ?? {}).length !== 3 ||
       gate.env?.RELEASE_GATE_VENV !== "${{ runner.temp }}/release-gate-venv" ||
+      gate.env?.CI_NATIVE_RUNNER !== nativeRunnerEnvironment.CI_NATIVE_RUNNER ||
+      gate.env?.CI_NATIVE_ENVIRONMENT !== nativeRunnerEnvironment.CI_NATIVE_ENVIRONMENT ||
       !safe(node, ["name", "uses", "with"]) ||
       node.uses !== "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e" ||
       Object.keys(node.with ?? {}).length !== 2 || node.with?.["node-version"] !== 22 || node.with?.cache !== "npm" ||
@@ -55,8 +57,15 @@ export function releaseGateCiViolations(source, assets) {
   const expected = [
     "set -euo pipefail",
     "test \"${GITHUB_ACTIONS:-}\" = true",
-    "test \"${RUNNER_ENVIRONMENT:-}\" = github-hosted",
+    "test \"${RUNNER_ENVIRONMENT:-}\" = \"$CI_NATIVE_ENVIRONMENT\"",
+    "case \"$CI_NATIVE_RUNNER:$CI_NATIVE_ENVIRONMENT\" in",
+    "ubuntu-24.04:github-hosted|ubicloud-standard-4:self-hosted) ;;",
+    "*) printf 'Unsupported native CI runner\\n' >&2; exit 1 ;;",
+    "esac",
     "test \"$(id -u)\" -ne 0",
+    "test \"${RUNNER_OS:-}:${RUNNER_ARCH:-}\" = Linux:X64",
+    ". /etc/os-release",
+    "test \"$ID:$VERSION_ID\" = ubuntu:24.04",
     "command -v shellcheck",
     "docker compose version",
     "docker pull postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",

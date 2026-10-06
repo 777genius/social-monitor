@@ -64,6 +64,9 @@ test('parsed policy mutations cannot smuggle environment, write permissions, sec
 
 test('event checkout, command, environment, cancellation and branch-gate mutations deny', () => {
   const mutations: [string, (value: Map) => void][] = [
+    ['missing candidate admission', value => { delete job(value, 'candidate').if; }],
+    ['candidate admission bypass', value => { job(value, 'candidate').if = 'always()'; }],
+    ['candidate admission forced skip', value => { job(value, 'candidate').if = false; }],
     ['untrusted event', value => { map(value.on).pull_request_target = {}; }],
     ['workflow selector', value => { map(map(value.on).workflow_run).workflows = ['Other checks']; }],
     ['event SHA checkout', value => { map(steps(value, 'candidate')[2]!.with).ref = '${{ github.event.workflow_run.head_sha }}'; }],

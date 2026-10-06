@@ -2,6 +2,7 @@ type Mapping = Record<string, unknown>;
 const CHECKOUT = 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10';
 const NODE = 'actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e';
 const UPLOAD = 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f';
+const CANDIDATE_ADMISSION = "(vars.HETZNER_RELEASE_MODE == 'preflight' || vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto') && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository))";
 const ENABLED = "steps.mode.outputs.enabled == 'true'";
 const MODE = [
   'set -euo pipefail', 'case "${HETZNER_RELEASE_MODE:-}" in',
@@ -71,7 +72,7 @@ function expected(): Mapping {
         type: 'choice', options: ['preflight', 'activate', 'rollback-previous'] },
       rollback_sha: { description: 'Full activation receipt SHA; rollback currently denies', required: false, default: '', type: 'string' },
     } } }, permissions: {},
-    jobs: { candidate: { 'runs-on': 'ubuntu-latest', 'timeout-minutes': 30, permissions: { actions: 'read', contents: 'read' },
+    jobs: { candidate: { if: CANDIDATE_ADMISSION, 'runs-on': 'ubuntu-latest', 'timeout-minutes': 30, permissions: { actions: 'read', contents: 'read' },
       outputs: { phase: "${{ steps.candidate.outputs.phase || 'disabled-skipped' }}", lane: "${{ steps.candidate.outputs.lane || 'skip' }}",
         sha: '${{ steps.candidate.outputs.sha }}', run: '${{ steps.candidate.outputs.run }}',
         artifact: '${{ steps.candidate.outputs.artifact }}', manifest_hash: '${{ steps.candidate.outputs.manifest_hash }}' },
