@@ -1,11 +1,27 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { load as loadYaml } from "js-yaml";
 import { backendUnitShardingViolations, coverageWorkflowViolations, ciVmRunner, nativeRunnerEnvironment } from "./ci/review-ci/backend-unit-contract.mjs";
 
-export function releaseGateCiViolations(source) {
+// Control flow is reviewed as a whole, not inferred from command substrings.
+// Seal both small supervisors and their ownership token; runtime proofs exercise real children.
+const staticQualitySeals = {
+  runner: ["ops/ci/static-quality-runner.mts", "32ea820d5511ef5ea6085db90c35368fbbdc2e8469da0e22aeeb2f23001dfdca"],
+  root: ["ops/ci/static-quality-root.sh", "71b679bad5b5dbf2beed65fe35d31c82280f357dc615f8be3a955f3f5e2075d1"],
+  keeper: ["ops/ci/static-quality-group-keeper.mts", "00714c251fe0d678e8d11489d47cdb1c1fd75d0a27ae76116040d815d19d4302"],
+};
+function shellLines(run) {
+  return typeof run === "string" ? run.split("\n").map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#")) : [];
+}
+function exactShell(run, expected) {
+  const lines = shellLines(run);
+  return lines.length === expected.length && lines.every((line, index) => line === expected[index]);
+}
+export function releaseGateCiViolations(source, assets) {
   let doc;
   try { doc = loadYaml(source); } catch { return ["invalid YAML for release controller gate"]; }
   const job = doc?.jobs?.static_quality;
@@ -17,26 +33,27 @@ export function releaseGateCiViolations(source) {
       job.env !== undefined ||
       doc.defaults !== undefined || job.defaults !== undefined ||
       !Array.isArray(steps)) return fail;
-  const setups = steps.filter((step) => step.uses?.startsWith("actions/setup-python@"));
-  const gates = steps.filter((step) => step.run?.includes("ops/release/hetzner/check.sh"));
-  const checkouts = steps.filter((step) => step.uses?.startsWith("actions/checkout@"));
-  const checkout = checkouts[0];
-  const gate = gates[0];
-  if (setups.length !== 0 || gates.length !== 1 || checkouts.length !== 1 ||
+  const checkout = steps[0], gate = steps[1], node = steps[2], install = steps[3];
+  const prisma = steps[4], hetzner = steps[5], proof = steps[6], join = steps[7];
+  const safe = (step, keys) => step && Object.keys(step).every((key) => keys.includes(key)) &&
+    (step.shell === undefined || step.shell === "bash");
+  if (steps.length !== 8 ||
+      !safe(checkout, ["name", "uses", "with"]) ||
       checkout.uses !== "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10" ||
-      checkout.env !== undefined || Object.keys(checkout.with ?? {}).length !== 2 ||
+      Object.keys(checkout.with ?? {}).length !== 2 ||
       checkout.with?.ref !== "${{ github.sha }}" || checkout.with?.["persist-credentials"] !== false ||
-      Object.keys(gate.env ?? {}).length !== 3 ||
+      !safe(gate, ["name", "run", "env", "shell"]) || Object.keys(gate.env ?? {}).length !== 3 ||
       gate.env?.RELEASE_GATE_VENV !== "${{ runner.temp }}/release-gate-venv" ||
       gate.env?.CI_NATIVE_RUNNER !== nativeRunnerEnvironment.CI_NATIVE_RUNNER ||
       gate.env?.CI_NATIVE_ENVIRONMENT !== nativeRunnerEnvironment.CI_NATIVE_ENVIRONMENT ||
-      steps.indexOf(checkout) !== 0 || steps.indexOf(gate) !== 1 ||
-      [checkout, gate].some((step) => step.if !== undefined || step["continue-on-error"] !== undefined ||
-        step["working-directory"] !== undefined || (step.shell !== undefined && step.shell !== "bash")) ||
+      !safe(node, ["name", "uses", "with"]) ||
+      node.uses !== "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e" ||
+      Object.keys(node.with ?? {}).length !== 2 || node.with?.["node-version"] !== 22 || node.with?.cache !== "npm" ||
+      ![install, prisma, hetzner, proof].every((step) => safe(step, ["name", "run", "shell"])) ||
+      !safe(join, ["name", "run", "shell", "env"]) || Object.keys(join.env ?? {}).length !== 1 ||
+      join.env?.NODE_OPTIONS !== "--max-old-space-size=4096" ||
       /\$\{\{\s*secrets\./u.test(JSON.stringify({ env: doc.env, job }))) return fail;
-  // Check resolved YAML command boundaries, accepting comments and indentation.
-  // Ubuntu system Python matches the disposable chroot ABI; /root excludes runner-owned /opt.
-  const commands = gate.run.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+  // Preparation must finish before any npm lifecycle runs, with identical snapshot geometry.
   const expected = [
     "set -euo pipefail",
     "test \"${GITHUB_ACTIONS:-}\" = true",
@@ -65,21 +82,42 @@ export function releaseGateCiViolations(source) {
     "sudo cp ops/deploy/reader-summary-publication-post-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/",
     "sudo cp scripts/sql/reader-summary-publication-tenant-ownership.sql /root/social-monitor-release-contract-tests/scripts/sql/",
     "sudo cp -R \"$RELEASE_GATE_VENV\" /root/social-monitor-release-contract-tests/python",
-    "sudo env PATH=\"/root/social-monitor-release-contract-tests/python/bin:$PATH\" bash /root/social-monitor-release-contract-tests/ops/release/hetzner/check.sh",
-    "sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-e2e-driver_test.py",
-    "sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-e2e-fixture/operator_test.py",
-    "sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-database-plan_test.py",
+    "sudo test -f /root/social-monitor-release-contract-tests/ops/ci/static-quality-root.sh",
+    "sudo test ! -L /root/social-monitor-release-contract-tests/ops/ci/static-quality-root.sh",
+    "sudo chmod -R go-w /root/social-monitor-release-contract-tests",
   ];
-  const nativeCommands = expected.filter((line) =>
-    line.startsWith("sudo cp -R ops/ci ") || line.startsWith("sudo cp .github/workflows/") ||
-    line.startsWith("sudo cp ops/deploy/") ||
-    line.startsWith("sudo cp scripts/sql/") || line.includes("/python/bin/python3 -I -B "));
+  const staticCommands = [
+    "npx eslint .", "npx tsc --noEmit", "npx tsc -p ops/ci/tsconfig.historical-bootstrap.json",
+    "npm run check:architecture", "npm run check:code-quality", "npm run check:source-line-cap",
+    "npm run check:persistence-readiness", "npm run check:observability", "npm run check:review-ci",
+    "node --test scripts/ci/*.test.mjs",
+  ];
+  const launch = "node --experimental-strip-types ops/ci/static-quality-runner.mts <<'STATIC_QUALITY'";
+  if (!exactShell(gate.run, expected) || !exactShell(install.run, ["npm ci"]) ||
+      !exactShell(prisma.run, ["npm run prisma:generate"]) ||
+      !exactShell(hetzner.run, ["set -euo pipefail", "npm run check:hetzner-release-typecheck", "npm run check:hetzner-release-tests"]) ||
+      !exactShell(proof.run, ["set -euo pipefail", "npx tsc -p ops/ci/tsconfig.static-quality.json",
+        "bash -n ops/ci/static-quality-root.sh", "shellcheck ops/ci/static-quality-root.sh",
+        "node --experimental-strip-types --test ops/ci/static-quality-runner.test.mts",
+        "node --test scripts/ci/check-release-gate-ci.test.mjs"]) ||
+      !exactShell(join.run, ["set -euo pipefail", launch, "set -euo pipefail", ...staticCommands, "STATIC_QUALITY"])) return fail;
   const runs = Object.values(doc.jobs ?? {}).flatMap((candidate) =>
     Array.isArray(candidate?.steps) ? candidate.steps : [])
     .filter((step) => typeof step?.run === "string").map((step) => step.run);
-  if (nativeCommands.some((command) =>
-    runs.reduce((count, run) => count + run.split(command).length - 1, 0) !== 1)) return fail;
-  return commands.length === expected.length && commands.every((line, index) => line === expected[index]) ? [] : fail;
+  const unique = [...expected.filter((line) => line.startsWith("sudo cp ")),
+    "ops/ci/static-quality-runner.mts"];
+  if (runs.reduce((count, run) => count + run.split("static-quality-root.sh").length - 1, 0) !== 4 ||
+      unique.some((command) => runs.reduce((count, run) => count + run.split(command).length - 1, 0) !== 1) ||
+      runs.some((run) => ["ops/release/hetzner/check.sh", "release-e2e-driver_test.py",
+        "release-e2e-fixture/operator_test.py", "release-database-plan_test.py"].some((path) => run.includes(path)))) return fail;
+  try {
+    for (const [key, [path, digest]] of Object.entries(staticQualitySeals)) {
+      if (assets === undefined && !lstatSync(path).isFile()) return fail;
+      const content = assets === undefined ? readFileSync(path, "utf8") : assets[key];
+      if (typeof content !== "string" || createHash("sha256").update(content).digest("hex") !== digest) return fail;
+    }
+  } catch { return fail; }
+  return [];
 }
 
 export function hetznerReleaseCiViolations(source, scripts) {
