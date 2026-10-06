@@ -257,13 +257,15 @@ const preservedLifecycleSerial =
 const lifecycleUsesRunner = productionDeployLifecycle === lifecycleRunnerCommand;
 if (lifecycleUsesRunner || preservedLifecycleSerial !== undefined) {
   const typedCheck = "tsc --project ops/ci/tsconfig.production-lifecycle.json && " +
-    "node --experimental-strip-types --test ops/ci/production-lifecycle-runner.test.mts";
+    "node --experimental-strip-types --test --test-name-pattern='actual registry|recycled ownership' ops/ci/production-lifecycle-runner.test.mts";
   if (!lifecycleUsesRunner || typeof preservedLifecycleSerial !== "string" ||
       preservedLifecycleSerial.split(" && ").length !== 28 ||
       packageJson.scripts?.["check:production-lifecycle-runner"] !== typedCheck ||
+      packageJson.scripts?.["check:production-lifecycle-runner:containment"] !==
+        "node --experimental-strip-types --test ops/ci/production-lifecycle-runner.test.mts" ||
       packageJson.scripts?.["check:code-quality"] !==
         "node scripts/check-code-quality.mjs && npm run check:production-lifecycle-runner") {
-    violations.push("package.json: typed lifecycle must retain all 28 serial commands and run its strict registry/scheduling tests in code quality");
+    violations.push("package.json: typed lifecycle must retain all 28 serial commands and run portable registry/ownership checks plus mandatory native containment");
   }
 }
 const productionDeployLifecycleCommands = lifecycleUsesRunner

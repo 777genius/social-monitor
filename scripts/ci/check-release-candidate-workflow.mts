@@ -24,7 +24,7 @@ const ROOT_ENV = {
 const GATES = [
   'npm run check:container',
   'npm run check:runtime-compose',
-  'npm run check:production-deploy-lifecycle',
+  'npm run check:production-lifecycle-runner:containment', 'npm run check:production-deploy-lifecycle',
 ];
 const HELPER = [
   'set -euo pipefail',

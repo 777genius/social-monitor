@@ -80,6 +80,7 @@ production_lifecycle:
         set -euo pipefail
         npm run check:container
         npm run check:runtime-compose
+        npm run check:production-lifecycle-runner:containment
         npm run check:production-deploy-lifecycle
 
 production_runtime:
