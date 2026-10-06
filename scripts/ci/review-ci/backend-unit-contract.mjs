@@ -47,9 +47,9 @@ function jobChecks(job, id, expectedName, expectedSteps, errors, extra = [], req
   }
   job.steps.forEach((step, index) => {
     const expected = expectedSteps[index];
-    if (!keys(step, ['name', ...(expected.id ? ['id'] : []), ...(expected.run ? ['run'] : ['uses', 'with']), ...(expected.env ? ['env'] : [])])) {
+    if (!keys(step, ['name', ...(expected.run ? ['run'] : ['uses', 'with']), ...(expected.env ? ['env'] : [])])) {
       reject(`step ${index + 1}: conditional, masking or unknown step key`);
-    } else if (step.id !== expected.id || !equal(step.env, expected.env)) {
+    } else if (!equal(step.env, expected.env)) {
       reject(`step ${index + 1}: scoped trusted workflow inputs required`);
     } else if (expected.run) {
       if (normalize(step.run) !== normalize(expected.run)) reject(`step ${index + 1}: unfiltered, bounded fail-fast command required`);
@@ -63,7 +63,7 @@ const checkoutStep = (full = false) => ({ uses: checkout, with: {
 } });
 const nodeStep = (cache = true) => ({ uses: node, with: { 'node-version': 22, ...(cache ? { cache: 'npm' } : {}) } });
 const setup = (full = false) => [checkoutStep(full), nodeStep(), { run: 'npm ci' }, { run: 'npm run prisma:generate' }];
-// Exact authenticated, nonroot, runner-only prerequisite; validated actual selection.
+// Exact authenticated, nonroot, runner-only prerequisite; no shard-specific admission.
 const nativePg18 = [
   "set -euo pipefail",
   "# Package installation is authorized only on a disposable GitHub-hosted Ubuntu runner.",
@@ -74,11 +74,6 @@ const nativePg18 = [
   ". /etc/os-release",
   "test \"$ID\" = ubuntu",
   "[[ \"$VERSION_CODENAME\" =~ ^[a-z]+$ ]]",
-  'case "${{ steps.native_pg18.outputs.need_pg18 }}" in',
-  "  true) ;;",
-  "  false) exit 0 ;;",
-  "  *) echo 'Invalid native prerequisite decision' >&2; exit 1 ;;",
-  "esac",
   "pgdg_scratch=\"$(mktemp -d \"$RUNNER_TEMP/firstpub-pgdg-XXXXXXXX\")\"",
   "trap 'rm -rf -- \"$pgdg_scratch\"' EXIT",
   "mkdir -m 700 \"$pgdg_scratch/gnupg\"",
@@ -169,9 +164,8 @@ export function backendUnitShardingViolations(source) {
   ], errors, [], 45);
   jobChecks(jobs.backend_unit_shards, 'backend_unit_shards', `Backend unit shard ${shard}/6`, [
     ...setup().map((step) => step.run === 'npm ci' ? { run: 'npm ci --prefer-offline --no-audit' } : step),
-    { run: `set -euo pipefail\nmkdir -p reports\n${ignore}\n${inventory}` },
-    { id: 'native_pg18', run: `set -euo pipefail\n${ignore}\nnode scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${shard}/6 ${selector} --listTests --json > "$RUNNER_TEMP/backend-unit-selection.json"\nnode --experimental-strip-types scripts/ci/review-ci/native-pg18-selection.mts --root . --inventory reports/inventory.json --selection "$RUNNER_TEMP/backend-unit-selection.json" --shard ${shard}/6 >> "$GITHUB_OUTPUT"` },
     { run: nativePg18 },
+    { run: `set -euo pipefail\nmkdir -p reports\n${ignore}\n${inventory}` },
     { run: `set -euo pipefail\n${ignore}\n# Provisional shard2 pilot; keep all other executions serial.\nunit_workers=(--runInBand)\nif [ "${shard}" = 2 ]; then\n  unit_workers=(--maxWorkers=2)\nfi\n${jest} "\${unit_workers[@]}" --shard=${shard}/6 ${selector} --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json` },
     { uses: upload, with: { name: `backend-unit-report-${shard}`, path: 'reports/*.json', 'if-no-files-found': 'error', 'retention-days': 1 } },
     { uses: upload, with: { name: `backend-unit-coverage-${shard}`, path: 'coverage/lcov.info', 'if-no-files-found': 'error', 'retention-days': 1 } },

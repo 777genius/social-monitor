@@ -17,18 +17,9 @@ export const unitMutations = [
   ['four-worker pilot', (w) => replaceRun(w, 'backend_unit_shards', '--maxWorkers=2', '--maxWorkers=4')],
   ['percentage-worker pilot', (w) => replaceRun(w, 'backend_unit_shards', '--maxWorkers=2', '--maxWorkers=50%')],
   ['unbounded Jest defaults', (w) => replaceRun(w, 'backend_unit_shards', '"${unit_workers[@]}" ', '')],
-  ['discovery denominator drift', (w) => discovery(w).run = discovery(w).run.replaceAll('/6', '/7')],
-  ['decision denominator drift', (w) => discovery(w).run = discovery(w).run.replace('--shard ${{ matrix.shard }}/6', '--shard ${{ matrix.shard }}/4')],
-  ['selection leaks into report artifact', (w) => discovery(w).run = discovery(w).run.replaceAll('$RUNNER_TEMP/backend-unit-selection.json', 'reports/selection.json')],
-  ['discovery uses different exclusions', (w) => discovery(w).run = discovery(w).run.replace('--testPathIgnorePatterns="$unit_ignore"', '--testPathIgnorePatterns=hidden')],
-  ['discovery uses different config', (w) => discovery(w).run = discovery(w).run.replace('jest.config.ts', 'test/jest-e2e.json')],
-  ['selection validation omitted', (w) => discovery(w).run = discovery(w).run.trimEnd().split('\n').slice(0, -1).join('\n')],
-  ['selection validation failure masked', (w) => discovery(w).run += ' || true'],
-  ['discovery failure masked', (w) => discovery(w).run = discovery(w).run.replace('set -euo pipefail', 'set -uo pipefail')],
-  ['discovery conditional shard assumption', (w) => discovery(w).if = 'matrix.shard == 6'],
-  ['discovery continue-on-error', (w) => discovery(w)['continue-on-error'] = true],
-  ['native bootstrap always bypassed', (w) => replaceRun(w, 'backend_unit_shards', 'case "${{ steps.native_pg18.outputs.need_pg18 }}" in', 'case false in')],
-  ['missing decision bypasses installation', (w) => replaceRun(w, 'backend_unit_shards', "*) echo 'Invalid native prerequisite decision' >&2; exit 1 ;;", '*) exit 0 ;;')],
+  ['inventory uses two workers', (w) => replaceRun(w, 'backend_unit_shards', '--runInBand --testPathIgnorePatterns=', '--maxWorkers=2 --testPathIgnorePatterns=')],
+  ['worker array appended to override pilot', (w) => replaceRun(w, 'backend_unit_shards', 'unit_workers=(--maxWorkers=2)', 'unit_workers+=(--maxWorkers=2)')],
+  ['unit execution duplicated', (w) => { const step = lastRun(w, 'backend_unit_shards'); w.jobs.backend_unit_shards.steps.push({ ...step }); }],
   ['missing shard', (w) => w.jobs.backend_unit_shards.strategy.matrix.shard.pop()],
   ['duplicate shard', (w) => w.jobs.backend_unit_shards.strategy.matrix.shard[3] = 3],
   ['matrix exclusion silently removes shard', (w) => w.jobs.backend_unit_shards.strategy.matrix.exclude = [{ shard: 4 }]],
@@ -83,7 +74,6 @@ export const unitMutations = [
     [`${id} step skip`, (w) => w.jobs[id].steps[0].if = false],
   ]),
 ];
-function discovery(workflow) { return workflow.jobs.backend_unit_shards.steps.find((step) => step.id === 'native_pg18'); }
 function lastRun(workflow, id) { return workflow.jobs[id].steps.filter((step) => typeof step.run === 'string').at(-1); }
 function replaceRun(workflow, id, before, after) {
   const step = workflow.jobs[id].steps.find((step) => step.run?.includes(before));
