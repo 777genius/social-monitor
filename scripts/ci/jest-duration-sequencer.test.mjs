@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import Sequencer from './jest-duration-sequencer.cjs';
+const { structuredClone } = globalThis;
 
 const { parseManifest, readManifest, assignShards, medianDuration } = Sequencer;
 const source = { runId: 1, headSha: 'a'.repeat(40), conclusion: 'success' };
@@ -61,6 +62,33 @@ test('rejects bounded invalid schema, nonfinite/negative values and traversal', 
   assert.throws(() => assignShards(tests(['a', 'a']), { shardCount: 2, rootDir, durationsMs: { 'a.spec.ts': 1 } }), /duplicate/u);
   assert.throws(() => assignShards([{ path: resolve(rootDir, '../outside.spec.ts') }], { shardCount: 2, rootDir, durationsMs: { 'a.spec.ts': 1 } }), /path/u);
   assert.throws(() => assignShards(tests(['a']), { shardCount: 0, rootDir, durationsMs: { 'a.spec.ts': 1 } }), /count/u);
+});
+
+test('version two fails closed on malformed provenance, duplicate runs and incomplete report bindings', () => {
+  const committed = JSON.parse(readFileSync('ops/ci/jest-durations.json', 'utf8'));
+  assert.equal(parseManifest(JSON.stringify(committed)).schemaVersion, 2);
+  for (const mutate of [
+    (x) => { x.policy = 'average'; }, (x) => { x.fullTransferArchiveSha256 = ''; },
+    (x) => { x.inventorySha256 = '0'.repeat(64); }, (x) => { x.sources.pop(); },
+    (x) => { x.sources[1] = x.sources[0]; },
+    (x) => { x.sources[0].conclusion = 'failure'; }, (x) => { x.sources[0].headSha = 'main'; },
+    (x) => { x.sources[0].shardCount = 4; }, (x) => { x.sources[0].reportRoot = ''; },
+    (x) => { x.sources[0].reports = '/outside'; }, (x) => { x.sources[0].reports = 'a/../b'; },
+    (x) => { x.sources[0].reportFiles.pop(); },
+    (x) => { x.sources[0].reportFiles[0].sha256 = 'bad'; },
+    (x) => { x.sources[0].reportFiles[0].path = 'a/missing.json'; },
+    (x) => { x.sources[0].reportFiles[1] = x.sources[0].reportFiles[0]; },
+    (x) => { x.sources[0].githubArtifacts.pop(); },
+    (x) => { x.sources[0].githubArtifacts[1] = x.sources[0].githubArtifacts[0]; },
+    (x) => { x.sources[0].githubArtifacts[0].digest = 'bad'; },
+    (x) => { x.sources[0].githubArtifacts[0].expired = true; },
+    (x) => { x.sources[0].githubArtifacts[0].workflow_run.head_sha = 'a'.repeat(40); },
+    (x) => { x.sources[0].githubArtifacts[0].workflow_run.id++; },
+    (x) => { delete x.sources[0].proof; }, (x) => { x.sources[0].proof.suites--; },
+    (x) => { x.sources[0].proof.tests = 0; }, (x) => { x.sources[0].proof.shards = 4; },
+    (x) => { delete x.durationsMs[Object.keys(x.durationsMs)[0]]; },
+    (x) => { x.durationsMs[Object.keys(x.durationsMs)[0]] = 1.5; },
+  ]) { const value = structuredClone(committed); mutate(value); assert.throws(() => parseManifest(JSON.stringify(value))); }
 });
 
 test('manifest file rejects symlinks; inherited Jest sort keeps failure priority', () => {
