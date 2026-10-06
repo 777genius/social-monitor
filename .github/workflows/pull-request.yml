@@ -106,7 +106,7 @@ jobs:
 
   security_contracts:
     name: Security and public contracts
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
 
     steps:
@@ -319,7 +319,7 @@ jobs:
 
   backend_e2e:
     name: Backend end-to-end tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
 
     steps:
@@ -343,7 +343,7 @@ jobs:
 
   postgres_rls:
     name: PostgreSQL tenant isolation
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     services:
       postgres:
@@ -383,7 +383,7 @@ jobs:
 
   reader_promotion_v2_canary_postgres18:
     name: Reader Promotion V2 canary PostgreSQL 18
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - name: Check out the review commit
@@ -394,7 +394,7 @@ jobs:
 
   feed_promotion_snapshot_postgres18:
     name: Feed promotion snapshot and native plans PostgreSQL 18
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     services:
       postgres:
@@ -437,7 +437,7 @@ jobs:
 
   reader_summary_weekly_review_manifest_postgres18:
     name: Reader-summary weekly review manifest PostgreSQL 18
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     services:
       postgres:
@@ -481,7 +481,7 @@ jobs:
 
   reader_value_v3_postgres18:
     name: Reader Value V3 PostgreSQL 18 contracts
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
     services:
       postgres:
@@ -625,7 +625,7 @@ jobs:
 
   frontend:
     name: Flutter architecture and tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
 
     steps:
