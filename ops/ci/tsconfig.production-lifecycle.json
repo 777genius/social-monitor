@@ -18,6 +18,7 @@
   },
   "include": [
     "production-lifecycle-runner.mts",
+    "production-lifecycle-keeper.mts",
     "production-lifecycle-runner.test.mts"
   ]
 }

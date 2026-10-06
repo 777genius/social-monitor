@@ -56,5 +56,5 @@
       "@social-monitor/usage/*": ["libs/usage/*"]
     }
   },
-  "exclude": ["node_modules", "dist", "coverage", "prisma/generated", "scripts/ci/**/*.mts", "ops/ci/historical-bootstrap-transition.mts", "ops/ci/production-lifecycle-runner.mts", "ops/ci/production-lifecycle-runner.test.mts"]
+  "exclude": ["node_modules", "dist", "coverage", "prisma/generated", "scripts/ci/**/*.mts", "ops/ci/historical-bootstrap-transition.mts", "ops/ci/production-lifecycle-runner.mts", "ops/ci/production-lifecycle-keeper.mts", "ops/ci/production-lifecycle-runner.test.mts"]
 }
