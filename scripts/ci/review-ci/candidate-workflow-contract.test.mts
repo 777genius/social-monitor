@@ -176,15 +176,15 @@ test('actual aggregate shell fails closed for every nonsuccess child result', ()
 
 // Exercise the actual admission shell before OS/package/root operations.
 // Removing the allowlist, context binding or nonroot guard makes these red.
-for (const [jobId, stepName] of [
-  ['static_quality', 'Verify release controller contracts'],
-  ['backend_unit_shards', 'Supply genuine native PostgreSQL 18 executables'],
-]) {
+for (const jobId of ['static_quality', 'backend_unit_shards']) {
   test(`native admission for ${jobId} rejects untrusted runner tuples before writes`, () => {
     const jobs = (load(source, { schema: CORE_SCHEMA, json: false }) as {
       jobs: Record<string, Job>;
     }).jobs;
-    const command = jobs[jobId!]!.steps.find(value => value.name === stepName)?.run;
+    const guarded = jobs[jobId!]!.steps.filter(value =>
+      typeof (value.env as Record<string, unknown> | undefined)?.CI_NATIVE_RUNNER === 'string');
+    assert.equal(guarded.length, 1, 'exactly one native preparation step');
+    const command = guarded[0]?.run;
     assert.equal(typeof command, 'string');
     const boundary = (command as string).indexOf('\n. /etc/os-release\n');
     assert.ok(boundary > 0, 'guard must precede system operations');
