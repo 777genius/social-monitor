@@ -230,7 +230,17 @@ if (process.argv[2] === 'leaf') {
       // A terminated adopted grandchild may briefly remain a zombie in a container.
       const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
       return stat.slice(stat.lastIndexOf(')') + 2).startsWith('Z ');
-    } catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT'; }
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ESRCH') return true;
+      throw error;
+    }
+  };
+  const cleanupLeaf = async (pid: number): Promise<void> => {
+    if (await gone(pid)) return;
+    try { process.kill(pid, 'SIGKILL'); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+    }
   };
 
   // Each case owns a mkdtemp tree, fresh fixture process, distinct process group
@@ -385,7 +395,7 @@ if (process.argv[2] === 'leaf') {
           await run.result;
           // Only a still-live recorded synthetic descendant is cleaned up on an
           // old-source regression failure; never signal an expired process group.
-          if (leaf !== undefined && !await gone(leaf)) process.kill(leaf, 'SIGKILL');
+          if (leaf !== undefined) await cleanupLeaf(leaf);
           foreign.kill('SIGTERM');
           await foreignDone;
           await rm(root, { recursive: true, force: true });
@@ -427,7 +437,7 @@ if (process.argv[2] === 'leaf') {
       // External keeper death forfeits group ownership. Clean only this recorded
       // synthetic leaf; never send a cleanup signal to the reaped keeper's PGID.
       try {
-        if (leaf !== undefined && !await gone(leaf)) process.kill(leaf, 'SIGKILL');
+        if (leaf !== undefined) await cleanupLeaf(leaf);
         if (leaf !== undefined) {
           const deadline = performance.now() + 5000;
           let cleaned = await gone(leaf);
@@ -473,7 +483,7 @@ if (process.argv[2] === 'leaf') {
     } finally {
       if (run.child.exitCode === null && run.child.signalCode === null) run.child.kill('SIGTERM');
       await run.result;
-      for (const leaf of leaves) if (!await gone(leaf)) process.kill(leaf, 'SIGKILL');
+      for (const leaf of leaves) await cleanupLeaf(leaf);
       foreign.kill('SIGTERM');
       await foreignDone;
       await rm(root, { recursive: true, force: true });
