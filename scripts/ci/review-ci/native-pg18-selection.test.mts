@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -94,6 +94,109 @@ test('new native consumers follow source dependencies and unknown local edges fa
   });
 });
 
+// Behavioral regressions from independent review: declarations cannot certify
+// runtime safety, and unenumerable executable edges require native preparation.
+const rejectedEdges: Array<[string, string, Record<string, string>]> = [
+  ['namespace re-export', 'export * as native from "./shared";', { 'shared.ts': 'export const command = "initdb";' }],
+  ['computed import identifier', 'const target = "./shared"; import(target);', { 'shared.ts': 'export const command = "initdb";' }],
+  ['computed require identifier', 'const target = "./shared"; require(target);', { 'shared.ts': 'export const command = "initdb";' }],
+  ['JS runtime with declaration facade', 'import "./shared";', {
+    'shared.d.ts': 'export declare const command: string;', 'shared.js': 'exports.command = "initdb";',
+  }],
+  ['configured alias outside organization prefix', 'import "fixture-native";', { 'shared.ts': 'export const command = "initdb";' }],
+  ['TS facade shadowed by runtime JS', 'import "./shared";', {
+    'shared.ts': 'export const command = "ordinary";', 'shared.js': 'exports.command = "initdb";',
+  }],
+];
+for (const [label, source, dependencies] of rejectedEdges) {
+  test(`prepares native prerequisites for ${label}`, () => fixture((directory) => {
+    writeFileSync(join(directory, 'tsconfig.json'), JSON.stringify({ compilerOptions: {
+      target: 'ES2023', module: 'commonjs', baseUrl: '.', ignoreDeprecations: '6.0',
+      paths: { 'fixture-native': ['shared.ts'] },
+    } }));
+    for (const [path, content] of Object.entries(dependencies)) writeFileSync(join(directory, path), content);
+    writeFileSync(join(directory, normal), source);
+    assert.equal(decide(directory, [normal]), true);
+  }));
+}
+
+test('AST follows importEquals, nested literal calls and runnable CJS/MJS dependency chains', () => {
+  fixture((directory) => {
+    writeFileSync(join(directory, 'shared.ts'), 'export const command = "initdb";');
+    writeFileSync(join(directory, 'facade.d.cts'), 'export declare const command: string;');
+    writeFileSync(join(directory, 'facade.cjs'), 'module.exports = require("./shared");');
+    writeFileSync(join(directory, 'facade.d.mts'), 'export declare const command: string;');
+    writeFileSync(join(directory, 'facade.mjs'), 'export * as native from "./shared.js";');
+    for (const source of ['import native = require("./shared");',
+      'function later() { return import("./shared"); }',
+      'require("./facade.cjs");', 'import "./facade.mjs";']) {
+      writeFileSync(join(directory, normal), source);
+      assert.equal(decide(directory, [normal]), true, source);
+    }
+  });
+});
+
+test('configured wildcard aliases and missing alias targets fail closed', () => {
+  fixture((directory) => {
+    writeFileSync(join(directory, 'tsconfig.json'), JSON.stringify({ compilerOptions: {
+      target: 'ES2023', module: 'commonjs', baseUrl: '.', ignoreDeprecations: '6.0',
+      paths: { 'local/*': ['*'] },
+    } }));
+    writeFileSync(join(directory, 'shared.d.ts'), 'export declare const command: string;');
+    writeFileSync(join(directory, 'shared.js'), 'exports.command = "initdb";');
+    for (const source of ['import "local/shared";', 'import "local/missing";']) {
+      writeFileSync(join(directory, normal), source);
+      assert.equal(decide(directory, [normal]), true, source);
+    }
+  });
+});
+
+test('declarations alone and computed expressions cannot certify executable safety', () => {
+  fixture((directory) => {
+    writeFileSync(join(directory, 'shared.d.ts'), 'export declare const command: string;');
+    for (const source of ['import "./shared";', 'import(`./${name}`);',
+      'require("./" + name);', 'function later(target: string) { return import(target); }']) {
+      writeFileSync(join(directory, normal), source);
+      assert.equal(decide(directory, [normal]), true, source);
+    }
+    writeFileSync(join(directory, 'shared.js'), 'exports.command = "ordinary";');
+    writeFileSync(join(directory, normal), 'export * as safe from "./shared";');
+    assert.equal(decide(directory, [normal]), false);
+  });
+});
+
+test('directory package runtime entrypoints participate alongside separate type facades', () => {
+  fixture((directory) => {
+    mkdirSync(join(directory, 'shared/types'), { recursive: true });
+    writeFileSync(join(directory, 'shared/types/index.d.ts'), 'export declare const command: string;');
+    writeFileSync(join(directory, 'shared/index.ts'), 'export const command = "ordinary";');
+    writeFileSync(join(directory, 'shared/runtime.cjs'), 'module.exports = require("../native");');
+    writeFileSync(join(directory, 'native.js'), 'exports.command = "initdb";');
+    writeFileSync(join(directory, normal), 'import "./shared";');
+    for (const fields of [{ main: './runtime.cjs' }, { exports: { '.': { require: './runtime.cjs' } } }]) {
+      writeFileSync(join(directory, 'shared/package.json'), JSON.stringify({ types: 'types/index.d.ts', ...fields }));
+      assert.equal(decide(directory, [normal]), true);
+    }
+  });
+});
+
+test('module-looking strings and comments add no unknown executable edges', () => {
+  fixture((directory) => {
+    writeFileSync(join(directory, normal), 'const example = "import(target)"; // require(target)');
+    assert.equal(decide(directory, [normal]), false);
+  });
+});
+
+test('runtime shadow dependencies retain canonical symlink validation', () => {
+  fixture((directory) => {
+    writeFileSync(join(directory, 'shared.d.ts'), 'export declare const command: string;');
+    writeFileSync(join(directory, 'actual.js'), 'exports.command = "ordinary";');
+    symlinkSync(join(directory, 'actual.js'), join(directory, 'shared.js'));
+    writeFileSync(join(directory, normal), 'import "./shared";');
+    assert.throws(() => decide(directory, [normal]), /linked source/u);
+  });
+});
+
 // Mutation: overbroad name matching drops genuine proof or installs for sealed
 // offline faults. The unchanged real sources must honor their reviewed closure.
 test('reviewed offline consumers do not need genuine binaries', () => {
@@ -102,6 +205,23 @@ test('reviewed offline consumers do not need genuine binaries', () => {
       resolve(root, `scripts/lib/reader-summary-first-publication-pg18-${name}.spec.ts`));
     const files = lists(directory, suites, suites);
     assert.equal(needPg18(root, files.inventoryFile, files.selectionFile, '3/6'), false);
+  });
+});
+
+test('new runtime siblings invalidate reviewed offline closure hashes', () => {
+  fixture((directory) => {
+    // A private copy keeps the actual reviewed closures byte-identical. No
+    // installed dependency directory or native executable is copied or run.
+    for (const path of ['scripts', 'libs', 'tsconfig.json']) cpSync(resolve(root, path), join(directory, path), { recursive: true });
+    const offline = 'scripts/lib/reader-summary-first-publication-pg18-lifecycle.spec.ts';
+    assert.equal(decide(directory, [offline], '2/6', [offline]), false);
+    const shadow = join(directory, 'scripts/lib/reader-summary-first-publication-pg18-lifecycle.spec-support.js');
+    writeFileSync(shadow, 'exports.command = "initdb";');
+    assert.equal(decide(directory, [offline], '2/6', [offline]), true);
+    // Even a safe sibling changes the inspected closure; old review cannot
+    // exempt source bytes that were never part of its proof.
+    writeFileSync(shadow, 'exports.command = "ordinary";');
+    assert.equal(decide(directory, [offline], '2/6', [offline]), true);
   });
 });
 
