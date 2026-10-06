@@ -241,8 +241,25 @@ const productionForwardShellcheckCommand =
   `bash ops/deploy/verify-production-shellcheck-baseline.sh ${productionForwardShellcheckFiles.join(" ")}`;
 const productionDeployLifecycle =
   packageJson.scripts?.["check:production-deploy-lifecycle"] ?? "";
-const productionDeployLifecycleCommands =
-  productionDeployLifecycle.split(" && ");
+const lifecycleRunnerCommand =
+  "node --experimental-strip-types ops/ci/production-lifecycle-runner.mts";
+const preservedLifecycleSerial =
+  packageJson.scripts?.["check:production-deploy-lifecycle:serial"];
+const lifecycleUsesRunner = productionDeployLifecycle === lifecycleRunnerCommand;
+if (lifecycleUsesRunner || preservedLifecycleSerial !== undefined) {
+  const typedCheck = "tsc --project ops/ci/tsconfig.production-lifecycle.json && " +
+    "node --experimental-strip-types --test ops/ci/production-lifecycle-runner.test.mts";
+  if (!lifecycleUsesRunner || typeof preservedLifecycleSerial !== "string" ||
+      preservedLifecycleSerial.split(" && ").length !== 28 ||
+      packageJson.scripts?.["check:production-lifecycle-runner"] !== typedCheck ||
+      packageJson.scripts?.["check:code-quality"] !==
+        "node scripts/check-code-quality.mjs && npm run check:production-lifecycle-runner") {
+    violations.push("package.json: typed lifecycle must retain all 28 serial commands and run its strict registry/scheduling tests in code quality");
+  }
+}
+const productionDeployLifecycleCommands = lifecycleUsesRunner
+  ? (typeof preservedLifecycleSerial === "string" ? preservedLifecycleSerial.split(" && ") : [])
+  : productionDeployLifecycle.split(" && ");
 
 const forwardAuthorityPaths = [
   "ops/deploy/deploy-control-bridge-lib.sh",
