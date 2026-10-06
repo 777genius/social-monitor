@@ -3,7 +3,8 @@ import { createReadStream, createWriteStream, mkdtempSync, readFileSync } from '
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { finished } from 'node:stream/promises';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import type { KeeperMessage } from './static-quality-group-keeper.mts';
 
 export interface ChildSpec {
   readonly name: string;
@@ -31,13 +32,19 @@ export async function supervise(children: readonly [ChildSpec, ChildSpec], logs:
       const path = join(logs, `${spec.name}.log`);
       const log = createWriteStream(path, { flags: 'wx' });
       const logResult = finished(log).then(() => true, () => false);
-      const child = spawn(spec.command, [...spec.args], {
-        detached: spec.cancellation === 'group', stdio: ['pipe', 'pipe', 'pipe'],
+      const owned = spec.cancellation === 'group';
+      const child = spawn(owned ? process.execPath : spec.command, owned
+        ? ['--experimental-strip-types', fileURLToPath(new URL('./static-quality-group-keeper.mts', import.meta.url)), spec.command, ...spec.args]
+        : [...spec.args], {
+        detached: owned, stdio: owned ? ['pipe', 'pipe', 'pipe', 'ipc'] : ['pipe', 'pipe', 'pipe'],
       });
-      child.stdout.pipe(log, { end: false });
-      child.stderr.pipe(log, { end: false });
-      child.stdin.on('error', () => { /* An already settled child may have closed stdin. */ });
+      child.stdout!.pipe(log, { end: false });
+      child.stderr!.pipe(log, { end: false });
+      child.stdin!.on('error', () => { /* An already settled child may have closed stdin. */ });
       let settled = false;
+      let ready = !owned;
+      let stopping = false;
+      let commandStatus: number | undefined;
       let timer: NodeJS.Timeout | undefined;
       const kill = (signal: NodeJS.Signals): void => {
         if (settled || child.pid === undefined) return;
@@ -46,26 +53,44 @@ export async function supervise(children: readonly [ChildSpec, ChildSpec], logs:
           if ((error as NodeJS.ErrnoException).code !== 'ESRCH') log.write(`${String(error)}\n`);
         }
       };
-      const stop = (): void => {
+      const drain = (): void => {
         if (settled || timer !== undefined) return;
-        if (spec.cancellation === 'eof') child.stdin.end();
-        else {
-          kill('SIGTERM');
-          timer = setTimeout(() => kill('SIGKILL'), 5000);
-        }
+        kill('SIGTERM');
+        timer = setTimeout(() => kill('SIGKILL'), 5000);
       };
+      const stop = (): void => {
+        if (settled || stopping) return;
+        stopping = true;
+        if (!owned) child.stdin!.end();
+        else if (ready) drain();
+      };
+      child.on('message', (message: unknown) => {
+        if (!owned || message === null || typeof message !== 'object' || !('type' in message)) return;
+        const report = message as Partial<KeeperMessage>;
+        if (report.type === 'ready') { ready = true; if (stopping) drain(); }
+        else if (report.type === 'status' && typeof report.status === 'number' && Number.isInteger(report.status)) {
+          commandStatus = report.status;
+          stop();
+        }
+      });
       log.once('error', onTerm);
       stops.push(stop);
       if (cancelled !== 0) stop();
       let spawnError = false;
       child.on('error', (error) => { spawnError = true; log.write(`${String(error)}\n`); });
+      child.once('exit', () => {
+        // An unexpectedly dead keeper is no longer an ownership token. Never
+        // signal its potentially reused PGID, even if inherited pipes stay open.
+        settled = true;
+        if (timer !== undefined) clearTimeout(timer);
+      });
       const status = await new Promise<number>((done) => {
         child.once('close', (code) => {
           settled = true;
           if (timer !== undefined) clearTimeout(timer);
-          child.stdin.destroy();
+          child.stdin!.destroy();
           log.end();
-          done(spawnError ? 1 : code ?? 1);
+          done(spawnError ? 1 : commandStatus ?? code ?? 1);
         });
       });
       const logged = await logResult;

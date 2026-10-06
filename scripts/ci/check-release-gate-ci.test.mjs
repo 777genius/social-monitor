@@ -7,8 +7,8 @@ import { releaseGateCiViolations } from '../check-review-ci.mjs';
 const source = readFileSync(new URL('../../.github/workflows/pull-request.yml', import.meta.url), 'utf8');
 const gate = (w) => w.jobs.static_quality.steps.find((step) => step.env?.RELEASE_GATE_VENV);
 const join = (w) => w.jobs.static_quality.steps.at(-1);
-const assets = () => Object.fromEntries(['root', 'runner'].map((key) => [key,
-  readFileSync(new URL(`../../ops/ci/static-quality-${key}.${key === 'root' ? 'sh' : 'mts'}`, import.meta.url), 'utf8')]));
+const assets = () => Object.fromEntries(['root', 'runner', 'keeper'].map((key) => [key,
+  readFileSync(new URL(`../../ops/ci/static-quality-${key === 'keeper' ? 'group-keeper' : key}.${key === 'root' ? 'sh' : 'mts'}`, import.meta.url), 'utf8')]));
 const nativeCommands = [
   '/root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-e2e-driver_test.py',
   '/root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-e2e-fixture/operator_test.py',
@@ -126,6 +126,9 @@ for (const [label, mutate] of [
   ['root wait removed', replace('child.wait(timeout=5)', 'pass')],
   ['root termination unbounded', replace('child.wait(timeout=5)', 'child.wait()')],
   ['root escalation removed', replace('os.killpg(child.pid, signal.SIGKILL)', 'pass')],
+  ['root keeper reaped before escalation', replace('status = int(report)', 'child.poll(); status = int(report)')],
+  ['root keeper stops holding group', replace('signal.pause()', 'sys.exit(0)')],
+  ['root actual status lost', replace('sys.exit(143 if cancelled else status)', 'sys.exit(0)')],
   ['root EOF cancellation removed', replace('os.read(3, 1)\n            cancelled = True', 'os.read(3, 1)')],
   ['root ShellCheck optional', replace('hetzner/check.sh\n', 'hetzner/check.sh || true\n')],
   ['early join on child failure', replace('Promise.allSettled', 'Promise.all')],
@@ -134,6 +137,12 @@ for (const [label, mutate] of [
   ['missing Node cancellation', replace("process.on('SIGTERM', onTerm);", '')],
   ['missing owned child termination', replace("kill('SIGTERM');", '')],
   ['foreign process termination', replace('process.kill(-child.pid, signal)', 'process.kill(-1, signal)')],
+  ['missing keeper', (_w, files) => delete files.keeper],
+  ['keeper ignores command result', replace("child.once('exit', (code) => report({ type: 'status', status: code ?? 1 }));", "child.once('exit', () => report({ type: 'status', status: 0 }));")],
+  ['keeper exits before group drain', replace("child.once('exit', (code) => report({ type: 'status', status: code ?? 1 }));", "child.once('exit', () => process.exit(0));")],
+  ['keeper disconnect cleanup removed', replace("process.on('disconnect', drain);", '')],
+  ['keeper TERM immunity removed', replace("process.on('SIGTERM', () => {});", '')],
+  ['completion does not start drain', replace('commandStatus = report.status;\n          stop();', 'commandStatus = report.status;')],
   ...['if', 'continue-on-error', 'working-directory', 'shell', 'env'].map((key) => [
     `join injection through ${key}`, (w) => join(w)[key] = key === 'continue-on-error' ? true : 'untrusted',
   ]),

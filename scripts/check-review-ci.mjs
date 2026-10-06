@@ -7,10 +7,11 @@ import { load as loadYaml } from "js-yaml";
 import { backendUnitShardingViolations, coverageWorkflowViolations } from "./ci/review-ci/backend-unit-contract.mjs";
 
 // Control flow is reviewed as a whole, not inferred from command substrings.
-// Seal both small supervisors; runtime proofs independently exercise real children.
+// Seal both small supervisors and their ownership token; runtime proofs exercise real children.
 const staticQualitySeals = {
-  runner: ["ops/ci/static-quality-runner.mts", "685c66674e26239d381e2b5978866c707c12305bc423581e0db4a76f4b6377b5"],
-  root: ["ops/ci/static-quality-root.sh", "3815707583110e200eca841fabb08986d794f54b9b4d7441c410cfb9c73a2b3d"],
+  runner: ["ops/ci/static-quality-runner.mts", "08c7b1b4b04c5456a926ba03087fdf8bf598cb7f207886284f046dfdfa94b93b"],
+  root: ["ops/ci/static-quality-root.sh", "71b679bad5b5dbf2beed65fe35d31c82280f357dc615f8be3a955f3f5e2075d1"],
+  keeper: ["ops/ci/static-quality-group-keeper.mts", "00714c251fe0d678e8d11489d47cdb1c1fd75d0a27ae76116040d815d19d4302"],
 };
 function shellLines(run) {
   return typeof run === "string" ? run.split("\n").map((line) => line.trim())
