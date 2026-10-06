@@ -8,6 +8,30 @@ The October 1 audit observed roughly 210 minutes wall time, a longest job
 of 12 minutes and queues of 48–118 minutes. Its cause remains unconfirmed;
 account-wide peak demand and the root cause are unknown.
 
+## Managed runner pilot amendment - 2026-10-05
+
+The owner explicitly authorized a bounded Ubicloud pilot for this repository on
+October 5. This supersedes the October 3 instruction to retain GitHub-hosted
+runners for the eight compatible pull-request jobs selected in PR #507; it does
+not authorize changes to production deployment or CD activation.
+
+`CI_LINUX_RUNNER=ubicloud-standard-4` selects disposable managed Linux machines
+for these jobs. External fork PRs retain GitHub-hosted runners. Removing this
+repository variable routes subsequent jobs back to GitHub; it does not move
+jobs already queued or running. There is no automatic provider fallback.
+
+Jobs with explicit GitHub-hosted environment guards, frozen build contracts,
+unit shards, production candidate/lifecycle checks and production workflows stay
+on GitHub. Do not weaken their guards as part of this pilot.
+
+The first pilot run is [37340708301](https://github.com/777genius/social-monitor/actions/runs/37340708301).
+Seven transferred backend/security/PostgreSQL jobs passed; Flutter was still
+running when this amendment was recorded. This establishes initial compatibility,
+not a full CI speedup. Compare complete wall time, queue time, active paid minutes
+and provider charges before expanding. The shared Ubicloud pool currently has
+96 vCPU capacity, or 24 concurrent four-vCPU jobs, so simultaneous repository
+bursts can still queue.
+
 ## Measured evidence
 
 Times below come from supplied public run/job timing evidence. Active runner
