@@ -62,10 +62,25 @@ function replaceRun(workflow, id, before, after) {
 }
 
 export const coverageMutations = [
+  ['metadata preflight omitted', (w) => delete w.jobs.coverage_artifacts],
+  ['metadata preflight bypassed', (w) => delete w.jobs.backend_unit_coverage.needs],
+  ['failed-run metadata accepted', (w) => delete w.jobs.coverage_artifacts.if],
+  ['preflight gets OIDC writer', (w) => w.jobs.coverage_artifacts.permissions['id-token'] = 'write'],
+  ['metadata sourced from another run', (w) => w.jobs.coverage_artifacts.steps[0].env.RUN_ID = '${{ github.run_id }}'],
+  ['expired metadata accepted', (w) => replaceRun(w, 'coverage_artifacts', '.expired == false', 'true')],
+  ['wrong-run metadata accepted', (w) => replaceRun(w, 'coverage_artifacts', '.workflow_run.id == $run_id', 'true')],
+  ['all six artifacts downloaded by each shard', (w) => {
+    const parameters = w.jobs.backend_unit_coverage.steps[0].with;
+    delete parameters.name;
+    parameters.pattern = 'backend-unit-coverage-*';
+  }],
+  ['own-shard validation mismatched', (w) => w.jobs.backend_unit_coverage.steps[1].env.SHARD = 1],
+  ['symlink guard removed', (w) => replaceRun(w, 'backend_unit_coverage', 'test ! -L "$directory/lcov.info"', 'true')],
+  ['wrong PR attribution', (w) => w.jobs.backend_unit_coverage.steps[2].with.override_pr = '${{ github.event.number }}'],
   ['sixth artifact omitted', (w) => w.jobs.backend_unit_coverage.strategy.matrix.shard.pop()],
   ['extra coverage shard', (w) => w.jobs.backend_unit_coverage.strategy.matrix.shard.push(7)],
   ['artifact completeness omitted', (w) => w.jobs.backend_unit_coverage.steps.splice(1, 1)],
-  ['artifact completeness narrowed', (w) => w.jobs.backend_unit_coverage.steps[1].run = w.jobs.backend_unit_coverage.steps[1].run.replace('1 2 3 4 5 6', '1 2 3 4 5')],
+  ['artifact completeness narrowed', (w) => w.jobs.coverage_artifacts.steps[0].run = w.jobs.coverage_artifacts.steps[0].run.replace('backend-unit-coverage-6', 'backend-unit-coverage-5')],
   ['PR event gets OIDC writer', (w) => w.on = { pull_request: null }],
   ['global OIDC writer', (w) => w.permissions['id-token'] = 'write'],
   ['failed CI upload', (w) => delete w.jobs.backend_unit_coverage.if],
@@ -74,7 +89,7 @@ export const coverageMutations = [
   ['artifact JSON treated as shell code', (w) => w.jobs.backend_unit_coverage.steps.push({ run: 'eval "$(cat coverage-data/execution.json)"' })],
   ['wrong commit attribution', (w) => w.jobs.backend_unit_coverage.steps[2].with.override_commit = '${{ github.sha }}'],
   ['wrong artifact run', (w) => delete w.jobs.backend_unit_coverage.steps[0].with['run-id']],
-  ['artifact name chosen by untrusted output', (w) => w.jobs.backend_unit_coverage.steps[0].with.pattern = '${{ github.event.workflow_run.name }}'],
+  ['artifact name chosen by untrusted output', (w) => w.jobs.backend_unit_coverage.steps[0].with.name = '${{ github.event.workflow_run.name }}'],
   ['Codecov outage gates correctness', (w) => w.jobs.backend_unit_coverage.steps[2].with.fail_ci_if_error = true],
   ['Codecov scans artifact code', (w) => w.jobs.backend_unit_coverage.steps[2].with.disable_search = false],
   ['Codecov runs downloaded command', (w) => w.jobs.backend_unit_coverage.steps[2].with.run_command = 'coverage-data/run.sh'],

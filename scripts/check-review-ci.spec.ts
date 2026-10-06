@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { createRequire } from "node:module";
@@ -180,7 +180,7 @@ describe('exact Flutter cache contract', () => {
     expect(workflow).toContain(before);
     expect(checkFlutterCache(workflow.replace(before, after))).not.toEqual([]);
   });
-  it('executes exact version resolver and invalidates both keys for every frontend lock and SDK/runner change', () => {
+  it('executes exact version resolver; locks invalidate only pub cache, SDK/runner changes invalidate both', () => {
     mkdirSync(resolve('node_modules/.cicd-evidence'), { recursive: true });
     const directory = mkdtempSync(resolve('node_modules/.cicd-evidence/flutter-cache-'));
     const lockPaths = readdirSync('apps/frontend', { recursive: true, encoding: 'utf8' })
@@ -220,7 +220,7 @@ describe('exact Flutter cache contract', () => {
     try {
       mkdirSync(resolve(directory, 'apps/frontend'), { recursive: true });
       mkdirSync(resolve(directory, 'bin'));
-      symlinkSync(process.execPath, resolve(directory, 'bin/node'));
+      writeFileSync(resolve(directory, 'bin/node'), `#!/bin/sh\nexec '${process.execPath.replaceAll("'", "'\\''")}' "$@"\n`, { mode: 0o755 });
       for (const path of fixtureLocks) {
         mkdirSync(dirname(resolve(directory, path)), { recursive: true });
         writeFileSync(resolve(directory, path), lockPaths.includes(path) ? readFileSync(path) : '# synthetic workspace lock\n');
@@ -237,7 +237,7 @@ describe('exact Flutter cache contract', () => {
         const before = readFileSync(file);
         writeFileSync(file, Buffer.concat([before, Buffer.from('\n# synthetic lock change\n')]));
         const changed = keys(exact);
-        expect(changed[0]).not.toBe(original[0]); expect(changed[1]).not.toBe(original[1]);
+        expect(changed[0]).toBe(original[0]); expect(changed[1]).not.toBe(original[1]);
         writeFileSync(file, before);
       }
       writeFileSync(resolve(directory, 'apps/frontend/code.dart'), '// synthetic UI-only change');

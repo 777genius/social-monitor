@@ -596,7 +596,7 @@ jobs:
     name: Production container and deploy lifecycle
     needs: [production_candidate, production_lifecycle]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 5
     permissions:
       contents: read
@@ -633,7 +633,7 @@ jobs:
           flutter-version-file: apps/frontend/.fvmrc
           cache: true
           pub-cache: true
-          cache-key: flutter-sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter_version.outputs.version }}-${{ hashFiles('apps/frontend/**/pubspec.lock') }}
+          cache-key: flutter-sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter_version.outputs.version }}
           pub-cache-key: flutter-pub-${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter_version.outputs.version }}-${{ hashFiles('apps/frontend/**/pubspec.lock') }}
 
       - name: Resolve exact Flutter dependencies

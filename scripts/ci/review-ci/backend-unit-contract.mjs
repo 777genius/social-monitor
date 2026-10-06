@@ -47,8 +47,10 @@ function jobChecks(job, id, expectedName, expectedSteps, errors, extra = [], req
   }
   job.steps.forEach((step, index) => {
     const expected = expectedSteps[index];
-    if (!keys(step, ['name', ...(expected.run ? ['run'] : ['uses', 'with'])])) {
+    if (!keys(step, ['name', ...(expected.run ? ['run'] : ['uses', 'with']), ...(expected.env ? ['env'] : [])])) {
       reject(`step ${index + 1}: conditional, masking or unknown step key`);
+    } else if (!equal(step.env, expected.env)) {
+      reject(`step ${index + 1}: scoped trusted workflow inputs required`);
     } else if (expected.run) {
       if (normalize(step.run) !== normalize(expected.run)) reject(`step ${index + 1}: unfiltered, bounded fail-fast command required`);
     } else if (step.uses !== expected.uses || !equal(step.with, expected.with)) {
@@ -93,21 +95,43 @@ const nativePg18 = [
   "  printf '%s\\n' \"$pg18_version\"",
   "done",
 ].join('\n');
+const coverageMetadataProof = [
+  "set -euo pipefail",
+  "gh api --paginate --slurp \"/repos/$GH_REPO/actions/runs/$RUN_ID/artifacts?per_page=100\" > artifact-pages.json",
+  "jq -e --argjson run_id \"$RUN_ID\" --arg head_sha \"$HEAD_SHA\" '",
+  "  def positive_integer: type == \"number\" and . > 0 and floor == .;",
+  "  type == \"array\" and length > 0 and",
+  "  all(.[]; (.artifacts | type == \"array\") and",
+  "    (.total_count | type == \"number\" and . >= 0 and floor == .)) and",
+  "  ([.[].artifacts[]] as $all |",
+  "    all(.[]; .total_count == ($all | length)) and",
+  "    all($all[]; type == \"object\" and (.name | type == \"string\")) and",
+  "    ([$all[] | select(.name | startswith(\"backend-unit-coverage-\"))] as $coverage |",
+  "      ($coverage | map(.name) | sort) ==",
+  "        [\"backend-unit-coverage-1\", \"backend-unit-coverage-2\", \"backend-unit-coverage-3\",",
+  "         \"backend-unit-coverage-4\", \"backend-unit-coverage-5\", \"backend-unit-coverage-6\"] and",
+  "      ($coverage | map(.id) | unique | length) == 6 and",
+  "      all($coverage[];",
+  "        (.id | positive_integer) and (.size_in_bytes | positive_integer) and",
+  "        .expired == false and (.expires_at | fromdateiso8601) > now and",
+  "        .workflow_run.id == $run_id and .workflow_run.head_sha == $head_sha)))",
+  "' artifact-pages.json",
+].join('\n');
 const coverageProof = [
   'set -euo pipefail',
   'shopt -s nullglob dotglob',
+  'test -d coverage-data',
+  'test ! -L coverage-data',
   'artifacts=(coverage-data/*)',
-  'test "${#artifacts[@]}" -eq 6',
-  'for shard in 1 2 3 4 5 6; do',
-  '  directory="coverage-data/backend-unit-coverage-$shard"',
-  '  test -d "$directory"',
-  '  test ! -L "$directory"',
-  '  files=("$directory"/*)',
-  '  test "${#files[@]}" -eq 1',
-  '  test -f "$directory/lcov.info"',
-  '  test ! -L "$directory/lcov.info"',
-  '  test -s "$directory/lcov.info"',
-  'done',
+  'test "${#artifacts[@]}" -eq 1',
+  'directory="coverage-data/backend-unit-coverage-$SHARD"',
+  'test -d "$directory"',
+  'test ! -L "$directory"',
+  'files=("$directory"/*)',
+  'test "${#files[@]}" -eq 1',
+  'test -f "$directory/lcov.info"',
+  'test ! -L "$directory/lcov.info"',
+  'test -s "$directory/lcov.info"',
 ].join('\n');
 const matrix = { 'fail-fast': false, matrix: { shard: [1, 2, 3, 4, 5, 6] } };
 
@@ -159,8 +183,8 @@ export function backendUnitShardingViolations(source) {
     { run: proof },
   ], errors, ['needs', 'if'], 10, 'ubuntu-slim');
   for (const [id, job] of Object.entries(jobs)) {
-    if (id !== 'backend_unit' && [job?.['runs-on']].flat().includes('ubuntu-slim')) {
-      errors.push(`${id}: only the lightweight backend_unit aggregate may use ubuntu-slim`);
+    if (!['backend_unit', 'production_runtime'].includes(id) && [job?.['runs-on']].flat().includes('ubuntu-slim')) {
+      errors.push(`${id}: only the lightweight backend_unit and production_runtime aggregates may use ubuntu-slim`);
     }
     if (id === 'backend_unit_shards') continue;
     for (const step of job?.steps ?? []) {
@@ -182,21 +206,28 @@ export function coverageWorkflowViolations(source) {
         workflow_run: { workflows: ['Pull request checks'], types: ['completed'] },
       }) || !equal(workflow.permissions, {}) || !equal(workflow.concurrency, {
         group: '${{ github.workflow }}-${{ github.event.workflow_run.id }}', 'cancel-in-progress': false,
-      }) || !equal(Object.keys(workflow.jobs ?? {}), ['backend_unit_coverage'])) {
+      }) || !equal(Object.keys(workflow.jobs ?? {}), ['coverage_artifacts', 'backend_unit_coverage'])) {
     errors.push('coverage.yml: workflow_run data-only uploader with no global write authority required');
   }
+  const preflight = workflow?.jobs?.coverage_artifacts;
+  if (preflight?.if !== "github.event.workflow_run.conclusion == 'success'" ||
+      !equal(preflight?.permissions, { actions: 'read' })) errors.push('coverage.yml: success-only read-only metadata preflight required');
+  jobChecks(preflight, 'coverage_artifacts', 'Coverage artifact completeness', [
+    { run: coverageMetadataProof, env: { GH_TOKEN: '${{ github.token }}', GH_REPO: '${{ github.repository }}',
+      RUN_ID: '${{ github.event.workflow_run.id }}', HEAD_SHA: '${{ github.event.workflow_run.head_sha }}' } },
+  ], errors, ['if', 'permissions'], 5);
   const job = workflow?.jobs?.backend_unit_coverage;
   if (job?.if !== "github.event.workflow_run.conclusion == 'success'" ||
       !equal(job?.permissions, { actions: 'read', contents: 'read', 'id-token': 'write' }) ||
-      !equal(job?.strategy, matrix)) errors.push('coverage.yml: success-only OIDC upload scoped to one job required');
+      job?.needs !== 'coverage_artifacts' || !equal(job?.strategy, matrix)) errors.push('coverage.yml: success-only OIDC upload scoped to one job required');
   jobChecks(job, 'backend_unit_coverage', `Backend coverage shard ${shard}/6`, [
-    { uses: download, with: { pattern: 'backend-unit-coverage-*', 'merge-multiple': false, path: 'coverage-data',
+    { uses: download, with: { name: `backend-unit-coverage-${shard}`, path: `coverage-data/backend-unit-coverage-${shard}`,
       'github-token': '${{ github.token }}', 'run-id': '${{ github.event.workflow_run.id }}' } },
-    { run: coverageProof },
+    { run: coverageProof, env: { SHARD: shard } },
     { uses: codecov, with: { use_oidc: true, fail_ci_if_error: false, disable_search: true,
       files: `coverage-data/backend-unit-coverage-${shard}/lcov.info`, override_commit: '${{ github.event.workflow_run.head_sha }}',
       override_pr: '${{ github.event.workflow_run.pull_requests[0].number }}',
       flags: 'backend-unit', name: `backend-unit-shard-${shard}` } },
-  ], errors, ['if', 'permissions', 'strategy']);
+  ], errors, ['if', 'permissions', 'strategy', 'needs'], 10);
   return errors;
 }

@@ -12,8 +12,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  coverage_artifacts:
+    name: Coverage artifact completeness
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: Require exactly six coverage artifacts from the successful tested run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "/repos/$GH_REPO/actions/runs/$RUN_ID/artifacts?per_page=100" > artifact-pages.json
+          jq -e --argjson run_id "$RUN_ID" --arg head_sha "$HEAD_SHA" '
+            def positive_integer: type == "number" and . > 0 and floor == .;
+            type == "array" and length > 0 and
+            all(.[]; (.artifacts | type == "array") and
+              (.total_count | type == "number" and . >= 0 and floor == .)) and
+            ([.[].artifacts[]] as $all |
+              all(.[]; .total_count == ($all | length)) and
+              all($all[]; type == "object" and (.name | type == "string")) and
+              ([$all[] | select(.name | startswith("backend-unit-coverage-"))] as $coverage |
+                ($coverage | map(.name) | sort) ==
+                  ["backend-unit-coverage-1", "backend-unit-coverage-2", "backend-unit-coverage-3",
+                   "backend-unit-coverage-4", "backend-unit-coverage-5", "backend-unit-coverage-6"] and
+                ($coverage | map(.id) | unique | length) == 6 and
+                all($coverage[];
+                  (.id | positive_integer) and (.size_in_bytes | positive_integer) and
+                  .expired == false and (.expires_at | fromdateiso8601) > now and
+                  .workflow_run.id == $run_id and .workflow_run.head_sha == $head_sha)))
+          ' artifact-pages.json
+
   backend_unit_coverage:
     name: Backend coverage shard ${{ matrix.shard }}/6
+    needs: coverage_artifacts
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -30,28 +67,29 @@ jobs:
       - name: Download coverage data from the successful tested run
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
-          pattern: backend-unit-coverage-*
-          merge-multiple: false
-          path: coverage-data
+          name: backend-unit-coverage-${{ matrix.shard }}
+          path: coverage-data/backend-unit-coverage-${{ matrix.shard }}
           github-token: ${{ github.token }}
           run-id: ${{ github.event.workflow_run.id }}
 
-      - name: Require exactly six isolated coverage artifacts
+      - name: Require this shard's isolated nonempty regular coverage file
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
           shopt -s nullglob dotglob
+          test -d coverage-data
+          test ! -L coverage-data
           artifacts=(coverage-data/*)
-          test "${#artifacts[@]}" -eq 6
-          for shard in 1 2 3 4 5 6; do
-            directory="coverage-data/backend-unit-coverage-$shard"
-            test -d "$directory"
-            test ! -L "$directory"
-            files=("$directory"/*)
-            test "${#files[@]}" -eq 1
-            test -f "$directory/lcov.info"
-            test ! -L "$directory/lcov.info"
-            test -s "$directory/lcov.info"
-          done
+          test "${#artifacts[@]}" -eq 1
+          directory="coverage-data/backend-unit-coverage-$SHARD"
+          test -d "$directory"
+          test ! -L "$directory"
+          files=("$directory"/*)
+          test "${#files[@]}" -eq 1
+          test -f "$directory/lcov.info"
+          test ! -L "$directory/lcov.info"
+          test -s "$directory/lcov.info"
 
       - name: Upload coverage data attributed to the tested head SHA
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
