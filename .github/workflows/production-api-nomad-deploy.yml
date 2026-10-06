@@ -1,0 +1,121 @@
+name: Production API deploy (Nomad MVP)
+
+# Restricted deploy trigger for the sm-api Nomad release (plan sections 5
+# and 7). This workflow only ever calls fixed, host-owned actions over the
+# existing restricted SSH wrapper - it never sends shell/HCL/stdin, and it
+# never gets a Nomad management token. It shares the legacy production
+# deploy's concurrency group and host lock so Compose and Nomad releases of
+# the same API service can never run concurrently during the hybrid period
+# (plan section 6).
+#
+# HONEST LIMITATION (documented, not hidden): the restricted SSH wrapper
+# (`ops/deploy/social-monitor-production-ssh-wrapper.sh`) does not yet
+# recognize the `nomad-plan`/`nomad-deploy`/`nomad-status` verbs this
+# workflow calls (rollback is a separate, explicit operator action, not
+# wired into this workflow). That file is protected by this repo's
+# cryptographic transition-review bridge
+# (`ops/deploy/production-transition-review-lib.sh`), so extending it
+# requires a real human-signed review PR, not something produced here. This
+# workflow is therefore a reviewable, correctly-shaped skeleton for that
+# follow-up PR, not something that can succeed against production today -
+# `workflow_dispatch`-only and gated behind an explicit confirmation input
+# so nobody triggers it by accident before that wrapper change ships.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Full 40-hex source commit SHA to deploy (must already have a published production-api-nomad.yml image)
+        required: true
+      confirm_wrapper_extended:
+        description: "Type 'yes' only after the restricted SSH wrapper's nomad-* verbs have shipped via a separately reviewed PR"
+        required: true
+        default: "no"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: social-monitor-production
+  cancel-in-progress: false
+
+jobs:
+  deploy_api:
+    name: Deploy sm-api via restricted Nomad actions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - name: Refuse to run before the wrapper extension has been reviewed and shipped
+        if: ${{ inputs.confirm_wrapper_extended != 'yes' }}
+        run: |
+          echo '::error::confirm_wrapper_extended must be "yes"; the restricted SSH wrapper does not implement nomad-* actions yet (see this file'\''s header comment).'
+          exit 1
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with: { fetch-depth: 0 }
+
+      - name: Validate release_sha looks like a full commit SHA
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ $RELEASE_SHA =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::release_sha must be a full 40-hex commit SHA, got: $RELEASE_SHA"
+            exit 1
+          fi
+          git cat-file -e "$RELEASE_SHA^{commit}"
+
+      - name: Set up restricted SSH
+        env:
+          SSH_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          SSH_USER: ${{ vars.PRODUCTION_SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/production-deploy-key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/production-known-hosts"
+          chmod 600 "$HOME/.ssh/production-deploy-key"
+          {
+            echo "SSH_HOST=$SSH_HOST"
+            echo "SSH_USER=$SSH_USER"
+          } >> "$GITHUB_ENV"
+
+      - name: nomad-plan (read-only)
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/production-deploy-key" \
+              -o UserKnownHostsFile="$HOME/.ssh/production-known-hosts" \
+              -o BatchMode=yes \
+              "$SSH_USER@$SSH_HOST" \
+              nomad-plan "$RELEASE_SHA"
+
+      - name: nomad-deploy (host-owned transaction; polls status, does not hold this step open for the whole rollout)
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/production-deploy-key" \
+              -o UserKnownHostsFile="$HOME/.ssh/production-known-hosts" \
+              -o BatchMode=yes \
+              "$SSH_USER@$SSH_HOST" \
+              nomad-deploy "$RELEASE_SHA"
+
+      - name: nomad-status (final readback; authoritative even if a prior step's SSH connection dropped)
+        if: always()
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/production-deploy-key" \
+              -o UserKnownHostsFile="$HOME/.ssh/production-known-hosts" \
+              -o BatchMode=yes \
+              "$SSH_USER@$SSH_HOST" \
+              nomad-status "$RELEASE_SHA"
