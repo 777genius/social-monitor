@@ -30,7 +30,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Verify release controller contracts
+      - name: Prepare trusted release controller contracts
         env:
           RELEASE_GATE_VENV: ${{ runner.temp }}/release-gate-venv
         run: |
@@ -54,10 +54,9 @@ jobs:
           sudo cp ops/deploy/reader-summary-publication-post-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/
           sudo cp scripts/sql/reader-summary-publication-tenant-ownership.sql /root/social-monitor-release-contract-tests/scripts/sql/
           sudo cp -R "$RELEASE_GATE_VENV" /root/social-monitor-release-contract-tests/python
-          sudo env PATH="/root/social-monitor-release-contract-tests/python/bin:$PATH" bash /root/social-monitor-release-contract-tests/ops/release/hetzner/check.sh
-          sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-e2e-driver_test.py
-          sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-e2e-fixture/operator_test.py
-          sudo /root/social-monitor-release-contract-tests/python/bin/python3 -I -B /root/social-monitor-release-contract-tests/ops/ci/release-database-plan_test.py
+          sudo test -f /root/social-monitor-release-contract-tests/ops/ci/static-quality-root.sh
+          sudo test ! -L /root/social-monitor-release-contract-tests/ops/ci/static-quality-root.sh
+          sudo chmod -R go-w /root/social-monitor-release-contract-tests
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -77,10 +76,21 @@ jobs:
           npm run check:hetzner-release-typecheck
           npm run check:hetzner-release-tests
 
-      - name: Verify static quality
+      - name: Verify static quality supervision
+        run: |
+          set -euo pipefail
+          npx tsc -p ops/ci/tsconfig.static-quality.json
+          bash -n ops/ci/static-quality-root.sh
+          shellcheck ops/ci/static-quality-root.sh
+          node --experimental-strip-types --test ops/ci/static-quality-runner.test.mts
+          node --test scripts/ci/check-release-gate-ci.test.mjs
+
+      - name: Join release controller contracts and serial static quality
         env:
           NODE_OPTIONS: --max-old-space-size=4096
         run: |
+          set -euo pipefail
+          node --experimental-strip-types ops/ci/static-quality-runner.mts <<'STATIC_QUALITY'
           set -euo pipefail
           npx eslint .
           npx tsc --noEmit
@@ -92,6 +102,7 @@ jobs:
           npm run check:observability
           npm run check:review-ci
           node --test scripts/ci/*.test.mjs
+          STATIC_QUALITY
 
   security_contracts:
     name: Security and public contracts
