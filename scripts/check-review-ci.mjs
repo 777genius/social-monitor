@@ -9,7 +9,7 @@ import { backendUnitShardingViolations, coverageWorkflowViolations } from "./ci/
 // Control flow is reviewed as a whole, not inferred from command substrings.
 // Seal both small supervisors and their ownership token; runtime proofs exercise real children.
 const staticQualitySeals = {
-  runner: ["ops/ci/static-quality-runner.mts", "08c7b1b4b04c5456a926ba03087fdf8bf598cb7f207886284f046dfdfa94b93b"],
+  runner: ["ops/ci/static-quality-runner.mts", "32ea820d5511ef5ea6085db90c35368fbbdc2e8469da0e22aeeb2f23001dfdca"],
   root: ["ops/ci/static-quality-root.sh", "71b679bad5b5dbf2beed65fe35d31c82280f357dc615f8be3a955f3f5e2075d1"],
   keeper: ["ops/ci/static-quality-group-keeper.mts", "00714c251fe0d678e8d11489d47cdb1c1fd75d0a27ae76116040d815d19d4302"],
 };

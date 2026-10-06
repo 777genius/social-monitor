@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import type { WriteStream } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { supervise } from './static-quality-runner.mts';
 import type { ChildSpec } from './static-quality-runner.mts';
@@ -47,9 +48,16 @@ async function guardianCopy(root: string, mode: string): Promise<string> {
   await symlink('/usr/bin/python3', join(snapshot, 'python/bin/python3'));
   const source = await readFile(new URL('./static-quality-root.sh', import.meta.url), 'utf8');
   const helper = join(snapshot, 'ops/ci/static-quality-root.sh');
-  // Only the canonical TEST snapshot path is remapped; the guardian algorithm,
-  // four command sequence, interpreter flags and cancellation input are intact.
-  await writeFile(helper, source.replaceAll('/root/social-monitor-release-contract-tests', snapshot));
+  // Remap only the TEST snapshot and observe actual guardian signal receipt.
+  // The marker follows the existing cancellation assignment in the copied
+  // handler; production has no test hook or change to its drain algorithm.
+  const handler = '    cancelled = True\n\n\nfor signum';
+  assert.ok(source.includes(handler));
+  const signalTrace = JSON.stringify(join(root, 'guardian-signal'));
+  const signalPending = JSON.stringify(join(root, 'guardian-signal.pending'));
+  const observed = source.replace(handler,
+    `    cancelled = True\n    with open(${signalPending}, 'w') as trace: trace.write(str(_signum))\n    os.replace(${signalPending}, ${signalTrace})\n\n\nfor signum`);
+  await writeFile(helper, observed.replaceAll('/root/social-monitor-release-contract-tests', snapshot));
   await writeFile(join(snapshot, 'ops/release/hetzner/check.sh'),
     `exec ${quote(process.execPath)} --experimental-strip-types ${quote(self)} tree ${quote(root)} ${quote(mode)}\n`);
   for (const [index, path] of ['release-e2e-driver_test.py', 'release-e2e-fixture/operator_test.py',
@@ -62,6 +70,36 @@ async function guardianCopy(root: string, mode: string): Promise<string> {
 
 async function fixture(root: string, scenario: string): Promise<number> {
   const marker = (name: string): string => quote(join(root, name));
+  if (scenario === 'keeper-death') {
+    const original = childProcess.spawn;
+    // Observe the actual private status message in this fixture process only.
+    // Publish after all message listeners, so the runner has recorded status
+    // zero and started its drain before the parent kills the live keeper.
+    childProcess.spawn = new Proxy(original, { apply(target, receiver, args) {
+      const child: ReturnType<typeof spawn> = Reflect.apply(target, receiver, args);
+      child.on('message', (message: unknown) => {
+        if (message !== null && typeof message === 'object' && 'type' in message &&
+            message.type === 'status' && 'status' in message && message.status === 0) {
+          queueMicrotask(() => {
+            assert.ok(child.pid);
+            fs.writeFileSync(join(root, 'status-received'), String(child.pid));
+          });
+        }
+      });
+      return child;
+    } });
+    syncBuiltinESMExports();
+    try {
+      return await supervise([
+        shell('root', 'echo ROOT_OK', 'eof'),
+        { name: 'static', command: process.execPath,
+          args: ['--experimental-strip-types', self, 'tree', root, 'success'], cancellation: 'group' },
+      ], root);
+    } finally {
+      childProcess.spawn = original;
+      syncBuiltinESMExports();
+    }
+  }
   if (scenario === 'logging-fails') {
     const rootTree = join(root, 'root-tree'), staticTree = join(root, 'static-tree');
     await mkdir(staticTree);
@@ -195,6 +233,10 @@ if (process.argv[2] === 'leaf') {
     } catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT'; }
   };
 
+  // Each case owns a mkdtemp tree, fresh fixture process, distinct process group
+  // and any foreign PID. Monkeypatches run only in the fixture child. Root's
+  // four checks and the production static command sequence remain serial.
+  describe('isolated static supervision fixtures', { concurrency: 4 }, () => {
   for (const scenario of ['overlap', 'root-fails', 'static-fails', 'both-fail', 'spawn-fails', 'drain']) {
     test(`join observes both children: ${scenario}`, { timeout: 10000 }, async () => {
       const root = await mkdtemp(join(tmpdir(), 'static-quality-proof-'));
@@ -309,6 +351,10 @@ if (process.argv[2] === 'leaf') {
           if (mode === 'EOF') run.child.stdin?.end();
           else if (mode === 'SIGTERM' || mode === 'SIGINT') assert.equal(run.child.kill(mode), true);
           const deadline = performance.now() + 5000;
+          if (supervisor === 'guardian' && (mode === 'SIGTERM' || mode === 'SIGINT')) {
+            assert.equal(await marker(join(root, 'guardian-signal')), mode === 'SIGINT' ? '2' : '15',
+              'guardian must actually receive cancellation before the early leader assertion');
+          }
           while (!await gone(leader) && performance.now() < deadline) await delay(20);
           assert.equal(await gone(leader), true, 'command exits before TERM escalation');
           assert.ok(group > 0 && group !== leader && group !== process.pid, 'separate owned group keeper');
@@ -348,6 +394,57 @@ if (process.argv[2] === 'leaf') {
     }
   }
 
+  test('unexpected keeper death after status zero fails the join and preserves command status',
+    { timeout: 15000 }, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'static-quality-keeper-death-'));
+    const foreign = spawn('/usr/bin/sleep', ['30'], { stdio: 'ignore' });
+    const foreignDone = new Promise<void>(done => foreign.once('close', () => done()));
+    const run = start(root, 'keeper-death');
+    let leaf: number | undefined;
+    try {
+      await marker(join(root, 'tree-ready'));
+      leaf = Number(await marker(join(root, 'leaf-pid')));
+      const keeper = Number(await marker(join(root, 'status-received')));
+      assert.ok(Number.isInteger(leaf) && leaf > 0 && Number.isInteger(keeper) && keeper > 0);
+      const stat = await readFile(`/proc/${leaf}/stat`, 'utf8');
+      assert.equal(Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[2]), keeper);
+      assert.equal(await gone(keeper), false, 'external SIGKILL targets only a live owned keeper');
+      process.kill(keeper, 'SIGKILL');
+      const result = await run.result;
+      assert.equal(result.signal, null, result.output);
+      assert.equal(result.code, 1, result.output);
+      assert.match(result.output, /static: exit 0/);
+      assert.match(result.output, /interrupted drain: owned keeper exited before planned SIGKILL/);
+      assert.equal(await gone(keeper), true);
+      assert.equal(await gone(leaf), false, 'redirected resistant descendant survives interrupted drain');
+      assert.equal(foreign.exitCode, null);
+      assert.equal(foreign.signalCode, null);
+      assert.ok(foreign.pid);
+      process.kill(foreign.pid, 0);
+    } finally {
+      if (run.child.exitCode === null && run.child.signalCode === null) run.child.kill('SIGTERM');
+      await run.result;
+      // External keeper death forfeits group ownership. Clean only this recorded
+      // synthetic leaf; never send a cleanup signal to the reaped keeper's PGID.
+      try {
+        if (leaf !== undefined && !await gone(leaf)) process.kill(leaf, 'SIGKILL');
+        if (leaf !== undefined) {
+          const deadline = performance.now() + 5000;
+          let cleaned = await gone(leaf);
+          while (!cleaned && performance.now() < deadline) {
+            await delay(20);
+            cleaned = await gone(leaf);
+          }
+          assert.equal(cleaned, true, 'explicit synthetic descendant cleanup');
+        }
+      } finally {
+        foreign.kill('SIGTERM');
+        await foreignDone;
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+  });
+
   test('log I/O failure joins root EOF drain and preserves completed command status without orphans',
     { timeout: 15000 }, async () => {
     const root = await mkdtemp(join(tmpdir(), 'static-quality-log-failure-'));
@@ -381,5 +478,6 @@ if (process.argv[2] === 'leaf') {
       await foreignDone;
       await rm(root, { recursive: true, force: true });
     }
+  });
   });
 }

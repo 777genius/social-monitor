@@ -44,11 +44,16 @@ export async function supervise(children: readonly [ChildSpec, ChildSpec], logs:
       let settled = false;
       let ready = !owned;
       let stopping = false;
+      let plannedEscalation = false;
+      let interruptedDrain = false;
       let commandStatus: number | undefined;
       let timer: NodeJS.Timeout | undefined;
       const kill = (signal: NodeJS.Signals): void => {
         if (settled || child.pid === undefined) return;
-        try { process.kill(-child.pid, signal); }
+        try {
+          process.kill(-child.pid, signal);
+          if (signal === 'SIGKILL') plannedEscalation = true;
+        }
         catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ESRCH') log.write(`${String(error)}\n`);
         }
@@ -83,6 +88,10 @@ export async function supervise(children: readonly [ChildSpec, ChildSpec], logs:
         // signal its potentially reused PGID, even if inherited pipes stay open.
         settled = true;
         if (timer !== undefined) clearTimeout(timer);
+        if (owned && !plannedEscalation) {
+          interruptedDrain = true;
+          log.write('interrupted drain: owned keeper exited before planned SIGKILL\n');
+        }
       });
       const status = await new Promise<number>((done) => {
         child.once('close', (code) => {
@@ -100,7 +109,7 @@ export async function supervise(children: readonly [ChildSpec, ChildSpec], logs:
         output.pipe(process.stdout, { end: false });
         await finished(output);
       }
-      return status === 0 && logged ? 0 : 1;
+      return status === 0 && logged && !interruptedDrain ? 0 : 1;
     }));
     return cancelled || (results.every((result) => result.status === 'fulfilled' && result.value === 0) ? 0 : 1);
   } finally {
