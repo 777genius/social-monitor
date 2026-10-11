@@ -1,5 +1,5 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
-import type { ReaderValueAssessment } from '@social-monitor/relevance/application/contracts/reader-value-assessment-store';
+import type { ReaderValueAssessment, ReaderValuePreparedInput } from '@social-monitor/relevance/application/contracts/reader-value-assessment-store';
 import type { ReaderValueInventoryItem } from '@social-monitor/relevance/application/contracts/reader-value-inventory';
 import { validateReaderValueAnswers, readerValueLabels } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';
 import { SourceContentSafetyPolicy } from '@social-monitor/relevance/domain/source-content-safety';
@@ -53,7 +53,7 @@ function setup(change?: (entry: ReaderValueInventoryItem) => ReaderValueInventor
   const { item, entry: original } = fixture();
   const entry = change?.(original) ?? original;
   const builder = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy());
-  const find = jest.fn(async (input: import('@social-monitor/relevance/application/contracts/reader-value-assessment-store').ReaderValuePreparedInput): Promise<ReaderValueAssessment | null> => state === 'missing' ? null : ({
+  const find = jest.fn(async (input: ReaderValuePreparedInput): Promise<ReaderValueAssessment | null> => state === 'missing' ? null : ({
     id: 'assessment-one', input, state: 'assessed', attempts: 1, leaseToken: null, leaseUntil: null,
     assessedAt: state === 'late' ? '2026-10-11T16:15:00.000001Z' : '2026-10-11T16:05:00.000000Z',
     answers: answers(true, state !== 'irrelevant'), usageUnknown: false, costUsd: null, errorCode: null,

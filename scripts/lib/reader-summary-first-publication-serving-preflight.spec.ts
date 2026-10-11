@@ -1,3 +1,4 @@
+import { createDailyJevCaptureQualification } from "./reader-summary-daily-jev-qualification";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
@@ -122,6 +123,7 @@ async function runCapture(options: Options = {}) {
     "AllowingSummaryQuota", "DatasetGuardedReaderSummaryEvidenceSelector", "PrismaReaderSummaryPublication",
     "InMemoryMetricsRecorder", "ReaderSummaryPromotionMetricsRecorder"]) doubles[name] = Empty;
   const modules: Record<string, unknown> = {
+    "./lib/reader-summary-daily-jev-qualification": { createDailyJevCaptureQualification },
     "@social-monitor/shared-kernel": { ...sharedKernel, SystemClock: doubles.SystemClock },
     "@social-monitor/summary/domain": { buildReaderSummaryPeriod },
     "./lib/reader-summary-capture-period-policy": periodPolicy,
@@ -232,4 +234,14 @@ it.each(["ordinary", "replay", "refresh"] as const)("%s keeps serving/identity a
   expect(s.events.filter((event) => event !== "close")).toEqual([
     ...beforeAuthority, "authority", "health", "identity", "request", "provider",
   ]);
+});
+
+it.each([undefined, "legacy_v2", "jev_shadow"])("legacy qualification mode %s has no Jev reads or clock access", (mode) => {
+  const now = jest.fn(() => { throw new Error("Legacy mode must not freeze a Jev assessment cutoff"); });
+  const client = new Proxy({}, { get: () => { throw new Error("Legacy mode must not query Jev"); } });
+  const qualification = createDailyJevCaptureQualification({ fresh: true, mode,
+    client, interests: undefined, clock: { now } });
+  expect(qualification.selector).toBeUndefined();
+  expect(qualification.audit()).toBeUndefined();
+  expect(now).not.toHaveBeenCalled();
 });
