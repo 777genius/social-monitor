@@ -65,8 +65,14 @@ async function fixture(root: string, id: string, mode: string): Promise<void> {
     // Make the descendant TERM resistant and allow the leader to exit first.
     process.on('SIGTERM', () => process.exit(0));
   }
+  if (mode === 'inherited-pipe') {
+    // Hold inherited logs until owned cleanup; this child has no release command.
+    writeFileSync(path.join(root, `${id}.pid`), String(process.pid));
+    setInterval(() => {}, 20);
+    return;
+  }
   if (mode === 'failure-pipe') {
-    const descendant = spawn(process.execPath, ['--experimental-strip-types', self, '--fixture', root, `${id}-pipe`, 'normal'],
+    const descendant = spawn(process.execPath, ['--experimental-strip-types', self, '--fixture', root, `${id}-pipe`, 'inherited-pipe'],
       { stdio: ['ignore', process.stdout, process.stderr] });
     descendant.unref();
     await until(() => existsSync(path.join(root, `${id}-pipe.pid`)));
@@ -307,9 +313,9 @@ if (process.argv[2] === '--fixture') {
   // Catches observing only 'close': failure must stop admissions even when a
   // descendant keeps the failed child's stdout/stderr pipes open.
   test('failure stops admissions before inherited log pipes close', async () => scenario(async (root, signal) => {
-    let logs = '';
+    let logs = '', errors = '';
     const running = runLifecycle([command(root, 'a', true, 'failure-pipe'), command(root, 'b', true), command(root, 'queued', true), command(root, 'barrier')],
-      { signal, stdout: text => { logs += text; }, stderr: () => {} });
+      { signal, stdout: text => { logs += text; }, stderr: text => { errors += text; } });
     await until(() => started(root, 'a') && started(root, 'b'));
     const pid = Number(readFileSync(path.join(root, 'a.pid'), 'utf8'));
     await release(root, 'a', 7);
@@ -321,7 +327,7 @@ if (process.argv[2] === '--fixture') {
     await release(root, 'b');
     await until(() => logs.includes('[lifecycle 2] END exit=0'));
     assert.equal(started(root, 'queued'), false);
-    assert.equal(await running, 7);
+    assert.equal(await running, 7, `leader failure status must survive owned pipe cleanup: ${errors}`);
     assert.match(logs, /\[lifecycle 1\] END exit=7/);
     assert.equal(started(root, 'barrier'), false);
   }));

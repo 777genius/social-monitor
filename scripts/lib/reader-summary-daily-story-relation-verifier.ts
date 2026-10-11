@@ -114,6 +114,7 @@ export const createReaderSummaryDailyCapturePublicationWiring = (
       rankFeedItems, dependencies.feedItems, dependencies.clock,
       new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
       dependencies.storyRelationVerifier ?? undefined, undefined, preparationObserver,
+      dependencies.candidateQualification,
     ),
     githubProjectionReader: new PrismaReaderSummaryGitHubProjectionReader(dependencies.summaryClient),
   });

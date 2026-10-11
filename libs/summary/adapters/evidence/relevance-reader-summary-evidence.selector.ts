@@ -1,3 +1,4 @@
+import type { ReaderSummaryCandidateQualification } from "../../application/contracts/reader-summary-candidate-qualification";
 import type { FeedItem } from "@social-monitor/feed/domain";
 import {
   MAX_FEED_ITEM_PAGE_LIMIT,
@@ -85,6 +86,7 @@ ReaderSummaryEvidenceSelectorPort, ReaderSummarySupplementalEvidenceSelectorPort
     private readonly storyRelationVerifier?: ReaderSummaryStoryRelationVerifierPort,
     private readonly relatedTopicVerifierTimeoutMs = RELATED_TOPIC_VERIFIER_TIMEOUT_MS,
     private readonly preparationObserver?: ReaderSummaryPreparationObserver,
+    private readonly candidateQualification?: ReaderSummaryCandidateQualification,
   ) {
     this.clusterer = new StoryClusteringService(clock);
   }
@@ -98,11 +100,14 @@ ReaderSummaryEvidenceSelectorPort, ReaderSummarySupplementalEvidenceSelectorPort
     const query = { ...params, observedThrough: ingestionCutoff };
     const ranked = await this.loadRankedInventory(query, ingestionCutoff);
     const rankedInventory = ranked.items;
-    const expandedRankedItems = filterItemsByReaderSummaryPeriod(
+    const periodFilteredItems = filterItemsByReaderSummaryPeriod(
       rankedInventory,
       params.period,
       params.timestampPolicy,
     );
+    const expandedRankedItems = this.candidateQualification === undefined
+      ? periodFilteredItems
+      : (await this.candidateQualification.qualify(query, periodFilteredItems)).items;
     const promotionCandidates = expandedRankedItems.filter((item) =>
       item.promotionFacts !== undefined && !isGitHubTrendingEvidence(item));
     const promotionCandidateIds = new Set(
