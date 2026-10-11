@@ -1,6 +1,10 @@
 export const BOUNDED_POSTGRES_TEST_ONLY_FILES = new Set([
   'libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts',
   'libs/platform/persistence/src/postgres-runtime-pool-budget-test-inventory.ts',
+  'libs/platform/persistence/src/postgres-runtime-pool-commit-ack.spec-support.ts',
+  // Existing native fixture debt: exact paths, never a spec-support wildcard.
+  'scripts/lib/reader-summary-first-publication-pg18-crash.spec-support.ts',
+  'scripts/lib/reader-summary-first-publication-pg18.spec-support.ts',
   'scripts/lib/reader-summary-v3-migration-integration.spec.ts',
   'scripts/lib/reader-value-postgres-fixture.ts',
   'scripts/check-reader-summary-daily-execution-cursor-postgres.ts',
@@ -27,6 +31,8 @@ export const BOUNDED_POSTGRES_TEST_POOL_MAXIMUMS = new Map<
     [4],
   ],
   ['scripts/lib/reader-value-postgres-fixture.ts', [1, 2, 2]],
+  ['scripts/lib/reader-summary-first-publication-pg18-crash.spec-support.ts', [1]],
+  ['scripts/lib/reader-summary-first-publication-pg18.spec-support.ts', [4]],
   [
     'scripts/check-reader-summary-daily-execution-cursor-postgres.ts',
     [1, 1, 1, 1],

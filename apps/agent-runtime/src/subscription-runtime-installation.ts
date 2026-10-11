@@ -15,9 +15,9 @@ import {
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.42-sm.3";
 export const approvedMimoRuntimePackageVersion =
-  "0.1.0-main.40-sm-mimo.5";
+  "0.1.0-main.40-sm-mimo.6";
 const approvedMimoManifestSha256 =
-  "132bae9074c729d9626cab9f765df8b6e8446dac172f3964dedcc6a2fe6d635f";
+  "0abd6f8d34839797a85c961995f664a8d43d801e9efd8bad7b3238fac0ce2568";
 const approvedMimoWorkerEntrypointSha256 =
   "43907edb05db2a3ad733697877cacd5caa434cb301a5ec4da11bd256cdf6ae09";
 // SHA256 of sorted "relative path\0file SHA256\n" records for all regular
@@ -27,12 +27,12 @@ const approvedBaseRuntimeCodeSha256 = Object.freeze([
   "0b1ae195815bd45ce2aab77cb4345e4ea07e2af70410527959bf810792669512",
 ]);
 const approvedMimoRuntimeCodeSha256 =
-  "3e08af06465d6bf5d2fbe3ecd1d5d8ea6baed1a3844dc0bc39195a7199442ec7";
+  "8e90befb47a741d2afbb06f5a110885b11af4bd323d3c9f13b83a25f8cf64047";
 // Package code resolved from the installed node_modules ancestor while the
 // wrapper imports the two runtime distributions, before it reads the key.
 const approvedHoistedRuntimeCodeSha256 = Object.freeze({
   "@anthropic-ai/claude-agent-sdk": "68eeb7ef642c42e16cb13c3c0d00e2bc72960906e816f8e9bcb91ca7f3bbf3ae",
-  "@modelcontextprotocol/sdk": "3b1ce6a1229fca3c0c7b33838c7b2c67630d3e56a24b5407e9ce13f7dcbd3c25",
+  "@modelcontextprotocol/sdk": "78cc5f2b2247e8618f779251e3eabcaa5461f5e95395e90e4ee9497bddc7780d",
   "ajv-formats": "444dbf1804b17fc0d114a28ee8fd89963c7084c08b5ebbd16c408b5e089727b4",
   "zod": "4d7f8ca54064f57c6d93f09d2ce3b028f8d8884193147495f5f283a0916e124c",
   "zod-to-json-schema": "e6f0b7c6dc6c820f1cdd16b9ef9a7f415190e3ee0bf190e9605f620344f0090a",

@@ -1,6 +1,8 @@
 name: Pull request checks
 
 on:
+  push:
+    branches: [main]
   pull_request:
   merge_group:
   workflow_dispatch:
@@ -9,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -18,12 +20,52 @@ env:
 jobs:
   static_quality:
     name: Static architecture and quality
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
 
     steps:
       - name: Check out the review commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Prepare trusted release controller contracts
+        env:
+          RELEASE_GATE_VENV: ${{ runner.temp }}/release-gate-venv
+          CI_NATIVE_RUNNER: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+          CI_NATIVE_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS:-}" = true
+          test "${RUNNER_ENVIRONMENT:-}" = "$CI_NATIVE_ENVIRONMENT"
+          case "$CI_NATIVE_RUNNER:$CI_NATIVE_ENVIRONMENT" in
+            ubuntu-24.04:github-hosted|ubicloud-standard-4:self-hosted) ;;
+            *) printf 'Unsupported native CI runner\n' >&2; exit 1 ;;
+          esac
+          test "$(id -u)" -ne 0
+          test "${RUNNER_OS:-}:${RUNNER_ARCH:-}" = Linux:X64
+          . /etc/os-release
+          test "$ID:$VERSION_ID" = ubuntu:24.04
+          command -v shellcheck
+          docker compose version
+          docker pull postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+          /usr/bin/python3.12 -m venv --copies "$RELEASE_GATE_VENV"
+          "$RELEASE_GATE_VENV/bin/python3" -m pip install --require-hashes -r ops/release/hetzner/requirements.txt
+          sudo test ! -e /root/social-monitor-release-contract-tests
+          sudo mkdir -p /root/social-monitor-release-contract-tests/ops/release /root/social-monitor-release-contract-tests/node_modules
+          sudo cp -R ops/release/hetzner /root/social-monitor-release-contract-tests/ops/release/
+          sudo cp -R ops/ci /root/social-monitor-release-contract-tests/ops/
+          sudo mkdir -p /root/social-monitor-release-contract-tests/.github/workflows
+          sudo cp .github/workflows/pull-request.yml /root/social-monitor-release-contract-tests/.github/workflows/
+          sudo mkdir -p /root/social-monitor-release-contract-tests/ops/deploy /root/social-monitor-release-contract-tests/scripts/sql
+          sudo cp ops/deploy/reader-summary-publication-pre-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/
+          sudo cp ops/deploy/reader-summary-publication-post-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/
+          sudo cp scripts/sql/reader-summary-publication-tenant-ownership.sql /root/social-monitor-release-contract-tests/scripts/sql/
+          sudo cp -R "$RELEASE_GATE_VENV" /root/social-monitor-release-contract-tests/python
+          sudo test -f /root/social-monitor-release-contract-tests/ops/ci/static-quality-root.sh
+          sudo test ! -L /root/social-monitor-release-contract-tests/ops/ci/static-quality-root.sh
+          sudo chmod -R go-w /root/social-monitor-release-contract-tests
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -37,23 +79,43 @@ jobs:
       - name: Generate the pinned Prisma client
         run: npm run prisma:generate
 
-      - name: Verify static quality
+      - name: Verify Hetzner release types and native contracts
+        run: |
+          set -euo pipefail
+          npm run check:hetzner-release-typecheck
+          npm run check:hetzner-release-tests
+
+      - name: Verify static quality supervision
+        run: |
+          set -euo pipefail
+          npx tsc -p ops/ci/tsconfig.static-quality.json
+          bash -n ops/ci/static-quality-root.sh
+          shellcheck ops/ci/static-quality-root.sh
+          node --experimental-strip-types --test ops/ci/static-quality-runner.test.mts
+          node --test scripts/ci/check-release-gate-ci.test.mjs
+
+      - name: Join release controller contracts and serial static quality
         env:
           NODE_OPTIONS: --max-old-space-size=4096
         run: |
           set -euo pipefail
+          node --experimental-strip-types ops/ci/static-quality-runner.mts <<'STATIC_QUALITY'
+          set -euo pipefail
           npx eslint .
           npx tsc --noEmit
+          npx tsc -p ops/ci/tsconfig.historical-bootstrap.json
           npm run check:architecture
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:persistence-readiness
           npm run check:observability
           npm run check:review-ci
+          node --test scripts/ci/*.test.mjs
+          STATIC_QUALITY
 
   security_contracts:
     name: Security and public contracts
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
     steps:
@@ -92,17 +154,20 @@ jobs:
           npm run check:tenant-db-guards
 
   backend_unit_shards:
-    name: Backend unit shard ${{ matrix.shard }}/4
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    name: Backend unit shard ${{ matrix.shard }}/6
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
 
     steps:
       - name: Check out the review commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -111,28 +176,96 @@ jobs:
           cache: npm
 
       - name: Install exact dependencies
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit
 
       - name: Generate the pinned Prisma client
         run: npm run prisma:generate
 
-      - name: Run backend unit tests
-        run: node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4
+      - name: Supply genuine native PostgreSQL 18 executables
+        env:
+          CI_NATIVE_RUNNER: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+          CI_NATIVE_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          set -euo pipefail
+          # Package installation is authorized only on the selected disposable CI VM.
+          test "${GITHUB_ACTIONS:-}" = true
+          test "${RUNNER_ENVIRONMENT:-}" = "$CI_NATIVE_ENVIRONMENT"
+          case "$CI_NATIVE_RUNNER:$CI_NATIVE_ENVIRONMENT" in
+            ubuntu-24.04:github-hosted|ubicloud-standard-4:self-hosted) ;;
+            *) printf 'Unsupported native CI runner\n' >&2; exit 1 ;;
+          esac
+          test "${RUNNER_OS:-}" = Linux
+          test "$(id -u)" -ne 0
+          . /etc/os-release
+          test "$ID" = ubuntu
+          test "$VERSION_ID" = 24.04
+          [[ "$VERSION_CODENAME" =~ ^[a-z]+$ ]]
+          pgdg_scratch="$(mktemp -d "$RUNNER_TEMP/firstpub-pgdg-XXXXXXXX")"
+          trap 'rm -rf -- "$pgdg_scratch"' EXIT
+          mkdir -m 700 "$pgdg_scratch/gnupg"
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 60 https://www.postgresql.org/media/keys/ACCC4CF8.asc -o "$pgdg_scratch/pgdg.asc"
+          pgdg_fingerprint="$(gpg --batch --homedir "$pgdg_scratch/gnupg" --show-keys --with-colons "$pgdg_scratch/pgdg.asc" | awk -F: '$1 == "fpr" { print $10; exit }')"
+          test "$pgdg_fingerprint" = B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
+          sudo install -m 644 "$pgdg_scratch/pgdg.asc" /usr/share/keyrings/firstpub-pgdg.asc
+          printf 'deb [signed-by=/usr/share/keyrings/firstpub-pgdg.asc] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\n' "$VERSION_CODENAME" | sudo tee /etc/apt/sources.list.d/firstpub-pgdg.list > /dev/null
+          sudo timeout 180 apt-get update
+          sudo env DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install --yes --no-install-recommends postgresql-common
+          # Install executables only: do not create or start a package-managed cluster.
+          printf 'create_main_cluster = false\n' | sudo tee /etc/postgresql-common/createcluster.conf > /dev/null
+          sudo env DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install --yes --no-install-recommends postgresql-18 postgresql-client-18
+          for pg18_tool in initdb pg_ctl postgres psql; do
+            pg18_executable="/usr/lib/postgresql/18/bin/$pg18_tool"
+            test -x "$pg18_executable"
+            pg18_version="$("$pg18_executable" --version)"
+            [[ "$pg18_version" =~ ^$pg18_tool\ \(PostgreSQL\)\ 18\. ]]
+            printf '%s\n' "$pg18_version"
+          done
 
-  backend_unit:
-    name: Backend build and unit tests
-    needs: backend_unit_shards
-    if: always()
-    runs-on: ubuntu-latest
+      - name: List the complete unit inventory before sharding
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"
+          node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --testPathIgnorePatterns="$unit_ignore" --listTests --json > reports/inventory.json
+
+      - name: Run backend unit tests once with coverage
+        run: |
+          set -euo pipefail
+          unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"
+          # Provisional shard2 pilot; keep all other executions serial.
+          unit_workers=(--runInBand)
+          if [ "${{ matrix.shard }}" = 2 ]; then
+            unit_workers=(--maxWorkers=2)
+          fi
+          node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts "${unit_workers[@]}" --shard=${{ matrix.shard }}/6 --testPathIgnorePatterns="$unit_ignore" --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json
+
+      - name: Upload unit execution and inventory data
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: backend-unit-report-${{ matrix.shard }}
+          path: reports/*.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: backend-unit-coverage-${{ matrix.shard }}
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 1
+
+  backend_build_contracts:
+    name: Backend build and sandbox contracts
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
     steps:
-      - name: Require every backend unit shard to succeed
-        run: test "${{ needs.backend_unit_shards.result }}" = "success"
-
       - name: Check out the review commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Set up Node.js
@@ -161,13 +294,49 @@ jobs:
 
       - name: Prove Reader Promotion V2 canary control plane
         run: |
+          set -euo pipefail
           node --test scripts/lib/reader-promotion-v2-production-canary-control.test.mjs
           node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=1024 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath scripts/lib/reader-promotion-v2-production-canary-runner.spec.ts
           bash ops/deploy/production-runtime/reader-promotion-v2-production-canary.test.sh
 
+  backend_unit:
+    name: Backend build and unit tests
+    needs: [backend_unit_shards, backend_build_contracts]
+    if: always()
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+
+    steps:
+      - name: Require every backend prerequisite to succeed
+        run: |
+          set -euo pipefail
+          test "${{ needs.backend_unit_shards.result }}" = "success"
+          test "${{ needs.backend_build_contracts.result }}" = "success"
+
+      - name: Check out the exact tested commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up clean Node.js without dependencies
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+
+      - name: Download all unit report artifacts without merging
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          pattern: backend-unit-report-*
+          path: unit-reports
+          merge-multiple: false
+
+      - name: Prove complete and unique unit suite execution
+        run: node scripts/ci/verify-jest-shard-completeness.mjs --reports unit-reports --root . --exclusions ops/ci/jest-inventory-exclusions.txt --shards 6
+
   backend_e2e:
     name: Backend end-to-end tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
     steps:
@@ -191,7 +360,7 @@ jobs:
 
   postgres_rls:
     name: PostgreSQL tenant isolation
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
       postgres:
@@ -231,7 +400,7 @@ jobs:
 
   reader_promotion_v2_canary_postgres18:
     name: Reader Promotion V2 canary PostgreSQL 18
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
       - name: Check out the review commit
@@ -242,7 +411,7 @@ jobs:
 
   feed_promotion_snapshot_postgres18:
     name: Feed promotion snapshot and native plans PostgreSQL 18
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
       postgres:
@@ -285,7 +454,7 @@ jobs:
 
   reader_summary_weekly_review_manifest_postgres18:
     name: Reader-summary weekly review manifest PostgreSQL 18
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
       postgres:
@@ -329,7 +498,7 @@ jobs:
 
   reader_value_v3_postgres18:
     name: Reader Value V3 PostgreSQL 18 contracts
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     services:
       postgres:
@@ -373,48 +542,133 @@ jobs:
           npm run check:reader-summary-v3-postgres
           npx jest --config jest.config.ts --runInBand --runTestsByPath libs/ingestion/adapters/persistence/prisma/prisma-article-capture.postgres.spec.ts
 
-  production_runtime:
-    name: Production container and deploy lifecycle
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
+  production_candidate:
+    name: Production immutable candidate
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
     steps:
-      - name: Check out the review commit
+      - name: Check out the actual CI commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
-
+          persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
+      - name: Set up the native candidate store
+        uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5.5.0
+        with:
+          version: v29.8.2
+          set-host: true
+          daemon-config: '{"features":{"containerd-snapshotter":true}}'
+      - name: Verify candidate policy
+        run: |
+          set -euo pipefail
+          node --test scripts/ci/release-candidate.test.mjs ops/release/e2e/harness.test.mjs
+          node --experimental-strip-types --test scripts/ci/candidate-runtime.test.mts
+      - name: Build and qualify the API candidate once
+        env:
+          CANDIDATE_DIRECTORY: ${{ runner.temp }}/api-candidate-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/release-candidate.mjs \
+            --directory "$CANDIDATE_DIRECTORY" \
+            --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" \
+            --controller-dir ops/release/hetzner
+      - name: Upload the qualified immutable candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: api-candidate-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/api-candidate-${{ github.run_id }}/candidate.tar
+            ${{ runner.temp }}/api-candidate-${{ github.run_id }}/candidate.tar.sha256
+            ${{ runner.temp }}/api-candidate-${{ github.run_id }}/manifest.json
+            ${{ runner.temp }}/api-candidate-${{ github.run_id }}/phases.json
+            ${{ runner.temp }}/api-candidate-${{ github.run_id }}/image-id.txt
+            ${{ runner.temp }}/api-candidate-${{ github.run_id }}/source-sha.txt
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve phase evidence on qualification failure
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: api-candidate-phases-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/api-candidate-${{ github.run_id }}/phases.json
+          if-no-files-found: ignore
+          retention-days: 1
 
+  production_lifecycle:
+    name: Production deploy lifecycle fixtures
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the actual CI commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
       - name: Verify production container and deploy lifecycle
         run: |
           set -euo pipefail
           npm run check:container
           npm run check:runtime-compose
+          npm run check:production-lifecycle-runner:containment
           npm run check:production-deploy-lifecycle
 
-      - name: Build the production app image
-        run: docker build --file Dockerfile --target app --tag social-monitor-app:pr-ci .
+  production_runtime:
+    name: Production container and deploy lifecycle
+    needs: [production_candidate, production_lifecycle]
+    if: always()
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require both independent production checks
+        run: |
+          set -euo pipefail
+          test "${{ needs.production_candidate.result }}" = "success"
+          test "${{ needs.production_lifecycle.result }}" = "success"
 
   frontend:
     name: Flutter architecture and tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
     steps:
       - name: Check out the review commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
+      - name: Resolve the exact Flutter cache version
+        id: flutter_version
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const version = JSON.parse(fs.readFileSync('apps/frontend/.fvmrc', 'utf8')).flutter;
+          if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Flutter must have an exact stable SDK version');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
+          NODE
+
       - name: Set up Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           channel: stable
           flutter-version-file: apps/frontend/.fvmrc
-          cache: false
-          pub-cache: false
+          cache: true
+          pub-cache: true
+          cache-key: flutter-sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter_version.outputs.version }}
+          pub-cache-key: flutter-pub-${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter_version.outputs.version }}-${{ hashFiles('apps/frontend/**/pubspec.lock') }}
 
       - name: Resolve exact Flutter dependencies
         working-directory: apps/frontend

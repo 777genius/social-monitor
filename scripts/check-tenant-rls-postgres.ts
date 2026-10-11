@@ -18,7 +18,7 @@ import {
   makePublicationFixtureRuntimeDatabaseOwner,
   publicationDatabaseUrl,
   publicationProtectedRolePresence,
-  provisionPublicationFixtureDailyTerminalRole,
+  provisionPublicationFixtureDailyTerminalRole, provisionPublicationFixtureFirstPublicationRole,
   publicationRuntimeDatabaseUrl,
   quotePostgresIdentifier,
   quotePostgresLiteral,
@@ -69,7 +69,7 @@ let databaseCreated = false;
 let migrationAdminCreated = false;
 let runtimeCreated = false;
 let systemRuntimeCreated = false;
-let dailyTerminalRoleCreated = false;
+let dailyTerminalRoleCreated = false; let fixtureFirstPublicationRoleOwnership: Readonly<{ oid: number }> | undefined;
 
 async function main(): Promise<void> {
   const protectedRoles = await publicationProtectedRolePresence(serverAdmin);
@@ -114,7 +114,7 @@ async function main(): Promise<void> {
       fixtureDatabaseCreated: databaseCreated,
       fixtureMigrationAdminRoleCreated: migrationAdminCreated,
       fixtureRuntimeRoleCreated: runtimeCreated,
-      fixtureDailyTerminalRoleCreated: dailyTerminalRoleCreated,
+      fixtureDailyTerminalRoleCreated: dailyTerminalRoleCreated, fixtureFirstPublicationRoleOwnership,
       systemRuntimeRole,
       systemRuntimeRoleCreated: systemRuntimeCreated,
     });
@@ -152,6 +152,7 @@ async function createFixtureDatabase(): Promise<void> {
        TO ${quotePostgresIdentifier(systemRuntimeRole)}`,
   );
   systemRuntimeCreated = true;
+  fixtureFirstPublicationRoleOwnership = await provisionPublicationFixtureFirstPublicationRole(serverAdmin);
   dailyTerminalRoleCreated =
     await provisionPublicationFixtureDailyTerminalRole({
       dailyTerminalPassword: password,

@@ -2,7 +2,7 @@ import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 
 export type PrismaSummaryTransactionOptions = {
-  readonly isolationLevel?: "Serializable";
+  readonly isolationLevel?: "Serializable" | "ReadCommitted";
   readonly maxWait?: number;
   readonly timeout?: number;
 };
@@ -40,4 +40,18 @@ export const requireSerializableReaderSummaryTransactions = (
   if (!isTransactionalSummaryClient(client)) {
     throw new Error("Reader summary V3 requires Prisma transaction capability");
   }
+};
+
+/** Explicit Sep29 firstpub protocol only. Strong DB-owned relation locks are
+ * acquired before validation, whose statements need fresh snapshots even
+ * after tenant middleware and the publication deadline SELECT have run. */
+export const runFirstPublicationReaderSummaryTransaction = <TValue>(
+  client: PrismaSummaryClient,
+  operation: (client: PrismaReaderSummaryClient) => Promise<TValue>,
+  options?: Omit<PrismaSummaryTransactionOptions, "isolationLevel">,
+): Promise<TValue> => {
+  requireSerializableReaderSummaryTransactions(client);
+  return (client as PrismaTransactionalSummaryClient).$transaction(operation, {
+    ...options, isolationLevel: "ReadCommitted",
+  });
 };

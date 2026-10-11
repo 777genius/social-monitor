@@ -15,6 +15,7 @@ import {
   type PoolCleanupState,
   type RuntimeCleanupState,
 } from './postgres-runtime-pool-cleanup';
+import { guardPostgresPoolCommitAcknowledgements } from './postgres-runtime-pool-commit-ack';
 import { guardRootClientDuringInteractiveTransaction } from './postgres-runtime-pool-transaction-guard';
 
 export {
@@ -74,7 +75,8 @@ type PostgresRuntimePoolRegistryDependencies = {
 };
 
 const defaultDependencies: PostgresRuntimePoolRegistryDependencies = {
-  createPool: (config) => new Pool(config),
+  createPool: (config) =>
+    guardPostgresPoolCommitAcknowledgements(new Pool(config)),
   createAdapter: (pool) =>
     new PrismaPg(pool, { disposeExternalPool: false }),
 };

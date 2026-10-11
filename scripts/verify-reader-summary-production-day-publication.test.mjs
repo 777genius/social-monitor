@@ -910,7 +910,7 @@ function buildExecutionAttestations(options) {
     runtimeEngine:
       options.attestationRuntimeEngine ?? "subscription-runtime-cli",
     runtimePackageVersion: options.mimo
-      ? "0.1.0-main.40-sm-mimo.5"
+      ? "0.1.0-main.40-sm-mimo.6"
       : "0.1.0-main.2",
     launcherSha256: options.mimo
       ? approvedLauncherSha256

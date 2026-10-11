@@ -17,6 +17,8 @@ export type ReaderSummaryEvidenceSelectionParams = {
   readonly subscriptionId?: string;
   readonly maxItems: number;
   readonly observedThrough?: Date;
+  /** Internal manifest authority; assigned before editorial attestations. */
+  readonly sourceWindowIdentity?: string;
   readonly retainedEngagementAuthority?: RetainedPromotionAuthority;
   readonly timestampPolicy?: ReaderSummaryTimestampPolicy;
 };

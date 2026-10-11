@@ -1,3 +1,5 @@
+import { resolveReaderSummaryAuthorityBoundary, withFirstPublicationInventoryQuality, failReaderSummaryProviderExecution, bindFirstPublicationEvidence, type FirstPublicationExecutionBoundary } from "./reader-summary-first-publication-execution";
+import type { ReaderSummaryFirstPublicationAuthority } from "../../application/contracts/reader-summary-first-publication-authority";
 import type { ReaderSummaryNewInputRefreshAuthority } from "../../application/contracts/reader-summary-new-input-refresh-authority";
 import { type Clock, DomainError, type IdGenerator, err, ok, type Result } from
   "@social-monitor/shared-kernel";
@@ -48,7 +50,6 @@ import {
   type ReaderSummaryDraft,
   type ReaderSummaryModelPipelineResult,
   safeBuildReaderSummaryContext,
-  readerSummaryObservedThrough,
   withReaderSummaryTopicMap,
 } from "./execute-reader-summary-job-support";
 import { buildReaderSummaryPromotionArtifactFields } from "./reader-summary-promotion-artifact-fields";
@@ -76,12 +77,14 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly newInputRefresh?: ReaderSummaryNewInputRefreshAuthority,
     private readonly v3Preflight?: ReaderSummaryV3PreflightPort,
     private readonly v3Promotion?: ReaderSummaryV3PromotionPort,
+    private readonly firstPublication?: ReaderSummaryFirstPublicationAuthority,
   ) {}
   async execute(
     command: ExecuteReaderSummaryJobCommand,
   ): Promise<
     Result<ExecuteReaderSummaryJobResult, ExecuteReaderSummaryJobFailure>
   > {
+    const explicitCutoffTime = command.observedThrough?.getTime();
     if (command.readerSummaryJobId.trim().length === 0) {
       return err(
         new DomainError(
@@ -104,10 +107,13 @@ export class ExecuteReaderSummaryJobUseCase {
       );
     }
     const snapshot = existingJob.toSnapshot();
-    const observed = await readerSummaryObservedThrough({ job: existingJob,
-      authority: this.newInputRefresh, clock: this.clock });
-    if (observed instanceof DomainError) return err(observed);
-    const observedThrough = observed;
+    const boundary = await resolveReaderSummaryAuthorityBoundary({ job: existingJob, authority: this.firstPublication,
+      explicitCutoffTime, clock: this.clock, refreshAuthority: this.newInputRefresh,
+      recoveryActive: this.historicalGitHubOmission !== undefined || this.recoveryProvenance !== undefined });
+    if (!boundary.ok) return boundary;
+    const { firstPublicationBoundary, observed } = boundary.value;
+    // Keep the boundary as a primitive. Each Date consumer receives its own copy.
+    let observedThroughTime = observed;
     if (snapshot.status === "completed" || snapshot.status === "no_signal") {
       return ok({
         readerSummaryJobId: snapshot.id,
@@ -127,6 +133,7 @@ export class ExecuteReaderSummaryJobUseCase {
       if (prepared.kind === "result") return ok(prepared.value);
       runningJob = prepared.job;
       frozenV3Manifest = prepared.manifest;
+      observedThroughTime = new Date(frozenV3Manifest.cutoffAt).getTime();
     } else {
       runningJob = await claimReaderSummaryJobExecution({
         jobs: this.readerSummaryJobs,
@@ -165,16 +172,14 @@ export class ExecuteReaderSummaryJobUseCase {
       const result = await this.runModelPipeline(
         runningJob,
         command.maxEvidenceItems ?? defaultReaderSummaryMaxEvidenceItems,
-        observedThrough,
+        observedThroughTime === undefined ? undefined : new Date(observedThroughTime),
         v3Evidence,
+        firstPublicationBoundary,
       );
       if (!result.ok) {
-        const failedJob = frozenV3Manifest === undefined
-          ? runningJob.fail({ failedAt: this.clock.now(),
-              failureReason: result.error.message })
-          : runningJob.failTerminal({ failedAt: this.clock.now(),
-              failureReason: result.error.message,
-              terminalFailureCode: "provider_execution_failed" });
+        const failedJob = failReaderSummaryProviderExecution({ job: runningJob,
+          failedAt: this.clock.now(), failureReason: result.error.message,
+          terminalConsumed: frozenV3Manifest !== undefined || firstPublicationBoundary !== undefined });
         const saved = await saveReaderSummaryExecutionOutcome(
           this.readerSummaryJobs,
           failedJob,
@@ -199,7 +204,8 @@ export class ExecuteReaderSummaryJobUseCase {
         editorialEvidence: result.value.editorialEvidence,
         publicationPolicy: this.publicationPolicy,
         githubProjectionReader: this.githubProjectionReader,
-        observedThrough: observedThrough ?? this.clock.now(),
+        observedThrough: observedThroughTime === undefined
+          ? this.clock.now() : new Date(observedThroughTime),
         historicalGitHubOmission: this.historicalGitHubOmission,
         recoveryProvenance: this.recoveryProvenance,
       });
@@ -275,12 +281,9 @@ export class ExecuteReaderSummaryJobUseCase {
           durableSnapshot.terminalFailureCode !== undefined) {
         return ok({ readerSummaryJobId: durableSnapshot.id, status: "failed" });
       }
-      const failedJob = frozenV3Manifest === undefined
-        ? runningJob.fail({ failedAt: this.clock.now(),
-            failureReason: failure.message })
-        : runningJob.failTerminal({ failedAt: this.clock.now(),
-            failureReason: failure.message,
-            terminalFailureCode: "provider_execution_failed" });
+      const failedJob = failReaderSummaryProviderExecution({ job: runningJob,
+        failedAt: this.clock.now(), failureReason: failure.message,
+        terminalConsumed: frozenV3Manifest !== undefined || firstPublicationBoundary !== undefined });
       const saved = await saveReaderSummaryExecutionOutcome(
         this.readerSummaryJobs,
         failedJob,
@@ -302,10 +305,11 @@ export class ExecuteReaderSummaryJobUseCase {
     maxEvidenceItems: number,
     observedThrough?: Date,
     frozenV3Evidence?: SummaryEvidenceSelection,
+    firstPublicationBoundary?: FirstPublicationExecutionBoundary,
   ): Promise<ReaderSummaryModelPipelineResult> {
     const snapshot = job.toSnapshot();
     const generatedAt = this.clock.now();
-    const selectedEvidence = frozenV3Evidence ?? await this.evidenceSelector.select({
+    const selection = frozenV3Evidence ?? await this.evidenceSelector.select({
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
       scope: snapshot.scope,
@@ -314,7 +318,11 @@ export class ExecuteReaderSummaryJobUseCase {
       subscriptionId: snapshot.subscriptionId,
       maxItems: maxEvidenceItems,
       observedThrough: observedThrough ?? generatedAt,
+      ...(firstPublicationBoundary === undefined ? {} : { sourceWindowIdentity: firstPublicationBoundary.sourceIdentity }),
     });
+    const boundEvidence = bindFirstPublicationEvidence(selection, firstPublicationBoundary);
+    if (!boundEvidence.ok) return err(this.readerSummaryModel.classifyError(boundEvidence.error));
+    const selectedEvidence = boundEvidence.value;
     const readerSummaryId = this.ids.generate();
     const admittedSelection = selectedEvidence.promotionV3 === undefined
       ? admitReaderPostPromotionEvidence(selectedEvidence)
@@ -366,7 +374,7 @@ export class ExecuteReaderSummaryJobUseCase {
     });
     if (
       primaryEvidence.selectedEvidence.length === 0 &&
-      this.recoveryProvenance === undefined
+      this.recoveryProvenance === undefined && firstPublicationBoundary === undefined
     ) {
       return ok({
         evidence: publicationEvidence,
@@ -380,6 +388,9 @@ export class ExecuteReaderSummaryJobUseCase {
           contextArtifacts: context.artifacts,
         }),
       });
+    }
+    if (firstPublicationBoundary !== undefined && primaryEvidence.selectedEvidence.length === 0) {
+      return err(this.readerSummaryModel.classifyError(new DomainError("validation.failed", "First publication requires assessed evidence and authentic model generation")));
     }
     const basePolicy =
       policy?.toGenerationPolicy() ?? defaultReaderSummaryGenerationPolicy();
@@ -415,8 +426,9 @@ export class ExecuteReaderSummaryJobUseCase {
     const draftWithContext = context.unavailable
       ? withReaderSummaryContextUnavailable(attempt.draft)
       : attempt.draft;
+    const inventoryDraft = withFirstPublicationInventoryQuality(draftWithContext, firstPublicationBoundary);
     const qualityDraft = withReaderSummaryHistoricalOmissionQuality(
-      draftWithContext,
+      inventoryDraft,
       this.historicalGitHubOmission,
     );
     const draftWithContent = buildReaderSummaryDraftWithPromotionContent(

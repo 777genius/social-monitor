@@ -2,6 +2,7 @@ import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import {
   runSerializableReaderSummaryTransaction,
+  runFirstPublicationReaderSummaryTransaction,
   type PrismaSummaryTransactionOptions,
   type PrismaTransactionalSummaryClient,
 } from "./prisma-summary-transaction";
@@ -72,4 +73,15 @@ describe("runSerializableReaderSummaryTransaction", () => {
     ).resolves.toBe("saved");
     expect(operation).toHaveBeenCalledWith(client);
   });
+});
+
+it("firstpub requires durable transactions and opts into fresh snapshots without changing ordinary defaults", async () => {
+  const operation = jest.fn(async () => "reserved");
+  expect(() => runFirstPublicationReaderSummaryTransaction({} as PrismaSummaryClient, operation)).toThrow("transaction capability");
+  const transaction = jest.fn(async (callback: typeof operation) => callback());
+  const client = { $transaction: transaction } as unknown as PrismaTransactionalSummaryClient;
+  await runFirstPublicationReaderSummaryTransaction(client, operation, { maxWait: 30_000, timeout: 30_000 });
+  expect(transaction).toHaveBeenLastCalledWith(operation, { isolationLevel: "ReadCommitted", maxWait: 30_000, timeout: 30_000 });
+  await runSerializableReaderSummaryTransaction(client, operation, { isolationLevel: "ReadCommitted" });
+  expect(transaction).toHaveBeenLastCalledWith(operation, { isolationLevel: "Serializable" });
 });

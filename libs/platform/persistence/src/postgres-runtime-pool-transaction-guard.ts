@@ -18,6 +18,8 @@ type InteractiveTransactionContext = {
 };
 
 type TransactionScopeState = {
+  initialAction: 'available' | 'consumed';
+  characteristic: 'read-only' | 'read-write' | undefined;
   access: DatabaseAccess | undefined;
   configured: Promise<void> | undefined;
 };
@@ -125,6 +127,16 @@ function invokeGuardedMethod(params: {
   }
   const propertyName =
     typeof params.property === 'string' ? params.property : undefined;
+  const state = params.metadata.transactionState;
+  if (
+    state !== undefined &&
+    propertyName !== undefined &&
+    PRISMA_RAW_OPERATIONS.has(propertyName) &&
+    isExactTransactionSql(params.args, 'SET TRANSACTION READ WRITE') &&
+    (state.initialAction === 'consumed' || state.characteristic === 'read-only')
+  ) {
+    throw new Error('READ WRITE must be the first transaction action');
+  }
 
   if (
     params.metadata.root &&
@@ -144,12 +156,12 @@ function invokeGuardedMethod(params: {
 
   if (
     propertyName !== undefined &&
-    PRISMA_RAW_OPERATIONS.has(propertyName) &&
-    currentDatabaseAccess() !== undefined
+    PRISMA_RAW_OPERATIONS.has(propertyName)
   ) {
     return invokeRawOperation(params);
   }
 
+  consumeInitialAction(state);
   return Reflect.apply(params.value, params.currentTarget, params.args);
 }
 
@@ -166,6 +178,8 @@ function invokeInteractiveTransaction(params: {
   const operation = params.args[0] as (transaction: object) => unknown;
   params.args[0] = (transaction: object): unknown => {
     const state: TransactionScopeState = {
+      initialAction: 'available',
+      characteristic: undefined,
       access: undefined,
       configured: undefined,
     };
@@ -196,6 +210,7 @@ function invokeModelOperation(
 ): unknown {
   const model = params.metadata.model;
   if (model === undefined || prismaModelScope(model) === 'shared') {
+    consumeInitialAction(params.metadata.transactionState);
     return Reflect.apply(params.value, params.currentTarget, params.args);
   }
   const access = resolvePrismaDatabaseAccess(model, params.args);
@@ -221,10 +236,32 @@ function isReadOnlyTransactionPrologue(
   args: readonly unknown[],
   state: TransactionScopeState,
 ): boolean {
-  return state.access === undefined && state.configured === undefined &&
-    args.length === 1 && typeof args[0] === 'string' &&
-    args[0].trim().replaceAll(/\s+/gu, ' ').toUpperCase() ===
-      'SET TRANSACTION READ ONLY, DEFERRABLE';
+  return state.initialAction === 'available' &&
+    state.access === undefined && state.configured === undefined &&
+    isExactTransactionSql(args, 'SET TRANSACTION READ ONLY, DEFERRABLE');
+}
+
+function isTenantReadWriteTransactionPrologue(
+  args: readonly unknown[],
+  state: TransactionScopeState,
+  access: DatabaseAccess,
+): boolean {
+  return access.kind === 'tenant' &&
+    state.initialAction === 'available' && state.characteristic === undefined &&
+    state.access === undefined && state.configured === undefined &&
+    isExactTransactionSql(args, 'SET TRANSACTION READ WRITE');
+}
+
+function isExactTransactionSql(args: readonly unknown[], sql: string): boolean {
+  return args.length === 1 && typeof args[0] === 'string' &&
+    args[0].trim().replaceAll(/\s+/gu, ' ').toUpperCase() === sql;
+}
+
+function consumeInitialAction(state: TransactionScopeState | undefined): void {
+  if (state !== undefined) {
+    // Consume before dispatch, including pending or failed delegates; never reopen.
+    state.initialAction = 'consumed';
+  }
 }
 
 async function invokeInsideTransaction(
@@ -242,6 +279,7 @@ async function invokeInsideTransaction(
     throw new Error('Prisma transaction scope state is unavailable');
   }
   state.access = assertSameDatabaseAccess(state.access, access);
+  consumeInitialAction(state);
   await ensureTransactionConfigured(transaction, state);
   return Reflect.apply(params.value, params.currentTarget, params.args);
 }
@@ -256,15 +294,25 @@ function invokeRawOperation(params: {
 }): unknown {
   const access = currentDatabaseAccess();
   if (access === undefined) {
+    const state = params.metadata.transactionState;
+    if (state !== undefined && isReadOnlyTransactionPrologue(params.args, state)) {
+      state.characteristic = 'read-only';
+    }
+    consumeInitialAction(state);
     return Reflect.apply(params.value, params.currentTarget, params.args);
   }
   if (
     params.metadata.transactionClient !== undefined &&
     params.metadata.transactionState !== undefined
   ) {
-    if (isReadOnlyTransactionPrologue(params.args, params.metadata.transactionState)) {
+    const state = params.metadata.transactionState;
+    const readOnly = isReadOnlyTransactionPrologue(params.args, state);
+    if (readOnly || isTenantReadWriteTransactionPrologue(params.args, state, access)) {
       // Transaction characteristics must precede the guard's SELECT set_config.
-      // This exact prologue only removes write capability and carries no data.
+      // READ WRITE is tenant-only; the next operation still configures its GUCs.
+      // Keep explicit READ ONLY intent even when later operations configure scope.
+      state.characteristic = readOnly ? 'read-only' : 'read-write';
+      consumeInitialAction(state);
       return Reflect.apply(params.value, params.currentTarget, params.args);
     }
     return invokeInsideTransaction(params, access);

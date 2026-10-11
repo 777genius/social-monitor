@@ -1,8 +1,165 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { lstatSync, readFileSync } from "node:fs";
-import yaml from "js-yaml";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { load as loadYaml } from "js-yaml";
+import { backendUnitShardingViolations, coverageWorkflowViolations, ciVmRunner, nativeRunnerEnvironment } from "./ci/review-ci/backend-unit-contract.mjs";
 
+// Control flow is reviewed as a whole, not inferred from command substrings.
+// Seal both small supervisors and their ownership token; runtime proofs exercise real children.
+const staticQualitySeals = {
+  runner: ["ops/ci/static-quality-runner.mts", "32ea820d5511ef5ea6085db90c35368fbbdc2e8469da0e22aeeb2f23001dfdca"],
+  root: ["ops/ci/static-quality-root.sh", "71b679bad5b5dbf2beed65fe35d31c82280f357dc615f8be3a955f3f5e2075d1"],
+  keeper: ["ops/ci/static-quality-group-keeper.mts", "00714c251fe0d678e8d11489d47cdb1c1fd75d0a27ae76116040d815d19d4302"],
+};
+function shellLines(run) {
+  return typeof run === "string" ? run.split("\n").map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#")) : [];
+}
+function exactShell(run, expected) {
+  const lines = shellLines(run);
+  return lines.length === expected.length && lines.every((line, index) => line === expected[index]);
+}
+export function releaseGateCiViolations(source, assets) {
+  let doc;
+  try { doc = loadYaml(source); } catch { return ["invalid YAML for release controller gate"]; }
+  const job = doc?.jobs?.static_quality;
+  const steps = job?.steps;
+  const fail = ["Static architecture and quality must run the system Python 3.12, hash-locked root controller gate on a disposable GitHub runner"];
+  if (job?.name !== "Static architecture and quality" || job["runs-on"] !== ciVmRunner ||
+      job.needs !== undefined || job.if !== undefined || job["continue-on-error"] !== undefined ||
+      job.environment !== undefined || Object.keys(doc.env ?? {}).some((key) => key !== "DATABASE_URL") ||
+      job.env !== undefined ||
+      doc.defaults !== undefined || job.defaults !== undefined ||
+      !Array.isArray(steps)) return fail;
+  const checkout = steps[0], gate = steps[1], node = steps[2], install = steps[3];
+  const prisma = steps[4], hetzner = steps[5], proof = steps[6], join = steps[7];
+  const safe = (step, keys) => step && Object.keys(step).every((key) => keys.includes(key)) &&
+    (step.shell === undefined || step.shell === "bash");
+  if (steps.length !== 8 ||
+      !safe(checkout, ["name", "uses", "with"]) ||
+      checkout.uses !== "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10" ||
+      Object.keys(checkout.with ?? {}).length !== 2 ||
+      checkout.with?.ref !== "${{ github.sha }}" || checkout.with?.["persist-credentials"] !== false ||
+      !safe(gate, ["name", "run", "env", "shell"]) || Object.keys(gate.env ?? {}).length !== 3 ||
+      gate.env?.RELEASE_GATE_VENV !== "${{ runner.temp }}/release-gate-venv" ||
+      gate.env?.CI_NATIVE_RUNNER !== nativeRunnerEnvironment.CI_NATIVE_RUNNER ||
+      gate.env?.CI_NATIVE_ENVIRONMENT !== nativeRunnerEnvironment.CI_NATIVE_ENVIRONMENT ||
+      !safe(node, ["name", "uses", "with"]) ||
+      node.uses !== "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e" ||
+      Object.keys(node.with ?? {}).length !== 2 || node.with?.["node-version"] !== 22 || node.with?.cache !== "npm" ||
+      ![install, prisma, hetzner, proof].every((step) => safe(step, ["name", "run", "shell"])) ||
+      !safe(join, ["name", "run", "shell", "env"]) || Object.keys(join.env ?? {}).length !== 1 ||
+      join.env?.NODE_OPTIONS !== "--max-old-space-size=4096" ||
+      /\$\{\{\s*secrets\./u.test(JSON.stringify({ env: doc.env, job }))) return fail;
+  // Preparation must finish before any npm lifecycle runs, with identical snapshot geometry.
+  const expected = [
+    "set -euo pipefail",
+    "test \"${GITHUB_ACTIONS:-}\" = true",
+    "test \"${RUNNER_ENVIRONMENT:-}\" = \"$CI_NATIVE_ENVIRONMENT\"",
+    "case \"$CI_NATIVE_RUNNER:$CI_NATIVE_ENVIRONMENT\" in",
+    "ubuntu-24.04:github-hosted|ubicloud-standard-4:self-hosted) ;;",
+    "*) printf 'Unsupported native CI runner\\n' >&2; exit 1 ;;",
+    "esac",
+    "test \"$(id -u)\" -ne 0",
+    "test \"${RUNNER_OS:-}:${RUNNER_ARCH:-}\" = Linux:X64",
+    ". /etc/os-release",
+    "test \"$ID:$VERSION_ID\" = ubuntu:24.04",
+    "command -v shellcheck",
+    "docker compose version",
+    "docker pull postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+    "/usr/bin/python3.12 -m venv --copies \"$RELEASE_GATE_VENV\"",
+    "\"$RELEASE_GATE_VENV/bin/python3\" -m pip install --require-hashes -r ops/release/hetzner/requirements.txt",
+    "sudo test ! -e /root/social-monitor-release-contract-tests",
+    "sudo mkdir -p /root/social-monitor-release-contract-tests/ops/release /root/social-monitor-release-contract-tests/node_modules",
+    "sudo cp -R ops/release/hetzner /root/social-monitor-release-contract-tests/ops/release/",
+    "sudo cp -R ops/ci /root/social-monitor-release-contract-tests/ops/",
+    "sudo mkdir -p /root/social-monitor-release-contract-tests/.github/workflows",
+    "sudo cp .github/workflows/pull-request.yml /root/social-monitor-release-contract-tests/.github/workflows/",
+    "sudo mkdir -p /root/social-monitor-release-contract-tests/ops/deploy /root/social-monitor-release-contract-tests/scripts/sql",
+    "sudo cp ops/deploy/reader-summary-publication-pre-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/",
+    "sudo cp ops/deploy/reader-summary-publication-post-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/",
+    "sudo cp scripts/sql/reader-summary-publication-tenant-ownership.sql /root/social-monitor-release-contract-tests/scripts/sql/",
+    "sudo cp -R \"$RELEASE_GATE_VENV\" /root/social-monitor-release-contract-tests/python",
+    "sudo test -f /root/social-monitor-release-contract-tests/ops/ci/static-quality-root.sh",
+    "sudo test ! -L /root/social-monitor-release-contract-tests/ops/ci/static-quality-root.sh",
+    "sudo chmod -R go-w /root/social-monitor-release-contract-tests",
+  ];
+  const staticCommands = [
+    "npx eslint .", "npx tsc --noEmit", "npx tsc -p ops/ci/tsconfig.historical-bootstrap.json",
+    "npm run check:architecture", "npm run check:code-quality", "npm run check:source-line-cap",
+    "npm run check:persistence-readiness", "npm run check:observability", "npm run check:review-ci",
+    "node --test scripts/ci/*.test.mjs",
+  ];
+  const launch = "node --experimental-strip-types ops/ci/static-quality-runner.mts <<'STATIC_QUALITY'";
+  if (!exactShell(gate.run, expected) || !exactShell(install.run, ["npm ci"]) ||
+      !exactShell(prisma.run, ["npm run prisma:generate"]) ||
+      !exactShell(hetzner.run, ["set -euo pipefail", "npm run check:hetzner-release-typecheck", "npm run check:hetzner-release-tests"]) ||
+      !exactShell(proof.run, ["set -euo pipefail", "npx tsc -p ops/ci/tsconfig.static-quality.json",
+        "bash -n ops/ci/static-quality-root.sh", "shellcheck ops/ci/static-quality-root.sh",
+        "node --experimental-strip-types --test ops/ci/static-quality-runner.test.mts",
+        "node --test scripts/ci/check-release-gate-ci.test.mjs"]) ||
+      !exactShell(join.run, ["set -euo pipefail", launch, "set -euo pipefail", ...staticCommands, "STATIC_QUALITY"])) return fail;
+  const runs = Object.values(doc.jobs ?? {}).flatMap((candidate) =>
+    Array.isArray(candidate?.steps) ? candidate.steps : [])
+    .filter((step) => typeof step?.run === "string").map((step) => step.run);
+  const unique = [...expected.filter((line) => line.startsWith("sudo cp ")),
+    "ops/ci/static-quality-runner.mts"];
+  if (runs.reduce((count, run) => count + run.split("static-quality-root.sh").length - 1, 0) !== 4 ||
+      unique.some((command) => runs.reduce((count, run) => count + run.split(command).length - 1, 0) !== 1) ||
+      runs.some((run) => ["ops/release/hetzner/check.sh", "release-e2e-driver_test.py",
+        "release-e2e-fixture/operator_test.py", "release-database-plan_test.py"].some((path) => run.includes(path)))) return fail;
+  try {
+    for (const [key, [path, digest]] of Object.entries(staticQualitySeals)) {
+      if (assets === undefined && !lstatSync(path).isFile()) return fail;
+      const content = assets === undefined ? readFileSync(path, "utf8") : assets[key];
+      if (typeof content !== "string" || createHash("sha256").update(content).digest("hex") !== digest) return fail;
+    }
+  } catch { return fail; }
+  return [];
+}
+
+export function hetznerReleaseCiViolations(source, scripts) {
+  const fail = ["Static architecture and quality must run the exact unconditional Hetzner strict typecheck and native tests once after Node 22 and npm ci"];
+  const expected = {
+    "check:hetzner-release-typecheck": "tsc -p scripts/ci/tsconfig.hetzner-release.json",
+    "check:hetzner-release-tests": "node --experimental-strip-types --test scripts/ci/hetzner-release-authority.test.mts scripts/ci/hetzner-release-observe.test.mts scripts/ci/review-ci/release-workflow-contract.test.mts scripts/ci/review-ci/candidate-workflow-contract.test.mts scripts/ci/candidate-runtime.test.mts",
+    "check:hetzner-release-contract": "node --experimental-strip-types scripts/ci/check-hetzner-release-workflow.mts",
+  };
+  if (Object.entries(expected).some(([key, value]) => scripts?.[key] !== value)) return fail;
+  let doc;
+  try { doc = loadYaml(source); } catch { return fail; }
+  const job = doc?.jobs?.static_quality;
+  const steps = job?.steps;
+  if (!Array.isArray(steps) || job.if !== undefined || job.needs !== undefined ||
+      job["continue-on-error"] !== undefined || doc.defaults !== undefined ||
+      job.defaults !== undefined) return fail;
+  const nodes = steps.filter((step) => step.uses === "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e");
+  const installs = steps.filter((step) => step.run?.trim() === "npm ci");
+  const node = nodes[0], install = installs[0];
+  if (nodes.length !== 1 || installs.length !== 1 || node.with?.["node-version"] !== 22 ||
+      steps.indexOf(node) >= steps.indexOf(install)) return fail;
+  const commands = ["npm run check:hetzner-release-typecheck", "npm run check:hetzner-release-tests"];
+  const matches = steps.filter((step) => commands.some((command) => step.run?.includes(command)));
+  const gate = matches[0];
+  const safe = (step) => step.if === undefined && step["continue-on-error"] === undefined &&
+    step["working-directory"] === undefined && step.env === undefined &&
+    Object.keys(step).every((key) => ["name", "uses", "with", "run", "shell"].includes(key)) &&
+    (step.shell === undefined || step.shell === "bash");
+  if (matches.length !== 1 || steps.indexOf(gate) <= steps.indexOf(install) ||
+      ![node, install, gate].every(safe) ||
+      gate.run?.trim() !== ["set -euo pipefail", ...commands].join("\n")) return fail;
+  for (const command of commands) {
+    const occurrences = Object.values(doc.jobs ?? {}).flatMap((candidate) => candidate.steps ?? [])
+      .reduce((count, step) => count + (typeof step.run === "string"
+        ? step.run.split(command).length - 1 : 0), 0);
+    if (occurrences !== 1) return fail;
+  }
+  return [];
+}
+
+export function runReviewCi() {
 const workflowPath = ".github/workflows/pull-request.yml";
 const workflow = readFileSync(workflowPath, "utf8");
 const productionWorkflowPath = ".github/workflows/production-deploy.yml";
@@ -31,6 +188,35 @@ const transitionProtectedPath = "ops/deploy/production-transition-protected.mani
 const transitionProtected = readFileSync(transitionProtectedPath, "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const violations = [];
+violations.push(...releaseGateCiViolations(workflow));
+violations.push(...hetznerReleaseCiViolations(workflow, packageJson.scripts));
+try {
+  // Keep bare Node 22 imports of this JavaScript module free of TypeScript.
+  // Only the fixed child entry point enables native type stripping.
+  execFileSync(process.execPath, [
+    "--experimental-strip-types", "scripts/ci/check-hetzner-release-workflow.mts",
+  ], {
+    timeout: 30000, maxBuffer: 65536,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+} catch {
+  violations.push(
+    ".github/workflows/hetzner-release.yml: parsed release workflow guard failed or exceeded its finite execution bounds; run npm run check:hetzner-release-contract",
+  );
+}
+try {
+  // Fixed typed entry point; preserve bare Node 22 imports of this module.
+  execFileSync(process.execPath, [
+    "--experimental-strip-types", "scripts/ci/check-release-candidate-workflow.mts",
+  ], {
+    timeout: 30000, maxBuffer: 65536,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+} catch {
+  violations.push(
+    ".github/workflows/pull-request.yml: parsed candidate workflow guard failed or exceeded its finite execution bounds; run node --experimental-strip-types scripts/ci/check-release-candidate-workflow.mts",
+  );
+}
 const subscriptionRuntimeAuthPoolE2eCommand =
   "node --test --test-concurrency=1 apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs apps/agent-runtime/bin/subscription-runtime-failure-details.test.mjs apps/agent-runtime/bin/pinned-codex-native-binary.test.mjs apps/agent-runtime/src/source-content-assessment-pool.test.mjs";
 const dailyCursorPostgres18Command =
@@ -64,8 +250,27 @@ const productionForwardShellcheckCommand =
   `bash ops/deploy/verify-production-shellcheck-baseline.sh ${productionForwardShellcheckFiles.join(" ")}`;
 const productionDeployLifecycle =
   packageJson.scripts?.["check:production-deploy-lifecycle"] ?? "";
-const productionDeployLifecycleCommands =
-  productionDeployLifecycle.split(" && ");
+const lifecycleRunnerCommand =
+  "node --experimental-strip-types ops/ci/production-lifecycle-runner.mts";
+const preservedLifecycleSerial =
+  packageJson.scripts?.["check:production-deploy-lifecycle:serial"];
+const lifecycleUsesRunner = productionDeployLifecycle === lifecycleRunnerCommand;
+if (lifecycleUsesRunner || preservedLifecycleSerial !== undefined) {
+  const typedCheck = "tsc --project ops/ci/tsconfig.production-lifecycle.json && " +
+    "node --experimental-strip-types --test --test-name-pattern='actual registry' ops/ci/production-lifecycle-runner.test.mts";
+  if (!lifecycleUsesRunner || typeof preservedLifecycleSerial !== "string" ||
+      preservedLifecycleSerial.split(" && ").length !== 28 ||
+      packageJson.scripts?.["check:production-lifecycle-runner"] !== typedCheck ||
+      packageJson.scripts?.["check:production-lifecycle-runner:containment"] !==
+        "node --experimental-strip-types --test ops/ci/production-lifecycle-runner.test.mts" ||
+      packageJson.scripts?.["check:code-quality"] !==
+        "node scripts/check-code-quality.mjs && npm run check:production-lifecycle-runner") {
+    violations.push("package.json: typed lifecycle must retain all 28 serial commands and run portable registry checks plus mandatory native containment");
+  }
+}
+const productionDeployLifecycleCommands = lifecycleUsesRunner
+  ? (typeof preservedLifecycleSerial === "string" ? preservedLifecycleSerial.split(" && ") : [])
+  : productionDeployLifecycle.split(" && ");
 
 const forwardAuthorityPaths = [
   "ops/deploy/deploy-control-bridge-lib.sh",
@@ -347,100 +552,8 @@ const findJob = (source, jobId) => source.match(
   ),
 )?.[1];
 
-// Keep this small execution contract exact: extra YAML keys can skip or mask tests.
-const backendUnitShardingViolations = (source) => {
-  // Parse the whole document first; regex matches cannot detect invalid YAML.
-  try {
-    yaml.load(source, { json: false });
-  } catch (error) {
-    return [`pull-request.yml: invalid YAML: ${error.message}`];
-  }
-  const expected = [
-    "  backend_unit_shards:",
-    "    name: Backend unit shard ${{ matrix.shard }}/4",
-    "    runs-on: ubuntu-latest",
-    "    timeout-minutes: 45",
-    "    strategy:",
-    "      fail-fast: false",
-    "      matrix:",
-    "        shard: [1, 2, 3, 4]",
-    "",
-    "    steps:",
-    "      - name: Check out the review commit",
-    "        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10",
-    "",
-    "      - name: Set up Node.js",
-    "        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
-    "        with:",
-    "          node-version: 22",
-    "          cache: npm",
-    "",
-    "      - name: Install exact dependencies",
-    "        run: npm ci",
-    "",
-    "      - name: Generate the pinned Prisma client",
-    "        run: npm run prisma:generate",
-    "",
-    "      - name: Run backend unit tests",
-    "        run: node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --shard=${{ matrix.shard }}/4",
-    "",
-    "  backend_unit:",
-    "    name: Backend build and unit tests",
-    "    needs: backend_unit_shards",
-    "    if: always()",
-    "    runs-on: ubuntu-latest",
-    "    timeout-minutes: 45",
-    "",
-    "    steps:",
-    "      - name: Require every backend unit shard to succeed",
-    "        run: test \"${{ needs.backend_unit_shards.result }}\" = \"success\"",
-    "",
-    "      - name: Check out the review commit",
-    "        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10",
-    "        with:",
-    "          fetch-depth: 0",
-    "",
-    "      - name: Set up Node.js",
-    "        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
-    "        with:",
-    "          node-version: 22",
-    "          cache: npm",
-    "",
-    "      - name: Install exact dependencies",
-    "        run: npm ci",
-    "",
-    "      - name: Generate the pinned Prisma client",
-    "        run: npm run prisma:generate",
-    "",
-    "      - name: Verify offline paired selector replay",
-    "        run: npm run check:reader-paired-experiment",
-    "",
-    "      - name: Build backend packages",
-    "        run: npm run build",
-    "",
-    "      - name: Prove subscription runtime auth-pool failover",
-    "        run: npm run check:subscription-runtime-auth-pool-e2e",
-    "",
-    "      - name: Prove the vendored subscription runtime bills exact turn usage",
-    "        run: npm run check:subscription-runtime-usage-contract",
-    "",
-    "      - name: Prove Reader Promotion V2 canary control plane",
-    "        run: |",
-    "          node --test scripts/lib/reader-promotion-v2-production-canary-control.test.mjs",
-    "          node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=1024 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath scripts/lib/reader-promotion-v2-production-canary-runner.spec.ts",
-    "          bash ops/deploy/production-runtime/reader-promotion-v2-production-canary.test.sh",
-    "",
-    "",
-  ].join("\n");
-  const actual = ["backend_unit_shards", "backend_unit"].map(
-    (id) => `  ${id}:\n${findJob(source, id) ?? ""}`,
-  ).join("");
-  return actual === expected ? [] : [
-    "backend unit CI must retain four unfiltered shards and the strict stable aggregate",
-  ];
-};
-
 violations.push(...backendUnitShardingViolations(workflow));
+violations.push(...coverageWorkflowViolations(readFileSync(".github/workflows/coverage.yml", "utf8")));
 
 const transitionReviewJob = findJob(transitionReview, "review");
 const transitionPublisherJob = findJob(transitionPublish, "publish");
@@ -604,6 +717,41 @@ if (
   );
 }
 
+// Parse the Flutter stanza semantically; retain the stable version-file contract.
+const flutterCacheViolations = (source) => {
+  let doc;
+  try { doc = loadYaml(source); } catch { return ["invalid Flutter workflow YAML"]; }
+  const steps = doc?.jobs?.frontend?.steps;
+  if (!Array.isArray(steps)) return ["missing Flutter steps"];
+  const setups = steps.filter((step) => typeof step?.uses === "string" && step.uses.startsWith("subosito/flutter-action@"));
+  const versions = steps.filter((step) => step?.id === "flutter_version");
+  const setup = setups[0];
+  const version = versions[0];
+  const expectedSuffix = "${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter_version.outputs.version }}";
+  const expectedRun = [
+    "node <<'NODE'",
+    "const fs = require('node:fs');",
+    "const version = JSON.parse(fs.readFileSync('apps/frontend/.fvmrc', 'utf8')).flutter;",
+    "if (!/^\\d+\\.\\d+\\.\\d+$/.test(version)) throw new Error('Flutter must have an exact stable SDK version');",
+    "fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\\n`);",
+    "NODE",
+  ].join("\n");
+  if (setups.length !== 1 || versions.length !== 1 || steps.indexOf(version) >= steps.indexOf(setup) ||
+      setup.uses !== "subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2" ||
+      setup.if !== undefined || setup["continue-on-error"] !== undefined ||
+      version.if !== undefined || version["continue-on-error"] !== undefined ||
+      typeof version.run !== "string" || version.run.trim() !== expectedRun || version["working-directory"] !== undefined ||
+      setup.with?.channel !== "stable" || setup.with?.["flutter-version-file"] !== "apps/frontend/.fvmrc" ||
+      setup.with?.["flutter-version"] !== undefined || setup.with?.cache !== true || setup.with?.["pub-cache"] !== true ||
+      setup.with?.["cache-key"] !== `flutter-sdk-${expectedSuffix}` ||
+      setup.with?.["pub-cache-key"] !== `flutter-pub-${expectedSuffix}-\${{ hashFiles('apps/frontend/**/pubspec.lock') }}` ||
+      setup.with?.["cache-path"] !== undefined || setup.with?.["pub-cache-path"] !== undefined) {
+    return ["Flutter cache must use the pinned stable SDK, exact resolved version and OS/architecture; only pub cache includes all frontend lockfiles"];
+  }
+  return [];
+};
+violations.push(...flutterCacheViolations(workflow));
+
 const requireScopedFlutterAppTests = (source, sourcePath) => {
   if (!/^\s*flutter test app\/test\s*$/mu.test(source)) {
     violations.push(
@@ -635,6 +783,7 @@ const requiredFragments = [
   "frontend:",
   "npx eslint .",
   "npx tsc --noEmit",
+  "node --test scripts/ci/*.test.mjs",
   "npm run check:architecture",
   "npm run check:user-auth-boundary",
   "npm run check:tenant-rls-postgres",
@@ -755,3 +904,6 @@ if (violations.length > 0) {
 }
 
 console.log("Pull request workflow contract OK");
+}
+
+if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) runReviewCi();

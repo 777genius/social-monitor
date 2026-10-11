@@ -373,3 +373,17 @@ function isExactCount(value: unknown): value is number {
 function isCountRecord(value: unknown): value is Record<string, number> {
   return isRecord(value) && Object.values(value).every(isExactCount);
 }
+
+/** Inventory admission checks the manifest's declared sub-digests and counts,
+ * as well as the canonical rows re-read by the guard. Ordinary capture modes
+ * retain their existing validation behavior. */
+export function assertReaderSummaryDatasetManifestDigest(manifest: ReaderSummaryDayDatasetManifest): void {
+  const dataset = manifest.dataset;
+  const expected = digestRows([dataset.feedRowsSha256, dataset.githubEligibilitySha256,
+    String(dataset.feedRowCount), String(dataset.githubEligibilityRowCount),
+    JSON.stringify(sortedRecord(dataset.providerCounts)), manifest.policy.timestampPolicy]);
+  if (expected !== dataset.aggregateSha256 ||
+      Object.values(dataset.providerCounts).reduce((sum, count) => sum + count, 0) !== dataset.feedRowCount) {
+    throw new Error("First publication manifest counts/sub-digests are inconsistent");
+  }
+}

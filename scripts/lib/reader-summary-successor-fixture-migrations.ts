@@ -10,7 +10,7 @@ import {
   readerSummaryMigrationNames, removeReaderSummaryPublicationMigrationWorkspace,
 } from "./reader-summary-publication-postgres-migrations";
 import {
-  provisionPublicationFixtureProtectedRoles, provisionPublicationFixtureDailyTerminalRole,
+  provisionPublicationFixtureProtectedRoles, provisionPublicationFixtureDailyTerminalRole, provisionPublicationFixtureFirstPublicationRole,
   runReaderSummaryPublicationBootstrapSql, quotePostgresIdentifier as ident,
 } from "../reader-summary-publication-postgres-privileges";
 import { fixtureMigrationRole as migrator, fixtureRuntimeRole as runtime, fixtureRoleUrl } from "./reader-summary-successor-fixture-safety";
@@ -45,6 +45,9 @@ export async function migrateSuccessorFixture(admin: Pool, url: URL): Promise<st
       WITH ADMIN TRUE, INHERIT FALSE, SET FALSE GRANTED BY CURRENT_USER`);
     await provisionPublicationFixtureDailyTerminalRole({ serverAdmin: admin,
       migrationAdminRole: migrator, dailyTerminalPassword: "" });
+    // This preparer retains its attested disposable cluster, including all roles.
+    // Do not drop the finite role while its migrated database still exists.
+    const firstPublicationRoleOwnership = await provisionPublicationFixtureFirstPublicationRole(admin);
     preparePrePublicationMigrations(workspace);
     applyOrderedReaderSummaryMigrations(migrationUrl, workspace);
     await runReaderSummaryPublicationBootstrapSql("pre", migrationUrl, runtime);
@@ -63,6 +66,8 @@ export async function migrateSuccessorFixture(admin: Pool, url: URL): Promise<st
     for (const row of applied.rows) assert.equal(row.checksum, createHash("sha256")
       .update(readFileSync(`prisma/migrations/${row.migration_name}/migration.sql`)).digest("hex"));
     assert.equal((await admin.query("select 1 from _prisma_migrations where finished_at is null and rolled_back_at is null")).rowCount, 0);
+    assert.equal((await admin.query<{ oid: number }>("SELECT oid FROM pg_roles WHERE rolname = $1",
+      ["social_monitor_summary_once"])).rows[0]?.oid, firstPublicationRoleOwnership.oid);
     await provisionSuccessorObserver(admin);
     const audit = await admin.query(`select rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls,
       pg_has_role(rolname,'social_monitor_public_schema_owner','MEMBER') as schema_owner,

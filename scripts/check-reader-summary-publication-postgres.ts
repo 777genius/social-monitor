@@ -66,7 +66,7 @@ import {
   makePublicationFixtureRuntimeDatabaseOwner,
   publicationProtectedRolePresence,
   publicationDatabaseUrl,
-  provisionPublicationFixtureDailyTerminalRole,
+  provisionPublicationFixtureDailyTerminalRole, provisionPublicationFixtureFirstPublicationRole,
   publicationRuntimeDatabaseUrl,
   quotePostgresIdentifier,
   quotePostgresLiteral,
@@ -114,7 +114,7 @@ let dailyActivationDefinerRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
-let fixtureDailyTerminalRoleCreated = false;
+let fixtureDailyTerminalRoleCreated = false; let fixtureFirstPublicationRoleOwnership: Readonly<{ oid: number }> | undefined;
 export type ReaderSummaryPublicationPostgresContract =
   | "feed-promotion"
   | "promotion-v2-ownership"
@@ -213,6 +213,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
       migrationAdminRole,
       runtimeRole,
     );
+    fixtureFirstPublicationRoleOwnership = await provisionPublicationFixtureFirstPublicationRole(serverAdmin);
     fixtureDailyTerminalRoleCreated =
       await provisionPublicationFixtureDailyTerminalRole({
         dailyTerminalPassword,
@@ -469,7 +470,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
       fixtureDatabaseCreated,
       fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,
-      fixtureDailyTerminalRoleCreated,
+      fixtureDailyTerminalRoleCreated, fixtureFirstPublicationRoleOwnership,
     });
   }
   console.log(

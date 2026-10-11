@@ -1,7 +1,7 @@
 // This standalone verifier runs without the TypeScript build. Keep these
 // identities aligned with subscription-runtime-installation.ts.
 export const approvedCodexRuntimeVersion = "0.1.0-main.42-sm.3";
-export const approvedMimoRuntimeVersion = "0.1.0-main.40-sm-mimo.5";
+export const approvedMimoRuntimeVersion = "0.1.0-main.40-sm-mimo.6";
 export const approvedLauncherSha256 =
   "30f7bcac89439ea0eecb3260ee79924fcfab25a87e51be237e289c51f2ccddc1";
 

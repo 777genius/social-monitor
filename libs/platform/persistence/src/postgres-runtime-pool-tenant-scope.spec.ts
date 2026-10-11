@@ -121,6 +121,174 @@ describe('PostgreSQL runtime tenant scope', () => {
     ]);
   });
 
+  // Regression: READ WRITE arrives after the first guard SELECT under default readonly.
+  it('dispatches exact tenant READ WRITE first, then configures system_access false', async () => {
+    const fake = fakePrismaClient();
+    const client = guardRootClientDuringInteractiveTransaction(fake.client);
+    await runWithTenantDatabaseAccess({ tenantId: tenantOne, workspaceId: workspaceOne }, () =>
+      client.$transaction(async tx => {
+        expect(typeof tx.sourceCatalogEntry.findMany).toBe('function');
+        expect(typeof tx.$executeRawUnsafe).toBe('function');
+        expect(fake.calls).toEqual([['transaction']]);
+        await tx.$executeRawUnsafe('  set transaction  read write  ');
+        await tx.scanJob.findMany({ where: { tenantId: tenantOne, workspaceId: workspaceOne } });
+      }));
+    expect(fake.calls).toEqual([['transaction'], ['raw', '  set transaction  read write  '],
+      ['set_config', tenantOne, workspaceOne, 'false'], ['scanJob.findMany']]);
+  });
+
+  // Regression: system context, options, multistatement or postconfigured SQL bypasses scope.
+  it('does not bypass GUCs for system or altered or postconfigured READ WRITE', async () => {
+    for (const args of [ ['SET TRANSACTION READ WRITE;', []], ['SET TRANSACTION READ WRITE', [1]],
+      ['SET TRANSACTION READ WRITE; COMMIT', []], ['SET TRANSACTION READ WRITE, DEFERRABLE', []] ] as const) {
+      const fake = fakePrismaClient(); const client = guardRootClientDuringInteractiveTransaction(fake.client);
+      await runWithTenantDatabaseAccess({ tenantId: tenantOne, workspaceId: workspaceOne }, () =>
+        client.$transaction(tx => tx.$executeRawUnsafe(args[0], ...args[1])));
+      expect(fake.calls[1]).toEqual(['set_config', tenantOne, workspaceOne, 'false']);
+    }
+    const fake = fakePrismaClient(); const client = guardRootClientDuringInteractiveTransaction(fake.client);
+    await runWithSystemDatabaseAccess('synthetic control', () => client.$transaction(tx => tx.$executeRawUnsafe('SET TRANSACTION READ WRITE')));
+    expect(fake.calls[1]).toEqual(['set_config', '', '', 'true']);
+    const configured = fakePrismaClient(); const guarded = guardRootClientDuringInteractiveTransaction(configured.client);
+    await runWithTenantDatabaseAccess({ tenantId: tenantOne, workspaceId: workspaceOne }, () => guarded.$transaction(async tx => {
+      await tx.$executeRawUnsafe('SELECT 1');
+      expect(() => tx.$executeRawUnsafe('SET TRANSACTION READ WRITE'))
+        .toThrow('READ WRITE must be the first transaction action');
+    }));
+    expect(configured.calls).toEqual([['transaction'], ['set_config', tenantOne, workspaceOne, 'false'], ['raw', 'SELECT 1']]);
+  });
+
+  it('keeps explicit READ ONLY intent before and after fallback scope configuration', async () => {
+    const fake = fakePrismaClient();
+    const client = guardRootClientDuringInteractiveTransaction(fake.client);
+
+    await runWithTenantDatabaseAccess(
+      { tenantId: tenantOne, workspaceId: workspaceOne },
+      () => client.$transaction(async tx => {
+        await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY, DEFERRABLE');
+        expect(() => tx.$executeRawUnsafe('SET TRANSACTION READ WRITE'))
+          .toThrow('READ WRITE must be the first transaction action');
+        expect(fake.calls).toEqual([
+          ['transaction'], ['raw', 'SET TRANSACTION READ ONLY, DEFERRABLE'],
+        ]);
+        await tx.scanJob.findMany({
+          where: { tenantId: tenantOne, workspaceId: workspaceOne },
+        });
+        expect(() => tx.$executeRawUnsafe('SET TRANSACTION READ WRITE'))
+          .toThrow('READ WRITE must be the first transaction action');
+      }),
+    );
+
+    expect(fake.calls).toEqual([
+      ['transaction'], ['raw', 'SET TRANSACTION READ ONLY, DEFERRABLE'],
+      ['set_config', tenantOne, workspaceOne, 'false'], ['scanJob.findMany'],
+    ]);
+  });
+
+  it('consumes an actual shared-model action without adding tenant configuration', async () => {
+    const fake = fakePrismaClient();
+    const client = guardRootClientDuringInteractiveTransaction(fake.client);
+
+    await client.$transaction(async tx => {
+      await tx.sourceCatalogEntry.findMany({ where: { enabled: true } });
+      runWithTenantDatabaseAccess(
+        { tenantId: tenantOne, workspaceId: workspaceOne },
+        () => {
+          expect(() => tx.$executeRawUnsafe('SET TRANSACTION READ WRITE'))
+            .toThrow('READ WRITE must be the first transaction action');
+        },
+      );
+    });
+
+    expect(fake.calls).toEqual([['transaction'], ['sourceCatalogEntry.findMany']]);
+  });
+
+  it('rejects READ WRITE after a protected model action', async () => {
+    const fake = fakePrismaClient();
+    const client = guardRootClientDuringInteractiveTransaction(fake.client);
+
+    await runWithTenantDatabaseAccess(
+      { tenantId: tenantOne, workspaceId: workspaceOne },
+      () => client.$transaction(async tx => {
+        await tx.scanJob.findMany({
+          where: { tenantId: tenantOne, workspaceId: workspaceOne },
+        });
+        expect(() => tx.$executeRawUnsafe('SET TRANSACTION READ WRITE'))
+          .toThrow('READ WRITE must be the first transaction action');
+      }),
+    );
+
+    expect(fake.calls).toEqual([
+      ['transaction'], ['set_config', tenantOne, workspaceOne, 'false'],
+      ['scanJob.findMany'],
+    ]);
+  });
+
+  it('consumes unscoped raw dispatch before a later tenant prologue', async () => {
+    const fake = fakePrismaClient();
+    const client = guardRootClientDuringInteractiveTransaction(fake.client);
+
+    await client.$transaction(async tx => {
+      await tx.$executeRawUnsafe('SELECT 1');
+      runWithTenantDatabaseAccess(
+        { tenantId: tenantOne, workspaceId: workspaceOne },
+        () => {
+          expect(() => tx.$executeRawUnsafe('SET TRANSACTION READ WRITE'))
+            .toThrow('READ WRITE must be the first transaction action');
+        },
+      );
+    });
+
+    expect(fake.calls).toEqual([['transaction'], ['raw', 'SELECT 1']]);
+  });
+
+  it.each(['read-only', 'read-write', 'shared', 'protected'] as const)(
+    'consumes the initial %s action while pending and after delegate failure',
+    async initialAction => {
+      const failure = new Error('synthetic first delegate failure');
+      let rejectFirst!: (reason: Error) => void;
+      const pending = new Promise<number>((_resolve, reject) => {
+        rejectFirst = reject;
+      });
+      const fake = fakePrismaClient(() => pending);
+      const client = guardRootClientDuringInteractiveTransaction(fake.client);
+
+      await runWithTenantDatabaseAccess(
+        { tenantId: tenantOne, workspaceId: workspaceOne },
+        () => client.$transaction(async tx => {
+          const first = initialAction === 'shared'
+            ? tx.sourceCatalogEntry.findMany({ where: { enabled: true } })
+            : initialAction === 'protected'
+              ? tx.scanJob.findMany({
+                where: { tenantId: tenantOne, workspaceId: workspaceOne },
+              })
+              : tx.$executeRawUnsafe(initialAction === 'read-only'
+                ? 'SET TRANSACTION READ ONLY, DEFERRABLE'
+                : 'SET TRANSACTION READ WRITE');
+          const expectedCalls = initialAction === 'shared'
+            ? [['transaction'], ['sourceCatalogEntry.findMany']]
+            : initialAction === 'protected'
+              ? [['transaction'], ['set_config', tenantOne, workspaceOne, 'false']]
+              : [['transaction'], ['raw', initialAction === 'read-only'
+                ? 'SET TRANSACTION READ ONLY, DEFERRABLE'
+                : 'SET TRANSACTION READ WRITE']];
+          // No await between the first dispatch and this concurrent attempt.
+          expect(fake.calls).toEqual(expectedCalls);
+          expect(() => tx.$executeRawUnsafe('SET TRANSACTION READ WRITE'))
+            .toThrow('READ WRITE must be the first transaction action');
+          expect(fake.calls).toEqual(expectedCalls);
+
+          const rejected = expect(first).rejects.toBe(failure);
+          rejectFirst(failure);
+          await rejected;
+          expect(() => tx.$executeRawUnsafe('SET TRANSACTION READ WRITE'))
+            .toThrow('READ WRITE must be the first transaction action');
+          expect(fake.calls).toEqual(expectedCalls);
+        }),
+      );
+    },
+  );
+
   it('uses explicit system access and timeout options for cross-tenant worker operations', async () => {
     const fake = fakePrismaClient();
     const client = guardRootClientDuringInteractiveTransaction(fake.client);
@@ -188,7 +356,7 @@ type FakeClient = FakeTransaction & {
   ): Promise<T>;
 };
 
-function fakePrismaClient(): {
+function fakePrismaClient(onAction?: () => Promise<unknown>): {
   readonly calls: unknown[][];
   readonly client: FakeClient;
 } {
@@ -196,10 +364,12 @@ function fakePrismaClient(): {
   const delegate = (name: string): FakeDelegate => ({
     async findMany(): Promise<readonly unknown[]> {
       calls.push([`${name}.findMany`]);
+      await onAction?.();
       return [];
     },
     async count(): Promise<number> {
       calls.push([`${name}.count`]);
+      await onAction?.();
       return 0;
     },
   });
@@ -211,6 +381,7 @@ function fakePrismaClient(): {
     async $executeRawUnsafe(query, ...values): Promise<number> {
       calls.push(query.includes("set_config('social_monitor.tenant_id'")
         ? ['set_config', ...values] : ['raw', query, ...values]);
+      await onAction?.();
       return 1;
     },
   };
