@@ -181,8 +181,8 @@ async function fixture(root: string, scenario: string): Promise<number> {
       return supervise([
         shell('root', `touch ${marker('root-ready')}; if read -r cancellation; then :; fi; sleep 0.2; touch ${marker('root-drained')}; echo ROOT_DRAINED`, 'eof'),
         shell('static', `trap '' TERM INT; echo $$ > ${marker('static-pid')};
-bash --noprofile --norc -c 'trap "" TERM INT; echo $$ > "$1"; while :; do sleep 1; done' child ${marker('grandchild-pid')} &
-touch ${marker('static-ready')}; wait "$!"`),
+bash --noprofile --norc -c 'trap "" TERM INT; echo $$ > "$1.pending"; mv "$1.pending" "$1"; touch "$2"; while :; do sleep 1; done' child ${marker('grandchild-pid')} ${marker('static-ready')} &
+wait "$!"`),
       ], root);
     default: throw new Error(`Unknown synthetic scenario: ${scenario}`);
   }
@@ -374,6 +374,9 @@ if (process.argv[2] === 'leaf') {
           const status = mode === 'success' ? 0 : mode === 'failure' ? (supervisor === 'runner' ? 1 : 7)
             : mode === 'SIGINT' && supervisor === 'runner' ? 130 : 143;
           assert.equal(result.code, status, result.output);
+          // Keeper reaping can precede the recorded leaf's final exit scheduling.
+          // Observe that exact owned PID within the same total drain deadline.
+          while (!await gone(leaf) && performance.now() - started < 10000) await delay(20);
           assert.ok(performance.now() - started < 10000, 'completion and cancellation drain must be bounded');
           assert.match(result.output, /TREE_TAIL/);
           if (supervisor === 'runner' && mode === 'failure') assert.match(result.output, /static: exit 7/);
