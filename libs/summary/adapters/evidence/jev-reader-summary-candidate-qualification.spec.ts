@@ -4,6 +4,7 @@ import type { ReaderValueInventoryItem } from '@social-monitor/relevance/applica
 import { validateReaderValueAnswers, readerValueLabels } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';
 import { SourceContentSafetyPolicy } from '@social-monitor/relevance/domain/source-content-safety';
 import { ConservativeReaderValueInputBuilder } from '@social-monitor/relevance/infrastructure/reader-value/reader-value-input-builder';
+import type { ReaderSummaryEvidenceSelectionParams } from '../../ports/reader-summary-evidence-selector.port';
 import type { SummaryEvidenceItem } from '../../domain';
 import { JevReaderSummaryCandidateQualification } from './jev-reader-summary-candidate-qualification';
 
@@ -12,8 +13,8 @@ const workspace = workspaceId('22222222-2222-4222-8222-222222222222');
 const startedAt = new Date('2026-10-11T00:00:00Z');
 const endedAt = new Date('2026-10-12T00:00:00Z');
 const cutoff = new Date('2026-10-11T16:03:00Z');
-const params = { tenantId: tenant, workspaceId: workspace, scope: { type: 'workspace' as const },
-  period: { startedAt, endedAt, timezone: 'UTC', periodKey: 'daily:test' }, maxItems: 20,
+const params: ReaderSummaryEvidenceSelectionParams = { tenantId: tenant, workspaceId: workspace, scope: { type: 'workspace' as const },
+  period: { cadence: 'daily', startedAt, endedAt, timezone: 'UTC', periodKey: 'daily:test' }, maxItems: 20,
   observedThrough: cutoff };
 
 function fixture() {
