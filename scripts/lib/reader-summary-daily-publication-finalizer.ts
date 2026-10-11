@@ -1,3 +1,4 @@
+import type { ReaderSummaryCandidateQualification } from "@social-monitor/summary/application/contracts/reader-summary-candidate-qualification";
 import type { ConfiguredInterestReaderPort, SourceContentQualityReviewerPort } from "@social-monitor/relevance/ports";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -211,6 +212,7 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
   readonly feedItems?: FeedItemReadRepositoryPort;
   readonly configuredInterests?: ConfiguredInterestReaderPort;
   readonly qualityReviewer?: SourceContentQualityReviewerPort;
+  readonly candidateQualification?: ReaderSummaryCandidateQualification;
   readonly summaryClient: ConstructorParameters<
     typeof PrismaReaderSummaryGitHubProjectionReader
   >[0];
@@ -279,6 +281,7 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
     input.clock,
     new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
     input.storyRelationVerifier ?? undefined,
+    undefined, undefined, input.candidateQualification,
   );
   return Object.freeze({ evidenceSelector, githubProjectionReader });
 };

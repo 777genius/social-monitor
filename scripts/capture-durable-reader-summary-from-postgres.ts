@@ -1,10 +1,9 @@
 import { resolveFirstPublicationMode, readFirstPublicationOperation, assertFirstPublicationServingAuthority } from "./lib/reader-summary-first-publication";
+import { createDailyJevCaptureQualification } from "./lib/reader-summary-daily-jev-qualification";
 import { PrismaMonitoringConnection } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-connection";
 import { PrismaInterestRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-interest.repository";
 import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
 import { createHash } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 
 import { PrismaFeedConnection } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-connection";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
@@ -334,11 +333,17 @@ async function main(): Promise<void> {
         );
     const readerSummaryPolicies = promotionPolicyGuard ??
       baseReaderSummaryPolicies;
+    const configuredInterests = monitoringConnection === undefined ? undefined
+      : new MonitoringConfiguredInterestReader(new PrismaInterestRepository(monitoringConnection));
+    const qualification = createDailyJevCaptureQualification({
+      fresh: dailyReplay === null, mode: process.env.READER_VALUE_MODE,
+      client: summaryConnection, interests: configuredInterests, clock,
+    });
     const publicationWiring =
       createReaderSummaryDailyCapturePublicationWiring({
         replay: dailyReplay,
-        configuredInterests: monitoringConnection === undefined ? undefined
-          : new MonitoringConfiguredInterestReader(new PrismaInterestRepository(monitoringConnection)),
+        configuredInterests,
+        candidateQualification: qualification.selector,
         feedItems,
         summaryClient: summaryConnection,
         clock,
@@ -547,6 +552,10 @@ async function main(): Promise<void> {
             readerSummaryArtifactId: execution.value.readerSummaryId,
           });
     const durableReadback = {
+      ...(qualification.audit() === undefined ? {} : {
+        jevCaptureQualification: qualification.audit(),
+        jevCaptureQualificationSha256: canonicalJsonSha256(qualification.audit()),
+      }),
       summaryContentSha256: canonicalJsonSha256(frontendArtifact.content),
       topicMapSha256: canonicalJsonSha256(frontendArtifact.content.topicMap),
       executionAttestationSetSha256: canonicalJsonSha256(
@@ -827,17 +836,8 @@ const loadFeedInventory = async (
 };
 
 const writeOptionalJsonArtifact = (envName: string, value: unknown): void => {
-  const artifactPath = readEnv(envName);
-  if (artifactPath === undefined) {
-    return;
-  }
-
-  mkdirSync(dirname(artifactPath), { recursive: true });
-  writeLiveEvidenceArtifactAtomically(
-    artifactPath,
-    `${JSON.stringify(value, null, 2)}\n`,
-    envName,
-  );
+  const path = readEnv(envName);
+  if (path !== undefined) writeLiveEvidenceArtifactAtomically(path, `${JSON.stringify(value, null, 2)}\n`, envName);
 };
 
 const readCadence = (): DurableReaderSummaryCadence => {
