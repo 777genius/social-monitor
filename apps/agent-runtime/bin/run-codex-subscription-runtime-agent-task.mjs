@@ -227,6 +227,10 @@ function createMimoSummaryWorker({ input, model }) {
           originalPrompt: job.prompt,
           effectMode: "read_only",
           maxAccountCycles: 1,
+          metadata: {
+            ...job.metadata,
+            codexGoalObjective: "Complete the exact reader-summary task in the initial prompt and return its named structured output. Use all supplied evidence and obey the full instructions and schema.",
+          },
         });
       } catch {
         throw new SubscriptionWorkerError(

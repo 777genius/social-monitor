@@ -24,11 +24,13 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
   const fakeKey = "synthetic-mimo-wrapper-key";
   let options;
   let runs = 0;
+  let executedJob;
   const dependencies = {
     mimoRuntime: { createOneShotExecutor: (value) => {
       options = value;
       return {
-        async run() {
+        async run(job) {
+          executedJob = job;
           runs++;
           return { status: "completed", result: { structuredOutput: { headline: "Synthetic" } } };
         },
@@ -56,9 +58,17 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
     stateRootDir: "/synthetic/state", encryptionKey: "synthetic-local-key",
     env: { OPENAI_API_KEY: "synthetic-ignored-openai-key" },
   }, model: "mimo-v2.6-pro" });
-  const result = await worker.run({ runId: "synthetic-run", prompt: "Summarize." });
+  const prompt = "Synthetic evidence. ".repeat(500);
+  const result = await worker.run({ runId: "synthetic-run", prompt,
+    metadata: { fixture: "preserved", codexGoalObjective: "untrusted override" } });
   assert.deepEqual(result, { structuredOutput: { headline: "Synthetic" } });
   assert.equal(runs, 1);
+  assert.equal(executedJob.prompt, prompt);
+  assert.equal(executedJob.originalPrompt, prompt);
+  assert.ok(prompt.length > 4_000);
+  assert.ok(executedJob.metadata.codexGoalObjective.length < 4_000);
+  assert.notEqual(executedJob.metadata.codexGoalObjective, "untrusted override");
+  assert.equal(executedJob.metadata.fixture, "preserved");
   assert.equal(options.accounts.length, 1);
   assert.equal(options.maxAccountCycles, 1);
   assert.equal(options.safeExecutionPolicy.maxAttempts, 1);
