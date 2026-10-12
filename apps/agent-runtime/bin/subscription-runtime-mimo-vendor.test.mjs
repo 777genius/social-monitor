@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const version = "0.1.0-main.40-sm-mimo.6";
+const version = "0.1.0-main.40-sm-mimo.7";
 const archivePath = `vendor/vioxen-subscription-runtime-${version}.tgz`;
 
 test("the scoped MiMo runtime is pinned and exposes the app-server-goal backend", async () => {
@@ -15,11 +15,11 @@ test("the scoped MiMo runtime is pinned and exposes the app-server-goal backend"
   ]);
   assert.equal(manifest.version, version);
   assert.equal(oldManifest.version, "0.1.0-main.42-sm.3");
-  const [oldWorkerContract, mimoWorkerContract] = await Promise.all([
-    readFile("node_modules/@vioxen/subscription-runtime/dist/worker-codex/file-backend-codex-worker.d.ts", "utf8"),
-    readFile("node_modules/@vioxen/subscription-runtime-mimo/dist/worker-codex/file-backend-codex-worker.d.ts", "utf8"),
-  ]);
-  assert.equal(mimoWorkerContract, oldWorkerContract);
+  const oldWorkerContract = await readFile(
+    "node_modules/@vioxen/subscription-runtime/dist/worker-codex/file-backend-codex-worker.d.ts", "utf8",
+  );
+  assert.equal(createHash("sha256").update(oldWorkerContract).digest("hex"),
+    "c6dfc3e6650bf10458921314dd914a0b0757a45c20f2a2ac1b86e06dfaee8206");
   assert.equal(lock.packages[""].dependencies["@vioxen/subscription-runtime-mimo"],
     `file:${archivePath}`);
   assert.equal(lock.packages["node_modules/@vioxen/subscription-runtime-mimo"].integrity,
@@ -62,6 +62,12 @@ test("the scoped MiMo runtime is pinned and exposes the app-server-goal backend"
       schema: options.outputSchemas.social_monitor_reader_summary_artifact,
     },
   );
+  const engine = worker.agentDriver.engine;
+  assert.equal(engine.options.nativeToolSurface, "disabled");
+  assert.equal(engine.options.nativeGoalControls, true);
+  assert.match(engine.options.executionProfile.developerInstructions, /use get_goal/u);
+  assert.match(engine.options.executionProfile.developerInstructions,
+    /update_goal\(\{status:"complete"\}\) before your final response/u);
   const config = worker.agentDriver.options.mimoConfigToml;
   assert.match(config, /\[model_providers\.mimo\]/u);
   assert.match(config, /enabled_tools = \[\]/u);
