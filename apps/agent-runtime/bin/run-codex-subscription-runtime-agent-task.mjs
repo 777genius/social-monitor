@@ -62,6 +62,11 @@ const admission = admitSubscriptionRuntimeWrapperRequest({
   ? readerPromotionV2CanaryActivationCapability
   : undefined);
 const isMimoSummary = admission.profile.modelBackend === "xiaomi-mimo-token-plan";
+const createMimoPresentationCompletionValidator = isMimoSummary &&
+  admission.canonicalRequest.context.purpose === "social_monitor.reader_summary.promotion_presentation.v3"
+  ? (await lifecycle.work(() => import(new URL(
+    "../../../dist/apps/agent-runtime/src/mimo-presentation-completion.js", import.meta.url,
+  ).href))).createMimoPresentationCompletionValidator : undefined;
 const isSourceContentAssessment = admission.canonicalRequest.context.purpose === "social_monitor.relevance.assess_source_content.v1";
 lifecycle.configure(isSourceContentAssessment || isMimoSummary, admission.canonicalRequest.timeoutMs,
   isMimoSummary ? Math.min(20_000, Math.max(1, Math.floor(admission.canonicalRequest.timeoutMs / 2))) : 20_000);
@@ -166,6 +171,10 @@ function createMimoSummaryWorker({ input, model }) {
     throw new Error("MiMo reader summary requires its named output schema");
   }
   const outputSchemas = { [schemaName]: summaryTask.controls.outputSchema };
+  const presentationCompletion = purpose === "social_monitor.reader_summary.promotion_presentation.v3"
+    ? createMimoPresentationCompletionValidator({ purpose, provider: admission.profile.provider,
+      model, modelBackend: admission.profile.modelBackend, reasoningEffort: admission.profile.reasoningEffort,
+      task: summaryTask }) : undefined;
   const outputContract = `TRUSTED NAMED OUTPUT CONTRACT:
 The final answer must be one JSON object matching the admitted schema "${schemaName}" below, including the required top-level property "${expected[1]}" of type "${expected[2]}". Return the output object, not the original input envelope or a schema description.
 ${JSON.stringify(summaryTask.controls.outputSchema)}`;
@@ -219,6 +228,9 @@ ${JSON.stringify(summaryTask.controls.outputSchema)}`;
           warmupPrompt: false,
           cleanThreadPrewarm: false,
           reasoningEffort: admission.profile.reasoningEffort,
+          ...(presentationCompletion === undefined ? {} : {
+            maxGoalTurns: 1, completedGoalOutputValidator: presentationCompletion,
+          }),
           ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
         } }],
       });
@@ -226,7 +238,10 @@ ${JSON.stringify(summaryTask.controls.outputSchema)}`;
       try {
         result = await executor.run({
           ...job,
-          prompt: `Mandatory lifecycle order:
+          prompt: presentationCompletion !== undefined ? `Prepare the complete named presentation output for every supplied candidate. An active native Goal already exists; do not create another Goal. The trusted host validates the completed output and finishes that native Goal. Return only the final JSON object; do not call lifecycle tools or request another turn.
+
+ORIGINAL JOB PROMPT (VERBATIM):
+${job.prompt}` : `Mandatory lifecycle order:
 1. An active native Goal already exists. Do not create another goal. First call native get_goal.
 2. Fulfill every requirement in the original job prompt, including all supplied evidence, cutoff rules, and named-schema requirements.
 3. Prepare the exact named structured output internally, including the required root property "${expected[1]}". Follow the trusted admitted JSON schema in the system instructions, not the original input envelope.
@@ -235,7 +250,11 @@ ${JSON.stringify(summaryTask.controls.outputSchema)}`;
 
 ORIGINAL JOB PROMPT (VERBATIM):
 ${job.prompt}`,
-          systemPrompt: `${job.systemPrompt ?? ""}
+          systemPrompt: presentationCompletion !== undefined ? `${job.systemPrompt ?? ""}
+
+Use only the supplied full source. Preserve every material qualification and exact evidence offset. An active native Goal is owned by the host; its completion follows strict validation of your final output. Filesystem, shell, web, delegation, SQL, source, and publication effects are unavailable. Return the named JSON output in this one turn without lifecycle tool calls.
+
+${outputContract}` : `${job.systemPrompt ?? ""}
 
 An active native Goal already exists; do not create another goal. Call native get_goal first and native update_goal({status:'complete'}) after fulfilling the task and preparing its named output, before the final answer. Filesystem, shell, web, delegation, SQL, source, and publication effects are unavailable and must not be attempted. Use only the supplied prompt and evidence, preserve the original named schema, cutoff and evidence rules, and make one attempt. The final-answer JSON-only rule applies after lifecycle tools.
 
@@ -246,7 +265,9 @@ ${outputContract}`,
           maxAccountCycles: 1,
           metadata: {
             ...job.metadata,
-            codexGoalObjective: "Complete the reader-summary task and prepare its named JSON output before marking the goal complete.",
+            codexGoalObjective: presentationCompletion !== undefined
+              ? "Produce complete named presentation JSON for every candidate, with source-grounded headlines or explicit unavailable results."
+              : "Complete the reader-summary task and prepare its named JSON output before marking the goal complete.",
           },
         });
       } catch {

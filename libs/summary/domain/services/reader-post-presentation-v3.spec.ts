@@ -1,4 +1,4 @@
-import { validDisplayHeadlineSource } from "./reader-post-display-headline";
+import { validDisplayHeadlineContract, validDisplayHeadlineSource } from "./reader-post-display-headline";
 import { canonicalPromotionPayload, promotionPayloadDigest } from "./reader-post-promotion-attestation";
 import {
   publicReaderPostPresentationV3Seal,
@@ -8,6 +8,18 @@ import {
 } from "./reader-post-presentation-v3";
 
 describe("Promotion V3 full-source presentation", () => {
+  it("retains full binding and whole-source validation after sharing the content predicate", () => {
+    const input = presentationInput("Supported body late caveat");
+    const headline = acceptedHeadline(input, "late caveat");
+    expect(validDisplayHeadlineContract(headline, capturedSource(input), 64_000)).toBe(true);
+    for (const invalid of [
+      { ...headline, binding: { ...headline.binding, candidateId: "substituted" } },
+      { ...headline, binding: { ...headline.binding, trustedIntent: "substituted" } },
+      { ...headline, binding: { ...headline.binding, reviewedInputDigest: "0".repeat(64) } },
+      { ...headline, wholeInput: { ...headline.wholeInput, bodyLength: input.body.length - 1 } },
+    ]) expect(validDisplayHeadlineContract(invalid, capturedSource(input), 64_000)).toBe(false);
+  });
+
   it.each([12_000, 12_001, 64_000])(
     "accepts a complete %i UTF-16 body without changing the V2 limit",
     (length) => {

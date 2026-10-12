@@ -15,9 +15,9 @@ import {
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.42-sm.3";
 export const approvedMimoRuntimePackageVersion =
-  "0.1.0-main.40-sm-mimo.7";
+  "0.1.0-main.40-sm-mimo.8";
 const approvedMimoManifestSha256 =
-  "6144a23ff410c9bc778bde0a7181d7b34985a74532c5777bd9355b65806b9458";
+  "dc54730b46e0f678711d0a69d1e3159f9a094a549d5b7ab32ee59b250203bb23";
 const approvedMimoWorkerEntrypointSha256 =
   "bc60f8ac04f188ddab18e16e17990a9e7406790d0a019a658727e43682f2acae";
 // SHA256 of sorted "relative path\0file SHA256\n" records for all regular
@@ -27,7 +27,7 @@ const approvedBaseRuntimeCodeSha256 = Object.freeze([
   "0b1ae195815bd45ce2aab77cb4345e4ea07e2af70410527959bf810792669512",
 ]);
 const approvedMimoRuntimeCodeSha256 =
-  "2332f718cbdae6c9e493dc6405455fc6683961d223552bec80cc1d337a4b0827";
+  "c40c70c4e8cd56c0e28102a3778e95fcfdf1039c8f4f06ebfbaa3babb826559a";
 // Package code resolved from the installed node_modules ancestor while the
 // wrapper imports the two runtime distributions, before it reads the key.
 const approvedHoistedRuntimeCodeSha256 = Object.freeze({
@@ -41,7 +41,7 @@ const approvedHoistedRuntimeCodeSha256 = Object.freeze({
   "json-schema-traverse": "e027afb34851b07a5cc5186b3a6d76b3273214474a35b13dacce9a15b0d309db",
 });
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "3a9718b8cc33e3f4439936d4cdd77255fe24afbd6b9db3e57e6da26ee701f051";
+  "f3e2a724964ad47623a9553be082e87a93e8191d8c2e7e86194b583b76e9891e";
 
 // Repository wrapper approval, separate from the vendored package provenance.
 // Pin the local import closure too: launcher bytes alone do not bind helpers.
@@ -68,7 +68,7 @@ const approvedSubscriptionRuntimeDependencies = Object.freeze({
   "codex-auth-pool-routing.mjs":
     "5b76a13787a92852282488d5beec8ebb3bfd27f9dfbc059daa8bb521b5524c49",
   "subscription-runtime-purpose-model-policy.mjs":
-    "f6c4409984abfd5bee06c10add67d65c9783be96aea06b17a4744a5af12e3520",
+    "d96beb211e8ac582019bd0ab05554205b129a7ea113ee1068253540e43b50b2c",
   "reader-promotion-v2-canary-contract.cjs":
     "13432d41d7999d15f22880017e73cbd943c209db62161b2a6a2bec6b0766775c",
 });

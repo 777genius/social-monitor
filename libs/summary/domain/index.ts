@@ -126,3 +126,5 @@ export { readerPostDisplayHeadline, readerPostPublishedHeadline, capturedReaderS
   readerCapturedSourceDigest, isReaderDisplayReadyLead } from
   "./services/reader-post-display-headline";
 export { readerDisplayIdentityMatches } from "./services/reader-post-display-identity";
+export { readerPostPresentationCandidates, validReaderPostPresentationProposals,
+  readerPostPresentationV3OutputSchema } from "./services/reader-post-presentation-v3-proposal";

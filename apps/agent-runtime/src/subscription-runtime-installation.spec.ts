@@ -98,9 +98,9 @@ describe("subscription runtime installation admission", () => {
       join(packageRoot, "node_modules"), { recursive: true, force: true });
     const mimoPackageRoot = join(modules, "@vioxen/subscription-runtime-mimo");
     await mkdir(mimoPackageRoot, { recursive: true });
-    const mimoArchive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.7.tgz");
+    const mimoArchive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.8.tgz");
     expect(createHash("sha256").update(await readFile(mimoArchive)).digest("hex")).toBe(
-      "dd6bb14246bfcfb2b86080e5f5b900adac508141e144fb0070de688f5dc866bf",
+      "9024cfb46013b6ee8d557d4bfb139e8328e637b5e71d169031f60ea2425b075c",
     );
     await promisify(execFile)("tar", [
       "-xzf", mimoArchive,
@@ -174,13 +174,13 @@ describe("subscription runtime installation admission", () => {
       command, "xiaomi-mimo-token-plan",
     )).resolves.toMatchObject({
       runtimePackageVersion: approvedSubscriptionRuntimePackageVersion,
-      mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.7",
+      mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.8",
     });
     const health = await new SubscriptionRuntimeCliExecutor({
       command, ephemeral: false, workspaceRoot: workspace,
       allowedModelBackends: ["xiaomi-mimo-token-plan"],
     }).checkHealth();
-    expect(health).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.7" });
+    expect(health).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.8" });
   }, distributionIoTimeoutMs);
 
   it("rejects the base archive without its locked installed dependency completion", async () => {

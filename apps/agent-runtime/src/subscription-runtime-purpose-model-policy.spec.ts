@@ -63,7 +63,7 @@ describe("subscription runtime purpose policy", () => {
         provider: "codex",
         model: "mimo-v2.6-pro",
         modelBackend: "xiaomi-mimo-token-plan",
-        reasoningEffort: "high",
+        reasoningEffort: purpose.endsWith("promotion_presentation.v3") ? "none" : "high",
         outputKind: "structured_output",
       });
       expect((admitted.canonicalRequest.task as Record<string, unknown>).outputSchemaName).toBe(name);
@@ -71,6 +71,7 @@ describe("subscription runtime purpose policy", () => {
         { outputSchemaName: "unrelated" },
         { schemaVersion: "unrelated.v1" },
         { toolsEnabled: true },
+        { reasoningEffort: purpose.endsWith("promotion_presentation.v3") ? "high" : "none" },
       ]) {
         expect(() => admitSubscriptionRuntimeRequest(request({
           purpose,

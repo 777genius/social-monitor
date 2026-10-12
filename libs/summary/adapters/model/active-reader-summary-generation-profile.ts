@@ -16,6 +16,7 @@ export const activeReaderSummaryModel = "gpt-5.6-sol" as const;
 export const activeReaderSummaryReasoningEffort = "high" as const;
 export const mimoReaderSummaryBackend = "xiaomi-mimo-token-plan" as const;
 export const mimoReaderSummaryModel = "mimo-v2.6-pro" as const;
+export const mimoPresentationReasoningEffort = "none" as const;
 
 export type ReaderSummaryGenerationBackend =
   | "openai-chatgpt"
@@ -139,7 +140,10 @@ export const assertMimoReaderSummaryExecution = (params: {
     attestation.purpose !== params.purpose ||
     attestation.provider !== activeReaderSummaryProvider ||
     attestation.model !== mimoReaderSummaryModel ||
-    attestation.reasoningEffort !== activeReaderSummaryReasoningEffort ||
+    params.command.controls.reasoningEffort !== (params.purpose === activeReaderSummaryPurposes.promotionPresentation
+      ? mimoPresentationReasoningEffort : activeReaderSummaryReasoningEffort) ||
+    attestation.reasoningEffort !== (params.purpose === activeReaderSummaryPurposes.promotionPresentation
+      ? mimoPresentationReasoningEffort : activeReaderSummaryReasoningEffort) ||
     attestation.runtimeEngine !== subscriptionRuntimeEngine ||
     !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
     !isSha256Hex(attestation.canonicalRequestSha256) ||

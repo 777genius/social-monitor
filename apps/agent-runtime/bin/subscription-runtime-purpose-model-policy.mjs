@@ -47,6 +47,10 @@ const mimoReaderSummaryStructuredProfile = Object.freeze({
   retryMode: "never",
 });
 
+const mimoPresentationStructuredProfile = Object.freeze({
+  ...mimoReaderSummaryStructuredProfile, reasoningEffort: "none",
+});
+
 const mimoSummaryPurposes = new Set([
   "social_monitor.reader_summary.promotion_presentation.v3",
   "social_monitor.reader_summary.generate.v2",
@@ -139,7 +143,8 @@ export const admitSubscriptionRuntimeWrapperRequest = (
   const purpose = nonEmptyString(context.purpose, "request.context.purpose");
   const profile = controls.modelBackend === "xiaomi-mimo-token-plan" &&
     mimoSummaryPurposes.has(purpose)
-    ? mimoReaderSummaryStructuredProfile
+    ? (purpose === "social_monitor.reader_summary.promotion_presentation.v3"
+      ? mimoPresentationStructuredProfile : mimoReaderSummaryStructuredProfile)
     : profilesByPurpose[purpose] ??
       (activationCapability === readerPromotionV2CanaryActivationCapability
         ? capabilityProfilesByPurpose[purpose]
