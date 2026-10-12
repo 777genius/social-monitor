@@ -41,7 +41,7 @@ const approvedHoistedRuntimeCodeSha256 = Object.freeze({
   "json-schema-traverse": "e027afb34851b07a5cc5186b3a6d76b3273214474a35b13dacce9a15b0d309db",
 });
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "bc1ddab061dfaa8ad967aff1480eeeca4a7235f5961dfb29e440d2648d41c8f4";
+  "a444d0c96f65c20f9d7b3a68fca04561edc2140aee96d2c2c2318d5f29c14ff2";
 
 // Repository wrapper approval, separate from the vendored package provenance.
 // Pin the local import closure too: launcher bytes alone do not bind helpers.
@@ -68,7 +68,7 @@ const approvedSubscriptionRuntimeDependencies = Object.freeze({
   "codex-auth-pool-routing.mjs":
     "5b76a13787a92852282488d5beec8ebb3bfd27f9dfbc059daa8bb521b5524c49",
   "subscription-runtime-purpose-model-policy.mjs":
-    "7283febe57d5ede4847bd8acf7ae08cf950ff4bf952529faeb2667ace30c1cc6",
+    "f6c4409984abfd5bee06c10add67d65c9783be96aea06b17a4744a5af12e3520",
   "reader-promotion-v2-canary-contract.cjs":
     "13432d41d7999d15f22880017e73cbd943c209db62161b2a6a2bec6b0766775c",
 });

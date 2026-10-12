@@ -1,4 +1,5 @@
-import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand } from "../../ports";
+import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
+import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../ports";
 import {
   AgentRuntimePromotionPresentationV3Builder,
   resolveAgentRuntimePromotionPresentationV3BuilderOptions,
@@ -25,6 +26,60 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       controls: expect.objectContaining({ model: "gpt-5.6-sol" }),
     });
     expect(client.commands[0]?.prompt).not.toContain(input.trustedIntent);
+  });
+
+  it("uses MiMo for V3 presentation when the daily backend is MiMo", async () => {
+    const client = new AttestedPresentationRuntimeClient();
+    const builder = new AgentRuntimePromotionPresentationV3Builder(
+      resolveAgentRuntimePromotionPresentationV3BuilderOptions({
+        AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+        AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+      }, client));
+    expect((await builder.build([fixtureInput()]))[0]).toMatchObject({ status: "available" });
+    expect(client.commands[0]?.controls).toMatchObject({
+      model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan",
+      reasoningEffort: "high", outputSchemaName: "social_monitor_reader_post_presentation_v3",
+      schemaVersion: "reader_post_presentation.v3",
+    });
+  });
+
+  it("isolates MiMo identity from Codex without changing exact MiMo retries", async () => {
+    const client = new AttestedPresentationRuntimeClient();
+    const codex = new AgentRuntimePromotionPresentationV3Builder({ client });
+    const mimo = new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan", model: "mimo-v2.6-pro" });
+    await codex.build([fixtureInput()]);
+    await mimo.build([fixtureInput()]);
+    await mimo.build([fixtureInput()]);
+    expect(client.commands[0]?.requestId).not.toBe(client.commands[1]?.requestId);
+    expect(client.commands[1]?.requestId).toBe(client.commands[2]?.requestId);
+  });
+
+  it("refuses MiMo output without physical execution attestation", async () => {
+    const builder = new AgentRuntimePromotionPresentationV3Builder({
+      client: new PresentationRuntimeClient(), modelBackend: "xiaomi-mimo-token-plan" });
+    await expect(builder.build([fixtureInput()])).rejects.toThrow("execution attestation is invalid");
+  });
+
+  it("rejects a fallback model attestation before sealing a headline", async () => {
+    const client = new AttestedPresentationRuntimeClient();
+    const original = client.runTask.bind(client);
+    jest.spyOn(client, "runTask").mockImplementation(async command => {
+      const result = await original(command);
+      return { ...result, executionAttestation: {
+        ...result.executionAttestation!, model: "gpt-5.6-sol",
+      } };
+    });
+    const builder = new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" });
+    await expect(builder.build([fixtureInput()])).rejects.toThrow("execution attestation is invalid");
+  });
+
+  it("rejects a conflicting presentation model under MiMo", () => {
+    expect(() => resolveAgentRuntimePromotionPresentationV3BuilderOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_MODEL: "gpt-5.6-sol",
+    }, new PresentationRuntimeClient())).toThrow("conflicts with purpose policy");
   });
 
   it("fails closed for an unsupported runtime provider configuration", () => {
@@ -56,7 +111,7 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
 class PresentationRuntimeClient implements AgentRuntimeClientPort {
   readonly commands: AgentRuntimeTaskCommand[] = [];
 
-  async runTask(command: AgentRuntimeTaskCommand) {
+  async runTask(command: AgentRuntimeTaskCommand): Promise<AgentRuntimeTaskResult> {
     this.commands.push(command);
     const parsed = JSON.parse(command.prompt) as { candidates: { candidateId: string }[] };
     return {
@@ -78,6 +133,12 @@ class PresentationRuntimeClient implements AgentRuntimeClientPort {
   async checkHealth() {
     return { status: "serving" as const, runtimeEngine: "test",
       runtimeVersion: "test", warnings: [] };
+  }
+}
+
+class AttestedPresentationRuntimeClient extends PresentationRuntimeClient {
+  override async runTask(command: AgentRuntimeTaskCommand) {
+    return withTestExecutionAttestation(command, await super.runTask(command));
   }
 }
 
