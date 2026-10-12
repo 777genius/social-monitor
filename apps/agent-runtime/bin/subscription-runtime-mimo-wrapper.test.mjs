@@ -59,11 +59,18 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
     env: { OPENAI_API_KEY: "synthetic-ignored-openai-key" },
   }, model: "mimo-v2.6-pro" });
   const prompt = "Synthetic evidence. ".repeat(500);
-  const result = await worker.run({ runId: "synthetic-run", prompt,
+  const systemPrompt = "Original cutoff and output constraints.";
+  const result = await worker.run({ runId: "synthetic-run", prompt, systemPrompt,
     metadata: { fixture: "preserved", codexGoalObjective: "untrusted override" } });
   assert.deepEqual(result, { structuredOutput: { headline: "Synthetic" } });
   assert.equal(runs, 1);
-  assert.equal(executedJob.prompt, prompt);
+  assert.ok(executedJob.prompt.endsWith(prompt));
+  assert.ok(executedJob.systemPrompt.startsWith(systemPrompt));
+  assert.match(executedJob.prompt, /First call native get_goal/u);
+  assert.match(executedJob.prompt, /Only after every original requirement is fulfilled/u);
+  assert.match(executedJob.prompt, /update_goal\(\{status:'complete'\}\)/u);
+  assert.match(executedJob.systemPrompt, /do not create another goal/u);
+  assert.equal(executedJob.controls, undefined);
   assert.equal(executedJob.originalPrompt, prompt);
   assert.ok(prompt.length > 4_000);
   assert.ok(executedJob.metadata.codexGoalObjective.length < 4_000);

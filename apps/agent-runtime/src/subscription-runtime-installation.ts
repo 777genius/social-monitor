@@ -41,7 +41,7 @@ const approvedHoistedRuntimeCodeSha256 = Object.freeze({
   "json-schema-traverse": "e027afb34851b07a5cc5186b3a6d76b3273214474a35b13dacce9a15b0d309db",
 });
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "46b77d2f99f95c35cbf363aa0db7fbd4df21c7ee43a5580a51abce969887dc19";
+  "53442a12cd35781489880f60548fc9746929f9fec9d26c0655d389412fd7f42f";
 
 // Repository wrapper approval, separate from the vendored package provenance.
 // Pin the local import closure too: launcher bytes alone do not bind helpers.

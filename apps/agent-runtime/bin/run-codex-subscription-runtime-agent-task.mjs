@@ -223,13 +223,25 @@ function createMimoSummaryWorker({ input, model }) {
       try {
         result = await executor.run({
           ...job,
+          prompt: `Mandatory lifecycle order:
+1. An active native Goal already exists. Do not create another goal. First call native get_goal.
+2. Fulfill every requirement in the original job prompt, including all supplied evidence, cutoff rules, and named-schema requirements.
+3. Prepare the exact named structured output internally.
+4. Only after every original requirement is fulfilled and that output is ready, call native update_goal({status:'complete'}).
+5. After lifecycle tools, return only the prepared JSON value. The final answer is JSON-only: no Markdown, prose, or commentary.
+
+ORIGINAL JOB PROMPT (VERBATIM):
+${job.prompt}`,
+          systemPrompt: `${job.systemPrompt ?? ""}
+
+An active native Goal already exists; do not create another goal. Call native get_goal first and native update_goal({status:'complete'}) after fulfilling the task and preparing its named output, before the final answer. Filesystem, shell, web, delegation, SQL, source, and publication effects are unavailable and must not be attempted. Use only the supplied prompt and evidence, preserve the original named schema, cutoff and evidence rules, and make one attempt. The final-answer JSON-only rule applies after lifecycle tools.`,
           taskId,
           originalPrompt: job.prompt,
           effectMode: "read_only",
           maxAccountCycles: 1,
           metadata: {
             ...job.metadata,
-            codexGoalObjective: "Complete the exact reader-summary task in the initial prompt and return its named structured output. Use all supplied evidence and obey the full instructions and schema.",
+            codexGoalObjective: "Complete the reader-summary task and prepare its named JSON output before marking the goal complete.",
           },
         });
       } catch {
