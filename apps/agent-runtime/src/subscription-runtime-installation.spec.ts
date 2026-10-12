@@ -38,7 +38,7 @@ const launcherName = "run-codex-subscription-runtime-agent-task.mjs";
 // Inventories traverse real installed bytes. Keep the admitted fixture immutable;
 // writable variants use copy-on-write where the filesystem supports it.
 const cloneInstalledPackage = (source: string, destination: string) =>
-  cp(source, destination, { recursive: true, mode: constants.COPYFILE_FICLONE });
+  cp(source, destination, { recursive: true, dereference: true, mode: constants.COPYFILE_FICLONE });
 const distributionIoTimeoutMs = 30_000;
 const dependencyNames = [
   "assessment-cli-lifecycle.mjs",
@@ -98,9 +98,9 @@ describe("subscription runtime installation admission", () => {
       join(packageRoot, "node_modules"), { recursive: true, force: true });
     const mimoPackageRoot = join(modules, "@vioxen/subscription-runtime-mimo");
     await mkdir(mimoPackageRoot, { recursive: true });
-    const mimoArchive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.6.tgz");
+    const mimoArchive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.7.tgz");
     expect(createHash("sha256").update(await readFile(mimoArchive)).digest("hex")).toBe(
-      "2ef67f79d496f6a2112577025c1d8d4d675b8f67d850529df88b43091c3f11aa",
+      "dd6bb14246bfcfb2b86080e5f5b900adac508141e144fb0070de688f5dc866bf",
     );
     await promisify(execFile)("tar", [
       "-xzf", mimoArchive,
@@ -174,13 +174,13 @@ describe("subscription runtime installation admission", () => {
       command, "xiaomi-mimo-token-plan",
     )).resolves.toMatchObject({
       runtimePackageVersion: approvedSubscriptionRuntimePackageVersion,
-      mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.6",
+      mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.7",
     });
     const health = await new SubscriptionRuntimeCliExecutor({
       command, ephemeral: false, workspaceRoot: workspace,
       allowedModelBackends: ["xiaomi-mimo-token-plan"],
     }).checkHealth();
-    expect(health).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.6" });
+    expect(health).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.7" });
   }, distributionIoTimeoutMs);
 
   it("rejects the base archive without its locked installed dependency completion", async () => {
@@ -327,8 +327,7 @@ describe("subscription runtime installation admission", () => {
     const modules = join(root!, "node_modules/@vioxen");
     await mkdir(modules, { recursive: true });
     const base = join(modules, "subscription-runtime");
-    await cp(join(process.cwd(), "node_modules/@vioxen/subscription-runtime"), base,
-      { recursive: true });
+    await cloneInstalledPackage(join(process.cwd(), "node_modules/@vioxen/subscription-runtime"), base);
     await symlink(join(installationRoot, "node_modules/@vioxen/subscription-runtime-mimo"),
       join(modules, "subscription-runtime-mimo"));
     await appendFile(join(base, "dist/worker-local/agent-task-runner/cli.js"),
@@ -419,8 +418,7 @@ describe("subscription runtime installation admission", () => {
         join(root!, "node_modules", name));
     }
     const fakeBase = join(workspace, "base-runtime");
-    await cp(join(process.cwd(), "node_modules/@vioxen/subscription-runtime"), fakeBase,
-      { recursive: true });
+    await cloneInstalledPackage(join(process.cwd(), "node_modules/@vioxen/subscription-runtime"), fakeBase);
     await writeFile(join(fakeBase, "dist/worker-local/agent-task-runner/cli.js"),
       "export async function runSubscriptionAgentTaskCli() { " +
       "process.stdout.write(JSON.stringify({ protocolVersion: 1, status: 'completed', " +

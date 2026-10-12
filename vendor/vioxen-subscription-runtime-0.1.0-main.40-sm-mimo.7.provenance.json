@@ -1,0 +1,69 @@
+{
+  "sourceRepository": "https://github.com/vioxen/subscription-runtime",
+  "sourceCommit": "ec1db998bb002aa41b9a45ce44d5eadc9836ca2d",
+  "upstreamVersion": "0.1.0-main.40",
+  "vendorVersion": "0.1.0-main.40-sm-mimo.7",
+  "sourcePatches": [],
+  "sourceBundle": {
+    "path": "vendor/vioxen-subscription-runtime-ec1db998.bundle",
+    "sha256": "b2bd5f0d4987e7bf3135e3b8b14ed717c03d242fd5957343b915ed0537648a20"
+  },
+  "archive": {
+    "path": "vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.7.tgz",
+    "sha256": "dd6bb14246bfcfb2b86080e5f5b900adac508141e144fb0070de688f5dc866bf",
+    "integrity": "sha512-zY+WrItFsJkWobuvnUZt/yqtlY8rCtWWKs0mlWN+IU387r+Xx9GjdS9NI8YhzpyJ6zicu1iOtIbzvqt7Ubtl6g=="
+  },
+  "installedDistribution": {
+    "manifestSha256": "6144a23ff410c9bc778bde0a7181d7b34985a74532c5777bd9355b65806b9458",
+    "workerEntrypointSha256": "bc60f8ac04f188ddab18e16e17990a9e7406790d0a019a658727e43682f2acae",
+    "codeSha256": "2332f718cbdae6c9e493dc6405455fc6683961d223552bec80cc1d337a4b0827",
+    "regularFiles": 9542
+  },
+  "runtimeDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.237",
+    "@anthropic-ai/sdk": "0.123.0",
+    "@vioxen/agent-account-observability": "0.1.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@types/node": "22.20.1",
+    "ajv": "8.20.0",
+    "libsodium-wrappers": "0.8.4",
+    "zod": "4.4.3"
+  },
+  "compilerOnlyPeers": {
+    "source": "exact upstream package-lock.json via npm ci --ignore-scripts",
+    "vite": "8.0.16",
+    "vitest": "4.1.8",
+    "shipped": false
+  },
+  "build": {
+    "node": "24.21.0",
+    "typescript": "6.0.3",
+    "command": "npm run build",
+    "runtimeDependencySource": "existing locked Social Monitor stage-r3"
+  },
+  "upstreamCI": {
+    "url": "https://github.com/vioxen/subscription-runtime/actions/runs/38225679487",
+    "conclusion": "failure",
+    "passed": [
+      "quality",
+      "package",
+      "native-probe-source",
+      "unit-tests",
+      "crash-boundary-shards-complete"
+    ],
+    "unstartedJob": "observer-mount-tests",
+    "unstartedReason": "GitHub billing/spending limit"
+  },
+  "ordinaryRuntimeUnchanged": "0.1.0-main.42-sm.3",
+  "productSecurityCompletion": {
+    "archiveBytesChanged": false,
+    "patchedOverrides": {
+      "fast-uri": "3.1.8",
+      "hono": "4.13.13",
+      "ip-address": "10.7.4",
+      "@nestjs/swagger > js-yaml": "5.4.3",
+      "multer": "2.4.0"
+    },
+    "approvedHoistedFastUriCodeSha256": "b321bf34632d462aaecc40ed5082dafee2a45206680e9181bfd185bd3a3e59c3"
+  }
+}

@@ -11,11 +11,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const commit = "55ec157feb34980a21d9574bcc361344cfa09fd9";
-const bundleSha = "c25be61be2596ad94b77677763cc2132e327565c1743d410b967442f0a18bc4a";
-const archiveSha = "2ef67f79d496f6a2112577025c1d8d4d675b8f67d850529df88b43091c3f11aa";
-const version = "0.1.0-main.40-sm-mimo.6";
-const bundle = join(root, "vendor/vioxen-subscription-runtime-55ec157f.bundle");
+const commit = "ec1db998bb002aa41b9a45ce44d5eadc9836ca2d";
+const bundleSha = "b2bd5f0d4987e7bf3135e3b8b14ed717c03d242fd5957343b915ed0537648a20";
+const archiveSha = "dd6bb14246bfcfb2b86080e5f5b900adac508141e144fb0070de688f5dc866bf";
+const version = "0.1.0-main.40-sm-mimo.7";
+const bundle = join(root, "vendor/vioxen-subscription-runtime-ec1db998.bundle");
 const archive = join(root, `vendor/vioxen-subscription-runtime-${version}.tgz`);
 const buildArchive = process.argv.includes("--build-archive");
 const scratch = await mkdtemp(join(tmpdir(), "social-monitor-mimo-rebuild-"));
@@ -39,10 +39,20 @@ try {
   run("git", ["-C", gitDir, "archive", "--format=tar", "-o", sourceTar, commit]);
   run("tar", ["-xf", sourceTar, "-C", source]);
 
+  // Upstream's optional Vite/Vitest tool adapter needs its real declarations.
+  // Keep compiler-only peers isolated from the locked product runtime bytes.
+  const compiler = join(scratch, "compiler");
+  await mkdir(compiler);
+  for (const name of ["package.json", "package-lock.json", "packages"]) {
+    await cp(join(source, name), join(compiler, name), { recursive: true });
+  }
+  run("npm", ["ci", "--ignore-scripts", "--include=dev", "--no-audit", "--no-fund"],
+    compiler, { npm_config_cache: join(scratch, "npm-cache") });
   const sourceModules = join(source, "node_modules");
   const productModules = join(root, "node_modules");
   await mkdir(sourceModules);
   for (const name of await readdir(productModules)) {
+    if (name === "vite" || name === "vitest") continue;
     if (name.startsWith("@")) {
       await mkdir(join(sourceModules, name));
       for (const scoped of await readdir(join(productModules, name))) {
@@ -61,12 +71,9 @@ try {
   const oldRuntimeModules = join(productModules, "@vioxen/subscription-runtime/node_modules");
   await rm(join(sourceModules, "ajv"));
   await symlink(join(oldRuntimeModules, "ajv"), join(sourceModules, "ajv"));
-  await mkdir(join(sourceModules, "vitest"));
-  await writeFile(join(sourceModules, "vitest/package.json"),
-    '{"name":"vitest","version":"4.1.5","types":"index.d.ts"}\n');
-  await writeFile(join(sourceModules, "vitest/globals.d.ts"), "export {};\n");
-  await writeFile(join(sourceModules, "vitest/index.d.ts"),
-    "export const describe: any; export const it: any; export const expect: any;\n");
+  for (const name of ["vite", "vitest"]) {
+    await symlink(join(compiler, "node_modules", name), join(sourceModules, name));
+  }
   run("npm", ["run", "build"], source, {
     PATH: `${join(productModules, ".bin")}:${process.env.PATH ?? ""}`,
     npm_config_cache: join(scratch, "npm-cache"),
@@ -129,6 +136,6 @@ function run(command, args, cwd = root, patch = {}) {
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
   });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.status, 0, [result.stderr, result.stdout].filter(Boolean).join("\n"));
   return result.stdout;
 }

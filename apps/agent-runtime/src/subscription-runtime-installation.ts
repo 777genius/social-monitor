@@ -15,11 +15,11 @@ import {
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.42-sm.3";
 export const approvedMimoRuntimePackageVersion =
-  "0.1.0-main.40-sm-mimo.6";
+  "0.1.0-main.40-sm-mimo.7";
 const approvedMimoManifestSha256 =
-  "0abd6f8d34839797a85c961995f664a8d43d801e9efd8bad7b3238fac0ce2568";
+  "6144a23ff410c9bc778bde0a7181d7b34985a74532c5777bd9355b65806b9458";
 const approvedMimoWorkerEntrypointSha256 =
-  "43907edb05db2a3ad733697877cacd5caa434cb301a5ec4da11bd256cdf6ae09";
+  "bc60f8ac04f188ddab18e16e17990a9e7406790d0a019a658727e43682f2acae";
 // SHA256 of sorted "relative path\0file SHA256\n" records for all regular
 // distribution files. The base archive needs npm's locked dependency completion
 // before it can load; only that complete installed distribution is admitted.
@@ -27,7 +27,7 @@ const approvedBaseRuntimeCodeSha256 = Object.freeze([
   "0b1ae195815bd45ce2aab77cb4345e4ea07e2af70410527959bf810792669512",
 ]);
 const approvedMimoRuntimeCodeSha256 =
-  "8e90befb47a741d2afbb06f5a110885b11af4bd323d3c9f13b83a25f8cf64047";
+  "2332f718cbdae6c9e493dc6405455fc6683961d223552bec80cc1d337a4b0827";
 // Package code resolved from the installed node_modules ancestor while the
 // wrapper imports the two runtime distributions, before it reads the key.
 const approvedHoistedRuntimeCodeSha256 = Object.freeze({
@@ -36,7 +36,7 @@ const approvedHoistedRuntimeCodeSha256 = Object.freeze({
   "ajv-formats": "444dbf1804b17fc0d114a28ee8fd89963c7084c08b5ebbd16c408b5e089727b4",
   "zod": "4d7f8ca54064f57c6d93f09d2ce3b028f8d8884193147495f5f283a0916e124c",
   "zod-to-json-schema": "e6f0b7c6dc6c820f1cdd16b9ef9a7f415190e3ee0bf190e9605f620344f0090a",
-  "fast-uri": "5527eab2950f0500863098edbf2a8d80894b4851a5189fbc5c2bac20a16b8ce7",
+  "fast-uri": "b321bf34632d462aaecc40ed5082dafee2a45206680e9181bfd185bd3a3e59c3",
   "fast-deep-equal": "da223f84496561579e85d5f6c0181f84a08db50f250912578c54e145e7b8b00e",
   "json-schema-traverse": "e027afb34851b07a5cc5186b3a6d76b3273214474a35b13dacce9a15b0d309db",
 });

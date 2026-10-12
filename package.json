@@ -372,7 +372,7 @@
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@vioxen/subscription-runtime": "file:vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz",
-    "@vioxen/subscription-runtime-mimo": "file:vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.6.tgz",
+    "@vioxen/subscription-runtime-mimo": "file:vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.7.tgz",
     "amqplib": "^2.0.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
@@ -418,17 +418,17 @@
       "js-yaml": "4.3.2"
     },
     "@nestjs/swagger": {
-      "js-yaml": "5.2.2"
+      "js-yaml": "5.4.3"
     },
     "@prisma/dev": "0.24.17",
     "browserslist": "4.28.8",
     "brace-expansion": "5.0.12",
     "deepmerge-ts": "8.0.2",
-    "hono": "4.13.5",
-    "fast-uri": "3.1.7",
+    "hono": "4.13.13",
+    "fast-uri": "3.1.8",
     "form-data": "4.0.6",
-    "ip-address": "10.4.0",
-    "multer": "2.3.0",
+    "ip-address": "10.7.4",
+    "multer": "2.4.0",
     "mysql2": "3.24.2",
     "socket.io-parser": "4.2.7",
     "tar": "7.5.22"
