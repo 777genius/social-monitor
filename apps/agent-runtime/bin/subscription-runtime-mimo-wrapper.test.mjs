@@ -11,7 +11,8 @@ const body = source.slice(
   source.indexOf("function createReaderPromotionV2CanaryWorker("),
 );
 const summarySchemaName = "social_monitor_reader_summary_artifact";
-const summarySchema = { type: "object", properties: { summary: { type: "string" } } };
+const summarySchema = { type: "object", additionalProperties: false,
+  required: ["headline"], properties: { headline: { type: "string" } } };
 const summaryAdmission = {
   profile: { reasoningEffort: "high" },
   canonicalRequest: { context: { purpose: "social_monitor.reader_summary.generate.v2" }, task: {
@@ -70,6 +71,8 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
   assert.match(executedJob.prompt, /Only after every original requirement is fulfilled/u);
   assert.match(executedJob.prompt, /update_goal\(\{status:'complete'\}\)/u);
   assert.match(executedJob.systemPrompt, /do not create another goal/u);
+  assert.ok(executedJob.systemPrompt.endsWith(JSON.stringify(summarySchema)));
+  assert.match(executedJob.systemPrompt, /top-level property "headline" of type "string"/u);
   assert.equal(executedJob.controls, undefined);
   assert.equal(executedJob.originalPrompt, prompt);
   assert.ok(prompt.length > 4_000);
@@ -146,10 +149,20 @@ test("MiMo worker binds each daily purpose to its schema and output family", asy
     let schemas;
     let workerOptions;
     let returnedOutput = output;
+    let executedJob;
+    const rootProperty = Object.keys(output)[0];
+    const schema = { type: "object", additionalProperties: false,
+      required: [rootProperty], properties: { [rootProperty]: {
+        type: Array.isArray(output[rootProperty]) ? "array" : "string",
+        ...(Array.isArray(output[rootProperty]) ? {
+          items: { type: "object", required: ["candidateId"],
+            properties: { candidateId: { type: "string" } } },
+        } : {}),
+      } } };
     const admission = { profile: { reasoningEffort: "high" }, canonicalRequest: {
       context: { purpose }, task: {
         outputSchemaName: name,
-        controls: { outputSchemaName: name, outputSchema: { type: "object" } },
+        controls: { outputSchemaName: name, outputSchema: schema },
       },
     } };
     const dependencies = {
@@ -157,7 +170,8 @@ test("MiMo worker binds each daily purpose to its schema and output family", asy
       mimoRuntime: { createOneShotExecutor: (options) => {
         schemas = options.outputSchemas;
         workerOptions = options.accounts[0].worker;
-        return { async run() { return { status: "completed", result: { structuredOutput: returnedOutput } }; },
+        return { async run(job) { executedJob = job;
+          return { status: "completed", result: { structuredOutput: returnedOutput } }; },
           async dispose() {} };
       } },
       mimoApiKey: "synthetic-key",
@@ -177,9 +191,20 @@ test("MiMo worker binds each daily purpose to its schema and output family", asy
     )(...Object.values(dependencies));
     const input = { stateRootDir: "/synthetic/state", encryptionKey: "synthetic", env: {} };
     const worker = factory({ input, model: "mimo-v2.6-pro" });
-    assert.deepEqual(await worker.run({ runId: "synthetic-run", prompt: "Synthetic." }),
+    const original = { runId: "synthetic-run", prompt: "Synthetic candidates input.",
+      systemPrompt: "Original qualifications and cutoff.",
+      controls: { outputSchema: { type: "object", required: ["untrustedOverride"] } } };
+    assert.deepEqual(await worker.run(original),
       { structuredOutput: output }, purpose);
-    assert.deepEqual(schemas, { [name]: { type: "object" } }, purpose);
+    assert.deepEqual(schemas, { [name]: schema }, purpose);
+    assert.ok(executedJob.systemPrompt.startsWith(original.systemPrompt), purpose);
+    assert.ok(executedJob.systemPrompt.endsWith(JSON.stringify(schema)), purpose);
+    assert.ok(executedJob.systemPrompt.includes(`top-level property "${rootProperty}"`), purpose);
+    assert.ok(!executedJob.systemPrompt.includes("untrustedOverride"), purpose);
+    assert.ok(executedJob.prompt.endsWith(original.prompt), purpose);
+    assert.equal(executedJob.originalPrompt, original.prompt, purpose);
+    assert.deepEqual(executedJob.controls, original.controls, purpose);
+    assert.deepEqual(admission.canonicalRequest.task.controls.outputSchema, schema, purpose);
     assert.equal(workerOptions.sourceEnv.MIMO_TOKEN_PLAN_API_KEY, "synthetic-key", purpose);
     assert.equal(workerOptions.modelBackend, "xiaomi-mimo-token-plan", purpose);
     assert.deepEqual(workerOptions.boundedWorkspaceTools,

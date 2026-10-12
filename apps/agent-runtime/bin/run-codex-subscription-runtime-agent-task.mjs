@@ -166,6 +166,9 @@ function createMimoSummaryWorker({ input, model }) {
     throw new Error("MiMo reader summary requires its named output schema");
   }
   const outputSchemas = { [schemaName]: summaryTask.controls.outputSchema };
+  const outputContract = `TRUSTED NAMED OUTPUT CONTRACT:
+The final answer must be one JSON object matching the admitted schema "${schemaName}" below, including the required top-level property "${expected[1]}" of type "${expected[2]}". Return the output object, not the original input envelope or a schema description.
+${JSON.stringify(summaryTask.controls.outputSchema)}`;
   let executor;
   return {
     async start() {},
@@ -226,7 +229,7 @@ function createMimoSummaryWorker({ input, model }) {
           prompt: `Mandatory lifecycle order:
 1. An active native Goal already exists. Do not create another goal. First call native get_goal.
 2. Fulfill every requirement in the original job prompt, including all supplied evidence, cutoff rules, and named-schema requirements.
-3. Prepare the exact named structured output internally.
+3. Prepare the exact named structured output internally, including the required root property "${expected[1]}". Follow the trusted admitted JSON schema in the system instructions, not the original input envelope.
 4. Only after every original requirement is fulfilled and that output is ready, call native update_goal({status:'complete'}).
 5. After lifecycle tools, return only the prepared JSON value. The final answer is JSON-only: no Markdown, prose, or commentary.
 
@@ -234,7 +237,9 @@ ORIGINAL JOB PROMPT (VERBATIM):
 ${job.prompt}`,
           systemPrompt: `${job.systemPrompt ?? ""}
 
-An active native Goal already exists; do not create another goal. Call native get_goal first and native update_goal({status:'complete'}) after fulfilling the task and preparing its named output, before the final answer. Filesystem, shell, web, delegation, SQL, source, and publication effects are unavailable and must not be attempted. Use only the supplied prompt and evidence, preserve the original named schema, cutoff and evidence rules, and make one attempt. The final-answer JSON-only rule applies after lifecycle tools.`,
+An active native Goal already exists; do not create another goal. Call native get_goal first and native update_goal({status:'complete'}) after fulfilling the task and preparing its named output, before the final answer. Filesystem, shell, web, delegation, SQL, source, and publication effects are unavailable and must not be attempted. Use only the supplied prompt and evidence, preserve the original named schema, cutoff and evidence rules, and make one attempt. The final-answer JSON-only rule applies after lifecycle tools.
+
+${outputContract}`,
           taskId,
           originalPrompt: job.prompt,
           effectMode: "read_only",
