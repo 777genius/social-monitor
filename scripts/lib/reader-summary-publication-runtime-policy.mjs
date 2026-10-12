@@ -3,7 +3,7 @@
 export const approvedCodexRuntimeVersion = "0.1.0-main.42-sm.3";
 export const approvedMimoRuntimeVersion = "0.1.0-main.40-sm-mimo.7";
 export const approvedLauncherSha256 =
-  "53442a12cd35781489880f60548fc9746929f9fec9d26c0655d389412fd7f42f";
+  "3a9718b8cc33e3f4439936d4cdd77255fe24afbd6b9db3e57e6da26ee701f051";
 
 const legacyPurposes = Object.freeze({
   topic_label: "social_monitor.reader_summary.topic_map.label",
