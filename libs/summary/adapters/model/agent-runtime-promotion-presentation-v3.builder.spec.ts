@@ -45,7 +45,7 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
 
   it("gives MiMo exact decoded-source copy options without changing the original candidate projection", async () => {
     const client = new AttestedPresentationRuntimeClient();
-    const input = { ...fixtureInput(), body: `Useful ${"x".repeat(248)}😀 \"quoted\" source.\nMore source.` };
+    const input = { ...fixtureInput(), body: `Useful ${"x".repeat(248)}😀 "quoted" source.\nMore source.` };
     const builder = new AgentRuntimePromotionPresentationV3Builder({ client,
       modelBackend: "xiaomi-mimo-token-plan" });
     const original = client.runTask.bind(client);

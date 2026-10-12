@@ -335,7 +335,7 @@ describe("subscription runtime installation admission", () => {
     await expect(new FileSubscriptionRuntimeInstallationInspector().inspect(
       command, "xiaomi-mimo-token-plan",
     )).rejects.toThrow("Installed subscription runtime code bytes are not approved");
-  });
+  }, distributionIoTimeoutMs);
 
   it("rejects an imported MiMo factory symlink into the admitted workspace before spawn or attestation", async () => {
     const bin = await copyInstallation();
