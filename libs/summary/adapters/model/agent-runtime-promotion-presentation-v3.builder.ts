@@ -7,7 +7,7 @@ import {
   type ReaderPostPresentationV3Input,
   type ReaderPostPresentationV3Result,
 } from "../../domain/services/reader-post-presentation-v3";
-import type { AgentRuntimeClientPort, AgentRuntimeProvider } from "../../ports";
+import type { AgentRuntimeClientPort, AgentRuntimeProvider, AgentRuntimeTaskCommand } from "../../ports";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { canonicalPromotionPayload, promotionPayloadDigest } from
   "../../domain/services/reader-post-promotion-attestation";
@@ -18,12 +18,15 @@ import {
   readAgentRuntimeObjectOutput,
 } from "./agent-runtime-model-support";
 import {
-  activeReaderSummaryModel,
   activeReaderSummaryProvider,
+  mimoReaderSummaryBackend,
+  assertMimoReaderSummaryExecution,
+  resolveReaderSummaryGenerationIdentity,
+  resolveReaderSummaryDailyTaskIdentityFromEnv,
+  type ReaderSummaryGenerationBackend,
   activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
   assertActiveReaderSummaryProvider,
-  parseActiveReaderSummaryModel,
   parseActiveReaderSummaryReasoningEffort,
 } from "./active-reader-summary-generation-profile";
 
@@ -32,6 +35,7 @@ export type AgentRuntimePromotionPresentationV3BuilderOptions = {
   readonly agentProvider?: AgentRuntimeProvider;
   readonly providerInstanceId?: string;
   readonly model?: string;
+  readonly modelBackend?: ReaderSummaryGenerationBackend;
   readonly reasoningEffort?: "high";
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
@@ -48,6 +52,7 @@ implements PromotionPresentationBuilder {
   private readonly provider: typeof activeReaderSummaryProvider;
   private readonly providerInstanceId?: string;
   private readonly model: string;
+  private readonly modelBackend: ReaderSummaryGenerationBackend;
   private readonly reasoningEffort: "high";
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
@@ -57,8 +62,11 @@ implements PromotionPresentationBuilder {
     this.provider = assertActiveReaderSummaryProvider(options.agentProvider) ??
       activeReaderSummaryProvider;
     this.providerInstanceId = options.providerInstanceId;
-    this.model = parseActiveReaderSummaryModel(options.model) ??
-      activeReaderSummaryModel;
+    const identity = resolveReaderSummaryGenerationIdentity({
+      model: options.model, backend: options.modelBackend,
+    });
+    this.model = identity.model;
+    this.modelBackend = identity.backend;
     this.reasoningEffort = options.reasoningEffort ??
       activeReaderSummaryReasoningEffort;
     this.timeoutMs = positiveIntegerOrFallback(options.timeoutMs, 90_000);
@@ -88,9 +96,10 @@ implements PromotionPresentationBuilder {
       systemPrompt: instructions, prompt, outputSchema: schema,
       provider: this.provider, providerInstanceId: this.providerInstanceId ?? null,
       model: this.model, reasoningEffort: this.reasoningEffort,
+      ...(this.modelBackend === mimoReaderSummaryBackend ? { modelBackend: this.modelBackend } : {}),
       maxOutputTokens: this.maxOutputTokens,
     }));
-    const result = await this.client.runTask({
+    const command: AgentRuntimeTaskCommand = {
       requestId: buildAgentRuntimeRequestId(
         "reader-summary-promotion-presentation", first.tenantId,
         first.workspaceId, requestDigest, new Date(0),
@@ -112,12 +121,18 @@ implements PromotionPresentationBuilder {
         outputSchemaName: "social_monitor_reader_post_presentation_v3",
         schemaVersion: "reader_post_presentation.v3",
         model: this.model,
+        ...(this.modelBackend === mimoReaderSummaryBackend ? { modelBackend: this.modelBackend } : {}),
         reasoningEffort: this.reasoningEffort,
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
       metadata: { adapter: "agent-runtime-promotion-presentation-v3" },
-    });
+    };
+    const result = await this.client.runTask(command);
+    if (this.modelBackend === mimoReaderSummaryBackend) {
+      assertMimoReaderSummaryExecution({ command, result,
+        purpose: activeReaderSummaryPurposes.promotionPresentation });
+    }
     const output = readAgentRuntimeObjectOutput(result, parseObject,
       "Reader promotion presentation");
     const proposals = validateBatch(output.presentations, inputs);
@@ -138,7 +153,8 @@ export const resolveAgentRuntimePromotionPresentationV3BuilderOptions = (
   client,
   agentProvider: assertActiveReaderSummaryProvider(env.AGENT_RUNTIME_PROVIDER),
   providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-  model: parseActiveReaderSummaryModel(env.AGENT_RUNTIME_READER_SUMMARY_MODEL),
+  ...resolveReaderSummaryDailyTaskIdentityFromEnv(env,
+    env.AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_MODEL),
   reasoningEffort: parseActiveReaderSummaryReasoningEffort(
     env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
       env.AGENT_RUNTIME_REASONING_EFFORT,

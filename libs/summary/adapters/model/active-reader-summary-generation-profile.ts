@@ -122,20 +122,13 @@ const mimoDailyPurposeByRole = Object.freeze({
   related_topic_relation: activeReaderSummaryPurposes.relatedTopicRelations,
 } as const);
 
-export const verifyAndRecordMimoDailyExecution = async (params: {
+export const assertMimoReaderSummaryExecution = (params: {
   readonly command: AgentRuntimeTaskCommand;
   readonly result: AgentRuntimeTaskResult;
-  readonly taskRole: ReaderSummaryAttestedTaskRole;
-  readonly attempt: string;
-  readonly normalizedOutput: unknown;
-  readonly sink?: VerifiedReaderSummaryExecutionAttestationSink;
-}): Promise<void> => {
-  const expectedPurpose = mimoDailyPurposeByRole[
-    params.taskRole as keyof typeof mimoDailyPurposeByRole
-  ];
+  readonly purpose: string;
+}): NonNullable<AgentRuntimeTaskResult["executionAttestation"]> => {
   const attestation = params.result.executionAttestation;
-  if (expectedPurpose === undefined ||
-    params.command.purpose !== expectedPurpose ||
+  if (params.command.purpose !== params.purpose ||
     params.command.provider !== activeReaderSummaryProvider ||
     params.command.controls.model !== mimoReaderSummaryModel ||
     params.command.controls.modelBackend !== mimoReaderSummaryBackend ||
@@ -143,7 +136,7 @@ export const verifyAndRecordMimoDailyExecution = async (params: {
     attestation === undefined ||
     attestation.schemaVersion !== 1 ||
     attestation.requestId !== params.command.requestId ||
-    attestation.purpose !== expectedPurpose ||
+    attestation.purpose !== params.purpose ||
     attestation.provider !== activeReaderSummaryProvider ||
     attestation.model !== mimoReaderSummaryModel ||
     attestation.reasoningEffort !== activeReaderSummaryReasoningEffort ||
@@ -156,6 +149,24 @@ export const verifyAndRecordMimoDailyExecution = async (params: {
     !executionAttestationOutputMatches(attestation, params.result)) {
     throw new Error("Reader summary execution attestation is invalid");
   }
+  return attestation;
+};
+
+export const verifyAndRecordMimoDailyExecution = async (params: {
+  readonly command: AgentRuntimeTaskCommand;
+  readonly result: AgentRuntimeTaskResult;
+  readonly taskRole: ReaderSummaryAttestedTaskRole;
+  readonly attempt: string;
+  readonly normalizedOutput: unknown;
+  readonly sink?: VerifiedReaderSummaryExecutionAttestationSink;
+}): Promise<void> => {
+  const expectedPurpose = mimoDailyPurposeByRole[
+    params.taskRole as keyof typeof mimoDailyPurposeByRole
+  ];
+  if (expectedPurpose === undefined) {
+    throw new Error("Reader summary execution attestation is invalid");
+  }
+  const attestation = assertMimoReaderSummaryExecution({ ...params, purpose: expectedPurpose });
   await params.sink?.record({
     taskRole: params.taskRole,
     attempt: params.attempt,

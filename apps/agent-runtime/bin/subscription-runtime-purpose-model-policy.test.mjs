@@ -213,6 +213,7 @@ test("V3 promotion presentation admits only the active structured default", () =
 });
 
 const mimoMarkers = {
+  "social_monitor.reader_summary.promotion_presentation.v3": ["social_monitor_reader_post_presentation_v3", "reader_post_presentation.v3"],
   "social_monitor.reader_summary.generate.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
   "social_monitor.reader_summary.repair.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
   "social_monitor.reader_summary.topic_map.label.v2": ["social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1"],
@@ -230,7 +231,8 @@ const mimoInput = (purpose) => {
   input.request.task.controls.modelBackend = "xiaomi-mimo-token-plan";
   const required = purpose.includes("generate.v2") || purpose.includes("repair.v2")
     ? ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"]
-    : purpose.includes("topic_map.label.v2") ? ["nodeLabels", "groups"] : ["decisions"];
+    : purpose.includes("topic_map.label.v2") ? ["nodeLabels", "groups"]
+      : purpose.endsWith("promotion_presentation.v3") ? ["presentations"] : ["decisions"];
   input.request.task.controls.outputSchema = {
     type: "object", additionalProperties: false, required,
     properties: Object.fromEntries(required.map((key) => [key, {
@@ -241,7 +243,7 @@ const mimoInput = (purpose) => {
   return input;
 };
 
-test("MiMo admission covers only the six named daily summary purposes", () => {
+test("MiMo admission covers only the seven named daily summary purposes", () => {
   for (const purpose of Object.keys(mimoMarkers)) {
     const input = mimoInput(purpose);
     const admitted = admitSubscriptionRuntimeWrapperRequest(input);

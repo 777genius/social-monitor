@@ -48,6 +48,7 @@ const mimoReaderSummaryStructuredProfile = Object.freeze({
 });
 
 const mimoSummaryPurposes = new Set([
+  "social_monitor.reader_summary.promotion_presentation.v3",
   "social_monitor.reader_summary.generate.v2",
   "social_monitor.reader_summary.repair.v2",
   "social_monitor.reader_summary.topic_map.label.v2",
@@ -57,6 +58,7 @@ const mimoSummaryPurposes = new Set([
 ]);
 
 const mimoSchemaMarkers = Object.freeze({
+  "social_monitor.reader_summary.promotion_presentation.v3": ["social_monitor_reader_post_presentation_v3", "reader_post_presentation.v3"],
   "social_monitor.reader_summary.generate.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
   "social_monitor.reader_summary.repair.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
   "social_monitor.reader_summary.topic_map.label.v2": ["social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1"],
@@ -65,6 +67,7 @@ const mimoSchemaMarkers = Object.freeze({
   "social_monitor.reader_summary.verify_related_topic_relations.v2": ["social_monitor_reader_summary_related_topic_relations", "reader_summary.related_topic_relation.v1"],
 });
 const mimoRootProperties = Object.freeze({
+  "social_monitor.reader_summary.promotion_presentation.v3": ["presentations"],
   "social_monitor.reader_summary.generate.v2": ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
   "social_monitor.reader_summary.repair.v2": ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
   "social_monitor.reader_summary.topic_map.label.v2": ["nodeLabels", "groups"],

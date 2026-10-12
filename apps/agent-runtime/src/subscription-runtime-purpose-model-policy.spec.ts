@@ -31,8 +31,9 @@ const legacyReaderSummaryPurposes = [
 ] as const;
 
 describe("subscription runtime purpose policy", () => {
-  it("admits MiMo only for six named daily summary purposes", () => {
+  it("admits MiMo only for seven named daily summary purposes", () => {
     const markers = [
+      ["social_monitor.reader_summary.promotion_presentation.v3", "social_monitor_reader_post_presentation_v3", "reader_post_presentation.v3"],
       ["social_monitor.reader_summary.generate.v2", "social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
       ["social_monitor.reader_summary.repair.v2", "social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
       ["social_monitor.reader_summary.topic_map.label.v2", "social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1"],
@@ -43,7 +44,8 @@ describe("subscription runtime purpose policy", () => {
     for (const [purpose, name, version] of markers) {
       const required = purpose.endsWith("generate.v2") || purpose.endsWith("repair.v2")
         ? ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"]
-        : purpose.endsWith("topic_map.label.v2") ? ["nodeLabels", "groups"] : ["decisions"];
+        : purpose.endsWith("topic_map.label.v2") ? ["nodeLabels", "groups"]
+          : purpose.endsWith("promotion_presentation.v3") ? ["presentations"] : ["decisions"];
       const outputSchema = { type: "object", additionalProperties: false, required,
         properties: Object.fromEntries(required.map((key) => [key, {
           type: key === "headline" ? "string" : "array",

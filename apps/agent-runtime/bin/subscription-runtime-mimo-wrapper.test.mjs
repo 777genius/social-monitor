@@ -117,6 +117,7 @@ test("MiMo summary factory rejects a synthetic key echoed by the model", async (
 
 test("MiMo worker binds each daily purpose to its schema and output family", async () => {
   const cases = [
+    ["social_monitor.reader_summary.promotion_presentation.v3", "social_monitor_reader_post_presentation_v3", { presentations: [] }],
     ["social_monitor.reader_summary.generate.v2", "social_monitor_reader_summary_artifact", { headline: "Synthetic" }],
     ["social_monitor.reader_summary.repair.v2", "social_monitor_reader_summary_artifact", { headline: "Synthetic" }],
     ["social_monitor.reader_summary.topic_map.label.v2", "social_monitor_reader_summary_topic_map_labels", { nodeLabels: [] }],
