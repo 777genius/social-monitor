@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { appendFileSync, closeSync, existsSync, fstatSync, openSync, readFileSync, writeFileSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -110,7 +110,12 @@ function command(root: string, id: string, safe?: boolean, mode = 'normal'): Lif
   return safe === undefined ? { command } : { command, safe };
 }
 const started = (root: string, id: string): boolean => existsSync(path.join(root, `${id}.pid`));
-const release = async (root: string, id: string, code = 0): Promise<void> => writeFile(path.join(root, `${id}.release`), String(code));
+const release = async (root: string, id: string, code = 0): Promise<void> => {
+  const destination = path.join(root, `${id}.release`);
+  const temporary = `${destination}.tmp`;
+  await writeFile(temporary, String(code));
+  await rename(temporary, destination);
+};
 
 if (process.argv[2] === '--fixture') {
   const [root, id, mode] = process.argv.slice(3);
