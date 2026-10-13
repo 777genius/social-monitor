@@ -1,4 +1,6 @@
-import type { Pool, PoolClient } from "pg";
+import type { openFiniteOperatorSqlPool,FiniteOperatorSqlClient } from '../import-rss-sep24-verified';
+type Pool=ReturnType<typeof openFiniteOperatorSqlPool>;
+type PoolClient=FiniteOperatorSqlClient;
 
 type Scope = Readonly<{ tenantId: string; workspaceId: string }>;
 type RoleRow = Readonly<{ allowed: boolean }>;

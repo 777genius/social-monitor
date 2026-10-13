@@ -3,10 +3,9 @@ import { constants } from 'node:fs';
 import { lstat,open,realpath,type FileHandle } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { isAbsolute,join,resolve } from 'node:path';
-import { Pool } from 'pg';
 import { PrismaIngestionWorkerConnection } from '../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection';
 import { runWithTenantDatabaseAccess } from '@social-monitor/platform-persistence';
-import { assertTrustedAncestry,finiteRssDatabaseUrl } from './import-rss-sep24-verified';
+import { assertTrustedAncestry,finiteRssDatabaseUrl,openFiniteOperatorSqlPool } from './import-rss-sep24-verified';
 import { scopedGitHubArchiveRead,verifyScopedGitHubArchiveRelation } from './lib/github-archive-finite-role-policy';
 import { createFiniteGitHubArchiveDependencies } from './lib/github-archive-finite-dependencies';
 import { planGitHubArchiveQualifiedPartition, type GitHubArchivePlannerInput } from './plan-github-archive-qualified-partitions';
@@ -60,14 +59,14 @@ function lifecycle(semanticKey:string,planSha256:string):GitHubArchiveWriteLifec
   await writeExclusive('/proc/self/fd/'+parent.fd+'/'+name,{...journal,status:'started'});await parent.sync();
  }};
 }
-export type GitHubArchivePartitionRuntime=Readonly<{openSql:(url:string)=>Pick<Pool,'connect'|'end'>;
+export type GitHubArchivePartitionRuntime=Readonly<{openSql:(url:string)=>Pick<ReturnType<typeof openFiniteOperatorSqlPool>,'connect'|'end'>;
  openPrisma:(url:string)=>Promise<PrismaIngestionWorkerConnection>;testOwnerUid?:number}>;
 export async function runGitHubArchiveQualifiedPartitionWithRuntime(request:GitHubArchivePartitionRequest,databaseUrl:string,runtime:GitHubArchivePartitionRuntime){
  need(/^[a-f0-9]{64}$/u.test(request.expectedPlanSha256)&&/^[a-zA-Z0-9._:-]{1,128}$/u.test(request.correlationId),'Archived GitHub exact plan/correlation required');
  const uid=runtime.testOwnerUid??0,partition=await selected(request,uid);
  need(partition.plan.planSha256===request.expectedPlanSha256,'Archived GitHub recomputed plan mismatch');
  const journalDirectory=await directory(absolute(request.journalDir),uid),scope={...partition.plan.scope,correlationId:request.correlationId};
- let sql:Pick<Pool,'connect'|'end'>|undefined,prisma:PrismaIngestionWorkerConnection|undefined;
+ let sql:Pick<ReturnType<typeof openFiniteOperatorSqlPool>,'connect'|'end'>|undefined,prisma:PrismaIngestionWorkerConnection|undefined;
  try{
   const url=finiteRssDatabaseUrl(databaseUrl);sql=runtime.openSql(url);await scopedGitHubArchiveRead(sql,scope,async()=>undefined);
   need(await verifyScopedGitHubArchiveRelation(sql,scope,partition.plan.sourceQuery,partition.plan.bindingConfig),'Archived GitHub current scoped relation differs');
@@ -90,7 +89,7 @@ async function main(){
   &&c.semanticKey===semanticKey&&c.planSha256===expectedPlanSha256&&c.packetSha256===packetSha256&&c.correlationId===correlationId,'Archived GitHub native claim identity changed');
  const receipt=await runGitHubArchiveQualifiedPartitionWithRuntime({inputRoot:inputRoot!,day:day!,journalDir:journalDir!,
   semanticKey:semanticKey!,expectedPlanSha256:expectedPlanSha256!,packetSha256:packetSha256!,correlationId:correlationId!},process.env.DATABASE_URL??'',{
-   openSql:url=>new Pool({connectionString:url,min:0,max:1,connectionTimeoutMillis:5000}),
+   openSql:openFiniteOperatorSqlPool,
    openPrisma:url=>PrismaIngestionWorkerConnection.createForProcess(url,'daily-runner')});
  console.log(JSON.stringify(receipt));
 }

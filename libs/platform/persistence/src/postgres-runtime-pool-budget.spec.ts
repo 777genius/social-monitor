@@ -208,6 +208,9 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       prisma/seed.ts:PrismaPg
       scripts/backfill-github-trending-feed.ts:Pool
       scripts/backfill-reader-summary-weekly-daily-certifications.ts:Pool
+      scripts/backfill/rss-current-postgres-boundary-20261007/setup.ts:Pool
+      scripts/backfill/rss-current-postgres-boundary-20261007/setup.ts:PrismaClient
+      scripts/backfill/rss-current-postgres-boundary-20261007/setup.ts:PrismaPg
       scripts/build-reader-summary-recovery-terminal-manifest.ts:Pool
       scripts/capture-durable-backend-e2e-loop.ts:Pool
       scripts/capture-reader-summary-multi-day-quality-corpus.ts:Pool
@@ -360,6 +363,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       prisma/seed.ts
       scripts/backfill-github-trending-feed.ts
       scripts/backfill-reader-summary-weekly-daily-certifications.ts
+      scripts/backfill/rss-current-postgres-boundary-20261007/setup.ts
       scripts/build-reader-summary-recovery-terminal-manifest.ts
       scripts/capture-durable-backend-e2e-loop.ts
       scripts/capture-reader-summary-multi-day-quality-corpus.ts

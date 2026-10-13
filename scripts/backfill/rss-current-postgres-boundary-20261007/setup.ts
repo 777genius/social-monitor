@@ -12,7 +12,7 @@ export function url(database: string, user = 'postgres'): string {
   return `postgresql://${user}@pg:5432/${database}`;
 }
 export function pool(database: string, user = 'postgres'): Pool {
-  return new Pool({ connectionString: url(database, user), max: 3, min: 0,
+  return new Pool({ connectionString: url(database, user), max: 1, min: 0,
     connectionTimeoutMillis: 5000, statement_timeout: 15000, query_timeout: 18000,
     application_name: 'rss-current-postgres-boundary-TEST' });
 }

@@ -314,10 +314,14 @@ export function finiteRssDatabaseUrl(databaseUrl: string): string {
   boundedUrl.searchParams.set("query_timeout", "25000");
   return boundedUrl.toString();
 }
+export type FiniteOperatorSqlClient = PoolClient;
+/** Shared finite SQL pool; extraction preserves the existing operator budget and timeouts. */
+export function openFiniteOperatorSqlPool(url: string): Pool {
+  return new Pool({ connectionString: url, min: 0, max: 1, connectionTimeoutMillis: 5000,
+    statement_timeout: 20000, lock_timeout: 5000, query_timeout: 25000 });
+}
 export function runRssOperator(request: RssOperatorRequest, databaseUrl: string) {
-  return runRssOperatorWithRuntime(request, finiteRssDatabaseUrl(databaseUrl), { openSql: (url) => new Pool({ connectionString: url,
-    min: 0, max: 1, connectionTimeoutMillis: 5000, statement_timeout: 20000,
-    lock_timeout: 5000, query_timeout: 25000 }),
+  return runRssOperatorWithRuntime(request, finiteRssDatabaseUrl(databaseUrl), { openSql: openFiniteOperatorSqlPool,
     openPrisma: (url) => PrismaIngestionWorkerConnection.createForProcess(url, "daily-runner") });
 }
 if (require.main === module) {

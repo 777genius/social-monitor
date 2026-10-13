@@ -41,6 +41,10 @@ function validate(r:GitHubArchiveWriteContext):void{
   &&/^[a-zA-Z0-9._:-]{1,128}$/u.test(r.scope.correlationId),'Archived GitHub scope mismatch');
  need(hash(JSON.stringify({archive:p.archiveSha256,scope:p.scope,day:p.day,selectedIds:[...ids].sort()}))===r.semanticKey,'Archived GitHub semantic identity mismatch');
 }
+export async function closeOwnedGitHubArchiveDirectory(directory:Pick<FileHandle,'close'>,owned:boolean,primaryFailed:boolean):Promise<void>{
+ if(!owned)return;
+ try{await directory.close();}catch(error){if(!primaryFailed)throw error;}
+}
 export async function executeInternalGitHubArchiveBoundedWrite(input:GitHubArchiveWriteContext,lifecycle:GitHubArchiveWriteLifecycle){
  const r:GitHubArchiveWriteContext={...input,plan:structuredClone(input.plan),scope:{...input.scope}};validate(r);
  const p=r.plan,path=resolve(r.journalPath),filename='github-archive-qualified-'+r.semanticKey+'.journal.json';
@@ -90,5 +94,5 @@ export async function executeInternalGitHubArchiveBoundedWrite(input:GitHubArchi
   await writeExclusive(temporary,{...journal,status:'complete',...receipt});await directory.sync();await location();
   await rename(temporary,anchored);await directory.sync();await location();return receipt;
  }catch(error){failed=true;throw error;}
- finally{if(r.journalDirectory===undefined){try{await directory.close();}catch(error){if(!failed)throw error;}}}
+ finally{await closeOwnedGitHubArchiveDirectory(directory,r.journalDirectory===undefined,failed);}
 }
