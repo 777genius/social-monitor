@@ -42,7 +42,7 @@ const finishBind = (error: Error | null): void => {
 
 describe("real agent runtime application readiness", () => {
   const signals = ["SIGINT", "SIGTERM"] as const;
-  const originalListeners = new Map<string, ReturnType<typeof process.listeners>>();
+  const originalListeners = new Map<NodeJS.Signals, NodeJS.SignalsListener[]>();
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
