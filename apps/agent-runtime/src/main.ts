@@ -10,7 +10,13 @@ import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-execu
 import { FileSubscriptionRuntimeInstallationInspector } from "./subscription-runtime-installation";
 import { isMimoOnly } from "./backend-admission-policy";
 
-async function bootstrap(): Promise<void> {
+export type AgentRuntimeStartupProof = {
+  readonly contract: "social-monitor.agent-runtime.startup.v1";
+  readonly endpoint: string;
+  readonly admission: "strict-mimo-token" | "ordinary";
+};
+
+async function bootstrap(): Promise<AgentRuntimeStartupProof> {
   const settings = resolveAgentRuntimeSettings(process.env);
   if (settings.strictAdmission !== undefined) {
     await new FileSubscriptionRuntimeInstallationInspector(settings.strictAdmission.workspaceRoot).inspect(
@@ -54,6 +60,15 @@ async function bootstrap(): Promise<void> {
 
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
+
+  return {
+    contract: "social-monitor.agent-runtime.startup.v1",
+    endpoint: settings.bindAddress,
+    admission: settings.strictAdmission !== undefined &&
+      isMimoOnly(settings.strictAdmission.allowedModelBackends)
+      ? "strict-mimo-token" : "ordinary",
+  };
 }
 
-void bootstrap();
+// The dedicated readiness launcher awaits this real admission and bind result.
+export const applicationReady = bootstrap();

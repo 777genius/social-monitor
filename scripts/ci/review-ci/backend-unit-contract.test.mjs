@@ -73,6 +73,20 @@ for (const [regression, mutate] of [
     assert.ok(step.run.includes(fragment), `missing mutation target: ${fragment}`);
     step.run = step.run.split('\n').filter((line) => !line.includes(fragment)).join('\n');
   }]),
+  ...[
+    ['unrelated APT repository update', '-o Dir::Etc::sourcelist=- -o Dir::Etc::sourceparts="$pgdg_scratch/sources" '],
+    ['missing Ubuntu dependency indexes', 'cp /etc/apt/sources.list.d/ubuntu.sources "$pgdg_scratch/sources/ubuntu.sources"'],
+    ['missing signed PGDG index source', 'cp /etc/apt/sources.list.d/firstpub-pgdg.list "$pgdg_scratch/sources/firstpub-pgdg.list"'],
+    ['untrusted Ubuntu source custody', "test \"$(stat -c '%u:%g:%a:%h' /etc/apt/sources.list.d/ubuntu.sources)\" = 0:0:644:1"],
+    ['unverified Ubuntu signing key', "awk '/^Signed-By:/ { if ($0 != \"Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\") exit 1; found=1 } END { if (!found) exit 1 }' /etc/apt/sources.list.d/ubuntu.sources"],
+    ['ignored PGDG index acquisition failure', '-o APT::Update::Error-Mode=any '],
+    ['unbounded HTTP acquisition', '-o Acquire::http::Timeout=15 '],
+    ['unbounded HTTPS acquisition', '-o Acquire::https::Timeout=15 '],
+    ['missing bounded acquisition retries', '-o Acquire::Retries=2 '],
+  ].map(([label, fragment]) => [label, (w) => {
+    assert.ok(prerequisites(w).run.includes(fragment));
+    prerequisites(w).run = prerequisites(w).run.replaceAll(fragment, '');
+  }]),
   ['APT signature bypass', (w) => prerequisites(w).run = prerequisites(w).run.replace('[signed-by=', '[trusted=yes signed-by=')],
   ['unbounded package install', (w) => prerequisites(w).run = prerequisites(w).run.replaceAll('timeout 300 ', '')],
   ['native verification executed as root', (w) => prerequisites(w).run = prerequisites(w).run.replace('$("$pg18_executable" --version)', '$(sudo "$pg18_executable" --version)')],

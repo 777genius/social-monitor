@@ -208,11 +208,18 @@ jobs:
           test "$pgdg_fingerprint" = B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
           sudo install -m 644 "$pgdg_scratch/pgdg.asc" /usr/share/keyrings/firstpub-pgdg.asc
           printf 'deb [signed-by=/usr/share/keyrings/firstpub-pgdg.asc] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\n' "$VERSION_CODENAME" | sudo tee /etc/apt/sources.list.d/firstpub-pgdg.list > /dev/null
-          sudo timeout 180 apt-get update
-          sudo env DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install --yes --no-install-recommends postgresql-common
+          # Refresh both required signed repositories without unrelated third-party indexes.
+          test -f /etc/apt/sources.list.d/ubuntu.sources && test ! -L /etc/apt/sources.list.d/ubuntu.sources
+          test "$(stat -c '%u:%g:%a:%h' /etc/apt/sources.list.d/ubuntu.sources)" = 0:0:644:1
+          awk '/^Signed-By:/ { if ($0 != "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg") exit 1; found=1 } END { if (!found) exit 1 }' /etc/apt/sources.list.d/ubuntu.sources
+          mkdir -m 700 "$pgdg_scratch/sources"
+          cp /etc/apt/sources.list.d/ubuntu.sources "$pgdg_scratch/sources/ubuntu.sources"
+          cp /etc/apt/sources.list.d/firstpub-pgdg.list "$pgdg_scratch/sources/firstpub-pgdg.list"
+          sudo timeout 180 apt-get -o Dir::Etc::sourcelist=- -o Dir::Etc::sourceparts="$pgdg_scratch/sources" -o APT::Update::Error-Mode=any -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o Acquire::Retries=2 update
+          sudo env DEBIAN_FRONTEND=noninteractive timeout 300 apt-get -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o Acquire::Retries=2 install --yes --no-install-recommends postgresql-common
           # Install executables only: do not create or start a package-managed cluster.
           printf 'create_main_cluster = false\n' | sudo tee /etc/postgresql-common/createcluster.conf > /dev/null
-          sudo env DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install --yes --no-install-recommends postgresql-18 postgresql-client-18
+          sudo env DEBIAN_FRONTEND=noninteractive timeout 300 apt-get -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o Acquire::Retries=2 install --yes --no-install-recommends postgresql-18 postgresql-client-18
           for pg18_tool in initdb pg_ctl postgres psql; do
             pg18_executable="/usr/lib/postgresql/18/bin/$pg18_tool"
             test -x "$pg18_executable"
