@@ -2,6 +2,7 @@ import {
   normalizeJsonObject,
   type JsonObject,
 } from '@social-monitor/shared-kernel';
+import { assertGitHubTrendingArchiveBatchIntegrity, isGitHubTrendingArchivedObservation } from './github-trending-archive';
 
 export const GITHUB_TRENDING_PAGE_PROVIDER_KEY = 'github-trending-page';
 export const GITHUB_TRENDING_PAGE_REPOSITORY_METADATA_KIND =
@@ -177,6 +178,10 @@ export const assertGitHubTrendingSnapshotBatchIntegrity = (params: {
   readonly providerKey: string;
   readonly items: readonly GitHubSnapshotCandidate[];
 }): void => {
+  if (params.items.some(item => isGitHubTrendingArchivedObservation(item.metadata))) {
+    assertGitHubTrendingArchiveBatchIntegrity(params);
+    return;
+  }
   const hasGitHubMetadata = params.items.some(
     (item) =>
       item.metadata?.kind === GITHUB_TRENDING_PAGE_REPOSITORY_METADATA_KIND,

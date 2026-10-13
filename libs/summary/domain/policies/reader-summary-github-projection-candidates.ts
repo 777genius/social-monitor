@@ -19,6 +19,10 @@ export const githubProjectionItemTouchesDay = (
 ): boolean => {
   const startedAt = dayStartedAt.getTime();
   const endedAt = dayEndedAt.getTime();
+  if (item.observationKind === "archived" || item.archivedObservation !== undefined) {
+    const published = item.publishedAt.getTime();
+    return Number.isFinite(published) && published >= startedAt && published < endedAt;
+  }
   return [
     item.fetchStartedAt,
     item.checkedAt,
@@ -73,6 +77,8 @@ export const collectCanonicalProjectionCandidates = (params: {
     const checkedAt = item.checkedAt?.getTime();
     const fetchStartedAt = item.fetchStartedAt?.getTime();
     const valid =
+      item.observationKind !== "archived" &&
+      item.archivedObservation === undefined &&
       params.eligibleBindingIds.has(item.sourceBindingId) &&
       item.providerKey === "github-trending-page" &&
       item.metadataKind === "github_trending_page_repository" &&

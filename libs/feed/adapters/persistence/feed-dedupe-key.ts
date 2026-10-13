@@ -32,6 +32,15 @@ const githubTrendingDailyDedupeKey = (
     return undefined;
   }
 
+  if (readNestedString(input.providerMetadata, ['trending', 'observationKind']) === 'archived') {
+    const published = readNestedString(input.providerMetadata, ['archive', 'serializedAt']);
+    const repository = readNestedString(input.providerMetadata, ['repository', 'fullName']);
+    if (published !== undefined && repository !== undefined && input.sourceBindingId?.trim()) {
+      return `github-trending-archive:${input.sourceBindingId.trim()}:daily:${published.slice(0, 10)}:${repository.toLocaleLowerCase('en-US')}`;
+    }
+    throw new Error('Archived GitHub feed identity requires original repository/day provenance');
+  }
+
   const scanJobId = readNestedString(input.providerMetadata, [
     "trending",
     "scanJobId",

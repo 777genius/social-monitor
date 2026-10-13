@@ -5,6 +5,30 @@ import { PrismaReaderSummaryGitHubProjectionReader } from "./prisma-reader-summa
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 
 describe("PrismaReaderSummaryGitHubProjectionReader", () => {
+  it("preserves archive provenance and native provider identity without fabricating live scan dates", async () => {
+    const archive = { repository: "example/trending-archive", commit: "a".repeat(40), gitBlobSha1: "b".repeat(40),
+      filePath: "api/daily/all.json", fileSha256: "c".repeat(64), originalSourceUrl: "https://github.com/trending?since=daily",
+      serializedAt: "2026-07-10T12:00:00.000Z", committedAt: "2026-07-10T12:01:00.000Z",
+      acquiredAt: "2026-10-13T00:00:00.000Z" };
+    const providerMetadata = { kind: "github_trending_page_repository",
+      repository: { fullName: "owner/repo-1", url: "https://github.com/owner/repo-1", totalStars: 1000, forksCount: 1 },
+      trending: { observationKind: "archived", window: "daily", source: "github_trending_archive", rank: 1,
+        originalArchiveRank: 2, starsGained: 101, snapshotContentHash: "d".repeat(64),
+        scanJobId: null, fetchStartedAt: null, checkedAt: null }, archive };
+    const archived = { ...row(1, "binding-active-a"), providerMetadata, sourceExternalId: "native-archive-id",
+      scanJobId: null, fetchStartedAt: null, checkedAt: null, observedAt: new Date("2026-10-13T00:05:00.000Z") };
+    const prisma = new FakeRawQueryClient(new Map([[0, [{ sourceBindingId: "binding-active-a" }]]]), new Map([[0, [archived]]]));
+    const reader = new PrismaReaderSummaryGitHubProjectionReader(prisma as unknown as PrismaSummaryClient);
+    const result = await reader.read({ ...query, observedThrough: new Date("2026-10-13T01:00:00.000Z") });
+    expect(result.items[0]).toMatchObject({ observationKind: "archived", archivedObservation: providerMetadata,
+      sourceExternalId: "native-archive-id", observedAt: archived.observedAt });
+    expect(result.items[0]?.scanJobId).toBeUndefined();
+    expect(result.items[0]?.fetchStartedAt).toBeUndefined();
+    expect(result.items[0]?.checkedAt).toBeUndefined();
+    expect(prisma.calls[1]?.sql).toContain('si.provider_item_id as "sourceExternalId"');
+    expect(prisma.calls[1]?.sql).toContain('si.metadata as "providerMetadata"');
+  });
+
   it("reads every binding and item page beyond 1,000", async () => {
     const firstBindingPage = Array.from({ length: 1_000 }, (_, index) => ({
       sourceBindingId: `binding-${String(index + 1).padStart(4, "0")}`,

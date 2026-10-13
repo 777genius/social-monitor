@@ -1,3 +1,4 @@
+import { isGitHubTrendingArchivedObservation, parseGitHubTrendingArchiveMetadata } from "@social-monitor/ingestion/domain";
 import {
   classifyFeedPromotionEligibility,
   feedProviderMetricsFromMetadata,
@@ -20,6 +21,15 @@ export const providerMetricFacts = (params: {
   "providerMetricLabels" | "providerMetricSummary"
 > => {
   if (params.providerKey === "github-trending-page") {
+    const archive = parseGitHubTrendingArchiveMetadata(params.providerMetadata);
+    if (archive !== null) {
+      const day = archive.archive.serializedAt.slice(0, 10);
+      const labels = [{ label: `GitHub Trending archive ${day}`,
+        value: `#${archive.trending.rank}, +${archive.trending.starsGained.toLocaleString("en-US")} stars on ${day}` }];
+      return { providerMetricLabels: labels,
+        providerMetricSummary: labels.map((metric) => metric.value).join(", ") };
+    }
+    if (isGitHubTrendingArchivedObservation(params.providerMetadata)) return {};
     const appendixMetrics = feedProviderMetricsFromMetadata(params);
     return {
       providerMetricLabels: formatFeedProviderMetrics(appendixMetrics),

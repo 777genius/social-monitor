@@ -13,6 +13,7 @@ export * from "./value-objects/source-item-content-fingerprint";
 export * from "./policies/source-engagement-observation-policy";
 export * from "./value-objects/github-repository-trend";
 export * from "./value-objects/github-trending-page";
+export * from "./value-objects/github-trending-archive";
 export {
   CONTENT_CAPTURE_VERSION,
   ARTICLE_REPRESENTATION_VERSION,

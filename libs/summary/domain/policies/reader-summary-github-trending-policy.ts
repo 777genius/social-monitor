@@ -20,6 +20,7 @@ export type GitHubTrendingWatchEntry = {
   readonly repositoryIdentity: string;
   readonly rank: number;
   readonly starsGained: number;
+  readonly archivedUtcDay?: string;
 };
 
 export const githubTrendingWatchText = (
@@ -28,7 +29,7 @@ export const githubTrendingWatchText = (
   entries
     .map(
       (entry) =>
-        `- **${entry.repositoryIdentity}** (#${entry.rank}): +${entry.starsGained.toLocaleString("en-US")} stars today.`,
+        `- **${entry.repositoryIdentity}** (#${entry.rank}): +${entry.starsGained.toLocaleString("en-US")} stars ${entry.archivedUtcDay === undefined ? "today" : `on ${entry.archivedUtcDay} (archived observation)`}.`,
     )
     .join("\n");
 
@@ -271,7 +272,8 @@ export const githubTrendingStarsGained = (
 ): number | undefined => {
   const metric = item.providerMetricLabels?.find(
     (candidate) =>
-      candidate.label.toLocaleLowerCase("en-US") === "github trending today",
+      candidate.label.toLocaleLowerCase("en-US") === "github trending today" ||
+      /^GitHub Trending archive \d{4}-\d{2}-\d{2}$/u.test(candidate.label),
   );
   const match = metric?.value.match(/\+([\d,]+)\s+stars\b/iu);
   if (match === null || match === undefined) {
@@ -287,7 +289,8 @@ export const githubTrendingRank = (
 ): number | undefined => {
   const metric = item.providerMetricLabels?.find(
     (candidate) =>
-      candidate.label.toLocaleLowerCase("en-US") === "github trending today",
+      candidate.label.toLocaleLowerCase("en-US") === "github trending today" ||
+      /^GitHub Trending archive \d{4}-\d{2}-\d{2}$/u.test(candidate.label),
   );
   const match = metric?.value.match(/#([\d,]+)\b/u);
   if (match === null || match === undefined) {
@@ -320,7 +323,8 @@ export const buildGitHubTrendingNarrativeAppendix = (params: {
       rank === undefined ||
       repositoryIdentity === undefined
       ? []
-      : [{ citation, repositoryIdentity, rank, starsGained }];
+      : [{ citation, repositoryIdentity, rank, starsGained,
+          ...(archivedGitHubEvidenceDay(item) === undefined ? {} : { archivedUtcDay: archivedGitHubEvidenceDay(item) }) }];
   });
   if (citedHighlights.length === 0) {
     return undefined;
@@ -329,7 +333,8 @@ export const buildGitHubTrendingNarrativeAppendix = (params: {
   return {
     id: githubTrendingNarrativeSectionId,
     kind: "watch",
-    title: "GitHub Trending",
+    title: citedHighlights[0]?.archivedUtcDay === undefined
+      ? "GitHub Trending" : `GitHub Trending archive ${citedHighlights[0].archivedUtcDay}`,
     text: githubTrendingWatchText(citedHighlights),
     citationIds: citedHighlights.map(({ citation }) => citation.citationId),
   };
@@ -359,3 +364,10 @@ export const buildSupplementalTrendNarrativeAppendix =
   buildGitHubTrendingNarrativeAppendix;
 export const withSupplementalTrendNarrativeAppendix =
   withGitHubTrendingNarrativeAppendix;
+
+const archivedGitHubEvidenceDay = (item: SummaryEvidenceItem): string | undefined => {
+  const metric = item.providerMetricLabels?.find((candidate) =>
+    /^GitHub Trending archive \d{4}-\d{2}-\d{2}$/u.test(candidate.label));
+  const day = metric?.label.slice("GitHub Trending archive ".length);
+  return day === item.publishedAt.toISOString().slice(0, 10) ? day : undefined;
+};

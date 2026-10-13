@@ -1,3 +1,9 @@
+import {
+  buildGitHubProjectionAudit as baseAudit,
+  uniqueGitHubProjectionValues as unique,
+  uniqueGitHubProjectionFindings as uniqueFindingsByCodeAndReason,
+} from "./reader-summary-github-projection-evaluation";
+import { evaluateArchivedGitHubProjection } from "./reader-summary-github-archived-projection";
 import type { ReaderSummaryArtifact } from "../entities/reader-summary-artifact";
 import {
   buildReaderSummaryGitHubProjectionCollectionTelemetry,
@@ -8,9 +14,6 @@ import {
   readerSummaryIsOrdinaryNoSignalWithoutEvidence,
   readerSummaryRequiresGitHubProjection,
   validEligibleBindingIds,
-  type ReaderSummaryGitHubProjectionAudit,
-  type ReaderSummaryGitHubProjectionBinding,
-  type ReaderSummaryGitHubProjectionCollectionTelemetry,
   type ReaderSummaryGitHubProjectionEvaluation,
   type ReaderSummaryGitHubProjectionItem,
   type ReaderSummaryGitHubProjectionViolationCode,
@@ -142,6 +145,13 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
       requestedUtcDay: day.day,
       pageCount: params.pageCount,
     });
+  }
+
+  const requestedItems = params.items.filter((item) =>
+    githubProjectionItemTouchesDay(item, day.startedAt, day.endedAt));
+  if (requestedItems.some((item) => item.observationKind === "archived" || item.archivedObservation !== undefined)) {
+    return evaluateArchivedGitHubProjection({ ...params, items: requestedItems, day,
+      hasNoPrimaryGitHubEvidence: readerSummaryHasNoPrimaryGitHubEvidence(params.artifact) });
   }
 
   const findings: {
@@ -447,53 +457,4 @@ const rejectedEvaluation = (params: {
     }),
     findings,
   };
-};
-
-const baseAudit = (params: {
-  readonly status: ReaderSummaryGitHubProjectionAudit["status"];
-  readonly requestedUtcDay: string;
-  readonly pageCount: number;
-  readonly scannedItemCount: number;
-  readonly eligibleBindingIds: readonly string[];
-  readonly observedThrough?: string;
-  readonly projectionCheckedAt?: string;
-  readonly telemetry?: ReaderSummaryGitHubProjectionCollectionTelemetry;
-  readonly bindings?: readonly ReaderSummaryGitHubProjectionBinding[];
-  readonly violationCodes?: readonly ReaderSummaryGitHubProjectionViolationCode[];
-  readonly reasons?: readonly string[];
-}): ReaderSummaryGitHubProjectionAudit => ({
-  schemaVersion: "reader_summary.github_projection.v1",
-  status: params.status,
-  requestedUtcDay: params.requestedUtcDay,
-  pageCount: params.pageCount,
-  scannedItemCount: params.scannedItemCount,
-  eligibleBindingIds: params.eligibleBindingIds,
-  ...(params.observedThrough === undefined
-    ? {}
-    : { observedThrough: params.observedThrough }),
-  ...(params.projectionCheckedAt === undefined
-    ? {}
-    : { projectionCheckedAt: params.projectionCheckedAt }),
-  ...(params.telemetry === undefined ? {} : { telemetry: params.telemetry }),
-  bindings: params.bindings ?? [],
-  violationCodes: params.violationCodes ?? [],
-  reasons: params.reasons ?? [],
-});
-
-const unique = <TValue>(values: readonly TValue[]): TValue[] => [
-  ...new Set(values),
-];
-
-const uniqueFindingsByCodeAndReason = <
-  TFinding extends { readonly code: string; readonly reason: string },
->(findings: readonly TFinding[]): readonly TFinding[] => {
-  const seen = new Set<string>();
-  return findings.filter((finding) => {
-    const key = `${finding.code}\u0000${finding.reason}`;
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
 };

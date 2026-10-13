@@ -1,3 +1,5 @@
+import { isGitHubTrendingArchivedObservation, parseGitHubTrendingArchiveMetadata } from "@social-monitor/ingestion/domain";
+import type { JsonObject } from "@social-monitor/shared-kernel";
 import type {
   ReaderSummaryGitHubProjectionItem,
 } from "../../../domain";
@@ -10,6 +12,8 @@ import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistenc
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 
 type GitHubProjectionRow = {
+  readonly providerMetadata?: JsonObject;
+  readonly sourceExternalId?: string;
   readonly feedItemId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
@@ -128,6 +132,8 @@ export class PrismaReaderSummaryGitHubProjectionReader
         fi.source_item_id::text as "sourceItemId",
         fi.source_binding_id::text as "sourceBindingId",
         si.provider_key as "providerKey",
+        si.metadata as "providerMetadata",
+        si.provider_item_id as "sourceExternalId",
         si.metadata->>'kind' as "metadataKind",
         si.metadata->'trending'->>'scanJobId' as "scanJobId",
         fi.canonical_url as "canonicalUrl",
@@ -190,7 +196,14 @@ export class PrismaReaderSummaryGitHubProjectionReader
 
 const projectionItemFromRow = (
   row: GitHubProjectionRow,
-): ReaderSummaryGitHubProjectionItem => ({
+): ReaderSummaryGitHubProjectionItem => {
+  const archivedObservation = parseGitHubTrendingArchiveMetadata(row.providerMetadata);
+  return {
+  ...(isGitHubTrendingArchivedObservation(row.providerMetadata) ? { observationKind: "archived" as const } : {}),
+  ...(archivedObservation === null ? {} : {
+    archivedObservation,
+    sourceExternalId: row.sourceExternalId,
+  }),
   feedItemId: row.feedItemId,
   sourceItemId: row.sourceItemId,
   sourceBindingId: row.sourceBindingId,
@@ -224,7 +237,8 @@ const projectionItemFromRow = (
   observedAt: new Date(row.observedAt),
   sourceContentHash: row.sourceContentHash,
   sourceProviderContentHash: nonEmpty(row.sourceProviderContentHash) ?? "",
-});
+  };
+};
 
 const assertBoundedUtcDay = (
   query: ReadReaderSummaryGitHubProjectionQuery,

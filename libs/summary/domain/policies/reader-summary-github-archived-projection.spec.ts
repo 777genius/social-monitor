@@ -1,0 +1,92 @@
+import { githubTrendingArchiveExternalId, type GitHubTrendingArchiveMetadata } from "@social-monitor/ingestion/domain";
+import { evaluateReaderSummaryGitHubProjection, readerSummaryHasVerifiedGitHubProjection } from "./reader-summary-github-projection-policy";
+import { githubBoardArtifact, githubProjectionInput } from "./reader-summary-github-projection-policy.spec-support";
+import type { ReaderSummaryGitHubProjectionItem } from "./reader-summary-github-projection-audit";
+import { ReaderSummaryArtifact } from "../entities/reader-summary-artifact";
+import { buildGitHubTrendingNarrativeAppendix, selectGitHubTrendingDisplayRepositories } from "./reader-summary-github-trending-policy";
+import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
+
+const day = "2026-07-10";
+const acquiredAt = "2026-10-13T00:00:00.000Z";
+const persistedAt = "2026-10-13T00:05:00.000Z";
+const cutoff = new Date("2026-10-13T01:00:00.000Z");
+const items = (): readonly ReaderSummaryGitHubProjectionItem[] => githubProjectionInput().map((item, index) => {
+  const observation: GitHubTrendingArchiveMetadata = {
+    kind: "github_trending_page_repository",
+    repository: { fullName: item.repositoryFullName!, url: item.canonicalUrl, totalStars: 10000, forksCount: 100 },
+    trending: { observationKind: "archived", window: "daily", source: "github_trending_archive",
+      rank: index + 1, originalArchiveRank: index + 2, starsGained: item.starsGained!,
+      snapshotContentHash: "c".repeat(64), scanJobId: null, fetchStartedAt: null, checkedAt: null },
+    archive: { repository: "example/trending-archive", commit: "a".repeat(40), gitBlobSha1: "b".repeat(40),
+      filePath: "api/daily/all.json", fileSha256: "d".repeat(64),
+      originalSourceUrl: "https://github.com/trending?since=daily",
+      serializedAt: `${day}T12:00:00.000Z`, committedAt: `${day}T12:01:00.000Z`, acquiredAt },
+  };
+  return { ...item, observationKind: "archived", archivedObservation: observation,
+    sourceExternalId: githubTrendingArchiveExternalId(observation.archive, observation.repository.fullName),
+    scanJobId: undefined, fetchStartedAt: undefined, checkedAt: undefined,
+    publishedAt: new Date(observation.archive.serializedAt), observedAt: new Date(persistedAt) };
+});
+const artifact = (): ReaderSummaryArtifact => {
+  const snapshot = githubBoardArtifact().toSnapshot();
+  return ReaderSummaryArtifact.create({ ...snapshot, content: { ...snapshot.content!,
+    selectedPosts: snapshot.content!.selectedPosts!.map((post, index) => ({ ...post,
+      providerMetrics: [{ label: `GitHub Trending archive ${day}`, value: `#${index + 1}, +${101 + index} stars on ${day}` }] })) } });
+};
+const evaluate = (rows = items(), selected = artifact(), observedThrough = cutoff) => evaluateReaderSummaryGitHubProjection({
+  artifact: selected, items: rows, eligibleBindingIds: ["github-binding-a"], pageCount: 2, observedThrough,
+});
+
+describe("archived GitHub publication custody", () => {
+  it("verifies original-day Top 10 with current truthful acquisition and no fabricated live timestamps", () => {
+    const result = evaluate();
+    expect(result.findings).toEqual([]);
+    expect(result.audit.status).toBe("verified");
+    expect(result.audit.bindings).toEqual([]);
+    expect(result.audit.telemetry).toBeUndefined();
+    expect(result.audit.projectionCheckedAt).toBeUndefined();
+    expect(result.audit.archivedProjection?.bindings[0]).toMatchObject({
+      scanJobId: null, fetchStartedAt: null, checkedAt: null, observedAt: persistedAt,
+    });
+    expect(readerSummaryHasVerifiedGitHubProjection({ artifact: artifact(), audit: result.audit })).toBe(true);
+  });
+  it.each([
+    ["fabricated fetch", (item: ReaderSummaryGitHubProjectionItem) => ({ ...item, fetchStartedAt: new Date(`${day}T11:59:00.000Z`) })],
+    ["fabricated scan", (item: ReaderSummaryGitHubProjectionItem) => ({ ...item, scanJobId: "invented-scan" })],
+    ["wrong day", (item: ReaderSummaryGitHubProjectionItem) => ({ ...item, publishedAt: new Date("2026-07-09T12:00:00.000Z") })],
+    ["false acquisition", (item: ReaderSummaryGitHubProjectionItem) => ({ ...item, observedAt: new Date(`${day}T12:05:00.000Z`) })],
+    ["wrong native id", (item: ReaderSummaryGitHubProjectionItem) => ({ ...item, sourceExternalId: "wrong" })],
+    ["missing archive provenance", (item: ReaderSummaryGitHubProjectionItem) => ({ ...item, archivedObservation: undefined })],
+    ["mixed live row", (item: ReaderSummaryGitHubProjectionItem) => ({ ...githubProjectionInput()[0]!, feedItemId: item.feedItemId })],
+  ] as const)("rejects %s", (_name, mutate) => {
+    expect(evaluate(items().map((item, index) => index === 0 ? mutate(item) : item)).audit.status).toBe("rejected");
+  });
+  it("rejects a cutoff before archive acquisition and legacy today labels", () => {
+    expect(evaluate(items(), artifact(), new Date(`${day}T23:00:00.000Z`)).audit.status).toBe("rejected");
+    expect(evaluate(items(), githubBoardArtifact()).audit.status).toBe("rejected");
+  });
+  it("refuses stored audit provenance tampering at save verification", () => {
+    const audit = evaluate().audit;
+    const bindings = audit.archivedProjection!.bindings;
+    const changed = { ...audit, archivedProjection: { observationKind: "archived" as const,
+      bindings: bindings.map((binding, index) => index === 0 ? { ...binding,
+        observation: { ...binding.observation, archive: { ...binding.observation.archive, fileSha256: "0".repeat(64) } } } : binding) } };
+    expect(readerSummaryHasVerifiedGitHubProjection({ artifact: artifact(), audit: changed })).toBe(false);
+  });
+  it("leaves native live scan requirements unchanged", () => {
+    expect(evaluate(githubProjectionInput(), githubBoardArtifact(), new Date("2026-07-11T01:00:00.000Z")).audit.status).toBe("verified");
+    expect(evaluate(githubProjectionInput().map(item => ({ ...item, scanJobId: undefined })),
+      githubBoardArtifact()).audit.status).toBe("rejected");
+  });
+  it("builds an explicitly dated archived watch instead of stars today", () => {
+    const row = items()[0]!;
+    const evidence = { ...row, interestId: "test-interest", title: "Archived repository", score: 0, whyImportant: [],
+      providerMetricLabels: [{ label: `GitHub Trending archive ${day}`, value: `#1, +1,001 stars on ${day}` }] } as SummaryEvidenceItem;
+    expect(selectGitHubTrendingDisplayRepositories([evidence])).toEqual([evidence]);
+    const appendix = buildGitHubTrendingNarrativeAppendix({ evidence: [evidence], citations: [{
+      citationId: "citation", feedItemId: row.feedItemId, sourceItemId: row.sourceItemId,
+      providerKey: row.providerKey, field: "canonicalUrl", canonicalUrl: row.canonicalUrl }] });
+    expect(appendix?.title).toBe(`GitHub Trending archive ${day}`);
+    expect(appendix?.text).toBe(`- **owner/repo-1** (#1): +1,001 stars on ${day} (archived observation).`);
+  });
+});
