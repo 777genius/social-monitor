@@ -352,7 +352,7 @@ async function build(args) {
     });
     const traverseStage = join(stage, inspectedTraverse);
     if (!(await lstat(traverseStage).catch(() => undefined))) {
-      await cp(join(sourceRoot, inspectedTraverse), traverseStage, { recursive: true });
+      await cp(await realpath(join(sourceRoot, inspectedTraverse)), traverseStage, { recursive: true });
     }
     await mkdir(join(stage, "apps/agent-runtime/bin"), { recursive: true });
     for (const name of [basename(cli), basename(verifier), ...helpers]) {
