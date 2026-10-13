@@ -1,3 +1,4 @@
+import { approvedSubscriptionRuntimeLauncherSha256 } from "../../apps/agent-runtime/src/subscription-runtime-installation";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import {
   isCurrentProductionSubscriptionRuntimeProvenance,
@@ -17,6 +18,7 @@ const evidenceWith = (records: ReturnType<typeof productionExecutionAttestations
 describe("production day purpose-specific executor identity", () => {
   it("accepts pinned MiMo for every daily task role and the repair purpose", () => {
     const records = productionExecutionAttestations();
+    for (const record of records) record.attestation.launcherSha256 = approvedSubscriptionRuntimeLauncherSha256;
     const relationPurposes = [
       ["topic_relation", "social_monitor.reader_summary.topic_map.verify_relations.v2"],
       ["story_relation", "social_monitor.reader_summary.verify_story_relations.v2"],
@@ -28,14 +30,14 @@ describe("production day purpose-specific executor identity", () => {
     }
     for (const record of records) {
       record.attestation.model = "mimo-v2.6-pro";
-      record.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.7";
+      record.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.8";
     }
     const violations: string[] = [];
     const provenance = runtimeProvenanceFromExecutorAttestations(evidenceWith(records), violations);
     expect(violations).toEqual([]);
     expect(provenance).toMatchObject({ physicalModel: "mimo-v2.6-pro",
       topicLabeler: { physicalModel: "mimo-v2.6-pro",
-        runtimeVersion: "0.1.0-main.40-sm-mimo.7" } });
+        runtimeVersion: "0.1.0-main.40-sm-mimo.8" } });
     expect(isCurrentProductionSubscriptionRuntimeProvenance(provenance)).toBe(true);
 
     records[0]!.attempt = "repair";
@@ -48,8 +50,9 @@ describe("production day purpose-specific executor identity", () => {
 
   it("accepts pinned MiMo generation with an independent Codex topic runtime identity", () => {
     const records = productionExecutionAttestations();
+    for (const record of records) record.attestation.launcherSha256 = approvedSubscriptionRuntimeLauncherSha256;
     records[0]!.attestation.model = "mimo-v2.6-pro";
-    records[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.7";
+    records[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.8";
     records[1]!.attestation.runtimePackageVersion = "0.1.0-main.42-sm.3";
     records.push({ ...structuredClone(records[1]!), taskRole: "topic_relation",
       attestation: { ...records[1]!.attestation, requestId: "topic-relation-request",
@@ -58,7 +61,7 @@ describe("production day purpose-specific executor identity", () => {
     const provenance = runtimeProvenanceFromExecutorAttestations(evidenceWith(records), violations);
     expect(violations).toEqual([]);
     expect(provenance).toMatchObject({
-      physicalModel: "mimo-v2.6-pro", runtimeVersion: "0.1.0-main.40-sm-mimo.7",
+      physicalModel: "mimo-v2.6-pro", runtimeVersion: "0.1.0-main.40-sm-mimo.8",
       topicLabeler: { physicalModel: "gpt-5.6-sol", runtimeVersion: "0.1.0-main.42-sm.3" },
     });
     expect(isCurrentProductionSubscriptionRuntimeProvenance(provenance)).toBe(true);
@@ -71,8 +74,9 @@ describe("production day purpose-specific executor identity", () => {
     expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [])).toBeNull();
 
     const legacyTopic = productionExecutionAttestations();
+    for (const record of legacyTopic) record.attestation.launcherSha256 = approvedSubscriptionRuntimeLauncherSha256;
     legacyTopic[0]!.attestation.model = "mimo-v2.6-pro";
-    legacyTopic[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.7";
+    legacyTopic[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.8";
     legacyTopic[1]!.attestation.runtimePackageVersion = "0.1.0-main.42-sm.3";
     legacyTopic[1]!.attestation.purpose = "social_monitor.reader_summary.topic_map.label";
     legacyTopic[1]!.attestation.reasoningEffort = "xhigh";
@@ -82,13 +86,21 @@ describe("production day purpose-specific executor identity", () => {
 
   it("rejects unpinned MiMo package and cross-purpose model substitution", () => {
     const unpinned = productionExecutionAttestations();
+    for (const record of unpinned) record.attestation.launcherSha256 = approvedSubscriptionRuntimeLauncherSha256;
+    unpinned[1]!.attestation.runtimePackageVersion = "0.1.0-main.42-sm.3";
     unpinned[0]!.attestation.model = "mimo-v2.6-pro";
     unpinned[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.7";
     expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(unpinned), [])).toBeNull();
 
     const wrongRole = productionExecutionAttestations();
+    for (const record of wrongRole) {
+      record.attestation.runtimePackageVersion = "0.1.0-main.42-sm.3";
+      record.attestation.launcherSha256 = approvedSubscriptionRuntimeLauncherSha256;
+    }
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(wrongRole), [])).not.toBeNull();
     wrongRole[1]!.attestation.model = "mimo-v2.6-pro";
-    wrongRole[1]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.7";
+    wrongRole[1]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.8";
+    wrongRole[1]!.attestation.launcherSha256 = approvedSubscriptionRuntimeLauncherSha256;
     expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(wrongRole), [])).toBeNull();
   });
 });

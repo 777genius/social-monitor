@@ -24,7 +24,7 @@ export type SubscriptionRuntimePurposeProfile = {
   readonly provider: "codex";
   readonly model: "gpt-5.6-sol" | typeof mimoSummaryModel;
   readonly modelBackend?: typeof mimoSummaryBackend;
-  readonly reasoningEffort: "low" | "high" | "xhigh";
+  readonly reasoningEffort: "none" | "low" | "high" | "xhigh";
   readonly outputKind: SubscriptionRuntimeOutputKind;
   readonly responseFormat: "json" | "text";
   readonly retryMode?: SubscriptionRuntimeRetryMode;
@@ -72,13 +72,18 @@ const mimoReaderSummaryStructuredProfile = Object.freeze({
   retryMode: "never",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
+const mimoPresentationStructuredProfile = Object.freeze({
+  ...mimoReaderSummaryStructuredProfile, reasoningEffort: "none",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
 const profileForRequest = (
   purpose: string,
   modelBackend: unknown,
   activationCapability?: symbol,
 ): SubscriptionRuntimePurposeProfile | undefined => {
   if (modelBackend === mimoSummaryBackend && Object.hasOwn(mimoSchemaMarkers, purpose)) {
-    return mimoReaderSummaryStructuredProfile;
+    return purpose === "social_monitor.reader_summary.promotion_presentation.v3"
+      ? mimoPresentationStructuredProfile : mimoReaderSummaryStructuredProfile;
   }
   return profilesByPurpose[purpose] ??
     (activationCapability === readerPromotionV2CanaryActivationCapability

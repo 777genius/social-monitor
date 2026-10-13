@@ -38,9 +38,72 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect((await builder.build([fixtureInput()]))[0]).toMatchObject({ status: "available" });
     expect(client.commands[0]?.controls).toMatchObject({
       model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan",
-      reasoningEffort: "high", outputSchemaName: "social_monitor_reader_post_presentation_v3",
+      reasoningEffort: "none", outputSchemaName: "social_monitor_reader_post_presentation_v3",
       schemaVersion: "reader_post_presentation.v3",
     });
+  });
+
+  it("gives MiMo exact decoded-source copy options without changing the original candidate projection", async () => {
+    const client = new AttestedPresentationRuntimeClient();
+    const input = { ...fixtureInput(), body: `Useful ${"x".repeat(248)}😀 "quoted" source.\nMore source.` };
+    const builder = new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" });
+    const original = client.runTask.bind(client);
+    jest.spyOn(client, "runTask").mockImplementation(async command => {
+      const result = await original(command);
+      const options = JSON.parse(command.systemPrompt!.split("\nSOURCE_REFERENCE_COPY_OPTIONS=")[1]!);
+      const output = result.structuredOutput as { presentations: Record<string, unknown>[] };
+      return withTestExecutionAttestation(command, { ...result, structuredOutput: {
+        presentations: output.presentations.map(row => ({ ...row, support: [options[0].references[0]] })),
+      } });
+    });
+    expect((await builder.build([input]))[0]).toMatchObject({ status: "available" });
+    const command = client.commands[0]!;
+    expect(JSON.parse(command.prompt)).toEqual({ candidates: [{
+      candidateId: input.candidateId, title: input.title, sourceText: input.body,
+    }] });
+    expect(command.systemPrompt).toContain("end is exclusive in JavaScript UTF-16 code units");
+    expect(command.systemPrompt).toContain("never translated or paraphrased");
+    expect(command.systemPrompt).toContain("fieldText.slice(start,end) must equal quote exactly");
+    expect(command.systemPrompt).toContain("total quotes at most 512 units");
+    expect(command.systemPrompt).toContain("Every qualification phrase must occur literally");
+    expect(command.systemPrompt).toContain("return unavailable");
+    const options = JSON.parse(command.systemPrompt!.split("\nSOURCE_REFERENCE_COPY_OPTIONS=")[1]!) as
+      { candidateId: string; references: { field: string; start: number; end: number; quote: string }[] }[];
+    expect(options).toHaveLength(1);
+    expect(options[0]!.candidateId).toBe(input.candidateId);
+    expect(options[0]!.references.length).toBeGreaterThan(2);
+    for (const ref of options[0]!.references) {
+      const source = ref.field === "title" ? input.title : input.body;
+      expect(ref.quote).toBe(source.slice(ref.start, ref.end));
+      expect(ref.end - ref.start).toBe(ref.quote.length);
+      expect(ref.quote.length).toBeLessThanOrEqual(256);
+      expect(ref.quote).not.toMatch(/[\uD800-\uDBFF]$/u);
+      expect(ref.quote).not.toMatch(/^[\uDC00-\uDFFF]/u);
+    }
+    expect(command.systemPrompt).not.toContain(input.trustedIntent);
+    const codex = new PresentationRuntimeClient();
+    await new AgentRuntimePromotionPresentationV3Builder({ client: codex }).build([fixtureInput()]);
+    expect(codex.commands[0]?.systemPrompt).not.toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
+  });
+
+  it("still refuses a copied source anchor when a material qualification is absent from the headline", async () => {
+    const client = new AttestedPresentationRuntimeClient();
+    const original = client.runTask.bind(client);
+    jest.spyOn(client, "runTask").mockImplementation(async command => {
+      const result = await original(command);
+      const options = JSON.parse(command.systemPrompt!.split("\nSOURCE_REFERENCE_COPY_OPTIONS=")[1]!);
+      const reference = options[0].references.find((ref: { field: string }) => ref.field === "bodyPreview");
+      const output = result.structuredOutput as { presentations: Record<string, unknown>[] };
+      return withTestExecutionAttestation(command, { ...result, structuredOutput: {
+        presentations: output.presentations.map(row => ({ ...row, support: [reference],
+          qualifications: [{ phrase: "limited", evidence: [reference] }], qualificationJudgment: "preserved" })),
+      } });
+    });
+    const builder = new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" });
+    expect((await builder.build([{ ...fixtureInput(), body: "Useful method with limited evidence." }]))[0])
+      .toEqual({ status: "unavailable", reason: "invalid_presentation" });
   });
 
   it("isolates MiMo identity from Codex without changing exact MiMo retries", async () => {
@@ -73,6 +136,33 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     const builder = new AgentRuntimePromotionPresentationV3Builder({ client,
       modelBackend: "xiaomi-mimo-token-plan" });
     await expect(builder.build([fixtureInput()])).rejects.toThrow("execution attestation is invalid");
+  });
+
+  it("keeps thinking-off exclusive to MiMo presentation and preserves the shared high parser", () => {
+    const client = new PresentationRuntimeClient();
+    expect(() => new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high" })).toThrow();
+    expect(() => new AgentRuntimePromotionPresentationV3Builder({ client,
+      reasoningEffort: "none" })).toThrow();
+    expect(resolveAgentRuntimePromotionPresentationV3BuilderOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
+    }, client).reasoningEffort).toBe("none");
+    expect(() => resolveAgentRuntimePromotionPresentationV3BuilderOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "none",
+    }, client)).toThrow();
+  });
+
+  it("refuses a high attestation for a thinking-off presentation request", async () => {
+    const client = new AttestedPresentationRuntimeClient();
+    const original = client.runTask.bind(client);
+    jest.spyOn(client, "runTask").mockImplementation(async command => {
+      const result = await original(command);
+      return { ...result, executionAttestation: { ...result.executionAttestation!, reasoningEffort: "high" } };
+    });
+    await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toThrow("execution attestation is invalid");
   });
 
   it("rejects a conflicting presentation model under MiMo", () => {

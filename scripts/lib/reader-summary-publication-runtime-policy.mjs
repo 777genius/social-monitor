@@ -1,9 +1,9 @@
 // This standalone verifier runs without the TypeScript build. Keep these
 // identities aligned with subscription-runtime-installation.ts.
 export const approvedCodexRuntimeVersion = "0.1.0-main.42-sm.3";
-export const approvedMimoRuntimeVersion = "0.1.0-main.40-sm-mimo.7";
+export const approvedMimoRuntimeVersion = "0.1.0-main.40-sm-mimo.8";
 export const approvedLauncherSha256 =
-  "3a9718b8cc33e3f4439936d4cdd77255fe24afbd6b9db3e57e6da26ee701f051";
+  "f3e2a724964ad47623a9553be082e87a93e8191d8c2e7e86194b583b76e9891e";
 
 const legacyPurposes = Object.freeze({
   topic_label: "social_monitor.reader_summary.topic_map.label",

@@ -92,21 +92,20 @@ export const validDisplayHeadlineContract = (
   maxBodyUtf16: number,
 ): value is Extract<ReaderDisplayHeadline, { status: "accepted" }> => {
   if (!exact(value, ["status", "kind", "text", "binding", "support", "qualifications", "confidence", "wholeInput"]) ||
-      value.status !== "accepted" || !["claim", "subject_label"].includes(String(value.kind)) ||
-      !isConciseDisplayText(value.text) || typeof value.confidence !== "number" ||
-      !Number.isFinite(value.confidence) || value.confidence < 0.8 || value.confidence > 1 ||
-      !exact(source, ["title", "body", "captureAvailability", "reviewAvailability"]) ||
-      source.captureAvailability !== "available" || typeof source.title !== "string" ||
-      typeof source.body !== "string" || !isDisplayRoundTripText(source.title) ||
-      !isDisplayRoundTripText(source.body) || source.title.length > 2_000 ||
-      source.body.length > maxBodyUtf16) return false;
+      value.status !== "accepted" || !exact(value.wholeInput,
+        ["titleLength", "bodyLength", "qualificationJudgment"])) return false;
+  const whole = value.wholeInput;
+  if (!validDisplayHeadlineContent({ kind: value.kind, text: value.text, support: value.support,
+      qualifications: value.qualifications, confidence: value.confidence,
+      qualificationJudgment: whole.qualificationJudgment }, source, maxBodyUtf16) ||
+      whole.titleLength !== source.title.length || whole.bodyLength !== source.body!.length) return false;
   const binding = value.binding;
   if (!exact(binding, ["candidateId", "providerKey", "tenantId", "workspaceId", "interestId",
     "sourceBindingId", "sourceItemId", "trustedIntent", "availability", "reviewedInputDigest"]) ||
       Object.values(binding).some((v) => typeof v !== "string" || v.trim() === "") ||
       !["title_only", "body_present"].includes(String(binding.availability)) ||
       binding.availability !== source.reviewAvailability ||
-      (binding.availability === "title_only") !== !source.body.trim()) return false;
+      (binding.availability === "title_only") !== !source.body!.trim()) return false;
   const context = {
     tenantId: binding.tenantId, workspaceId: binding.workspaceId, interestId: binding.interestId,
     sourceBindingId: binding.sourceBindingId, sourceItemId: binding.sourceItemId,
@@ -115,9 +114,21 @@ export const validDisplayHeadlineContract = (
   const digest = promotionPayloadDigest(JSON.stringify({ candidateId: binding.candidateId,
     providerKey: binding.providerKey, context, title: source.title, body: source.body }));
   if (digest !== binding.reviewedInputDigest) return false;
-  const whole = value.wholeInput;
-  if (!exact(whole, ["titleLength", "bodyLength", "qualificationJudgment"]) ||
-      whole.titleLength !== source.title.length || whole.bodyLength !== source.body.length ||
+  return true;
+};
+
+/** Source-grounded content only; full provenance and binding remain in the display contract. */
+export const validDisplayHeadlineContent = (
+  value: unknown, source: ReaderCapturedSource, maxBodyUtf16: number,
+): boolean => {
+  if (!exact(value, ["kind", "text", "support", "qualifications", "confidence", "qualificationJudgment"]) ||
+      !["claim", "subject_label"].includes(String(value.kind)) || !isConciseDisplayText(value.text) ||
+      typeof value.confidence !== "number" || !Number.isFinite(value.confidence) ||
+      value.confidence < 0.8 || value.confidence > 1 ||
+      !exact(source, ["title", "body", "captureAvailability", "reviewAvailability"]) ||
+      source.captureAvailability !== "available" || typeof source.title !== "string" ||
+      typeof source.body !== "string" || !isDisplayRoundTripText(source.title) ||
+      !isDisplayRoundTripText(source.body) || source.title.length > 2_000 || source.body.length > maxBodyUtf16 ||
       !references(value.support, source) || !Array.isArray(value.qualifications) ||
       value.qualifications.length > 8) return false;
   const phrases = new Set<string>();
@@ -131,10 +142,10 @@ export const validDisplayHeadlineContract = (
   if (refs.length > 8 || refs.some((ref) => ref.quote.length > 256) ||
       refs.reduce((sum, ref) => sum + ref.quote.length, 0) > 512 ||
       refs.reduce((sum, ref) => sum + JSON.stringify(ref.quote).length, 0) > 1_024) return false;
-  if (value.kind === "claim") return whole.qualificationJudgment ===
+  if (value.kind === "claim") return value.qualificationJudgment ===
     (value.qualifications.length === 0 ? "none" : "preserved");
   const support = value.support;
-  return whole.qualificationJudgment === "subject_only" && phrases.size === 0 &&
+  return value.qualificationJudgment === "subject_only" && phrases.size === 0 &&
     support.length >= 2 && support.length <= 3 && support.every((ref) => wholeSubjectToken(source, ref)) &&
     /^[\p{Lu}][\p{L}\p{M}\p{N}-]{1,39}$/u.test(support[0]!.quote) &&
     ["benchmark", "compiler", "model", "editor", "API", "release", "safety", "latency"].includes(support.at(-1)!.quote) &&

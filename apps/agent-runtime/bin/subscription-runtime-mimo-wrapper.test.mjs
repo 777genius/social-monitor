@@ -88,6 +88,8 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
   assert.equal(options.accounts[0].worker.modelBackend, "xiaomi-mimo-token-plan");
   assert.equal(options.accounts[0].worker.model, "mimo-v2.6-pro");
   assert.equal(options.accounts[0].worker.executionEngine, "app-server-goal");
+  assert.equal(options.accounts[0].worker.completedGoalOutputValidator, undefined);
+  assert.equal(options.accounts[0].worker.maxGoalTurns, undefined);
   assert.equal(typeof options.accounts[0].worker.appServerProcessFactory, "function");
   assert.deepEqual(options.accounts[0].worker.boundedWorkspaceTools,
     { allowedTools: [], denyProjectInstructions: true });
@@ -159,7 +161,11 @@ test("MiMo worker binds each daily purpose to its schema and output family", asy
             properties: { candidateId: { type: "string" } } },
         } : {}),
       } } };
-    const admission = { profile: { reasoningEffort: "high" }, canonicalRequest: {
+    const presentation = purpose.endsWith("promotion_presentation.v3");
+    const completionValidator = () => true;
+    let completionInput;
+    const admission = { profile: { provider: "codex", model: "mimo-v2.6-pro",
+      modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: presentation ? "none" : "high" }, canonicalRequest: {
       context: { purpose }, task: {
         outputSchemaName: name,
         controls: { outputSchemaName: name, outputSchema: schema },
@@ -167,6 +173,10 @@ test("MiMo worker binds each daily purpose to its schema and output family", asy
     } };
     const dependencies = {
       admission,
+      createMimoPresentationCompletionValidator: (input) => {
+        completionInput = input;
+        return completionValidator;
+      },
       mimoRuntime: { createOneShotExecutor: (options) => {
         schemas = options.outputSchemas;
         workerOptions = options.accounts[0].worker;
@@ -207,6 +217,20 @@ test("MiMo worker binds each daily purpose to its schema and output family", asy
     assert.deepEqual(admission.canonicalRequest.task.controls.outputSchema, schema, purpose);
     assert.equal(workerOptions.sourceEnv.MIMO_TOKEN_PLAN_API_KEY, "synthetic-key", purpose);
     assert.equal(workerOptions.modelBackend, "xiaomi-mimo-token-plan", purpose);
+    assert.equal(workerOptions.reasoningEffort, presentation ? "none" : "high", purpose);
+    assert.equal(workerOptions.completedGoalOutputValidator,
+      presentation ? completionValidator : undefined, purpose);
+    assert.equal(workerOptions.maxGoalTurns, presentation ? 1 : undefined, purpose);
+    if (presentation) {
+      assert.equal(completionInput.task, admission.canonicalRequest.task);
+      assert.equal(completionInput.reasoningEffort, "none");
+      assert.match(executedJob.systemPrompt, /completion follows strict validation/u);
+      assert.match(executedJob.prompt, /do not call lifecycle tools/u);
+      assert.doesNotMatch(executedJob.prompt, /First call native get_goal/u);
+    } else {
+      assert.equal(completionInput, undefined);
+      assert.match(executedJob.prompt, /First call native get_goal/u);
+    }
     assert.deepEqual(workerOptions.boundedWorkspaceTools,
       { allowedTools: [], denyProjectInstructions: true }, purpose);
     admission.canonicalRequest.task.outputSchemaName = "wrong";

@@ -250,6 +250,11 @@ test("MiMo admission covers only the seven named daily summary purposes", () => 
     assert.equal(admitted.profile.provider, "codex");
     assert.equal(admitted.profile.model, "mimo-v2.6-pro");
     assert.equal(admitted.profile.modelBackend, "xiaomi-mimo-token-plan");
+    const effort = purpose.endsWith("promotion_presentation.v3") ? "none" : "high";
+    assert.equal(admitted.profile.reasoningEffort, effort);
+    const wrongEffort = structuredClone(input);
+    wrongEffort.reasoningEffort = effort === "none" ? "high" : "none";
+    assert.throws(() => admitSubscriptionRuntimeWrapperRequest(wrongEffort), /runtime reasoning effort conflicts with purpose policy/u);
     assert.equal(admitted.canonicalRequest.task.controls.model, "mimo-v2.6-pro");
     const conflicting = structuredClone(input);
     conflicting.request.task.metadata.modelBackend = "openai-chatgpt";
@@ -300,6 +305,7 @@ test("MiMo launcher fails closed without a key file and never logs a synthetic t
       encoding: "utf8",
       env: {
         PATH: process.env.PATH,
+        HOME: root,
         AGENT_RUNTIME_REASONING_EFFORT: "high",
         ...extraEnv,
       },
