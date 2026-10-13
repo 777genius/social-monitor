@@ -74,7 +74,11 @@ for (const [regression, mutate] of [
     step.run = step.run.split('\n').filter((line) => !line.includes(fragment)).join('\n');
   }]),
   ...[
-    ['unrelated APT repository update', '-o Dir::Etc::sourcelist=/etc/apt/sources.list.d/firstpub-pgdg.list -o Dir::Etc::sourceparts=- '],
+    ['unrelated APT repository update', '-o Dir::Etc::sourcelist=- -o Dir::Etc::sourceparts="$pgdg_scratch/sources" '],
+    ['missing Ubuntu dependency indexes', 'cp /etc/apt/sources.list.d/ubuntu.sources "$pgdg_scratch/sources/ubuntu.sources"'],
+    ['missing signed PGDG index source', 'cp /etc/apt/sources.list.d/firstpub-pgdg.list "$pgdg_scratch/sources/firstpub-pgdg.list"'],
+    ['untrusted Ubuntu source custody', "test \"$(stat -c '%u:%g:%a:%h' /etc/apt/sources.list.d/ubuntu.sources)\" = 0:0:644:1"],
+    ['unverified Ubuntu signing key', "awk '/^Signed-By:/ { if ($0 != \"Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\") exit 1; found=1 } END { if (!found) exit 1 }' /etc/apt/sources.list.d/ubuntu.sources"],
     ['ignored PGDG index acquisition failure', '-o APT::Update::Error-Mode=any '],
     ['unbounded HTTP acquisition', '-o Acquire::http::Timeout=15 '],
     ['unbounded HTTPS acquisition', '-o Acquire::https::Timeout=15 '],
