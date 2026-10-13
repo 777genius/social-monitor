@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { appendFile, chmod, copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, chmod, copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import test from "node:test";
@@ -89,15 +89,20 @@ test("builds a deterministic, extractable host release from a disposable synthet
       "node_modules/dev-only": { version: "1.0.0", dev: true },
     },
   }));
-  for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz", "vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.7.tgz"]) {
+  for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz", "vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.8.tgz"]) {
     await put(source, `vendor/${name}`, "synthetic vendor archive\n");
   }
   const staleEntrypoint = "stale source dist entrypoint must never ship\n";
   await put(source, "dist/apps/agent-runtime/src/main.js", staleEntrypoint);
   await put(source, "dist/libs/stale.js", "stale source dist library must never ship\n");
   await put(source, "dist/apps/agent-runtime/stale.js", "stale source dist app must never ship\n");
-  await cp(join(process.cwd(), "node_modules/json-schema-traverse"),
-    join(source, "node_modules/json-schema-traverse"), { recursive: true });
+  const borrowedTraverse = join(temp, "borrowed-json-schema-traverse");
+  await cp(await realpath(join(process.cwd(), "node_modules/json-schema-traverse")),
+    borrowedTraverse, { recursive: true });
+  const sourceTraverse = join(source, "node_modules/json-schema-traverse");
+  await mkdir(dirname(sourceTraverse), { recursive: true });
+  await symlink(borrowedTraverse, sourceTraverse);
+  assert.equal((await lstat(sourceTraverse)).isSymbolicLink(), true);
   await put(source, "node_modules/dev-only/package.json", '{"name":"dev-only","version":"1.0.0"}');
   for (const name of helpers) {
     const target = join(source, "apps/agent-runtime/bin", name);
@@ -128,7 +133,7 @@ test("builds a deterministic, extractable host release from a disposable synthet
     '#!/usr/bin/env node\nrequire("../typescript/lib/tsc.js");\n');
   await chmod(realTsc, 0o755);
   const fakeNpm = await put(fakeBin, "npm", `#!/usr/bin/env node
-import { chmodSync, cpSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, realpathSync, writeFileSync, symlinkSync } from "node:fs";
 if (process.argv[2] === "run" && process.argv[3] === "prisma:generate") process.exit(0);
 if (process.argv[2] !== "ci" || !process.argv.includes("--omit=dev") || process.argv.includes("--include=dev")) process.exit(2);
 for (const name of [
@@ -136,7 +141,7 @@ for (const name of [
   "@anthropic-ai/claude-agent-sdk", "@modelcontextprotocol/sdk", "ajv-formats",
   "zod", "zod-to-json-schema", "fast-uri", "fast-deep-equal",
 ]) {
-  cpSync(process.env.SM_HOST_TEST_MODULES_ROOT + "/" + name, "node_modules/" + name, {
+  cpSync(realpathSync(process.env.SM_HOST_TEST_MODULES_ROOT + "/" + name), "node_modules/" + name, {
     recursive: true, verbatimSymlinks: true,
   });
 }
@@ -189,6 +194,9 @@ writeFileSync("node_modules/synthetic.test.js", "excluded");
   const inspect = spawnSync(process.execPath, inspectorArgs, { encoding: "utf8", cwd: source });
   assert.equal(inspect.status, 0, inspect.stderr);
   assert.equal(JSON.parse(await readFile(join(extracted, "node_modules/json-schema-traverse/package.json"))).version, "0.4.1");
+  assert.equal((await lstat(join(extracted, "node_modules/json-schema-traverse"))).isDirectory(), true);
+  assert.equal((await lstat(sourceTraverse)).isSymbolicLink(), true);
+  assert.equal(await readlink(sourceTraverse), borrowedTraverse);
   assert.equal(JSON.parse(await readFile(join(extracted,
     "node_modules/@vioxen/subscription-runtime/node_modules/json-schema-traverse/package.json"))).version, "1.0.0");
   for (const path of [
@@ -229,4 +237,11 @@ writeFileSync("node_modules/synthetic.test.js", "excluded");
   await assert.rejects(stat(join(extracted, "node_modules/.env")), /ENOENT/);
   await assert.rejects(stat(join(extracted, "node_modules/synthetic.test.js")), /ENOENT/);
   await assert.rejects(stat(join(extracted, "node_modules/dev-only")), /ENOENT/);
+  await appendFile(join(borrowedTraverse, "LICENSE"), "\nTEST changed inspected distribution\n");
+  const unapproved = spawnSync(process.execPath, [script, "build", "--output-dir", output], {
+    encoding: "utf8", cwd: source, env,
+  });
+  assert.equal(unapproved.status, 1);
+  assert.match(unapproved.stderr, /Staged json-schema-traverse distribution bytes are not approved/);
+  assert.equal(createHash("sha256").update(await readFile(archive)).digest("hex"), firstHash);
 });
