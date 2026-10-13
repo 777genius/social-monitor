@@ -24,7 +24,13 @@ const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]
 function need(ok:unknown,reason:string):asserts ok {if(!ok)throw new Error(reason);}
 
 export function planGitHubArchiveQualifiedPartition(input:GitHubArchivePlannerInput) {
-  need(Object.values(input.scope).every(id=>uuid.test(id)),'Archived GitHub scope must be explicit');
+  const scope:unknown=input.scope;
+  const scopeKeys=['tenantId','workspaceId','interestId','sourceBindingId','scanPolicyId'] as const;
+  need(scope!==null&&typeof scope==='object'&&!Array.isArray(scope),'Archived GitHub scope must be explicit');
+  const fields=scope as Record<string,unknown>;
+  need(Object.keys(fields).length===scopeKeys.length&&scopeKeys.every(key=>
+    Object.hasOwn(fields,key)&&typeof fields[key]==='string'&&uuid.test(fields[key])),
+    'Archived GitHub scope must be explicit');
   need(/^[a-f0-9]{64}$/u.test(input.qualifiedSha256) &&
     digest(input.bindingConfig)===input.expectedBindingConfigSha256,'Archived GitHub packet/config pin mismatch');
   need(input.sourceQuery.mode==='listing'&&['daily','today'].includes(input.sourceQuery.query),

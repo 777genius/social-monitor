@@ -33,4 +33,15 @@ describe('finite archived GitHub planning',()=>{
   expect(()=>planGitHubArchiveQualifiedPartition({...input,missingRepositoryNames:['example/repository1','EXAMPLE/REPOSITORY1']})).toThrow('unique');
   expect(()=>planGitHubArchiveQualifiedPartition({...input,sourceQuery:{mode:'listing',query:'weekly'}})).toThrow('daily binding');
  });
+ it('rejects malformed untrusted scope before producing a semantic plan',()=>{
+  const input=fixture();
+  const malformed:unknown[]=[null,undefined,[],{}, {...input.scope,extra:input.scope.tenantId},
+   {...input.scope,tenantId:null},{...input.scope,tenantId:42},{...input.scope,tenantId:'not-a-uuid'}];
+  for(const key of Object.keys(input.scope)){
+   const missing:Record<string,unknown>={...input.scope};delete missing[key];malformed.push(missing);
+  }
+  for(const scope of malformed){
+   expect(()=>planGitHubArchiveQualifiedPartition({...input,scope:scope as typeof input.scope})).toThrow('scope must be explicit');
+  }
+ });
 });
