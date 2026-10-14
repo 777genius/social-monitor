@@ -270,11 +270,11 @@ ${outputContract}`,
               : "Complete the reader-summary task and prepare its named JSON output before marking the goal complete.",
           },
         });
-      } catch {
+      } catch (error) {
         throw new SubscriptionWorkerError(
           "subscription_worker_run_failed",
           "MiMo reader summary did not complete",
-          { details: {} },
+          { details: presentationCompletion?.failureDetails(error) ?? {} },
         );
       }
       if (result.status === "completed") {
@@ -301,7 +301,7 @@ ${outputContract}`,
       throw new SubscriptionWorkerError(
         "subscription_worker_run_failed",
         "MiMo reader summary did not complete",
-        { details: {} },
+        { details: presentationCompletion?.failureDetails(result) ?? {} },
       );
     },
     async dispose() {

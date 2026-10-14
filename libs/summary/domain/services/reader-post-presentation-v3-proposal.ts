@@ -1,4 +1,4 @@
-import { isDisplayRoundTripText, validDisplayHeadlineContent } from "./reader-post-display-headline";
+import { isDisplayRoundTripText, displayHeadlineContentFailure, type DisplayHeadlineContentFailure } from "./reader-post-display-headline";
 import { READER_POST_PRESENTATION_V3_MAX_BODY_UTF16, READER_POST_PRESENTATION_V3_MAX_TITLE_UTF16,
   READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES } from "./reader-post-presentation-v3";
 
@@ -27,19 +27,27 @@ export const readerPostPresentationCandidates = (prompt: string): readonly Reade
   return Object.freeze(candidates);
 };
 
-/** Validate proposals against the original full source; this does not create or certify a publication seal. */
+export type ReaderPostPresentationProposalFailure = Readonly<{
+  code: DisplayHeadlineContentFailure | "proposal_cardinality" | "proposal_shape_or_identity" | "proposal_fields";
+  index?: number;
+}>;
 export const validReaderPostPresentationProposals = (
   output: unknown, candidates: readonly ReaderPostPresentationCandidate[],
-): boolean => {
+): boolean => readerPostPresentationProposalFailure(output, candidates) === null;
+
+/** Validate proposals against the original full source; this does not create or certify a publication seal. */
+export const readerPostPresentationProposalFailure = (
+  output: unknown, candidates: readonly ReaderPostPresentationCandidate[],
+): ReaderPostPresentationProposalFailure | null => {
   if (!exact(output, ["presentations"]) || !Array.isArray(output.presentations) ||
-      output.presentations.length !== candidates.length || candidates.length < 1 || candidates.length > 4) return false;
+      output.presentations.length !== candidates.length || candidates.length < 1 || candidates.length > 4) return { code: "proposal_cardinality" };
   const byId = new Map(candidates.map(candidate => [candidate.candidateId, candidate]));
   const seen = new Set<string>();
-  return output.presentations.every((proposal: unknown) => {
+  for (const [index, proposal] of output.presentations.entries()) {
     if (!exact(proposal, ["candidateId", "status", "kind", "text", "support", "qualifications", "confidence", "qualificationJudgment"]) ||
-        typeof proposal.candidateId !== "string" || seen.has(proposal.candidateId)) return false;
+        typeof proposal.candidateId !== "string" || seen.has(proposal.candidateId)) return { code: "proposal_shape_or_identity", index };
     const source = byId.get(proposal.candidateId);
-    if (source === undefined) return false;
+    if (source === undefined) return { code: "proposal_shape_or_identity", index };
     seen.add(proposal.candidateId);
     if ((proposal.status !== "available" && proposal.status !== "unavailable") ||
         (proposal.kind !== "claim" && proposal.kind !== "subject_label") ||
@@ -52,15 +60,17 @@ export const validReaderPostPresentationProposals = (
         proposal.qualifications.length > 8 || !proposal.qualifications.every(qualification =>
           exact(qualification, ["phrase", "evidence"]) && typeof qualification.phrase === "string" &&
           qualification.phrase.length <= 119 && Array.isArray(qualification.evidence) &&
-          qualification.evidence.length > 0 && qualification.evidence.length <= 8 && qualification.evidence.every(validReference))) return false;
-    if (proposal.status === "unavailable") return true;
-    return validDisplayHeadlineContent({ kind: proposal.kind, text: proposal.text, support: proposal.support,
+          qualification.evidence.length > 0 && qualification.evidence.length <= 8 && qualification.evidence.every(validReference))) return { code: "proposal_fields", index };
+    if (proposal.status === "unavailable") continue;
+    const code = displayHeadlineContentFailure({ kind: proposal.kind, text: proposal.text, support: proposal.support,
       qualifications: proposal.qualifications, confidence: proposal.confidence,
       qualificationJudgment: proposal.qualificationJudgment }, {
       title: source.title, body: source.sourceText, captureAvailability: "available",
       reviewAvailability: source.sourceText.trim() ? "body_present" : "title_only",
     }, READER_POST_PRESENTATION_V3_MAX_BODY_UTF16);
-  });
+    if (code !== null) return { code, index };
+  }
+  return null;
 };
 
 const exact = (value: unknown, keys: readonly string[]): value is Record<string, unknown> =>
