@@ -33,7 +33,8 @@ function fixture() {
   const inventory: ReaderValuePreparationInventory = { readSnapshot: async (_scope,operation) =>
     operation({ page: async () => [item] }) };
   const store: jest.Mocked<Pick<ReaderValueAssessmentStore,'ensure'|'pin'>> = {
-    ensure: jest.fn(async (id,input) => ({ id,input }) as never),pin: jest.fn(async () => true),
+    ensure: jest.fn(async (id,input) => ({ id,input }) as never),
+    pin: jest.fn<ReturnType<ReaderValueAssessmentStore['pin']>,Parameters<ReaderValueAssessmentStore['pin']>>(async () => true),
   };
   const subject = new PrepareReaderValueSummaryUseCase(inventory,builder,store,
     { generate: () => '00000000-0000-4000-8000-000000000007' },
