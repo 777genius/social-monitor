@@ -24,7 +24,7 @@ import { RequestReaderSummaryUseCase } from
 import { NOOP_READER_SUMMARY_PROMOTION_METRICS,
   readerSummaryPromotionControl } from
   "../../features/execute-reader-summary-job/reader-summary-promotion-control";
-import { candidate, TestPresentation, workspaceSetup } from
+import { candidate, id, TestPresentation, workspaceSetup } from
   "../evidence/relevance-reader-summary-v3-promotion.fixture";
 
 const at = new Date("2026-06-26T08:00:00.000Z");
@@ -166,7 +166,10 @@ describe("V3 quota recovery", () => {
   });
 
   it("does not repeat 32 real presentations after writer quota or a later sweep", async () => {
-    const presentation = new TestPresentation();
+    // The first ranked slate is unavailable, so real fallbacks still consume
+    // the full 32-attempt cap before the writer's independent quota failure.
+    const presentation = new TestPresentation(new Set(Array.from(
+      { length: 16 }, (_, index) => id(index + 17))));
     const fixture = workspaceSetup(Array.from({ length: 32 }, (_, index) =>
       candidate(index + 1, "useful", "relevant")), undefined, presentation);
     const { jobs, model, execute, jobKey } = await scenario(undefined, fixture);

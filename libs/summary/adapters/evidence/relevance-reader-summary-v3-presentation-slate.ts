@@ -11,6 +11,8 @@ export const planWorkspacePresentationSlate = (
   const unresolved = (candidate: ReaderPostPromotionV3Candidate): boolean =>
     candidate.presentation.status === "pending" ||
     candidate.presentation.status === "budget_exhausted";
+  const unresolvedIds = new Set(candidates.filter(unresolved)
+    .map((candidate) => candidate.candidateId));
   const actual = selectReaderPostPromotionsV3(candidates);
   const optimistic = selectReaderPostPromotionsV3(candidates.map((candidate) =>
     unresolved(candidate) ? { ...candidate, presentation: {
@@ -30,7 +32,8 @@ export const planWorkspacePresentationSlate = (
     candidate.providerFamily));
   const optimisticRepresentatives = representativeIds(optimistic);
   const needed = new Set([...optimistic.top, ...optimistic.additional]
-    .filter(unresolved).map((candidate) => candidate.candidateId));
+    .filter((candidate) => unresolvedIds.has(candidate.candidateId))
+    .map((candidate) => candidate.candidateId));
   // Even a low-ranked new provider can change the Top diversity cap. Establish
   // its real availability before treating remaining lower-ranked rows as settled.
   const requestedFamilies = new Set(availableFamilies);
