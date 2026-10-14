@@ -32,6 +32,7 @@ const sep24Scripts = [
 const expectedScripts = [
   ...sep24Scripts,
   'scripts/check-feed-promotion-index-recovery.ts',
+  'scripts/materialize-retained-source-captures.ts',
   'scripts/recover-hn-verified-remainder.ts',
   'scripts/import-hn-verified-remainder.ts',
   'scripts/import-hn-verified-sep28.ts',
@@ -163,6 +164,13 @@ describe('migration image production compilation', () => {
   it('rejects a recipe missing the non-TypeScript timeout wrapper', () => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
     const mutated = dockerfile.replace('scripts/run-with-timeout.mjs ', '');
+    expect(mutated).not.toBe(dockerfile);
+    expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
+  });
+
+  it('rejects a recipe missing the reviewed retained-capture operator', () => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const mutated = dockerfile.replace('scripts/materialize-retained-source-captures.ts ', '');
     expect(mutated).not.toBe(dockerfile);
     expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
   });
