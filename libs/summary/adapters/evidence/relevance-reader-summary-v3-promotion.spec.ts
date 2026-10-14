@@ -144,7 +144,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(result.evidence.selectedEvidence).toHaveLength(16);
   });
 
-  it("fails closed when an unpresented provider can change a full global Top", async () => {
+  it("presents a later provider that can change a full global Top", async () => {
     const candidates = Array.from({ length: 34 }, (_, index) => ({
       ...candidate(index + 1, index < 32 ? "important" : "useful", "central"),
       provider: index < 32 ? "rss" : "reddit",
@@ -152,11 +152,15 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     const presentation = new TestPresentation();
     const fixture = workspaceSetup(candidates, undefined, presentation);
 
-    await expect(fixture.subject.build({ job: fixture.job,
-      manifest: fixture.manifest })).resolves.toEqual({ kind: "budget_exhausted" });
-    expect(presentation.attempted).toBe(32);
-    expect(presentation.batches.flat()).not.toContain(id(33));
-    expect(presentation.batches.flat()).not.toContain(id(34));
+    const result = await fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest });
+    expect(result.kind).toBe("ready");
+    expect(presentation.attempted).toBeLessThanOrEqual(32);
+    expect(presentation.batches.flat()).toContain(id(33));
+    expect(presentation.batches.flat()).toContain(id(34));
+    if (result.kind !== "ready") return;
+    expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
+      .toEqual([32, 31, 30, 29, 28, 27, 34, 33].map(id));
   });
 
   // Regression: a weekly workspace can contain thousands of assessed noise

@@ -41,6 +41,8 @@ import { clusteringEvidenceItem, evidenceItem } from
   "./relevance-reader-summary-v3-source-evidence";
 import { clusterPromotionStoryRelations, semanticAdmission } from
   "./relevance-reader-summary-v3-story-relations";
+import { planWorkspacePresentationSlate } from
+  "./relevance-reader-summary-v3-presentation-slate";
 
 const maxPresentationCandidates = 32;
 const presentationBatchSize = 4;
@@ -233,6 +235,12 @@ implements ReaderSummaryV3PromotionPort {
     const outcomeByBinding = new Map<string, ReaderPostPromotionV3Presentation>();
     const readyStories = new Set<string>();
     while (true) {
+      const slate = params.manifest.schemaVersion ===
+        "reader_summary_preparation_manifest.v2"
+        ? planWorkspacePresentationSlate(candidates.map((candidate) => ({
+          ...candidate, presentation: statuses.get(candidate.candidateId)!,
+        }))) : undefined;
+      if (slate?.settled) break;
       const batch: ReaderPostPromotionV3Candidate[] = [];
       const batchStories = new Set<string>();
       const batchBindings = new Set<string>();
@@ -241,6 +249,7 @@ implements ReaderSummaryV3PromotionPort {
       // before the same-story fallback gets a chance to compete.
       let logicalBatchSize = 0;
       for (const candidate of admitted) {
+        if (slate !== undefined && !slate.needed.has(candidate.candidateId)) continue;
         if (logicalBatchSize >= presentationBatchSize) break;
         if (attempted.has(candidate.candidateId) || readyStories.has(candidate.storyId) ||
             batchStories.has(candidate.storyId)) continue;
@@ -335,7 +344,8 @@ implements ReaderSummaryV3PromotionPort {
     }
     if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
         selection.excluded.some((entry) =>
-          entry.reason === "presentation_budget_exhausted")) {
+          entry.reason === "presentation_budget_exhausted") &&
+        !planWorkspacePresentationSlate(completed).settled) {
       return { kind: "budget_exhausted" };
     }
     if (selection.outcome !== "ready") {

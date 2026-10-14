@@ -1,0 +1,66 @@
+import { candidate, id, TestPresentation, workspaceSetup } from
+  "./relevance-reader-summary-v3-promotion.fixture";
+
+const distinct = (count: number) => Array.from({ length: count }, (_, index) => ({
+  ...candidate(index + 1, index < 69 ? "important" : "useful", "central"),
+  provider: index < 69 ? "x-twitter" : index < 75 ? "hacker-news" : "reddit",
+  publishedAt: "2026-09-20T12:00:00.000001Z",
+  observedAt: "2026-09-20T12:01:00.000001Z",
+  title: `Independent event ${index}`,
+  body: `Independent observed event ${index} with exact source evidence.`,
+}));
+
+describe("bounded workspace presentation slate", () => {
+  it("selects 76 admitted stories including later HN and Reddit within 32 attempts", async () => {
+    const presentation = new TestPresentation();
+    const fixture = workspaceSetup(distinct(76), undefined, presentation);
+    const result = await fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest });
+
+    expect(result.kind).toBe("ready");
+    expect(presentation.attempted).toBeLessThanOrEqual(32);
+    if (result.kind !== "ready") return;
+    expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
+      .toEqual([1, 2, 3, 4, 70, 71, 72, 73].map(id));
+    expect(result.evidence.promotionV3?.additional.map((value) => value.candidateId))
+      .toEqual([5, 6, 7, 8, 9, 10, 11, 12].map(id));
+    expect(presentation.batches.flat()).toContain(id(76));
+    expect(result.evidence.selectedEvidence).toHaveLength(16);
+    expect(result.evidence.selectedEvidence.every((item) =>
+      item.readerHeadline?.status === "accepted")).toBe(true);
+  });
+
+  it("retains a finite comparison ceiling before presentation", async () => {
+    const presentation = new TestPresentation();
+    const fixture = workspaceSetup(distinct(92), undefined, presentation);
+    await expect(fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest })).resolves.toEqual({ kind: "budget_exhausted" });
+    expect(presentation.attempted).toBe(0);
+  });
+
+  it("replans a failed lead to the next representative without duplicating a ready story", async () => {
+    const rows = distinct(76);
+    rows[1] = { ...rows[1]!, storyId: rows[0]!.storyId,
+      sourceItemId: rows[0]!.sourceItemId };
+    const presentation = new TestPresentation(new Set([id(1)]));
+    const fixture = workspaceSetup(rows, undefined, presentation);
+    const result = await fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest });
+    expect(result.kind).toBe("ready");
+    expect(presentation.attempted).toBeLessThanOrEqual(32);
+    expect(presentation.batches.flat().filter((value) => value === id(2)))
+      .toHaveLength(1);
+    if (result.kind !== "ready") return;
+    expect(result.evidence.promotionV3?.top[0]?.candidateId).toBe(id(2));
+    expect(result.evidence.selectedEvidence.map((item) => item.feedItemId))
+      .not.toContain(id(1));
+  });
+
+  it("refuses an unresolved better slate when 32 real attempts have failed", async () => {
+    const presentation = new TestPresentation(new Set(distinct(76).map((row) => row.id)));
+    const fixture = workspaceSetup(distinct(76), undefined, presentation);
+    await expect(fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest })).resolves.toEqual({ kind: "budget_exhausted" });
+    expect(presentation.attempted).toBe(32);
+  });
+});
