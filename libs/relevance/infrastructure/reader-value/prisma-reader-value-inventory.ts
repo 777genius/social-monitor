@@ -159,7 +159,8 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
           metadata: metadata.kind === providerMetadata.kind ? providerMetadata : {},
           source: { ...scope, interestId: row.interest_id, sourceItemId: row.source_item_id,
             providerKey: row.provider_key, canonicalUrl: row.canonical_url, title: row.title, body: row.body,
-            interest: row.query, ...readReaderValueCapture(metadata, row.provider_key, row.title, row.body) },
+            interest: row.query, ...readReaderValueCapture(metadata, row.provider_key, row.title, row.body,
+              { sourceItemId: row.source_item_id, canonicalUrl: row.canonical_url }) },
         };
       });
   }
