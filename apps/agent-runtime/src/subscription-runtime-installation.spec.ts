@@ -98,9 +98,9 @@ describe("subscription runtime installation admission", () => {
       join(packageRoot, "node_modules"), { recursive: true, force: true });
     const mimoPackageRoot = join(modules, "@vioxen/subscription-runtime-mimo");
     await mkdir(mimoPackageRoot, { recursive: true });
-    const mimoArchive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.8.tgz");
+    const mimoArchive = join(process.cwd(), "vendor/vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.9.tgz");
     expect(createHash("sha256").update(await readFile(mimoArchive)).digest("hex")).toBe(
-      "9024cfb46013b6ee8d557d4bfb139e8328e637b5e71d169031f60ea2425b075c",
+      "e01b8e9eea24814eae041cf2f45d4b47197e101b9dbcd69d166fc50069b6b4c9",
     );
     await promisify(execFile)("tar", [
       "-xzf", mimoArchive,
@@ -174,13 +174,13 @@ describe("subscription runtime installation admission", () => {
       command, "xiaomi-mimo-token-plan",
     )).resolves.toMatchObject({
       runtimePackageVersion: approvedSubscriptionRuntimePackageVersion,
-      mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.8",
+      mimoRuntimePackageVersion: "0.1.0-main.40-sm-mimo.9",
     });
     const health = await new SubscriptionRuntimeCliExecutor({
       command, ephemeral: false, workspaceRoot: workspace,
       allowedModelBackends: ["xiaomi-mimo-token-plan"],
     }).checkHealth();
-    expect(health).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.8" });
+    expect(health).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.9" });
   }, distributionIoTimeoutMs);
 
   it("rejects the base archive without its locked installed dependency completion", async () => {
@@ -492,7 +492,7 @@ describe("subscription runtime installation admission", () => {
       name: "@vioxen/subscription-runtime", version: approvedSubscriptionRuntimePackageVersion,
     }));
     await writeFile(join(modules, "subscription-runtime-mimo/package.json"), JSON.stringify({
-      name: "@vioxen/subscription-runtime", version: "0.0.0-synthetic-unapproved",
+      name: "@vioxen/subscription-runtime", version: "0.1.0-main.40-sm-mimo.8",
     }));
     const inspector = new FileSubscriptionRuntimeInstallationInspector();
     await expect(inspector.inspect(command)).resolves.toMatchObject({
