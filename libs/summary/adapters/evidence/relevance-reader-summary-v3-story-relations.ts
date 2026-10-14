@@ -10,7 +10,7 @@ import type { ReaderSummaryScopeIdentity } from
   "../../domain/value-objects/reader-summary-scope";
 
 const maxWorkspaceStoryRelationCandidates = 5_000;
-const maxWorkspaceStoryPairComparisons = 4_096;
+const maxWorkspaceStoryPairComparisons = 8_192;
 
 export const semanticAdmission = (candidate: ReaderPostPromotionV3Candidate): boolean =>
   (candidate.answers.usefulness.choice === "useful" ||
