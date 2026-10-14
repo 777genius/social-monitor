@@ -16,6 +16,7 @@ COPY prisma.config.ts ./
 COPY scripts/rewrite-build-aliases.mjs ./scripts/
 COPY prisma ./prisma
 COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/
+COPY scripts/materialize-retained-source-captures.ts ./scripts/
 COPY scripts/recover-hn-verified-remainder.ts scripts/import-hn-verified-remainder.ts scripts/import-hn-verified-sep28.ts ./scripts/
 COPY scripts/import-rss-sep24-verified.ts scripts/recover-rss-sep24-verified.ts ./scripts/
 # Sep24 source entrypoints and their script closure. Publication grants no capture authority.

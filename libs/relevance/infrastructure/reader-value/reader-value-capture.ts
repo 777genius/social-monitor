@@ -1,6 +1,7 @@
 import type { JsonObject } from '@social-monitor/shared-kernel';
 import type { ReaderValueCapture } from '../../domain/reader-value/reader-value-source';
 import { sha256 } from './reader-value-source-snapshot';
+import { readReaderValueRetainedCapture } from './reader-value-retained-capture';
 
 type CaptureResult = { readonly capture: ReaderValueCapture; readonly availableAt: string | null };
 type Segment = {
@@ -12,10 +13,13 @@ type Segment = {
 /** Narrow consumer of the ingestion-owned source_content_capture.v1 stored contract.
  * Legacy bodies retain unknown historical availability; first observedAt is never substituted.
  */
-export function readReaderValueCapture(metadata: JsonObject, providerKey: string, title: string, body: string): CaptureResult {
+export function readReaderValueCapture(metadata: JsonObject, providerKey: string, title: string, body: string,
+  source?: { readonly sourceItemId: string; readonly canonicalUrl: string }): CaptureResult {
   const fallback: CaptureResult = {
     capture: { representationVersion: 'legacy-source.v1', availability: 'legacy_combined', segments: [] }, availableAt: null,
   };
+  const retained = readReaderValueRetainedCapture(metadata, providerKey, title, body, source);
+  if (retained !== undefined) return retained;
   const value = object(metadata.contentCapture);
   if (!value || value.version !== 'source_content_capture.v1') return fallback;
   const native = segment(value.native, body.length);

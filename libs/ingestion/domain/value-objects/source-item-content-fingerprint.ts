@@ -1,5 +1,6 @@
 import { legacySourceSnapshotSha256 } from './legacy-source-capture';
 import { readContentCapture } from './source-content-capture';
+import { readRetainedSourceContentCapture } from './retained-source-content-capture';
 import { createHash } from "node:crypto";
 
 import type { SourceItemProps } from "../entities/source-item";
@@ -45,7 +46,9 @@ export const sourceItemProviderContentHash = (params: {
     }
   }
   const capture = readContentCapture(params.snapshot);
-  const sourceDigest = capture?.sourceSnapshotSha256 ?? legacySourceSnapshotSha256(params.snapshot);
+  const sourceDigest = capture?.sourceSnapshotSha256 ?? readRetainedSourceContentCapture({
+    ...params.snapshot, providerKey: params.providerKey,
+  })?.sourceSnapshotSha256 ?? legacySourceSnapshotSha256(params.snapshot);
   const engagement = buildSourceEngagementMetrics({
     providerKey: params.providerKey,
     metadata: params.snapshot.metadata,

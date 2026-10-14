@@ -3,7 +3,7 @@ export type ReaderValueCapture = {
   readonly representationVersion: string;
   readonly availability: 'complete' | 'partial' | 'truncated' | 'description_only' | 'legacy_combined' | 'unknown';
   readonly segments: readonly {
-    readonly origin: 'native' | 'article';
+    readonly origin: 'native' | 'article' | 'retained_snapshot';
     readonly sourceUrl: string | null;
     readonly finalUrl: string | null;
     readonly offset: number;
