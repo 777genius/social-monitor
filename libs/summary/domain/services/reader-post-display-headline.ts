@@ -118,39 +118,47 @@ export const validDisplayHeadlineContract = (
 };
 
 /** Source-grounded content only; full provenance and binding remain in the display contract. */
+export type DisplayHeadlineContentFailure = "content_shape" | "display_text" | "confidence" |
+  "source_envelope" | "source_reference" | "qualification" | "quote_budget" | "qualification_judgment" | "subject_label";
 export const validDisplayHeadlineContent = (
   value: unknown, source: ReaderCapturedSource, maxBodyUtf16: number,
-): boolean => {
+): boolean => displayHeadlineContentFailure(value, source, maxBodyUtf16) === null;
+
+/** One authoritative predicate; a bounded code never contains source or generated text. */
+export const displayHeadlineContentFailure = (
+  value: unknown, source: ReaderCapturedSource, maxBodyUtf16: number,
+): DisplayHeadlineContentFailure | null => {
   if (!exact(value, ["kind", "text", "support", "qualifications", "confidence", "qualificationJudgment"]) ||
-      !["claim", "subject_label"].includes(String(value.kind)) || !isConciseDisplayText(value.text) ||
-      typeof value.confidence !== "number" || !Number.isFinite(value.confidence) ||
-      value.confidence < 0.8 || value.confidence > 1 ||
-      !exact(source, ["title", "body", "captureAvailability", "reviewAvailability"]) ||
+      !["claim", "subject_label"].includes(String(value.kind))) return "content_shape";
+  if (!isConciseDisplayText(value.text)) return "display_text";
+  if (typeof value.confidence !== "number" || !Number.isFinite(value.confidence) ||
+      value.confidence < 0.8 || value.confidence > 1) return "confidence";
+  if (!exact(source, ["title", "body", "captureAvailability", "reviewAvailability"]) ||
       source.captureAvailability !== "available" || typeof source.title !== "string" ||
       typeof source.body !== "string" || !isDisplayRoundTripText(source.title) ||
-      !isDisplayRoundTripText(source.body) || source.title.length > 2_000 || source.body.length > maxBodyUtf16 ||
-      !references(value.support, source) || !Array.isArray(value.qualifications) ||
-      value.qualifications.length > 8) return false;
+      !isDisplayRoundTripText(source.body) || source.title.length > 2_000 || source.body.length > maxBodyUtf16) return "source_envelope";
+  if (!references(value.support, source)) return "source_reference";
+  if (!Array.isArray(value.qualifications) || value.qualifications.length > 8) return "qualification";
   const phrases = new Set<string>();
   const refs = [...value.support];
   for (const q of value.qualifications) {
     if (!exact(q, ["phrase", "evidence"]) || !isConciseDisplayText(q.phrase) ||
-        !value.text.includes(q.phrase) || phrases.has(q.phrase) || !references(q.evidence, source)) return false;
+        !value.text.includes(q.phrase) || phrases.has(q.phrase) || !references(q.evidence, source)) return "qualification";
     phrases.add(q.phrase);
     refs.push(...q.evidence);
   }
   if (refs.length > 8 || refs.some((ref) => ref.quote.length > 256) ||
       refs.reduce((sum, ref) => sum + ref.quote.length, 0) > 512 ||
-      refs.reduce((sum, ref) => sum + JSON.stringify(ref.quote).length, 0) > 1_024) return false;
+      refs.reduce((sum, ref) => sum + JSON.stringify(ref.quote).length, 0) > 1_024) return "quote_budget";
   if (value.kind === "claim") return value.qualificationJudgment ===
-    (value.qualifications.length === 0 ? "none" : "preserved");
+    (value.qualifications.length === 0 ? "none" : "preserved") ? null : "qualification_judgment";
   const support = value.support;
   return value.qualificationJudgment === "subject_only" && phrases.size === 0 &&
     support.length >= 2 && support.length <= 3 && support.every((ref) => wholeSubjectToken(source, ref)) &&
     /^[\p{Lu}][\p{L}\p{M}\p{N}-]{1,39}$/u.test(support[0]!.quote) &&
     ["benchmark", "compiler", "model", "editor", "API", "release", "safety", "latency"].includes(support.at(-1)!.quote) &&
     (support.length !== 3 || /^v\d{1,3}(?:\.\d{1,3}){0,2}$/.test(support[1]!.quote)) &&
-    value.text === `${support.map((ref) => ref.quote).join(" ")} discussion`;
+    value.text === `${support.map((ref) => ref.quote).join(" ")} discussion` ? null : "subject_label";
 };
 
 const exact = (value: unknown, keys: readonly string[]): value is Record<string, unknown> =>

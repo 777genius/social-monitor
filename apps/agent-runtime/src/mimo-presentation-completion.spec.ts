@@ -22,6 +22,37 @@ describe("source-owned MiMo presentation completion", () => {
     expect(validate({ presentations: [{ ...output.presentations[0], support: [{ field: "bodyPreview", start: 0, end: 7, quote: "Changed" }] }] })).toBe(false);
   });
 
+  it("distinguishes pre-callback schema rejection from product rejection without source or output bytes", () => {
+    const validate = createMimoPresentationCompletionValidator(input());
+    const failure = { failureDetails: { rawCause: "codex_goal_completed_output_rejected" },
+      output: "PRIVATE_SOURCE_OUTPUT", token: "PRIVATE_CREDENTIAL" };
+    expect(validate.failureDetails(failure)).toEqual({
+      presentationValidationStage: "schema_parse_or_normalization",
+      presentationOutputValidatorCalled: "false", presentationOutputValidatorAccepted: "not_returned",
+    });
+    expect(validate({ presentations: [] })).toBe(false);
+    expect(validate.failureDetails(failure)).toEqual({
+      presentationValidationStage: "product_contract_rejected",
+      presentationOutputValidatorCalled: "true", presentationOutputValidatorAccepted: "false",
+      presentationRejectedPredicate: "proposal_cardinality",
+    });
+    expect(JSON.stringify(validate.failureDetails(failure))).not.toMatch(/PRIVATE_SOURCE_OUTPUT|PRIVATE_CREDENTIAL/);
+    expect(validate.failureDetails({ failureDetails: { rawCause: "codex_goal_completion_status_changed" } })).toEqual({});
+  });
+
+  it("preserves strict source rejection while retaining only its predicate and candidate index", () => {
+    const validate = createMimoPresentationCompletionValidator(input());
+    const output = { presentations: [{ candidateId: "original", status: "available", kind: "claim",
+      text: "Useful database method", support: [{ field: "bodyPreview", start: 0, end: 7, quote: "Changed" }],
+      qualifications: [], confidence: 0.9, qualificationJudgment: "none" }] };
+    expect(validate(output)).toBe(false);
+    expect(validate.failureDetails({ failureDetails: { rawCause: "codex_goal_completed_output_rejected" } })).toEqual({
+      presentationValidationStage: "product_contract_rejected", presentationOutputValidatorCalled: "true",
+      presentationOutputValidatorAccepted: "false", presentationRejectedPredicate: "source_reference",
+      presentationRejectedCandidateIndex: "0",
+    });
+  });
+
   it.each([
     { purpose: "social_monitor.reader_summary.generate.v2" },
     { provider: "claude" }, { model: "gpt-5.6-sol" }, { modelBackend: "openai-chatgpt" },

@@ -1,4 +1,4 @@
-import { readerPostPresentationCandidates, validReaderPostPresentationProposals } from "./reader-post-presentation-v3-proposal";
+import { readerPostPresentationCandidates, readerPostPresentationProposalFailure, validReaderPostPresentationProposals } from "./reader-post-presentation-v3-proposal";
 
 const candidate = { candidateId: "candidate-1", title: "Useful database method",
   sourceText: "😀 Useful method only in preview" };
@@ -30,6 +30,18 @@ describe("trusted presentation proposals", () => {
     { ...proposal(), binding: { tenantId: "invented" } },
   ])("refuses changed quotes, missing qualifiers, insufficient confidence and injected bindings", value => {
     expect(accepts(value)).toBe(false);
+  });
+
+  it.each([
+    { value: { ...proposal(), support: [{ ...reference, start: 16 }] }, code: "source_reference" },
+    { value: { ...proposal(), text: "Useful method" }, code: "qualification" },
+    { value: { ...proposal(), qualificationJudgment: "none" }, code: "qualification_judgment" },
+    { value: { ...proposal(), confidence: 0.79 }, code: "confidence" },
+    { value: { ...proposal(), kind: "subject_label" }, code: "subject_label" },
+    { value: { ...proposal(), candidateId: "unrequested" }, code: "proposal_shape_or_identity" },
+  ])("reports bounded $code without changing strict acceptance", ({ value, code }) => {
+    expect(accepts(value)).toBe(false);
+    expect(readerPostPresentationProposalFailure({ presentations: [value] }, [candidate])).toEqual({ code, index: 0 });
   });
 
   it("requires all and only original IDs once, regardless of response order", () => {
