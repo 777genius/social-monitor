@@ -103,27 +103,31 @@ const buildClusters = (
     readonly items: SummaryEvidenceItem[];
   }[] = [];
   let pairComparisons = 0;
+  const reserveComparisonWork = (members: number): boolean => {
+    pairComparisons += members;
+    return maxPairComparisons === undefined || pairComparisons <= maxPairComparisons;
+  };
 
   for (const item of items) {
     const key = storyKey(item, policy);
     let group: (typeof groups)[number] | undefined;
     for (const candidate of groups) {
-      // Both membership predicates can inspect every existing member.
-      // Reserve their worst-case work before processing any text.
-      pairComparisons += candidate.items.length * 2;
-      if (maxPairComparisons !== undefined &&
-          pairComparisons > maxPairComparisons) return undefined;
-      if (
-        (candidate.key === key &&
-          !hasCrossProviderClaimFacetConflict(item, candidate.items, policy)) ||
-        belongsToVerifiedStoryCluster(
-          item,
-          candidate.items,
-          policy,
-          verifiedStoryRelationPairs,
-          verifiedStrictTitleRelationPairs,
-        )
-      ) {
+      // Reserve each predicate's worst-case member work only when it runs.
+      // Different keys skip the conflict scan; a compatible exact key skips
+      // verified membership. Keep that same short-circuit order and hard bound.
+      let matches = false;
+      if (candidate.key === key) {
+        if (!reserveComparisonWork(candidate.items.length)) return undefined;
+        matches = !hasCrossProviderClaimFacetConflict(item, candidate.items, policy);
+      }
+      if (!matches) {
+        if (!reserveComparisonWork(candidate.items.length)) return undefined;
+        matches = belongsToVerifiedStoryCluster(
+          item, candidate.items, policy,
+          verifiedStoryRelationPairs, verifiedStrictTitleRelationPairs,
+        );
+      }
+      if (matches) {
         group = candidate;
         break;
       }

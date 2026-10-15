@@ -31,7 +31,7 @@ describe("StoryClusteringService comparison budget", () => {
     const items = [item(1, "https://example.com/one"),
       item(2, "https://example.com/one")];
     const result = service.clusterWithinComparisonBudget({ identity, items,
-      limit: 2, now }, 4_096);
+      limit: 2, now }, 1);
 
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
@@ -39,12 +39,43 @@ describe("StoryClusteringService comparison budget", () => {
     expect(result.selection.clusters[0]?.duplicateFeedItemIds).toEqual(["feed-2"]);
   });
 
-  it("keeps the 64 versus 65 distinct story boundary fail closed", () => {
-    const items = Array.from({ length: 65 }, (_, index) =>
+  it.each([[4_096, 91, 92], [8_192, 128, 129]])(
+    "keeps the actual distinct-predicate boundary fail closed at budget %i",
+    (budget, admittedCount, refusedCount) => {
+      const items = Array.from({ length: refusedCount }, (_, index) =>
+        item(index, `https://example.com/stories/${index}`));
+      expect(service.clusterWithinComparisonBudget({ identity,
+        items: items.slice(0, admittedCount), limit: admittedCount, now }, budget).kind).toBe("ready");
+      expect(service.clusterWithinComparisonBudget({ identity,
+        items, limit: refusedCount, now }, budget)).toEqual({ kind: "budget_exhausted" });
+    },
+  );
+
+  it("accepts 106 distinct stories at the unchanged workspace bound with identical semantics", () => {
+    const items = Array.from({ length: 106 }, (_, index) =>
       item(index, `https://example.com/stories/${index}`));
-    expect(service.clusterWithinComparisonBudget({ identity,
-      items: items.slice(0, 64), limit: 64, now }, 4_096).kind).toBe("ready");
-    expect(service.clusterWithinComparisonBudget({ identity,
-      items, limit: 65, now }, 4_096)).toEqual({ kind: "budget_exhausted" });
+    const params = { identity, items, limit: items.length, now };
+    const result = service.clusterWithinComparisonBudget(params, 8_192);
+
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(result.selection.clusters).toHaveLength(106);
+    expect(result.selection).toEqual(service.cluster(params));
+  });
+
+  it("charges both predicates for conflicting cross-provider claims sharing an exact key", () => {
+    const items = [
+      { ...item(1, "https://example.com/shared"), providerKey: "reddit",
+        title: "Acme benchmark scores improve", bodyPreview: "Benchmark evaluation results." },
+      { ...item(2, "https://example.com/shared"), providerKey: "rss",
+        title: "Acme security vulnerability disclosed", bodyPreview: "Security vulnerability report." },
+    ];
+    const params = { identity, items, limit: 2, now };
+    expect(service.clusterWithinComparisonBudget(params, 1)).toEqual({ kind: "budget_exhausted" });
+    const result = service.clusterWithinComparisonBudget(params, 2);
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(result.selection.clusters).toHaveLength(2);
+    expect(result.selection).toEqual(service.cluster(params));
   });
 });
