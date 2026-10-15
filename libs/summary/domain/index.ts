@@ -128,3 +128,5 @@ export { readerPostDisplayHeadline, readerPostPublishedHeadline, capturedReaderS
 export { readerDisplayIdentityMatches } from "./services/reader-post-display-identity";
 export { readerPostPresentationCandidates, validReaderPostPresentationProposals, readerPostPresentationProposalFailure,
   readerPostPresentationV3OutputSchema } from "./services/reader-post-presentation-v3-proposal";
+export { readerPostPresentationReferenceCatalog, readerPostPresentationCatalogOutputSchema,
+  readerPostPresentationCatalogProposalFailure } from "./services/reader-post-presentation-reference-catalog";

@@ -181,7 +181,7 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(command.systemPrompt).toContain("end is exclusive in JavaScript UTF-16 code units");
     expect(command.systemPrompt).toContain("never translated or paraphrased");
     expect(command.systemPrompt).toContain("fieldText.slice(start,end) must equal quote exactly");
-    expect(command.systemPrompt).toContain("total quotes at most 512 units");
+    expect(command.systemPrompt).toContain("global 8/512/1024 reference budgets");
     expect(command.systemPrompt).toContain("Every qualification phrase must occur literally");
     expect(command.systemPrompt).toContain("return unavailable");
     const options = JSON.parse(command.systemPrompt!.split("\nSOURCE_REFERENCE_COPY_OPTIONS=")[1]!) as
@@ -193,7 +193,8 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       const source = ref.field === "title" ? input.title : input.body;
       expect(ref.quote).toBe(source.slice(ref.start, ref.end));
       expect(ref.end - ref.start).toBe(ref.quote.length);
-      expect(ref.quote.length).toBeLessThanOrEqual(256);
+      expect(ref.quote.length).toBeLessThanOrEqual(64);
+      expect(JSON.stringify(ref.quote).length).toBeLessThanOrEqual(128);
       expect(ref.quote).not.toMatch(/[\uD800-\uDBFF]$/u);
       expect(ref.quote).not.toMatch(/^[\uDC00-\uDFFF]/u);
     }
@@ -344,7 +345,15 @@ class PresentationRuntimeClient implements AgentRuntimeClientPort {
 
 class AttestedPresentationRuntimeClient extends PresentationRuntimeClient {
   override async runTask(command: AgentRuntimeTaskCommand) {
-    return withTestExecutionAttestation(command, await super.runTask(command));
+    const result = await super.runTask(command);
+    if (command.controls?.modelBackend === "xiaomi-mimo-token-plan") {
+      const value = result.structuredOutput as { presentations: Record<string, unknown>[] };
+      return withTestExecutionAttestation(command, { ...result, structuredOutput: { presentations:
+        value.presentations.map(row => ({ ...row, support: [
+          { field: "bodyPreview", start: 0, end: 19, quote: "Useful body source." },
+        ] })) } });
+    }
+    return withTestExecutionAttestation(command, result);
   }
 }
 
