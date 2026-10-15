@@ -44,7 +44,7 @@ import { clusterPromotionStoryRelations, semanticAdmission } from
 import { planWorkspacePresentationSlate } from
   "./relevance-reader-summary-v3-presentation-slate";
 
-const maxPresentationCandidates = 32;
+export const maxPresentationCandidates = 32;
 const presentationBatchSize = 4;
 
 export class RelevanceReaderSummaryV3Promotion

@@ -1,3 +1,4 @@
+import { READER_SUMMARY_NATIVE_V3_PREFIX } from "../../../application/contracts/reader-summary-native-owner";
 import {
   runWithSystemDatabaseAccess,
   withPrismaWriteRetry,
@@ -131,6 +132,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobPolling
         where: {
           tenantId: params.tenantId,
           workspaceId: params.workspaceId,
+          NOT: { idempotencyKey: { startsWith: READER_SUMMARY_NATIVE_V3_PREFIX } },
           status: "REQUESTED",
           ...(params.now === undefined ? {} : {
             OR: [
@@ -164,6 +166,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobPolling
         where: {
           tenantId: params.tenantId,
           workspaceId: params.workspaceId,
+          NOT: { idempotencyKey: { startsWith: READER_SUMMARY_NATIVE_V3_PREFIX } },
           OR: [
             { status: "REQUESTED", OR: [
               { preparationNextCheckAt: null },

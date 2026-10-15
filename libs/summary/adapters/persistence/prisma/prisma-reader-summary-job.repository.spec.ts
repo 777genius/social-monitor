@@ -42,7 +42,8 @@ describe("PrismaReaderSummaryJobRepository execution lease", () => {
 
     expect(due).toHaveLength(1);
     expect(findMany).toHaveBeenCalledWith({
-      where: { tenantId: tenant, workspaceId: workspace, OR: [
+      where: { tenantId: tenant, workspaceId: workspace,
+        NOT: { idempotencyKey: { startsWith: "native-reader-summary-v3:" } }, OR: [
         { status: "REQUESTED", OR: [
           { preparationNextCheckAt: null },
           { preparationNextCheckAt: { lte: now } },

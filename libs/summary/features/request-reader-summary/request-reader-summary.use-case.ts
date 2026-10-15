@@ -1,3 +1,4 @@
+import { isNativeReaderSummary, matchesReaderSummaryNativeOwner, type ReaderSummaryNativeOwner } from "../../application/contracts/reader-summary-native-owner";
 import {
   type Clock,
   DomainError,
@@ -48,6 +49,7 @@ export class RequestReaderSummaryUseCase {
     private readonly clock: Clock,
     private readonly selectionStrategy: ReaderSummarySelectionStrategyResolver =
       legacyReaderSummarySelectionStrategy,
+    private readonly nativeOwner?: ReaderSummaryNativeOwner,
   ) {}
 
   async execute(
@@ -56,6 +58,11 @@ export class RequestReaderSummaryUseCase {
     const userId = normalizeOptionalText(command.userId);
     const subscriptionId = normalizeOptionalText(command.subscriptionId);
     const idempotencyKey = command.idempotencyKey.trim();
+    const native = matchesReaderSummaryNativeOwner(this.nativeOwner, { ...command, idempotencyKey });
+    if (isNativeReaderSummary(idempotencyKey) && !native ||
+        this.nativeOwner !== undefined && !native) {
+      return err(new DomainError("operation.conflict", "Native summary ownership mismatch"));
+    }
 
     try {
       assertReaderSummaryScope(command.scope);
@@ -123,6 +130,11 @@ export class RequestReaderSummaryUseCase {
         );
       }
 
+      if (native && (snapshot.selectionStrategy !== "jev_primary_v3" ||
+          snapshot.preparationCutoffAt !== this.nativeOwner!.cutoffAt ||
+          snapshot.preparationDeadlineAt !== this.nativeOwner!.preparationDeadlineAt)) {
+        return err(new DomainError("operation.conflict", "Native summary frozen identity mismatch"));
+      }
       if (idempotencyKey.startsWith(v3SuccessorPrefix) &&
           snapshot.selectionStrategy !== "jev_primary_v3") {
         return err(new DomainError(
@@ -212,7 +224,7 @@ export class RequestReaderSummaryUseCase {
       correlationId: command.correlationId,
       causationId: idempotencyKey,
     };
-    if (!(await this.readerSummaryJobQueue.canAccept(queueCommand))) {
+    if (!native && !(await this.readerSummaryJobQueue.canAccept(queueCommand))) {
       return err(
         new DomainError(
           "operation.backpressure",
@@ -241,7 +253,9 @@ export class RequestReaderSummaryUseCase {
       subscriptionId,
       idempotencyKey,
       requestedAt: this.clock.now(),
-      selectionStrategy: successorStrategy ?? this.selectionStrategy.resolve({
+      ...(native ? { preparationCutoffAt: this.nativeOwner!.cutoffAt,
+        preparationDeadlineAt: this.nativeOwner!.preparationDeadlineAt } : {}),
+      selectionStrategy: native ? "jev_primary_v3" : successorStrategy ?? this.selectionStrategy.resolve({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         interestId: command.scope.type === "interest"
@@ -250,7 +264,7 @@ export class RequestReaderSummaryUseCase {
       }),
     });
     await this.readerSummaryJobs.save(job);
-    await this.readerSummaryJobQueue.enqueue(queueCommand);
+    if (!native) await this.readerSummaryJobQueue.enqueue(queueCommand);
     const snapshot = job.toSnapshot();
 
     return ok({

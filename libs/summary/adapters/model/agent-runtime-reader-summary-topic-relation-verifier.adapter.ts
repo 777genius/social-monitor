@@ -53,7 +53,7 @@ export type AgentRuntimeReaderSummaryTopicRelationVerifierOptions = Pick<
 
 const defaultModel = activeReaderSummaryModel;
 const defaultPromptVersion = "reader_summary.topic_relation.agent_runtime.v3";
-const defaultTimeoutMs = 300_000;
+export const defaultTimeoutMs = 300_000;
 const defaultMaxOutputTokens = 4_000;
 
 export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSummaryTopicRelationVerifierPort {

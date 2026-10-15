@@ -166,6 +166,15 @@ export class ReaderSummaryJob {
     if (this.props.status !== "requested") {
       throw new Error("Reader summary preparation can only freeze while requested");
     }
+    const cutoffAt = canonicalReaderSummaryPreparationTimestamp(params.cutoffAt);
+    const deadlineAt = canonicalReaderSummaryPreparationTimestamp(params.deadlineAt);
+    if ((this.props.preparationCutoffAt !== undefined &&
+          canonicalReaderSummaryPreparationTimestamp(this.props.preparationCutoffAt) !== cutoffAt) ||
+        (this.props.preparationDeadlineAt !== undefined &&
+          canonicalReaderSummaryPreparationTimestamp(this.props.preparationDeadlineAt) !== deadlineAt)) {
+      throw new Error("Seeded reader summary preparation clocks are immutable");
+    }
+
     if (this.props.selectionStrategy !== undefined) {
       if (this.props.selectionStrategy !== params.strategy ||
           (this.props.preparationConfig !== undefined &&
@@ -175,8 +184,6 @@ export class ReaderSummaryJob {
       }
       if (this.props.preparationConfig !== undefined) return this;
     }
-    const cutoffAt = canonicalReaderSummaryPreparationTimestamp(params.cutoffAt);
-    const deadlineAt = canonicalReaderSummaryPreparationTimestamp(params.deadlineAt);
     if (compareReaderSummaryPreparationTimestamps(deadlineAt, cutoffAt) <= 0 ||
         params.nextCheckAt.getTime() > Date.parse(deadlineAt)) {
       throw new Error("Reader summary preparation timing is invalid");

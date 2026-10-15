@@ -316,7 +316,7 @@ export class BuildReaderSummaryTopicMapUseCase {
   }
 }
 
-const agentRuntimeTotalAttempts = 2;
+export const agentRuntimeTotalAttempts = 2;
 
 const topicMapFailure = (message: string): DomainError =>
   new DomainError("external.dependency_unavailable", message, {

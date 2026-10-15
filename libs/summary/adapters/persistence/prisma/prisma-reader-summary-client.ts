@@ -235,6 +235,7 @@ export type PrismaReaderSummaryClient = {
         readonly tenantId?: string;
         readonly workspaceId?: string;
         readonly status?: PrismaSummaryStatus;
+        readonly NOT?: { readonly idempotencyKey: { readonly startsWith: string } };
         readonly OR?: readonly [
           { readonly preparationNextCheckAt: null },
           { readonly preparationNextCheckAt: { readonly lte: Date } },

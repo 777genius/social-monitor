@@ -75,7 +75,8 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
 const provider = "agent-runtime";
 const defaultReasoningEffort = activeReaderSummaryReasoningEffort;
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
-const defaultTimeoutMs = 600_000;
+export const defaultTimeoutMs = 600_000;
+export const readerSummaryNarrativeAttempts = ["primary", "repair"] as const;
 const defaultMaxOutputTokens = 16_000;
 const defaultInputTokenDivisor = 4;
 
@@ -202,7 +203,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     }
 
     let logicalRunUsage: ReaderSummaryModelEstimate | undefined;
-    for (const attempt of ["primary", "repair"] as const) {
+    for (const attempt of readerSummaryNarrativeAttempts) {
       const command = this.buildTaskCommand(input, selectedRoute, attempt);
       const result = await this.client.runTask(command);
       const attemptUsage = usageFromAgentRuntime(
