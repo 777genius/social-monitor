@@ -1,0 +1,51 @@
+{
+  "sourceRepository": "https://github.com/777genius/ar",
+  "sourceCommit": "9af6583b34d46ca407e9c3bf0bfe4a84a93ad2c5",
+  "sourceTree": "bdf12f57c59b4bb2ac73877d0feb8b65dc533723",
+  "upstreamLockSha256": "a8db543720cc8c3884a832774c97d93e443bdcbd494d84670f10192b60d52c2b",
+  "vendorVersion": "0.1.0-main.40-sm-mimo.10",
+  "archiveBytes": 8826703,
+  "archiveSha256": "f7acd91d6d9d66f81503b396f83cf12a9648e05983999389520b60b14151989c",
+  "integrity": "sha512-q9cwGZH+ZHQ6nKm0h5i9xjXyIS7ZlgbCkbTGA6u+WSuzHIYNeaGCVoAcyPDgY5Q2c2cXMDSh9MmUEOAbreHGGQ==",
+  "manifestSha256": "2980ade6b549257ba781d5dfc36504e25830f7ee16787c6471484078e679c99d",
+  "workerEntrypointSha256": "bc60f8ac04f188ddab18e16e17990a9e7406790d0a019a658727e43682f2acae",
+  "installedDistributionSha256": "412db50f7fdc7c576d06a8ab52da2d6cc35177e4b8b7d0347d8613e2af1d9f2a",
+  "compiledDistSha256": "3c68a723d4e3620e1517cb21f047e0b34bdb8e549958e4a34f3cf67add55c788",
+  "regularFiles": 9570,
+  "retainedDependencyTreeHashes": {
+    "@anthropic-ai/claude-agent-sdk": "68eeb7ef642c42e16cb13c3c0d00e2bc72960906e816f8e9bcb91ca7f3bbf3ae",
+    "@anthropic-ai/sdk": "0122368bf0f2c5066456822c53e4fa354717e443aadd3d9fbbbefdf8684d63df",
+    "@modelcontextprotocol/sdk": "78cc5f2b2247e8618f779251e3eabcaa5461f5e95395e90e4ee9497bddc7780d",
+    "@types/node": "ccf001f0e597005fe6166c242834de04aa5ff9aa477e94545c6d475f771fac54",
+    "ajv": "c7db94956c1c6f6fffa2c16c6766b17cf4743ffaf9a39a74f35599a172e5ef1c",
+    "libsodium-wrappers": "183e7908a1efc9f24e7ac9974333826e754ea63897a45fafc8a3ad97d5212178",
+    "zod": "4d7f8ca54064f57c6d93f09d2ce3b028f8d8884193147495f5f283a0916e124c"
+  },
+  "runtimeDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.237",
+    "@anthropic-ai/sdk": "0.123.0",
+    "@vioxen/agent-account-observability": "0.1.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@types/node": "22.20.1",
+    "ajv": "8.20.0",
+    "libsodium-wrappers": "0.8.4",
+    "zod": "4.4.3"
+  },
+  "freshAccountObservabilitySha256": "efe21f496bbba5e4babe435d3e59db87b0252f15d69e5fb2c76a89bd13b879d7",
+  "archive": "vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.10.tgz",
+  "sourceArchive": "vioxen-subscription-runtime-ar-9af6583b.source.tar.gz",
+  "sourceArchiveSha256": "c9ea555fad9f9f1ed0802dee7b332eeeaff286f6f3d540e42578939fb424d946",
+  "sourceManifest": "vioxen-subscription-runtime-ar-9af6583b.source-manifest.json",
+  "sourceManifestSha256": "282e23991ea96d44e34ca5589bd60e1cb49c16da366d19bedf021fa2bf924447",
+  "buildRecipe": {
+    "node": "26.11.1",
+    "typescript": "6.0.3",
+    "publicLockedToolchain": true,
+    "retainedDependencyOverlayArchive": "vioxen-subscription-runtime-0.1.0-main.40-sm-mimo.8.tgz",
+    "retainedDependencyOverlaySha256": "9024cfb46013b6ee8d557d4bfb139e8328e637b5e71d169031f60ea2425b075c",
+    "freshAccountFromSamePublicSource": true
+  },
+  "publicReview": "https://github.com/777genius/ar/pull/17",
+  "publicRequiredCI": "https://github.com/777genius/ar/actions/runs/38678740633",
+  "ordinaryRuntimeScope": "Unchanged separate main42-sm.3 vendor; this public source applies to the MiMo alias."
+}
