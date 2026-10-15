@@ -25,7 +25,7 @@ import {
 } from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { ReaderSummaryPromotionMetricsRecorder } from "@social-monitor/summary/adapters/metrics/reader-summary-promotion-metrics.recorder";
-import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
+import { GrpcAgentRuntimeClient, validateAgentRuntimeDefaultCwd } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import {
   OpenAiResponsesReaderSummaryModelAdapter,
   resolveOpenAiResponsesReaderSummaryModelOptions,
@@ -779,6 +779,9 @@ const buildAgentRuntimeClient = (): GrpcAgentRuntimeClient =>
         600_000,
       ),
       serviceToken: readEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
+      defaultCwd: process.env.AGENT_RUNTIME_TASK_CWD === undefined
+        ? undefined
+        : validateAgentRuntimeDefaultCwd(process.env.AGENT_RUNTIME_TASK_CWD),
     },
   });
 
