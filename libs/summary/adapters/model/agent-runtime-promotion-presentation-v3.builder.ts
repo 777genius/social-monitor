@@ -137,6 +137,9 @@ implements PromotionPresentationBuilder {
       metadata: { adapter: "agent-runtime-promotion-presentation-v3" },
     };
     const result = await this.client.runTask(command);
+    if (result.status !== "completed") {
+      readAgentRuntimeObjectOutput(result, parseObject, "Reader promotion presentation");
+    }
     if (this.modelBackend === mimoReaderSummaryBackend) {
       assertMimoReaderSummaryExecution({ command, result,
         purpose: activeReaderSummaryPurposes.promotionPresentation });

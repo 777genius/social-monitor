@@ -29,6 +29,7 @@ import {
   type SubscriptionRuntimeInstallationIdentity,
 } from "./subscription-runtime-installation";
 import { admitStrictCwd } from "./strict-grpc-admission";
+import { readRuntimeOutputFailureDiagnostics } from "./runtime-output-failure-diagnostics";
 import {
   admitSubscriptionRuntimeRequest,
   type activeReaderSummaryReasoningEffort,
@@ -378,9 +379,11 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       retryable: result.failure?.retryable,
       reconnectRequired: result.failure?.reconnectRequired,
       causeCategory: result.failure?.causeCategory,
+      // Retain the existing programmatic logger contract; scalar fields survive terminal formatting.
       failureDetails: result.failure?.details
         ? JSON.stringify(result.failure.details)
         : undefined,
+      ...readRuntimeOutputFailureDiagnostics(result.failure?.details),
     };
     if (result.status === "completed") {
       this.logger.info("agent runtime task completed", fields);

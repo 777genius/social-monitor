@@ -70,6 +70,36 @@ describe("subscription CLI terminal process receipt", () => {
 });
 
 describe("subscription CLI safe failure diagnostic values", () => {
+  it("drops unrecognized diagnostic labels instead of logging provider-selected text", () => {
+    const result = parseSubscriptionRuntimeCliResult(JSON.stringify({
+      status: "failed", warnings: [], failure: { details: {
+        outputValidationStage: "provider-selected-text", outputValidationCode: "provider-selected-text",
+        outputValidationKeyword: "provider-selected-text", presentationOutputValidatorCalled: "true\n",
+        presentationOutputValidatorAccepted: "provider-selected-text", presentationRejectedCandidateIndex: "-1",
+      } },
+    }));
+    expect(result.failure?.details).toEqual({});
+  });
+  it("retains finite output rejection diagnostics without provider-controlled details", () => {
+    const result = parseSubscriptionRuntimeCliResult(JSON.stringify({
+      status: "failed", warnings: [], failure: {
+        code: "unknown_runtime_failure", details: {
+          outputValidationStage: "schema_normalization",
+          outputValidationCode: "schema_normalization_failed",
+          outputValidationKeyword: "maxLength",
+          presentationValidationStage: "schema_parse_or_normalization",
+          presentationOutputValidatorCalled: "false",
+          rawCause: "must-not-cross-boundary", outputValidationSchemaPath: "must-not-cross-boundary",
+          presentationRejectedCandidateIndex: "4", presentationRejectedPredicate: "provider-chosen-text",
+        },
+      },
+    }));
+    expect(result.failure?.details).toEqual({
+      outputValidationStage: "schema_normalization", outputValidationCode: "schema_normalization_failed",
+      outputValidationKeyword: "maxLength", presentationValidationStage: "schema_parse_or_normalization",
+      presentationOutputValidatorCalled: "false",
+    });
+  });
   it.each([
     ["capacityReason", "quota_recheck_identity_changed"],
     ["capacityReason", "quota_recheck_inconclusive"],
