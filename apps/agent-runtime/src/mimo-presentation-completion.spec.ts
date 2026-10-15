@@ -63,6 +63,11 @@ describe("source-owned MiMo presentation completion", () => {
         outputValidationKeyword: "maxLength" });
     expect(validate.failureDetails({ details: { outputValidationStage: "PRIVATE_CREDENTIAL",
       outputValidationCode: "arbitrary", rawCause: "network_error" } })).toEqual({});
+    expect(validate.failureDetails({ failureDetails: { rawCause: "network_error" }, details: {
+      outputValidationStage: "schema_normalization", outputValidationCode: "schema_normalization_failed",
+      outputValidationKeyword: "maxLength", output: "PRIVATE_OUTPUT" } })).toEqual({
+      outputValidationStage: "schema_normalization", outputValidationCode: "schema_normalization_failed",
+      outputValidationKeyword: "maxLength" });
   });
 
   it.each([

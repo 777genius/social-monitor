@@ -18,7 +18,8 @@ const rejectionCode = "codex_goal_completed_output_rejected";
 function completionFailureDetails(failure: unknown, observation: CompletionObservation): Readonly<Record<string, string>> {
   if (failure === null || typeof failure !== "object") return {};
   const value = failure as { failureDetails?: { rawCause?: unknown }; details?: { rawCause?: unknown }; message?: unknown };
-  const diagnostics = Object.fromEntries(Object.entries(readRuntimeOutputFailureDiagnostics(value.failureDetails ?? value.details))
+  const diagnostics = Object.fromEntries(Object.entries({ ...readRuntimeOutputFailureDiagnostics(value.details),
+    ...readRuntimeOutputFailureDiagnostics(value.failureDetails) })
     .filter(([name]) => ["outputValidationStage", "outputValidationCode", "outputValidationKeyword"].includes(name)));
   if (value.failureDetails?.rawCause !== rejectionCode && value.details?.rawCause !== rejectionCode &&
       value.message !== rejectionCode) return diagnostics;
