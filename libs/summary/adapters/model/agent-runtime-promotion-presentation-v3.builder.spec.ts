@@ -55,8 +55,8 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     ["unknown_runtime_failure", "schema_parse_or_normalization", "false", "not_returned"],
     ["provider_output_invalid", "schema_parse_or_normalization", "false", "not_returned"],
   ] as const)(
-    "discards the whole MiMo rejected batch with %s at %s without reading failed output", async (code, stage, called, accepted) => {
-      const client = new PresentationRuntimeClient();
+    "isolates a MiMo rejected story with %s at %s without reading failed output", async (code, stage, called, accepted) => {
+      const client = new AttestedPresentationRuntimeClient();
       const failed: AgentRuntimeTaskResult = { status: "failed", warnings: [], failure: {
         code, safeMessage: "Rejected", retryable: false, reconnectRequired: false,
         causeCategory: "agent_runtime", details: {
@@ -70,14 +70,20 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       Object.defineProperty(failed, "structuredOutput", { get: () => {
         throw new Error("Failed output must never be read");
       } });
-      jest.spyOn(client, "runTask").mockResolvedValueOnce(failed);
+      jest.spyOn(client, "runTask").mockImplementationOnce(async command => {
+        client.commands.push(command);
+        return failed;
+      });
       const inputs = [fixtureInput(), { ...fixtureInput(), candidateId: "other-candidate" }];
       await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
         modelBackend: "xiaomi-mimo-token-plan" }).build(inputs)).resolves.toEqual([
         { status: "unavailable", reason: "invalid_presentation" },
-        { status: "unavailable", reason: "invalid_presentation" },
+        expect.objectContaining({ status: "available" }),
       ]);
-      expect(client.runTask).toHaveBeenCalledTimes(1);
+      expect(client.runTask).toHaveBeenCalledTimes(2);
+      expect(client.commands.map(command => JSON.parse(command.prompt).candidates.length))
+        .toEqual([1, 1]);
+      expect(client.commands[0]?.requestId).not.toBe(client.commands[1]?.requestId);
     });
 
   it.each([
@@ -280,6 +286,48 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     });
     await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
       modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toThrow("execution attestation is invalid");
+  });
+
+  it("attests ordered MiMo stories independently without concurrent provider tasks", async () => {
+    const client = new AttestedPresentationRuntimeClient();
+    let active = 0;
+    let peak = 0;
+    const run = client.runTask.bind(client);
+    jest.spyOn(client, "runTask").mockImplementation(async command => {
+      active += 1;
+      peak = Math.max(peak, active);
+      try {
+        await Promise.resolve();
+        return await run(command);
+      } finally {
+        active -= 1;
+      }
+    });
+    const inputs = Array.from({ length: 4 }, (_, i) => ({ ...fixtureInput(),
+      candidateId: `00000000-0000-4000-8000-00000000000${i + 4}` }));
+    const results = await new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" }).build(inputs);
+    expect(results.map(result => result.status)).toEqual(Array(4).fill("available"));
+    expect(peak).toBe(1);
+    expect(client.commands.map(command => JSON.parse(command.prompt).candidates
+      .map((row: { candidateId: string }) => row.candidateId)))
+      .toEqual(inputs.map(input => [input.candidateId]));
+    expect(new Set(client.commands.map(command => command.requestId)).size).toBe(4);
+  });
+
+  it.each([[240_000, 60_000], [1_234, 1_234]])(
+    "bounds each independent MiMo task configured at %i ms to %i ms", async (timeoutMs, expected) => {
+      const client = new AttestedPresentationRuntimeClient();
+      await new AgentRuntimePromotionPresentationV3Builder({ client,
+        modelBackend: "xiaomi-mimo-token-plan", timeoutMs }).build([fixtureInput()]);
+      expect(client.commands[0]?.timeoutMs).toBe(expected);
+    });
+
+  it("preserves non-MiMo configured timeouts", async () => {
+    const client = new PresentationRuntimeClient();
+    await new AgentRuntimePromotionPresentationV3Builder({ client, timeoutMs: 240_000 })
+      .build([fixtureInput()]);
+    expect(client.commands[0]?.timeoutMs).toBe(240_000);
   });
 
   it("rejects a conflicting presentation model under MiMo", () => {
