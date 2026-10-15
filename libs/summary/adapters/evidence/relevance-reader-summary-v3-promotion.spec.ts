@@ -238,7 +238,8 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
   });
 
   it("fails before presentation when pairwise story work exceeds its budget", async () => {
-    const candidates = Array.from({ length: 100 }, (_, index) => ({
+    // 129 distinct keys require 8,256 executed membership checks, above 8,192.
+    const candidates = Array.from({ length: 129 }, (_, index) => ({
       ...candidate(index + 1, "useful", "relevant"),
       publishedAt: "2026-09-20T12:00:00.000001Z",
       observedAt: "2026-09-20T12:01:00.000001Z",
