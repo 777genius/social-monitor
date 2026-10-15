@@ -31,6 +31,7 @@ type AlgoliaSearchResponse = {
   readonly nbPages?: number;
   readonly page?: number;
   readonly exhaustiveNbHits?: boolean;
+  readonly exhaustive?: { readonly nbHits?: boolean };
 };
 
 const firebaseBaseUrl = 'https://hacker-news.firebaseio.com/v0';
@@ -248,14 +249,14 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
         }
         return [...await searchInterval(start, middle), ...await searchInterval(middle, end)];
       }
-      if (first.exhaustiveNbHits !== true || pages !== Math.ceil(count / historicalPageSize)) {
+      if (!hasExhaustiveHitCount(first) || pages !== Math.ceil(count / historicalPageSize)) {
         throw new Error('Hacker News historical search incomplete: unknown Algolia coverage');
       }
       const hits = [...first.hits];
       for (let page = 1; page < pages; page += 1) {
         url.searchParams.set('page', String(page));
         const response = await fetchPage(url);
-        if (response.exhaustiveNbHits !== true || response.nbHits !== count || response.nbPages !== pages ||
+        if (!hasExhaustiveHitCount(response) || response.nbHits !== count || response.nbPages !== pages ||
             response.page !== page || !Array.isArray(response.hits)) {
           throw new Error('Hacker News historical search incomplete: inconsistent Algolia page');
         }
@@ -460,3 +461,18 @@ const readOptionalInteger = (value: unknown): number | undefined =>
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Algolia's modern and deprecated flags must agree when both are supplied. */
+function hasExhaustiveHitCount(response: AlgoliaSearchResponse): boolean {
+  const exhaustive = response.exhaustive;
+  if (exhaustive !== undefined &&
+      (exhaustive === null || typeof exhaustive !== 'object' || Array.isArray(exhaustive))) {
+    return false;
+  }
+  const modern = exhaustive?.nbHits;
+  const legacy = response.exhaustiveNbHits;
+  if ((modern !== undefined && typeof modern !== 'boolean') ||
+      (legacy !== undefined && typeof legacy !== 'boolean')) return false;
+  if (modern !== undefined && legacy !== undefined && modern !== legacy) return false;
+  return modern === true || legacy === true;
+}
