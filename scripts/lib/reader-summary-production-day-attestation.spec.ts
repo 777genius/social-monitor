@@ -30,14 +30,14 @@ describe("production day purpose-specific executor identity", () => {
     }
     for (const record of records) {
       record.attestation.model = "mimo-v2.6-pro";
-      record.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.10";
+      record.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.11";
     }
     const violations: string[] = [];
     const provenance = runtimeProvenanceFromExecutorAttestations(evidenceWith(records), violations);
     expect(violations).toEqual([]);
     expect(provenance).toMatchObject({ physicalModel: "mimo-v2.6-pro",
       topicLabeler: { physicalModel: "mimo-v2.6-pro",
-        runtimeVersion: "0.1.0-main.40-sm-mimo.10" } });
+        runtimeVersion: "0.1.0-main.40-sm-mimo.11" } });
     expect(isCurrentProductionSubscriptionRuntimeProvenance(provenance)).toBe(true);
 
     records[0]!.attempt = "repair";
@@ -52,7 +52,7 @@ describe("production day purpose-specific executor identity", () => {
     const records = productionExecutionAttestations();
     for (const record of records) record.attestation.launcherSha256 = approvedSubscriptionRuntimeLauncherSha256;
     records[0]!.attestation.model = "mimo-v2.6-pro";
-    records[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.10";
+    records[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.11";
     records[1]!.attestation.runtimePackageVersion = "0.1.0-main.42-sm.3";
     records.push({ ...structuredClone(records[1]!), taskRole: "topic_relation",
       attestation: { ...records[1]!.attestation, requestId: "topic-relation-request",
@@ -61,7 +61,7 @@ describe("production day purpose-specific executor identity", () => {
     const provenance = runtimeProvenanceFromExecutorAttestations(evidenceWith(records), violations);
     expect(violations).toEqual([]);
     expect(provenance).toMatchObject({
-      physicalModel: "mimo-v2.6-pro", runtimeVersion: "0.1.0-main.40-sm-mimo.10",
+      physicalModel: "mimo-v2.6-pro", runtimeVersion: "0.1.0-main.40-sm-mimo.11",
       topicLabeler: { physicalModel: "gpt-5.6-sol", runtimeVersion: "0.1.0-main.42-sm.3" },
     });
     expect(isCurrentProductionSubscriptionRuntimeProvenance(provenance)).toBe(true);
@@ -76,7 +76,7 @@ describe("production day purpose-specific executor identity", () => {
     const legacyTopic = productionExecutionAttestations();
     for (const record of legacyTopic) record.attestation.launcherSha256 = approvedSubscriptionRuntimeLauncherSha256;
     legacyTopic[0]!.attestation.model = "mimo-v2.6-pro";
-    legacyTopic[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.10";
+    legacyTopic[0]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.11";
     legacyTopic[1]!.attestation.runtimePackageVersion = "0.1.0-main.42-sm.3";
     legacyTopic[1]!.attestation.purpose = "social_monitor.reader_summary.topic_map.label";
     legacyTopic[1]!.attestation.reasoningEffort = "xhigh";
@@ -99,7 +99,7 @@ describe("production day purpose-specific executor identity", () => {
     }
     expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(wrongRole), [])).not.toBeNull();
     wrongRole[1]!.attestation.model = "mimo-v2.6-pro";
-    wrongRole[1]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.10";
+    wrongRole[1]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.11";
     wrongRole[1]!.attestation.launcherSha256 = approvedSubscriptionRuntimeLauncherSha256;
     expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(wrongRole), [])).toBeNull();
   });

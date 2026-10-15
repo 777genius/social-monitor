@@ -9,11 +9,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const commit = "9af6583b34d46ca407e9c3bf0bfe4a84a93ad2c5";
-const tree = "bdf12f57c59b4bb2ac73877d0feb8b65dc533723";
-const version = "0.1.0-main.40-sm-mimo.10";
-const sourceSha = "c9ea555fad9f9f1ed0802dee7b332eeeaff286f6f3d540e42578939fb424d946";
-const sourceManifestSha = "282e23991ea96d44e34ca5589bd60e1cb49c16da366d19bedf021fa2bf924447";
+const commit = "aa43ff0ca56320267784e66834a92ae048bb22e3";
+const tree = "c1fe963c71bb0927ce90181f3b8f27fc017efad6";
+const version = "0.1.0-main.40-sm-mimo.11";
+const sourceSha = "0b564bcdeb599ebee46e558a294dd9e6ce18119a88fb5555abdcc354f5306424";
+const sourceManifestSha = "3fdb3dff1382158e9c427d9ce79f3798c980698c64cf3aa0b8638af7bf94cbfe";
 const overlaySha = "9024cfb46013b6ee8d557d4bfb139e8328e637b5e71d169031f60ea2425b075c";
 const overlayInventory = "c40c70c4e8cd56c0e28102a3778e95fcfdf1039c8f4f06ebfbaa3babb826559a";
 const account = "@vioxen/agent-account-observability";
@@ -30,8 +30,8 @@ const scratch = await mkdtemp(join(tmpdir(), "TEST-social-monitor-public-mimo-re
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 try {
-  const sourceTar = join(vendor, "vioxen-subscription-runtime-ar-9af6583b.source.tar.gz");
-  const sourceManifestPath = join(vendor, "vioxen-subscription-runtime-ar-9af6583b.source-manifest.json");
+  const sourceTar = join(vendor, "vioxen-subscription-runtime-ar-aa43ff0c.source.tar.gz");
+  const sourceManifestPath = join(vendor, "vioxen-subscription-runtime-ar-aa43ff0c.source-manifest.json");
   assert.equal(sha(await readFile(sourceTar)), sourceSha);
   assert.equal(sha(await readFile(sourceManifestPath)), sourceManifestSha);
   const spec = JSON.parse(await readFile(sourceManifestPath, "utf8"));
