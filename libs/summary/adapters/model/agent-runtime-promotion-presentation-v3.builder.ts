@@ -143,9 +143,12 @@ implements PromotionPresentationBuilder {
         ((failure.details?.outputValidationStage === "schema_normalization" &&
           failure.details?.outputValidationCode === "schema_normalization_failed") ||
          (this.modelBackend === mimoReaderSummaryBackend &&
-          failure.details?.presentationValidationStage === "product_contract_rejected" &&
-          failure.details?.presentationOutputValidatorCalled === "true" &&
-          failure.details?.presentationOutputValidatorAccepted === "false"))) {
+          ((failure.details?.presentationValidationStage === "product_contract_rejected" &&
+            failure.details?.presentationOutputValidatorCalled === "true" &&
+            failure.details?.presentationOutputValidatorAccepted === "false") ||
+           (failure.details?.presentationValidationStage === "schema_parse_or_normalization" &&
+            failure.details?.presentationOutputValidatorCalled === "false" &&
+            failure.details?.presentationOutputValidatorAccepted === "not_returned"))))) {
       return inputs.map(() => ({ status: "unavailable", reason: "invalid_presentation" }));
     }
     if (result.status !== "completed") {
