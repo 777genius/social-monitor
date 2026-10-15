@@ -87,6 +87,13 @@ implements PromotionPresentationBuilder {
     if (inputs.length < 1 || inputs.length > 4) {
       throw new Error("V3 presentation requires a configured batch of 1..4");
     }
+    // Each MiMo completion attests one story, so a malformed sibling cannot
+    // discard independently valid stories. Rejected outputs remain unread.
+    if (this.modelBackend === mimoReaderSummaryBackend && inputs.length > 1) {
+      const results: ReaderPostPresentationV3Result[] = [];
+      for (const input of inputs) results.push(...await this.build([input]));
+      return results;
+    }
     if (requestBytes(inputs) > READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES) {
       if (inputs.length === 1) {
         return [{ status: "unavailable", reason: "input_over_budget" }];
