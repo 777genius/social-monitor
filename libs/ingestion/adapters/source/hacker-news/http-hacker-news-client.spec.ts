@@ -570,6 +570,55 @@ describe('HttpHackerNewsClient', () => {
     expect(requested).toEqual([0, 1]);
   });
 
+  it.each([
+    { name: 'modern only', flags: { exhaustive: { nbHits: true } } },
+    { name: 'legacy only', flags: { exhaustiveNbHits: true } },
+    { name: 'agreeing modern and legacy', flags: { exhaustive: { nbHits: true }, exhaustiveNbHits: true } },
+  ])('accepts $name exact coverage on every historical page', async ({ flags }) => {
+    const start = Date.parse('2026-09-23T16:00:00Z') / 1000;
+    const hits = Array.from({ length: 101 }, (_, index) => ({
+      objectID: String(1000 + index), title: 'Boundary story', created_at_i: start + index,
+    }));
+    globalThis.fetch = jest.fn(async (rawUrl: string) => {
+      const page = Number(new URL(rawUrl).searchParams.get('page'));
+      return jsonResponse({ hits: hits.slice(page * 100, (page + 1) * 100),
+        nbHits: 101, nbPages: 2, page, ...flags });
+    }) as unknown as typeof fetch;
+    await expect(new HttpHackerNewsClient().searchStories('boundary', 10, {
+      from: new Date(start * 1000), to: new Date((start + 3600) * 1000), requireComplete: true,
+    })).resolves.toHaveLength(101);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { name: 'missing', flags: {} },
+    { name: 'modern false', flags: { exhaustive: { nbHits: false } } },
+    { name: 'legacy false', flags: { exhaustiveNbHits: false } },
+    { name: 'modern true conflicts', flags: { exhaustive: { nbHits: true }, exhaustiveNbHits: false } },
+    { name: 'legacy true conflicts', flags: { exhaustive: { nbHits: false }, exhaustiveNbHits: true } },
+    { name: 'malformed modern', flags: { exhaustive: { nbHits: 'true' } } },
+    { name: 'malformed legacy', flags: { exhaustiveNbHits: 'true' } },
+    { name: 'null modern container', flags: { exhaustive: null, exhaustiveNbHits: true } },
+    { name: 'array modern container', flags: { exhaustive: [], exhaustiveNbHits: true } },
+  ])('rejects $name coverage on either historical page without returning partial hits', async ({ flags }) => {
+    const start = Date.parse('2026-09-23T16:00:00Z') / 1000;
+    const hits = Array.from({ length: 101 }, (_, index) => ({
+      objectID: String(1000 + index), title: 'Boundary story', created_at_i: start + index,
+    }));
+    for (const failingPage of [0, 1]) {
+      globalThis.fetch = jest.fn(async (rawUrl: string) => {
+        const page = Number(new URL(rawUrl).searchParams.get('page'));
+        return jsonResponse({ hits: hits.slice(page * 100, (page + 1) * 100),
+          nbHits: 101, nbPages: 2, page,
+          ...(page === failingPage ? flags : { exhaustive: { nbHits: true } }) });
+      }) as unknown as typeof fetch;
+      await expect(new HttpHackerNewsClient().searchStories('boundary', 10, {
+        from: new Date(start * 1000), to: new Date((start + 3600) * 1000), requireComplete: true,
+      })).rejects.toThrow(failingPage === 0 ? 'unknown Algolia coverage' : 'inconsistent Algolia page');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(failingPage + 1);
+    }
+  });
+
   it('subdivides a capped interval into disjoint seconds', async () => {
     const start = Date.parse('2026-09-23T16:00:00Z') / 1000;
     const seen: string[] = [];
