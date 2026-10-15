@@ -237,9 +237,33 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(result.evidence.clusters[0]?.duplicateFeedItemIds).toHaveLength(5_000);
   });
 
+  it("preserves all 172 distinct workspace stories before selecting the bounded slate", async () => {
+    const candidates = Array.from({ length: 172 }, (_, index) => ({
+      ...candidate(index + 1, "useful", "relevant"),
+      publishedAt: "2026-09-20T12:00:00.000001Z",
+      observedAt: "2026-09-20T12:01:00.000001Z",
+      body: `Distinct source ${index} ${"details ".repeat(600)}`,
+    }));
+    const presentation = new TestPresentation();
+    const fixture = workspaceSetup(candidates, undefined, presentation);
+    const result = await fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest });
+
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(result.evidence.clusters).toHaveLength(16);
+    const selection = result.evidence.promotionV3!;
+    expect(new Set([...selection.top, ...selection.additional, ...selection.excluded]
+      .map((value) => value.candidateId))).toEqual(new Set(candidates.map((value) => value.id)));
+    expect(result.evidence.selectedEvidence).toHaveLength(16);
+    expect(presentation.attempted).toBeLessThanOrEqual(32);
+    expect(result.evidence.selectedEvidence.every((value) =>
+      value.readerHeadline?.status === "accepted")).toBe(true);
+  });
+
   it("fails before presentation when pairwise story work exceeds its budget", async () => {
-    // 129 distinct keys require 8,256 executed membership checks, above 8,192.
-    const candidates = Array.from({ length: 129 }, (_, index) => ({
+    // 257 distinct keys require 32,896 membership checks, above the finite 32,768 bound.
+    const candidates = Array.from({ length: 257 }, (_, index) => ({
       ...candidate(index + 1, "useful", "relevant"),
       publishedAt: "2026-09-20T12:00:00.000001Z",
       observedAt: "2026-09-20T12:01:00.000001Z",

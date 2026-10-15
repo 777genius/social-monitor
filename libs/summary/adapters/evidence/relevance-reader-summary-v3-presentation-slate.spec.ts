@@ -91,8 +91,8 @@ describe("bounded workspace presentation slate", () => {
 
   it("retains a finite comparison ceiling before presentation", async () => {
     const presentation = new TestPresentation();
-    // 129 distinct keys exceed the unchanged 8,192 executed-comparison bound.
-    const fixture = workspaceSetup(distinct(129), undefined, presentation);
+    // 257 distinct keys require 32,896 checks, above the finite 32,768 bound.
+    const fixture = workspaceSetup(distinct(257), undefined, presentation);
     await expect(fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest })).resolves.toEqual({ kind: "budget_exhausted" });
     expect(presentation.attempted).toBe(0);

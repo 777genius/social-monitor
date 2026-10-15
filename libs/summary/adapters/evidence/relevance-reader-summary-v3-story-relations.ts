@@ -10,7 +10,9 @@ import type { ReaderSummaryScopeIdentity } from
   "../../domain/value-objects/reader-summary-scope";
 
 const maxWorkspaceStoryRelationCandidates = 5_000;
-const maxWorkspaceStoryPairComparisons = 8_192;
+// Bounds actual predicate-member work; 256 different-key stories fit (32,640),
+// while 257 still fail closed (32,896). No candidates are dropped to fit.
+const maxWorkspaceStoryPairComparisons = 32_768;
 
 export const semanticAdmission = (candidate: ReaderPostPromotionV3Candidate): boolean =>
   (candidate.answers.usefulness.choice === "useful" ||
