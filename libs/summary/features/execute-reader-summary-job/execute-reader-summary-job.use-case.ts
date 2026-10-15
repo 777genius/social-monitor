@@ -78,6 +78,7 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly v3Preflight?: ReaderSummaryV3PreflightPort,
     private readonly v3Promotion?: ReaderSummaryV3PromotionPort,
     private readonly firstPublication?: ReaderSummaryFirstPublicationAuthority,
+    private readonly nativeOwner?: Parameters<typeof resolveReaderSummaryAuthorityBoundary>[0]["nativeOwner"],
   ) {}
   async execute(
     command: ExecuteReaderSummaryJobCommand,
@@ -107,7 +108,7 @@ export class ExecuteReaderSummaryJobUseCase {
       );
     }
     const snapshot = existingJob.toSnapshot();
-    const boundary = await resolveReaderSummaryAuthorityBoundary({ job: existingJob, authority: this.firstPublication,
+    const boundary = await resolveReaderSummaryAuthorityBoundary({ job: existingJob, authority: this.firstPublication, nativeOwner: this.nativeOwner,
       explicitCutoffTime, clock: this.clock, refreshAuthority: this.newInputRefresh,
       recoveryActive: this.historicalGitHubOmission !== undefined || this.recoveryProvenance !== undefined });
     if (!boundary.ok) return boundary;

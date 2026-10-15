@@ -1,3 +1,4 @@
+import { isNativeReaderSummary } from "../../application/contracts/reader-summary-native-owner";
 import type { ReaderSummaryJob } from "../../domain";
 import type { ReaderSummaryJobRepositoryPort,
   ReaderSummaryJobPollingRepositoryPort } from "../../ports";
@@ -55,6 +56,7 @@ export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobPolli
     return [...this.jobsById.values()]
       .filter((job) => {
         const snapshot = job.toSnapshot();
+        if (isNativeReaderSummary(snapshot.idempotencyKey)) return false;
 
         return (
           snapshot.status === "requested" &&
@@ -78,6 +80,7 @@ export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobPolli
     return [...this.jobsById.values()]
       .filter((job) => {
         const snapshot = job.toSnapshot();
+        if (isNativeReaderSummary(snapshot.idempotencyKey)) return false;
         if (params.tenantId !== undefined && snapshot.tenantId !== params.tenantId ||
             params.workspaceId !== undefined && snapshot.workspaceId !== params.workspaceId) {
           return false;

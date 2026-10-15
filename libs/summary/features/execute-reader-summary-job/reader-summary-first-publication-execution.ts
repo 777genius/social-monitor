@@ -1,3 +1,4 @@
+import { readerSummaryNativeExecutionError, type ReaderSummaryNativeOwner } from "../../application/contracts/reader-summary-native-owner";
 import type { ReaderSummaryNewInputRefreshAuthority } from "../../application/contracts/reader-summary-new-input-refresh-authority";
 import { resolveReaderSummaryExecutionObservedThrough } from "./execute-reader-summary-job-support";
 import { DomainError, err, ok, type Clock, type Result } from "@social-monitor/shared-kernel";
@@ -64,10 +65,13 @@ export function bindFirstPublicationEvidence(evidence: SummaryEvidenceSelection,
 }
 
 export async function resolveReaderSummaryAuthorityBoundary(params: {
+  nativeOwner?: ReaderSummaryNativeOwner;
   job: ReaderSummaryJob; authority?: ReaderSummaryFirstPublicationAuthority;
   refreshAuthority?: ReaderSummaryNewInputRefreshAuthority; explicitCutoffTime?: number;
   recoveryActive: boolean; clock: Clock;
 }): Promise<Result<{ firstPublicationBoundary?: FirstPublicationExecutionBoundary; observed?: number }, DomainError>> {
+  const nativeError = readerSummaryNativeExecutionError(params.nativeOwner, params.job.toSnapshot());
+  if (nativeError !== undefined) return err(nativeError);
   let firstPublicationBoundary: FirstPublicationExecutionBoundary | undefined;
   if (params.authority !== undefined || params.job.toSnapshot().idempotencyKey.startsWith(readerSummaryFirstPublicationPrefix)) {
     const claimed = await claimFirstPublicationExecution({ ...params, job: params.job.toSnapshot(),

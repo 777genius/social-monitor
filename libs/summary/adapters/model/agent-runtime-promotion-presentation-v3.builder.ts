@@ -36,6 +36,8 @@ import {
   parseActiveReaderSummaryReasoningEffort,
 } from "./active-reader-summary-generation-profile";
 
+export const defaultPresentationTimeoutMs = 90_000;
+
 export type AgentRuntimePromotionPresentationV3BuilderOptions = {
   readonly client: AgentRuntimeClientPort;
   readonly agentProvider?: AgentRuntimeProvider;
@@ -79,7 +81,7 @@ implements PromotionPresentationBuilder {
       throw new Error("Presentation reasoning effort conflicts with purpose policy");
     }
     this.reasoningEffort = expectedEffort;
-    const configuredTimeoutMs = positiveIntegerOrFallback(options.timeoutMs, 90_000);
+    const configuredTimeoutMs = positiveIntegerOrFallback(options.timeoutMs, defaultPresentationTimeoutMs);
     this.timeoutMs = this.modelBackend === mimoReaderSummaryBackend
       ? Math.min(configuredTimeoutMs, mimoPresentationMaxTimeoutMs) : configuredTimeoutMs;
     this.maxOutputTokens = positiveIntegerOrFallback(options.maxOutputTokens, 2_400);

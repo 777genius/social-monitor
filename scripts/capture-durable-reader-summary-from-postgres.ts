@@ -1,3 +1,11 @@
+import { requireNativeV3ModelPreparationBudget } from "./lib/reader-summary-native-v3-budget";
+import { resolveReaderSummarySelectionStrategy } from "@social-monitor/summary/interfaces/rest/reader-summary-selection-strategy.resolver";
+import { RelevanceReaderSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence.selector";
+import { ReaderSummaryExecutionLeasePolicy, DEFAULT_READER_SUMMARY_EXECUTION_LEASE_MS } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-execution-lease.policy";
+import { nativeV3Owner, executeNativeReaderSummary, validateNativeV3Budget } from "./lib/reader-summary-native-v3-owner";
+import { createReaderSummaryV3Preflight, createReaderSummaryV3Promotion } from "@social-monitor/summary/adapters/composition/reader-summary-v3-composition";
+import { resolveAgentRuntimePromotionPresentationV3BuilderOptions } from "@social-monitor/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder";
+import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { resolveFirstPublicationMode, readFirstPublicationOperation, assertFirstPublicationServingAuthority } from "./lib/reader-summary-first-publication";
 import { createDailyJevCaptureQualification } from "./lib/reader-summary-daily-jev-qualification";
 import { PrismaMonitoringConnection } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-connection";
@@ -40,6 +48,7 @@ import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/featu
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import type {
+  ReaderSummaryEvidenceSelectorPort,
   ReaderSummaryTimestampPolicy,
   ReaderSummaryModelPort,
   ReaderSummaryTopicMapPublicationAuditPort,
@@ -204,6 +213,12 @@ async function main(): Promise<void> {
     now,
   });
   const { liveObservationCutoff } = captureExecution;
+  validateNativeV3Budget(process.argv.slice(2), readEnv("DURABLE_READER_SUMMARY_NATIVE_V3_BUDGET_MS"));
+  if (process.argv.includes("--native-jev-v3") && resolveReaderSummarySelectionStrategy(process.env)
+    .resolve({ tenantId: tenant, workspaceId: workspace }) !== "jev_primary_v3") {
+    throw new Error("Native V3 is outside the configured durable Jev workspace scope");
+  }
+
   const { promotionRebuild, sourceProvenance } =
     firstPublicationActive ? { promotionRebuild: undefined, sourceProvenance: undefined } : resolveProductionDayPromotionInput({
       environment: process.env,
@@ -235,6 +250,15 @@ async function main(): Promise<void> {
     })
       ? buildAgentRuntimeClient()
       : null;
+  if (process.argv.includes("--native-jev-v3")) {
+    if (modelMode !== "agent-runtime" || agentRuntimeClient === null) throw new Error("Native V3 requires configured agent-runtime narrative");
+    requireNativeV3ModelPreparationBudget(Number(readEnv("DURABLE_READER_SUMMARY_NATIVE_V3_BUDGET_MS")), {
+      presentation: resolveAgentRuntimePromotionPresentationV3BuilderOptions(process.env, agentRuntimeClient),
+      narrative: resolveAgentRuntimeReaderSummaryModelOptions(process.env, agentRuntimeClient),
+      ...(topicLabelerMode !== "agent-runtime" ? {} : { topics: {
+        label: resolveAgentRuntimeReaderSummaryTopicLabelerOptions(process.env, agentRuntimeClient),
+        relation: resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(process.env, agentRuntimeClient) } }) });
+  }
   const executionAttestations =
     new DurableReaderSummaryExecutionAttestationCapture();
 
@@ -379,12 +403,25 @@ async function main(): Promise<void> {
     const { servingAuthority, attemptIdentity } = firstPublicationPreflight ??
       await resolveServingPreflight();
 
+    const legacyKey = firstPublication?.idempotencyKey ?? readerSummaryProductionDayIdempotencyKey(
+      attemptIdentity, promotionRebuild?.rebuildIdentity);
+    const nativeOwner = nativeV3Owner({ argv: process.argv.slice(2), legacyKey,
+      tenantId: tenant, workspaceId: workspace, cutoff: liveObservationCutoff, exactCutoffAt: readEnv(liveObservationCutoffEnv), now,
+      specialMode: firstPublicationActive || promotionRebuild !== undefined ||
+        dailyReplay !== null || recoveryTimestampPolicy.active,
+      budget: readEnv("DURABLE_READER_SUMMARY_NATIVE_V3_BUDGET_MS") });
+    if (nativeOwner !== undefined && await readerSummaryJobs.findByIdempotencyKey({
+      tenantId: tenant, workspaceId: workspace, idempotencyKey: legacyKey }) !== null) {
+      throw new Error("Legacy native attempt exists; never reinterpret or replay it as V3");
+    }
     const requestReaderSummary = new RequestReaderSummaryUseCase(
       readerSummaryJobs,
       queue,
       new AllowingSummaryQuota(clock),
       ids,
       clock,
+      undefined,
+      nativeOwner,
     );
     const request = await requestReaderSummary.execute({
       tenantId: tenant,
@@ -396,10 +433,7 @@ async function main(): Promise<void> {
         endedAt: periodEndedAt,
         timezone,
       },
-      idempotencyKey: firstPublication?.idempotencyKey ?? readerSummaryProductionDayIdempotencyKey(
-        attemptIdentity,
-        promotionRebuild?.rebuildIdentity,
-      ),
+      idempotencyKey: nativeOwner?.idempotencyKey ?? legacyKey,
       correlationId: `corr-durable-reader-summary-${now.getTime()}`,
     });
     if (!request.ok) {
@@ -449,7 +483,17 @@ async function main(): Promise<void> {
         attestations: () => executionAttestations.all(),
       });
     const metrics = new InMemoryMetricsRecorder();
-    const execution = await captureExecution.execute([
+    if (nativeOwner !== undefined && (agentRuntimeClient === null || configuredInterests === undefined ||
+        !(relevanceEvidenceSelector instanceof RelevanceReaderSummaryEvidenceSelector))) {
+      throw new Error("Native V3 requires the real configured agent runtime");
+    }
+    const nativeLease = nativeOwner === undefined ? undefined : new ReaderSummaryExecutionLeasePolicy(Math.max(DEFAULT_READER_SUMMARY_EXECUTION_LEASE_MS, Number(readEnv("DURABLE_READER_SUMMARY_NATIVE_V3_BUDGET_MS"))));
+    const v3Preflight = nativeOwner === undefined ? undefined : createReaderSummaryV3Preflight(
+      summaryConnection, readerSummaryJobs, configuredInterests!, clock, ids, nativeLease);
+    const v3Promotion = nativeOwner === undefined ? undefined : createReaderSummaryV3Promotion(
+      summaryConnection, resolveAgentRuntimePromotionPresentationV3BuilderOptions(process.env, agentRuntimeClient!),
+      agentRuntimeClient!, requireNativeSupplemental(relevanceEvidenceSelector));
+    const dependencies: ConstructorParameters<typeof ExecuteReaderSummaryJobUseCase> = [
       readerSummaryJobs,
       readerSummaryArtifacts,
       readerSummaryPolicies,
@@ -475,13 +519,19 @@ async function main(): Promise<void> {
       undefined,
       publicationWiring.githubProjectionReader,
       historicalGitHubOmission,
-      undefined, undefined, undefined, undefined, undefined, firstPublication,
-    ], {
+      undefined, nativeLease, undefined, v3Preflight, v3Promotion, firstPublication, nativeOwner,
+    ];
+    const command = {
       tenantId: tenant,
       workspaceId: workspace,
       readerSummaryJobId: request.value.readerSummaryJobId,
       maxEvidenceItems,
-    });
+    };
+    const execution = nativeOwner === undefined
+      ? await captureExecution.execute(dependencies, command)
+      : await executeNativeReaderSummary({ owner: nativeOwner, jobs: readerSummaryJobs,
+        execute: new ExecuteReaderSummaryJobUseCase(...dependencies),
+        command: { ...command, observedThrough: liveObservationCutoff }, clock });
     if (!execution.ok) {
       throw execution.error;
     }
@@ -937,3 +987,8 @@ void main().catch((error) => {
   console.error(`Durable reader summary capture failed: ${message}`);
   process.exitCode = 1;
 });
+
+function requireNativeSupplemental(selector: ReaderSummaryEvidenceSelectorPort): RelevanceReaderSummaryEvidenceSelector {
+  if (!(selector instanceof RelevanceReaderSummaryEvidenceSelector)) throw new Error("Native V3 requires real relevance supplemental selector");
+  return selector;
+}
