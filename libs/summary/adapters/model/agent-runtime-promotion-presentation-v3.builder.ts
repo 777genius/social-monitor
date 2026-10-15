@@ -31,6 +31,7 @@ import {
   activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
   mimoPresentationReasoningEffort,
+  mimoPresentationMaxTimeoutMs,
   assertActiveReaderSummaryProvider,
   parseActiveReaderSummaryReasoningEffort,
 } from "./active-reader-summary-generation-profile";
@@ -78,7 +79,9 @@ implements PromotionPresentationBuilder {
       throw new Error("Presentation reasoning effort conflicts with purpose policy");
     }
     this.reasoningEffort = expectedEffort;
-    this.timeoutMs = positiveIntegerOrFallback(options.timeoutMs, 90_000);
+    const configuredTimeoutMs = positiveIntegerOrFallback(options.timeoutMs, 90_000);
+    this.timeoutMs = this.modelBackend === mimoReaderSummaryBackend
+      ? Math.min(configuredTimeoutMs, mimoPresentationMaxTimeoutMs) : configuredTimeoutMs;
     this.maxOutputTokens = positiveIntegerOrFallback(options.maxOutputTokens, 2_400);
   }
 

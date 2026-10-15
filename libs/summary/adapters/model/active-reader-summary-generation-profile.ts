@@ -17,6 +17,8 @@ export const activeReaderSummaryReasoningEffort = "high" as const;
 export const mimoReaderSummaryBackend = "xiaomi-mimo-token-plan" as const;
 export const mimoReaderSummaryModel = "mimo-v2.6-pro" as const;
 export const mimoPresentationReasoningEffort = "none" as const;
+// At most 32 independent story tasks must fit inside the daily execution lease.
+export const mimoPresentationMaxTimeoutMs = 60_000;
 
 export type ReaderSummaryGenerationBackend =
   | "openai-chatgpt"

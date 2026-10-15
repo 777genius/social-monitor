@@ -315,6 +315,21 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(new Set(client.commands.map(command => command.requestId)).size).toBe(4);
   });
 
+  it.each([[240_000, 60_000], [1_234, 1_234]])(
+    "bounds each independent MiMo task configured at %i ms to %i ms", async (timeoutMs, expected) => {
+      const client = new AttestedPresentationRuntimeClient();
+      await new AgentRuntimePromotionPresentationV3Builder({ client,
+        modelBackend: "xiaomi-mimo-token-plan", timeoutMs }).build([fixtureInput()]);
+      expect(client.commands[0]?.timeoutMs).toBe(expected);
+    });
+
+  it("preserves non-MiMo configured timeouts", async () => {
+    const client = new PresentationRuntimeClient();
+    await new AgentRuntimePromotionPresentationV3Builder({ client, timeoutMs: 240_000 })
+      .build([fixtureInput()]);
+    expect(client.commands[0]?.timeoutMs).toBe(240_000);
+  });
+
   it("rejects a conflicting presentation model under MiMo", () => {
     expect(() => resolveAgentRuntimePromotionPresentationV3BuilderOptions({
       AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
