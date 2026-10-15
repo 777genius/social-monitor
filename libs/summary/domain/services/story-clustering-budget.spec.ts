@@ -39,7 +39,7 @@ describe("StoryClusteringService comparison budget", () => {
     expect(result.selection.clusters[0]?.duplicateFeedItemIds).toEqual(["feed-2"]);
   });
 
-  it.each([[4_096, 91, 92], [8_192, 128, 129]])(
+  it.each([[4_096, 91, 92], [8_192, 128, 129], [32_768, 256, 257]])(
     "keeps the actual distinct-predicate boundary fail closed at budget %i",
     (budget, admittedCount, refusedCount) => {
       const items = Array.from({ length: refusedCount }, (_, index) =>
@@ -51,15 +51,15 @@ describe("StoryClusteringService comparison budget", () => {
     },
   );
 
-  it("accepts 106 distinct stories at the unchanged workspace bound with identical semantics", () => {
-    const items = Array.from({ length: 106 }, (_, index) =>
+  it("accepts 172 distinct stories at the workspace bound with identical semantics", () => {
+    const items = Array.from({ length: 172 }, (_, index) =>
       item(index, `https://example.com/stories/${index}`));
     const params = { identity, items, limit: items.length, now };
-    const result = service.clusterWithinComparisonBudget(params, 8_192);
+    const result = service.clusterWithinComparisonBudget(params, 32_768);
 
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
-    expect(result.selection.clusters).toHaveLength(106);
+    expect(result.selection.clusters).toHaveLength(172);
     expect(result.selection).toEqual(service.cluster(params));
   });
 
