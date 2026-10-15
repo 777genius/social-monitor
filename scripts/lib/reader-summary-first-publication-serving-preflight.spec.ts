@@ -9,6 +9,7 @@ import * as firstPublication from "./reader-summary-first-publication";
 import * as serving from "./reader-summary-serving-authority";
 import * as identity from "./reader-summary-production-day-attempt-identity";
 import * as periodPolicy from "./reader-summary-capture-period-policy";
+import * as nativeV3Owner from "./reader-summary-native-v3-owner";
 import { firstpubFixture, firstpubScope, firstpubStart, firstpubEnd } from "./reader-summary-first-publication.spec-support";
 
 // Execute the complete CLI bytes with fail-closed import doubles. No production
@@ -127,6 +128,7 @@ async function runCapture(options: Options = {}) {
     "@social-monitor/shared-kernel": { ...sharedKernel, SystemClock: doubles.SystemClock },
     "@social-monitor/summary/domain": { buildReaderSummaryPeriod },
     "./lib/reader-summary-capture-period-policy": periodPolicy,
+    "./lib/reader-summary-native-v3-owner": nativeV3Owner,
     "./lib/reader-summary-first-publication": { ...firstPublication, readFirstPublicationOperation: () => op },
     "./lib/reader-summary-serving-authority": { ...serving,
       resolveReaderSummaryServingAuthority: async (input: Parameters<typeof serving.resolveReaderSummaryServingAuthority>[0]) => {
