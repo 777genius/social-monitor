@@ -57,11 +57,20 @@ describe("bounded workspace presentation slate", () => {
     }
   });
 
-  it("refuses a shortened workspace slate after an invalid presentation", async () => {
-    const { presentation } = withRejectedPresentations(new Set([id(1)]));
-    const fixture = workspaceSetup(distinct(16), undefined, presentation);
-    await expect(fixture.subject.build({ job: fixture.job, manifest: fixture.manifest }))
-      .resolves.toEqual({ kind: "presentation_unavailable" });
+  it("publishes only genuinely sealed survivors when a small full inventory loses a rejected batch", async () => {
+    const rejected = new Set([1, 2, 3, 4].map(id));
+    const { tracked, presentation } = withRejectedPresentations(rejected);
+    const fixture = workspaceSetup(distinct(10), undefined, presentation);
+    const result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
+    expect(result.kind).toBe("ready");
+    expect(tracked.attempted).toBe(10);
+    expect(new Set(tracked.batches.flat()).size).toBe(10);
+    if (result.kind !== "ready") return;
+    expect(result.evidence.selectedEvidence).toHaveLength(6);
+    for (const item of result.evidence.selectedEvidence) {
+      expect(rejected.has(item.feedItemId)).toBe(false);
+      expect(item.readerHeadline?.status).toBe("accepted");
+    }
   });
 
   it("retains ordinary small workspace slates without invalid presentations", async () => {
