@@ -49,15 +49,22 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toBeDefined();
   });
 
-  it.each(["unknown_runtime_failure", "provider_output_invalid"] as const)(
-    "discards the whole MiMo qualification-rejected batch with %s without reading failed output", async code => {
+  it.each([
+    ["unknown_runtime_failure", "product_contract_rejected", "true", "false"],
+    ["provider_output_invalid", "product_contract_rejected", "true", "false"],
+    ["unknown_runtime_failure", "schema_parse_or_normalization", "false", "not_returned"],
+    ["provider_output_invalid", "schema_parse_or_normalization", "false", "not_returned"],
+  ] as const)(
+    "discards the whole MiMo rejected batch with %s at %s without reading failed output", async (code, stage, called, accepted) => {
       const client = new PresentationRuntimeClient();
       const failed: AgentRuntimeTaskResult = { status: "failed", warnings: [], failure: {
         code, safeMessage: "Rejected", retryable: false, reconnectRequired: false,
         causeCategory: "agent_runtime", details: {
-          presentationValidationStage: "product_contract_rejected",
-          presentationOutputValidatorCalled: "true", presentationOutputValidatorAccepted: "false",
-          presentationRejectedPredicate: "qualification", presentationRejectedCandidateIndex: "0",
+          presentationValidationStage: stage,
+          presentationOutputValidatorCalled: called, presentationOutputValidatorAccepted: accepted,
+          ...(stage === "product_contract_rejected" ? {
+            presentationRejectedPredicate: "qualification", presentationRejectedCandidateIndex: "0",
+          } : {}),
         },
       } };
       Object.defineProperty(failed, "structuredOutput", { get: () => {
@@ -78,16 +85,33 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     { modelBackend: "xiaomi-mimo-token-plan", stage: "product_contract_rejected", called: "false", accepted: "false" },
     { modelBackend: "xiaomi-mimo-token-plan", stage: "product_contract_rejected", called: "true", accepted: "true" },
     { modelBackend: undefined, stage: "product_contract_rejected", called: "true", accepted: "false" },
+    { modelBackend: "xiaomi-mimo-token-plan", stage: "schema_parse_or_normalization", called: "true", accepted: "not_returned" },
+    { modelBackend: "xiaomi-mimo-token-plan", stage: "schema_parse_or_normalization", called: "false", accepted: "false" },
+    { modelBackend: "xiaomi-mimo-token-plan", stage: "product_validator_exception", called: "false", accepted: "not_returned" },
+    { modelBackend: "xiaomi-mimo-token-plan", stage: "schema_parse_or_normalization", called: "false", accepted: undefined },
+    { modelBackend: undefined, stage: "schema_parse_or_normalization", called: "false", accepted: "not_returned" },
   ] as const)("preserves failures outside the exact MiMo product rejection contract %j", async row => {
     const client = new PresentationRuntimeClient();
     jest.spyOn(client, "runTask").mockResolvedValueOnce({ status: "failed", warnings: [],
       failure: { code: "unknown_runtime_failure", safeMessage: "Failed", retryable: false,
         reconnectRequired: false, causeCategory: "agent_runtime", details: {
           presentationValidationStage: row.stage, presentationOutputValidatorCalled: row.called,
-          presentationOutputValidatorAccepted: row.accepted,
+          ...(row.accepted === undefined ? {} : { presentationOutputValidatorAccepted: row.accepted }),
         } } });
     await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
       modelBackend: row.modelBackend }).build([fixtureInput()])).rejects.toBeDefined();
+  });
+
+  it("preserves quota failures even when rejected-output flags are present", async () => {
+    const client = new PresentationRuntimeClient();
+    jest.spyOn(client, "runTask").mockResolvedValueOnce({ status: "failed", warnings: [],
+      failure: { code: "quota_limited", safeMessage: "Quota unavailable", retryable: true,
+        reconnectRequired: false, causeCategory: "provider", details: {
+          presentationValidationStage: "schema_parse_or_normalization",
+          presentationOutputValidatorCalled: "false", presentationOutputValidatorAccepted: "not_returned",
+        } } });
+    await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toBeDefined();
   });
 
   it("does not mask transport exceptions as invalid presentations", async () => {
