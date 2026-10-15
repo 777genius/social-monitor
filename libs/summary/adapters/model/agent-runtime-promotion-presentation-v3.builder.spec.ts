@@ -19,6 +19,36 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       failure: { kind: "invalid_schema", retryable: false, message: "Structured output schema rejected" },
     });
   });
+  it.each(["unknown_runtime_failure", "provider_output_invalid"] as const)(
+    "discards a schema-rejected batch with %s without trusting its output", async (code) => {
+      const client = new PresentationRuntimeClient();
+      jest.spyOn(client, "runTask").mockResolvedValueOnce({ status: "failed", warnings: [],
+        structuredOutput: { presentations: [] }, failure: {
+          code, safeMessage: "Rejected", retryable: false, reconnectRequired: false,
+          causeCategory: "agent_runtime", details: {
+            outputValidationStage: "schema_normalization",
+            outputValidationCode: "schema_normalization_failed",
+          },
+        } });
+      await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
+        modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()]))
+        .resolves.toEqual([{ status: "unavailable", reason: "invalid_presentation" }]);
+      expect(client.runTask).toHaveBeenCalledTimes(1);
+    });
+
+  it.each<Record<string, string>>([
+    { outputValidationStage: "json_parse", outputValidationCode: "schema_normalization_failed" },
+    { outputValidationStage: "schema_normalization", outputValidationCode: "json_parse_failed" },
+    { outputValidationStage: "schema_normalization" },
+  ])("does not hide unrelated runtime failures %j", async (details) => {
+    const client = new PresentationRuntimeClient();
+    jest.spyOn(client, "runTask").mockResolvedValueOnce({ status: "failed", warnings: [],
+      failure: { code: "unknown_runtime_failure", safeMessage: "Failed", retryable: false,
+        reconnectRequired: false, causeCategory: "agent_runtime", details } });
+    await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toBeDefined();
+  });
+
   it("uses the configured runtime provider without sending private interest text", async () => {
     const client = new PresentationRuntimeClient();
     const input = fixtureInput();

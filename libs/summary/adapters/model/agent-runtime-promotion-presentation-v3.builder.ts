@@ -137,6 +137,13 @@ implements PromotionPresentationBuilder {
       metadata: { adapter: "agent-runtime-promotion-presentation-v3" },
     };
     const result = await this.client.runTask(command);
+    if (result.status === "failed" &&
+        (result.failure?.code === "unknown_runtime_failure" ||
+          result.failure?.code === "provider_output_invalid") &&
+        result.failure.details?.outputValidationStage === "schema_normalization" &&
+        result.failure.details?.outputValidationCode === "schema_normalization_failed") {
+      return inputs.map(() => ({ status: "unavailable", reason: "invalid_presentation" }));
+    }
     if (result.status !== "completed") {
       readAgentRuntimeObjectOutput(result, parseObject, "Reader promotion presentation");
     }

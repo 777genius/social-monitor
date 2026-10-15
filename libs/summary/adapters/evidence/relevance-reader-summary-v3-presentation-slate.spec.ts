@@ -1,3 +1,5 @@
+import type { PromotionPresentationBuilder } from
+  "../../domain/services/reader-post-presentation-v3";
 import { candidate, id, TestPresentation, workspaceSetup } from
   "./relevance-reader-summary-v3-promotion.fixture";
 
@@ -28,6 +30,54 @@ describe("bounded workspace presentation slate", () => {
     expect(result.evidence.selectedEvidence).toHaveLength(16);
     expect(result.evidence.selectedEvidence.every((item) =>
       item.readerHeadline?.status === "accepted")).toBe(true);
+  });
+
+  const withRejectedPresentations = (rejected: Set<string>) => {
+    const tracked = new TestPresentation(rejected);
+    const presentation: PromotionPresentationBuilder = { build: async (inputs) =>
+      (await tracked.build(inputs)).map((result) => result.status === "unavailable"
+        ? { status: "unavailable", reason: "invalid_presentation" } : result) };
+    return { tracked, presentation };
+  };
+
+  it("continues past rejected batches to sixteen sealed stories without repeating bindings", async () => {
+    const { tracked, presentation } = withRejectedPresentations(new Set([1, 2, 3, 4].map(id)));
+    const fixture = workspaceSetup(distinct(76), undefined, presentation);
+    const result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
+    expect(result.kind).toBe("ready");
+    expect(tracked.attempted).toBeLessThanOrEqual(32);
+    expect(new Set(tracked.batches.flat()).size).toBe(tracked.attempted);
+    if (result.kind !== "ready") return;
+    expect(result.evidence.selectedEvidence).toHaveLength(16);
+    expect(result.evidence.selectedEvidence.every((item) => item.readerHeadline?.status === "accepted"))
+      .toBe(true);
+    for (const rejectedId of [id(1), id(2), id(3), id(4)]) {
+      expect(result.evidence.selectedEvidence.map((item) => item.feedItemId))
+        .not.toContain(rejectedId);
+    }
+  });
+
+  it("refuses a shortened workspace slate after an invalid presentation", async () => {
+    const { presentation } = withRejectedPresentations(new Set([id(1)]));
+    const fixture = workspaceSetup(distinct(16), undefined, presentation);
+    await expect(fixture.subject.build({ job: fixture.job, manifest: fixture.manifest }))
+      .resolves.toEqual({ kind: "presentation_unavailable" });
+  });
+
+  it("retains ordinary small workspace slates without invalid presentations", async () => {
+    const fixture = workspaceSetup(distinct(8));
+    const result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
+    expect(result.kind).toBe("ready");
+    if (result.kind === "ready") expect(result.evidence.selectedEvidence).toHaveLength(8);
+  });
+
+  it("keeps the thirty-two attempt ceiling when every presentation is rejected", async () => {
+    const { tracked, presentation } = withRejectedPresentations(new Set(distinct(76).map((row) => row.id)));
+    const fixture = workspaceSetup(distinct(76), undefined, presentation);
+    await expect(fixture.subject.build({ job: fixture.job, manifest: fixture.manifest }))
+      .resolves.toEqual({ kind: "budget_exhausted" });
+    expect(tracked.attempted).toBe(32);
+    expect(new Set(tracked.batches.flat()).size).toBe(32);
   });
 
   it("retains a finite comparison ceiling before presentation", async () => {
