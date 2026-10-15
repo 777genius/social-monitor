@@ -49,6 +49,55 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toBeDefined();
   });
 
+  it.each(["unknown_runtime_failure", "provider_output_invalid"] as const)(
+    "discards the whole MiMo qualification-rejected batch with %s without reading failed output", async code => {
+      const client = new PresentationRuntimeClient();
+      const failed: AgentRuntimeTaskResult = { status: "failed", warnings: [], failure: {
+        code, safeMessage: "Rejected", retryable: false, reconnectRequired: false,
+        causeCategory: "agent_runtime", details: {
+          presentationValidationStage: "product_contract_rejected",
+          presentationOutputValidatorCalled: "true", presentationOutputValidatorAccepted: "false",
+          presentationRejectedPredicate: "qualification", presentationRejectedCandidateIndex: "0",
+        },
+      } };
+      Object.defineProperty(failed, "structuredOutput", { get: () => {
+        throw new Error("Failed output must never be read");
+      } });
+      jest.spyOn(client, "runTask").mockResolvedValueOnce(failed);
+      const inputs = [fixtureInput(), { ...fixtureInput(), candidateId: "other-candidate" }];
+      await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
+        modelBackend: "xiaomi-mimo-token-plan" }).build(inputs)).resolves.toEqual([
+        { status: "unavailable", reason: "invalid_presentation" },
+        { status: "unavailable", reason: "invalid_presentation" },
+      ]);
+      expect(client.runTask).toHaveBeenCalledTimes(1);
+    });
+
+  it.each([
+    { modelBackend: "xiaomi-mimo-token-plan", stage: "other", called: "true", accepted: "false" },
+    { modelBackend: "xiaomi-mimo-token-plan", stage: "product_contract_rejected", called: "false", accepted: "false" },
+    { modelBackend: "xiaomi-mimo-token-plan", stage: "product_contract_rejected", called: "true", accepted: "true" },
+    { modelBackend: undefined, stage: "product_contract_rejected", called: "true", accepted: "false" },
+  ] as const)("preserves failures outside the exact MiMo product rejection contract %j", async row => {
+    const client = new PresentationRuntimeClient();
+    jest.spyOn(client, "runTask").mockResolvedValueOnce({ status: "failed", warnings: [],
+      failure: { code: "unknown_runtime_failure", safeMessage: "Failed", retryable: false,
+        reconnectRequired: false, causeCategory: "agent_runtime", details: {
+          presentationValidationStage: row.stage, presentationOutputValidatorCalled: row.called,
+          presentationOutputValidatorAccepted: row.accepted,
+        } } });
+    await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: row.modelBackend }).build([fixtureInput()])).rejects.toBeDefined();
+  });
+
+  it("does not mask transport exceptions as invalid presentations", async () => {
+    const client = new PresentationRuntimeClient();
+    const failure = new Error("Transport unavailable");
+    jest.spyOn(client, "runTask").mockRejectedValueOnce(failure);
+    await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toBe(failure);
+  });
+
   it("uses the configured runtime provider without sending private interest text", async () => {
     const client = new PresentationRuntimeClient();
     const input = fixtureInput();
