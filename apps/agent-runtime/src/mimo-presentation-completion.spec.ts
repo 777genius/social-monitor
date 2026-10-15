@@ -1,13 +1,14 @@
-import { readerPostPresentationV3OutputSchema } from "@social-monitor/summary/domain";
+import { readerPostPresentationCandidates, readerPostPresentationCatalogOutputSchema } from "@social-monitor/summary/domain";
 import { createMimoPresentationCompletionValidator } from "./mimo-presentation-completion";
 
+const prompt = JSON.stringify({ candidates: [{ candidateId: "original", title: "Useful database method",
+  sourceText: "Useful body source." }] });
 const input = () => ({ purpose: "social_monitor.reader_summary.promotion_presentation.v3",
   provider: "codex", model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "none",
-  task: { prompt: JSON.stringify({ candidates: [{ candidateId: "original", title: "Useful database method",
-    sourceText: "Useful body source." }] }), outputSchemaName: "social_monitor_reader_post_presentation_v3",
+  task: { prompt, outputSchemaName: "social_monitor_reader_post_presentation_v3",
     controls: { model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "none",
       schemaVersion: "reader_post_presentation.v3", outputSchemaName: "social_monitor_reader_post_presentation_v3",
-      outputSchema: readerPostPresentationV3OutputSchema } } });
+      outputSchema: readerPostPresentationCatalogOutputSchema(readerPostPresentationCandidates(prompt)) } } });
 
 describe("source-owned MiMo presentation completion", () => {
   it("accepts only a fully grounded proposal for the original candidate", () => {
@@ -15,7 +16,7 @@ describe("source-owned MiMo presentation completion", () => {
     const validate = createMimoPresentationCompletionValidator(source);
     source.task.prompt = JSON.stringify({ candidates: [{ candidateId: "substituted", title: "Changed", sourceText: "Changed" }] });
     const output = { presentations: [{ candidateId: "original", status: "available", kind: "claim",
-      text: "Useful database method", support: [{ field: "bodyPreview", start: 0, end: 7, quote: "Useful " }],
+      text: "Useful database method", support: [{ field: "bodyPreview", start: 0, end: 19, quote: "Useful body source." }],
       qualifications: [], confidence: 0.9, qualificationJudgment: "none" }] };
     expect(validate(output)).toBe(true);
     expect(validate({ presentations: [{ ...output.presentations[0], candidateId: "substituted" }] })).toBe(false);
@@ -51,6 +52,22 @@ describe("source-owned MiMo presentation completion", () => {
       presentationOutputValidatorAccepted: "false", presentationRejectedPredicate: "source_reference",
       presentationRejectedCandidateIndex: "0",
     });
+  });
+
+  it("preserves only finite SDK parse diagnostics even without the Goal rejection marker", () => {
+    const validate = createMimoPresentationCompletionValidator(input());
+    expect(validate.failureDetails({ failureDetails: { outputValidationStage: "schema_normalization",
+      outputValidationCode: "schema_normalization_failed", outputValidationKeyword: "maxLength",
+      rawCause: "PRIVATE_SOURCE", presentationOutputValidatorCalled: "true", output: "PRIVATE_OUTPUT" } }))
+      .toEqual({ outputValidationStage: "schema_normalization", outputValidationCode: "schema_normalization_failed",
+        outputValidationKeyword: "maxLength" });
+    expect(validate.failureDetails({ details: { outputValidationStage: "PRIVATE_CREDENTIAL",
+      outputValidationCode: "arbitrary", rawCause: "network_error" } })).toEqual({});
+    expect(validate.failureDetails({ failureDetails: { rawCause: "network_error" }, details: {
+      outputValidationStage: "schema_normalization", outputValidationCode: "schema_normalization_failed",
+      outputValidationKeyword: "maxLength", output: "PRIVATE_OUTPUT" } })).toEqual({
+      outputValidationStage: "schema_normalization", outputValidationCode: "schema_normalization_failed",
+      outputValidationKeyword: "maxLength" });
   });
 
   it.each([

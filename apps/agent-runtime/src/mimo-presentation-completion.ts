@@ -1,6 +1,7 @@
-import { readerPostPresentationCandidates, readerPostPresentationV3OutputSchema,
-  readerPostPresentationProposalFailure } from "@social-monitor/summary/domain";
+import { readerPostPresentationCandidates, readerPostPresentationCatalogOutputSchema,
+  readerPostPresentationCatalogProposalFailure } from "@social-monitor/summary/domain";
 import { canonicalPromotionPayload } from "@social-monitor/summary/domain/services/reader-post-promotion-attestation";
+import { readRuntimeOutputFailureDiagnostics } from "./runtime-output-failure-diagnostics";
 
 interface CompletionObservation {
   called: boolean;
@@ -17,9 +18,13 @@ const rejectionCode = "codex_goal_completed_output_rejected";
 function completionFailureDetails(failure: unknown, observation: CompletionObservation): Readonly<Record<string, string>> {
   if (failure === null || typeof failure !== "object") return {};
   const value = failure as { failureDetails?: { rawCause?: unknown }; details?: { rawCause?: unknown }; message?: unknown };
+  const diagnostics = Object.fromEntries(Object.entries({ ...readRuntimeOutputFailureDiagnostics(value.details),
+    ...readRuntimeOutputFailureDiagnostics(value.failureDetails) })
+    .filter(([name]) => ["outputValidationStage", "outputValidationCode", "outputValidationKeyword"].includes(name)));
   if (value.failureDetails?.rawCause !== rejectionCode && value.details?.rawCause !== rejectionCode &&
-      value.message !== rejectionCode) return {};
+      value.message !== rejectionCode) return diagnostics;
   return {
+    ...diagnostics,
     presentationValidationStage: !observation.called ? "schema_parse_or_normalization" :
       observation.accepted === false ? "product_contract_rejected" : "product_validator_exception",
     presentationOutputValidatorCalled: String(observation.called),
@@ -46,15 +51,17 @@ export const createMimoPresentationCompletionValidator = (input: {
   if (input.task.outputSchemaName !== "social_monitor_reader_post_presentation_v3" ||
       values.outputSchemaName !== input.task.outputSchemaName || values.schemaVersion !== "reader_post_presentation.v3" ||
       values.model !== input.model || values.modelBackend !== input.modelBackend ||
-      values.reasoningEffort !== input.reasoningEffort || typeof input.task.prompt !== "string" ||
-      canonicalPromotionPayload(values.outputSchema) !== canonicalPromotionPayload(readerPostPresentationV3OutputSchema)) {
+      values.reasoningEffort !== input.reasoningEffort || typeof input.task.prompt !== "string") {
     throw new Error("MiMo presentation completion contract is invalid");
   }
   const candidates = readerPostPresentationCandidates(input.task.prompt);
+  if (canonicalPromotionPayload(values.outputSchema) !== canonicalPromotionPayload(readerPostPresentationCatalogOutputSchema(candidates))) {
+    throw new Error("MiMo presentation completion contract is invalid");
+  }
   const observation: CompletionObservation = { called: false };
   return Object.assign((output: unknown): boolean => {
     observation.called = true;
-    const rejection = readerPostPresentationProposalFailure(output, candidates);
+    const rejection = readerPostPresentationCatalogProposalFailure(output, candidates);
     const accepted = rejection === null;
     observation.rejectionCode = rejection?.code;
     observation.rejectedIndex = rejection?.index;
