@@ -15,9 +15,9 @@ import {
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.42-sm.3";
 export const approvedMimoRuntimePackageVersion =
-  "0.1.0-main.40-sm-mimo.9";
+  "0.1.0-main.40-sm-mimo.10";
 const approvedMimoManifestSha256 =
-  "2ab0899c3ed056932738a8d7e4d7fa09391678615427058d578daac35e3a6a5f";
+  "2980ade6b549257ba781d5dfc36504e25830f7ee16787c6471484078e679c99d";
 const approvedMimoWorkerEntrypointSha256 =
   "bc60f8ac04f188ddab18e16e17990a9e7406790d0a019a658727e43682f2acae";
 // SHA256 of sorted "relative path\0file SHA256\n" records for all regular
@@ -27,7 +27,7 @@ const approvedBaseRuntimeCodeSha256 = Object.freeze([
   "0b1ae195815bd45ce2aab77cb4345e4ea07e2af70410527959bf810792669512",
 ]);
 const approvedMimoRuntimeCodeSha256 =
-  "3fc556c688e585bef2f6a5746866f878edd9ad0e340f8824b43a8120100cc53c";
+  "412db50f7fdc7c576d06a8ab52da2d6cc35177e4b8b7d0347d8613e2af1d9f2a";
 // Package code resolved from the installed node_modules ancestor while the
 // wrapper imports the two runtime distributions, before it reads the key.
 const approvedHoistedRuntimeCodeSha256 = Object.freeze({
