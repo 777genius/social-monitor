@@ -348,6 +348,12 @@ implements ReaderSummaryV3PromotionPort {
         !planWorkspacePresentationSlate(completed).settled) {
       return { kind: "budget_exhausted" };
     }
+    if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
+        selection.top.length + selection.additional.length < 16 &&
+        completed.some((candidate) => candidate.presentation.status === "unavailable" &&
+          candidate.presentation.reason === "invalid_presentation")) {
+      return { kind: "presentation_unavailable" };
+    }
     if (selection.outcome !== "ready") {
       if (selection.outcome !== "no_signal" || supplementalEvidence.length === 0) {
         return { kind: selection.outcome };
