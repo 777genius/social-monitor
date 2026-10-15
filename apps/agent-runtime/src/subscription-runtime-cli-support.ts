@@ -8,6 +8,7 @@ import type {
   AgentRuntimeExecutionWarning,
 } from "./agent-runtime-executor.port";
 import { parseSubscriptionRuntimeJsonObject } from "./subscription-runtime-execution-attestation";
+import { readRuntimeOutputFailureDiagnostics } from "./runtime-output-failure-diagnostics";
 
 export const shouldRetryWithEphemeral = (
   result: AgentRuntimeExecutionResult,
@@ -354,7 +355,7 @@ const readSafeRuntimeFailureDetails = (
     return {};
   }
 
-  return Object.fromEntries(
+  return { ...readRuntimeOutputFailureDiagnostics(record), ...Object.fromEntries(
     Object.entries(record).flatMap(([key, detail]) => {
       const safeValue = optionalString(detail);
       if (!safeRuntimeFailureDetailKeys.has(key) || safeValue === undefined) {
@@ -368,7 +369,7 @@ const readSafeRuntimeFailureDetails = (
       }
       return [[key, safeValue]];
     }),
-  );
+  ) };
 };
 
 const promotedRuntimeFailureCode = (

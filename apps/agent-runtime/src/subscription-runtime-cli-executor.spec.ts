@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 
-import type { StructuredLogger } from "@social-monitor/platform-logging";
+import { formatLogMessage, type StructuredLogger } from "@social-monitor/platform-logging";
 import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
 import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-executor";
 import { admitStrictCwd } from "./strict-grpc-admission";
@@ -629,7 +629,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       cliPath,
       [
         "#!/usr/bin/env node",
-        "process.stdout.write(JSON.stringify({ status: 'failed', warnings: [], failure: { code: 'quota_limited', safeMessage: 'All configured accounts are limited', retryable: true, reconnectRequired: false, causeCategory: 'provider' } }));",
+        "process.stdout.write(JSON.stringify({ status: 'failed', warnings: [], failure: { code: 'quota_limited', safeMessage: 'All configured accounts are limited', retryable: true, reconnectRequired: false, causeCategory: 'provider', details: { outputValidationStage: 'schema_normalization', outputValidationCode: 'schema_normalization_failed', rawCause: 'must-not-be-logged' } } }));",
       ].join("\n"),
       "utf8",
     );
@@ -670,10 +670,16 @@ describe("SubscriptionRuntimeCliExecutor", () => {
           requestId: "request-1",
           correlationId: "corr-1",
           failureCode: "quota_limited",
+          outputValidationStage: "schema_normalization",
+          outputValidationCode: "schema_normalization_failed",
         }),
       }),
     );
     expect(JSON.stringify(logs)).not.toContain("secret prompt");
+    expect(JSON.stringify(logs)).not.toContain("must-not-be-logged");
+    const failureLog = logs.find(log => log.message === "agent runtime task did not complete")!;
+    expect(formatLogMessage(failureLog.message, failureLog.fields as Record<string, string>))
+      .toContain("outputValidationStage=schema_normalization outputValidationCode=schema_normalization_failed");
   });
 });
 

@@ -6,6 +6,19 @@ import {
 } from "./agent-runtime-promotion-presentation-v3.builder";
 
 describe("AgentRuntimePromotionPresentationV3Builder", () => {
+  it("preserves a failed MiMo task instead of misclassifying it as a completed attestation failure", async () => {
+    const client = new PresentationRuntimeClient();
+    jest.spyOn(client as AgentRuntimeClientPort, "runTask").mockResolvedValueOnce({
+      status: "failed", warnings: [], failure: {
+        code: "provider_output_invalid", safeMessage: "Structured output schema rejected",
+        retryable: false, reconnectRequired: false, causeCategory: "schema", details: {},
+      },
+    });
+    await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toMatchObject({
+      failure: { kind: "invalid_schema", retryable: false, message: "Structured output schema rejected" },
+    });
+  });
   it("uses the configured runtime provider without sending private interest text", async () => {
     const client = new PresentationRuntimeClient();
     const input = fixtureInput();
