@@ -1,4 +1,5 @@
 import { preserveVerifiedLegacyCapture } from '../../../domain/value-objects/legacy-source-capture';
+import { assertRedditArchiveInsert, type RedditArchiveInsertCommand } from './reddit-archive-persistence-contract';
 import { PrismaArticleCaptureRepository } from './prisma-article-capture.repository';
 import type { ArticleCaptureRepository } from '../../../ports/article-capture-repository';
 import { prepareArticleCaptureAttempt } from '../../../domain/value-objects/article-capture-attempt';
@@ -32,6 +33,7 @@ type TransactionalPrismaIngestionClient = PrismaIngestionClient & {
 };
 
 export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
+  private archiveOnly = false;
   private readonly articleCaptures: PrismaArticleCaptureRepository;
   constructor(
     private readonly prisma: PrismaIngestionClient,
@@ -53,6 +55,14 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
   /** Historical imports must call this explicit entrypoint, never ordinary saveBatch. */
   saveBatchInsertOnly(command: SaveSourceItemsCommand): Promise<SaveSourceItemsResult> {
     return new PrismaSourceItemRepository(this.prisma, "insert-only").saveBatch(command);
+  }
+
+  /** Retained archive text is not a live provider fetch or article capture. */
+  saveRedditArchiveBatchInsertOnly(command: RedditArchiveInsertCommand): Promise<SaveSourceItemsResult> {
+    assertRedditArchiveInsert(command);
+    const repository = new PrismaSourceItemRepository(this.prisma, 'insert-only');
+    repository.archiveOnly = true;
+    return repository.saveBatch(command);
   }
 
   async saveBatch(
@@ -125,14 +135,14 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
 
     for (const item of command.items) {
       const raw = item.toSnapshot();
-      let snapshot = command.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY ? raw : captureNativeText(raw, command.providerKey, raw.ingestedAt);
+      let snapshot = this.archiveOnly || command.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY ? raw : captureNativeText(raw, command.providerKey, raw.ingestedAt);
       const existing = existingByProviderItemId.get(snapshot.externalId);
       if (existing !== undefined && existing.sourceBindingId === snapshot.sourceBindingId) {
         snapshot = preserveSourceCapture(snapshot, sourceItemFromPrisma(existing).toSnapshot());
         snapshot = preserveVerifiedLegacyCapture(snapshot, sourceItemFromPrisma(existing).toSnapshot(), command.providerKey,
           command.unchangedNativeExternalIds?.includes(snapshot.externalId) ?? false);
       }
-      snapshot = prepareArticleCaptureAttempt(snapshot, raw.ingestedAt);
+      if (!this.archiveOnly) snapshot = prepareArticleCaptureAttempt(snapshot, raw.ingestedAt);
       const providerContentHash = sourceItemProviderContentHash({
         providerKey: command.providerKey,
         snapshot,
