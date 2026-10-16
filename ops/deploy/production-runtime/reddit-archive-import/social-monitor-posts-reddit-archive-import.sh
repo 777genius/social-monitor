@@ -7,6 +7,16 @@ reddit_archive_entry=/usr/local/lib/social-monitor/current-source-guard/reddit-a
 reddit_archive_entry_sha=UNRENDERED_ENTRYPOINT_SHA256
 reddit_archive_journals="$state/reddit-archive-qualified-journals"
 
+# Match typed CLI held-read limits before consuming a native claim.
+reddit_archive_leaf_size_valid() {
+  [[ $# == 2 && $2 =~ ^[0-9]{1,12}$ ]] || return 1
+  case "$1" in
+    archive.json) (( 10#$2 > 0 && 10#$2 <= 1048576 )) ;;
+    packet.json) (( 10#$2 > 0 && 10#$2 <= 131072 )) ;;
+    *) return 1 ;;
+  esac
+}
+
 reddit_archive_manifest_valid() {
   [[ -f $reddit_archive_manifest && ! -L $reddit_archive_manifest &&
      $(stat -c '%u:%g:%a:%h' "$reddit_archive_manifest") == 0:0:600:1 &&
@@ -59,8 +69,8 @@ reddit_archive_import_init() {
   done
   for name in archive.json packet.json; do
     [[ -f $reddit_archive_input/$name && ! -L $reddit_archive_input/$name &&
-       $(stat -c '%u:%a:%h' "$reddit_archive_input/$name") == 0:600:1 &&
-       $(stat -c %s "$reddit_archive_input/$name") -le 33554432 ]] || return 1
+       $(stat -c '%u:%a:%h' "$reddit_archive_input/$name") == 0:600:1 ]] || return 1
+    reddit_archive_leaf_size_valid "$name" "$(stat -c %s "$reddit_archive_input/$name")" || return 1
     if [[ $name == archive.json ]]; then pin=$(jq -er .archiveSha256 <<< "$reddit_archive_partition_json"); else pin=$(jq -er .packetSha256 <<< "$reddit_archive_partition_json"); fi
     [[ $pin =~ ^[0-9a-f]{64}$ && $(sha256sum "$reddit_archive_input/$name" | cut -d' ' -f1) == "$pin" ]] || return 1
   done

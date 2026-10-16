@@ -49,6 +49,17 @@ class NativeAdmissionTests(unittest.TestCase):
             self.assertEqual(result.returncode, 78)
             self.assertEqual(result.stdout, b'')
 
+    def test_leaf_size_limits_match_typed_cli_before_claim(self):
+        script = str(ROOT / 'social-monitor-posts-reddit-archive-import.sh')
+        for name, size, accepted in [('archive.json', 1048576, True), ('archive.json', 1048577, False),
+                                     ('packet.json', 131072, True), ('packet.json', 131073, False),
+                                     ('foreign.json', 1, False), ('archive.json', -1, False),
+                                     ('archive.json', 0, False), ('packet.json', 0, False)]:
+            result = subprocess.run(['bash', '-c', 'state=/nonexistent; source "$1"; reddit_archive_leaf_size_valid "$2" "$3"',
+                                     'contract', script, name, str(size)], capture_output=True, timeout=5)
+            with self.subTest(name=name, size=size):
+                self.assertEqual(result.returncode == 0, accepted)
+
     def test_unsealed_source_never_admits(self):
         with self.assertRaisesRegex(ValueError, 'not qualified'):
             module.validate_attempt({}, [], '', '', 0)
