@@ -30,7 +30,8 @@ install -m 0644 "$ca_file" /tmp/postgres-ca.crt
 export NODE_ENV=production SOCIAL_MONITOR_RUNTIME_PROFILE=beta
 export POSTGRES_RUNTIME_PROCESS=collection POSTGRES_RUNTIME_POOL_MIN=0 POSTGRES_RUNTIME_POOL_MAX=2
 export NODE_EXTRA_CA_CERTS=/tmp/postgres-ca.crt
-export DATABASE_URL="postgresql://social_monitor_collection_v2:$db_password@host.docker.internal:5432/social_monitor?sslmode=verify-full&sslrootcert=/tmp/postgres-ca.crt"
+DATABASE_URL=$(printf '%s%s%s' 'postgresql://social_monitor_collection_v2:' "$db_password" '@host.docker.internal:5432/social_monitor?sslmode=verify-full&sslrootcert=/tmp/postgres-ca.crt')
+export DATABASE_URL
 unset db_password password_file ca_file value
 exec node /app/dist/scripts/import-reddit-archive-missing.js --native-write \
   "/input-source/$day" "$day" /var/lib/platform/social-monitor/collection/reddit-archive-qualified-journals \
