@@ -490,3 +490,26 @@ merge/rollback checkout refuse overwriting ignored files even on a late collisio
 The five-field terminal transition must identify the activated commit/tree.
 An empty idle 0600 legacy auth cursor lock is held and preserved; busy/unsafe
 locks and an auth-changed marker still refuse preparation and handoff.
+
+## Jev runtime child reaping
+
+`production-runtime/compose.jev-child-init.yml` enables Docker's init
+process only for `jev-agent-runtime`. It changes no image, command, environment,
+credential mount or worker service. This addresses the observed Node PID 1 not
+reaping an orphaned zombie; it does not establish which failed task created it
+or replace the SDK's process ownership and cleanup checks.
+
+The current private `compose.jev-v3.yml` assembly must actually receive this
+property before activation. Its release owner may merge the tracked overlay
+into that existing file under the normal guarded source CAS, requiring the
+normalized candidate model to equal the captured current model with only
+`services.jev-agent-runtime.init` changed to `true`. Preserve the existing image
+pin and every other service/property. Alternatively an explicitly reviewed
+assembly may include this overlay with `-f`; merely installing an unused file
+is not activation. Both paths require fresh admission and owner-controlled
+lifecycle handling; this source change authorizes no restart or replay.
+
+The daemon-free regression is
+`python3 -B -m unittest compose_contract_test.JevRuntimeInitOverlay -v` from
+`ops/release/hetzner`. It runs only `docker compose config` on synthetic service
+inputs, verifies the complete normalized model delta, and starts no container.

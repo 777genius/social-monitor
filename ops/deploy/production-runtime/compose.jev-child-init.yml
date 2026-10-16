@@ -1,0 +1,3 @@
+services:
+  jev-agent-runtime:
+    init: true

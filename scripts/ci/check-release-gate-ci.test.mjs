@@ -110,6 +110,7 @@ for (const [label, mutate] of [
   ]),
   ["missing pinned fixture ops/deploy/reader-summary-publication-pre-migration.sql", replace("sudo cp ops/deploy/reader-summary-publication-pre-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/\n", '')],
   ["missing pinned fixture ops/deploy/reader-summary-publication-post-migration.sql", replace("sudo cp ops/deploy/reader-summary-publication-post-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/\n", '')],
+  ["missing Jev init overlay fixture", replace("sudo cp ops/deploy/production-runtime/compose.jev-child-init.yml /root/social-monitor-release-contract-tests/ops/deploy/production-runtime/\n", '')],
   ["missing pinned fixture scripts/sql/reader-summary-publication-tenant-ownership.sql", replace("sudo cp scripts/sql/reader-summary-publication-tenant-ownership.sql /root/social-monitor-release-contract-tests/scripts/sql/\n", '')],
   ['duplicate native source copy', (w) => w.jobs.static_quality.steps.push({
     run: 'sudo cp -R ops/ci /root/social-monitor-release-contract-tests/ops/',
