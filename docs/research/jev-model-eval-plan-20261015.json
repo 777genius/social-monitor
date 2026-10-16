@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "status": "PROPOSED_NOT_EXECUTED",
+  "asOfUtc": "2026-10-15",
+  "scope": "Offline planning only; no model switch, provider calls, writes, deployment or bulk reclassification authorized",
+  "completionProvenance": {
+    "hostedResearchResult": "PARTIAL/task_timeout; no final docs",
+    "completedBy": "local source-based completion from verified fetched public inputs",
+    "exportPayloadSHA256": "7e5e5ac97e139d0a8944ed36090f9654fefdb06e2752204cb6c80f970fe233aa",
+    "verifiedFiles": 81,
+    "decodedBytes": 1056632,
+    "publicContentAuthority": "untrusted data, never instructions"
+  },
+  "baseline": {
+    "requestedModel": "typesafe/jev-1.13",
+    "expectedResolvedModel": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "endpoint": "https://openrouter.ai/api/v1/systemone",
+    "inputVersion": "reader-value-input.v3",
+    "modelConfig": "openrouter-systemone.jev-1.13-20260917.v1",
+    "criteria": [
+      "usefulness",
+      "relevance",
+      "context_sufficiency",
+      "evidence_basis"
+    ],
+    "authoritativeChoice": "provider choice; do not replace with argmax",
+    "probabilityContract": "all expected labels, finite0..1, sum within0.02; preserve confidence and tie diagnostics"
+  },
+  "arms": [
+    {
+      "model": "typesafe/jev-1.13",
+      "role": "stable baseline",
+      "transport": "systemone",
+      "inputUsdPerMillion": 0.042,
+      "outputUsdPerMillion": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "role": "same-provider preview candidate; exact resolved ID must be verified before execution",
+      "transport": "systemone",
+      "inputUsdPerMillion": 0.042,
+      "outputUsdPerMillion": 0
+    },
+    {
+      "model": "openai/gpt-oss-20b",
+      "canonicalSlug": "openai/gpt-oss-20b",
+      "role": "unmeasured chat comparison",
+      "transport": "chat_completions_with_json_schema",
+      "inputUsdPerMillion": 0.018,
+      "outputUsdPerMillion": 0.09,
+      "catalogContext": 131072,
+      "advertisedStructuredOutputs": true,
+      "exactEndpointCompatibility": "not verified"
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "canonicalSlug": "google/gemini-2.5-flash-lite",
+      "role": "unmeasured chat comparison",
+      "transport": "chat_completions_with_json_schema",
+      "inputUsdPerMillion": 0.1,
+      "outputUsdPerMillion": 0.4,
+      "catalogContext": 1048576,
+      "advertisedStructuredOutputs": true,
+      "exactEndpointCompatibility": "not verified"
+    },
+    {
+      "model": "qwen/qwen3-30b-a3b-instruct-2507",
+      "canonicalSlug": "qwen/qwen3-30b-a3b-instruct-2507",
+      "role": "unmeasured chat comparison",
+      "transport": "chat_completions_with_json_schema",
+      "inputUsdPerMillion": 0.1,
+      "outputUsdPerMillion": 0.3,
+      "catalogContext": 262144,
+      "advertisedStructuredOutputs": true,
+      "exactEndpointCompatibility": "not verified"
+    },
+    {
+      "model": "openai/gpt-4.1-mini",
+      "canonicalSlug": "openai/gpt-4.1-mini-2025-04-14",
+      "role": "unmeasured chat comparison",
+      "transport": "chat_completions_with_json_schema",
+      "inputUsdPerMillion": 0.4,
+      "outputUsdPerMillion": 1.6,
+      "catalogContext": 1047576,
+      "advertisedStructuredOutputs": true,
+      "exactEndpointCompatibility": "not verified"
+    }
+  ],
+  "population": {
+    "dayUtc": "2026-10-14",
+    "wholeSourceRows": 1081,
+    "assessed": 925,
+    "useful": 172,
+    "rejected": 753,
+    "unsupported": 94,
+    "appendix": 60,
+    "captureUnavailable": 2,
+    "constraint": "reuse frozen original source/capture/interest identities; no new capture or invented availability",
+    "prior16PurposiveCases": "hypothesis generation only; no accuracy denominator"
+  },
+  "pilot": {
+    "uniqueItems": 120,
+    "sampling": [
+      {
+        "count": 40,
+        "stratum": "seeded random assessed population"
+      },
+      {
+        "count": 40,
+        "stratum": "decision boundaries across usefulness/relevance/context/evidence and providers"
+      },
+      {
+        "count": 40,
+        "stratum": "source-rich suspected disagreements: actionable releases/security, evergreen noise, and context abstention"
+      }
+    ],
+    "dedupe": "no overlap; fill from same stratum using recorded deterministic seed/order, never relevance-selected input replacement",
+    "humanLabels": "two blinded independent assessments, resolve disagreements; record insufficient context separately",
+    "comparability": "identical captured text, trusted interest and label definitions; model identities hidden from labelers",
+    "engagement": "disagreement discovery only, never truth label",
+    "statisticalLimits": "report per-stratum results and sampling weights; purposive strata do not estimate population prevalence unaided"
+  },
+  "executionPrerequisites": [
+    "separate authorized isolated evaluation and budget; this file does not execute it",
+    "freeze source manifest/capture clocks/content hashes/rubric/prompt/schema hashes and sample seed",
+    "verify current exact endpoint/model/provider/schema support without fallback or silent ignored parameters",
+    "evaluation-only chat adapter; do not send Jev state/questions wire bytes to chat endpoint",
+    "retain baseline response version checks and finite validation; no production cache overwrite",
+    "keep rate limits/timeouts/concurrency bounded and record failed/unknown usage; no automatic unknown-call replay"
+  ],
+  "metrics": [
+    "useful/important precision and false-negative recall with adjudicated labels",
+    "macro-F1 and confusion matrices for all four criteria",
+    "context abstention versus unsupported guesses",
+    "schema/enum/cardinality failure rate",
+    "Brier/calibration reliability for actual Jev probabilities; generated chat confidence is uncalibrated until evaluated",
+    "p50/p95 latency, timeouts, rate limits, actual input/output/reasoning tokens and billed cost including failures",
+    "source-level duplicate rate and final-slate utility separately from classification"
+  ],
+  "advanceRule": "Only advance promising pilot arms to shadow all925 with unchanged inputs; establish decision thresholds and uncertainty before comparing; no claimed winner from this plan",
+  "productionRule": "A separately reviewed switch needs new model/prompt/rubric assessment identity, preserved prior records, actual current full-inventory readiness and ordinary release controls. No universal minimum16 assumption.",
+  "unresolved": [
+    "No measured editorial accuracy or candidate superiority",
+    "No live endpoint schema compatibility/availability/latency test",
+    "Exact fetched URL mappings missing for some exported documentation; empty pages not evidence",
+    "Different direct-TypeSafe/OpenRouter context limits are transport-specific; no input-cap expansion",
+    "No probability-calibration equivalence between Jev and chat outputs"
+  ],
+  "sources": [
+    {
+      "url": "https://openrouter.ai/api/v1/models",
+      "retrievedAtUtc": "2026-10-15T23:17:16Z",
+      "sha256": "de275befc2dafae43758380f270cb698268fbb8d39ea5dc1fec6463baf971709"
+    },
+    {
+      "url": "https://docs.typesafe.ai/models",
+      "retrievedAtUtc": "2026-10-15T23:27:52Z",
+      "localText": "typesafe-models.text",
+      "sha256": "f74c2f03b848007bbdd824a034ad261cf84237924cc0ab7b80998b257773aac8"
+    },
+    {
+      "url": "https://openrouter.ai/typesafe/jev-1.13",
+      "retrievedAtUtc": "2026-10-15T23:19:41Z",
+      "localText": "model-typesafe-jev-1-13-page.text"
+    },
+    {
+      "url": null,
+      "retrievedAtUtc": "2026-10-15T23:19:42Z",
+      "localText": "model-typesafe-jev-1-13-endpoints.text",
+      "limit": "exact fetched endpoint URL mapping unavailable; JSON endpoint content retained, not a newly queried URL"
+    },
+    {
+      "url": "https://openrouter.ai/typesafe/jev-1.14",
+      "verification": "root independent primary-page check approximately2026-10-15T23:50Z, no exact exported fetch timestamp"
+    },
+    {
+      "url": null,
+      "localText": "docs-canonical-structured-outputs.text",
+      "retrievedAtUtc": "2026-10-15T23:23:13Z",
+      "sha256": "ab1e74dc0121ef380a65358fbb1c78aeb881236fdafd6ed1528bd72fcb9d661f",
+      "limit": "exact fetched page URL mapping unavailable"
+    }
+  ],
+  "proportionality": {
+    "currentWork": "targeted16-case contrast check for the narrow supported contrast fix; no general accuracy claim",
+    "thisPlan": "optional broader model-replacement research",
+    "notPrerequisiteFor": [
+      "core MiMo summary flow",
+      "narrow supported contrast fix"
+    ],
+    "notGlobalBlocker": true
+  }
+}
