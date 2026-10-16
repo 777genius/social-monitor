@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { assessmentPostgresFixture } from './reader-value-postgres-fixture';
 import { seedAssessmentJob, seedAssessmentSource } from './reader-value-postgres-fixture';
 import { PrismaReaderValueAssessmentStore } from '../../libs/relevance/infrastructure/reader-value/prisma-reader-value-assessment-store';
@@ -35,6 +35,7 @@ class ControlledCommitClient implements AssessmentSqlClient {
 
 export async function checkReaderValuePinRaces(fixture: Awaited<ReturnType<typeof assessmentPostgresFixture>>) {
   const store = new PrismaReaderValueAssessmentStore(fixture.client);
+  await checkPinnedClaimOrder(fixture, store);
   const seed = async () => {
     const source = await seedAssessmentSource(fixture.setup);
     await fixture.setup.query("UPDATE source_items SET created_at=clock_timestamp()-interval '180 days'+interval '4 seconds' WHERE id=$1",
@@ -93,4 +94,58 @@ export async function checkReaderValuePinRaces(fixture: Awaited<ReturnType<typeo
   assert.equal((await pendingPurge).deleted,1);
   assert.equal(await waitingPin,false,'purge-first rejects pin after lock release/retry');
   assert.equal(await store.findExact(purgeFirst.input,purgeFirst.row.id),null);
+}
+
+/** Real store/SQL ordering: active preparation work precedes older discovery work. */
+async function checkPinnedClaimOrder(fixture: Awaited<ReturnType<typeof assessmentPostgresFixture>>,
+  store: PrismaReaderValueAssessmentStore) {
+  const {setup}=fixture;
+  const source=await seedAssessmentSource(setup);
+  const activeJob=await seedAssessmentJob(setup,source.input);
+  const inactiveJob=await seedAssessmentJob(setup,source.input);
+  await setup.query("UPDATE reader_summary_jobs SET status='FAILED',failed_at=clock_timestamp() WHERE id=$1",[inactiveJob]);
+  const foreign=await seedAssessmentSource(setup);
+  const foreignJob=await seedAssessmentJob(setup,foreign.input);
+  const hash=(label:string)=>createHash('sha256').update(label).digest('hex');
+  const make=async (label:string,ageDays:number,pins:readonly string[]=[],expired=false) => {
+    const input={...source.input,inputSha256:hash(label)};
+    const row=await store.ensure(randomUUID(),input); assert(row);
+    if (expired) {
+      // Insert an already-expired synthetic row; never bypass immutable UPDATE guards.
+      const expiredId=randomUUID();
+      await setup.query(`INSERT INTO reader_value_assessments SELECT
+        (jsonb_populate_record(NULL::reader_value_assessments,to_jsonb(a)||jsonb_build_object(
+          'id',$2::uuid,'input_sha256',$3::text,'expires_at',clock_timestamp()-interval '1 day',
+          'next_attempt_at',clock_timestamp()-$4::int*interval '1 day','pinned_job_ids',to_jsonb($5::uuid[])))).*
+        FROM reader_value_assessments a WHERE id=$1`,[row.id,expiredId,hash(label+'-expired'),ageDays,pins]);
+      await setup.query('DELETE FROM reader_value_assessments WHERE id=$1',[row.id]);
+      return expiredId;
+    }
+    await setup.query(`UPDATE reader_value_assessments SET next_attempt_at=clock_timestamp()-$2::int*interval '1 day',
+      pinned_job_ids=$3::uuid[] WHERE id=$1`,[row.id,ageDays,pins]);
+    return row.id;
+  };
+  const oldUnpinned=await make('old-unpinned',9);
+  const inactive=await make('inactive-pin',10,[inactiveJob]);
+  const crossScope=await make('foreign-job-pin',11,[foreignJob]);
+  const newerPinned=await make('active-pin-newer',1,[activeJob]);
+  const olderPinned=await make('active-pin-older',2,[activeJob]);
+  const expiredActive=await make('expired-active-pin',3,[activeJob],true);
+  await make('not-due-active-pin',-1,[activeJob]);
+  const expiredUnpinned=await make('expired-unpinned',12,[],true);
+  // An assessment from another scope cannot enter this claim even if it names our job.
+  const foreignRow=await store.ensure(randomUUID(),foreign.input); assert(foreignRow);
+  await setup.query('UPDATE reader_value_assessments SET pinned_job_ids=ARRAY[$2::uuid] WHERE id=$1',[foreignRow.id,activeJob]);
+  const claim=async (pinnedOnly=false) =>
+    store.claim(source.input,source.input.modelConfigVersion,randomUUID(),pinnedOnly);
+  for (const expected of [expiredActive,olderPinned,newerPinned]) {
+    assert.equal((await claim())?.id,expected,'active pins first, preserving FIFO and active-pin expiry retention');
+  }
+  assert.equal(await claim(true),null,'pinned-only drain excludes terminal/foreign pins and future retries');
+  for (const expected of [crossScope,inactive,oldUnpinned]) {
+    assert.equal((await claim())?.id,expected,'inactive/foreign pins receive ordinary FIFO priority');
+  }
+  assert.equal(await claim(),null,'expired unpinned, foreign-scope and not-due work cannot be claimed');
+  assert.equal((await setup.query('SELECT state FROM reader_value_assessments WHERE id=$1',[expiredUnpinned])).rows[0]?.state,'pending');
+  assert.equal((await setup.query('SELECT state FROM reader_value_assessments WHERE id=$1',[foreignRow.id])).rows[0]?.state,'pending');
 }

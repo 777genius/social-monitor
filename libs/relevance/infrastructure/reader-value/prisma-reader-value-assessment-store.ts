@@ -72,7 +72,8 @@ export class PrismaReaderValueAssessmentStore implements ReaderValueAssessmentSt
           AND a.state IN ('pending','retryable_failed') AND a.attempts<3
           AND a.next_attempt_at<=clock_timestamp() AND (a.expires_at>clock_timestamp() OR ${activeAssessmentPin})
           AND (NOT $5::boolean OR ${activeAssessmentPin}) AND ${liveAssessmentScope}
-        ORDER BY a.next_attempt_at,a.created_at,a.id FOR UPDATE OF a SKIP LOCKED LIMIT 1
+        ORDER BY (${activeAssessmentPin}) DESC,a.next_attempt_at,a.created_at,a.id
+        FOR UPDATE OF a SKIP LOCKED LIMIT 1
       ) UPDATE reader_value_assessments a SET state='running',attempts=a.attempts+1,lease_token=$4::uuid,
         lease_until=clock_timestamp()+interval '90 seconds',error_code=NULL,
         attempt_history=a.attempt_history || jsonb_build_array(jsonb_build_object('ordinal',a.attempts+1,
