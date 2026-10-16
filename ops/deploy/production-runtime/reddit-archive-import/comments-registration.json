@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "status": "SOURCE_ONLY_UNRENDERED_NO_NATIVE_ADMISSION",
+  "mode": "import-reddit-archive-comments-missing",
+  "providerKey": "reddit",
+  "claimFields": ["mode", "inputRoot", "day", "journalDir", "semanticKey", "planSha256", "packetSha256", "correlationId"],
+  "claimLeaf": "reddit-archive-comments-import-claim.json",
+  "cli": {
+    "script": "/app/dist/scripts/import-reddit-archive-comments-missing.js",
+    "arguments": ["inputRoot", "parentDay", "journalDir", "semanticKey", "planSha256", "packetSha256", "correlationId", "claimSha256", "--native-write"]
+  },
+  "assets": {
+    "current_reddit_archive_comments_import_admission.py": "/usr/local/lib/social-monitor/current-source-guard/current_reddit_archive_comments_import_admission.py",
+    "social-monitor-posts-reddit-archive-comments-import.sh": "/usr/local/sbin/social-monitor-posts-reddit-archive-comments-import.sh",
+    "comments-entrypoint.sh": "/usr/local/lib/social-monitor/current-source-guard/reddit-archive-comments-qualified-import-entrypoint.sh"
+  },
+  "futureRequiredPrivateProfile": "/usr/local/lib/social-monitor/current-source-guard/reddit-archive-comments-qualified-partitions.json",
+  "journalDirectory": "/var/lib/platform/social-monitor/collection/reddit-archive-comments-qualified-journals",
+  "journalFilename": "reddit-archive-comments-qualified-${semanticKey}.journal.json",
+  "dateContract": {"parentDay": "2026-10-01", "meaning": "lifecycle anchor only", "originalDays": ["2026-10-01", "2026-10-02"]},
+  "parentProofSha256": "68fb7c6fb35cdee6ff1643e56811cbdabc7d6f4da28b6858e73d10cbd497aec6",
+  "requiredAdditiveRootIntegration": [
+    "Pin/source the new action alongside the unchanged existing post action; reuse only its digest/completion-proof neutral helpers",
+    "Dispatch exact new mode and semantic key to reddit_comments_import_init then reddit_comments_import_run under existing lock/admission",
+    "Recognize exact comments previous mode with reddit_comments_previous_valid before generic history validation; retain all old UNKNOWN/date/claim branches",
+    "Bind the recognizer validate_attempt and open_claim only to this exact mode in existing physical/open-attempt source closure",
+    "Render actual affected component image, full profile, FROZEN_PROFILE and matching profile/guard/entrypoint hashes only after product CLI, independent review, real PG and CI qualification",
+    "Keep original post profiles, registrations, source pins, claims, journals and rollback lineage immutable; no activation in this source change"
+  ],
+  "existingAuthority": "Finite collection_v2 role already has broad SELECT/INSERT/UPDATE and forced workspace RLS. No global absence SELECT or SQL-denied baseline-write claim. Product create-only code plus unique-index conflict rollback and baseline0 enforce behavior.",
+  "notAuthorized": ["grant/revoke ACL changes", "new trigger", "profile issuance", "installed router mutation", "native invocation", "claim replay/rekey", "build/install", "SQL/provider/model calls"]
+}

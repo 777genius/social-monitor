@@ -25,5 +25,7 @@ export type ListConversationUnitsByRootQuery = {
 
 export interface ConversationUnitRepositoryPort {
   saveBatch(command: SaveConversationUnitsCommand): Promise<SaveConversationUnitsResult>;
+  /** Optional retained-archive capability; ordinary/live repositories need not support it. */
+  saveArchiveCommentsInsertOnly?(command: SaveConversationUnitsCommand): Promise<SaveConversationUnitsResult>;
   listByRootFeedItemIds(query: ListConversationUnitsByRootQuery): Promise<readonly ConversationUnit[]>;
 }

@@ -32,6 +32,8 @@ async function file(parent:FileHandle,name:string,uid:number,limit:number):Promi
    &&before.mtimeMs===after.mtimeMs&&before.ctimeMs===after.ctimeMs,'Archived Reddit input changed');return bytes;
  }finally{await handle.close();}
 }
+// Shared custody primitives only; comment identity and lifecycle remain separate.
+export { directory as openRedditArchivePrivateDirectory, file as readRedditArchivePrivateFile };
 export type RedditArchivePartitionRequest=Readonly<{inputRoot:string;day:string;journalDir:string;semanticKey:string;expectedPlanSha256:string;packetSha256:string;correlationId:string}>;
 async function selected(request:Pick<RedditArchivePartitionRequest,'inputRoot'|'day'|'semanticKey'|'packetSha256'>,uid:number){
  need(/^2026-(09|10)-[0-3][0-9]$/u.test(request.day)&&/^[a-f0-9]{64}$/u.test(request.semanticKey)&&/^[a-f0-9]{64}$/u.test(request.packetSha256),'Archived Reddit fixed date/key/packet required');

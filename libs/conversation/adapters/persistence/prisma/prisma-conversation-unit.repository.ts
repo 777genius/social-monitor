@@ -29,7 +29,13 @@ export class PrismaConversationUnitRepository
   constructor(
     private readonly prisma: PrismaConversationClient,
     private readonly ids: IdGenerator,
+    private readonly archiveOuterTransaction = false,
   ) {}
+
+  /** Caller owns the Serializable transaction, admission, absence checks and readback. */
+  static forArchiveTransaction(prisma: PrismaConversationClient, ids: IdGenerator) {
+    return new PrismaConversationUnitRepository(prisma, ids, true);
+  }
 
   async saveBatch(
     command: SaveConversationUnitsCommand,
@@ -129,6 +135,71 @@ export class PrismaConversationUnitRepository
     return { saved };
   }
 
+  /** Archive imports require an enclosing transaction and perform create-only writes. */
+  async saveArchiveCommentsInsertOnly(
+    command: SaveConversationUnitsCommand,
+  ): Promise<SaveConversationUnitsResult> {
+    if (!this.archiveOuterTransaction || this.prisma.conversationUnit.create === undefined) {
+      throw new Error('Archived comment insert requires an outer transaction capability');
+    }
+    if (command.units.length !== 2) {
+      throw new Error('Archived comment insert requires exactly two units');
+    }
+    const identities = command.units.map((unit) => unit.toSnapshot().providerUnitId);
+    if (
+      new Set(identities).size !== identities.length ||
+      identities.some((id) => !/^t1_[a-z0-9]{4,12}$/u.test(id))
+    ) {
+      throw new Error('Archived comment insert identity invalid');
+    }
+
+    for (const unit of command.units) {
+      const snapshot = unit.toSnapshot();
+      if (
+        snapshot.tenantId !== command.tenantId ||
+        snapshot.workspaceId !== command.workspaceId ||
+        snapshot.providerKey !== 'reddit' ||
+        !assertRedditArchiveCommentUnit(snapshot)
+      ) {
+        throw new Error('Validated Reddit archived comment provenance required');
+      }
+      if (conversationSignalBaselineSampleFromUnit(unit) !== undefined) {
+        throw new Error('Archived comment insert cannot mutate signal baselines');
+      }
+    }
+    let saved = 0;
+    for (const unit of command.units) {
+      const snapshot = unit.toSnapshot();
+      await this.prisma.conversationUnit.create({
+        data: {
+          id: snapshot.id,
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          interestId: snapshot.interestId,
+          sourceBindingId: snapshot.sourceBindingId,
+          rootFeedItemId: snapshot.rootFeedItemId,
+          rootProviderItemId: snapshot.rootProviderItemId,
+          providerKey: snapshot.providerKey,
+          providerUnitId: snapshot.providerUnitId,
+          canonicalUrl: snapshot.canonicalUrl,
+          authorHandle: snapshot.authorHandle ?? null,
+          body: snapshot.body,
+          publishedAt: snapshot.publishedAt,
+          observedAt: snapshot.observedAt,
+          threadExternalId: snapshot.threadExternalId,
+          parentProviderUnitId: snapshot.parentProviderUnitId ?? null,
+          depth: snapshot.depth,
+          role: snapshot.role,
+          providerMetadata: snapshot.providerMetadata ?? null,
+          contentHash: contentHashForConversationUnit(snapshot),
+          schemaVersion: snapshot.schemaVersion,
+        },
+      });
+      saved += 1;
+    }
+    return { saved };
+  }
+
   async listByRootFeedItemIds(
     query: ListConversationUnitsByRootQuery,
   ): Promise<readonly ConversationUnit[]> {
@@ -216,3 +287,25 @@ const baselineSampleWrite = (sample: ConversationSignalBaselineSample) => ({
   publishedAt: sample.publishedAt,
   observedAt: sample.observedAt,
 });
+
+const assertRedditArchiveCommentUnit = (
+  snapshot: ReturnType<ConversationUnit['toSnapshot']>,
+): boolean => {
+  const archive = snapshot.providerMetadata?.redditArchiveComments;
+  return (
+    snapshot.providerMetadata?.kind === 'reddit_comment' &&
+    snapshot.providerMetadata.contentType === 'comment' &&
+    archive !== null &&
+    typeof archive === 'object' &&
+    !Array.isArray(archive) &&
+    (archive as Record<string, unknown>).schemaVersion === 1 &&
+    (archive as Record<string, unknown>).origin === 'arctic_shift' &&
+    (archive as Record<string, unknown>).coverage ===
+      'PARTIAL_ARCHIVED_OBSERVATIONS' &&
+    (archive as Record<string, unknown>).deletionStatus === 'UNKNOWN' &&
+    (archive as Record<string, unknown>).removalStatus === 'UNKNOWN' &&
+    (archive as Record<string, unknown>).removalReason === null &&
+    (archive as Record<string, unknown>).removedByCategory ===
+      'UNKNOWN_ABSENT'
+  );
+};
