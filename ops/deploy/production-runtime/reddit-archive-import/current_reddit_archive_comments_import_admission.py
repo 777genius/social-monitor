@@ -58,7 +58,7 @@ def selected(value, key):
     identity = part.get('identity', {})
     need(set(identity) == {'nativeParentId', 'nativeCommentIds', 'subreddit'} and
          identity['nativeParentId'] == '1wuktlf' and identity['subreddit'] == 'LocalLLaMA' and
-         type(identity['nativeCommentIds']) is list and sorted(identity['nativeCommentIds']) == ['pd5e1lp', 'pdhrwqg'],
+         identity['nativeCommentIds'] == ['pdhrwqg', 'pd5e1lp'],
          'Original comment identity required')
     need(part.get('journalFilename') == f'reddit-archive-comments-qualified-{key}.journal.json', 'Comments journal changed')
     need(type(part.get('inputHostRoot')) is str and re.fullmatch(

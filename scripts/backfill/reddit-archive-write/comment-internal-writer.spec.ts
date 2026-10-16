@@ -4,6 +4,12 @@ import { tmpdir } from 'node:os';
 import { executeInternalRedditArchiveCommentWrite, type RedditArchiveCommentWrites } from './comment-internal-writer';
 import { commentPlan } from './comment-plan.spec-support';
 import { writeExclusive } from '../../lib/github-archive-finite-journal';
+import type * as FileSystem from 'node:fs/promises';
+import type * as JournalFiles from '../../lib/github-archive-finite-journal';
+const filesystem = jest.requireActual<typeof FileSystem>('node:fs/promises');
+const journalFiles = jest.requireActual<typeof JournalFiles>('../../lib/github-archive-finite-journal');
+
+afterEach(() => jest.restoreAllMocks());
 
 describe('comments-only consumed lifecycle', () => {
   it.each(['identity conflict', 'partial insertion', 'readback mismatch'])('leaves STARTED and refuses replay after %s', async phase => {
@@ -46,5 +52,35 @@ describe('comments-only consumed lifecycle', () => {
       }, { consumeStartedJournal: claim })).rejects.toThrow('plan mismatch');
     }
     expect(claim).not.toHaveBeenCalled(); expect(transaction).not.toHaveBeenCalled();
+  });
+  it.each([true, false])('preserves work failure before owned close failure, or refuses successful work when close fails (workFails=%s)', async workFails => {
+    const plan = commentPlan(), primary = new Error('Primary work failed'), cleanup = new Error('Owned close failed');
+    const close = jest.fn(async () => { throw cleanup; });
+    const handle = { fd: 17, stat: async () => ({ dev: 1, ino: 2 }), sync: async () => {}, close };
+    jest.spyOn(filesystem, 'open').mockResolvedValue(handle as never);
+    jest.spyOn(filesystem, 'lstat').mockResolvedValue({ isDirectory: () => true, dev: 1, ino: 2 } as never);
+    jest.spyOn(filesystem, 'rename').mockResolvedValue(undefined);
+    jest.spyOn(journalFiles, 'writeExclusive').mockResolvedValue(undefined);
+    const withAtomicWrites: Parameters<typeof executeInternalRedditArchiveCommentWrite>[0]['dependencies']['withAtomicWrites'] =
+      async (_plan, work) => {
+        if (workFails) throw primary;
+        return work({ assertParentAndMissing: async () => {}, persist: async () => ({ inserted: 2, projected: 2 }), present: async () => 2 });
+      };
+    await expect(executeInternalRedditArchiveCommentWrite({ plan, expectedPlanSha256: plan.planSha256,
+      semanticKey: plan.semanticKey, correlationId: 'TEST',
+      journalPath: `/synthetic/reddit-archive-comments-qualified-${plan.semanticKey}.journal.json`, dependencies: { withAtomicWrites },
+    }, { consumeStartedJournal: async () => {} })).rejects.toBe(workFails ? primary : cleanup);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+  it('leaves a caller-owned journal handle open after work failure', async () => {
+    const plan = commentPlan(), primary = new Error('Caller work failed');
+    const close = jest.fn(), handle = { stat: async () => ({ dev: 1, ino: 2 }), close };
+    jest.spyOn(filesystem, 'lstat').mockResolvedValue({ isDirectory: () => true, dev: 1, ino: 2 } as never);
+    await expect(executeInternalRedditArchiveCommentWrite({ plan, expectedPlanSha256: plan.planSha256,
+      semanticKey: plan.semanticKey, correlationId: 'TEST', journalDirectory: handle as never,
+      journalPath: `/synthetic/reddit-archive-comments-qualified-${plan.semanticKey}.journal.json`,
+      dependencies: { withAtomicWrites: async () => { throw primary; } },
+    }, { consumeStartedJournal: async () => {} })).rejects.toBe(primary);
+    expect(close).not.toHaveBeenCalled();
   });
 });

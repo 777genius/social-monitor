@@ -68,7 +68,8 @@ export const executeInternalRedditArchiveCommentWrite = async (input: {
       dirname(path),
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
     ));
-  let primaryFailed = false;
+  let outcome: { ok: true; value: { coverage: typeof plan.coverage; planSha256: string;
+    inserted: number; alreadyPresent: number; postWritePresent: number } } | { ok: false; error: unknown };
   try {
     const original = await directory.stat();
     const current = async () => {
@@ -135,17 +136,17 @@ export const executeInternalRedditArchiveCommentWrite = async (input: {
     await rename(temporary, anchored);
     await directory.sync();
     await current();
-    return result;
+    outcome = { ok: true, value: result };
   } catch (error) {
-    primaryFailed = true;
-    throw error;
-  } finally {
-    if (input.journalDirectory === undefined) {
-      try {
-        await directory.close();
-      } catch (error) {
-        if (!primaryFailed) throw error;
-      }
-    }
+    outcome = { ok: false, error };
   }
+  let cleanupFailed = false;
+  let cleanupError: unknown;
+  if (input.journalDirectory === undefined) {
+    try { await directory.close(); }
+    catch (error) { cleanupFailed = true; cleanupError = error; }
+  }
+  if (!outcome.ok) throw outcome.error;
+  if (cleanupFailed) throw cleanupError;
+  return outcome.value;
 };

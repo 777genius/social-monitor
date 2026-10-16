@@ -42,9 +42,11 @@ describe('finite native comments CLI',()=>{
   expect(()=>assertRedditArchiveCommentsClaim(duplicate,{...f.request,claimSha256:hash(duplicate)})).toThrow();
   expect(()=>assertRedditArchiveCommentsClaim(f.bytes,{...f.request,claimSha256:'f'.repeat(64)})).toThrow('digest');
  });
- function harness(options:{badClaim?:boolean;badPacket?:boolean;badPlan?:boolean;badNative?:boolean;roleDenied?:boolean;rebound?:boolean;claimAfterStart?:boolean}={}){
+ function harness(options:{badClaim?:boolean;badPacket?:boolean;badPlan?:boolean;badNative?:boolean;roleDenied?:boolean;rebound?:boolean;claimAfterStart?:boolean;
+  prismaCloseError?:Error;directoryCloseError?:Error}={}){
   const f=fixture(),events:string[]=[],handles:ReturnType<typeof handle>[]=[];
-  function handle(){return {fd:17,stat:jest.fn(async()=>({dev:1,ino:2})),sync:jest.fn(async()=>{}),close:jest.fn(async()=>{})};}
+  function handle(){return {fd:17,stat:jest.fn(async()=>({dev:1,ino:2})),sync:jest.fn(async()=>{}),
+   close:jest.fn(async()=>{if(options.directoryCloseError)throw options.directoryCloseError;})};}
   jest.mocked(directory).mockImplementation(async()=>{const h=handle();handles.push(h);return h as never;});
   jest.mocked(lstat).mockResolvedValue({dev:1,ino:options.rebound?9:2,isDirectory:()=>true,isSymbolicLink:()=>false} as never);
   jest.mocked(file).mockImplementation(async(_parent,name)=>{
@@ -58,7 +60,8 @@ describe('finite native comments CLI',()=>{
   jest.mocked(planRedditArchiveComments).mockReturnValue(options.badPlan?{...f.plan,planSha256:'f'.repeat(64)}:f.plan);
   const query=jest.fn(async(sql:string)=>sql.includes('WITH stamp')?[{allowed:!options.roleDenied}]:[
    {sourceItemId:'9d1b26ae-ed89-41d5-aaa9-bf786b97c90c',feedItemId:'b179076b-4f9e-45d7-8d57-64346600ca90'}]);
-  const close=jest.fn(async()=>{}),open=jest.fn(async()=>({close}) as unknown as PrismaIngestionWorkerConnection);
+  const close=jest.fn(async()=>{if(options.prismaCloseError)throw options.prismaCloseError;}),
+   open=jest.fn(async()=>({close}) as unknown as PrismaIngestionWorkerConnection);
   jest.mocked(createFiniteRedditArchiveCommentDependencies).mockImplementation((_connection,_ids,_clock,admission)=>({
    withAtomicWrites:async(plan)=>{events.push('admission');await admission!({$queryRawUnsafe:query} as never,plan);return undefined as never;}
   }));
@@ -96,5 +99,18 @@ describe('finite native comments CLI',()=>{
   const h=harness({roleDenied:true});await expect(h.run()).rejects.toThrow('finite identity');
   expect(writeExclusive).toHaveBeenCalledTimes(1);expect(h.query).toHaveBeenCalledTimes(1);expect(h.open).toHaveBeenCalledTimes(1);
   expect(h.close).toHaveBeenCalledTimes(1);
+ });
+ it.each([true,false])('attempts Prisma and every handle close, preserving work failure or the first cleanup failure (workFails=%s)',async workFails=>{
+  const primary=new Error('Primary CLI work failed'),firstCleanup=new Error('Prisma close failed'),laterCleanup=new Error('Directory close failed');
+  const h=harness({prismaCloseError:firstCleanup,directoryCloseError:laterCleanup});
+  if(workFails)jest.mocked(executeInternalRedditArchiveCommentWrite).mockRejectedValueOnce(primary);
+  await expect(h.run()).rejects.toBe(workFails?primary:firstCleanup);
+  expect(h.close).toHaveBeenCalledTimes(1);expect(h.handles).toHaveLength(3);
+  expect(h.handles.every(handle=>handle.close.mock.calls.length===1)).toBe(true);
+ });
+ it('refuses a directory cleanup failure after Prisma closes successfully and still closes every handle',async()=>{
+  const cleanup=new Error('Directory close failed'),h=harness({directoryCloseError:cleanup});
+  await expect(h.run()).rejects.toBe(cleanup);expect(h.close).toHaveBeenCalledTimes(1);
+  expect(h.handles).toHaveLength(3);expect(h.handles.every(handle=>handle.close.mock.calls.length===1)).toBe(true);
  });
 });

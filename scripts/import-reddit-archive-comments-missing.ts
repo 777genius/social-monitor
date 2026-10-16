@@ -52,6 +52,7 @@ export async function runRedditArchiveCommentsWithRuntime(request:RedditArchiveC
   request.packetSha256,request.correlationId,request.claimSha256,'--native-write']);
  const uid=runtime.testOwnerUid??0,handles:FileHandle[]=[];
  let prisma:PrismaIngestionWorkerConnection|undefined;
+ let outcome:{ok:true;value:Awaited<ReturnType<typeof executeInternalRedditArchiveCommentWrite>>}|{ok:false;error:unknown};
  try {
   const claim=await directory(CLAIM_ROOT,uid);handles.push(claim);
   const verifyClaim=async()=>{await anchored(CLAIM_ROOT,claim);assertRedditArchiveCommentsClaim(await file(claim,CLAIM_LEAF,uid,8192),request);};
@@ -76,7 +77,7 @@ export async function runRedditArchiveCommentsWithRuntime(request:RedditArchiveC
   prisma=await runtime.openPrisma(finiteRssDatabaseUrl(databaseUrl));
   const dependencies=createFiniteRedditArchiveCommentDependencies(prisma,new CryptoIdGenerator(),new SystemClock(),
    createRedditArchiveCommentAdmission(plan,verifyNativeIntent));
-  return await runWithTenantDatabaseAccess(plan.scope,()=>executeInternalRedditArchiveCommentWrite({
+  const receipt=await runWithTenantDatabaseAccess(plan.scope,()=>executeInternalRedditArchiveCommentWrite({
    plan,semanticKey:request.semanticKey,expectedPlanSha256:request.expectedPlanSha256,correlationId:request.correlationId,
    journalPath:join(request.journalDir,journalFilename),journalDirectory:journal,dependencies}, {
     consumeStartedJournal:async(parent,name,value)=>{await verifyNativeIntent();
@@ -85,8 +86,16 @@ export async function runRedditArchiveCommentsWithRuntime(request:RedditArchiveC
      await writeExclusive('/proc/self/fd/'+journal.fd+'/'+name,{...value,status:'started'});await journal.sync();
     }
    }));
- } finally {try{await prisma?.close();}finally{const closed=await Promise.allSettled(handles.reverse().map(handle=>handle.close()));
-  const failed=closed.find(result=>result.status==='rejected');if(failed?.status==='rejected')throw failed.reason;}}
+  outcome={ok:true,value:receipt};
+ } catch(error){outcome={ok:false,error};}
+ const cleanupErrors:unknown[]=[];
+ try{await prisma?.close();}catch(error){cleanupErrors.push(error);}
+ for(const handle of handles.reverse()){
+  try{await handle.close();}catch(error){cleanupErrors.push(error);}
+ }
+ if(!outcome.ok)throw outcome.error;
+ if(cleanupErrors.length>0)throw cleanupErrors[0];
+ return outcome.value;
 }
 async function main(){
  need(process.getuid?.()===0,'Comments native root invocation required');

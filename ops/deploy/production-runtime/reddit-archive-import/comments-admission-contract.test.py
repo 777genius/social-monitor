@@ -101,6 +101,12 @@ class CommentsContracts(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.validate_with_profile(value, fields, list(fields.items())+[('mode', m.MODE)], ATTEMPT, fields['credential_deadline'], NOW)
 
+    def test_profile_identity_order_matches_the_retained_packet_before_admission(self):
+        value = fixture()
+        value['partitions'][0]['identity']['nativeCommentIds'].reverse()
+        with self.assertRaisesRegex(ValueError, 'Original comment identity required'):
+            m.selected(value, KEY)
+
     def test_profile_rejects_post_replay_and_changed_scope_provenance_parent_dates(self):
         for field, replacement in [('selectedIds', ['reddit:t3_1wuktlf']), ('selectedIds', ['t1_pd5e1lp']*2),
               ('originalDays', ['2026-10-01']*2), ('rawSha256', 'f'*64), ('sourceUrl', m.URL+'&x=1'),
