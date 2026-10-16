@@ -61,6 +61,8 @@ jobs:
           sudo mkdir -p /root/social-monitor-release-contract-tests/ops/deploy /root/social-monitor-release-contract-tests/scripts/sql
           sudo cp ops/deploy/reader-summary-publication-pre-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/
           sudo cp ops/deploy/reader-summary-publication-post-migration.sql /root/social-monitor-release-contract-tests/ops/deploy/
+          sudo mkdir -p /root/social-monitor-release-contract-tests/ops/deploy/production-runtime
+          sudo cp ops/deploy/production-runtime/compose.jev-agent-runtime-init.yml /root/social-monitor-release-contract-tests/ops/deploy/production-runtime/
           sudo cp scripts/sql/reader-summary-publication-tenant-ownership.sql /root/social-monitor-release-contract-tests/scripts/sql/
           sudo cp -R "$RELEASE_GATE_VENV" /root/social-monitor-release-contract-tests/python
           sudo test -f /root/social-monitor-release-contract-tests/ops/ci/static-quality-root.sh
