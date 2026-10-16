@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -12,6 +13,32 @@ from compose_contract import MAX_BYTES, MAX_EVENTS, fixed_roots
 from contract import Denied
 from host import Host
 from test_support import SHA, RUN, PREVIOUS, setup, receive, run
+
+
+class JevRuntimeInitOverlay(unittest.TestCase):
+    overlay = Path(__file__).resolve().parents[2] / 'deploy/production-runtime/compose.jev-agent-runtime-init.yml'
+
+    @unittest.skipUnless(shutil.which('docker'), 'Docker Compose binary required for daemon-free config proof')
+    def test_compose_preserves_image_command_and_other_services(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory) / 'compose.json'
+            base.write_text(json.dumps({'services': {
+                'jev-agent-runtime': {'image': 'sandbox:unchanged',
+                                      'command': ['node', 'runtime.js'],
+                                      'environment': {'MODE': 'unchanged'}},
+                'api': {'image': 'sandbox:api'},
+                'jev-intelligence-worker': {'image': 'sandbox:worker'},
+            }}))
+            argv = ['docker', 'compose', '-p', 'test-jev-init', '-f', str(base)]
+            def config(files):
+                result = subprocess.run(argv + files + ['config', '--format', 'json'],
+                                        capture_output=True, check=True, timeout=20)
+                return json.loads(result.stdout)
+            before = config([])
+            after = config(['-f', str(self.overlay)])
+            expected = json.loads(json.dumps(before))
+            expected['services']['jev-agent-runtime']['init'] = True
+            self.assertEqual(after, expected)
 
 
 class ConfigOnlyHost(Host):
