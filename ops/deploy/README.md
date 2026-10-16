@@ -493,7 +493,7 @@ locks and an auth-changed marker still refuse preparation and handoff.
 
 ## Jev runtime child reaping
 
-`production-runtime/compose.jev-agent-runtime-init.yml` enables Docker's init
+`production-runtime/compose.jev-child-init.yml` enables Docker's init
 process only for `jev-agent-runtime`. It changes no image, command, environment,
 credential mount or worker service. This addresses the observed Node PID 1 not
 reaping an orphaned zombie; it does not establish which failed task created it

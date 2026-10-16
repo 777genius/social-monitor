@@ -16,7 +16,7 @@ from test_support import SHA, RUN, PREVIOUS, setup, receive, run
 
 
 class JevRuntimeInitOverlay(unittest.TestCase):
-    overlay = Path(__file__).resolve().parents[2] / 'deploy/production-runtime/compose.jev-agent-runtime-init.yml'
+    overlay = Path(__file__).resolve().parents[2] / 'deploy/production-runtime/compose.jev-child-init.yml'
 
     @unittest.skipUnless(shutil.which('docker'), 'Docker Compose binary required for daemon-free config proof')
     def test_compose_preserves_image_command_and_other_services(self):
