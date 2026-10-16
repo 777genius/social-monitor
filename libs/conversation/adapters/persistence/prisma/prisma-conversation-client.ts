@@ -38,6 +38,13 @@ export type PrismaConversationSignalBaselineSampleRecord = {
 
 export type PrismaConversationClient = {
   readonly conversationUnit: {
+    create?(args: {
+      readonly data: PrismaConversationUnitWriteRecord & {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+      };
+    }): Promise<PrismaConversationUnitRecord>;
     upsert(args: {
       readonly where: {
         readonly tenantId_providerKey_providerUnitId: {
