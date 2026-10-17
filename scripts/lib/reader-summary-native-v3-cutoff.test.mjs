@@ -20,7 +20,7 @@ export const err = (error) => ({ ok: false, error });
 const pad = (value, width) => String(value).padStart(width, "0");
 export const canonicalReaderSummaryPreparationTimestamp = (value) => {
   const date = value instanceof Date ? value : new Date(value);
-  return date.toISOString().replace(/\\.(\d{3})Z$/u, ".$1" + "000Z");
+  return date.toISOString().replace(/[.]([0-9]{3})Z$/u, ".$1" + "000Z");
 };
 export const compareReaderSummaryPreparationTimestamps = (left, right) =>
   left.localeCompare(right);
