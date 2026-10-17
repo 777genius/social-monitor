@@ -531,7 +531,7 @@ async function main(): Promise<void> {
       ? await captureExecution.execute(dependencies, command)
       : await executeNativeReaderSummary({ owner: nativeOwner, jobs: readerSummaryJobs,
         execute: new ExecuteReaderSummaryJobUseCase(...dependencies),
-        command: { ...command, observedThrough: liveObservationCutoff }, clock });
+        command, clock });
     if (!execution.ok) {
       throw execution.error;
     }

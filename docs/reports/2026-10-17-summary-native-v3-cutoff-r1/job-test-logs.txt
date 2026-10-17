@@ -1,0 +1,52 @@
+
+(node:10) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///srv/workers/mimo-projects/social-monitor/mimo-coding-9fd120-20261016-v1/workspaces/mimo-social-monitor-mimo-coding-9fd120-20261016-v1-summary-v3-cutoff-fix-r1/libs/summary/features/execute-reader-summary-job/execute-reader-summary-job-support.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /srv/workers/mimo-projects/social-monitor/mimo-coding-9fd120-20261016-v1/workspaces/mimo-social-monitor-mimo-coding-9fd120-20261016-v1-summary-v3-cutoff-fix-r1/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ explicit cutoff on jev_primary_v3 retains the exact conflict guard (0.935338ms)
+✖ native command has no observedThrough and its boundary resolves observed undefined (0.863233ms)
+✔ legacy execution keeps the unchanged shared command shape (0.222418ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 109.148241
+
+✖ failing tests:
+
+test at scripts/lib/reader-summary-native-v3-cutoff.test.mjs:119:1
+✖ native command has no observedThrough and its boundary resolves observed undefined (0.863233ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /\bcommand,\s*clock\b/u. Input:
+  
+  'executeNativeReaderSummary({ owner: nativeOwner, jobs: readerSummaryJobs,\n' +
+    '        execute: new ExecuteReaderSummaryJobUseCase(...dependencies),\n' +
+    '        command: { ...command, observedThrough: liveObservationCutoff }, clock })'
+  
+      at TestContext.<anonymous> (file:///srv/workers/mimo-projects/social-monitor/mimo-coding-9fd120-20261016-v1/workspaces/mimo-social-monitor-mimo-coding-9fd120-20261016-v1-summary-v3-cutoff-fix-r1/scripts/lib/reader-summary-native-v3-cutoff.test.mjs:139:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'executeNativeReaderSummary({ owner: nativeOwner, jobs: readerSummaryJobs,\n        execute: new ExecuteReaderSummaryJobUseCase(...dependencies),\n        command: { ...command, observedThrough: liveObservationCutoff }, clock })',
+    expected: /\bcommand,\s*clock\b/u,
+    operator: 'match',
+    diff: 'simple'
+  }
+(node:10) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///srv/workers/mimo-projects/social-monitor/mimo-coding-9fd120-20261016-v1/workspaces/mimo-social-monitor-mimo-coding-9fd120-20261016-v1-summary-v3-cutoff-fix-r1/libs/summary/features/execute-reader-summary-job/execute-reader-summary-job-support.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /srv/workers/mimo-projects/social-monitor/mimo-coding-9fd120-20261016-v1/workspaces/mimo-social-monitor-mimo-coding-9fd120-20261016-v1-summary-v3-cutoff-fix-r1/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ explicit cutoff on jev_primary_v3 retains the exact conflict guard (1.58147ms)
+✔ native command has no observedThrough and its boundary resolves observed undefined (0.793196ms)
+✔ legacy execution keeps the unchanged shared command shape (0.342022ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 103.343624
