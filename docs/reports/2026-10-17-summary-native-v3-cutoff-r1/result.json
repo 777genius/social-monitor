@@ -5,7 +5,7 @@
  ],
  "sha256": {
   "scripts/capture-durable-reader-summary-from-postgres.ts": "7d35e1b75cfc69b0f5f6899d151d35f45f587db696dc5eaba90b6f4482505610",
-  "scripts/lib/reader-summary-native-v3-cutoff.test.mjs": "cd9c6407f2aa8f3a2c320a0dd8fafe2a2033a11923b89d727747bc0bd95e27e8"
+  "scripts/lib/reader-summary-native-v3-cutoff.test.mjs": "c4a44295d03734a3f0da2f51060c52cd68323e8fcc5f944da92db0a562f809e9"
  },
  "before": {
   "command": "node --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs",
@@ -13,7 +13,7 @@
   "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/job-test-logs.txt"
  },
  "after": {
-  "command": "node --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs",
+  "command": "node --experimental-strip-types --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs",
   "exitCode": 0,
   "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/local-verify-after-test.txt"
  },

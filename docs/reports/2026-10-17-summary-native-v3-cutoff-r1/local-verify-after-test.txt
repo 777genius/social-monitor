@@ -1,11 +1,10 @@
-(node:63665) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///private/tmp/sm-fix-verify/libs/summary/features/execute-reader-summary-job/execute-reader-summary-job-support.ts is not specified and it doesn't parse as CommonJS.
-Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
-To eliminate this warning, add "type": "module" to /private/tmp/sm-fix-verify/package.json.
-(Use `node --trace-warnings ...` to show where the warning was created)
-✔ explicit cutoff on jev_primary_v3 retains the exact conflict guard (0.876292ms)
-✔ native command has no observedThrough and its boundary resolves observed undefined (0.410084ms)
-✔ executeNativeReaderSummary forwards the exact command object to execute (0.214125ms)
-✔ legacy execution keeps the unchanged shared command shape (0.215834ms)
+$ node --experimental-strip-types --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs
+(node:94747) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ explicit cutoff on jev_primary_v3 retains the exact conflict guard (0.890334ms)
+✔ native command has no observedThrough and its boundary resolves observed undefined (0.412125ms)
+✔ executeNativeReaderSummary forwards the exact command object to execute (0.218167ms)
+✔ legacy execution keeps the unchanged shared command shape (0.33125ms)
 ℹ tests 4
 ℹ suites 0
 ℹ pass 4
@@ -13,4 +12,20 @@ To eliminate this warning, add "type": "module" to /private/tmp/sm-fix-verify/pa
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 147.359875
+ℹ duration_ms 228.688625
+
+$ node --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs
+(node:94752) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ explicit cutoff on jev_primary_v3 retains the exact conflict guard (0.8835ms)
+✔ native command has no observedThrough and its boundary resolves observed undefined (0.401041ms)
+✔ executeNativeReaderSummary forwards the exact command object to execute (0.211541ms)
+✔ legacy execution keeps the unchanged shared command shape (0.217208ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 176.372375

@@ -51,7 +51,7 @@ Before applying the source fix, `node --test scripts/lib/reader-summary-native-v
 
 All evidence paths below are files included in this patch; exit codes are as recorded in `result.json`.
 
-- `node --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs`: pass, 4/4 (`local-verify-after-test.txt`).
+- `node --experimental-strip-types --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs`: pass, 4/4 (`local-verify-after-test.txt`); the unflagged invocation (Node >= 22.18 type stripping default) also passes 4/4 in the same file.
 - `npx tsc -p tsconfig.build.json --noEmit`: exit 0, no output (`local-verify-tsc.txt`).
 - `npx eslint scripts/lib/reader-summary-native-v3-cutoff.test.mjs`: exit 0 (`local-verify-eslint.txt`).
 - The full static-quality gate (`npx eslint .`, `node scripts/check-*.mjs`, full suites) is not bundled here; it runs in the GitHub Actions "Static architecture and quality" job of the pull request checks.

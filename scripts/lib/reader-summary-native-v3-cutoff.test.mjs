@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { registerHooks } from "node:module";
+import { readFileSync } from "node:fs";
+import { register } from "node:module";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const virtualModules = new Map([
@@ -35,44 +35,55 @@ export const NATIVE_V3_PREPARATION_MS = 15 * 60_000;
 `],
 ]);
 
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    const virtualName = specifier === "../../domain"
-      ? "@social-monitor/summary/domain"
-      : specifier === "../../ports" ? "@social-monitor/summary/ports"
-      : specifier.endsWith("reader-summary-native-v3-budget")
-        ? "@social-monitor/test/native-v3-budget" : specifier;
-    if (virtualModules.has(virtualName)) {
-      return { url: `virtual:${virtualName}`, shortCircuit: true };
-    }
-    if (specifier === "@social-monitor/summary/application/contracts/reader-summary-native-owner") {
-      return {
-        url: pathToFileURL(join(root,
-          "libs/summary/application/contracts/reader-summary-native-owner.ts")).href,
-        shortCircuit: true,
-      };
-    }
-    if (specifier.startsWith(".") && context.parentURL?.startsWith("file:")) {
-      const base = fileURLToPath(new URL(specifier, context.parentURL));
-      for (const candidate of [`${base}.ts`, join(base, "index.ts")]) {
-        if (existsSync(candidate) && statSync(candidate).isFile()) {
-          return { url: pathToFileURL(candidate).href, shortCircuit: true };
-        }
+// Loader hooks are registered through module.register() (Node >= 20.6) instead of
+// registerHooks (Node >= 22.15) so the regression runs on every Node allowed by
+// package.json engines; type stripping needs --experimental-strip-types below 22.18.
+register(`data:text/javascript,${encodeURIComponent(`
+import { existsSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const root = ${JSON.stringify(root)};
+const virtualModules = new Map(${JSON.stringify([...virtualModules])});
+
+export async function resolve(specifier, context, nextResolve) {
+  const virtualName = specifier === "../../domain"
+    ? "@social-monitor/summary/domain"
+    : specifier === "../../ports" ? "@social-monitor/summary/ports"
+    : specifier.endsWith("reader-summary-native-v3-budget")
+      ? "@social-monitor/test/native-v3-budget" : specifier;
+  if (virtualModules.has(virtualName)) {
+    return { url: "virtual:" + virtualName, shortCircuit: true };
+  }
+  if (specifier === "@social-monitor/summary/application/contracts/reader-summary-native-owner") {
+    return {
+      url: pathToFileURL(join(root,
+        "libs/summary/application/contracts/reader-summary-native-owner.ts")).href,
+      shortCircuit: true,
+    };
+  }
+  if (specifier.startsWith(".") && context.parentURL && context.parentURL.startsWith("file:")) {
+    const base = fileURLToPath(new URL(specifier, context.parentURL));
+    for (const candidate of [base + ".ts", join(base, "index.ts")]) {
+      if (existsSync(candidate) && statSync(candidate).isFile()) {
+        return { url: pathToFileURL(candidate).href, shortCircuit: true };
       }
     }
-    return nextResolve(specifier, context);
-  },
-  load(url, context, nextLoad) {
-    if (url.startsWith("virtual:")) {
-      return {
-        format: "module",
-        source: virtualModules.get(url.slice("virtual:".length)),
-        shortCircuit: true,
-      };
-    }
-    return nextLoad(url, context);
-  },
-});
+  }
+  return nextResolve(specifier, context);
+}
+
+export async function load(url, context, nextLoad) {
+  if (url.startsWith("virtual:")) {
+    return {
+      format: "module",
+      source: virtualModules.get(url.slice("virtual:".length)),
+      shortCircuit: true,
+    };
+  }
+  return nextLoad(url, context);
+}
+`)}`, { parentURL: import.meta.url });
 
 const { DomainError } = await import("@social-monitor/shared-kernel");
 const { validateReaderSummaryExecutionCutoff, resolveReaderSummaryExecutionObservedThrough } =
