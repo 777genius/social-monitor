@@ -5,47 +5,31 @@
  ],
  "sha256": {
   "scripts/capture-durable-reader-summary-from-postgres.ts": "7d35e1b75cfc69b0f5f6899d151d35f45f587db696dc5eaba90b6f4482505610",
-  "scripts/lib/reader-summary-native-v3-cutoff.test.mjs": "24392178ce1286abdde61824d70b65c4d2a3317365b79acc32be197191403499",
-  "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/proposed-source.patch": "c8e7f8f457401b764ad8366c5633442f68340e15ca92404fa460ce16c6451c6b"
+  "scripts/lib/reader-summary-native-v3-cutoff.test.mjs": "cd9c6407f2aa8f3a2c320a0dd8fafe2a2033a11923b89d727747bc0bd95e27e8"
  },
  "before": {
   "command": "node --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs",
   "exitCode": 1,
-  "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/before-test.log"
+  "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/job-test-logs.txt"
  },
  "after": {
   "command": "node --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs",
   "exitCode": 0,
-  "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/after-test.log"
+  "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/local-verify-after-test.txt"
  },
  "checks": [
   {
-   "command": "npm ci",
-   "exitCode": 127,
-   "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/npm-ci.log"
-  },
-  {
    "command": "npx tsc -p tsconfig.build.json --noEmit",
-   "exitCode": 127,
-   "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/tsc.log"
+   "exitCode": 0,
+   "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/local-verify-tsc.txt"
   },
   {
-   "command": "node scripts/check-architecture.mjs",
+   "command": "npx eslint scripts/lib/reader-summary-native-v3-cutoff.test.mjs",
    "exitCode": 0,
-   "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/check-architecture.log"
-  },
-  {
-   "command": "node scripts/check-code-quality.mjs",
-   "exitCode": 0,
-   "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/check-code-quality.log"
-  },
-  {
-   "command": "node scripts/check-source-line-cap.mjs",
-   "exitCode": 0,
-   "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/check-source-line-cap.log"
+   "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/local-verify-eslint.txt"
   }
  ],
  "pendingGates": [
-  "Run npm ci in an image with npm available, then run npx tsc -p tsconfig.build.json --noEmit; this execution image has no npm, npx, or tsc executable."
+  "Full static-quality gate (npx eslint ., node scripts/check-*.mjs) and full test suites run only in the GitHub Actions pull request checks; their raw logs are not bundled in this patch."
  ]
 }

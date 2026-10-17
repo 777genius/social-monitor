@@ -29,15 +29,28 @@ export const primaryReaderSummaryEvidence = () => {
 };
 `],
   ["@social-monitor/summary/ports", ""],
+  // The real budget module drags the full adapters tree; the wiring test needs only this constant.
+  ["@social-monitor/test/native-v3-budget", `
+export const NATIVE_V3_PREPARATION_MS = 15 * 60_000;
+`],
 ]);
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
     const virtualName = specifier === "../../domain"
       ? "@social-monitor/summary/domain"
-      : specifier === "../../ports" ? "@social-monitor/summary/ports" : specifier;
+      : specifier === "../../ports" ? "@social-monitor/summary/ports"
+      : specifier.endsWith("reader-summary-native-v3-budget")
+        ? "@social-monitor/test/native-v3-budget" : specifier;
     if (virtualModules.has(virtualName)) {
       return { url: `virtual:${virtualName}`, shortCircuit: true };
+    }
+    if (specifier === "@social-monitor/summary/application/contracts/reader-summary-native-owner") {
+      return {
+        url: pathToFileURL(join(root,
+          "libs/summary/application/contracts/reader-summary-native-owner.ts")).href,
+        shortCircuit: true,
+      };
     }
     if (specifier.startsWith(".") && context.parentURL?.startsWith("file:")) {
       const base = fileURLToPath(new URL(specifier, context.parentURL));
@@ -66,6 +79,7 @@ const { validateReaderSummaryExecutionCutoff, resolveReaderSummaryExecutionObser
   await import("../../libs/summary/features/execute-reader-summary-job/execute-reader-summary-job-support.ts");
 const { resolveReaderSummaryAuthorityBoundary } =
   await import("../../libs/summary/features/execute-reader-summary-job/reader-summary-first-publication-execution.ts");
+const { executeNativeReaderSummary } = await import("./reader-summary-native-v3-owner.ts");
 
 const at = new Date("2026-10-17T08:15:00.000Z");
 const owner = {
@@ -139,6 +153,38 @@ test("native command has no observedThrough and its boundary resolves observed u
   assert.match(nativeCall, /\bcommand,\s*clock\b/u);
   assert.doesNotMatch(nativeCall, /observedThrough/u);
   assert.doesNotMatch(nativeCall, /\{\s*\.\.\.command/u);
+});
+
+test("executeNativeReaderSummary forwards the exact command object to execute", async () => {
+  const command = {
+    tenantId: owner.tenantId,
+    workspaceId: owner.workspaceId,
+    readerSummaryJobId: "TEST-job",
+    maxEvidenceItems: 200,
+  };
+  const forwarded = [];
+  const jobs = {
+    findById: async (seen) => {
+      forwarded.push(seen);
+      return {
+        toSnapshot: () => ({ ...snapshot, id: "TEST-id", status: "requested",
+          preparationNextCheckAt: undefined }),
+      };
+    },
+  };
+  const execute = {
+    execute: async (seen) => {
+      forwarded.push(seen);
+      return { ok: true, value: { status: "completed", readerSummaryId: "TEST-summary" } };
+    },
+  };
+  assert.deepEqual(
+    await executeNativeReaderSummary({ owner, jobs, execute, command, clock }),
+    { ok: true, value: { status: "completed", readerSummaryId: "TEST-summary" } },
+  );
+  assert.equal(forwarded.length, 2);
+  for (const seen of forwarded) assert.equal(seen, command);
+  assert.equal(Object.hasOwn(command, "observedThrough"), false);
 });
 
 test("legacy execution keeps the unchanged shared command shape", () => {

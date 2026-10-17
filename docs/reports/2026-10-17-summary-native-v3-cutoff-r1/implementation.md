@@ -2,7 +2,7 @@
 
 ## Checkout and scope
 
-- Enrolled base verified before editing: `9fd120f805b7b196206d73d6b78f0e89fa7996b2`.
+- Declared patch base: `0cb45496c` (origin/main after PR 547). Enrolled review/edit checkout base: `9fd120f805b7b196206d73d6b78f0e89fa7996b2`, verified before editing.
 - Production source change: `scripts/capture-durable-reader-summary-from-postgres.ts`.
 - Regression test added: `scripts/lib/reader-summary-native-v3-cutoff.test.mjs`.
 - No pure command seam was added because the capture entrypoint has top-level execution side effects (`scripts/capture-durable-reader-summary-from-postgres.ts:985-989`) and the call-site contract can be tested directly and statically without introducing a production helper.
@@ -42,13 +42,16 @@ The focused Node test covers all required cases:
 - Exact explicit-cutoff `DomainError` guard on `jev_primary_v3`.
 - A native-owner command with no `observedThrough` property; both the direct resolver and authority boundary return undefined observed-through.
 - Native call-site command shape contains `command, clock`, no `observedThrough`, and no reconstructed spread command.
+- `executeNativeReaderSummary` forwards the identical command object it received to `execute.execute` without adding `observedThrough` (behavioral pass-through pin).
 - Legacy call remains exactly `captureExecution.execute(dependencies, command)` and the shared command literal is unchanged.
 
-Before applying the source fix, `node --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs` exited 1 with 2 passing and the native-wiring assertion failing (`before-test.log`). After the one-line fix, the same command exited 0 with 3 passing (`after-test.log`).
+Before applying the source fix, `node --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs` exited 1 with 2 passing and the native-wiring assertion failing (first run captured in `job-test-logs.txt`, recorded by the fixing job). After the one-line fix, the same command exited 0 with 3 passing (second run in `job-test-logs.txt`). After independent review requested a behavioral pin, the fourth test above was added and the final 4/4 run is captured in `local-verify-after-test.txt`.
 
 ## Checks
 
-- `node scripts/check-architecture.mjs`: pass (`check-architecture.log`).
-- `node scripts/check-code-quality.mjs`: pass (`check-code-quality.log`).
-- `node scripts/check-source-line-cap.mjs`: pass (`check-source-line-cap.log`).
-- Required `npx tsc -p tsconfig.build.json --noEmit` could not start because this execution image exposes only `node`; `npm`, `npx`, and `tsc` are absent. `npm ci` failed at command lookup with exit 127 (`npm-ci.log`), and the required typecheck remains pending in `result.json`.
+All evidence paths below are files included in this patch; exit codes are as recorded in `result.json`.
+
+- `node --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs`: pass, 4/4 (`local-verify-after-test.txt`).
+- `npx tsc -p tsconfig.build.json --noEmit`: exit 0, no output (`local-verify-tsc.txt`).
+- `npx eslint scripts/lib/reader-summary-native-v3-cutoff.test.mjs`: exit 0 (`local-verify-eslint.txt`).
+- The full static-quality gate (`npx eslint .`, `node scripts/check-*.mjs`, full suites) is not bundled here; it runs in the GitHub Actions "Static architecture and quality" job of the pull request checks.
