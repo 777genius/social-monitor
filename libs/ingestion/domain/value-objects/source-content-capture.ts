@@ -129,8 +129,9 @@ export const captureNativeText = <T extends CaptureText>(item: T, providerKey: s
     origin: 'provider_native', offset: 0, length: body.length, originalLength: item.body.length,
     fullTextSha256: captureSha256(item.body), truncated: body.length !== item.body.length,
     availableAt: capturedAt.toISOString(), sourceUrl: item.canonicalUrl, finalUrl: item.canonicalUrl,
-    extractionVersion: providerKey === 'rss' && item.metadata?.nativeContentComplete === true
-      ? 'provider_native.complete.v1' : 'provider_native.v1',
+    extractionVersion: item.metadata?.nativeContentIncomplete === true ? 'provider_native.partial.v1'
+      : providerKey === 'rss' && item.metadata?.nativeContentComplete === true
+        ? 'provider_native.complete.v1' : 'provider_native.v1',
   };
   return withCapture({ ...item, body }, {
     version: CONTENT_CAPTURE_VERSION,
@@ -239,7 +240,8 @@ const withCapture = <T extends CaptureText>(item: T, capture: Omit<SourceContent
     ...capture,
     sourceSnapshotSha256: snapshotDigest(item, capture),
     availableAt: segments.map((segment) => segment.availableAt).sort().at(-1)!,
-    presentationComplete: item.body.length <= PRESENTATION_BODY_CHARACTERS && !segments.some((segment) => segment.truncated),
+    presentationComplete: item.body.length <= PRESENTATION_BODY_CHARACTERS &&
+      !segments.some((segment) => segment.truncated || segment.extractionVersion === 'provider_native.partial.v1'),
   };
   return { ...item, metadata: { ...item.metadata, contentCapture: complete as unknown as JsonObject } };
 };

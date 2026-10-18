@@ -67,6 +67,8 @@ export class ScanStatusController {
     const view = buildScanStatusView({
       status: result.value.status,
       failureReason: result.value.failureReason,
+      failureMetadata: result.value.failureMetadata,
+      executionMetadata: result.value.executionMetadata,
     });
 
     return {

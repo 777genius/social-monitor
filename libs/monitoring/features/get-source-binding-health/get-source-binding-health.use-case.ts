@@ -147,11 +147,13 @@ export class GetSourceBindingHealthUseCase {
           status: latestScanSnapshot.status,
           failureReason: latestScanSnapshot.failureReason,
           failureMetadata: latestScanSnapshot.failureMetadata,
+        executionMetadata: latestScanSnapshot.executionMetadata,
         });
     const healthState = determineHealthState({
       bindingStatus: bindingSnapshot.status,
       hasScanPolicy: scanPolicy !== null,
       latestScanStatus: latestScanSnapshot?.status,
+      latestCollectionComplete: latestScanSnapshot?.executionMetadata?.collectionComplete !== false,
       latestFailureKind: latestScanStatusView === undefined
         ? undefined
         : classifySourceFailureKind({
@@ -162,7 +164,9 @@ export class GetSourceBindingHealthUseCase {
       freshness,
       recentProviderHealthState: recentWindow.providerHealthState,
     });
-    const operatorAction = operatorActionForHealth(healthState);
+    const operatorAction = healthState === 'degraded' && latestScanSnapshot?.status === 'succeeded' && latestScanStatusView?.userState === 'scan_degraded'
+      ? latestScanStatusView.operatorAction
+      : operatorActionForHealth(healthState);
     const schedulerDecision = buildSchedulerDecision({
       bindingStatus: bindingSnapshot.status,
       providerKey: bindingSnapshot.providerKey,
@@ -233,6 +237,7 @@ const determineHealthState = (params: {
   readonly bindingStatus: 'enabled' | 'paused';
   readonly hasScanPolicy: boolean;
   readonly latestScanStatus?: 'requested' | 'enqueued' | 'succeeded' | 'failed';
+  readonly latestCollectionComplete?: boolean;
   readonly latestFailureKind?: ReturnType<typeof classifySourceFailureKind>;
   readonly freshness?: SourceBindingHealthFreshnessView;
   readonly recentProviderHealthState: SourceBindingProviderHealthState;
@@ -264,6 +269,7 @@ const determineHealthState = (params: {
   }
 
   if (params.latestScanStatus === 'succeeded') {
+    if (params.latestCollectionComplete === false) return 'degraded';
     return params.freshness?.isFresh === true ? 'healthy' : 'stale';
   }
 

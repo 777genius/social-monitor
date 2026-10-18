@@ -142,7 +142,10 @@ class _StatusSummary extends StatelessWidget {
       children: [
         _ScanRow(label: 'Scan job', value: status.scanJobId.value),
         _ScanRow(label: 'Status', value: scanJobStatusLabel(status.status)),
-        _ScanRow(label: 'Operator action', value: status.operatorAction),
+        _ScanRow(
+          label: 'Operator action',
+          value: scanOperatorActionLabel(status.operatorAction),
+        ),
         _ScanRow(
           label: 'Requested',
           value: status.requestedAt.toIso8601String(),

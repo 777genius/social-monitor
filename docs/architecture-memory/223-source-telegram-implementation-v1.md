@@ -1,5 +1,12 @@
 # 223 - Source Telegram Implementation V1
 
+> 2026-10-18 decision: the implemented `telegram` provider uses anonymous public
+> web previews, approved in the Telegram public-preview feature request. See
+> [the current provider contract](../providers/telegram.md). This supersedes
+> Bot-API-first acquisition for this provider; the original proposal below is
+> historical and does not enable accounts, bots or private-channel access.
+
+
 ## Decision
 
 Telegram integration starts with Bot API where the tenant explicitly installs/adds the bot to channels/groups that the bot is allowed to read.

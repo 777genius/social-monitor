@@ -62,3 +62,11 @@ AppStatusTone scanStatusTone(ScanJobStatus status, ScanUserState userState) {
   }
   return AppStatusTone.neutral;
 }
+
+String scanOperatorActionLabel(String action) => switch (action) {
+  'wait_for_collection_backfill' =>
+    'Collection is incomplete. Remaining posts will be collected in subsequent scans.',
+  'inspect_incomplete_source_content' =>
+    'Some posts or media are unavailable in the public preview. Open the original channel for details.',
+  _ => action,
+};

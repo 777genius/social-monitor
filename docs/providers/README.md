@@ -75,7 +75,7 @@ Postgres and RabbitMQ, so manual scan requests can be processed by the worker.
 | `github-issues` | Optional GitHub token, beta flag required in beta runtime | Public GitHub issue search | Manual-only |
 | `reddit` | Real Reddit app credentials or tenant OAuth credential | Subreddit and Reddit search monitoring | Enabled beta, fixture-ready |
 | `x-twitter` | Private x-collector plus dedicated research accounts | X/Twitter daily search | Provider-only, deferred unless configured |
-| `telegram` | No runtime provider currently | Do not enable yet | Deferred |
+| `telegram` | Public channel username; no account, bot or token | Public channel posts with resumable catch-up | Enabled beta, fixture-ready; live evidence pending |
 
 ## Open Providers
 
@@ -84,6 +84,7 @@ These do not require API keys for a local first result:
 - [Hacker News](hacker-news.md)
 - [RSS/Atom](rss.md)
 - [GitHub Trending Page](github-trending-page.md)
+- [Telegram public channel previews](telegram.md)
 
 Credentialless live certification can be captured with:
 
@@ -112,8 +113,6 @@ That command is for live evidence, not for the normal local quick start.
 
 - [X/Twitter](x-twitter.md) is available only through the private `x-collector`
   service and must use dedicated research accounts, not personal accounts.
-- [Telegram](telegram.md) has architecture notes, but no bindable runtime
-  provider in the current codebase.
 
 ## Runtime Notes
 

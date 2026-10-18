@@ -48,6 +48,10 @@ export const successfulScanCollectionExecutionMetadata = (params: {
               params.candidateMemorySuppressedItemCount ?? 0,
           }
         : {
+            ...(telemetry.collectionComplete === undefined ? {} : {
+              collectionComplete: telemetry.collectionComplete,
+              backfillPending: telemetry.backfillPending ?? false,
+            }),
             targetItemCount: telemetry.targetItemCount,
             collectedItemCount: telemetry.collectedItemCount,
             acceptedItemCount: telemetry.acceptedItemCount,

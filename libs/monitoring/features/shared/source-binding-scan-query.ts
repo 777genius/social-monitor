@@ -7,6 +7,12 @@ import type {
 export const sourceBindingScanQuery = (
   binding: Pick<SourceBindingProps, 'id' | 'providerKey' | 'config'>,
 ): EnqueuedScanSourceQuery => {
+  if (binding.providerKey === 'telegram') {
+    return {
+      mode: binding.config.mode === 'url' ? 'url' : 'account_feed',
+      query: firstNonEmptyString(binding.config.channel, binding.config.query, binding.config.url) ?? binding.id,
+    };
+  }
   if (binding.providerKey === 'rss') {
     return {
       mode: 'url',

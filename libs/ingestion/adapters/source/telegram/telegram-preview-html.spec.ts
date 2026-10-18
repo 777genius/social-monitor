@@ -1,0 +1,33 @@
+import { captureNativeText, readContentCapture } from '../../../domain/value-objects/source-content-capture';
+import { parseTelegramPreview } from './telegram-preview-html';
+import { telegramHtml, telegramMessageHtml } from './telegram-preview.spec-support';
+
+describe('Telegram inert HTML parsing', () => {
+  it('preserves own text, breaks and link targets without including reply previews', () => {
+    const html = telegramHtml(telegramMessageHtml(3, '<b>Release &amp; details</b><br><br>Read <a href="https://example.com/release">the announcement</a>',
+      '<a class="tgme_widget_message_reply"><div class="tgme_widget_message_text js-message_reply_text">Unrelated reply text</div></a>'));
+    const page = parseTelegramPreview(html, 'example_channel');
+    expect(page.posts[0]?.text).toBe('Release & details\n\nRead the announcement (https://example.com/release)');
+    expect(page.posts[0]?.links).toEqual(['https://example.com/release']);
+    expect(page.posts[0]?.incomplete).toBe(false);
+  });
+
+  it('refuses app/login/error pages and channel identity mismatches', () => {
+    expect(() => parseTelegramPreview('<html>Please open Telegram</html>', 'example_channel')).toThrow('unavailable');
+    expect(() => parseTelegramPreview(telegramHtml('', 'other_channel'), 'example_channel')).toThrow('unavailable');
+    expect(parseTelegramPreview(telegramHtml(''), 'example_channel').posts).toEqual([]);
+    expect(() => parseTelegramPreview(telegramHtml('<div class="tgme_widget_message" data-post="foreign_channel/9"></div>'), 'example_channel')).toThrow('no valid');
+  });
+
+  it('marks unsupported media and rich-text previews incomplete', () => {
+    const page = parseTelegramPreview(telegramHtml(telegramMessageHtml(1, '', '<div class="tgme_widget_message_error">Please open Telegram to view this post</div>')), 'example_channel');
+    expect(page.posts[0]?.incomplete).toBe(true);
+    expect(page.warnings).toContain('telegram.preview_content_incomplete');
+  });
+
+  it('does not call partial provider-native capture a complete presentation', () => {
+    const captured = captureNativeText({ title: 'Preview', body: 'Available excerpt', canonicalUrl: 'https://t.me/example_channel/1',
+      metadata: { nativeContentIncomplete: true } }, 'telegram', new Date('2026-10-18T12:00:00Z'));
+    expect(readContentCapture(captured)?.presentationComplete).toBe(false);
+  });
+});
