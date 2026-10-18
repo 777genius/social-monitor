@@ -59,6 +59,39 @@ systemd-run --quiet --unit="$watchdog_unit" --on-active=4m --on-unit-active=1m \
   --property=Type=oneshot --property=TimeoutStartSec=30s \
   /usr/bin/docker rm -f "$name"
 systemctl is-active --quiet "$watchdog_unit.timer" || exit 78
+# Existing immutable image helpers, composed only for the fixed metadata scope.
+# READ WRITE is transaction-local; no database/role defaults or source/feed writes.
+bootstrap_program=$(cat <<'JAVASCRIPT'
+const { acquirePrismaPgRuntimeConnection, defaultPostgresRuntimePoolConfig, runWithTenantDatabaseAccess } = require('@social-monitor/platform-persistence');
+const { loadPrismaRuntimeClient } = require('@social-monitor/platform-persistence/prisma-runtime-client');
+const { CryptoIdGenerator, SystemClock } = require('@social-monitor/shared-kernel');
+const { AesGcmSourceBindingConfigProtector } = require('@social-monitor/monitoring/adapters/security/aes-gcm-source-binding-config-protector');
+const { resolveTelegramCollectionTarget } = require('./scripts/lib/telegram-channel-collection-bootstrap');
+const { telegramCollectionScope, telegramCollectionChannel, TelegramCollectionError } = require('./scripts/lib/telegram-channel-collection-contract');
+const { telegramCollectionMonitoring, inspectTelegramCollectionCheckpoint } = require('./scripts/lib/telegram-channel-collection-database');
+async function bootstrap() {
+  if (process.env.SOCIAL_MONITOR_RUNTIME_PROFILE !== 'beta') throw new TelegramCollectionError('beta_required');
+  if (!process.env.DATABASE_URL) throw new TelegramCollectionError('database_required');
+  const ids = new CryptoIdGenerator(), clock = new SystemClock();
+  const protector = AesGcmSourceBindingConfigProtector.fromEnvironment(process.env);
+  const database = await acquirePrismaPgRuntimeConnection(defaultPostgresRuntimePoolConfig(process.env.DATABASE_URL, 'admin-tool'), loadPrismaRuntimeClient());
+  try {
+    const inspection = await runWithTenantDatabaseAccess(telegramCollectionScope, () => database.client.$transaction(async transaction => {
+      await transaction.$executeRawUnsafe('SET TRANSACTION READ WRITE');
+      const resolved = await resolveTelegramCollectionTarget('bootstrap', telegramCollectionMonitoring(transaction, ids, clock, protector));
+      return { ...resolved, cursor: await inspectTelegramCollectionCheckpoint(transaction, resolved.sourceBindingId) };
+    }, { maxWait: 5000, timeout: 60000 }));
+    return { ok: true, schemaVersion: 1, mode: 'bootstrap', channel: telegramCollectionChannel, ...telegramCollectionScope,
+      catalogReady: inspection.catalogReady, sourceBindingId: inspection.sourceBindingId, scanPolicyId: inspection.scanPolicyId,
+      cursor: inspection.cursor, status: inspection.target === undefined ? 'not_bootstrapped' : 'ready' };
+  } finally { await database.close(); }
+}
+bootstrap().then(result => console.log(JSON.stringify(result))).catch(error => {
+  console.log(JSON.stringify({ ok: false, code: error instanceof TelegramCollectionError ? error.code : 'runtime_failed' }));
+  process.exitCode = 1;
+});
+JAVASCRIPT
+)
 export SOURCE_CONFIG_ENCRYPTION_KEY
 SOURCE_CONFIG_ENCRYPTION_KEY=$(openssl rand -base64 32)
 result=$(timeout --signal=TERM --kill-after=15s 3m docker run --rm --name "$name" \
@@ -70,7 +103,10 @@ result=$(timeout --signal=TERM --kill-after=15s 3m docker run --rm --name "$name
   --env SOCIAL_MONITOR_RUNTIME_PROFILE=beta --env SOURCE_CONFIG_ENCRYPTION_KEY \
   --env SOURCE_CONFIG_ENCRYPTION_KEY_ID=telegram-public-bootstrap \
   --entrypoint node "$image" scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=512 -- \
-  ts-node --transpile-only --compiler-options '{"rootDir":"."}' -r tsconfig-paths/register scripts/run-telegram-channel-collection.ts --bootstrap)
+  ts-node --transpile-only --compiler-options '{"rootDir":"."}' -r tsconfig-paths/register -e "$bootstrap_program") || {
+  jq -ce 'select(.ok==false and (.code|type)=="string") | {ok:false,code}' <<< "$result" >&2 || true
+  exit 78
+}
 bootstrap_completed=1
 unset SOURCE_CONFIG_ENCRYPTION_KEY
 jq -e '.ok==true and .schemaVersion==1 and .mode=="bootstrap" and .status=="ready" and .catalogReady==true
