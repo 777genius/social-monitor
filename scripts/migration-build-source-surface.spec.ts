@@ -54,10 +54,20 @@ const selfhostScripts = [
   'scripts/lib/reader-summary-publication-bootstrap-sql.ts',
   'scripts/sql/reader-summary-publication-tenant-ownership.sql',
 ];
+// Finite Telegram entrypoint and its explicitly packaged typed script closure.
+const telegramCollectionScripts = [
+  'scripts/run-telegram-channel-collection.ts',
+  'scripts/lib/telegram-channel-collection-bootstrap.ts',
+  'scripts/lib/telegram-channel-collection-contract.ts',
+  'scripts/lib/telegram-channel-collection-database.ts',
+  'scripts/lib/telegram-channel-collection-runtime.ts',
+  'scripts/lib/telegram-channel-collection-scan.ts',
+];
 const expectedScripts = [
   ...sep24Scripts,
   ...missingImportScripts,
   ...selfhostScripts,
+  ...telegramCollectionScripts,
   'scripts/check-feed-promotion-index-recovery.ts',
   'scripts/materialize-retained-source-captures.ts',
   'scripts/recover-hn-verified-remainder.ts',
@@ -217,6 +227,13 @@ describe('migration image production compilation', () => {
   });
 
   it.each(selfhostScripts)('rejects a recipe missing approved installer source: %s', (source) => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const mutated = dockerfile.replace(`${source} `, '');
+    expect(mutated).not.toBe(dockerfile);
+    expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
+  });
+
+  it.each(telegramCollectionScripts)('rejects a recipe missing approved Telegram source: %s', (source) => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
     const mutated = dockerfile.replace(`${source} `, '');
     expect(mutated).not.toBe(dockerfile);

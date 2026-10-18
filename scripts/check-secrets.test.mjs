@@ -91,3 +91,21 @@ test('the production digest rejects unreviewed syntax and any changed bytes', (t
     expectScan(t, fixture, changed, 1, 'documented placeholder', syntax);
   }
 });
+
+const telegramEntrypoint = 'ops/deploy/telegram-channel/collection-entrypoint.sh';
+const telegramEntrypointSource = readFileSync(new URL(`../${telegramEntrypoint}`, import.meta.url), 'utf8');
+
+test('accepts the runtime password interpolation only in the Telegram entrypoint', (t) => {
+  expectScan(t, telegramEntrypoint, telegramEntrypointSource, 0);
+});
+
+for (const file of [elsewhere, `${telegramEntrypoint}.sh`, telegramEntrypoint.replace('telegram-channel/', 'other/')]) {
+  test(`rejects the Telegram runtime interpolation outside the exact path: ${file}`, (t) => {
+    expectScan(t, file, telegramEntrypointSource, 1, 'credential URL password');
+  });
+}
+
+test('preserves populated credential URL detection in the Telegram entrypoint', (t) => {
+  const content = telegramEntrypointSource + ['postgresql:', `//user:${synthetic}@example.invalid/db\n`].join('');
+  expectScan(t, telegramEntrypoint, content, 1, 'credential URL password');
+});

@@ -1,0 +1,12 @@
+[Unit]
+Description=Hourly anonymous Telegram collection for hiaimediaen
+
+[Timer]
+OnCalendar=*-*-* *:17:00 UTC
+RandomizedDelaySec=30s
+AccuracySec=1s
+Persistent=false
+Unit=social-monitor-telegram-channel.service
+
+[Install]
+WantedBy=timers.target

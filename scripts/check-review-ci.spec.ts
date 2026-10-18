@@ -123,6 +123,39 @@ describe("subscription runtime deterministic sandbox CI allowlist", () => {
 });
 
 const packageScripts = JSON.parse(readFileSync("package.json", "utf8")).scripts;
+const lifecycleInventory = checker.slice(
+  checker.indexOf("const productionDeployLifecycle ="),
+  checker.indexOf("const productionDeployLifecycleCommands ="),
+);
+const checkLifecycleInventory = (scripts: Record<string, string>): string[] => runInNewContext(
+  `${lifecycleInventory}\nviolations`, { packageJson: { scripts }, violations: [] },
+);
+
+describe("quality gate lifecycle and Telegram native inventory", () => {
+  const expectedQualityCommand = "node scripts/check-code-quality.mjs && npm run check:production-lifecycle-runner && npm run check:telegram-channel-native";
+  it("accepts the complete quality command and existing lifecycle contracts", () => {
+    expect(packageScripts["check:code-quality"]).toBe(expectedQualityCommand);
+    expect(checkLifecycleInventory(packageScripts)).toEqual([]);
+  });
+  it.each([
+    "node scripts/check-code-quality.mjs",
+    "npm run check:production-lifecycle-runner",
+    "npm run check:telegram-channel-native",
+  ])("rejects omission of mandatory quality command %s", (omitted) => {
+    const command = expectedQualityCommand.split(" && ").filter((part) => part !== omitted).join(" && ");
+    expect(checkLifecycleInventory({ ...packageScripts, "check:code-quality": command }))
+      .toEqual([expect.stringContaining("mandatory native containment and Telegram native checks")]);
+  });
+  it.each([
+    "check:production-lifecycle-runner",
+    "check:production-lifecycle-runner:containment",
+    "check:production-deploy-lifecycle:serial",
+  ])("preserves rejection of a weakened lifecycle contract %s", (key) => {
+    expect(checkLifecycleInventory({ ...packageScripts, [key]: "true" }))
+      .toEqual([expect.stringContaining("retain all 28 serial commands")]);
+  });
+});
+
 const commandHelper = checker.slice(
   checker.indexOf("const pairedSelectorCommandViolations ="),
   checker.indexOf("violations.push(...pairedSelectorCommandViolations(packageJson.scripts));"),

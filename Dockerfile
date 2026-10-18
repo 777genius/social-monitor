@@ -71,6 +71,13 @@ COPY scripts/lib/clean-real-day-collection-report.ts \
   scripts/lib/targeted-provider-collection.ts \
   scripts/lib/x-collection-retry-policy.ts \
   scripts/lib/yesterday-social-replay-support.ts ./scripts/lib/
+# Finite Telegram-only collection entrypoint and its reviewed script closure.
+COPY scripts/run-telegram-channel-collection.ts ./scripts/
+COPY scripts/lib/telegram-channel-collection-bootstrap.ts \
+  scripts/lib/telegram-channel-collection-contract.ts \
+  scripts/lib/telegram-channel-collection-database.ts \
+  scripts/lib/telegram-channel-collection-runtime.ts \
+  scripts/lib/telegram-channel-collection-scan.ts ./scripts/lib/
 COPY apps ./apps
 COPY libs ./libs
 
