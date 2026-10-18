@@ -76,7 +76,7 @@ const env = { MISSING_IMPORT_SCOPE_JSON: JSON.stringify(scope), MISSING_IMPORT_B
       try {
         await run({ inputRoot, day, journalDir, semanticKey: plan.semanticKey,
           expectedPlanSha256: plan.planSha256, packetSha256: plan.packetSha256, correlationId: 'fixture' },
-        'postgresql://fixture:fixture@localhost/fixture', runtime as unknown as Parameters<typeof run>[2]);
+        'postgresql://fixture:password@localhost/fixture', runtime as unknown as Parameters<typeof run>[2]);
       } catch (error) { failure = error; }
       expect((failure as { originalError?: Error })?.originalError?.message)
         .toBe('STOP_BEFORE_FIRST_SOURCE_INSERT');
