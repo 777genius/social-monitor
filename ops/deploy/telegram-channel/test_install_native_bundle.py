@@ -13,9 +13,9 @@ import unittest
 
 INSTALLER = Path(__file__).with_name('install-native-bundle.py')
 TARGETS = (
-    ('lib/current_profile_admission.py', 0o644, True),
-    ('lib/physical_operator_epoch.py', 0o644, True),
-    ('lib/current_admission_sources.py', 0o644, True),
+    ('lib/current_profile_admission.py', 0o600, True),
+    ('lib/physical_operator_epoch.py', 0o600, True),
+    ('lib/current_admission_sources.py', 0o600, True),
     ('lib/current_telegram_channel_admission.py', 0o644, False),
     ('telegram/telegram-channel-mode.sh', 0o644, False),
     ('telegram/collection-entrypoint.sh', 0o644, False),
@@ -161,6 +161,8 @@ class NativeInstallerTests(unittest.TestCase):
                 after[name] = {'sha': digest(content.encode()), 'mode': mode}
                 entries.append({'path': str(path), 'mode': mode, 'beforeSha256': digest(original) if retained else None,
                                 'afterSha256': digest(content.encode()), 'content': content})
+            if scenario == 'widened-retained-mode':
+                entries[0]['mode'] = 0o644
             if scenario == 'bad-bundle':
                 entries[3]['afterSha256'] = '0' * 64
             if scenario == 'preimage-drift':
@@ -216,6 +218,13 @@ class NativeInstallerTests(unittest.TestCase):
 
     def test_invalid_bundle_is_rejected_before_native_admission_or_any_write(self):
         result, expected, _ = self.run_install('bad-bundle')
+        self.assertEqual(result['code'], 78)
+        self.assertEqual(result['targets'], expected)
+        self.assertEqual(result['events'], [])
+        self.assertEqual(result['backups'], 0)
+
+    def test_retained_private_modules_cannot_be_widened_by_bundle(self):
+        result, expected, _ = self.run_install('widened-retained-mode')
         self.assertEqual(result['code'], 78)
         self.assertEqual(result['targets'], expected)
         self.assertEqual(result['events'], [])
