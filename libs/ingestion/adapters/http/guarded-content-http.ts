@@ -25,6 +25,8 @@ export type ContentHttpRequest = {
   readonly maxRedirects?: number;
   readonly headers: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
+  /** Omit to read every body; unlisted statuses return headers with an empty body. */
+  readonly readBodyForStatuses?: readonly number[];
 };
 
 export const assertContentUrl = (value: string): URL => {
@@ -95,6 +97,11 @@ const requestOnce = (url: URL, input: ContentHttpRequest, signal: AbortSignal): 
       const headers = responseHeaders(response.headers);
       const result = (body: string): ContentHttpResponse => ({ status, headers, finalUrl: url.toString(), body });
       if ([301, 302, 303, 307, 308, 304].includes(status)) {
+        response.destroy();
+        resolve(result(''));
+        return;
+      }
+      if (input.readBodyForStatuses !== undefined && !input.readBodyForStatuses.includes(status)) {
         response.destroy();
         resolve(result(''));
         return;

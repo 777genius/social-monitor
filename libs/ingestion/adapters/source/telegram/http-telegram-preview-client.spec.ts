@@ -16,6 +16,7 @@ describe('Anonymous Telegram preview HTTP boundary', () => {
     expect(request?.headers).not.toHaveProperty('authorization');
     expect(request?.headers).not.toHaveProperty('cookie');
     expect(request?.maxRedirects).toBe(0);
+    expect(request?.readBodyForStatuses).toEqual([200]);
     expect(request?.maxBytes).toBeLessThanOrEqual(2 * 1024 * 1024);
     expect(request?.timeoutMs).toBeGreaterThan(0);
     expect(request?.timeoutMs).toBeLessThanOrEqual(834);
@@ -49,6 +50,7 @@ describe('Anonymous Telegram preview HTTP boundary', () => {
     for (const [input] of get.mock.calls) {
       expect(input.maxBytes).toBe(2_097_152);
       expect(input.maxRedirects).toBe(0);
+      expect(input.readBodyForStatuses).toEqual([200]);
       expect(Object.keys(input.headers).sort()).toEqual(['accept', 'user-agent']);
       expect(input.signal).toBeInstanceOf(AbortSignal);
     }

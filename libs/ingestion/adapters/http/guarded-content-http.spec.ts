@@ -5,6 +5,8 @@ import * as dns from 'node:dns/promises';
 import * as http from 'node:http';
 import * as https from 'node:https';
 import { assertContentUrl, assertPublicAddress, guardedContentGet } from './guarded-content-http';
+import { HttpTelegramPreviewClient } from '../source/telegram/http-telegram-preview-client';
+import { telegramHtml, telegramMessageHtml } from '../source/telegram/telegram-preview.spec-support';
 
 jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
 jest.mock('node:http', () => ({ ...jest.requireActual('node:http'), request: jest.fn() }));
@@ -72,17 +74,82 @@ describe('guarded article/RSS HTTP', () => {
     installHttpFixture([{ status: 200, body: 'text' }], '1.1.1.1');
     await expect(guardedContentGet(request)).rejects.toThrow('guarded DNS');
   });
+
+  describe('Telegram status-before-body regression', () => {
+    const healthyMirror = { status: 200, body: telegramHtml(telegramMessageHtml(2, 'Synthetic release')) };
+
+    it('stops after primary 429 headers despite a stalled body and preserves Retry-After', async () => {
+      const fixture = installHttpFixture([
+        { status: 429, headers: { 'retry-after': '120' }, body: 'late', delayMs: 1000 }, healthyMirror,
+      ]);
+      await expect(new HttpTelegramPreviewClient(900).readPage('example_channel')).rejects.toMatchObject({
+        kind: 'rate_limited', retryable: true, retryAfterMs: 120_000,
+      });
+      expect(fixture.urls).toEqual(['https://t.me/s/example_channel']);
+      expect(fixture.responses[0]?.destroyed).toBe(true);
+    });
+
+    it('preserves a 429 decision even when its unneeded body declares an oversized length', async () => {
+      const fixture = installHttpFixture([
+        { status: 429, headers: { 'retry-after': '45' }, contentLength: '3000000' }, healthyMirror,
+      ]);
+      await expect(new HttpTelegramPreviewClient(900).readPage('example_channel')).rejects.toMatchObject({
+        kind: 'rate_limited', retryable: true, retryAfterMs: 45_000,
+      });
+      expect(fixture.urls).toEqual(['https://t.me/s/example_channel']);
+      expect(fixture.responses[0]?.destroyed).toBe(true);
+    });
+
+    it('stops on stalled mirror 429 headers after a primary 503 without contacting the next mirror', async () => {
+      const fixture = installHttpFixture([
+        { status: 503 },
+        { status: 429, headers: { 'retry-after': '75' }, body: 'late', delayMs: 1000 }, healthyMirror,
+      ]);
+      await expect(new HttpTelegramPreviewClient(900).readPage('example_channel', 21)).rejects.toMatchObject({
+        kind: 'rate_limited', retryable: true, retryAfterMs: 75_000,
+      });
+      expect(fixture.urls).toEqual([
+        'https://t.me/s/example_channel?before=21', 'https://telegram.me/s/example_channel?before=21',
+      ]);
+      expect(fixture.responses.every((response) => response.destroyed)).toBe(true);
+    });
+
+    it('stops on terminal 403 headers despite a stalled body', async () => {
+      const fixture = installHttpFixture([{ status: 403, body: 'late', delayMs: 1000 }, healthyMirror]);
+      await expect(new HttpTelegramPreviewClient(900).readPage('example_channel')).rejects.toMatchObject({
+        kind: 'unavailable', retryable: false,
+      });
+      expect(fixture.urls).toEqual(['https://t.me/s/example_channel']);
+      expect(fixture.responses[0]?.destroyed).toBe(true);
+    });
+
+    it('preserves error response bodies for consumers that do not opt in', async () => {
+      installHttpFixture([{ status: 429, headers: { 'retry-after': '30' }, body: 'Synthetic diagnostic body' }]);
+      await expect(guardedContentGet(request)).resolves.toMatchObject({ status: 429, body: 'Synthetic diagnostic body' });
+    });
+
+    it('still applies the body limit to successful Telegram responses', async () => {
+      const fixture = installHttpFixture([{ status: 200, contentLength: '3000000' }, healthyMirror]);
+      await expect(new HttpTelegramPreviewClient(900).readPage('example_channel')).rejects.toMatchObject({
+        kind: 'unavailable', retryable: false,
+      });
+      expect(fixture.urls).toEqual(['https://t.me/s/example_channel']);
+      expect(fixture.responses[0]?.destroyed).toBe(true);
+    });
+  });
 });
 
 const request = { url: 'https://article.example.test/start', timeoutMs: 1000, maxBytes: 100, headers: {} };
 
-type FixtureResponse = { readonly status: number; readonly location?: string; readonly body?: string | Buffer; readonly encoding?: string; readonly contentLength?: string; readonly delayMs?: number };
+type FixtureResponse = { readonly status: number; readonly location?: string; readonly body?: string | Buffer; readonly encoding?: string; readonly contentLength?: string; readonly delayMs?: number; readonly headers?: Readonly<Record<string, string>> };
 const installHttpFixture = (steps: readonly FixtureResponse[], remoteAddress = '8.8.8.8') => {
   jest.spyOn(dns, 'lookup').mockResolvedValue([{ address: '8.8.8.8', family: 4 }] as never);
   const calls: http.RequestOptions[] = [];
   const connected: string[] = [];
   const responses: PassThrough[] = [];
+  const urls: string[] = [];
   const implementation = (_url: URL, options: http.RequestOptions, callback: (response: unknown) => void) => {
+    urls.push(_url.toString());
     const index = calls.push(options) - 1;
     const req = new EventEmitter() as EventEmitter & { end(): void; destroy(error: Error): void };
     let destroyed = false;
@@ -98,11 +165,12 @@ const installHttpFixture = (steps: readonly FixtureResponse[], remoteAddress = '
         const step = steps[index]!;
         const response = Object.assign(new PassThrough(), {
           statusCode: step.status,
-          headers: { ...(step.encoding === undefined ? {} : { 'content-encoding': step.encoding }), ...(step.location === undefined ? {} : { location: step.location }),
+          headers: { ...step.headers, ...(step.encoding === undefined ? {} : { 'content-encoding': step.encoding }), ...(step.location === undefined ? {} : { location: step.location }),
             ...(step.contentLength === undefined ? {} : { 'content-length': step.contentLength }) },
         });
         responses.push(response);
         callback(response);
+        if (response.destroyed) return;
         if (step.delayMs === undefined) response.end(step.body ?? '');
         else {
           const timer = setTimeout(() => response.end(step.body ?? ''), step.delayMs);
@@ -117,5 +185,5 @@ const installHttpFixture = (steps: readonly FixtureResponse[], remoteAddress = '
   };
   jest.spyOn(http, 'request').mockImplementation(implementation as typeof http.request);
   jest.spyOn(https, 'request').mockImplementation(implementation as typeof https.request);
-  return { calls, connected, responses };
+  return { calls, connected, responses, urls };
 };

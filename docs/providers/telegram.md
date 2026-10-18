@@ -48,7 +48,9 @@ format. Alternate hosts are an internal transport policy, not a configurable pro
 
 Fallback applies only to transport failures and HTTP 5xx responses. HTTP 429
 stops the page immediately and retains the existing rate-limit/backoff behavior;
-another domain is never used to bypass that pause. HTTP 4xx, unavailable or
+another domain is never used to bypass that pause. Non-200 statuses are classified
+from response headers and their bodies are closed immediately, so a stalled or
+oversized error body cannot turn a 429 or 4xx into a transport retry. HTTP 4xx, unavailable or
 malformed preview HTML, unsafe DNS/connection results and redirects also stop
 without switching hosts. All attempts share one page timeout budget and use
 the guarded HTTP client, bounded bodies and no cookies or authorization.

@@ -31,7 +31,7 @@ export class HttpTelegramPreviewClient implements TelegramPreviewClientPort {
       let response: ContentHttpResponse;
       try {
         response = await this.get({ url: url.toString(), timeoutMs: attemptTimeoutMs, signal,
-          maxBytes: 2 * 1024 * 1024, maxRedirects: 0,
+          maxBytes: 2 * 1024 * 1024, maxRedirects: 0, readBodyForStatuses: [200],
           headers: { accept: 'text/html', 'user-agent': 'SocialMonitor/0.1 public-channel-preview' } });
       } catch (error) {
         if (hasPolicyError(error)) {
