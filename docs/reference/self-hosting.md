@@ -13,7 +13,7 @@ release download fallback. Node, npm, Dart and Flutter are not required on your
 computer.
 
 ```sh
-git clone --branch codex/docker-one-command https://github.com/777genius/social-monitor.git
+git clone https://github.com/777genius/social-monitor.git
 cd social-monitor
 ./start.sh
 ```
