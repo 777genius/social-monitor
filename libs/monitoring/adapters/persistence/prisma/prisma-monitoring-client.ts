@@ -127,6 +127,7 @@ export type PrismaMonitoringClient = {
         readonly interestId?: string;
         readonly id?: string;
         readonly sourceCatalogEntryId?: string;
+        readonly config?: { readonly path: string[]; readonly equals: string };
         readonly deletedAt: null;
       };
     }): Promise<PrismaSourceBindingRecord | null>;

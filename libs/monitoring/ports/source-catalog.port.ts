@@ -1,4 +1,5 @@
 import type { SourceBindingConfig } from './source-binding-config-protector.port';
+import type { SourceBindingConfigIdentity } from './source-binding-repository.port';
 
 export type SourceCapabilityProfile = {
   readonly providerKey: string;
@@ -8,7 +9,11 @@ export type SourceCapabilityProfile = {
 };
 
 export type SourceBindingConfigValidationResult =
-  | { readonly ok: true }
+  | {
+      readonly ok: true;
+      readonly normalizedConfig?: SourceBindingConfig;
+      readonly configIdentity?: SourceBindingConfigIdentity;
+    }
   | { readonly ok: false; readonly reason: string };
 
 export interface SourceCatalogPort {

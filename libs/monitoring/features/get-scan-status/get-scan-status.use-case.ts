@@ -39,6 +39,8 @@ export class GetScanStatusUseCase {
       enqueuedAt: snapshot.enqueuedAt,
       completedAt: snapshot.completedAt,
       failureReason: snapshot.failureReason,
+      failureMetadata: snapshot.failureMetadata,
+      executionMetadata: snapshot.executionMetadata,
       latestAttempt: latestAttempt === null
         ? undefined
         : {

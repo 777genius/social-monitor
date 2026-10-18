@@ -23,6 +23,7 @@ export const isFreshSuccessfulScan = (params: {
 
   return (
     latestSnapshot?.status === 'succeeded' &&
+    latestSnapshot.executionMetadata?.collectionComplete !== false &&
     latestSnapshot.completedAt !== undefined &&
     latestSnapshot.completedAt.getTime() + params.freshnessSeconds * 1000 >=
       params.now.getTime()

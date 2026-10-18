@@ -157,9 +157,9 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
       return {
         result: resultWithWarning,
         targetItemCount: initialPlan.maxItems,
-        pageCount: 1,
-        paginationDuplicateItemCount: 0,
-        paginationStopReason: "single_page",
+        pageCount: result.pagination?.pageCount ?? 1,
+        paginationDuplicateItemCount: result.pagination?.duplicateItemCount ?? 0,
+        paginationStopReason: result.pagination?.stopReason ?? "single_page",
       };
     }
 
@@ -365,6 +365,10 @@ const buildSourceFetchTelemetry = (params: {
   );
 
   return {
+    ...(params.scanned.result.collection === undefined ? {} : {
+      collectionComplete: params.scanned.result.collection.complete,
+      backfillPending: params.scanned.result.collection.backfillPending,
+    }),
     targetItemCount: params.scanned.targetItemCount,
     collectedItemCount: params.scanned.result.items.length,
     acceptedItemCount: params.filteredResult.items.length,
@@ -395,7 +399,7 @@ const countRateLimitWarnings = (warnings: readonly string[]): number =>
 
     return (
       normalized.includes("partial_rate_limit") ||
-      normalized.includes("partial:rate_limited")
+      normalized.includes("rate_limited")
     );
   }).length;
 

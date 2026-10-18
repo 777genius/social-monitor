@@ -58,6 +58,7 @@ class SourceBindingFormPanel extends StatelessWidget {
               items: const [
                 DropdownMenuItem(value: 'reddit', child: Text('Reddit')),
                 DropdownMenuItem(value: 'rss', child: Text('RSS')),
+                DropdownMenuItem(value: 'telegram', child: Text('Telegram')),
                 DropdownMenuItem(
                   value: 'hacker-news',
                   child: Text('Hacker News'),
@@ -71,7 +72,11 @@ class SourceBindingFormPanel extends StatelessWidget {
               },
             ),
             const SizedBox(height: AppSpacing.sm),
-            if (store.providerKey != 'rss' && store.providerKey != 'github')
+            if (!const {
+              'rss',
+              'github',
+              'telegram',
+            }.contains(store.providerKey))
               SegmentedButton<String>(
                 key: const ValueKey('source-binding-mode-control'),
                 segments: const [
@@ -89,6 +94,22 @@ class SourceBindingFormPanel extends StatelessWidget {
                 value: store.feedUrl,
                 hint: 'https://example.com/feed.xml',
                 onChanged: store.updateFeedUrl,
+              ),
+            ] else if (store.providerKey == 'telegram') ...[
+              const SizedBox(height: AppSpacing.sm),
+              _TextField(
+                fieldKey: 'source-binding-telegram-channel-field',
+                label: 'Public channel',
+                value: store.query,
+                hint: '@channel or https://t.me/channel',
+                onChanged: store.updateQuery,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              const AppInlineProblem(
+                title: 'Public previews',
+                message:
+                    'No account, bot or token needed. Only public web previews are collected. Some posts and media may be incomplete.',
+                tone: AppProblemTone.neutral,
               ),
             ] else if (store.mode == 'listing') ...[
               if (store.providerKey == 'reddit') ...[

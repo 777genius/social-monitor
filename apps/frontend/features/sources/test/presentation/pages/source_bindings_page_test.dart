@@ -78,6 +78,43 @@ void main() {
     );
   });
 
+  testWidgets('binds a public Telegram channel without credentials', (
+    tester,
+  ) async {
+    final store = _store([]);
+    await tester.pumpWidget(
+      _TestApp(
+        store: store,
+        interestCoveragePlanStore: _interestCoveragePlanStore(),
+        policyStore: _policyStore(),
+        scanRunStore: _scanRunStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    store.openBindForm();
+    store.updateProvider('telegram');
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('source-binding-mode-control')),
+      findsNothing,
+    );
+    expect(find.text('Public channel'), findsOneWidget);
+    expect(
+      find.textContaining('No account, bot or token needed.'),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('source-binding-telegram-channel-field')),
+      '@Example_Channel',
+    );
+    await tester.pumpAndSettle();
+    await store.bindSource();
+    await tester.pumpAndSettle();
+    expect(store.selectedBinding?.providerKey.value, 'telegram');
+    expect(store.selectedBinding?.configValue('channel'), 'example_channel');
+    expect(store.selectedBinding?.configValue('mode'), 'account_feed');
+  });
+
   testWidgets('selects source pack from recommended sources panel', (
     tester,
   ) async {

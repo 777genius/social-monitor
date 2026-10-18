@@ -3,6 +3,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { IngestionRestModule } from '@social-monitor/ingestion/interfaces/rest/ingestion-rest.module';
 import request from 'supertest';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 
 import { DomainErrorFilter } from '../apps/api-gateway/src/domain-error.filter';
 
@@ -107,7 +108,7 @@ const assertLiveEvidenceRequirement = (
 
 async function main(): Promise<void> {
   const moduleRef = await Test.createTestingModule({
-    imports: [IngestionRestModule],
+    imports: [MetricsRuntimeModule.register({ serviceName: 'source-profile-rest-smoke' }), IngestionRestModule],
     providers: [
       {
         provide: APP_FILTER,
@@ -452,20 +453,20 @@ async function main(): Promise<void> {
     );
 
     assert(
-      telegram.readinessState === 'manual_only',
-      'Telegram readiness must stay manual-only before authorization model',
+      telegram.readinessState === 'enabled_beta',
+      'Telegram public preview must have an enabled fixture-certified provider',
     );
     assert(
-      telegram.runtimeReadiness === 'deferred',
-      'Telegram runtime readiness must stay deferred',
+      telegram.runtimeReadiness === 'fixture_ready',
+      'Telegram fixture evidence must not be advertised as live beta certification',
     );
     assert(
-      telegram.supportedQueryModes.length === 0,
-      'Telegram must not expose query modes without a registered runtime provider',
+      telegram.supportedQueryModes.includes('account_feed') && telegram.supportedQueryModes.includes('url'),
+      'Telegram must expose public-channel query modes',
     );
     assert(
-      telegram.liveEvidenceRequirements.length === 0,
-      'Telegram must not expose live beta evidence requirements while deferred',
+      telegram.liveEvidenceRequirements.length > 0 && telegram.liveBetaBlockers.length > 0,
+      'Telegram must preserve the external beta live-evidence boundary',
     );
 
     console.log('Source profile REST smoke OK');

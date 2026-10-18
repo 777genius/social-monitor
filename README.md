@@ -23,7 +23,7 @@
 
 An actively developed full-stack product with connected Flutter screens, persistent collection and summary pipelines, and production deployment workflows. The repository includes the API, workers, private X collector and web frontend.
 
-Hacker News, RSS, GitHub Trending, Repo Radar and Reddit have beta provider implementations. X uses the private collector; GitHub Issues is manual-only; Telegram is deferred. See [feature status](docs/reference/feature-status.md) and [provider setup](docs/providers/README.md) for availability and requirements.
+Hacker News, RSS, GitHub Trending, Repo Radar and Reddit have beta provider implementations. X uses the private collector; GitHub Issues is manual-only; Telegram supports anonymous public channel previews with resumable catch-up. See [feature status](docs/reference/feature-status.md) and [provider setup](docs/providers/README.md) for availability and requirements.
 
 ## Run and develop
 

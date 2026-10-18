@@ -25,6 +25,7 @@ export const buildScanStatusView = (params: {
   readonly status: ScanJobStatus;
   readonly failureReason?: string;
   readonly failureMetadata?: JsonObject;
+  readonly executionMetadata?: JsonObject;
 }): ScanStatusView => {
   if (params.status === 'requested') {
     return {
@@ -41,6 +42,14 @@ export const buildScanStatusView = (params: {
   }
 
   if (params.status === 'succeeded') {
+    if (params.executionMetadata?.collectionComplete === false) {
+      return {
+        userState: 'scan_degraded',
+        operatorAction: params.executionMetadata.backfillPending === true
+          ? 'wait_for_collection_backfill'
+          : 'inspect_incomplete_source_content',
+      };
+    }
     return {
       userState: 'content_current',
       operatorAction: 'no_action_required',

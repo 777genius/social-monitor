@@ -82,6 +82,7 @@ export class BindSourceUseCase {
       workspaceId: command.workspaceId,
       interestId: command.interestId,
       providerKey: command.providerKey,
+      configIdentity: configValidation.configIdentity,
     });
     if (existing) {
       const snapshot = existing.toSnapshot();
@@ -113,7 +114,7 @@ export class BindSourceUseCase {
       }
     }
 
-    const protectedConfig = await this.configProtector.protect(command.config);
+    const protectedConfig = await this.configProtector.protect(configValidation.normalizedConfig ?? command.config);
     const binding = SourceBinding.create({
       id: this.ids.generate(),
       tenantId: command.tenantId,

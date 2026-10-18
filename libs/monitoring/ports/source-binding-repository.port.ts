@@ -2,6 +2,12 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { SourceBinding, SourceBindingStatus } from '../domain';
 
+/** Equality on one canonical, non-secret top-level config field. */
+export type SourceBindingConfigIdentity = {
+  readonly field: string;
+  readonly value: string;
+};
+
 export type ListSourceBindingsQuery = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
@@ -24,6 +30,7 @@ export interface SourceBindingRepositoryPort {
     workspaceId: WorkspaceId;
     interestId: string;
     providerKey: string;
+    configIdentity?: SourceBindingConfigIdentity;
   }): Promise<SourceBinding | null>;
   findById(params: {
     tenantId: TenantId;

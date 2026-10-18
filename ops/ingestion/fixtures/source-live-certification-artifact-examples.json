@@ -450,6 +450,41 @@
               }
             }
           ]
+        },
+        {
+          "providerKey": "telegram",
+          "status": "passed",
+          "freshnessGuard": {
+            "maxStalenessSeconds": 3600,
+            "minimumScanIntervalSeconds": 3600,
+            "skipRecentlyScanned": true,
+            "scanHistoryRequired": true,
+            "cursorResumeRequired": true,
+            "rateLimitBackoffRequired": true,
+            "staleReadModelState": "stale",
+            "providerFailureHealthState": "degraded",
+            "signals": [
+              "telegram_message_cursor",
+              "scan_history_window",
+              "rate_limit_backoff"
+            ]
+          },
+          "signalResults": [
+            {
+              "signalId": "telegram_public_preview_live",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:07.000Z",
+              "evidence": {
+                "summary": "Synthetic shape example only: anonymous preview and older-page traversal.",
+                "anonymousPreviewObserved": true,
+                "stablePostIds": true,
+                "historyPageObserved": true
+              },
+              "metrics": {
+                "pageCount": 2
+              }
+            }
+          ]
         }
       ]
     },

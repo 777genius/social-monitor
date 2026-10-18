@@ -9,7 +9,7 @@ import type {
   SourceQueryMode,
   SourceQuotaModel,
 } from "../domain";
-import type { FetchedSourceItem } from "./source-fetcher.port";
+import type { FetchedSourceItem, SourcePaginationStopReason } from "./source-fetcher.port";
 import type { SourceRuntimeConfig } from "./source-config-reader.port";
 
 export type ProviderKey = SourceProviderKey;
@@ -48,6 +48,17 @@ export type SourceProviderScanResult = {
   readonly conversationUnits?: readonly FetchedConversationUnit[];
   readonly nextCursor?: string;
   readonly warnings: readonly string[];
+  /** Coverage of the requested range, separate from transport success. */
+  readonly collection?: {
+    readonly complete: boolean;
+    readonly backfillPending: boolean;
+  };
+  /** Providers with checkpoint/backfill cursors own traversal and report its actual cost. */
+  readonly pagination?: {
+    readonly pageCount: number;
+    readonly duplicateItemCount: number;
+    readonly stopReason: SourcePaginationStopReason;
+  };
 };
 
 export type FetchedConversationUnitRole = 'top_level_comment' | 'reply';

@@ -26,6 +26,8 @@ import { HackerNewsSourceProvider } from '../libs/ingestion/adapters/source/hack
 import { FixtureRedditClient } from '../libs/ingestion/adapters/source/reddit/fixture-reddit-client';
 import { RedditSourceProvider } from '../libs/ingestion/adapters/source/reddit/reddit-source.provider';
 import { StaticRedditTokenProvider } from '../libs/ingestion/adapters/source/reddit/static-reddit-token-provider';
+import { FixtureTelegramPreviewClient } from '../libs/ingestion/adapters/source/telegram/fixture-telegram-preview-client';
+import { TelegramSourceProvider } from '../libs/ingestion/adapters/source/telegram/telegram-source.provider';
 import { FixtureRssClient } from '../libs/ingestion/adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../libs/ingestion/adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
@@ -97,7 +99,14 @@ type CertificationReport = {
   }[];
 };
 
+const telegramFixtureClock = { now: () => new Date('2026-10-18T12:00:00.000Z') };
 const cases: readonly ProviderCase[] = [
+  {
+    providerFactory: () => new TelegramSourceProvider(new FixtureTelegramPreviewClient(telegramFixtureClock), telegramFixtureClock),
+    validQuery: { mode: 'account_feed', query: '@fixture_channel' },
+    unsupportedQueryMode: 'search', expectedProviderKey: 'telegram',
+    expectedReadinessState: 'enabled_beta', expectedFailureKind: 'unavailable',
+  },
   {
     providerFactory: () => new FakeSourceProvider(),
     validQuery: { mode: 'search', query: 'monitoring' },

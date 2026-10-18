@@ -108,6 +108,7 @@ export class GetSourceBindingHealthUseCase {
       ? undefined
       : buildFreshness({
           completedAt: latestScanSnapshot.completedAt,
+          collectionComplete: latestScanSnapshot.executionMetadata?.collectionComplete !== false,
           freshnessSeconds: cadence?.freshnessSeconds ?? scanPolicySnapshot.freshnessSeconds,
           now,
         });
@@ -147,11 +148,13 @@ export class GetSourceBindingHealthUseCase {
           status: latestScanSnapshot.status,
           failureReason: latestScanSnapshot.failureReason,
           failureMetadata: latestScanSnapshot.failureMetadata,
+        executionMetadata: latestScanSnapshot.executionMetadata,
         });
     const healthState = determineHealthState({
       bindingStatus: bindingSnapshot.status,
       hasScanPolicy: scanPolicy !== null,
       latestScanStatus: latestScanSnapshot?.status,
+      latestCollectionComplete: latestScanSnapshot?.executionMetadata?.collectionComplete !== false,
       latestFailureKind: latestScanStatusView === undefined
         ? undefined
         : classifySourceFailureKind({
@@ -162,7 +165,9 @@ export class GetSourceBindingHealthUseCase {
       freshness,
       recentProviderHealthState: recentWindow.providerHealthState,
     });
-    const operatorAction = operatorActionForHealth(healthState);
+    const operatorAction = healthState === 'degraded' && latestScanSnapshot?.status === 'succeeded' && latestScanStatusView?.userState === 'scan_degraded'
+      ? latestScanStatusView.operatorAction
+      : operatorActionForHealth(healthState);
     const schedulerDecision = buildSchedulerDecision({
       bindingStatus: bindingSnapshot.status,
       providerKey: bindingSnapshot.providerKey,
@@ -233,6 +238,7 @@ const determineHealthState = (params: {
   readonly bindingStatus: 'enabled' | 'paused';
   readonly hasScanPolicy: boolean;
   readonly latestScanStatus?: 'requested' | 'enqueued' | 'succeeded' | 'failed';
+  readonly latestCollectionComplete?: boolean;
   readonly latestFailureKind?: ReturnType<typeof classifySourceFailureKind>;
   readonly freshness?: SourceBindingHealthFreshnessView;
   readonly recentProviderHealthState: SourceBindingProviderHealthState;
@@ -264,6 +270,7 @@ const determineHealthState = (params: {
   }
 
   if (params.latestScanStatus === 'succeeded') {
+    if (params.latestCollectionComplete === false) return 'degraded';
     return params.freshness?.isFresh === true ? 'healthy' : 'stale';
   }
 
@@ -272,6 +279,7 @@ const determineHealthState = (params: {
 
 const buildFreshness = (params: {
   readonly completedAt: Date;
+  readonly collectionComplete: boolean;
   readonly freshnessSeconds: number;
   readonly now: Date;
 }): SourceBindingHealthFreshnessView => {
@@ -281,7 +289,7 @@ const buildFreshness = (params: {
   const staleBySeconds = Math.max(0, Math.floor((params.now.getTime() - freshnessDeadlineMs) / 1000));
 
   return {
-    isFresh: params.now.getTime() <= freshnessDeadlineMs,
+    isFresh: params.collectionComplete && params.now.getTime() <= freshnessDeadlineMs,
     ageSeconds,
     freshnessDeadlineAt: new Date(freshnessDeadlineMs).toISOString(),
     staleBySeconds: staleBySeconds === 0 ? undefined : staleBySeconds,

@@ -535,15 +535,23 @@
         "live_evidence_requirements_declared_for_external_beta",
         "live_evidence_verification_commands_exist"
       ]
-    }
-  ],
-  "deferredProviders": [
+    },
     {
       "providerKey": "telegram",
-      "state": "manual_only",
-      "runtimeReadiness": "deferred",
+      "readinessState": "enabled_beta",
+      "runtimeReadiness": "fixture_ready",
+      "liveBetaReady": false,
       "liveBetaBlockers": [
-        "Authorized channel scope and credential lifecycle are required before automation."
+        "Live anonymous preview, pagination, rate-limit and HTML-change evidence is required before external beta certification."
+      ],
+      "liveEvidenceRequirements": [
+        {
+          "signalId": "telegram_public_preview_live",
+          "description": "Anonymous public-channel preview, persisted catchup and incomplete coverage are verified in the deployed environment.",
+          "verificationCommand": "npm run check:live-telegram-preview",
+          "requiredFor": "external_beta",
+          "artifactEnv": "SOURCE_TELEGRAM_LIVE_EVIDENCE_PATH"
+        }
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 3600,
@@ -560,8 +568,36 @@
           "rate_limit_backoff"
         ]
       },
-      "acquisitionMode": "bot_or_channel_api_with_clear_scope"
-    },
+      "productionSafe": true,
+      "cursorModel": "since_id",
+      "quotaModel": "per_source_binding",
+      "itemCount": 1,
+      "warningCount": 2,
+      "firstExternalId": "fixture_channel/1",
+      "nextCursor": "telegram.preview.v1:eyJ2ZXJzaW9uIjoxLCJjaGFubmVsIjoiZml4dHVyZV9jaGFubmVsIiwic2NvcGUiOiJsaXZlIiwibGFzdElkIjoxfQ",
+      "repeatedScanItemCount": 0,
+      "failureKind": "unavailable",
+      "checks": [
+        "capability_profile_matches_readiness",
+        "unsupported_query_rejected_before_scan",
+        "normalized_items_have_stable_identity",
+        "cursor_contract_is_non_empty_for_cursor_models",
+        "fixture_repeated_scan_is_deterministic",
+        "provider_errors_are_classified",
+        "provider_failure_messages_are_redacted",
+        "provider_warnings_are_redacted",
+        "normalized_metadata_excludes_raw_payload_and_secret_keys",
+        "canonical_urls_exclude_userinfo_and_secret_query_params",
+        "freshness_guard_declared",
+        "minimum_scan_interval_declared",
+        "scan_history_required_for_freshness",
+        "rate_limit_backoff_declared_for_quota_models",
+        "live_evidence_requirements_declared_for_external_beta",
+        "live_evidence_verification_commands_exist"
+      ]
+    }
+  ],
+  "deferredProviders": [
     {
       "providerKey": "x-twitter",
       "state": "provider_only",

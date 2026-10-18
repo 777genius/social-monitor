@@ -5,6 +5,7 @@ import type {
   ListSourceBindingsQuery,
   ListSourceBindingsResult,
   SourceBindingRepositoryPort,
+  SourceBindingConfigIdentity,
 } from '../../ports';
 import { encodeOffsetCursor, parseOffsetCursor } from './offset-pagination';
 
@@ -26,7 +27,19 @@ export class InMemorySourceBindingRepository implements SourceBindingRepositoryP
     workspaceId: WorkspaceId;
     interestId: string;
     providerKey: string;
+    configIdentity?: SourceBindingConfigIdentity;
   }): Promise<SourceBinding | null> {
+    if (params.configIdentity !== undefined) {
+      const { field, value } = params.configIdentity;
+      return [...this.bindingsById.values()].find((binding) => {
+        const snapshot = binding.toSnapshot();
+        return snapshot.tenantId === params.tenantId &&
+          snapshot.workspaceId === params.workspaceId &&
+          snapshot.interestId === params.interestId &&
+          snapshot.providerKey === params.providerKey &&
+          snapshot.config[field] === value;
+      }) ?? null;
+    }
     return (
       this.bindingsByInterestProvider.get(this.key(params.tenantId, params.workspaceId, params.interestId, params.providerKey)) ??
       null

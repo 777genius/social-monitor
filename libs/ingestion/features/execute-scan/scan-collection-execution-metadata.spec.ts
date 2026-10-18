@@ -10,6 +10,8 @@ describe("scan collection execution metadata", () => {
         providerKey: "reddit",
         sourceQuery: windowedQuery,
         telemetry: {
+          collectionComplete: false,
+          backfillPending: true,
           targetItemCount: 80,
           collectedItemCount: 73,
           acceptedItemCount: 60,
@@ -32,6 +34,8 @@ describe("scan collection execution metadata", () => {
       providerKey: "reddit",
       targetPublishedWindowStartedAt: periodStartedAt.toISOString(),
       targetPublishedWindowEndedAt: periodEndedAt.toISOString(),
+      collectionComplete: false,
+      backfillPending: true,
       targetItemCount: 80,
       collectedItemCount: 73,
       acceptedItemCount: 60,
