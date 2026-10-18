@@ -1,3 +1,5 @@
+export {};
+
 const mockPoolFactory = jest.fn();
 const mockPrismaFactory = jest.fn();
 jest.mock('pg', () => ({ Pool: jest.fn((options: unknown) => mockPoolFactory(options)) }));
