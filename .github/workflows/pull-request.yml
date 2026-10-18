@@ -108,7 +108,6 @@ jobs:
           npx tsc -p ops/ci/tsconfig.historical-bootstrap.json
           npm run check:architecture
           npm run check:code-quality
-          npm run check:telegram-channel-native
           npm run check:source-line-cap
           npm run check:persistence-readiness
           npm run check:observability

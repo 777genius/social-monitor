@@ -347,14 +347,13 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       })
       .sort();
 
-    // The large-daily and linear-UTF16 synthetic PostgreSQL contracts receive
-    // existing clients and import only the PoolClient type. Inventory their
-    // exact paths even though they construct no runtime pools.
-    // The replay dispatch spec imports pg only to assert its throwing mock stays unused.
-    // Cursor cleanup helper imports only the Pool type; its spec exercises the installed Pool lifecycle.
-    // The socket regression spec and publication helpers import only client types.
-    // Private-input reading constructs one min=0/max=1 pool per invocation and
-    // releases/ends it in finally; its sibling spec spies on the CJS constructor.
+    // Large-daily/linear-UTF16 contracts import only PoolClient and construct no pools.
+    // Replay dispatch imports pg solely to assert its throwing mock stays unused.
+    // Cursor/socket/publication helpers import client types; the cursor spec checks installed Pool lifecycle.
+    // Private-input reading owns one min=0/max=1 pool, released/ended in finally;
+    // its sibling spec spies on the CJS constructor.
+    // Catalog seed metadata and the Telegram sandbox checker import Prisma types only;
+    // Telegram entrypoints acquire bounded shared factories rather than raw constructors.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts
       libs/platform/persistence/src/commit-ack-wiring.spec.ts
@@ -366,6 +365,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       libs/platform/persistence/src/postgres-runtime-pool.spec.ts
       libs/platform/persistence/src/postgres-runtime-pool.ts
       prisma/seed.ts
+      prisma/source-catalog-seeds.ts
       scripts/backfill-github-trending-feed.ts
       scripts/backfill-reader-summary-weekly-daily-certifications.ts
       scripts/backfill/rss-current-postgres-boundary-20261007/setup.ts
@@ -399,6 +399,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-summary-feedback-calibration-report.ts
       scripts/check-summary-memory-product-loop.ts
       scripts/check-summary-topic-recommendation-rest-prisma-live.ts
+      scripts/check-telegram-channel-collection-postgres.ts
       scripts/check-tenant-rls-postgres.ts
       scripts/check-yesterday-reader-summary-artifact-quality.ts
       scripts/check-yesterday-social-collection-quality.ts
@@ -475,6 +476,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-value-postgres-fixture.ts
       scripts/lib/social-source-private-input-database.spec.ts
       scripts/lib/social-source-private-input-database.ts
+      scripts/lib/telegram-channel-collection-database.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.ts
       scripts/lib/yesterday-replay-dispatch.spec.ts

@@ -28,7 +28,7 @@
     "check:beta-ring-policy": "node scripts/check-beta-ring-policy.mjs",
     "check:beta-scope-policy": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-beta-scope-policy.ts",
     "check:capacity-envelope-beta-ring-decision": "node scripts/check-capacity-envelope-beta-ring-decision.mjs",
-    "check:code-quality": "node scripts/check-code-quality.mjs && npm run check:production-lifecycle-runner",
+    "check:code-quality": "node scripts/check-code-quality.mjs && npm run check:production-lifecycle-runner && npm run check:telegram-channel-native",
     "check:consumed-worktree-janitor": "bash ops/maintenance/consumed-worktree-janitor.test.sh",
     "check:source-line-cap": "node scripts/check-source-line-cap.mjs",
     "check:telegram-channel-native": "python3 -m unittest discover -s ops/deploy/telegram-channel -p 'test_*.py' && bash -n ops/deploy/telegram-channel/telegram-channel-mode.sh ops/deploy/telegram-channel/bootstrap-binding.sh && sh -n ops/deploy/telegram-channel/collection-entrypoint.sh",
