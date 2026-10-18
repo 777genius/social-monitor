@@ -10,7 +10,8 @@ import { resolveTelegramCollectionTarget } from './lib/telegram-channel-collecti
 import {
   parseTelegramCollectionArgs, telegramCollectionChannel, telegramCollectionScope, TelegramCollectionError,
 } from './lib/telegram-channel-collection-contract';
-import { inspectTelegramCollectionCheckpoint, telegramCollectionMonitoring, type TelegramCollectionDatabase } from './lib/telegram-channel-collection-database';
+import { inspectTelegramCollectionCheckpoint, telegramCollectionMonitoring, type TelegramCollectionDatabase,
+  type TelegramCollectionMetadataDatabase } from './lib/telegram-channel-collection-database';
 import { composeTelegramCollectionRuntime } from './lib/telegram-channel-collection-runtime';
 import { collectTelegramChannel } from './lib/telegram-channel-collection-scan';
 
@@ -23,12 +24,18 @@ export const runTelegramChannelCollection = async (args: readonly string[], env:
   const protector = mode === 'bootstrap' ? AesGcmSourceBindingConfigProtector.fromEnvironment(env) : undefined;
   const PrismaClient = loadPrismaRuntimeClient<PrismaPgRuntimeClientConstructor<TelegramCollectionDatabase>>();
   const database = await acquirePrismaPgRuntimeConnection(defaultPostgresRuntimePoolConfig(env.DATABASE_URL, 'admin-tool'), PrismaClient);
+  const inspect = async (client: TelegramCollectionMetadataDatabase) => {
+    const resolved = await resolveTelegramCollectionTarget(mode, telegramCollectionMonitoring(client, ids, clock, protector));
+    return { ...resolved, cursor: await inspectTelegramCollectionCheckpoint(client, resolved.sourceBindingId) };
+  };
   const inspection = await (async () => {
     try {
-      return await runWithTenantDatabaseAccess(telegramCollectionScope, async () => {
-        const resolved = await resolveTelegramCollectionTarget(mode, telegramCollectionMonitoring(database.client, ids, clock, protector));
-        return { ...resolved, cursor: await inspectTelegramCollectionCheckpoint(database.client, resolved.sourceBindingId) };
-      });
+      return await runWithTenantDatabaseAccess(telegramCollectionScope, () => mode === 'bootstrap'
+        ? database.client.$transaction(async (transaction) => {
+          await transaction.$executeRawUnsafe('SET TRANSACTION READ WRITE');
+          return inspect(transaction);
+        }, { maxWait: 5000, timeout: 60000 })
+        : inspect(database.client));
     } finally { await database.close(); }
   })();
   const base = {

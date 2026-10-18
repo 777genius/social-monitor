@@ -17,8 +17,11 @@ import { TelegramCollectionError, telegramCollectionScope } from './telegram-cha
 import { summarizeTelegramCollectionCursor } from './telegram-channel-collection-scan';
 
 export type TelegramCollectionDatabase = PrismaClient;
+export type TelegramCollectionMetadataDatabase = Pick<PrismaClient,
+  'sourceCatalogEntry' | 'capabilityProfile' | 'cursorCheckpoint' | 'interest' |
+  'sourceBinding' | 'scanPolicy' | 'outboxEvent' | 'idempotencyKey'>;
 
-export const inspectTelegramCollectionCheckpoint = async (client: TelegramCollectionDatabase, sourceBindingId?: string) => {
+export const inspectTelegramCollectionCheckpoint = async (client: TelegramCollectionMetadataDatabase, sourceBindingId?: string) => {
   if (sourceBindingId === undefined) return null;
   const checkpoint = await client.cursorCheckpoint.findFirst({ where: {
     tenantId: telegramCollectionScope.tenantId, workspaceId: telegramCollectionScope.workspaceId, sourceBindingId,
@@ -32,7 +35,7 @@ export const inspectTelegramCollectionCheckpoint = async (client: TelegramCollec
 };
 
 export const telegramCollectionMonitoring = (
-  client: TelegramCollectionDatabase, ids: IdGenerator, clock: Clock, protector?: SourceBindingConfigProtectorPort,
+  client: TelegramCollectionMetadataDatabase, ids: IdGenerator, clock: Clock, protector?: SourceBindingConfigProtectorPort,
 ): TelegramCollectionMonitoring => {
   const monitoring = client as unknown as PrismaMonitoringClient;
   const interests = new PrismaInterestRepository(monitoring);
@@ -51,7 +54,7 @@ export const telegramCollectionMonitoring = (
   };
 };
 
-const inspectCatalog = async (client: TelegramCollectionDatabase): Promise<boolean> => {
+const inspectCatalog = async (client: TelegramCollectionMetadataDatabase): Promise<boolean> => {
   const source = await client.sourceCatalogEntry.findUnique({ where: { providerKey: 'telegram' } });
   if (source === null) return false;
   const seed = telegramCatalogSeed;
@@ -69,7 +72,7 @@ const inspectCatalog = async (client: TelegramCollectionDatabase): Promise<boole
   return true;
 };
 
-const ensureCatalog = async (client: TelegramCollectionDatabase): Promise<void> => {
+const ensureCatalog = async (client: TelegramCollectionMetadataDatabase): Promise<void> => {
   if (await inspectCatalog(client)) return;
   const seed = telegramCatalogSeed;
   if (await client.capabilityProfile.findUnique({ where: { id: seed.profileId } }) !== null) throw new TelegramCollectionError('catalog_conflict');
