@@ -33,6 +33,11 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
         async run(job) {
           executedJob = job;
           runs++;
+          const completion = options.accounts[0].worker.completedGoalOutputValidator;
+          if (typeof completion !== "function" || options.accounts[0].worker.maxGoalTurns !== 1) {
+            return { status: "partial", failureReason: "goal_slice_exhausted" };
+          }
+          assert.equal(completion({ headline: "Synthetic" }), true);
           return { status: "completed", result: { structuredOutput: { headline: "Synthetic" } } };
         },
         async dispose() {},
@@ -67,10 +72,10 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
   assert.equal(runs, 1);
   assert.ok(executedJob.prompt.endsWith(prompt));
   assert.ok(executedJob.systemPrompt.startsWith(systemPrompt));
-  assert.match(executedJob.prompt, /First call native get_goal/u);
-  assert.match(executedJob.prompt, /Only after every original requirement is fulfilled/u);
-  assert.match(executedJob.prompt, /update_goal\(\{status:'complete'\}\)/u);
-  assert.match(executedJob.systemPrompt, /do not create another goal/u);
+  assert.doesNotMatch(executedJob.prompt, /First call native get_goal/u);
+  assert.match(executedJob.prompt, /preserving every original evidence and cutoff requirement/u);
+  assert.match(executedJob.prompt, /do not call lifecycle tools/u);
+  assert.match(executedJob.systemPrompt, /completion follows strict validation/u);
   assert.ok(executedJob.systemPrompt.endsWith(JSON.stringify(summarySchema)));
   assert.match(executedJob.systemPrompt, /top-level property "headline" of type "string"/u);
   assert.equal(executedJob.controls, undefined);
@@ -88,8 +93,13 @@ test("MiMo summary factory uses one isolated, tool-free backend attempt", async 
   assert.equal(options.accounts[0].worker.modelBackend, "xiaomi-mimo-token-plan");
   assert.equal(options.accounts[0].worker.model, "mimo-v2.6-pro");
   assert.equal(options.accounts[0].worker.executionEngine, "app-server-goal");
-  assert.equal(options.accounts[0].worker.completedGoalOutputValidator, undefined);
-  assert.equal(options.accounts[0].worker.maxGoalTurns, undefined);
+  const complete = options.accounts[0].worker.completedGoalOutputValidator;
+  assert.equal(typeof complete, "function");
+  assert.equal(complete({ headline: "Synthetic" }), true);
+  for (const output of [null, [], {}, { headline: " " }, { headline: 1 }]) {
+    assert.equal(complete(output), false);
+  }
+  assert.equal(options.accounts[0].worker.maxGoalTurns, 1);
   assert.equal(typeof options.accounts[0].worker.appServerProcessFactory, "function");
   assert.deepEqual(options.accounts[0].worker.boundedWorkspaceTools,
     { allowedTools: [], denyProjectInstructions: true });
@@ -218,9 +228,16 @@ test("MiMo worker binds each daily purpose to its schema and output family", asy
     assert.equal(workerOptions.sourceEnv.MIMO_TOKEN_PLAN_API_KEY, "synthetic-key", purpose);
     assert.equal(workerOptions.modelBackend, "xiaomi-mimo-token-plan", purpose);
     assert.equal(workerOptions.reasoningEffort, presentation ? "none" : "high", purpose);
-    assert.equal(workerOptions.completedGoalOutputValidator,
-      presentation ? completionValidator : undefined, purpose);
-    assert.equal(workerOptions.maxGoalTurns, presentation ? 1 : undefined, purpose);
+    const narrative = purpose.endsWith("generate.v2") || purpose.endsWith("repair.v2");
+    if (narrative) {
+      assert.equal(typeof workerOptions.completedGoalOutputValidator, "function", purpose);
+      assert.equal(workerOptions.completedGoalOutputValidator(output), true, purpose);
+      assert.equal(workerOptions.completedGoalOutputValidator({ unrelated: true }), false, purpose);
+    } else {
+      assert.equal(workerOptions.completedGoalOutputValidator,
+        presentation ? completionValidator : undefined, purpose);
+    }
+    assert.equal(workerOptions.maxGoalTurns, presentation || narrative ? 1 : undefined, purpose);
     if (presentation) {
       assert.equal(completionInput.task, admission.canonicalRequest.task);
       assert.equal(completionInput.reasoningEffort, "none");
@@ -229,7 +246,10 @@ test("MiMo worker binds each daily purpose to its schema and output family", asy
       assert.doesNotMatch(executedJob.prompt, /First call native get_goal/u);
     } else {
       assert.equal(completionInput, undefined);
-      assert.match(executedJob.prompt, /First call native get_goal/u);
+      if (narrative) {
+        assert.match(executedJob.prompt, /do not call lifecycle tools/u);
+        assert.doesNotMatch(executedJob.prompt, /First call native get_goal/u);
+      } else assert.match(executedJob.prompt, /First call native get_goal/u);
     }
     assert.deepEqual(workerOptions.boundedWorkspaceTools,
       { allowedTools: [], denyProjectInstructions: true }, purpose);

@@ -175,6 +175,13 @@ function createMimoSummaryWorker({ input, model }) {
     ? createMimoPresentationCompletionValidator({ purpose, provider: admission.profile.provider,
       model, modelBackend: admission.profile.modelBackend, reasoningEffort: admission.profile.reasoningEffort,
       task: summaryTask }) : undefined;
+  // The pinned engine normalizes against the admitted schema before this predicate.
+  // Summary artifacts are one structured response; publication still validates their evidence.
+  const summaryCompletion = ["social_monitor.reader_summary.generate.v2", "social_monitor.reader_summary.repair.v2"].includes(purpose)
+    ? (output) => output !== null && typeof output === "object" && !Array.isArray(output) &&
+      typeof output.headline === "string" && output.headline.trim().length > 0
+    : undefined;
+  const oneTurnCompletion = presentationCompletion ?? summaryCompletion;
   const outputContract = `TRUSTED NAMED OUTPUT CONTRACT:
 The final answer must be one JSON object matching the admitted schema "${schemaName}" below, including the required top-level property "${expected[1]}" of type "${expected[2]}". Return the output object, not the original input envelope or a schema description.
 ${JSON.stringify(summaryTask.controls.outputSchema)}`;
@@ -228,8 +235,8 @@ ${JSON.stringify(summaryTask.controls.outputSchema)}`;
           warmupPrompt: false,
           cleanThreadPrewarm: false,
           reasoningEffort: admission.profile.reasoningEffort,
-          ...(presentationCompletion === undefined ? {} : {
-            maxGoalTurns: 1, completedGoalOutputValidator: presentationCompletion,
+          ...(oneTurnCompletion === undefined ? {} : {
+            maxGoalTurns: 1, completedGoalOutputValidator: oneTurnCompletion,
           }),
           ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
         } }],
@@ -238,7 +245,9 @@ ${JSON.stringify(summaryTask.controls.outputSchema)}`;
       try {
         result = await executor.run({
           ...job,
-          prompt: presentationCompletion !== undefined ? `Prepare the complete named presentation output for every supplied candidate. An active native Goal already exists; do not create another Goal. The trusted host validates the completed output and finishes that native Goal. Return only the final JSON object; do not call lifecycle tools or request another turn.
+          prompt: oneTurnCompletion !== undefined ? `${presentationCompletion !== undefined
+            ? "Prepare the complete named presentation output for every supplied candidate."
+            : "Prepare the complete named reader-summary output, preserving every original evidence and cutoff requirement."} An active native Goal already exists; do not create another Goal. The trusted host validates the completed output and finishes that native Goal. Return only the final JSON object; do not call lifecycle tools or request another turn.
 
 ORIGINAL JOB PROMPT (VERBATIM):
 ${job.prompt}` : `Mandatory lifecycle order:
@@ -250,7 +259,7 @@ ${job.prompt}` : `Mandatory lifecycle order:
 
 ORIGINAL JOB PROMPT (VERBATIM):
 ${job.prompt}`,
-          systemPrompt: presentationCompletion !== undefined ? `${job.systemPrompt ?? ""}
+          systemPrompt: oneTurnCompletion !== undefined ? `${job.systemPrompt ?? ""}
 
 Use only the supplied full source. Preserve every material qualification and exact evidence offset. An active native Goal is owned by the host; its completion follows strict validation of your final output. Filesystem, shell, web, delegation, SQL, source, and publication effects are unavailable. Return the named JSON output in this one turn without lifecycle tool calls.
 
@@ -265,8 +274,10 @@ ${outputContract}`,
           maxAccountCycles: 1,
           metadata: {
             ...job.metadata,
-            codexGoalObjective: presentationCompletion !== undefined
-              ? "Produce complete named presentation JSON for every candidate, with source-grounded headlines or explicit unavailable results."
+            codexGoalObjective: oneTurnCompletion !== undefined
+              ? presentationCompletion !== undefined
+                ? "Produce complete named presentation JSON for every candidate, with source-grounded headlines or explicit unavailable results."
+                : "Produce the complete admitted reader-summary JSON using the supplied evidence and cutoff rules."
               : "Complete the reader-summary task and prepare its named JSON output before marking the goal complete.",
           },
         });
