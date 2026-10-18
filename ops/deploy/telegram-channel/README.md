@@ -75,9 +75,11 @@ It preserves table-wide rights, writer admission, memberships and database
 defaults. Its durable intent prevents automatic retry after an uncertain commit.
 Require its successful receipt before the production canary; an intent alone
 does not qualify access. Do not replay the older materializer read profile.
-The optional `test_catalog_read_profile.py` PG18 suite uses a fresh isolated
-`telegram_catalog_read_profile_test_<suffix>` database and proves atomic grants
-and rollback without production credentials.
+The optional `test_catalog_read_profile.py` PG18 suite requires a fresh disposable
+cluster and a `telegram_catalog_read_profile_test_<suffix>` database. Its fixture
+roles are cluster-global and retained for inspection; discard the entire test
+cluster after the run. It proves atomic grants and rollback without production
+credentials.
 
 `scripts/check-telegram-channel-collection-postgres.ts` accepts only an explicit
 literal-loopback PostgreSQL18 URL with database name
