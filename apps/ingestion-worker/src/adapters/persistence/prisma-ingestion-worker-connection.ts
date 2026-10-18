@@ -18,6 +18,7 @@ import {
   type PrismaPgRuntimeConnectionLease,
 } from "@social-monitor/platform-persistence";
 import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
+import type { ArticleCaptureTransaction } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-article-capture-fence";
 
 export type PrismaIngestionWorkerClient = PrismaIngestionClient &
   PrismaSourceCandidateMemoryClient &
@@ -26,11 +27,12 @@ export type PrismaIngestionWorkerClient = PrismaIngestionClient &
   PrismaConversationClient &
   Pick<PrismaMonitoringClient, "scanJob">;
 
-type PrismaIngestionWorkerRuntimeClient = PrismaIngestionWorkerClient & {
+type PrismaIngestionWorkerRuntimeClient = PrismaIngestionWorkerClient & ArticleCaptureTransaction & {
   $disconnect(): Promise<void>;
 };
 
 export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerClient {
+  readonly $queryRaw: ArticleCaptureTransaction["$queryRaw"];
   readonly sourceCandidateMemory: PrismaSourceCandidateMemoryClient["sourceCandidateMemory"];
   readonly sourceItem: PrismaIngestionClient["sourceItem"];
   readonly cursorCheckpoint: PrismaIngestionClient["cursorCheckpoint"];
@@ -80,6 +82,7 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
   ) {
     this.runtime = runtime;
     this.client = this.runtime.client;
+    this.$queryRaw = this.client.$queryRaw.bind(this.client) as ArticleCaptureTransaction["$queryRaw"];
 
     this.sourceCandidateMemory = this.client.sourceCandidateMemory;
     this.sourceItem = this.client.sourceItem;
@@ -116,7 +119,7 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
       readonly isolationLevel?: "ReadCommitted" | "RepeatableRead" | "Serializable";
     },
   ): Promise<T> {
-    const transaction = this.client.$transaction as unknown as (
+    const transaction = this.client.$transaction.bind(this.client) as unknown as (
       work: typeof operation,
       settings: typeof options,
     ) => Promise<T>;

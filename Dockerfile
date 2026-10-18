@@ -14,6 +14,16 @@ RUN npm ci
 COPY tsconfig.json tsconfig.build.json ./
 COPY prisma.config.ts ./
 COPY scripts/rewrite-build-aliases.mjs ./scripts/
+COPY scripts/quickstart/local-config.ts scripts/quickstart/setup.ts \
+  scripts/quickstart/seed-workspace.ts scripts/quickstart/bootstrap-state.ts \
+  scripts/quickstart/bootstrap.ts ./scripts/quickstart/
+COPY scripts/quickstart/migrate.ts scripts/quickstart/prisma-migration.config.ts \
+  scripts/quickstart/verify-stack.ts ./scripts/quickstart/
+COPY scripts/lib/reader-summary-publication-bootstrap-sql.ts ./scripts/lib/
+COPY scripts/sql/reader-summary-publication-tenant-ownership.sql ./scripts/sql/
+COPY ops/deploy/reader-summary-publication-pre-migration.sql \
+  ops/deploy/reader-summary-publication-post-migration.sql ./ops/deploy/
+COPY ops/quickstart/frontend-defines.json ./ops/quickstart/
 COPY prisma ./prisma
 COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/
 COPY scripts/materialize-retained-source-captures.ts ./scripts/
@@ -70,7 +80,7 @@ RUN DATABASE_URL="${PRISMA_GENERATE_DATABASE_URL}" npm run prisma:generate && np
 # Host checkouts may use umask 077. Keep public image assets root-owned and
 # readable by node, preserving executable tools and directory traversal.
 RUN chmod -R u=rwX,go=rX \
-  apps libs prisma scripts vendor dist \
+  apps libs prisma scripts vendor dist ops \
   tsconfig.json tsconfig.build.json prisma.config.ts
 
 ARG SERVICE=api

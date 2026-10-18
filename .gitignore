@@ -47,3 +47,4 @@ CLAUDE.local.md
 .flutter-plugins-dependencies
 android/.gradle/
 ios/Pods/
+.social-monitor/

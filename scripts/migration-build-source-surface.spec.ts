@@ -42,9 +42,22 @@ const missingImportScripts = [
   'scripts/lib/github-archive-finite-journal.ts',
   'scripts/lib/github-archive-finite-role-policy.ts',
 ];
+const selfhostScripts = [
+  'scripts/quickstart/local-config.ts',
+  'scripts/quickstart/setup.ts',
+  'scripts/quickstart/seed-workspace.ts',
+  'scripts/quickstart/bootstrap-state.ts',
+  'scripts/quickstart/bootstrap.ts',
+  'scripts/quickstart/migrate.ts',
+  'scripts/quickstart/prisma-migration.config.ts',
+  'scripts/quickstart/verify-stack.ts',
+  'scripts/lib/reader-summary-publication-bootstrap-sql.ts',
+  'scripts/sql/reader-summary-publication-tenant-ownership.sql',
+];
 const expectedScripts = [
   ...sep24Scripts,
   ...missingImportScripts,
+  ...selfhostScripts,
   'scripts/check-feed-promotion-index-recovery.ts',
   'scripts/materialize-retained-source-captures.ts',
   'scripts/recover-hn-verified-remainder.ts',
@@ -98,11 +111,11 @@ function scriptCopies(dockerfile: string): ScriptCopy[] {
     }
     if (!tokens.some((token) => /\bscripts\b/.test(token))) return [];
     const destination = tokens.pop();
-    if (!destination || !/^\.\/scripts(?:\/lib)?\/$/.test(destination)) {
+    if (!destination || !/^\.\/scripts(?:\/(?:lib|quickstart|sql))?\/$/.test(destination)) {
       throw new Error('Script COPY requires an explicit scripts destination directory');
     }
     return tokens.map((source) => {
-      if (!/^scripts\/(?:lib\/)?[a-z0-9-]+\.(?:ts|mjs)$/.test(source)) {
+      if (!/^scripts\/(?:(?:lib|quickstart|sql)\/)?[a-z0-9][a-z0-9.-]*\.(?:ts|mjs|sql)$/.test(source)) {
         throw new Error('Script COPY requires explicit bounded file sources');
       }
       return { source, destination: posix.join(destination, posix.basename(source)) };
@@ -203,6 +216,13 @@ describe('migration image production compilation', () => {
     expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
   });
 
+  it.each(selfhostScripts)('rejects a recipe missing approved installer source: %s', (source) => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const mutated = dockerfile.replace(`${source} `, '');
+    expect(mutated).not.toBe(dockerfile);
+    expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
+  });
+
   it('rejects an extra explicit script and copies confined to a stale stage', () => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
     expect(() => expectScriptSurface(scriptCopies(
@@ -229,7 +249,9 @@ describe('migration image production compilation', () => {
         .includes('./yesterday-social-replay-support'))).toBe(true);
   }, 60_000);
 
-  it.each(['scripts', 'scripts/', 'scripts/*', 'scripts/lib/', 'scripts/lib/*.ts'])(
+  it.each(['scripts', 'scripts/', 'scripts/*', 'scripts/lib/', 'scripts/lib/*.ts',
+    'scripts/quickstart/', 'scripts/quickstart/*.ts', 'scripts/sql/', 'scripts/sql/*.sql',
+    'scripts/quickstart/../unapproved.ts'])(
     'rejects broad script copying: %s', (source) => {
       const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
       expect(() => scriptCopies(`${dockerfile}\nCOPY ${source} ./scripts/\n`))

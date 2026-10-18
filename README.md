@@ -6,6 +6,22 @@
 
 **Follow your interests, skip the noise.** Social Monitor collects posts across social networks, news and the web, ranks what matters, and turns it into readable AI summaries with links to the sources.
 
+## Quick start
+
+Start Docker Desktop (or Docker Engine with Compose **2.30+**). With Git and curl installed, run in a macOS, Linux or WSL terminal:
+
+```sh
+git clone https://github.com/777genius/social-monitor.git
+cd social-monitor
+./start.sh
+```
+
+At the AI setup prompt, press **Enter** to configure it later. When setup finishes, open [your local feed](http://localhost:8080/feed). RSS and Hacker News work **without accounts or API keys** and refresh every 15 minutes.
+
+The first start downloads ready-made images and may take several minutes. Run `./start.sh` again to resume, or `./start.sh --stop` to stop while keeping your data.
+
+[Connect AI or see more startup options](docs/reference/self-hosting.md).
+
 ## What you can do
 
 - **Monitor topics across sources:** X/Twitter, Reddit, Hacker News, RSS/Atom and GitHub, with provider-specific setup.
@@ -25,7 +41,7 @@ An actively developed full-stack product with connected Flutter screens, persist
 
 Hacker News, RSS, GitHub Trending, Repo Radar and Reddit have beta provider implementations. X uses the private collector; GitHub Issues is manual-only; Telegram supports anonymous public channel previews with resumable catch-up and bounded official-domain fallback. See [feature status](docs/reference/feature-status.md) and [provider setup](docs/providers/README.md) for availability and requirements.
 
-## Run and develop
+## Development
 
 Built with **Flutter/Dart, NestJS/TypeScript, PostgreSQL, RabbitMQ and Redis**.
 
