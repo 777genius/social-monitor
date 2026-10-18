@@ -1,3 +1,4 @@
+import type { SourceBindingConfig } from '../../ports';
 import { FakeSourceCatalogAdapter } from './fake-source-catalog.adapter';
 import { sourceBindingScanQuery } from '../../features/shared/source-binding-scan-query';
 
@@ -9,7 +10,7 @@ describe('Telegram source binding contract', () => {
     expect(await catalog.validateBindingConfig('telegram', config)).toEqual({ ok: true });
     expect(sourceBindingScanQuery({ id: 'binding', providerKey: 'telegram', config })).toEqual({ mode: 'account_feed', query: '@Example_Channel' });
   });
-  it.each([
+  it.each<SourceBindingConfig>([
     { channel: 'https://t.me/+invite' },
     { channel: '@example_channel', url: 'https://other.example/channel' },
     { channel: '@example_channel', query: '@another_channel' },

@@ -1,11 +1,11 @@
-import type { Clock } from '@social-monitor/shared-kernel';
-import type { SourceProviderScanContext, SourceProviderScanResult } from '../../../ports';
+import { tenantId, workspaceId, type Clock } from '@social-monitor/shared-kernel';
+import type { SourceProviderScanContext, SourceProviderScanResult, SourceRuntimeConfig } from '../../../ports';
 import type { TelegramPreviewClientPort, TelegramPreviewPost } from './telegram-preview-client.port';
 import type { TelegramSourceProvider } from './telegram-source.provider';
 
 export const telegramClock: Clock = { now: () => new Date('2026-10-18T12:00:00Z') };
-export const telegramContext = (config: Record<string, unknown> = {}): SourceProviderScanContext => ({
-  tenantId: 'tenant-example', workspaceId: 'workspace-example', sourceBindingId: 'binding-example',
+export const telegramContext = (config: SourceRuntimeConfig = {}): SourceProviderScanContext => ({
+  tenantId: tenantId('tenant-example'), workspaceId: workspaceId('workspace-example'), sourceBindingId: 'binding-example',
   scanJobId: 'scan-example', correlationId: 'correlation-example', config,
 });
 export const telegramPost = (id: number, overrides: Partial<TelegramPreviewPost> = {}): TelegramPreviewPost => ({
@@ -16,7 +16,7 @@ export const telegramClient = (posts: readonly TelegramPreviewPost[], pageSize =
     posts: posts.filter((post) => before === undefined || post.id < before).sort((a, b) => b.id - a.id).slice(0, pageSize), warnings: [],
   }),
 });
-export const scanTelegram = (provider: TelegramSourceProvider, cursor?: string, config: Record<string, unknown> = {}): Promise<SourceProviderScanResult> => {
+export const scanTelegram = (provider: TelegramSourceProvider, cursor?: string, config: SourceRuntimeConfig = {}): Promise<SourceProviderScanResult> => {
   const context = telegramContext(config);
   return provider.scan({ ...provider.planScan({ mode: 'account_feed', query: '@example_channel' }, context), cursor }, context);
 };
