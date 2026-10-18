@@ -43,7 +43,8 @@ connection separately:
 For Codex device login, enable device-code authentication in your account or
 workspace settings if required. See [official authentication documentation](https://learn.chatgpt.com/docs/auth#login-on-headless-devices).
 
-The browser opens at **http://localhost:8080**. Setup continues in the terminal:
+Setup runs in the terminal, then opens **http://localhost:8080/feed** with collected
+posts (or `/summaries` when AI is connected):
 it creates a starter interest, enables 15-minute scans for Hacker News and
 Simon Willison's RSS feed, collects content and requests the first daily
 summary over the preceding 24 hours when AI is connected. RSS/HN do not require source accounts.

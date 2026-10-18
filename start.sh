@@ -145,14 +145,16 @@ fi
 "${COMPOSE[@]}" up -d --wait --wait-timeout 300
 URL="http://localhost:$PORT"
 printf 'Application ready: %s\n' "$URL"
-if ((OPEN_BROWSER == 1)); then
-  if command -v open >/dev/null; then open "$URL" || true
-  elif command -v xdg-open >/dev/null; then xdg-open "$URL" >/dev/null 2>&1 || true; fi
-fi
 if [[ "$AI_ENABLED" == true ]]; then
   "${COMPOSE[@]}" --profile tools run --rm --no-deps bootstrap
+  URL="$URL/summaries"
   printf 'First summary ready. Open %s\n' "$URL"
 else
   "${COMPOSE[@]}" --profile tools run --rm --no-deps bootstrap node dist/scripts/quickstart/bootstrap.js --collect-only
+  URL="$URL/feed"
   printf 'RSS/HN collection ready. Open %s\nConnect AI later with ./start.sh --configure.\n' "$URL"
+fi
+if ((OPEN_BROWSER == 1)); then
+  if command -v open >/dev/null; then open "$URL" || true
+  elif command -v xdg-open >/dev/null; then xdg-open "$URL" >/dev/null 2>&1 || true; fi
 fi
