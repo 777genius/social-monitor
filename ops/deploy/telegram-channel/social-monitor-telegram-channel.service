@@ -1,0 +1,14 @@
+[Unit]
+Description=Finite anonymous Telegram collection for hiaimediaen
+After=docker.service postgresql.service
+Requires=docker.service
+
+[Service]
+Type=exec
+ExecStart=/usr/local/sbin/social-monitor-posts-once telegram-channel
+RuntimeMaxSec=10min
+TimeoutStopSec=45s
+KillMode=control-group
+UMask=0077
+SuccessExitStatus=75
+
