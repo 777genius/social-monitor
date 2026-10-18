@@ -16,9 +16,9 @@ LIB = Path('/usr/local/lib/social-monitor/current-source-guard')
 TG = Path('/usr/local/lib/social-monitor/telegram-channel')
 FENCE = '/usr/local/sbin/social-monitor-posts-generation-fence'
 ALLOWED = {
-    LIB / 'current_profile_admission.py': 0o644,
-    LIB / 'physical_operator_epoch.py': 0o644,
-    LIB / 'current_admission_sources.py': 0o644,
+    LIB / 'current_profile_admission.py': 0o600,
+    LIB / 'physical_operator_epoch.py': 0o600,
+    LIB / 'current_admission_sources.py': 0o600,
     LIB / 'current_telegram_channel_admission.py': 0o644,
     TG / 'telegram-channel-mode.sh': 0o644,
     TG / 'collection-entrypoint.sh': 0o644,

@@ -19,9 +19,12 @@ const extra = ['social-monitor-telegram-channel.service', 'social-monitor-telegr
   const content = source(name);
   return { path: `/etc/systemd/system/${name}`, beforeSha256: null, afterSha256: sha256(content), content };
 });
-const files = [...plan.files, ...extra].map((file) => ({ ...file,
-  mode: [nativeAdmissionPaths.router, nativeAdmissionPaths.stage].some((path) => path === file.path) ? 0o755 : 0o644,
-}));
+const fileMode = (path: string): number => {
+  if ([nativeAdmissionPaths.router, nativeAdmissionPaths.stage].some((entry) => entry === path)) return 0o755;
+  if ([nativeAdmissionPaths.profile, nativeAdmissionPaths.physical, nativeAdmissionPaths.lineage].some((entry) => entry === path)) return 0o600;
+  return 0o644;
+};
+const files = [...plan.files, ...extra].map((file) => ({ ...file, mode: fileMode(file.path) }));
 writeFileSync(destination, JSON.stringify({ version: 1, machineId: 'b28fc7b17042414386eb9b114046e50c', files }) + '\n',
   { flag: 'wx', mode: 0o600 });
 process.stdout.write(JSON.stringify({ mode: 'offline-prepared', files: files.map(({ path, beforeSha256, afterSha256 }) =>

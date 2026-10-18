@@ -63,14 +63,14 @@ export SOURCE_CONFIG_ENCRYPTION_KEY
 SOURCE_CONFIG_ENCRYPTION_KEY=$(openssl rand -base64 32)
 result=$(timeout --signal=TERM --kill-after=15s 3m docker run --rm --name "$name" \
   --network none --user "$(id -u postgres):$(id -g postgres)" \
-  --read-only --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 128 --memory 512m --cpus 1 \
+  --read-only --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 128 --memory 1g --cpus 1 \
   --tmpfs /tmp:rw,nosuid,nodev,size=64m \
   --mount type=bind,src=/var/run/postgresql,dst=/var/run/postgresql,readonly \
   --env DATABASE_URL='postgresql://postgres@localhost/social_monitor?host=/var/run/postgresql' \
   --env SOCIAL_MONITOR_RUNTIME_PROFILE=beta --env SOURCE_CONFIG_ENCRYPTION_KEY \
   --env SOURCE_CONFIG_ENCRYPTION_KEY_ID=telegram-public-bootstrap \
-  --entrypoint node "$image" scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=384 -- \
-  ts-node -r tsconfig-paths/register scripts/run-telegram-channel-collection.ts --bootstrap)
+  --entrypoint node "$image" scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=512 -- \
+  ts-node --transpile-only --compiler-options '{"rootDir":"."}' -r tsconfig-paths/register scripts/run-telegram-channel-collection.ts --bootstrap)
 bootstrap_completed=1
 unset SOURCE_CONFIG_ENCRYPTION_KEY
 jq -e '.ok==true and .schemaVersion==1 and .mode=="bootstrap" and .status=="ready" and .catalogReady==true
