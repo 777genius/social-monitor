@@ -1,9 +1,23 @@
 import type { XDailyCollectedPost } from "./x-daily-collector-client.port";
 import { normalizeXPost } from "./x-twitter-experimental-daily-item";
+import { captureNativeText, readContentCapture } from
+  "../../../domain/value-objects/source-content-capture";
 import { StaticXPromotionAuthorityRegistry } from
   "./static-x-promotion-authority-registry";
 
 describe("normalizeXPost promotion provenance", () => {
+  it.each([["emoji", "\u{1F600}"], ["astral math", "\u{1D400}"]])(
+    "%s survives the preview and persisted capture UTF-8 boundary",
+    (_name, astral) => {
+      const text = "a".repeat(92) + astral + "b".repeat(10);
+      const item = normalizeXPost(post({ text }), "test", 10);
+      expect(Buffer.from(item.title, "utf8").toString("utf8")).toBe(item.title);
+      expect(item.body).toBe(text);
+      const captured = captureNativeText(item, "x-twitter", new Date("2026-01-01T00:00:00.000Z"));
+      const durable = { ...captured, title: Buffer.from(captured.title, "utf8").toString("utf8") };
+      expect(readContentCapture(durable)).toBeDefined();
+    },
+  );
   it("preserves authoritative X content kind", () => {
     expect(normalizeXPost(post({ contentKind: "original_post" }), "Cursor", 10)
       .metadata).toMatchObject({ contentKind: "original_post" });

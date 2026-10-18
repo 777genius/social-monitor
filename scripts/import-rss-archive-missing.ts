@@ -12,7 +12,7 @@ import { runWithTenantDatabaseAccess } from '@social-monitor/platform-persistenc
 import { CryptoIdGenerator, SystemClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { PrismaIngestionWorkerConnection } from '../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection';
-import { insertOnlyFeedTransaction, assertTrustedAncestry, finiteRssDatabaseUrl, openFiniteOperatorSqlPool } from './import-rss-sep24-verified';
+import { insertOnlyFeedTransaction, reuseFiniteArchiveTransaction, assertTrustedAncestry, finiteRssDatabaseUrl, openFiniteOperatorSqlPool } from './import-rss-sep24-verified';
 import { noRetryGitHubArchiveTransaction, writeExclusive } from './lib/github-archive-finite-journal';
 import { assertFiniteGitHubArchiveRole, scopedGitHubArchiveRead } from './lib/github-archive-finite-role-policy';
 import {
@@ -23,6 +23,7 @@ import { executeRssArchiveMissingImport, type RssArchiveMissingDependencies } fr
 
 type Transaction = PrismaIngestionWorkerConnection & {
   $queryRawUnsafe: <T>(sql: string, ...args: unknown[]) => Promise<T>;
+  $executeRawUnsafe: (sql: string) => Promise<unknown>;
 };
 export type RssArchiveMissingRequest = Readonly<{
   inputRoot: string; day: string; journalDir: string; semanticKey: string;
@@ -208,8 +209,9 @@ export async function runRssArchiveMissingWithRuntime(
     const result = await runWithTenantDatabaseAccess(selected.plan.scope, () =>
       prisma!.$transaction(async tx => {
         const raw = tx as unknown as Transaction;
+        await raw.$executeRawUnsafe('SET TRANSACTION READ WRITE');
         await assertFiniteGitHubArchiveRole((text, values) => raw.$queryRawUnsafe(text, ...values), selected.plan.scope, 'write');
-        const guarded = insertOnlyFeedTransaction(noRetryGitHubArchiveTransaction(raw));
+        const guarded = reuseFiniteArchiveTransaction(insertOnlyFeedTransaction(noRetryGitHubArchiveTransaction(raw)));
         return executeRssArchiveMissingImport(selected.plan, itemsFor(selected),
           createDependencies(guarded as unknown as PrismaIngestionWorkerConnection, selected.plan), selected.plan.planSha256);
       }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 120000 }));

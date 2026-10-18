@@ -223,6 +223,14 @@ export function insertOnlyFeedTransaction<T extends { feedItem: object }>(tx: T)
     return property === "feedItem" ? feedItem : Reflect.get(target, property);
   } });
 }
+/** Reuse only an already-admitted outer Serializable transaction; never open a nested one. */
+export function reuseFiniteArchiveTransaction<T extends object>(transaction: T): T {
+  const finite = new Proxy(transaction, { get(target, property) {
+    if (property === '$transaction') return <Result>(work: (client: T) => Promise<Result>) => work(finite);
+    return Reflect.get(target, property);
+  } });
+  return finite;
+}
 export function createFiniteRssDependencies(connection: PrismaIngestionWorkerConnection): RssSep24Dependencies {
   const ids = new CryptoIdGenerator();
   return { withAtomicWrites: (scope, url, config, work) => connection.$transaction(async (transaction) => {

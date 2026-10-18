@@ -88,6 +88,26 @@ test('HN refuses packet day mismatch and round-trips comment fields', () => {
   }]);
 });
 
+test('HN preserves semantic pass labels and canonical wire IDs', () => {
+  const wire = { ...item, objectId: '42', retrievedForPass: 'ai-infrastructure',
+    comments: item.comments.map(comment => ({ ...comment, id: String(comment.id) })) };
+  const result = normalizeHnArchiveMissing({ ...manifest, items: [wire] }, plan.day, plan.selectedIds);
+  assert.equal(result.items[0].externalId, 'hn:42');
+  assert.equal(result.items[0].metadata.retrievedForPass, 'ai-infrastructure');
+  assert.equal(result.conversationUnits[0].providerUnitId, 'hn:43');
+});
+
+test('HN rejects noncanonical or unsafe wire IDs', () => {
+  for (const objectId of ['042', '4e1', '+42', '42.0', ' 42', '9007199254740993', 0, -1, 1.5]) {
+    assert.throws(() => policy.qualifyHnArchiveItem({ ...item, objectId,
+      externalId: `hn:${objectId}` }, plan.day, 0));
+  }
+  for (const id of ['043', '0', '-1', '4.3', '9007199254740993']) {
+    assert.throws(() => policy.qualifyHnArchiveItem({ ...item,
+      comments: [{ ...item.comments[0], id }] }, plan.day, 0));
+  }
+});
+
 test('HN re-run is idempotent over already-present native IDs', async () => {
   const first = await executeHnArchiveMissingImport(plan, manifest, {
     existingIds: async () => [], insertMissing: async () => 1,

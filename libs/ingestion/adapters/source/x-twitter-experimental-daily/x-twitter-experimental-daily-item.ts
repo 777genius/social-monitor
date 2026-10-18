@@ -5,6 +5,7 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import { sourceItemRelevanceScore } from "../../../domain";
+import { unicodePrefix } from "../../../domain/value-objects/source-content-capture";
 import type { FetchedSourceItem } from "../../../ports";
 import type { XExperimentalDailyScanConfig } from "./x-twitter-experimental-daily-config";
 import type { VerifiedXPromotionAuthorityIdentity } from "../../../ports";
@@ -140,7 +141,7 @@ const xPostMetricsMetadata = (metrics: XDailyPostMetrics): JsonObject =>
 const titleForPost = (post: XDailyCollectedPost): string => {
   const author = post.authorHandle ?? "unknown";
   const text = post.text.replace(/\s+/gu, " ").trim();
-  const preview = text.length > 96 ? `${text.slice(0, 93)}...` : text;
+  const preview = text.length > 96 ? `${unicodePrefix(text, 93)}...` : text;
 
   return `X post by @${author}: ${preview}`;
 };
