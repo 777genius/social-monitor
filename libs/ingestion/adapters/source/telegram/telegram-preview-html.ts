@@ -2,7 +2,6 @@ import { JSDOM } from 'jsdom';
 import type { TelegramPreviewPage, TelegramPreviewPost } from './telegram-preview-client.port';
 import { TelegramPreviewError } from './telegram-preview-client.port';
 
-const unsupportedText = /please open telegram to view|this media is not supported|view in telegram/i;
 const textLimit = 64_000;
 
 export const parseTelegramPreview = (html: string, channel: string): TelegramPreviewPage => {
@@ -46,8 +45,7 @@ export const parseTelegramPreview = (html: string, channel: string): TelegramPre
       });
       const raw = copy?.textContent?.replace(/\u00a0/g, ' ').trim() ?? '';
       const incomplete = raw.length === 0 || raw.length > textLimit ||
-        unsupportedText.test(message.textContent ?? '') ||
-        message.querySelector('.tgme_widget_message_error, .tgme_widget_message_text_has_more') !== null;
+        message.querySelector('.tgme_widget_message_error, .tgme_widget_message_text_has_more, .message_media_not_supported') !== null;
       if (incomplete) warnings.push('telegram.preview_content_incomplete');
       if (publishedAt === undefined) warnings.push('telegram.collection_incomplete:invalid_post_timestamp');
       posts.push({ id, text: raw.slice(0, textLimit), publishedAt, links: [...links], incomplete,

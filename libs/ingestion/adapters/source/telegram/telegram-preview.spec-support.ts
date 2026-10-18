@@ -1,7 +1,7 @@
 import type { Clock } from '@social-monitor/shared-kernel';
 import type { SourceProviderScanContext, SourceProviderScanResult } from '../../../ports';
 import type { TelegramPreviewClientPort, TelegramPreviewPost } from './telegram-preview-client.port';
-import { TelegramSourceProvider } from './telegram-source.provider';
+import type { TelegramSourceProvider } from './telegram-source.provider';
 
 export const telegramClock: Clock = { now: () => new Date('2026-10-18T12:00:00Z') };
 export const telegramContext = (config: Record<string, unknown> = {}): SourceProviderScanContext => ({

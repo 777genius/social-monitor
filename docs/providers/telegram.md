@@ -49,8 +49,9 @@ one HTTP request per ID. Post identities are `channel/messageId`; canonical URLs
 always point to the Telegram post, while outgoing links remain in its text/metadata.
 
 A later-page failure saves successful work and the pending range. HTTP 429 keeps
-its Retry-After backoff in the cursor. First-page failures fail the scan instead of
-reporting an empty healthy channel. When history ends before the checkpoint can be
+its Retry-After backoff in the cursor. An inaccessible latest page fails the scan instead of reporting an empty healthy
+channel. A permanently unavailable older page closes the pending range with a
+retained history gap, so it cannot block new posts indefinitely. When history ends before the checkpoint can be
 reached, the cursor keeps an explicit history gap and resumes collecting new posts.
 The gap keeps subsequent scans visibly incomplete. It requires an operator review
 or a new binding to establish a fresh collection baseline.

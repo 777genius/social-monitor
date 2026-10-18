@@ -6,7 +6,7 @@ import type {
 } from '../../../ports';
 import { telegramPreviewConfig, validateTelegramQuery } from './telegram-preview-config';
 import { TelegramPreviewError, type TelegramPreviewClientPort, type TelegramPreviewPost } from './telegram-preview-client.port';
-import { readTelegramCursor, writeTelegramCursor, type TelegramBackfill } from './telegram-preview-cursor';
+import { readTelegramCursor, writeTelegramCursor } from './telegram-preview-cursor';
 
 export const telegramPreviewCapability: SourceCapabilityProfile = {
   providerKey: 'telegram', displayName: 'Telegram public channels', version: 1, productionSafe: true,
@@ -40,6 +40,10 @@ export class TelegramSourceProvider implements SourceProviderPort {
     }
     let retryAfterUntil: number | undefined;
     let historyGap = prior.historyGap;
+    const recordHistoryGap = (afterId: number, beforeId: number): void => {
+      historyGap = { afterId: Math.min(historyGap?.afterId ?? afterId, afterId),
+        beforeId: Math.max(historyGap?.beforeId ?? beforeId, beforeId) };
+    };
     let pending = prior.pending;
     let beforeId = pending?.beforeId;
     let ceilingId = pending?.ceilingId ?? 0;
@@ -57,6 +61,11 @@ export class TelegramSourceProvider implements SourceProviderPort {
       let page;
       try { page = await this.client.readPage(config.channel, beforeId); }
       catch (error) {
+        if (beforeId !== undefined && error instanceof TelegramPreviewError && error.kind === 'unavailable' && !error.retryable) {
+          recordHistoryGap(floorId, beforeId);
+          warnings.add('telegram.collection_incomplete:history_unavailable');
+          done = true; reason = 'no_next_cursor'; break;
+        }
         if (pages === 0) throw error;
         if (error instanceof TelegramPreviewError && error.kind === 'rate_limited') {
           retryAfterUntil = this.clock.now().getTime() + Math.min(error.retryAfterMs ?? 60_000, 86_400_000);
@@ -73,8 +82,7 @@ export class TelegramSourceProvider implements SourceProviderPort {
         done = true;
         if (floorId > 0 && ceilingId > floorId) {
           const gapEnd = beforeId ?? ceilingId;
-          historyGap = { afterId: Math.min(historyGap?.afterId ?? floorId, floorId),
-            beforeId: Math.max(historyGap?.beforeId ?? gapEnd, gapEnd) };
+          recordHistoryGap(floorId, gapEnd);
         }
         reason = 'no_next_cursor';
         break;

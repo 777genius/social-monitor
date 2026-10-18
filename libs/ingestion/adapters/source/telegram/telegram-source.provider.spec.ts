@@ -118,6 +118,22 @@ describe('Telegram preview incremental collection', () => {
     expect(next.warnings).toContain('telegram.collection_incomplete:history_gap');
   });
 
+  it.each([false, true])('retains a terminal history gap and resumes the head (pending first=%s)', async (pendingFirst) => {
+    let newest = 9;
+    const provider = new TelegramSourceProvider({ readPage: async (_channel, before) => {
+      if (before !== undefined) throw new TelegramPreviewError('Old preview unavailable', 'unavailable', false);
+      return { posts: [telegramPost(newest), telegramPost(8)], warnings: [] };
+    } }, telegramClock);
+    const prior = writeTelegramCursor({ version: 1, channel: 'example_channel', scope: 'live', lastId: 2,
+      ...(pendingFirst ? { pending: { beforeId: 8, ceilingId: 9, floorId: 2, fromTime: 0, untilTime: Number.MAX_SAFE_INTEGER } } : {}),
+    });
+    const partial = await scanTelegram(provider, prior);
+    expect(readTelegramCursor(partial.nextCursor, 'example_channel', 'live')).toMatchObject({ lastId: 9, historyGap: { afterId: 2, beforeId: 8 } });
+    expect(partial.collection).toEqual({ complete: false, backfillPending: false });
+    newest = 10;
+    expect((await scanTelegram(provider, partial.nextCursor)).items.map((item) => item.externalId)).toEqual(['example_channel/10']);
+  });
+
   it('binds cursor identity, rejects malformed state and separates historical/live scopes', async () => {
     const provider = new TelegramSourceProvider(telegramClient([telegramPost(10)]), telegramClock);
     await expect(scanTelegram(provider, 'bad')).rejects.toMatchObject({ kind: 'invalid_query' });

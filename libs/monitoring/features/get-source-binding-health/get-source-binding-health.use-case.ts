@@ -108,6 +108,7 @@ export class GetSourceBindingHealthUseCase {
       ? undefined
       : buildFreshness({
           completedAt: latestScanSnapshot.completedAt,
+          collectionComplete: latestScanSnapshot.executionMetadata?.collectionComplete !== false,
           freshnessSeconds: cadence?.freshnessSeconds ?? scanPolicySnapshot.freshnessSeconds,
           now,
         });
@@ -278,6 +279,7 @@ const determineHealthState = (params: {
 
 const buildFreshness = (params: {
   readonly completedAt: Date;
+  readonly collectionComplete: boolean;
   readonly freshnessSeconds: number;
   readonly now: Date;
 }): SourceBindingHealthFreshnessView => {
@@ -287,7 +289,7 @@ const buildFreshness = (params: {
   const staleBySeconds = Math.max(0, Math.floor((params.now.getTime() - freshnessDeadlineMs) / 1000));
 
   return {
-    isFresh: params.now.getTime() <= freshnessDeadlineMs,
+    isFresh: params.collectionComplete && params.now.getTime() <= freshnessDeadlineMs,
     ageSeconds,
     freshnessDeadlineAt: new Date(freshnessDeadlineMs).toISOString(),
     staleBySeconds: staleBySeconds === 0 ? undefined : staleBySeconds,

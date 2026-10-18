@@ -157,6 +157,22 @@ const workspace = workspaceId('workspace-1');
 const now = new Date('2026-06-16T00:10:00.000Z');
 
 describe('GetSourceBindingHealthUseCase', () => {
+  it('keeps a recent but incomplete collection degraded and eligible for catch-up', async () => {
+    const { useCase, policies, jobs } = await setup();
+    await policies.save(makePolicy());
+    await jobs.save(makeJob()
+      .markEnqueued({ enqueuedAt: new Date('2026-06-16T00:00:01.000Z') })
+      .markSucceeded({ completedAt: new Date('2026-06-16T00:09:00.000Z'),
+        executionMetadata: { collectionComplete: false, backfillPending: true } }));
+    const result = await useCase.execute(baseQuery());
+    expect(result).toMatchObject({ ok: true, value: {
+      healthState: 'degraded', operatorAction: 'wait_for_collection_backfill',
+      freshness: { isFresh: false },
+      latestScan: { userState: 'scan_degraded', operatorAction: 'wait_for_collection_backfill' },
+      schedulerDecision: { canScanNow: true },
+    } });
+  });
+
   it('reports missing scan policy as not configured', async () => {
     const { useCase } = await setup();
 
