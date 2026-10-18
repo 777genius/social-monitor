@@ -75,7 +75,7 @@ telegram_channel_run() {
   local entry=/usr/local/lib/social-monitor/telegram-channel/collection-entrypoint.sh release_now
   [[ -f $entry && ! -L $entry && $(stat -c '%u:%g:%a:%h' "$entry") == 0:0:644:1 ]] || exit 78
   # Pin is supplied by the reviewed router/module cascade, never environment.
-  [[ $(sha256sum "$entry" | cut -d' ' -f1) == d36b9aaefd0cb9d8ccc5e0e3b64745b344b77041ac32222dca73885b3ee47bf2 ]] || exit 78
+  [[ $(sha256sum "$entry" | cut -d' ' -f1) == cf48bc9b9a4445cf4c46badcb7fd64e2bda35cd96100cba365f7f1c3cd060f36 ]] || exit 78
   release_now=$(telegram_channel_release) || exit 78
   [[ $release_now == "$telegram_release" ]] || exit 78
   [[ $(date -u +%F) == "$day" && $(printf '%02d' "$((10#$(date -u +%H) / 4 * 4))") == "$slot" ]] || exit 78

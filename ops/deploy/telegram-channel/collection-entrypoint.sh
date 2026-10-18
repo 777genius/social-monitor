@@ -5,7 +5,7 @@ test "$#" -eq 1 && test "$1" = --collect || exit 64
 test "${SOCIAL_MONITOR_RUNTIME_PROFILE:-}" = beta || exit 78
 password_file=/run/secrets/postgres-collection-password
 test -f "$password_file" && test ! -L "$password_file" || exit 78
-test "$(stat -c '%u:%g:%a:%h' "$password_file")" = 0:0:400:1 || exit 78
+test "$(stat -c '%u:%g:%a:%h' "$password_file")" = 0:0:600:1 || exit 78
 IFS= read -r db_password < "$password_file"
 case "$db_password" in *[!0-9a-f]*|'') exit 78 ;; esac
 test "${#db_password}" -eq 64 || exit 78
