@@ -83,6 +83,25 @@ test('RSS refuses packet day mismatch and preserves guid-only day precision', ()
   assert.equal(result.items[1].metadata.canonicalUrlSource, 'google-news-guid-fallback');
 });
 
+test('RSS accepts key-omitted guid-only items and canonicalizes nulls', () => {
+  const raw = {
+    generatedAt: '2026-10-17T09:00:00.000Z', jobId: 'retained-rss',
+    window: { from: '2026-09-20', to: '2026-10-17' }, count: 1, enrichedWithLink: 0,
+    items: [{
+      guid: 'google-news-keyless', publishedUtcDate: '2026-10-17', title: 'Keyless',
+      provenance: { reconciliationPacket: 'authentic' },
+    }],
+    itemsSha256: sha('keyless'),
+  };
+  const result = normalizeRssArchiveMissing(raw, '2026-10-17', ['google-news-keyless']);
+  assert.equal(result.items[0].body, '');
+  assert.equal(result.items[0].canonicalUrl, 'https://news.google.com/rss/articles/google-news-keyless');
+  assert.equal(result.items[0].metadata.description, null);
+  assert.equal(result.items[0].metadata.canonicalUrlSource, 'google-news-guid-fallback');
+  assert.throws(() => normalizeRssArchiveMissing(
+    { ...raw, items: [{ ...raw.items[0], extra: 1 }] }, '2026-10-17', ['google-news-keyless']));
+});
+
 test('RSS re-run is idempotent over already-present native IDs', async () => {
   const first = await executeRssArchiveMissingImport(plan, manifest, {
     existingIds: async () => [], insertMissing: async () => 2, present: async () => 2,

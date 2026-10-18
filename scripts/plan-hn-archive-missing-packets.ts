@@ -24,7 +24,7 @@ export function planHnArchiveMissingPackets(manifestInput: unknown, env = proces
   const manifest = record(manifestInput, 'HN manifest object required');
   exactKeys(manifest, ['generatedAt','jobId','window','count','fetchErrors','items','itemsSha256'],
     'HN manifest shape invalid');
-  need(manifest.fetchErrors instanceof Array && manifest.fetchErrors.length === 0 &&
+  need(manifest.fetchErrors === 0 &&
     manifest.items instanceof Array && manifest.count === manifest.items.length &&
     digest.test(String(manifest.itemsSha256)), 'HN manifest integrity invalid');
   const scope = record(JSON.parse(env.MISSING_IMPORT_SCOPE_JSON ?? ''), 'HN import scope required');

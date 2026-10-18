@@ -35,10 +35,15 @@ export function planRssArchiveMissingPackets(manifestInput: unknown, env = proce
   need(typeof bindingConfig === 'string' && bindingConfig.length > 0, 'RSS binding config required');
   const items = manifest.items.map((item, index) => {
     const value = record(item, `RSS item ${index} invalid`);
-    exactKeys(value, ['guid','publishedUtcDate','title','provenance','link','description'], `RSS item ${index} shape invalid`);
+    const required = ['guid','publishedUtcDate','title','provenance'];
+    const allowed = ['guid','publishedUtcDate','title','provenance','link','description'];
+    need(required.every(key => key in value) && Object.keys(value).every(key => allowed.includes(key)),
+      `RSS item ${index} shape invalid`);
     need(typeof value.guid === 'string' && value.guid.trim().length > 0 &&
       dayPattern.test(String(value.publishedUtcDate)) && typeof value.title === 'string' &&
-      value.title.trim().length > 0 && (value.link === null || (typeof value.link === 'string' &&
+      value.title.trim().length > 0 &&
+      (value.description === undefined || typeof value.description === 'string') &&
+      (value.link === undefined || value.link === null || (typeof value.link === 'string' &&
         ['http:','https:'].includes(new URL(value.link).protocol))), `RSS item ${index} invalid`);
     return value;
   });

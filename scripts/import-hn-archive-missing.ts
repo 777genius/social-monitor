@@ -246,7 +246,7 @@ export async function runHnArchiveMissingWithRuntime(
 function itemsFor(selected: Awaited<ReturnType<typeof readHnArchiveMissingPartition>>): unknown {
   return {
     generatedAt: '', jobId: 'retained-packet', window: { from: selected.plan.day, to: selected.plan.day },
-    count: selected.plan.selectedIds.length, fetchErrors: [], items: selected.items, itemsSha256: selected.plan.itemsSha256,
+    count: selected.plan.selectedIds.length, fetchErrors: 0, items: selected.items, itemsSha256: selected.plan.itemsSha256,
   };
 }
 async function connectionTransaction(

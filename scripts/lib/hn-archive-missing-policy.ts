@@ -15,7 +15,7 @@ export type HnArchiveItem = Readonly<{
 }>;
 export type HnArchiveManifest = Readonly<{
   generatedAt: string; jobId: string; window: Readonly<{ from: string; to: string }>;
-  count: number; fetchErrors: readonly unknown[]; items: readonly HnArchiveItem[];
+  count: number; fetchErrors: number; items: readonly HnArchiveItem[];
   itemsSha256: string;
 }>;
 export type HnArchiveMissingPlan = Readonly<{
@@ -83,7 +83,7 @@ export function parseHnArchiveManifest(input: unknown): HnArchiveManifest {
     Date.parse(`${window.from}T00:00:00Z`) <= Date.parse(`${window.to}T00:00:00Z`), 'HN manifest window invalid');
   archiveNeed(typeof value.jobId === 'string' && /^[a-zA-Z0-9._:-]{1,128}$/u.test(value.jobId) &&
     Number.isInteger(value.count) && value.count === (value.items as unknown[]).length &&
-    Array.isArray(value.fetchErrors) && value.fetchErrors.length === 0 &&
+    value.fetchErrors === 0 &&
     Array.isArray(value.items) && digest.test(String(value.itemsSha256)), 'HN manifest integrity invalid');
   iso(value.generatedAt, 'HN generatedAt invalid');
   return value as unknown as HnArchiveManifest;

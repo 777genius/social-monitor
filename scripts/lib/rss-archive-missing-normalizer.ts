@@ -55,7 +55,7 @@ function normalizeItem(item: RssArchiveManifest['items'][number]): FetchedSource
     externalId: item.guid,
     canonicalUrl: item.link ?? fallback,
     title: item.title,
-    body: item.description,
+    body: item.description ?? '',
     publishedAt: new Date(`${item.publishedUtcDate}T00:00:00.000Z`),
     metadata: {
       kind: 'rss_item', title: item.title, description: item.description,

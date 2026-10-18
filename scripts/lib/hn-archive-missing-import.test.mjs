@@ -41,7 +41,7 @@ const item = {
 const manifest = {
   generatedAt: '2026-10-17T09:00:00.000Z', jobId: 'retained-hn',
   window: { from: '2026-09-20', to: '2026-10-17' }, count: 1,
-  fetchErrors: [], items: [item], itemsSha256: sha('items'),
+  fetchErrors: 0, items: [item], itemsSha256: sha('items'),
 };
 const plan = {
   schemaVersion: 1, kind: 'hn-archive-missing.v1', day: '2026-10-17',

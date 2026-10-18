@@ -5,7 +5,7 @@ export { archiveHash, archiveNeed, canonicalJson };
 export type RssArchiveScope = HnArchiveScope;
 export type RssArchiveItem = Readonly<{
   guid: string; publishedUtcDate: string; title: string;
-  provenance: Readonly<Record<string, unknown>>; link: string | null; description: string;
+  provenance: Readonly<Record<string, unknown>>; link: string | null; description: string | null;
 }>;
 export type RssArchiveManifest = Readonly<{
   generatedAt: string; jobId: string; window: Readonly<{ from: string; to: string }>;
@@ -67,17 +67,22 @@ export function parseRssArchiveManifest(input: unknown): RssArchiveManifest {
 export function qualifyRssArchiveItem(input: unknown, day: string, ordinal: number): RssArchiveItem {
   archiveNeed(dayPattern.test(day), 'RSS packet day invalid');
   const value = object(input, `RSS item ${ordinal} invalid`);
-  exactKeys(value, ['guid','publishedUtcDate','title','provenance','link','description'],
+  const required = ['guid','publishedUtcDate','title','provenance'];
+  const allowed = ['guid','publishedUtcDate','title','provenance','link','description'];
+  archiveNeed(required.every(key => key in value) && Object.keys(value).every(key => allowed.includes(key)),
     `RSS item ${ordinal} shape invalid`);
   archiveNeed(typeof value.guid === 'string' && value.guid.trim().length > 0 &&
     value.guid.length <= 2048 && value.publishedUtcDate === day &&
     typeof value.title === 'string' && value.title.trim().length > 0 &&
-    typeof value.description === 'string', `RSS item ${ordinal} identity invalid`);
-  archiveNeed(value.link === null || (typeof value.link === 'string' &&
-    ['http:','https:'].includes(new URL(value.link).protocol)), `RSS item ${ordinal} link invalid`);
+    (value.description === undefined || typeof value.description === 'string'),
+    `RSS item ${ordinal} identity invalid`);
+  archiveNeed(value.link === undefined || value.link === null ||
+    (typeof value.link === 'string' && ['http:','https:'].includes(new URL(value.link).protocol)),
+    `RSS item ${ordinal} link invalid`);
   const provenance = object(value.provenance, `RSS item ${ordinal} provenance invalid`);
   archiveNeed(Object.keys(provenance).length > 0, `RSS item ${ordinal} provenance empty`);
-  return value as unknown as RssArchiveItem;
+  return { ...value, link: value.link ?? null,
+    description: typeof value.description === 'string' ? value.description : null } as unknown as RssArchiveItem;
 }
 export function validateRssArchiveClaim(claim: unknown, plan: RssArchiveMissingPlan): RssArchiveClaim {
   const value = object(claim, 'RSS native claim object required');
