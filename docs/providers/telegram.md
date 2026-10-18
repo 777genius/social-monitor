@@ -1,6 +1,7 @@
 # Telegram public channel previews
 
-Provider key: `telegram`. Anonymous HTTPS requests to `https://t.me/s/<channel>`;
+Provider key: `telegram`. Anonymous HTTPS public-channel previews, starting at
+`https://t.me/s/<channel>` with bounded fallback to official Telegram domains;
 no Telegram account, bot, token, channel membership or extra container is needed.
 The provider is implemented and fixture-certified. Deployment-scoped live evidence
 remains required before external beta approval.
@@ -36,6 +37,30 @@ no environment variables, credentials, migrations, services or dependencies.
 Collection belongs to the tenant/workspace source binding; this does not introduce
 a separate Telegram session or collector for each user.
 
+## Official-domain fallback
+
+Each page tries the fixed HTTPS host list `t.me`, `telegram.me`, then
+`telegram.dog`. These aliases are documented by [Telegram](https://core.telegram.org/api/links).
+The channel and `before` boundary stay identical on every attempt; changing the
+transport host does not reset a cursor or create a different post identity.
+Binding inputs and canonical post URLs continue to use the documented `t.me`
+format. Alternate hosts are an internal transport policy, not a configurable proxy.
+
+Fallback applies only to transport failures and HTTP 5xx responses. HTTP 429
+stops the page immediately and retains the existing rate-limit/backoff behavior;
+another domain is never used to bypass that pause. Non-200 statuses are classified
+from response headers and their bodies are closed immediately, so a stalled or
+oversized error body cannot turn a 429 or 4xx into a transport retry. HTTP 4xx, unavailable or
+malformed preview HTML, unsafe DNS/connection results and redirects also stop
+without switching hosts. All attempts share one page timeout budget and use
+the guarded HTTP client, bounded bodies and no cookies or authorization.
+Successful fallback produces an endpoint warning without marking otherwise
+complete content as partial.
+
+These domains may share Telegram infrastructure. Fallback can help with a
+domain-specific DNS or network problem; it cannot guarantee availability during
+a shared Telegram outage or reveal content missing from public previews.
+
 ## Checkpoint and catch-up
 
 The existing scan cursor repository persists a versioned channel-bound cursor.
@@ -62,6 +87,26 @@ An explicit `targetPublishedWindow` has its own cursor scope. Changing that wind
 starts a separate traversal; abandoning pending traversal records a history gap.
 Do not treat moving historical windows as a guarantee of gapless live collection.
 
+For a complete calendar day, set the window in the binding configuration, for example:
+
+```json
+{
+  "targetPublishedWindow": {
+    "startInclusive": "2026-10-17T00:00:00+03:00",
+    "endExclusive": "2026-10-18T00:00:00+03:00"
+  }
+}
+```
+
+This example is October 17 in Kyiv, or `[2026-10-16T21:00:00Z,
+2026-10-17T21:00:00Z)`. Newer posts are skipped while traversing toward the window;
+collection stops at the older boundary. The start is included and the end is
+excluded. Use explicit offsets or UTC, and compute each local midnight in the
+chosen timezone rather than subtracting a fixed 24 hours across daylight-saving
+changes. A completed window can be requested again without inserting duplicate
+channel/message identities; a retained cursor also keeps completed posts out
+of the next ingestion batch. This time-window contract is independent of which official host serves a page.
+
 ## What “incomplete” means
 
 Transport success and coverage are separate. Partial scans persist
@@ -86,8 +131,13 @@ npm run check:source-certification
 npm run check:live-telegram-preview
 # Optional anonymous diagnostic for another public channel:
 npm run check:live-telegram-preview -- --channel=durov
+# Force primary-domain transport failure and verify both mirrors with live HTTPS:
+npm run check:live-telegram-preview -- --channel=hiaimediaen --verify-fallback
 ```
 
+The fallback diagnostic injects network errors for the earlier host(s), then
+uses real HTTPS responses from each official mirror. It checks older-page
+boundaries and cursor resumption; it does not claim that a real outage occurred.
 The live diagnostic prints counts and coverage signals, without channel content
 or credentials. It does not manufacture deployment certification. External beta
 approval requires an artifact satisfying `telegram_public_preview_live` and the
@@ -95,7 +145,10 @@ existing provenance rules; see `ops/ingestion/source-live-certification-evidence
 
 The DOM extraction was compared with [Horizon’s Telegram scraper](https://github.com/Thysrael/Horizon/blob/8f5446bf45c2d7763d17423d97d17906add85da1/src/scrapers/telegram.py).
 Our implementation uses the existing source-provider contract and adds persistent
-backfill, fixed-host HTTP safety and explicit coverage status.
+backfill, a fixed official-host allowlist, a shared timeout budget and explicit
+coverage status. Horizon passes `timeout=120.0` to each HTTP request; our
+implementation shares one bounded page timeout across all hosts. Rate limiting
+stops the chain instead of retrying the same limit on another domain.
 
 Telegram describes account-free channel previews in its
 [public-channel preview announcement](https://telegram.org/blog/privacy-discussions-web-bots#view-public-channels).

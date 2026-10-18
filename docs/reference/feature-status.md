@@ -23,7 +23,7 @@ provider availability still depends on the deployed configuration and credential
 - **Reddit:** beta implementation; real collection requires OAuth credentials.
 - **X/Twitter:** implemented through the private `x-collector`, including daily collection and metric renewal. Requires collector configuration and dedicated research accounts.
 - **GitHub Issues:** manual-only; explicitly gated in beta.
-- **Telegram:** anonymous public web previews, saved post checkpoint, bounded catch-up and explicit incomplete coverage; no account/bot/token. Deployment-scoped live evidence remains required for external beta.
+- **Telegram:** anonymous public web previews with bounded official-domain fallback, saved post checkpoint, bounded catch-up and explicit incomplete coverage; no account/bot/token. Domain fallback preserves the cursor and stops on rate limits and access/security failures. Deployment-scoped live evidence remains required for external beta.
 
 See the [provider matrix and setup guides](../providers/README.md) before enabling a source.
 
