@@ -14,7 +14,7 @@ import { CryptoIdGenerator, SystemClock, tenantId, workspaceId } from '@social-m
 import { PrismaIngestionWorkerConnection } from '../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection';
 import { insertOnlyFeedTransaction, assertTrustedAncestry, finiteRssDatabaseUrl, openFiniteOperatorSqlPool } from './import-rss-sep24-verified';
 import { noRetryGitHubArchiveTransaction, writeExclusive } from './lib/github-archive-finite-journal';
-import { assertFiniteGitHubArchiveRole } from './lib/github-archive-finite-role-policy';
+import { assertFiniteGitHubArchiveRole, scopedGitHubArchiveRead } from './lib/github-archive-finite-role-policy';
 import {
   archiveHash, canonicalJson, rssArchiveJournalReceipt,
   validateRssArchiveClaim, validateRssArchivePlanShape, type RssArchiveMissingPlan,
@@ -24,19 +24,6 @@ import { executeRssArchiveMissingImport, type RssArchiveMissingDependencies } fr
 type Transaction = PrismaIngestionWorkerConnection & {
   $queryRawUnsafe: <T>(sql: string, ...args: unknown[]) => Promise<T>;
 };
-type RoleRow = Readonly<{ allowed: boolean }>;
-function isRoleRow(value: unknown): value is RoleRow {
-  return value !== null && typeof value === 'object' && 'allowed' in value &&
-    typeof value.allowed === 'boolean';
-}
-function roleRows(value: readonly unknown[]): readonly RoleRow[] {
-  const rows: RoleRow[] = [];
-  for (const row of value) {
-    if (!isRoleRow(row)) throw new Error('Finite collection role rows invalid');
-    rows.push(row);
-  }
-  return rows;
-}
 export type RssArchiveMissingRequest = Readonly<{
   inputRoot: string; day: string; journalDir: string; semanticKey: string;
   expectedPlanSha256: string; packetSha256: string; correlationId: string;
@@ -204,14 +191,7 @@ export async function runRssArchiveMissingWithRuntime(
   try {
     const url = finiteRssDatabaseUrl(databaseUrl);
     sql = runtime.openSql(url);
-    const client = await sql.connect();
-    try {
-      await assertFiniteGitHubArchiveRole(async (text, values) => {
-        const result = await client.query(text, [...values]);
-        return roleRows(result.rows);
-      }, selected.plan.scope, 'read');
-    }
-    finally { client.release(); }
+    await scopedGitHubArchiveRead(sql, selected.plan.scope, async () => undefined);
     prisma = await runtime.openPrisma(url);
     const started = rssArchiveJournalReceipt({
       plan: selected.plan, coverage: selected.plan.coverage, status: 'started',
