@@ -65,9 +65,10 @@ export function planRssArchiveMissingPackets(manifestInput: unknown, env = proce
         manifestSha256: hash(JSON.stringify(manifest)), itemsSha256: manifest.itemsSha256,
         scope, bindingConfig, bindingConfigSha256: hash(bindingConfig), selectedIds, items: chunk,
       };
+      const packetBytes = JSON.stringify(packet) + '\n';
       const unsigned = {
         schemaVersion: 1, kind: 'rss-archive-missing.v1', day, providerKey: 'rss',
-        coverage: 'PARTIAL_ARCHIVED_OBSERVATIONS', semanticKey, packetSha256: hash(JSON.stringify(packet)),
+        coverage: 'PARTIAL_ARCHIVED_OBSERVATIONS', semanticKey, packetSha256: hash(packetBytes),
         manifestSha256: packet.manifestSha256, itemsSha256: manifest.itemsSha256, scope,
         bindingConfig, bindingConfigSha256: packet.bindingConfigSha256,
         selectedIds, candidateIds: selectedIds,
@@ -83,10 +84,13 @@ export async function writeRssArchiveMissingPackets(manifestPath: string, output
   const written: string[] = [];
   for (const entry of planned) {
     const packet = record(entry.packet, 'RSS planned packet invalid');
+    const plan = record(entry.plan, 'RSS planned record invalid');
     const day = String(packet.day), ordinal = String(entry.ordinal).padStart(4, '0');
     const directory = join(root, day, ordinal);
     await mkdir(directory, { recursive: true, mode: 0o700 });
-    await writeFile(join(directory, 'packet.json'), JSON.stringify(packet) + '\n',
+    const packetBytes = JSON.stringify(packet) + '\n';
+    need(hash(packetBytes) === plan.packetSha256, 'RSS packet pin mismatch');
+    await writeFile(join(directory, 'packet.json'), packetBytes,
       { encoding: 'utf8', mode: 0o600, flag: 'wx' });
     await writeFile(join(directory, 'plan.json'), JSON.stringify(entry.plan) + '\n',
       { encoding: 'utf8', mode: 0o600, flag: 'wx' });
@@ -94,7 +98,7 @@ export async function writeRssArchiveMissingPackets(manifestPath: string, output
   }
   return written;
 }
-if (process.argv[1] !== undefined && resolve(process.argv[1]) === __filename) {
+if (typeof __filename !== 'undefined' && process.argv[1] !== undefined && resolve(process.argv[1]) === __filename) {
   if (process.argv.length !== 4) throw new Error('Usage: plan-rss-archive-missing-packets.ts MANIFEST_PATH OUTPUT_DIR');
   void writeRssArchiveMissingPackets(process.argv[2]!, process.argv[3]!).then(paths =>
     process.stdout.write(JSON.stringify(paths) + '\n')).catch(() => { process.exitCode = 1; });

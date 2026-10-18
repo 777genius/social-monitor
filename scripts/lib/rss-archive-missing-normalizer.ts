@@ -50,7 +50,7 @@ function parse(input: unknown): RssArchiveManifest {
   };
 }
 function normalizeItem(item: RssArchiveManifest['items'][number]): FetchedSourceItem {
-  const fallback = `https://news.google.com/rss/articles/${item.guid}`;
+  const fallback = `https://news.google.com/rss/articles/${encodeURIComponent(item.guid)}`;
   return {
     externalId: item.guid,
     canonicalUrl: item.link ?? fallback,

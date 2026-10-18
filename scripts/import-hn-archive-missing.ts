@@ -283,7 +283,10 @@ async function main(): Promise<void> {
   const plan = (await readHnArchiveMissingPartition({
     inputRoot: inputRoot!, day: day!, semanticKey: semanticKey!, packetSha256: packetSha256!,
   })).plan;
-  validateHnArchiveClaim(JSON.parse(raw.toString('utf8')), plan);
+  validateHnArchiveClaim(JSON.parse(raw.toString('utf8')), plan, {
+    inputRoot: inputRoot!, day: day!, journalDir: journalDir!, semanticKey: semanticKey!,
+    planSha256: expectedPlanSha256!, packetSha256: packetSha256!, correlationId: correlationId!,
+  });
   const receipt = await runHnArchiveMissingWithRuntime({
     inputRoot: inputRoot!, day: day!, journalDir: journalDir!, semanticKey: semanticKey!,
     expectedPlanSha256: expectedPlanSha256!, packetSha256: packetSha256!, correlationId: correlationId!,

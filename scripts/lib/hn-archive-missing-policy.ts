@@ -82,9 +82,9 @@ export function parseHnArchiveManifest(input: unknown): HnArchiveManifest {
   archiveNeed(dayPattern.test(String(window.from)) && dayPattern.test(String(window.to)) &&
     Date.parse(`${window.from}T00:00:00Z`) <= Date.parse(`${window.to}T00:00:00Z`), 'HN manifest window invalid');
   archiveNeed(typeof value.jobId === 'string' && /^[a-zA-Z0-9._:-]{1,128}$/u.test(value.jobId) &&
-    Number.isInteger(value.count) && value.count === (value.items as unknown[]).length &&
-    value.fetchErrors === 0 &&
-    Array.isArray(value.items) && digest.test(String(value.itemsSha256)), 'HN manifest integrity invalid');
+    Number.isInteger(value.count) && value.fetchErrors === 0 &&
+    Array.isArray(value.items) && value.count === (value.items as unknown[]).length &&
+    digest.test(String(value.itemsSha256)), 'HN manifest integrity invalid');
   iso(value.generatedAt, 'HN generatedAt invalid');
   return value as unknown as HnArchiveManifest;
 }
@@ -122,7 +122,10 @@ export function qualifyHnArchiveItem(input: unknown, day: string, ordinal: numbe
   });
   return { ...value, comments } as unknown as HnArchiveItem;
 }
-export function validateHnArchiveClaim(claim: unknown, plan: HnArchiveMissingPlan): HnArchiveClaim {
+export function validateHnArchiveClaim(claim: unknown, plan: HnArchiveMissingPlan, invocation: {
+  inputRoot: string; day: string; journalDir: string; semanticKey: string;
+  planSha256: string; packetSha256: string; correlationId: string;
+}): HnArchiveClaim {
   const value = object(claim, 'HN native claim object required');
   exactKeys(value, ['mode','inputRoot','day','journalDir','semanticKey','planSha256','packetSha256','correlationId'],
     'HN native claim shape invalid');
@@ -131,6 +134,10 @@ export function validateHnArchiveClaim(claim: unknown, plan: HnArchiveMissingPla
     value.packetSha256 === plan.packetSha256 && typeof value.inputRoot === 'string' &&
     typeof value.journalDir === 'string' && typeof value.correlationId === 'string' &&
     /^[a-zA-Z0-9._:-]{1,128}$/u.test(value.correlationId), 'HN native claim identity invalid');
+  archiveNeed(value.inputRoot === invocation.inputRoot && value.day === invocation.day &&
+    value.journalDir === invocation.journalDir && value.semanticKey === invocation.semanticKey &&
+    value.planSha256 === invocation.planSha256 && value.packetSha256 === invocation.packetSha256 &&
+    value.correlationId === invocation.correlationId, 'HN native claim invocation mismatch');
   return value as unknown as HnArchiveClaim;
 }
 export function hnArchiveJournalReceipt(input: {

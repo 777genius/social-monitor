@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { register } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 register(`data:text/javascript,${encodeURIComponent(`
@@ -67,11 +70,17 @@ test('RSS refuses claim and plan digest mismatches before any write', async () =
     present: async () => 2,
   }, plan.planSha256));
   assert.equal(writes, 0);
+  const invocation = {
+    inputRoot: '/input', day: plan.day, journalDir: '/journal',
+    semanticKey: plan.semanticKey, planSha256: plan.planSha256,
+    packetSha256: plan.packetSha256, correlationId: 'corr',
+  };
   assert.throws(() => validateRssArchiveClaim({
-    mode: 'import-rss-archive-missing', inputRoot: '/input', day: plan.day,
-    journalDir: '/journal', semanticKey: plan.semanticKey,
-    planSha256: plan.planSha256, packetSha256: plan.packetSha256, correlationId: 'corr',
-  }, { ...plan, packetSha256: sha('other') }));
+    mode: 'import-rss-archive-missing', ...invocation,
+  }, { ...plan, packetSha256: sha('other') }, invocation));
+  assert.throws(() => validateRssArchiveClaim({
+    mode: 'import-rss-archive-missing', ...invocation,
+  }, plan, { ...invocation, journalDir: '/other' }));
 });
 
 test('RSS refuses packet day mismatch and preserves guid-only day precision', () => {
@@ -124,4 +133,35 @@ test('RSS journal receipt has exactly the required keys', () => {
     'inserted', 'itemsSha256', 'planSha256', 'packetSha256', 'postWritePresent',
     'providerKey', 'schemaVersion', 'scope', 'semanticKey', 'status',
   ].sort());
+});
+
+test('RSS fallback URL percent-encodes raw GUIDs', () => {
+  const guid = 'https://news.google.com/rss/articles/CBMi?oc=5#frag';
+  const raw = {
+    generatedAt: '2026-10-17T09:00:00.000Z', jobId: 'retained-rss',
+    window: { from: '2026-09-20', to: '2026-10-17' }, count: 1, enrichedWithLink: 0,
+    items: [{
+      guid, publishedUtcDate: '2026-10-17', title: 'Encoded guid',
+      provenance: { reconciliationPacket: 'authentic' },
+    }],
+    itemsSha256: sha('encoded-guid'),
+  };
+  const result = normalizeRssArchiveMissing(raw, '2026-10-17', [guid]);
+  assert.equal(result.items[0].canonicalUrl,
+    `https://news.google.com/rss/articles/${encodeURIComponent(guid)}`);
+  assert.notEqual(result.items[0].canonicalUrl, `https://news.google.com/rss/articles/${guid}`);
+});
+
+test('RSS planner pins packetSha256 to exact packet.json file bytes', async () => {
+  const { writeRssArchiveMissingPackets } = await import('../plan-rss-archive-missing-packets.ts');
+  process.env.MISSING_IMPORT_SCOPE_JSON = JSON.stringify(scope);
+  process.env.MISSING_IMPORT_BINDING_CONFIG = '{}';
+  const root = await mkdtemp(join(tmpdir(), 'rss-packets-'));
+  const manifestPath = join(root, 'manifest.json');
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const [directory] = await writeRssArchiveMissingPackets(manifestPath, join(root, 'packets'));
+  const packetBytes = await readFile(join(directory, 'packet.json'));
+  const planned = JSON.parse(await readFile(join(directory, 'plan.json'), 'utf8'));
+  assert.equal(sha(packetBytes), planned.packetSha256);
+  assert.equal(planned.semanticKey, plan.semanticKey);
 });

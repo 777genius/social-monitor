@@ -56,9 +56,10 @@ export function parseRssArchiveManifest(input: unknown): RssArchiveManifest {
   archiveNeed(dayPattern.test(String(window.from)) && dayPattern.test(String(window.to)) &&
     Date.parse(`${window.from}T00:00:00Z`) <= Date.parse(`${window.to}T00:00:00Z`), 'RSS manifest window invalid');
   archiveNeed(typeof value.jobId === 'string' && /^[a-zA-Z0-9._:-]{1,128}$/u.test(value.jobId) &&
-    Number.isInteger(value.count) && value.count === (value.items as unknown[]).length &&
+    Number.isInteger(value.count) && Array.isArray(value.items) &&
+    value.count === (value.items as unknown[]).length &&
     typeof value.enrichedWithLink === 'number' && Number.isInteger(value.enrichedWithLink) &&
-    value.enrichedWithLink >= 0 && value.enrichedWithLink <= value.count && Array.isArray(value.items) &&
+    value.enrichedWithLink >= 0 && value.enrichedWithLink <= value.count &&
     digest.test(String(value.itemsSha256)), 'RSS manifest integrity invalid');
   archiveNeed(typeof value.generatedAt === 'string' && utcPattern.test(value.generatedAt) &&
     Number.isFinite(Date.parse(value.generatedAt)), 'RSS generatedAt invalid');
@@ -84,7 +85,10 @@ export function qualifyRssArchiveItem(input: unknown, day: string, ordinal: numb
   return { ...value, link: value.link ?? null,
     description: typeof value.description === 'string' ? value.description : null } as unknown as RssArchiveItem;
 }
-export function validateRssArchiveClaim(claim: unknown, plan: RssArchiveMissingPlan): RssArchiveClaim {
+export function validateRssArchiveClaim(claim: unknown, plan: RssArchiveMissingPlan, invocation: {
+  inputRoot: string; day: string; journalDir: string; semanticKey: string;
+  planSha256: string; packetSha256: string; correlationId: string;
+}): RssArchiveClaim {
   const value = object(claim, 'RSS native claim object required');
   exactKeys(value, ['mode','inputRoot','day','journalDir','semanticKey','planSha256','packetSha256','correlationId'],
     'RSS native claim shape invalid');
@@ -93,6 +97,10 @@ export function validateRssArchiveClaim(claim: unknown, plan: RssArchiveMissingP
     value.packetSha256 === plan.packetSha256 && typeof value.inputRoot === 'string' &&
     typeof value.journalDir === 'string' && typeof value.correlationId === 'string' &&
     /^[a-zA-Z0-9._:-]{1,128}$/u.test(value.correlationId), 'RSS native claim identity invalid');
+  archiveNeed(value.inputRoot === invocation.inputRoot && value.day === invocation.day &&
+    value.journalDir === invocation.journalDir && value.semanticKey === invocation.semanticKey &&
+    value.planSha256 === invocation.planSha256 && value.packetSha256 === invocation.packetSha256 &&
+    value.correlationId === invocation.correlationId, 'RSS native claim invocation mismatch');
   return value as unknown as RssArchiveClaim;
 }
 export function rssArchiveJournalReceipt(input: {

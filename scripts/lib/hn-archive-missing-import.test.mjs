@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { register } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 register(`data:text/javascript,${encodeURIComponent(`
@@ -62,11 +65,17 @@ test('HN refuses claim and plan digest mismatches before any write', async () =>
     projectComments: async () => 1,
   }, plan.planSha256));
   assert.equal(writes, 0);
+  const invocation = {
+    inputRoot: '/input', day: plan.day, journalDir: '/journal',
+    semanticKey: plan.semanticKey, planSha256: plan.planSha256,
+    packetSha256: plan.packetSha256, correlationId: 'corr',
+  };
   assert.throws(() => validateHnArchiveClaim({
-    mode: 'import-hn-archive-missing', inputRoot: '/input', day: plan.day,
-    journalDir: '/journal', semanticKey: plan.semanticKey,
-    planSha256: plan.planSha256, packetSha256: plan.packetSha256, correlationId: 'corr',
-  }, { ...plan, packetSha256: sha('other') }));
+    mode: 'import-hn-archive-missing', ...invocation,
+  }, { ...plan, packetSha256: sha('other') }, invocation));
+  assert.throws(() => validateHnArchiveClaim({
+    mode: 'import-hn-archive-missing', ...invocation,
+  }, plan, { ...invocation, inputRoot: '/other' }));
 });
 
 test('HN refuses packet day mismatch and round-trips comment fields', () => {
@@ -103,4 +112,18 @@ test('HN journal receipt has exactly the required keys', () => {
     'inserted', 'itemsSha256', 'planSha256', 'packetSha256', 'postWritePresent',
     'providerKey', 'schemaVersion', 'scope', 'semanticKey', 'status',
   ].sort());
+});
+
+test('HN planner pins packetSha256 to exact packet.json file bytes', async () => {
+  const { writeHnArchiveMissingPackets } = await import('../plan-hn-archive-missing-packets.ts');
+  process.env.MISSING_IMPORT_SCOPE_JSON = JSON.stringify(scope);
+  process.env.MISSING_IMPORT_BINDING_CONFIG = '{}';
+  const root = await mkdtemp(join(tmpdir(), 'hn-packets-'));
+  const manifestPath = join(root, 'manifest.json');
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const [directory] = await writeHnArchiveMissingPackets(manifestPath, join(root, 'packets'));
+  const packetBytes = await readFile(join(directory, 'packet.json'));
+  const planned = JSON.parse(await readFile(join(directory, 'plan.json'), 'utf8'));
+  assert.equal(sha(packetBytes), planned.packetSha256);
+  assert.equal(planned.semanticKey, plan.semanticKey);
 });

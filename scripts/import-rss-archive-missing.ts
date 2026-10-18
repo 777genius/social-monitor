@@ -261,7 +261,10 @@ async function main(): Promise<void> {
   const plan = (await readRssArchiveMissingPartition({
     inputRoot: inputRoot!, day: day!, semanticKey: semanticKey!, packetSha256: packetSha256!,
   })).plan;
-  validateRssArchiveClaim(JSON.parse(raw.toString('utf8')), plan);
+  validateRssArchiveClaim(JSON.parse(raw.toString('utf8')), plan, {
+    inputRoot: inputRoot!, day: day!, journalDir: journalDir!, semanticKey: semanticKey!,
+    planSha256: expectedPlanSha256!, packetSha256: packetSha256!, correlationId: correlationId!,
+  });
   const receipt = await runRssArchiveMissingWithRuntime({
     inputRoot: inputRoot!, day: day!, journalDir: journalDir!, semanticKey: semanticKey!,
     expectedPlanSha256: expectedPlanSha256!, packetSha256: packetSha256!, correlationId: correlationId!,
