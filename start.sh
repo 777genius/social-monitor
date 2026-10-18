@@ -6,7 +6,6 @@ ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 STATE="$ROOT/.social-monitor"
 PORT=8080
 OPEN_BROWSER=1
-CONFIGURE=0
 LOCAL_IMAGES=0
 STOP=0
 DEFER_AI=0
@@ -18,14 +17,14 @@ TOKEN=
 SCORING_KEY=""
 usage() {
   cat <<'HELP'
-Usage: ./start.sh [--port 8080] [--state-dir PATH] [--no-open] [--configure]
+Usage: ./start.sh [--port 8080] [--state-dir PATH] [--no-open]
                   [--ai codex|external] [--model MODEL] [--codex-auth-file PATH]
                   [--runtime-address HOST:PORT] [--runtime-token-file PATH]
                   [--openrouter-key-file PATH]
                   [--local-images] [--stop] [--without-ai]
-Default: ask once, preserve configuration on subsequent starts. External runtime
-must implement the Social Monitor agent-runtime gRPC contract. --local-images is
-for development/E2E with explicitly built or loaded images; it never builds code.
+Default: start without AI and without questions; reuse existing configuration.
+To connect AI, pass --ai codex, --openrouter-key-file and --codex-auth-file.
+See docs/reference/self-hosting.md. --local-images never builds code.
 HELP
 }
 die() { printf '%s\n' "$*" >&2; exit 1; }
@@ -34,7 +33,6 @@ while (($#)); do
     --port) PORT=${2:?Missing port}; shift 2 ;;
     --state-dir) STATE=${2:?Missing path}; shift 2 ;;
     --no-open) OPEN_BROWSER=0; shift ;;
-    --configure) CONFIGURE=1; shift ;;
     --local-images) LOCAL_IMAGES=1; shift ;;
     --stop) STOP=1; shift ;;
     --without-ai) DEFER_AI=1; shift ;;
@@ -88,25 +86,14 @@ if ((LOCAL_IMAGES == 0)) && ! docker image inspect "$SELFHOST_BACKEND_IMAGE" "$S
 elif ((LOCAL_IMAGES == 1)); then
   docker image inspect "$SELFHOST_BACKEND_IMAGE" "$SELFHOST_FRONTEND_IMAGE" >/dev/null
 fi
-if [[ ! -f "$STATE/settings.json" || "$CONFIGURE" == 1 || -n "$MODE" ]]; then
-  if [[ -z "$MODE" ]]; then
-    if ((DEFER_AI == 1)); then MODE=codex
-    elif [[ -t 0 ]]; then
-      printf 'AI connection: [1] Codex, [2] existing agent-runtime, [3] configure later (default): '
-      read -r ANSWER
-      case "$ANSWER" in 1) MODE=codex ;; 2) MODE=external ;; ''|3) MODE=codex; DEFER_AI=1 ;; *) die 'Choose 1, 2 or 3.' ;; esac
-    else MODE=codex; DEFER_AI=1; fi
-  fi
+if [[ ! -f "$STATE/settings.json" || -n "$MODE" ]]; then
+  if [[ -z "$MODE" ]]; then MODE=codex; DEFER_AI=1; fi
   [[ "$MODE" == codex || "$MODE" == external ]] || die 'AI mode must be codex or external.'
   if [[ "$MODE" == external ]]; then
-    if [[ -z "$ADDRESS" && -t 0 ]]; then read -rp 'Runtime host:port: ' ADDRESS; fi
-    if [[ -z "$TOKEN" && -t 0 ]]; then read -rsp 'Runtime service token: ' TOKEN; printf '\n'; fi
-    [[ -n "$ADDRESS" && -n "$TOKEN" ]] || die 'External runtime address and token are required.'
+    [[ -n "$ADDRESS" && -n "$TOKEN" ]] || die 'External AI service requires --runtime-address and --runtime-token-file. See docs/reference/self-hosting.md.'
   fi
-  if [[ -z "$SCORING_KEY" && -t 0 && "$DEFER_AI" == 0 ]]; then
-    read -rsp 'OpenRouter API key for content scoring (Enter to configure AI later): ' SCORING_KEY; printf '\n'
-  fi
-  if ((DEFER_AI == 1)); then SCORING_KEY=""; fi
+  if ((DEFER_AI == 1)); then SCORING_KEY=""
+  else [[ -n "$SCORING_KEY" ]] || die 'AI requires --openrouter-key-file PATH. See docs/reference/self-hosting.md.'; fi
   printf '%s\n' "$MODE" "$MODEL" "$ADDRESS" "$TOKEN" "$SCORING_KEY" |
     docker run --rm -i --user "$SELFHOST_UID:$SELFHOST_GID" -v "$STATE:/state" \
       "$SELFHOST_BACKEND_IMAGE" node dist/scripts/quickstart/setup.js
@@ -122,16 +109,7 @@ if [[ "$AI_ENABLED" == true ]]; then COMPOSE+=(--profile ai); fi
 if [[ "$MODE" == codex && "$AI_ENABLED" == true ]]; then
   if [[ -z "$AUTH_FILE" && -f "$STATE/codex-auth-path" ]]; then AUTH_FILE=$(cat "$STATE/codex-auth-path"); fi
   if [[ -z "$AUTH_FILE" && -f "${CODEX_HOME:-$HOME/.codex}/auth.json" ]]; then AUTH_FILE="${CODEX_HOME:-$HOME/.codex}/auth.json"; fi
-  if [[ -z "$AUTH_FILE" ]]; then
-    AUTH_FILE="$STATE/codex-auth/auth.json"
-    if [[ ! -f "$AUTH_FILE" ]]; then
-      [[ -t 0 ]] || die 'Use --codex-auth-file PATH, or run interactively to sign in.'
-      docker run --rm -it --user "$SELFHOST_UID:$SELFHOST_GID" \
-        -e CODEX_HOME=/codex -v "$STATE/codex-auth:/codex" \
-        "$SELFHOST_BACKEND_IMAGE" node node_modules/@openai/codex/bin/codex.js \
-        -c 'cli_auth_credentials_store="file"' login --device-auth
-    fi
-  fi
+  [[ -n "$AUTH_FILE" ]] || die 'Sign in with Codex first, then pass --codex-auth-file PATH. See docs/reference/self-hosting.md.'
   [[ -f "$AUTH_FILE" && -r "$AUTH_FILE" ]] || die 'Codex auth file must exist and be readable.'
   AUTH_FILE="$(cd -- "$(dirname -- "$AUTH_FILE")" && pwd -P)/$(basename -- "$AUTH_FILE")"
   printf '%s\n' "$AUTH_FILE" > "$STATE/codex-auth-path"
@@ -152,7 +130,7 @@ if [[ "$AI_ENABLED" == true ]]; then
 else
   "${COMPOSE[@]}" --profile tools run --rm --no-deps bootstrap node dist/scripts/quickstart/bootstrap.js --collect-only
   URL="$URL/feed"
-  printf 'RSS/HN collection ready. Open %s\nConnect AI later with ./start.sh --configure.\n' "$URL"
+  printf 'RSS/HN collection ready. Open %s\nAI setup: docs/reference/self-hosting.md.\n' "$URL"
 fi
 if ((OPEN_BROWSER == 1)); then
   if command -v open >/dev/null; then open "$URL" || true

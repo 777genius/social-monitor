@@ -16,7 +16,7 @@ cd social-monitor
 ./start.sh
 ```
 
-At the AI setup prompt, press **Enter** to configure it later. When setup finishes, open [your local feed](http://localhost:8080/feed). RSS and Hacker News work **without accounts or API keys** and refresh every 15 minutes.
+Startup asks no questions. When setup finishes, open [your local feed](http://localhost:8080/feed). RSS and Hacker News work **without accounts or API keys** and refresh every 15 minutes.
 
 The first start downloads ready-made images and may take several minutes. Run `./start.sh` again to resume, or `./start.sh --stop` to stop while keeping your data.
 
