@@ -29,6 +29,7 @@ Hacker News, RSS, GitHub Trending, Repo Radar and Reddit have beta provider impl
 
 Built with **Flutter/Dart, NestJS/TypeScript, PostgreSQL, RabbitMQ and Redis**.
 
+- [One-command local installation](docs/reference/self-hosting.md): Docker → `./start.sh` → browser and RSS/HN collection; connect AI when ready for summaries.
 - [Getting started](docs/reference/getting-started.md): backend, Docker and connected or demo frontend.
 - [Collect your first source](docs/providers/README.md#fast-path): interest, source binding, scan and feed.
 - [Development reference](docs/reference/development.md): stack, repository map, commands and architecture links.

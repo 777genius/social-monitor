@@ -2,6 +2,10 @@
 
 [Back to README](../../README.md)
 
+To run the complete application with precompiled images and no local toolchain,
+use the [one-command Docker installation](self-hosting.md). The instructions
+below are for development.
+
 ## Quick Start
 
 Prerequisites:
