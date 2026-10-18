@@ -70,7 +70,7 @@ result=$(timeout --signal=TERM --kill-after=15s 3m docker run --rm --name "$name
   --env SOCIAL_MONITOR_RUNTIME_PROFILE=beta --env SOURCE_CONFIG_ENCRYPTION_KEY \
   --env SOURCE_CONFIG_ENCRYPTION_KEY_ID=telegram-public-bootstrap \
   --entrypoint node "$image" scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=512 -- \
-  ts-node -r tsconfig-paths/register scripts/run-telegram-channel-collection.ts --bootstrap)
+  ts-node --transpile-only --compiler-options '{"rootDir":"."}' -r tsconfig-paths/register scripts/run-telegram-channel-collection.ts --bootstrap)
 bootstrap_completed=1
 unset SOURCE_CONFIG_ENCRYPTION_KEY
 jq -e '.ok==true and .schemaVersion==1 and .mode=="bootstrap" and .status=="ready" and .catalogReady==true

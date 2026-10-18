@@ -16,4 +16,4 @@ export DATABASE_URL="postgresql://social_monitor_collection_v2:$db_password@host
 unset db_password password_file
 exec setpriv --reuid=node --regid=node --init-groups --no-new-privs \
   node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=512 -- \
-  ts-node -r tsconfig-paths/register scripts/run-telegram-channel-collection.ts --collect
+  ts-node --transpile-only --compiler-options '{"rootDir":"."}' -r tsconfig-paths/register scripts/run-telegram-channel-collection.ts --collect
