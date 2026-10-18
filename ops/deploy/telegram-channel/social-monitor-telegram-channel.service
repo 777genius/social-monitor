@@ -6,7 +6,9 @@ Requires=docker.service
 [Service]
 Type=exec
 ExecStart=/usr/local/sbin/social-monitor-posts-once telegram-channel
-RuntimeMaxSec=10min
+# Includes native history preclaim and the bounded offsite prewrite backup.
+# Collection itself remains capped at 180s with its independent native watchdog.
+RuntimeMaxSec=35min
 TimeoutStopSec=45s
 KillMode=control-group
 UMask=0077
