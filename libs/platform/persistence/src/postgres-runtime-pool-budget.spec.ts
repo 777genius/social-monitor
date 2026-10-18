@@ -299,6 +299,11 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/yesterday-social-replay-support.ts:Pool
       scripts/prepare-reader-summary-successor-fixture.ts:Pool
       scripts/prepare-reader-summary-successor-fixture.ts:Pool
+      scripts/quickstart/migrate.ts:Pool
+      scripts/quickstart/migrate.ts:Pool
+      scripts/quickstart/seed-workspace.ts:Pool
+      scripts/quickstart/seed-workspace.ts:PrismaClient
+      scripts/quickstart/seed-workspace.ts:PrismaPg
       scripts/read-reader-summary-daily-terminal-set-receipt.ts:Pool
       scripts/reader-summary-publication-postgres-legacy.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
@@ -476,6 +481,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/yesterday-social-collection-quality-summary-counts.ts
       scripts/lib/yesterday-social-replay-support.ts
       scripts/prepare-reader-summary-successor-fixture.ts
+      scripts/quickstart/migrate.ts
+      scripts/quickstart/seed-workspace.ts
       scripts/read-reader-summary-daily-terminal-set-receipt.spec.ts
       scripts/read-reader-summary-daily-terminal-set-receipt.ts
       scripts/reader-summary-publication-fixture-firstpub-role.spec.ts
