@@ -3,6 +3,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/entities/source_binding_overview.dart';
+import '../formatters/scan_run_display_formatters.dart';
 import '../formatters/source_binding_display_formatters.dart';
 
 class SourceProviderStatusPanel extends StatelessWidget {
@@ -170,7 +171,7 @@ class _ProviderReasonRow extends StatelessWidget {
         const SizedBox(width: AppSpacing.sm),
         Expanded(
           child: Text(
-            reason.operatorAction,
+            scanOperatorActionLabel(reason.operatorAction),
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
