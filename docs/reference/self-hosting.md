@@ -23,25 +23,34 @@ requires authentication, it downloads the same compiled images from the public
 GitHub preview release, checks SHA-256 and loads them into Docker. Subsequent
 starts reuse the installed images.
 
-Choose **configure later** (the default) to open the application and collect
-RSS/HN without AI credentials. You can also run `./start.sh --without-ai`.
-The AI worker stays stopped and no model requests are made.
+Startup asks no questions and needs no AI credentials. It reuses your saved
+configuration on later runs. Use `./start.sh --without-ai` to temporarily skip
+AI if you have already connected it.
 
-For AI summaries, run `./start.sh --configure`. The current pipeline requires an
-**OpenRouter API key** for its Jev content-scoring stage. Setup asks silently;
-only the intelligence worker receives this key. Choose the text-generation
-connection separately:
+## Optional AI setup
 
-- **Codex**: reuse the local `CODEX_HOME/auth.json` (normally
-  `~/.codex/auth.json`), or complete device-code login using the CLI already
-  bundled in the image. The runtime policy determines the supported model.
-- **Existing agent-runtime**: supply its gRPC address and service token. It must
-  implement the Social Monitor scoring and reader-summary contract, not just
-  an OpenAI-compatible chat endpoint. `localhost` inside Docker refers to the
-  container; use the runtime's reachable hostname.
+You need two things for AI summaries:
 
-For Codex device login, enable device-code authentication in your account or
-workspace settings if required. See [official authentication documentation](https://learn.chatgpt.com/docs/auth#login-on-headless-devices).
+1. An **OpenRouter API key** for assessing and selecting collected content.
+   Save it in a private text file containing only the key, outside this repository.
+2. A **Codex login** for writing summaries. Sign in with the Codex CLI first
+   (`codex login`). Its login file is usually `~/.codex/auth.json`.
+   See [Codex authentication](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)
+   if you need to sign in on a machine without a browser.
+
+Then run (replace the key-file path):
+
+```sh
+./start.sh --ai codex \
+  --openrouter-key-file "$HOME/.config/social-monitor/openrouter-key" \
+  --codex-auth-file "$HOME/.codex/auth.json"
+```
+
+The Codex login file is mounted read-only; setup does not read or copy it.
+These settings are saved privately; later starts need only `./start.sh`.
+The launcher never prompts for secrets or starts a login flow. Missing settings
+produce an error with a link to this guide. You can give this guide to your AI
+coding assistant to help configure the files; do not paste secrets into chat.
 
 Setup runs in the terminal, then opens **http://localhost:8080/feed** with collected
 posts (or `/summaries` when AI is connected):
@@ -56,7 +65,6 @@ minutes; model access and publication quality checks remain enforced.
 ```sh
 ./start.sh                         # reuse configuration, data and first-run jobs
 ./start.sh --port 8090             # change browser port without rebuilding Flutter
-./start.sh --configure             # change AI connection, preserve storage keys
 ./start.sh --stop                  # stop containers, preserve volumes and config
 ```
 
@@ -76,17 +84,15 @@ That path identifies an installation and its Docker volumes. Reuse the same
 path when restarting or stopping it. Custom state directories inside the
 repository are refused to keep secrets out of build contexts.
 
-For unattended startup with existing Codex authorization:
+## Advanced: separate AI service
 
-```sh
-./start.sh --no-open --ai codex --codex-auth-file /absolute/private/auth.json \
-  --openrouter-key-file /absolute/private/openrouter-key
-```
-
-The file is mounted read-only. Setup does not read or copy its contents. The
-runtime's existing single-account pool adapter handles AI requests.
-
-For an external runtime, provide its token through a private file:
+Most users can use the bundled Codex service described above. If you already
+operate a separate Social Monitor AI service, supply its network address and
+service password through a private file. In the CLI these are named
+`--runtime-address` and `--runtime-token-file`. This is a server component that
+runs AI jobs using the Social Monitor gRPC protocol. A generic chat API does not
+implement that protocol.
+The address must be reachable from Docker; container `localhost` is not your host.
 
 ```sh
 ./start.sh --no-open --ai external \
