@@ -49,7 +49,9 @@ export const readTelegramCursor = (raw: string | undefined, channel: string, sco
     if (cursor.scope === scope) return cursor as unknown as TelegramPreviewCursor;
     const previous = cursor as unknown as TelegramPreviewCursor;
     // A changed explicit window cannot silently erase an unfinished range.
-    return { ...empty, ...(previous.pending === undefined && previous.historyGap === undefined ? {} : {
+    return { ...empty,
+      ...(previous.retryAfterUntil === undefined ? {} : { retryAfterUntil: previous.retryAfterUntil }),
+      ...(previous.pending === undefined && previous.historyGap === undefined ? {} : {
       historyGap: previous.historyGap ?? { afterId: previous.lastId, beforeId: previous.pending!.ceilingId },
     }) };
   } catch {

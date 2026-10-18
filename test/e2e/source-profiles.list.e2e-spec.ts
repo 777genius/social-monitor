@@ -73,8 +73,11 @@ describe('Source profiles list (e2e)', () => {
         }),
         expect.objectContaining({
           providerKey: 'telegram',
-          productionSafe: false,
-          readinessState: 'manual_only',
+          productionSafe: true,
+          readinessState: 'enabled_beta',
+          runtimeReadiness: 'fixture_ready',
+          supportedQueryModes: ['account_feed', 'url'],
+          liveEvidenceRequirements: expect.arrayContaining([expect.objectContaining({ signalId: 'telegram_public_preview_live' })]),
         }),
       ]),
     );

@@ -143,6 +143,20 @@ describe('Telegram preview incremental collection', () => {
     expect((await scanTelegram(provider, historical)).items).toHaveLength(1);
   });
 
+  it('retains backoff and an abandoned pending range when the published window changes', async () => {
+    const historical = writeTelegramCursor({ version: 1, channel: 'example_channel', scope: '1/2', lastId: 3,
+      retryAfterUntil: telegramClock.now().getTime() + 60_000,
+      pending: { beforeId: 6, ceilingId: 9, floorId: 3, fromTime: 1, untilTime: 2 },
+    });
+    expect(readTelegramCursor(historical, 'example_channel', 'live')).toMatchObject({
+      lastId: 0, historyGap: { afterId: 3, beforeId: 9 }, retryAfterUntil: telegramClock.now().getTime() + 60_000,
+    });
+    const readPage = jest.fn();
+    const provider = new TelegramSourceProvider({ readPage }, telegramClock);
+    await expect(scanTelegram(provider, historical)).rejects.toMatchObject({ kind: 'rate_limited' });
+    expect(readPage).not.toHaveBeenCalled();
+  });
+
   it('validates configuration and rejects private channels and credentials', () => {
     const provider = new TelegramSourceProvider(telegramClient([]), telegramClock);
     for (const query of ['https://t.me/+private', 'https://t.me/c/123/456', 'https://other.example/channel', 'https://t.me/example_channel?login=1']) {

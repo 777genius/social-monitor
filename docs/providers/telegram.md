@@ -9,7 +9,9 @@ remains required before external beta approval.
 
 In Sources, choose Telegram and enter `@channel`, `channel`,
 `https://t.me/channel` or `https://t.me/s/channel`. The UI normalizes the username.
-The source binding API accepts:
+Each channel has its own source binding, scan history and checkpoint. You can add
+several channels to the same interest; username and URL aliases of the same
+channel reuse its existing binding. The source binding API accepts:
 
 ```json
 {

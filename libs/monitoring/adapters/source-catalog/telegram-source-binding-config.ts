@@ -3,13 +3,14 @@ import type { SourceBindingConfig, SourceBindingConfigValidationResult } from '.
 
 export const validateTelegramSourceBindingConfig = (config: SourceBindingConfig): SourceBindingConfigValidationResult => {
   const mode = firstNonEmptyString(config.mode) ?? 'account_feed';
-  const channel = firstNonEmptyString(config.channel, config.query, config.url);
-  if (!['account_feed', 'url'].includes(mode) || channel === undefined || telegramPublicChannel(channel) === undefined) {
+  const input = firstNonEmptyString(config.channel, config.query, config.url);
+  const channel = input === undefined ? undefined : telegramPublicChannel(input);
+  if (!['account_feed', 'url'].includes(mode) || channel === undefined) {
     return { ok: false, reason: 'Telegram requires a public channel username or HTTPS t.me channel URL.' };
   }
   for (const key of ['channel', 'query', 'url']) {
     if (config[key] !== undefined && (typeof config[key] !== 'string' ||
-        telegramPublicChannel(config[key] as string) !== telegramPublicChannel(channel))) {
+        telegramPublicChannel(config[key] as string) !== channel)) {
       return { ok: false, reason: 'Telegram channel inputs must identify the same public channel.' };
     }
   }
@@ -22,7 +23,16 @@ export const validateTelegramSourceBindingConfig = (config: SourceBindingConfig)
       return { ok: false, reason: `Telegram ${field} must be an integer between 1 and ${max}.` };
     }
   }
-  return { ok: true };
+  return {
+    ok: true,
+    normalizedConfig: {
+      ...config,
+      channel,
+      ...(config.query === undefined ? {} : { query: channel }),
+      ...(config.url === undefined ? {} : { url: `https://t.me/${channel}` }),
+    },
+    configIdentity: { field: 'channel', value: channel },
+  };
 };
 
 const firstNonEmptyString = (...values: readonly unknown[]): string | undefined =>
