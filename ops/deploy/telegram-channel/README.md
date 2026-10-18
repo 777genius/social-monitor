@@ -67,6 +67,18 @@ admits its own next run before enabling the Telegram timer.
 
 ## Isolated runtime proof
 
+The existing collection role also needs column SELECT on the six public
+`capability_profiles` fields used by normal catalog validation. The fixed
+`qualify-catalog-read-profile.py` qualifies that read-only ACL delta once under
+the native lock, with an expired/closed collector role and quiet services.
+It preserves table-wide rights, writer admission, memberships and database
+defaults. Its durable intent prevents automatic retry after an uncertain commit.
+Require its successful receipt before the production canary; an intent alone
+does not qualify access. Do not replay the older materializer read profile.
+The optional `test_catalog_read_profile.py` PG18 suite uses a fresh isolated
+`telegram_catalog_read_profile_test_<suffix>` database and proves atomic grants
+and rollback without production credentials.
+
 `scripts/check-telegram-channel-collection-postgres.ts` accepts only an explicit
 literal-loopback PostgreSQL18 URL with database name
 `telegram_collection_test_<suffix>`. The caller creates a fresh database and
