@@ -111,6 +111,12 @@ counts and checkpoint summaries. Source-count delta equals `inserted`; feed
 delta is between zero and `projected` because projection may update an existing
 row. `complete` and honest `partial` outcomes are both operationally terminal;
 the latter retains its incomplete/backfill flags and is never relabeled complete.
+Zero-page partial success requires a previously pending range that closes at its
+stored ceiling, clears pending, and retains a valid history gap covering its
+prior watermark through its next-page boundary. Fetched, inserted, projected and
+duplicate counts must all be zero, with unchanged global row counts. This admits
+permanent unavailability of the first pending history page without accepting an
+unproven empty scan.
 
 A narrow `deferred` result additionally requires exactly `deferred:true` and
 `failureStage:"provider_fetch"`, zero item/page/warning counts, unchanged global

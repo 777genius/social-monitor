@@ -157,11 +157,45 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.check_terminal(started, state.replace(b'after=12,34', b'after=13,34'), result)
 
-    def test_zero_page_terminal_history_gap_stays_honestly_partial(self):
+    def terminal_history_gap(self):
         started, state, result = self.terminal(partial=True)
+        prior = {'lastId': 2, 'backfillPending': True, 'beforeId': 8, 'ceilingId': 9}
         result.update(fetched=0, inserted=0, projected=0, pageCount=0, backfillPending=False,
+                      cursor=prior, cursorBefore=prior,
                       cursorAfter={'lastId': 9, 'backfillPending': False, 'historyGap': {'afterId': 2, 'beforeId': 8}})
-        self.check_terminal(started, state.replace(b'after=13,35', b'after=12,34'), result)
+        return started, state.replace(b'after=13,35', b'after=12,34'), result
+
+    def test_zero_page_pending_history_unavailability_stays_honestly_partial(self):
+        started, state, result = self.terminal_history_gap()
+        self.assertEqual(self.check_terminal(started, state, result)['status'], 'partial')
+        merged = copy.deepcopy(result)
+        merged['cursorAfter']['historyGap'] = {'afterId': 0, 'beforeId': 10}
+        self.check_terminal(started, state, merged)
+
+    def test_zero_page_history_closure_requires_prior_pending_and_covering_gap(self):
+        started, state, original = self.terminal_history_gap()
+        changes = [
+            {'cursorAfter': {'lastId': 9, 'backfillPending': False}},
+            {'cursorAfter': {'lastId': 9, 'backfillPending': False, 'historyGap': {'afterId': 3, 'beforeId': 8}}},
+            {'cursorAfter': {'lastId': 9, 'backfillPending': False, 'historyGap': {'afterId': 2, 'beforeId': 7}}},
+            {'cursorAfter': {'lastId': 10, 'backfillPending': False, 'historyGap': {'afterId': 2, 'beforeId': 8}}},
+            {'cursor': None, 'cursorBefore': None},
+            {'cursor': {'lastId': 2, 'backfillPending': False},
+             'cursorBefore': {'lastId': 2, 'backfillPending': False}},
+            {'backfillPending': True, 'cursorAfter': {'lastId': 2, 'backfillPending': True,
+             'beforeId': 8, 'ceilingId': 9, 'historyGap': {'afterId': 2, 'beforeId': 8}}},
+            {'status': 'complete', 'complete': True},
+            {'fetched': 1},
+            {'fetched': 1, 'inserted': 1},
+            {'fetched': 1, 'projected': 1},
+            {'skippedDuplicates': 1},
+        ]
+        for changed in changes:
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                self.check_terminal(started, state, {**original, **changed})
+        for after in (b'after=13,34', b'after=12,35'):
+            with self.subTest(after=after), self.assertRaises(ValueError):
+                self.check_terminal(started, state.replace(b'after=12,34', after), original)
 
     def test_rejects_failed_malformed_or_unbound_terminal_even_with_valid_hashes(self):
         started, state, original = self.terminal()

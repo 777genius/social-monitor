@@ -266,8 +266,8 @@ if (lifecycleUsesRunner || preservedLifecycleSerial !== undefined) {
       packageJson.scripts?.["check:production-lifecycle-runner:containment"] !==
         "node --experimental-strip-types --test ops/ci/production-lifecycle-runner.test.mts" ||
       packageJson.scripts?.["check:code-quality"] !==
-        "node scripts/check-code-quality.mjs && npm run check:production-lifecycle-runner") {
-    violations.push("package.json: typed lifecycle must retain all 28 serial commands and run portable registry checks plus mandatory native containment");
+        "node scripts/check-code-quality.mjs && npm run check:production-lifecycle-runner && npm run check:telegram-channel-native") {
+    violations.push("package.json: typed lifecycle must retain all 28 serial commands and run portable registry checks plus mandatory native containment and Telegram native checks");
   }
 }
 const productionDeployLifecycleCommands = lifecycleUsesRunner

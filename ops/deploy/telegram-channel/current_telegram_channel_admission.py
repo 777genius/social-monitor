@@ -253,6 +253,13 @@ def validate_terminal_data(attempt, started, state, proof_raw, result_raw, relea
         _cursor(value, nullable=True)
     _cursor(after, nullable=deferred)
     prior = result['cursorBefore']
+    if not deferred and result['pageCount'] == 0:
+        gap = after.get('historyGap')
+        need(result['complete'] is False and prior is not None and prior['backfillPending']
+             and after['backfillPending'] is False and after['lastId'] == prior['ceilingId'] and gap is not None
+             and gap['afterId'] <= prior['lastId'] and gap['beforeId'] >= prior['beforeId']
+             and all(result[key] == 0 for key in ('fetched', 'inserted', 'projected', 'skippedDuplicates')),
+             'zero-page history closure proof missing')
     if deferred:
         need(result['deferred'] is True and result['failureStage'] == 'provider_fetch'
              and result['complete'] is False and after == prior
