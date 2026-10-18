@@ -75,7 +75,7 @@ Postgres and RabbitMQ, so manual scan requests can be processed by the worker.
 | `github-issues` | Optional GitHub token, beta flag required in beta runtime | Public GitHub issue search | Manual-only |
 | `reddit` | Real Reddit app credentials or tenant OAuth credential | Subreddit and Reddit search monitoring | Enabled beta, fixture-ready |
 | `x-twitter` | Private x-collector plus dedicated research accounts | X/Twitter daily search | Provider-only, deferred unless configured |
-| `telegram` | Public channel username; no account, bot or token | Public channel posts with resumable catch-up | Enabled beta, fixture-ready; live evidence pending |
+| `telegram` | Public channel username; no account, bot or token | Public channel posts with resumable catch-up and bounded official-domain fallback | Enabled beta, fixture-ready; live evidence pending |
 
 ## Open Providers
 
