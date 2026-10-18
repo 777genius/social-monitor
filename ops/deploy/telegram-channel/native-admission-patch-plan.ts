@@ -13,9 +13,9 @@ export type NativeAdmissionSources = Readonly<{
   telegramEntrypoint: string;
 }>;
 export const nativeAdmissionBefore = Object.freeze({
-  profile: '28a583614833f39b9bcb567fa25e262d20cb1e1df4906bc4217cec18a50d317d',
-  physical: 'dbd61cb3d3a31dfe9a8177ef9fdb3203855e80d3bd2487cff986856a719965d2',
-  stage: 'b652607cc16c2824e9178ec347d6347eec9f0e4e832734a7d8a7af9262162269',
+  profile: '61543d8a35b5af45080cf4fd7840d7cad703258832c368c66a97e76a2d8cb243',
+  physical: '7b5eb95d005ffc585d56fb28e8d64e984ad9c88cd55946b079068d32f03bfed0',
+  stage: '7412612c876326f1de763a8872f09fd65a64df2d9f0a51a40eda47a62d6240a8',
   router: 'eef5803095b76d5e346031d953a2368c2fc62792846847bddf10563d61f08234',
   history: '7c54cdb53a6944ceafd145bccf735ade274d77d4206c8a19ca49d7cc78e15ca3',
   lineage: '4703f81b0f9ac087b3a9a7ba3ab73ba90fd72ba6034bf0064a699bdb55ef88d4',
