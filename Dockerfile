@@ -19,6 +19,12 @@ COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/
 COPY scripts/materialize-retained-source-captures.ts ./scripts/
 COPY scripts/recover-hn-verified-remainder.ts scripts/import-hn-verified-remainder.ts scripts/import-hn-verified-sep28.ts ./scripts/
 COPY scripts/import-rss-sep24-verified.ts scripts/recover-rss-sep24-verified.ts ./scripts/
+# Missing-only HN/RSS archive import entrypoints, planners and their typed closure.
+COPY scripts/import-hn-archive-missing.ts scripts/import-rss-archive-missing.ts \
+  scripts/plan-hn-archive-missing-packets.ts scripts/plan-rss-archive-missing-packets.ts ./scripts/
+COPY scripts/lib/hn-archive-missing-policy.ts scripts/lib/hn-archive-missing-normalizer.ts \
+  scripts/lib/rss-archive-missing-policy.ts scripts/lib/rss-archive-missing-normalizer.ts \
+  scripts/lib/github-archive-finite-journal.ts scripts/lib/github-archive-finite-role-policy.ts ./scripts/lib/
 # Sep24 source entrypoints and their script closure. Publication grants no capture authority.
 COPY scripts/materialize-social-sep24-private-inputs.ts \
   scripts/export-reddit-sep24-public.ts scripts/export-rss-sep24-selected.ts \
