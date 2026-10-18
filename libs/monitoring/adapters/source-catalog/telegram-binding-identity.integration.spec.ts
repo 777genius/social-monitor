@@ -8,7 +8,7 @@ import { AesGcmSourceBindingConfigProtector } from '../../adapters/security/aes-
 import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { Interest } from '../../domain';
 import type { SourceBindingConfig } from '../../ports';
-import { BindSourceUseCase } from './bind-source.use-case';
+import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 
 const scope = { tenantId: tenantId('tenant-1'), workspaceId: workspaceId('workspace-1'), interestId: 'interest-1' };
 const now = new Date('2026-10-18T00:00:00.000Z');
