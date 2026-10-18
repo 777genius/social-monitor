@@ -29,8 +29,22 @@ const sep24Scripts = [
   'scripts/lib/social-source-private-input-files.ts',
   'scripts/lib/social-source-private-input-materializer.ts',
 ];
+// Missing-only HN/RSS archive import entrypoints, planners and their typed closure.
+const missingImportScripts = [
+  'scripts/import-hn-archive-missing.ts',
+  'scripts/import-rss-archive-missing.ts',
+  'scripts/plan-hn-archive-missing-packets.ts',
+  'scripts/plan-rss-archive-missing-packets.ts',
+  'scripts/lib/hn-archive-missing-policy.ts',
+  'scripts/lib/hn-archive-missing-normalizer.ts',
+  'scripts/lib/rss-archive-missing-policy.ts',
+  'scripts/lib/rss-archive-missing-normalizer.ts',
+  'scripts/lib/github-archive-finite-journal.ts',
+  'scripts/lib/github-archive-finite-role-policy.ts',
+];
 const expectedScripts = [
   ...sep24Scripts,
+  ...missingImportScripts,
   'scripts/check-feed-promotion-index-recovery.ts',
   'scripts/materialize-retained-source-captures.ts',
   'scripts/recover-hn-verified-remainder.ts',
@@ -176,6 +190,13 @@ describe('migration image production compilation', () => {
   });
 
   it.each(sep24Scripts)('rejects a recipe missing approved Sep24 source: %s', (source) => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const mutated = dockerfile.replace(`${source} `, '');
+    expect(mutated).not.toBe(dockerfile);
+    expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
+  });
+
+  it.each(missingImportScripts)('rejects a recipe missing approved missing-import source: %s', (source) => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
     const mutated = dockerfile.replace(`${source} `, '');
     expect(mutated).not.toBe(dockerfile);
