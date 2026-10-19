@@ -100,8 +100,8 @@ const run = async (): Promise<void> => {
         reporter.succeeded?.collectionTelemetry?.contentComplete !== false) {
       throw new Error('Coverage and content completeness must be persisted independently');
     }
-    if (state().userState !== 'scan_degraded' || state().operatorAction !== 'inspect_incomplete_source_content') {
-      throw new Error('Captionless content must remain visibly incomplete while retaining the post identity');
+    if (state().userState !== 'content_current' || state().operatorAction !== 'no_action_required') {
+      throw new Error('Content limitations must not request traversal repair when all post identities were retained');
     }
     const feed = await feedItems.list({ tenantId: tenant, workspaceId: workspace, interestId: 'topic-telegram-smoke', limit: 10 });
     if (feed.items.length !== 6 || reporter.failed !== undefined) throw new Error('Expected six projected Telegram posts, including captionless content, and no failure');
