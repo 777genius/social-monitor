@@ -27,8 +27,8 @@ const items = (): readonly ReaderSummaryGitHubProjectionItem[] => githubProjecti
     scanJobId: undefined, fetchStartedAt: undefined, checkedAt: undefined,
     publishedAt: new Date(observation.archive.serializedAt), observedAt: new Date(persistedAt) };
 });
-const artifact = (): ReaderSummaryArtifact => {
-  const snapshot = githubBoardArtifact().toSnapshot();
+const artifact = (count = 10): ReaderSummaryArtifact => {
+  const snapshot = githubBoardArtifact({ selectedPostCount: count }).toSnapshot();
   return ReaderSummaryArtifact.create({ ...snapshot, content: { ...snapshot.content!,
     selectedPosts: snapshot.content!.selectedPosts!.map((post, index) => ({ ...post,
       providerMetrics: [{ label: `GitHub Trending archive ${day}`, value: `#${index + 1}, +${101 + index} stars on ${day}` }] })) } });
@@ -49,6 +49,24 @@ describe("archived GitHub publication custody", () => {
       scanJobId: null, fetchStartedAt: null, checkedAt: null, observedAt: persistedAt,
     });
     expect(readerSummaryHasVerifiedGitHubProjection({ artifact: artifact(), audit: result.audit })).toBe(true);
+  });
+  it("verifies a complete board as archived when the immutable archive published fewer than 10 rows", () => {
+    const rows = items().slice(0, 9);
+    const selected = artifact(9);
+    const result = evaluate(rows, selected);
+    expect(result.findings).toEqual([]);
+    expect(result.audit.status).toBe("verified");
+    expect(result.audit.archivedProjection?.bindings).toHaveLength(9);
+    expect(readerSummaryHasVerifiedGitHubProjection({ artifact: selected, audit: result.audit })).toBe(true);
+  });
+  it("rejects an archived board whose ranks are not the complete contiguous archive", () => {
+    const rows = items().slice(0, 9).map((item, index) => index === 8 ? { ...item,
+      archivedObservation: { ...item.archivedObservation!, trending: { ...item.archivedObservation!.trending, rank: 10 } } } : item);
+    expect(evaluate(rows, artifact(9)).audit.status).toBe("rejected");
+  });
+  it("rejects a board whose size does not match its archived rows", () => {
+    expect(evaluate(items().slice(0, 9), artifact()).audit.status).toBe("rejected");
+    expect(evaluate(items(), artifact(9)).audit.status).toBe("rejected");
   });
   it.each([
     ["fabricated fetch", (item: ReaderSummaryGitHubProjectionItem) => ({ ...item, fetchStartedAt: new Date(`${day}T11:59:00.000Z`) })],

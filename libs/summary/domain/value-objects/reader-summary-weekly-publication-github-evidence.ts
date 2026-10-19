@@ -5,6 +5,7 @@ import {
   readerSummaryIsOrdinaryNoSignalWithoutEvidence,
   type ReaderSummaryGitHubProjectionAudit,
 } from "../policies/reader-summary-github-projection-audit";
+import { maxGitHubTrendingDisplayRepositories } from "../policies/reader-summary-github-trending-policy";
 import {
   assertReaderSummaryWeeklyDenseArray,
   assertReaderSummaryWeeklyExactObject,
@@ -224,7 +225,8 @@ const sealArchivedVerifiedGitHubEvidence = (
       left.observation.trending.rank - right.observation.trending.rank,
   );
   if (
-    bindings.length !== 10 ||
+    bindings.length < 1 ||
+    bindings.length > maxGitHubTrendingDisplayRepositories ||
     bindings.some(
       (binding, index) => binding.observation.trending.rank !== index + 1,
     ) ||
@@ -438,8 +440,9 @@ const assertGitHubEvidenceMode = (
     evidence.authorizedAt !== null;
   const archived =
     evidence.mode === "archived_verified" &&
-    evidence.evidenceCount === 10 &&
-    evidence.repositories.length === 10 &&
+    evidence.evidenceCount === evidence.repositories.length &&
+    evidence.repositories.length >= 1 &&
+    evidence.repositories.length <= maxGitHubTrendingDisplayRepositories &&
     evidence.scanJobId === null &&
     evidence.sourceBindingId !== null &&
     evidence.sourceProviderContentHash !== null &&
@@ -555,7 +558,9 @@ const assertGitHubEvidenceMode = (
   if (
     (scanJobId !== null && scanJobId.length === 0) ||
     sourceBindingId.length === 0 ||
-    Object.values(identities).some((identity) => identity.size !== 10)
+    Object.values(identities).some(
+      (identity) => identity.size !== evidence.repositories.length,
+    )
   ) {
     throw new Error(
       "Reader summary weekly publication GitHub board is not exact",

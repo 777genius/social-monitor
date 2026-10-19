@@ -70,8 +70,8 @@ const items = (): readonly ReaderSummaryGitHubProjectionItem[] =>
     };
   });
 
-const artifact = (): ReaderSummaryArtifact => {
-  const snapshot = githubBoardArtifact().toSnapshot();
+const artifact = (count = 10): ReaderSummaryArtifact => {
+  const snapshot = githubBoardArtifact({ selectedPostCount: count }).toSnapshot();
   return ReaderSummaryArtifact.create({
     ...snapshot,
     content: {
@@ -89,11 +89,13 @@ const artifact = (): ReaderSummaryArtifact => {
   });
 };
 
-const derivedEvidence = (): ReaderSummaryWeeklyPublicationGitHubEvidence => {
-  const selected = artifact();
+const derivedEvidence = (
+  count = 10,
+): ReaderSummaryWeeklyPublicationGitHubEvidence => {
+  const selected = artifact(count);
   const evaluation = evaluateReaderSummaryGitHubProjection({
     artifact: selected,
-    items: items(),
+    items: items().slice(0, count),
     eligibleBindingIds: ["github-binding-a"],
     pageCount: 2,
     observedThrough: new Date("2026-10-13T01:00:00.000Z"),
@@ -130,6 +132,18 @@ describe("archived GitHub publication evidence", () => {
         ),
       ),
     ).toEqual(new Set([evidence.sourceProviderContentHash]));
+    expect(() =>
+      assertReaderSummaryWeeklyPublicationGitHubEvidence(evidence),
+    ).not.toThrow();
+  });
+
+  it("seals a complete archived board with fewer than 10 rows", () => {
+    const evidence = derivedEvidence(9);
+    expect(evidence.mode).toBe("archived_verified");
+    expect(evidence.evidenceCount).toBe(9);
+    expect(evidence.repositories.map((repository) => repository.rank)).toEqual(
+      Array.from({ length: 9 }, (_, index) => index + 1),
+    );
     expect(() =>
       assertReaderSummaryWeeklyPublicationGitHubEvidence(evidence),
     ).not.toThrow();
