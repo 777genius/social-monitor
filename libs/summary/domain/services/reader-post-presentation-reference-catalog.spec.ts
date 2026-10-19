@@ -71,6 +71,24 @@ describe("source-owned presentation reference catalog", () => {
     expect(readerPostPresentationCatalogProposalFailure(output, [source])).not.toBeNull();
   });
 
+  it("keeps the exact versioned subject-only grammar expressible with copied whole tokens", () => {
+    const source = { ...candidate, title: "Nova v2.6 model", sourceText: "Nova v2.6 model" };
+    const catalog = readerPostPresentationReferenceCatalog(source);
+    const support = ["Nova", "v2.6", "model"].map(quote =>
+      catalog.find(ref => ref.field === "title" && ref.quote === quote)!);
+    expect(support.every(Boolean)).toBe(true);
+    const value = { ...proposal(), kind: "subject_label", text: "Nova v2.6 model discussion",
+      support, qualificationJudgment: "subject_only" };
+    const check = (output: unknown) => readerPostPresentationCatalogProposalFailure({ presentations: [output] }, [source]);
+    expect(check(value)).toBeNull();
+    for (const invalid of [
+      { ...value, text: "Nova v2.6 model" },
+      { ...value, support: [...support].reverse() },
+      { ...value, qualificationJudgment: "none" },
+      { ...value, qualifications: [{ phrase: "model", evidence: [support[2]!] }] },
+    ]) expect(check(invalid)).toMatchObject({ code: "subject_label", index: 0 });
+  });
+
   it("binds schema choices to each original candidate rather than admitting a caller-selected broad schema", () => {
     const other = { candidateId: "other", title: "Different compiler release", sourceText: "Different source." };
     const schema = readerPostPresentationCatalogOutputSchema([candidate, other]);

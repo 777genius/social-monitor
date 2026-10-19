@@ -189,6 +189,14 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(command.systemPrompt).toContain("fieldText.slice(start,end) must equal quote exactly");
     expect(command.systemPrompt).toContain("global 8/512/1024 reference budgets");
     expect(command.systemPrompt).toContain("Every qualification phrase must occur literally");
+    expect(command.systemPrompt).toContain("Never include URLs, angle brackets, control characters");
+    expect(command.systemPrompt).toContain("never truncate it or add an ellipsis");
+    expect(command.systemPrompt).toContain("Avoid first-person or conversational openings");
+    expect(command.systemPrompt).toContain("counting astral characters as two units");
+    expect(command.systemPrompt).toContain("support must contain exactly 2 or 3 distinct whole-token copy options");
+    expect(command.systemPrompt).toContain("benchmark, compiler, model, editor, API, release, safety, latency");
+    expect(command.systemPrompt).toContain("support quotes joined with single spaces followed by ' discussion'");
+    expect(command.systemPrompt).toContain("For unavailable output, still return every required schema field");
     expect(command.systemPrompt).toContain("return unavailable");
     const options = JSON.parse(command.systemPrompt!.split("\nSOURCE_REFERENCE_COPY_OPTIONS=")[1]!) as
       { candidateId: string; references: { field: string; start: number; end: number; quote: string }[] }[];
