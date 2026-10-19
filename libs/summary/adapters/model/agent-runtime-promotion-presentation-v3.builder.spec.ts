@@ -150,6 +150,32 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(client.runTask).toHaveBeenCalledTimes(2);
   });
 
+  it("degrades the promoted task_cancelled shape the runtime client really delivers", async () => {
+    const client = new PresentationRuntimeClient();
+    jest.spyOn(client, "runTask").mockResolvedValue({ status: "failed", warnings: [],
+      failure: { code: "task_cancelled", safeMessage: "MiMo reader summary did not complete",
+        retryable: false, reconnectRequired: false, causeCategory: "agent_runtime",
+        details: { reason: "user_abort",
+          subscriptionWorkerCode: "subscription_worker_run_failed" } } });
+    await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).resolves.toEqual([
+      { status: "unavailable", reason: "invalid_presentation" }]);
+    expect(client.runTask).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the retried presentation after the promoted task_cancelled shape", async () => {
+    const client = new AttestedPresentationRuntimeClient();
+    jest.spyOn(client, "runTask").mockResolvedValueOnce({ status: "failed", warnings: [],
+      failure: { code: "task_cancelled", safeMessage: "MiMo reader summary did not complete",
+        retryable: false, reconnectRequired: false, causeCategory: "agent_runtime",
+        details: { reason: "user_abort",
+          subscriptionWorkerCode: "subscription_worker_run_failed" } } });
+    await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).resolves.toEqual([
+      expect.objectContaining({ status: "available" })]);
+    expect(client.runTask).toHaveBeenCalledTimes(2);
+  });
+
   it("uses the configured runtime provider without sending private interest text", async () => {
     const client = new PresentationRuntimeClient();
     const input = fixtureInput();
