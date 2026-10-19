@@ -23,7 +23,7 @@ export const parseTelegramPreview = (html: string, channel: string): TelegramPre
     for (const message of messages) {
       const match = /^([a-zA-Z][a-zA-Z0-9_]*)\/(\d+)$/.exec(message.getAttribute('data-post') ?? '');
       const id = Number(match?.[2]);
-      if (match?.[1]?.toLowerCase() !== channel || !Number.isSafeInteger(id) || id <= 0) {
+      if (match?.[1]?.toLowerCase() !== channel || !Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(id + 1)) {
         warnings.push('telegram.collection_incomplete:invalid_post_identity');
         continue;
       }

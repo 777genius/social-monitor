@@ -51,6 +51,10 @@ describe('Telegram preview coverage and content boundaries', () => {
     expect(result.items.map((item) => item.externalId)).toEqual(['example_channel/5']);
     expect(result.collection?.complete).toBe(false);
     expect(result.warnings).toContain('telegram.collection_incomplete:invalid_post_timestamp');
+    const repeat = await scanTelegram(provider, result.nextCursor, { targetPublishedWindow: window });
+    expect(repeat.items).toEqual([]);
+    expect(repeat.collection?.complete).toBe(false);
+    expect(repeat.warnings).toContain('telegram.collection_incomplete:history_gap');
   });
 
   it('retains media-only post identity and gives a healthy empty repeat without old content warnings', async () => {

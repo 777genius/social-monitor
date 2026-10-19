@@ -17,6 +17,7 @@ describe('Telegram inert HTML parsing', () => {
     expect(() => parseTelegramPreview(telegramHtml('', 'other_channel'), 'example_channel')).toThrow('unavailable');
     expect(parseTelegramPreview(telegramHtml(''), 'example_channel').posts).toEqual([]);
     expect(() => parseTelegramPreview(telegramHtml('<div class="tgme_widget_message" data-post="foreign_channel/9"></div>'), 'example_channel')).toThrow('no valid');
+    expect(() => parseTelegramPreview(telegramHtml(telegramMessageHtml(Number.MAX_SAFE_INTEGER, 'Invalid cursor boundary')), 'example_channel')).toThrow('no valid');
   });
 
   it('marks unsupported media and rich-text previews incomplete', () => {

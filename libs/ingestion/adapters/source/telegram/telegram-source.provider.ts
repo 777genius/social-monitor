@@ -103,6 +103,8 @@ export class TelegramSourceProvider implements SourceProviderPort {
         if (seen.has(post.id)) { duplicates += 1; continue; }
         seen.add(post.id);
         if (post.publishedAt === undefined) {
+          // Keep an actually skipped ID visible after the watermark advances.
+          recordHistoryGap(post.id - 1, post.id + 1);
           warnings.add('telegram.collection_incomplete:invalid_post_timestamp');
           continue;
         }
