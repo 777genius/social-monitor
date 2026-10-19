@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import { FeedRestModule } from "@social-monitor/feed/interfaces/rest/feed-rest.module";
 import { IdentityRestModule } from "@social-monitor/identity/interfaces/rest/identity-rest.module";
 import { ApplyAcceptedTopicRecommendationUseCase } from "@social-monitor/monitoring/features/apply-accepted-topic-recommendation/apply-accepted-topic-recommendation.use-case";
@@ -190,7 +191,13 @@ import { SummaryController } from "./summary.controller";
       ) =>
         new SchedulePeriodicReaderSummariesUseCase(
           readerSummaryPolicies,
-          requestReaderSummary,
+          {
+            execute: (command) =>
+              runWithTenantDatabaseAccess(
+                { tenantId: command.tenantId, workspaceId: command.workspaceId },
+                () => requestReaderSummary.execute(command),
+              ),
+          },
         ),
       inject: [READER_SUMMARY_POLICY_REPOSITORY, RequestReaderSummaryUseCase],
     },
