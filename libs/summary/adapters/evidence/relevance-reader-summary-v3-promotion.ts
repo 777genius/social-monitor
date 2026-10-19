@@ -327,7 +327,7 @@ implements ReaderSummaryV3PromotionPort {
     }
     const completed = candidates.map((candidate) => ({ ...candidate,
       presentation: statuses.get(candidate.candidateId)! }));
-    const selection = selectReaderPostPromotionsV3(completed);
+    let selection = selectReaderPostPromotionsV3(completed);
     if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
         selection.top.length + selection.additional.length < 16 &&
         completed.some((candidate) =>
@@ -346,7 +346,13 @@ implements ReaderSummaryV3PromotionPort {
         selection.excluded.some((entry) =>
           entry.reason === "presentation_budget_exhausted") &&
         !planWorkspacePresentationSlate(completed).settled) {
-      return { kind: "budget_exhausted" };
+      if (chargedBindings.size < maxPresentationCandidates || selection.outcome !== "ready" ||
+          selection.top.length + selection.additional.length < 8) {
+        return { kind: "budget_exhausted" };
+      }
+      // The optimistic slate is still unresolved. Freeze only the independently
+      // sealed survivors, retaining every unavailable/unattempted exclusion.
+      selection = Object.freeze({ ...selection, presentationCoverageLimited: true });
     }
     if (selection.outcome !== "ready") {
       if (selection.outcome !== "no_signal" || supplementalEvidence.length === 0) {

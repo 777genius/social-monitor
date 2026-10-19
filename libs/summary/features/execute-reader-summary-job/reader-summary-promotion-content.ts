@@ -20,6 +20,15 @@ export const buildReaderSummaryDraftWithPromotionContent = (
   evidence: SummaryEvidenceSelection,
   draft: ReaderSummaryDraft,
 ): ReaderSummaryDraftWithContent => {
+  const coverageLimited = evidence.promotionV3?.presentationCoverageLimited === true;
+  const qualityFlags = coverageLimited
+    ? [...new Set([...draft.qualityFlags, "limited_sources" as const])] : draft.qualityFlags;
+  const finalize = (content: ReaderSummaryDraftWithContent["content"]): ReaderSummaryDraftWithContent => ({
+    ...draft, qualityFlags, content: coverageLimited ? { ...content, qualityState: {
+      ...content.qualityState, warnings: [...new Set([...content.qualityState.warnings,
+        "Coverage is limited because the headline verification budget was reached; some story headlines were not checked."])],
+    } } : content,
+  });
   const buildContent = (
     narrativeSections: readonly ReaderSummaryNarrativeSection[] | undefined,
   ) => buildReaderSummary({
@@ -38,13 +47,13 @@ export const buildReaderSummaryDraftWithPromotionContent = (
     selectedEvidence: evidence.selectedEvidence,
     editorialSlate: evidence.editorialSlate,
     promotionV3: evidence.promotionV3,
-    qualityFlags: draft.qualityFlags,
+    qualityFlags,
     noSignalReason: draft.noSignalReason,
   });
   const content = buildContent(draft.content?.narrativeSections);
   const repairedLead = repairSingleStoryLead(evidence, draft, content);
   if (repairedLead === undefined) {
-    return { ...draft, content };
+    return finalize(content);
   }
 
   const repairedContent = buildContent([
@@ -53,7 +62,7 @@ export const buildReaderSummaryDraftWithPromotionContent = (
       (section) => section.kind !== "lead",
     ),
   ]);
-  return { ...draft, content: repairedContent };
+  return finalize(repairedContent);
 };
 
 const repairSingleStoryLead = (
