@@ -20,6 +20,7 @@ import type {
   PrepareReaderValueSummaryResult,
   ReaderValueSummaryPreparationConfig,
   ReaderValueSummaryPreparation,
+  ReaderValueSummaryPreparationManifest,
 } from "../contracts/reader-value-summary-preparation";
 import type { ConfiguredInterestReaderPort } from "../../ports";
 import { READER_VALUE_RUBRIC_VERSION } from
@@ -29,6 +30,7 @@ const physicalRowCeiling = 100_000;
 const candidateCeiling = 20_000;
 const sourceByteCeiling = 32 * 1024 * 1024;
 const preparationTimeCeilingMs = 110_000;
+const assessmentPersistenceConcurrency = 4;
 
 type PreparedCandidate = {
   readonly input: ReaderValuePreparedInput;
@@ -39,6 +41,11 @@ type PreparedCandidate = {
     readonly canonicalIdentity: string; readonly storyId?: string;
   };
 };
+type PersistedCandidate = ReaderValueSummaryPreparationManifest["candidates"][number];
+type PersistedCandidateResult =
+  | { readonly ok: true; readonly candidate: PersistedCandidate | null }
+  | { readonly ok: false; readonly code:
+      "assessment_snapshot_unavailable" | "assessment_time_over_budget" };
 
 type InventoryScan =
   | { readonly ok: false; readonly code: "assessment_snapshot_unavailable" |
@@ -208,46 +215,22 @@ implements ReaderValueSummaryPreparation {
     }
     if (!scan.ok) return scan;
 
-    const candidates: Array<{
-      candidateId: string; sourceItemId: string; sourceRevisionKey: string;
-      sourceBindingId: string; providerKey: string; observedAt: string;
-      sourceSnapshotSha256: string; assessmentId: string; inputSha256: string;
-      publishedAt: string; sourceKind: string; canonicalIdentity: string;
-      storyId?: string;
-    }> = [];
-    for (const prepared of scan.prepared) {
+    const candidates: PersistedCandidate[] = [];
+    // The stable read transaction has closed. Only independent assessment
+    // transactions run concurrently, and every batch settles before we return.
+    for (let offset = 0; offset < scan.prepared.length;
+      offset += assessmentPersistenceConcurrency) {
       if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
-      let input = prepared.input;
-      let assessment = await this.store.ensure(this.ids.generate(), input);
-      // A content-equivalent source can acquire a new revision key while the
-      // existing interest-scoped cache row keeps the earlier revision. The
-      // alternate digest creates a distinct assessment without changing the
-      // long-lived input builder or mutating a pinned historical row.
-      if (assessment !== null &&
-          assessment.input.sourceRevisionKey !== input.sourceRevisionKey &&
-          sameCachedReaderValueInputExceptRevision(assessment.input, input)) {
-        input = { ...input, inputSha256: readerValueSha256(JSON.stringify({
-          version: "reader-value-revision-binding.v1",
-          inputSha256: input.inputSha256,
-          sourceRevisionKey: input.sourceRevisionKey,
-        })) };
-        if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
-        assessment = await this.store.ensure(this.ids.generate(), input);
+      const batch = scan.prepared.slice(offset, offset + assessmentPersistenceConcurrency);
+      const results = await Promise.allSettled(batch.map((prepared) =>
+        this.persistPrepared(prepared, command, startedAt)));
+      for (const result of results) {
+        if (result.status === "rejected") throw result.reason;
+        if (!result.value.ok) return result.value;
+        if (result.value.candidate !== null) candidates.push(result.value.candidate);
       }
-      if (assessment === null ||
-          !sameCachedReaderValueInputExceptRevision(assessment.input, input) ||
-          assessment.input.sourceRevisionKey !== input.sourceRevisionKey) {
-        return { ok: false, code: "assessment_snapshot_unavailable" };
-      }
-      if (prepared.candidate === null) continue;
-      candidates.push({ ...prepared.candidate,
-        sourceItemId: input.sourceItemId,
-        sourceRevisionKey: input.sourceRevisionKey,
-        sourceSnapshotSha256: input.sourceSnapshotSha256,
-        assessmentId: assessment.id,
-        inputSha256: input.inputSha256,
-      });
     }
+    if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
 
     candidates.sort((left, right) => Buffer.compare(
       Buffer.from(left.candidateId, "utf8"), Buffer.from(right.candidateId, "utf8")));
@@ -286,6 +269,41 @@ implements ReaderValueSummaryPreparation {
     return { ok: true, config: scan.config, manifest,
       manifestSha256: readerValueSha256(JSON.stringify(manifest)),
       sourceBytes: scan.sourceBytes };
+  }
+
+  private async persistPrepared(prepared: PreparedCandidate,
+    command: PrepareReaderValueSummaryCommand, startedAt: number):
+    Promise<PersistedCandidateResult> {
+    let input = prepared.input;
+    let assessment = await this.store.ensure(this.ids.generate(), input);
+    // A content-equivalent source can acquire a new revision key while the
+    // existing interest-scoped cache row keeps the earlier revision. The
+    // alternate digest creates a distinct assessment without changing the
+    // long-lived input builder or mutating a pinned historical row.
+    if (assessment !== null &&
+        assessment.input.sourceRevisionKey !== input.sourceRevisionKey &&
+        sameCachedReaderValueInputExceptRevision(assessment.input, input)) {
+      input = { ...input, inputSha256: readerValueSha256(JSON.stringify({
+        version: "reader-value-revision-binding.v1",
+        inputSha256: input.inputSha256,
+        sourceRevisionKey: input.sourceRevisionKey,
+      })) };
+      if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
+      assessment = await this.store.ensure(this.ids.generate(), input);
+    }
+    if (assessment === null ||
+        !sameCachedReaderValueInputExceptRevision(assessment.input, input) ||
+        assessment.input.sourceRevisionKey !== input.sourceRevisionKey) {
+      return { ok: false, code: "assessment_snapshot_unavailable" };
+    }
+    return { ok: true, candidate: prepared.candidate === null ? null : {
+      ...prepared.candidate,
+      sourceItemId: input.sourceItemId,
+      sourceRevisionKey: input.sourceRevisionKey,
+      sourceSnapshotSha256: input.sourceSnapshotSha256,
+      assessmentId: assessment.id,
+      inputSha256: input.inputSha256,
+    } };
   }
 
   private timeBudgetExpired(command: PrepareReaderValueSummaryCommand,
