@@ -61,7 +61,7 @@ const seedEmptyFixture = async (client: PrismaClient, databaseName: string): Pro
 const inventory = async (client: PrismaClient) => {
   const [sources, feed, jobs, attempts, checkpoints] = await Promise.all([
     client.sourceItem.findMany({ select: { id: true, tenantId: true, workspaceId: true, sourceBindingId: true,
-      providerKey: true, providerItemId: true, canonicalUrl: true } }),
+      providerKey: true, providerItemId: true, canonicalUrl: true, metadata: true } }),
     client.feedItem.findMany({ select: { id: true, tenantId: true, workspaceId: true, interestId: true,
       sourceBindingId: true, providerKey: true, sourceItemId: true, canonicalUrl: true } }),
     client.scanJob.findMany({ select: { id: true, tenantId: true, workspaceId: true, sourceBindingId: true,
@@ -127,7 +127,7 @@ const assertCollected = (current: Inventory, previous: Inventory, result: Collec
     attempt.projected === result.projected, 'scan_attempt_counts_changed');
   const metadata = job?.executionMetadata;
   check(metadata !== null && typeof metadata === 'object' && !Array.isArray(metadata) &&
-    metadata.providerKey === 'telegram' && metadata.collectionComplete === result.complete &&
+    metadata.providerKey === 'telegram' && metadata.collectionComplete === result.complete && typeof metadata.contentComplete === 'boolean' &&
     metadata.backfillPending === result.backfillPending && metadata.pageCount === result.pageCount &&
     result.status === (result.complete ? 'complete' : 'partial'), 'persisted_completeness_missing');
   check(current.checkpoints.length === 1 && scoped(current.checkpoints[0]!), 'durable_checkpoint_missing');
@@ -163,6 +163,7 @@ export const checkTelegramChannelCollectionPostgres = async (env: NodeJS.Process
       check('scanJobId' in result, 'collection_result_missing');
       const current = await withFixtureDatabase(databaseUrl, inventory);
       assertCollected(current, prior, result, scan);
+      check(current.sources.length > 0, 'live_post_required_for_end_to_end_proof');
       if (scan === 2) check(same(result.cursorBefore, results[0]!.cursorAfter), 'second_scan_did_not_reuse_cursor');
       results.push(result);
       prior = current;

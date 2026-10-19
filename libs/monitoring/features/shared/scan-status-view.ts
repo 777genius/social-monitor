@@ -42,7 +42,7 @@ export const buildScanStatusView = (params: {
   }
 
   if (params.status === 'succeeded') {
-    if (params.executionMetadata?.collectionComplete === false) {
+    if (params.executionMetadata?.collectionComplete === false || params.executionMetadata?.contentComplete === false) {
       return {
         userState: 'scan_degraded',
         operatorAction: params.executionMetadata.backfillPending === true

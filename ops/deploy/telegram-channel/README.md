@@ -24,6 +24,13 @@ Failures after fetching or uncertain database/cleanup effects remain blocking
 and require native reconciliation. Repeated scans preserve existing item IDs
 and do not insert duplicate feed entries.
 
+`complete` describes traversal of the requested ID/time range. Scan execution
+metadata separately records `contentComplete`; each retained post also carries
+native-content completeness. Captions do not imply that media bytes were captured.
+Captionless posts retain their identity and canonical link with an empty body,
+without invented text. Content warnings from posts outside the range or at the
+saved watermark do not degrade the current scan.
+
 ## Deployment boundary
 
 These files are preparation, not evidence that production is enabled. Follow

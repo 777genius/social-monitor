@@ -45,7 +45,9 @@ export const parseTelegramPreview = (html: string, channel: string): TelegramPre
       });
       const raw = copy?.textContent?.replace(/\u00a0/g, ' ').trim() ?? '';
       const incomplete = raw.length === 0 || raw.length > textLimit ||
-        message.querySelector('.tgme_widget_message_error, .tgme_widget_message_text_has_more, .message_media_not_supported') !== null;
+        message.querySelector('.tgme_widget_message_error, .tgme_widget_message_text_has_more, .message_media_not_supported, ' +
+          '.tgme_widget_message_photo_wrap, .tgme_widget_message_video_player, .tgme_widget_message_document_wrap, ' +
+          '.tgme_widget_message_voice_player, .tgme_widget_message_audio_player, .tgme_widget_message_sticker_wrap') !== null;
       if (incomplete) warnings.push('telegram.preview_content_incomplete');
       if (publishedAt === undefined) warnings.push('telegram.collection_incomplete:invalid_post_timestamp');
       posts.push({ id, text: raw.slice(0, textLimit), publishedAt, links: [...links], incomplete,

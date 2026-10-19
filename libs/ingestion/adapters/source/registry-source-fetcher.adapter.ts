@@ -368,6 +368,9 @@ const buildSourceFetchTelemetry = (params: {
     ...(params.scanned.result.collection === undefined ? {} : {
       collectionComplete: params.scanned.result.collection.complete,
       backfillPending: params.scanned.result.collection.backfillPending,
+      ...(params.scanned.result.collection.contentComplete === undefined ? {} : {
+        contentComplete: params.scanned.result.collection.contentComplete,
+      }),
     }),
     targetItemCount: params.scanned.targetItemCount,
     collectedItemCount: params.scanned.result.items.length,

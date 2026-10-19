@@ -69,14 +69,16 @@ describe('Telegram preview incremental collection', () => {
     expect(second.warnings).toContain('telegram.collection_complete');
   });
 
-  it('keeps partial content visible and explicitly marks the result incomplete', async () => {
+  it('retains captionless posts and separates content limitations from completed traversal', async () => {
     const provider = new TelegramSourceProvider(telegramClient([telegramPost(2, { incomplete: true }), telegramPost(1, { text: '' })]), telegramClock);
     const result = await scanTelegram(provider);
-    expect(result.items).toHaveLength(1);
+    expect(result.items).toHaveLength(2);
     expect(result.items[0]?.canonicalUrl).toBe('https://t.me/example_channel/2');
     expect(result.items[0]?.metadata?.nativeContentComplete).toBe(false);
-    expect(result.items[0]?.metadata?.telegramCollection).toMatchObject({ status: 'partial' });
-    expect(result.warnings).not.toContain('telegram.collection_complete');
+    expect(result.items[1]).toMatchObject({ title: 'Telegram post 1', body: '', metadata: { nativeContentIncomplete: true } });
+    expect(result.items[0]?.metadata?.telegramCollection).toMatchObject({ status: 'complete', contentComplete: false });
+    expect(result.collection).toEqual({ complete: true, backfillPending: false, contentComplete: false });
+    expect(result.warnings).toContain('telegram.collection_complete');
   });
 
   it('keeps a resumable cursor after a later page is rate-limited and respects Retry-After', async () => {
@@ -111,7 +113,7 @@ describe('Telegram preview incremental collection', () => {
     const cursor = readTelegramCursor(result.nextCursor, 'example_channel', 'live');
     expect(cursor).toMatchObject({ lastId: 9, historyGap: { afterId: 2, beforeId: 8 } });
     expect(cursor.pending).toBeUndefined();
-    expect(result.collection).toEqual({ complete: false, backfillPending: false });
+    expect(result.collection).toMatchObject({ complete: false, backfillPending: false });
     posts.push(telegramPost(10));
     const next = await scanTelegram(provider, result.nextCursor);
     expect(next.items.map((item) => item.externalId)).toEqual(['example_channel/10']);
@@ -129,7 +131,7 @@ describe('Telegram preview incremental collection', () => {
     });
     const partial = await scanTelegram(provider, prior);
     expect(readTelegramCursor(partial.nextCursor, 'example_channel', 'live')).toMatchObject({ lastId: 9, historyGap: { afterId: 2, beforeId: 8 } });
-    expect(partial.collection).toEqual({ complete: false, backfillPending: false });
+    expect(partial.collection).toMatchObject({ complete: false, backfillPending: false });
     newest = 10;
     expect((await scanTelegram(provider, partial.nextCursor)).items.map((item) => item.externalId)).toEqual(['example_channel/10']);
   });

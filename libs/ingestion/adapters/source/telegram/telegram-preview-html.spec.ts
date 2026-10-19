@@ -39,6 +39,12 @@ describe('Telegram inert HTML parsing', () => {
     expect(page.posts[0]?.incomplete).toBe(true);
   });
 
+  it('does not label a photo caption as the entire native post', () => {
+    const page = parseTelegramPreview(telegramHtml(telegramMessageHtml(6, 'Photo caption',
+      '<a class="tgme_widget_message_photo_wrap"></a>')), 'example_channel');
+    expect(page.posts[0]).toMatchObject({ text: 'Photo caption', incomplete: true });
+  });
+
   it('does not call partial provider-native capture a complete presentation', () => {
     const captured = captureNativeText({ title: 'Preview', body: 'Available excerpt', canonicalUrl: 'https://t.me/example_channel/1',
       metadata: { nativeContentIncomplete: true } }, 'telegram', new Date('2026-10-18T12:00:00Z'));

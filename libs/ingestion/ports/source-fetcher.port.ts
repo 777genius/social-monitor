@@ -50,6 +50,7 @@ export type SourcePaginationStopReason =
 
 export type SourceFetchTelemetry = {
   readonly collectionComplete?: boolean;
+  readonly contentComplete?: boolean;
   readonly backfillPending?: boolean;
   readonly targetItemCount: number;
   readonly collectedItemCount: number;

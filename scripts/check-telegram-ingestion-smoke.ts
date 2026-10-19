@@ -16,6 +16,7 @@ import type { TelegramPreviewPost } from '../libs/ingestion/adapters/source/tele
 import { readTelegramCursor } from '../libs/ingestion/adapters/source/telegram/telegram-preview-cursor';
 import { buildScanStatusView } from '../libs/monitoring/features/shared/scan-status-view';
 import { TelegramSourceProvider } from '../libs/ingestion/adapters/source/telegram/telegram-source.provider';
+import { HttpTelegramPreviewClient } from '../libs/ingestion/adapters/source/telegram/http-telegram-preview-client';
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
 import { ExecuteScanUseCase } from '../libs/ingestion/features/execute-scan/execute-scan.use-case';
 import { ExecuteScanCommandHandler } from '../libs/ingestion/interfaces/queue/execute-scan-command.handler';
@@ -50,9 +51,16 @@ const run = async (): Promise<void> => {
   const posts: TelegramPreviewPost[] = [5, 4, 3, 2, 1].map((id) => ({
     id, text: `Synthetic public post ${id}`, publishedAt: clock.now(), links: [], incomplete: false,
   }));
-  const provider = new TelegramSourceProvider({ readPage: async (_channel, before) => ({
-    posts: posts.filter((post) => before === undefined || post.id < before).slice(0, 2), warnings: [],
-  }) }, clock);
+  // Only transport is synthetic; exercise the real HTTP adapter and HTML parser.
+  const provider = new TelegramSourceProvider(new HttpTelegramPreviewClient(1000, async (request) => {
+    const before = Number(new URL(request.url).searchParams.get('before') ?? Number.MAX_SAFE_INTEGER);
+    const messages = posts.filter((post) => post.id < before).slice(0, 2).map((post) =>
+      `<div class="tgme_widget_message" data-post="example_channel/${post.id}">` +
+      `<div class="tgme_widget_message_text js-message_text">${post.text}</div>` +
+      `<a class="tgme_widget_message_date"><time datetime="${post.publishedAt!.toISOString()}"></time></a></div>`).join('');
+    return { status: 200, headers: new Headers(), finalUrl: request.url,
+      body: `<div class="tgme_channel_info_header_username">@example_channel</div><section class="tgme_channel_history">${messages}</section>` };
+  }), clock);
   const executeScan = new ExecuteScanUseCase(
     new CircuitBreakerSourceFetcherAdapter(new RegistrySourceFetcherAdapter(
       new InMemorySourceProviderRegistry([provider], sourceReadinessProfiles),
@@ -88,11 +96,19 @@ const run = async (): Promise<void> => {
     if (repeated.inserted !== 0 || repeated.fetched !== 0) throw new Error('Repeated scans must not duplicate posts');
     posts.unshift({ id: 6, text: '', publishedAt: clock.now(), links: [], incomplete: true });
     await scan('telegram-unsupported');
+    if (reporter.succeeded?.collectionTelemetry?.collectionComplete !== true ||
+        reporter.succeeded?.collectionTelemetry?.contentComplete !== false) {
+      throw new Error('Coverage and content completeness must be persisted independently');
+    }
     if (state().userState !== 'scan_degraded' || state().operatorAction !== 'inspect_incomplete_source_content') {
-      throw new Error('Unsupported-only collection must remain visibly incomplete with zero items');
+      throw new Error('Captionless content must remain visibly incomplete while retaining the post identity');
     }
     const feed = await feedItems.list({ tenantId: tenant, workspaceId: workspace, interestId: 'topic-telegram-smoke', limit: 10 });
-    if (feed.items.length !== 5 || reporter.failed !== undefined) throw new Error('Expected five projected Telegram posts and no failure');
+    if (feed.items.length !== 6 || reporter.failed !== undefined) throw new Error('Expected six projected Telegram posts, including captionless content, and no failure');
+    const finalRepeat = await scan('telegram-content-repeat');
+    if (finalRepeat.inserted !== 0 || state().userState !== 'content_current') {
+      throw new Error('An old captionless preview must not degrade the empty repeat');
+    }
     console.log('Telegram ingestion smoke OK: persisted resume, dedupe, feed projection and incomplete status');
   } finally { await runtime.onApplicationShutdown('telegram-smoke-complete'); }
 };

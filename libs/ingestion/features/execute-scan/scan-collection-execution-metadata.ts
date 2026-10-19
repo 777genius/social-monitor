@@ -52,6 +52,7 @@ export const successfulScanCollectionExecutionMetadata = (params: {
               collectionComplete: telemetry.collectionComplete,
               backfillPending: telemetry.backfillPending ?? false,
             }),
+            ...(telemetry.contentComplete === undefined ? {} : { contentComplete: telemetry.contentComplete }),
             targetItemCount: telemetry.targetItemCount,
             collectedItemCount: telemetry.collectedItemCount,
             acceptedItemCount: telemetry.acceptedItemCount,
