@@ -6,6 +6,7 @@ import 'package:social_monitor_interests/social_monitor_interests.dart';
 import 'package:social_monitor_settings/social_monitor_settings.dart';
 import 'package:social_monitor_sources/social_monitor_sources.dart';
 import 'package:social_monitor_summaries/social_monitor_summaries.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'app_demo_feature_builders.dart';
 import 'app_runtime.dart';
@@ -172,7 +173,7 @@ AppRouteWidgetBuilder feedFeatureBuilder({
   required AppRuntimeController runtimeController,
 }) {
   if (useDemoRoutes) {
-    return (context, uri) => FeedFeatureRoute();
+    return (context, uri) => FeedFeatureRoute(onOpenSource: _openFeedSource);
   }
 
   return (context, uri) {
@@ -184,6 +185,7 @@ AppRouteWidgetBuilder feedFeatureBuilder({
       final interestId = uri.queryParameters['interestId']?.trim();
       final interestTitle = uri.queryParameters['interestTitle']?.trim();
       return FeedFeatureRoute.generatedApi(
+        onOpenSource: _openFeedSource,
         generatedApiRuntime: generatedApiRuntime,
         scope: scope,
         interestId: interestId != null && interestId.isNotEmpty
@@ -256,3 +258,9 @@ AppWorkspaceSnapshot _appWorkspace(AuthWorkspaceRouteSnapshot workspace) {
     scope: workspace.scope,
   );
 }
+
+Future<bool> _openFeedSource(Uri uri) => launchUrl(
+  uri,
+  mode: LaunchMode.externalApplication,
+  webOnlyWindowName: '_blank',
+);

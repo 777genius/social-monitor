@@ -12,6 +12,9 @@ class AppProviderLogo extends StatelessWidget {
   Widget build(BuildContext context) {
     final normalized = providerKey.trim().toLowerCase();
     final colorScheme = Theme.of(context).colorScheme;
+    if (normalized == 'telegram') {
+      return Icon(Icons.telegram, size: size, color: const Color(0xFF229ED9));
+    }
     if (normalized == 'github' ||
         normalized == 'github-issues' ||
         normalized == 'github-trending-page' ||
