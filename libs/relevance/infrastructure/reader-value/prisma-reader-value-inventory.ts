@@ -77,13 +77,17 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
     includeExpiredForPreparation: boolean): Promise<readonly ReaderValueInventoryItem[]> {
       // Preflight only bounded identities, versions and database byte lengths. A
       // rejected page never transfers a source body into the application process.
+      // Keep source lookup dependent on the ordered feed traversal. OFFSET 0
+      // prevents join flattening from scanning/sorting the full live inventory
+      // before each keyset page; it does not discard or limit source rows.
       const identities = await tx.$queryRawUnsafe<InventoryIdentityRow[]>(`SELECT
         f.id::text AS feed_item_id,s.id::text AS source_item_id,
         s.content_updated_at::text AS source_updated_at,s.content_hash,
         (octet_length(s.title)+octet_length(s.body))::bigint AS source_bytes
         FROM feed_items f
-        JOIN source_items s ON s.tenant_id=f.tenant_id AND s.workspace_id=f.workspace_id AND s.id=f.source_item_id
-          AND s.provider_key=f.provider_key
+        JOIN LATERAL (SELECT s.* FROM source_items s WHERE s.tenant_id=f.tenant_id
+          AND s.workspace_id=f.workspace_id AND s.id=f.source_item_id
+          AND s.provider_key=f.provider_key OFFSET 0) s ON true
         JOIN interests i ON i.tenant_id=f.tenant_id AND i.workspace_id=f.workspace_id AND i.id=f.interest_id
         JOIN source_bindings b ON b.tenant_id=f.tenant_id AND b.workspace_id=f.workspace_id AND b.id=f.source_binding_id
           AND b.interest_id=f.interest_id AND b.status='ENABLED' AND b.deleted_at IS NULL

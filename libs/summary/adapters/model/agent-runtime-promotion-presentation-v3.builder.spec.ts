@@ -176,7 +176,7 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       const options = JSON.parse(command.systemPrompt!.split("\nSOURCE_REFERENCE_COPY_OPTIONS=")[1]!);
       const output = result.structuredOutput as { presentations: Record<string, unknown>[] };
       return withTestExecutionAttestation(command, { ...result, structuredOutput: {
-        presentations: output.presentations.map(row => ({ ...row, support: [options[0].references[0]] })),
+        contractVersion: "mimo_qualified_headline.v1", presentations: output.presentations.map(row => ({ ...row, support: [options[0].references[0]] })),
       } });
     });
     expect((await builder.build([input]))[0]).toMatchObject({ status: "available" });
@@ -188,7 +188,7 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(command.systemPrompt).toContain("never translated or paraphrased");
     expect(command.systemPrompt).toContain("fieldText.slice(start,end) must equal quote exactly");
     expect(command.systemPrompt).toContain("global 8/512/1024 reference budgets");
-    expect(command.systemPrompt).toContain("Every qualification phrase must occur literally");
+    expect(command.systemPrompt).toContain("Every declared phrase will appear literally");
     expect(command.systemPrompt).toContain("Never include URLs, angle brackets, control characters");
     expect(command.systemPrompt).toContain("never truncate it or add an ellipsis");
     expect(command.systemPrompt).toContain("Avoid first-person or conversational openings");
@@ -218,7 +218,7 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(codex.commands[0]?.systemPrompt).not.toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
   });
 
-  it("still refuses a copied source anchor when a material qualification is absent from the headline", async () => {
+  it("composes every declared material qualification before sealing the headline", async () => {
     const client = new AttestedPresentationRuntimeClient();
     const original = client.runTask.bind(client);
     jest.spyOn(client, "runTask").mockImplementation(async command => {
@@ -227,14 +227,14 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       const reference = options[0].references.find((ref: { field: string }) => ref.field === "bodyPreview");
       const output = result.structuredOutput as { presentations: Record<string, unknown>[] };
       return withTestExecutionAttestation(command, { ...result, structuredOutput: {
-        presentations: output.presentations.map(row => ({ ...row, support: [reference],
-          qualifications: [{ phrase: "limited", evidence: [reference] }], qualificationJudgment: "preserved" })),
+        contractVersion: "mimo_qualified_headline.v1", presentations: output.presentations.map(row => ({ ...row, support: [reference],
+          qualifications: [{ phrase: "limited", evidence: [reference] }] })),
       } });
     });
     const builder = new AgentRuntimePromotionPresentationV3Builder({ client,
       modelBackend: "xiaomi-mimo-token-plan" });
     expect((await builder.build([{ ...fixtureInput(), body: "Useful method with limited evidence." }]))[0])
-      .toEqual({ status: "unavailable", reason: "invalid_presentation" });
+      .toMatchObject({ status: "available", seal: { headline: { text: "Useful database method (limited)" } } });
   });
 
   it("isolates MiMo identity from Codex without changing exact MiMo retries", async () => {
@@ -404,10 +404,15 @@ class AttestedPresentationRuntimeClient extends PresentationRuntimeClient {
     const result = await super.runTask(command);
     if (command.controls?.modelBackend === "xiaomi-mimo-token-plan") {
       const value = result.structuredOutput as { presentations: Record<string, unknown>[] };
-      return withTestExecutionAttestation(command, { ...result, structuredOutput: { presentations:
-        value.presentations.map(row => ({ ...row, support: [
-          { field: "bodyPreview", start: 0, end: 19, quote: "Useful body source." },
-        ] })) } });
+      return withTestExecutionAttestation(command, { ...result, structuredOutput: {
+        contractVersion: "mimo_qualified_headline.v1", presentations:
+        value.presentations.map(row => {
+          const { text, ...fields } = row;
+          delete fields.qualificationJudgment;
+          return { ...fields, baseHeadline: text, support: [
+            { field: "bodyPreview", start: 0, end: 19, quote: "Useful body source." },
+          ] };
+        }) } });
     }
     return withTestExecutionAttestation(command, result);
   }
