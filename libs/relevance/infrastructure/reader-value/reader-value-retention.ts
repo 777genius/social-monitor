@@ -50,10 +50,14 @@ export async function pinReaderValueAssessments(tx: AssessmentSqlTransaction, sc
     ORDER BY a.id FOR UPDATE OF a`,scope.tenantId,scope.workspaceId,interestId,ids);
   if (locked.length !== ids.length) return false;
   // Only durable terminal outcomes release a pin; deadlines and execution leases do not.
-  await tx.$executeRawUnsafe(`UPDATE reader_value_assessments a SET pinned_job_ids=ARRAY(
+  // Bound each trigger-bearing statement while retaining one transaction and
+  // the complete sorted lock set. A later failure rolls back every batch.
+  for (let offset=0;offset<ids.length;offset+=100) {
+    await tx.$executeRawUnsafe(`UPDATE reader_value_assessments a SET pinned_job_ids=ARRAY(
     SELECT j.id FROM reader_summary_jobs j WHERE j.tenant_id=a.tenant_id AND j.workspace_id=a.workspace_id
       AND j.id=ANY(a.pinned_job_ids) AND j.status IN ('REQUESTED','RUNNING') ORDER BY j.id)
-    WHERE a.tenant_id=$1::uuid AND a.workspace_id=$2::uuid AND a.id=ANY($3::uuid[])`,scope.tenantId,scope.workspaceId,ids);
+    WHERE a.tenant_id=$1::uuid AND a.workspace_id=$2::uuid AND a.id=ANY($3::uuid[])`,scope.tenantId,scope.workspaceId,ids.slice(offset,offset+100));
+  }
   const full=await tx.$queryRawUnsafe<{id:string}[]>(`SELECT a.id FROM reader_value_assessments a
     WHERE a.tenant_id=$1::uuid AND a.workspace_id=$2::uuid AND a.id=ANY($3::uuid[])
       AND cardinality(a.pinned_job_ids)>=256 AND NOT $4::uuid=ANY(a.pinned_job_ids)`,scope.tenantId,scope.workspaceId,ids,jobId);
@@ -62,9 +66,11 @@ export async function pinReaderValueAssessments(tx: AssessmentSqlTransaction, sc
     const reads = await readReaderValueAssessments(tx,scope,interestId,references.slice(offset,offset+100));
     if (reads.some((read) => read.status !== 'available')) return false;
   }
-  await tx.$executeRawUnsafe(`UPDATE reader_value_assessments a SET pinned_job_ids=array_append(a.pinned_job_ids,$5::uuid)
+  for (let offset=0;offset<ids.length;offset+=100) {
+    await tx.$executeRawUnsafe(`UPDATE reader_value_assessments a SET pinned_job_ids=array_append(a.pinned_job_ids,$5::uuid)
     WHERE a.tenant_id=$1::uuid AND a.workspace_id=$2::uuid AND a.interest_id=$3::uuid
-      AND a.id=ANY($4::uuid[]) AND NOT $5::uuid=ANY(a.pinned_job_ids)`,scope.tenantId,scope.workspaceId,interestId,ids,jobId);
+      AND a.id=ANY($4::uuid[]) AND NOT $5::uuid=ANY(a.pinned_job_ids)`,scope.tenantId,scope.workspaceId,interestId,ids.slice(offset,offset+100),jobId);
+  }
   return true;
 }
 

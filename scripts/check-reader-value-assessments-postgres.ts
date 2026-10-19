@@ -12,6 +12,7 @@ import { checkReaderValueReferences } from './lib/reader-value-reference-postgre
 import { checkReaderValueTerminalInputs } from './lib/reader-value-terminal-postgres-checks';
 
 import { checkReaderValuePinRaces } from './lib/reader-value-pin-race-postgres-checks';
+import { checkReaderValuePinBatches } from './lib/reader-value-pin-batches-postgres-checks';
 
 const policy = {version:'reader-value-retention.v1',retentionHoldWorkspaceIds:[],eraseRevokedScopes:true} as const;
 const validated = validateReaderValueAnswers(Object.fromEntries(Object.entries(readerValueLabels).map(([key,labels]) => [key,{
@@ -101,6 +102,7 @@ async function main() {
     await checkReaderValueReferences(fixture,success);
     await checkReaderValueTerminalInputs(fixture,success);
     await checkReaderValuePinRaces(fixture);
+    await checkReaderValuePinBatches(fixture);
     console.log('Reader value PostgreSQL gate OK (partial baseline/RLS/CP1 migration fixture; production Prisma connection path, not full migration-chain certification): exact reuse, interests/RLS, concurrent claims, stale leases, immutability, three reservations, retention/pins/holds/tombstones');
   } finally { await fixture.close(); }
 }
