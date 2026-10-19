@@ -28,7 +28,8 @@ describe('Telegram inert HTML parsing', () => {
   it('does not mistake ordinary post or quoted reply wording for a Telegram placeholder', () => {
     const page = parseTelegramPreview(telegramHtml(telegramMessageHtml(4,
       'The button label is View in Telegram.',
-      '<a class="tgme_widget_message_reply"><div class="js-message_reply_text">Please open Telegram to view</div></a>')), 'example_channel');
+      '<a class="tgme_widget_message_reply"><div class="js-message_reply_text">Please open Telegram to view</div>' +
+      '<span class="tgme_widget_message_photo_wrap"></span><span class="message_media_not_supported"></span></a>')), 'example_channel');
     expect(page.posts[0]?.incomplete).toBe(false);
     expect(page.warnings).toEqual([]);
   });

@@ -45,10 +45,11 @@ export const parseTelegramPreview = (html: string, channel: string): TelegramPre
         } catch { /* Keep readable label; never interpret arbitrary links. */ }
       });
       const raw = copy?.textContent?.replace(/\u00a0/g, ' ').trim() ?? '';
-      const incomplete = raw.length === 0 || raw.length > textLimit ||
-        message.querySelector('.tgme_widget_message_error, .tgme_widget_message_text_has_more, .message_media_not_supported, ' +
+      const media = message.querySelectorAll('.tgme_widget_message_error, .tgme_widget_message_text_has_more, .message_media_not_supported, ' +
           '.tgme_widget_message_photo_wrap, .tgme_widget_message_video_player, .tgme_widget_message_document_wrap, ' +
-          '.tgme_widget_message_voice_player, .tgme_widget_message_audio_player, .tgme_widget_message_sticker_wrap') !== null;
+          '.tgme_widget_message_voice_player, .tgme_widget_message_audio_player, .tgme_widget_message_sticker_wrap');
+      const incomplete = raw.length === 0 || raw.length > textLimit || [...media].some((node) =>
+        node.closest('.tgme_widget_message_reply, .js-message_reply_text') === null);
       if (incomplete) warnings.push('telegram.preview_content_incomplete');
       if (publishedAt === undefined) warnings.push('telegram.collection_incomplete:invalid_post_timestamp');
       posts.push({ id, text: unicodePrefix(raw, textLimit), publishedAt, links: [...links], incomplete,
