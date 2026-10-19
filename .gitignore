@@ -48,3 +48,22 @@ CLAUDE.local.md
 android/.gradle/
 ios/Pods/
 .social-monitor/
+
+# local agent scratch and runtime data (never commit)
+/.local/
+/.local-agent/
+/.worktrees/
+/.ruff_cache/
+/.board-task-change-freshness/
+/registry/
+/vibe_images/
+/*.local.*
+
+# one-off agent run artifacts at repo root
+/HOSTED-*
+/PROD-READONLY-*
+/RANKING-*
+/SEP12-*
+/e2e-continuation-*
+/worker-output-*
+/worker-backfill-*
