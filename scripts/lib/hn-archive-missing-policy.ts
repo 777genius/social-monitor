@@ -11,7 +11,7 @@ export type HnArchiveItem = Readonly<{
   externalId: string; objectId: number; title: string; url: string | null;
   author: string; points: number; createdAt: string; publishedUtcDate: string;
   storyText: string | null; commentCount: number; comments: readonly HnArchiveComment[];
-  retrievedForPass: number; provenance: Readonly<Record<string, unknown>>;
+  retrievedForPass: number | string; provenance: Readonly<Record<string, unknown>>;
 }>;
 export type HnArchiveManifest = Readonly<{
   generatedAt: string; jobId: string; window: Readonly<{ from: string; to: string }>;
@@ -93,12 +93,15 @@ export function qualifyHnArchiveItem(input: unknown, day: string, ordinal: numbe
   const value = object(input, `HN item ${ordinal} invalid`);
   exactKeys(value, ['externalId','objectId','title','url','author','points','createdAt','publishedUtcDate',
     'storyText','commentCount','comments','retrievedForPass','provenance'], `HN item ${ordinal} shape invalid`);
-  archiveNeed(value.externalId === `hn:${value.objectId}` && Number.isInteger(value.objectId) &&
-    Number(value.objectId) > 0 && typeof value.title === 'string' && value.title.trim().length > 0 &&
+  const objectId = nativeHnId(value.objectId, `HN item ${ordinal} ID invalid`);
+  archiveNeed(value.externalId === `hn:${objectId}` &&
+    typeof value.title === 'string' && value.title.trim().length > 0 &&
     value.publishedUtcDate === day && typeof value.author === 'string' &&
     typeof value.points === 'number' && Number.isInteger(value.points) && value.points >= 0 &&
     typeof value.commentCount === 'number' && Number.isInteger(value.commentCount) &&
-    value.commentCount >= 0 && Number.isInteger(value.retrievedForPass), `HN item ${ordinal} identity invalid`);
+    value.commentCount >= 0 && (Number.isInteger(value.retrievedForPass) ||
+      typeof value.retrievedForPass === 'string' && /^[A-Za-z0-9._:-]{1,128}$/u.test(value.retrievedForPass)),
+    `HN item ${ordinal} identity invalid`);
   archiveNeed(value.url === null || (typeof value.url === 'string' &&
     ['http:','https:'].includes(new URL(value.url).protocol)), `HN item ${ordinal} URL invalid`);
   archiveNeed(value.storyText === null || typeof value.storyText === 'string', `HN item ${ordinal} storyText invalid`);
@@ -111,16 +114,23 @@ export function qualifyHnArchiveItem(input: unknown, day: string, ordinal: numbe
   const comments = (value.comments as unknown[]).map((raw, index): HnArchiveComment => {
     const comment = object(raw, `HN comment ${ordinal}.${index} invalid`);
     exactKeys(comment, ['id','author','createdAt','depth','text'], `HN comment ${ordinal}.${index} shape invalid`);
-    archiveNeed(Number.isInteger(comment.id) && Number(comment.id) > 0 && !ids.has(Number(comment.id)) &&
+    const id = nativeHnId(comment.id, `HN comment ${ordinal}.${index} ID invalid`);
+    archiveNeed(!ids.has(id) &&
       typeof comment.author === 'string' && Number.isInteger(comment.depth) && Number(comment.depth) >= 1 &&
       typeof comment.text === 'string' && comment.text.trim().length > 0, `HN comment ${ordinal}.${index} invalid`);
     iso(comment.createdAt, `HN comment ${ordinal}.${index} createdAt invalid`);
     archiveNeed(Date.parse(comment.createdAt as string) >= Date.parse(value.createdAt as string),
       `HN comment ${ordinal}.${index} predates story`);
-    ids.add(Number(comment.id));
-    return comment as unknown as HnArchiveComment;
+    ids.add(id);
+    return { ...comment, id } as unknown as HnArchiveComment;
   });
-  return { ...value, comments } as unknown as HnArchiveItem;
+  return { ...value, objectId, comments } as unknown as HnArchiveItem;
+}
+function nativeHnId(value: unknown, reason: string): number {
+  const id = typeof value === 'string' && /^[1-9][0-9]*$/u.test(value) ? Number(value) : value;
+  archiveNeed(typeof id === 'number' && Number.isSafeInteger(id) && id > 0 &&
+    (typeof value !== 'string' || String(id) === value), reason);
+  return id;
 }
 export function validateHnArchiveClaim(claim: unknown, plan: HnArchiveMissingPlan, invocation: {
   inputRoot: string; day: string; journalDir: string; semanticKey: string;

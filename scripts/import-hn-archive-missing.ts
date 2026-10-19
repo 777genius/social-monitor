@@ -14,9 +14,9 @@ import { runWithTenantDatabaseAccess } from '@social-monitor/platform-persistenc
 import { CryptoIdGenerator, SystemClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { PrismaIngestionWorkerConnection } from '../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection';
-import { insertOnlyFeedTransaction, assertTrustedAncestry, finiteRssDatabaseUrl, openFiniteOperatorSqlPool } from './import-rss-sep24-verified';
+import { insertOnlyFeedTransaction, reuseFiniteArchiveTransaction, assertTrustedAncestry, finiteRssDatabaseUrl, openFiniteOperatorSqlPool } from './import-rss-sep24-verified';
 import { noRetryGitHubArchiveTransaction, writeExclusive } from './lib/github-archive-finite-journal';
-import { assertFiniteGitHubArchiveRole } from './lib/github-archive-finite-role-policy';
+import { assertFiniteGitHubArchiveRole, scopedGitHubArchiveRead } from './lib/github-archive-finite-role-policy';
 import {
   archiveHash, canonicalJson, hnArchiveJournalReceipt, validateHnArchiveClaim,
   validateHnArchivePlanShape, type HnArchiveMissingPlan,
@@ -25,20 +25,8 @@ import { executeHnArchiveMissingImport, type HnArchiveMissingDependencies } from
 
 type Transaction = PrismaIngestionWorkerConnection & {
   $queryRawUnsafe: <T>(sql: string, ...args: unknown[]) => Promise<T>;
+  $executeRawUnsafe: (sql: string) => Promise<unknown>;
 };
-type RoleRow = Readonly<{ allowed: boolean }>;
-function isRoleRow(value: unknown): value is RoleRow {
-  return value !== null && typeof value === 'object' && 'allowed' in value &&
-    typeof value.allowed === 'boolean';
-}
-function roleRows(value: readonly unknown[]): readonly RoleRow[] {
-  const rows: RoleRow[] = [];
-  for (const row of value) {
-    if (!isRoleRow(row)) throw new Error('Finite collection role rows invalid');
-    rows.push(row);
-  }
-  return rows;
-}
 export type HnArchiveMissingRequest = Readonly<{
   inputRoot: string; day: string; journalDir: string; semanticKey: string;
   expectedPlanSha256: string; packetSha256: string; correlationId: string;
@@ -254,20 +242,15 @@ async function connectionTransaction(
 ): Promise<{ inserted: number; alreadyPresent: number; postWritePresent: number }> {
   return connection.$transaction(async tx => {
     const raw = tx as unknown as Transaction;
+    await raw.$executeRawUnsafe('SET TRANSACTION READ WRITE');
     await assertFiniteGitHubArchiveRole((sql, values) => raw.$queryRawUnsafe(sql, ...values), plan.scope, 'write');
-    const guarded = insertOnlyFeedTransaction(noRetryGitHubArchiveTransaction(raw));
+    const guarded = reuseFiniteArchiveTransaction(insertOnlyFeedTransaction(noRetryGitHubArchiveTransaction(raw)));
     return executeHnArchiveMissingImport(plan, manifest, createDependencies(guarded as PrismaIngestionWorkerConnection, plan),
       plan.planSha256);
   }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 120000 });
 }
 async function scopedRead(sql: Pick<ReturnType<typeof openFiniteOperatorSqlPool>, 'connect'>, plan: HnArchiveMissingPlan): Promise<void> {
-  const client = await sql.connect();
-  try {
-    await assertFiniteGitHubArchiveRole(async (text, values) => {
-      const result = await client.query(text, [...values]);
-      return roleRows(result.rows);
-    }, plan.scope, 'read');
-  } finally { client.release(); }
+  await scopedGitHubArchiveRead(sql, plan.scope, async () => undefined);
 }
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
