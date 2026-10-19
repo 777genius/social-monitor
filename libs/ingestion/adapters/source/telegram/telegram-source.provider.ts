@@ -5,6 +5,7 @@ import type {
     SourceProviderScanContext, SourceProviderScanPlan, SourceProviderScanResult, SourceQuery, SourcePaginationStopReason,
 } from '../../../ports';
 import { telegramPreviewConfig, validateTelegramQuery } from './telegram-preview-config';
+import { unicodePrefix } from '../../../domain/value-objects/source-content-capture';
 import { TelegramPreviewError, type TelegramPreviewClientPort, type TelegramPreviewPost } from './telegram-preview-client.port';
 import { readTelegramCursor, writeTelegramCursor } from './telegram-preview-cursor';
 
@@ -75,7 +76,10 @@ export class TelegramSourceProvider implements SourceProviderPort {
         break;
       }
       pages += 1;
-      page.warnings.forEach((warning) => warnings.add(warning));
+      // Post-level warnings are evaluated only after ID and time filtering.
+      // Older posts or posts already checkpointed must not poison this scan.
+      page.warnings.filter((warning) => warning !== 'telegram.preview_content_incomplete' &&
+        warning !== 'telegram.collection_incomplete:invalid_post_timestamp').forEach((warning) => warnings.add(warning));
       const posts = [...page.posts].sort((a, b) => b.id - a.id);
       if (ceilingId === 0) ceilingId = Math.max(prior.lastId, posts[0]?.id ?? 0);
       if (posts.length === 0) {
@@ -98,12 +102,14 @@ export class TelegramSourceProvider implements SourceProviderPort {
         processedBefore = post.id;
         if (seen.has(post.id)) { duplicates += 1; continue; }
         seen.add(post.id);
-        if (post.publishedAt === undefined || post.text.trim().length === 0) {
-          warnings.add('telegram.collection_incomplete:unsupported_post');
+        if (post.publishedAt === undefined) {
+          // Keep an actually skipped ID visible after the watermark advances.
+          recordHistoryGap(post.id - 1, post.id + 1);
+          warnings.add('telegram.collection_incomplete:invalid_post_timestamp');
           continue;
         }
         if (post.publishedAt.getTime() >= untilTime) continue;
-        if (post.incomplete) warnings.add('telegram.preview_content_incomplete');
+        if (post.incomplete || post.text.trim().length === 0) warnings.add('telegram.preview_content_incomplete');
         items.set(post.id, sourceItem(config.channel, post));
       }
       if (done) break;
@@ -121,10 +127,11 @@ export class TelegramSourceProvider implements SourceProviderPort {
       pending ??= ceilingId > floorId ? { beforeId: beforeId ?? ceilingId + 1, ceilingId, floorId, fromTime, untilTime } : undefined;
     } else { pending = undefined; }
     if (historyGap !== undefined) warnings.add('telegram.collection_incomplete:history_gap');
-    const partial = !done || [...warnings].some((warning) => warning.startsWith('telegram.collection_incomplete') || warning === 'telegram.preview_content_incomplete');
+    const partial = !done || [...warnings].some((warning) => warning.startsWith('telegram.collection_incomplete'));
+    const contentComplete = [...items.values()].every((item) => item.metadata?.nativeContentComplete === true);
     warnings.add(partial ? 'telegram.collection_incomplete' : 'telegram.collection_complete');
     warnings.add(`telegram.collection_stats;pages=${pages};items=${items.size};duplicates=${duplicates};backfill=${pending !== undefined}`);
-    const metadata: JsonObject = { status: partial ? 'partial' : 'complete', backfillPending: pending !== undefined,
+    const metadata: JsonObject = { status: partial ? 'partial' : 'complete', contentComplete, backfillPending: pending !== undefined,
       pageCount: pages, ...(historyGap === undefined ? {} : { historyGap }), completedThroughId: done ? ceilingId : prior.lastId, observedThroughId: ceilingId };
     return {
       items: [...items.values()].sort((a, b) => a.publishedAt.getTime() - b.publishedAt.getTime()).map((item) => ({
@@ -135,7 +142,7 @@ export class TelegramSourceProvider implements SourceProviderPort {
         ...(retryAfterUntil === undefined ? {} : { retryAfterUntil }),
         ...(historyGap === undefined ? {} : { historyGap }) }),
       warnings: [...warnings],
-      collection: { complete: !partial, backfillPending: pending !== undefined },
+      collection: { complete: !partial, contentComplete, backfillPending: pending !== undefined },
       pagination: { pageCount: pages, duplicateItemCount: duplicates, stopReason: reason },
     };
   }
@@ -150,8 +157,10 @@ export class TelegramSourceProvider implements SourceProviderPort {
 
 const sourceItem = (channel: string, post: TelegramPreviewPost): FetchedSourceItem => ({
   externalId: `${channel}/${post.id}`, canonicalUrl: `https://t.me/${channel}/${post.id}`,
-  title: (post.text.split(/\n\s*\n/)[0] ?? post.text).replace(/\s+/g, ' ').slice(0, 160),
+  title: unicodePrefix((post.text.split(/\n\s*\n/)[0] ?? post.text).replace(/\s+/g, ' '), 160).trim() || `Telegram post ${post.id}`,
   body: post.text, authorHandle: `@${channel}`, publishedAt: post.publishedAt!,
-  metadata: { channel, messageId: String(post.id), nativeContentComplete: !post.incomplete, nativeContentIncomplete: post.incomplete,
-    telegramPreviewContentIncomplete: post.incomplete, externalLinks: [...post.links], ...(post.views === undefined ? {} : { views: post.views }) },
+  metadata: { channel, messageId: String(post.id), nativeContentComplete: !post.incomplete && post.text.trim().length > 0,
+    nativeContentIncomplete: post.incomplete || post.text.trim().length === 0,
+    telegramPreviewContentIncomplete: post.incomplete || post.text.trim().length === 0,
+    externalLinks: [...post.links], ...(post.views === undefined ? {} : { views: post.views }) },
 });

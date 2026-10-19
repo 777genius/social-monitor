@@ -52,6 +52,8 @@ export type SourceProviderScanResult = {
   readonly collection?: {
     readonly complete: boolean;
     readonly backfillPending: boolean;
+    /** Available post content, independent of traversal coverage. */
+    readonly contentComplete?: boolean;
   };
   /** Providers with checkpoint/backfill cursors own traversal and report its actual cost. */
   readonly pagination?: {

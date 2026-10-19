@@ -1,4 +1,5 @@
 import { JSDOM } from 'jsdom';
+import { unicodePrefix } from '../../../domain/value-objects/source-content-capture';
 import type { TelegramPreviewPage, TelegramPreviewPost } from './telegram-preview-client.port';
 import { TelegramPreviewError } from './telegram-preview-client.port';
 
@@ -22,7 +23,7 @@ export const parseTelegramPreview = (html: string, channel: string): TelegramPre
     for (const message of messages) {
       const match = /^([a-zA-Z][a-zA-Z0-9_]*)\/(\d+)$/.exec(message.getAttribute('data-post') ?? '');
       const id = Number(match?.[2]);
-      if (match?.[1]?.toLowerCase() !== channel || !Number.isSafeInteger(id) || id <= 0) {
+      if (match?.[1]?.toLowerCase() !== channel || !Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(id + 1)) {
         warnings.push('telegram.collection_incomplete:invalid_post_identity');
         continue;
       }
@@ -44,11 +45,14 @@ export const parseTelegramPreview = (html: string, channel: string): TelegramPre
         } catch { /* Keep readable label; never interpret arbitrary links. */ }
       });
       const raw = copy?.textContent?.replace(/\u00a0/g, ' ').trim() ?? '';
-      const incomplete = raw.length === 0 || raw.length > textLimit ||
-        message.querySelector('.tgme_widget_message_error, .tgme_widget_message_text_has_more, .message_media_not_supported') !== null;
+      const media = message.querySelectorAll('.tgme_widget_message_error, .tgme_widget_message_text_has_more, .message_media_not_supported, ' +
+          '.tgme_widget_message_photo_wrap, .tgme_widget_message_video_player, .tgme_widget_message_document_wrap, ' +
+          '.tgme_widget_message_voice_player, .tgme_widget_message_audio_player, .tgme_widget_message_sticker_wrap');
+      const incomplete = raw.length === 0 || raw.length > textLimit || [...media].some((node) =>
+        node.closest('.tgme_widget_message_reply, .js-message_reply_text') === null);
       if (incomplete) warnings.push('telegram.preview_content_incomplete');
       if (publishedAt === undefined) warnings.push('telegram.collection_incomplete:invalid_post_timestamp');
-      posts.push({ id, text: raw.slice(0, textLimit), publishedAt, links: [...links], incomplete,
+      posts.push({ id, text: unicodePrefix(raw, textLimit), publishedAt, links: [...links], incomplete,
         views: parseViews(message.querySelector('.tgme_widget_message_views')?.textContent ?? '') });
     }
     if (messages.length > 0 && posts.length === 0) {

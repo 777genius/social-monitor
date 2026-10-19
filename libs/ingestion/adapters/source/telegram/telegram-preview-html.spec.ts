@@ -17,6 +17,7 @@ describe('Telegram inert HTML parsing', () => {
     expect(() => parseTelegramPreview(telegramHtml('', 'other_channel'), 'example_channel')).toThrow('unavailable');
     expect(parseTelegramPreview(telegramHtml(''), 'example_channel').posts).toEqual([]);
     expect(() => parseTelegramPreview(telegramHtml('<div class="tgme_widget_message" data-post="foreign_channel/9"></div>'), 'example_channel')).toThrow('no valid');
+    expect(() => parseTelegramPreview(telegramHtml(telegramMessageHtml(Number.MAX_SAFE_INTEGER, 'Invalid cursor boundary')), 'example_channel')).toThrow('no valid');
   });
 
   it('marks unsupported media and rich-text previews incomplete', () => {
@@ -28,7 +29,8 @@ describe('Telegram inert HTML parsing', () => {
   it('does not mistake ordinary post or quoted reply wording for a Telegram placeholder', () => {
     const page = parseTelegramPreview(telegramHtml(telegramMessageHtml(4,
       'The button label is View in Telegram.',
-      '<a class="tgme_widget_message_reply"><div class="js-message_reply_text">Please open Telegram to view</div></a>')), 'example_channel');
+      '<a class="tgme_widget_message_reply"><div class="js-message_reply_text">Please open Telegram to view</div>' +
+      '<span class="tgme_widget_message_photo_wrap"></span><span class="message_media_not_supported"></span></a>')), 'example_channel');
     expect(page.posts[0]?.incomplete).toBe(false);
     expect(page.warnings).toEqual([]);
   });
@@ -39,9 +41,21 @@ describe('Telegram inert HTML parsing', () => {
     expect(page.posts[0]?.incomplete).toBe(true);
   });
 
+  it('does not label a photo caption as the entire native post', () => {
+    const page = parseTelegramPreview(telegramHtml(telegramMessageHtml(6, 'Photo caption',
+      '<a class="tgme_widget_message_photo_wrap"></a>')), 'example_channel');
+    expect(page.posts[0]).toMatchObject({ text: 'Photo caption', incomplete: true });
+  });
+
   it('does not call partial provider-native capture a complete presentation', () => {
     const captured = captureNativeText({ title: 'Preview', body: 'Available excerpt', canonicalUrl: 'https://t.me/example_channel/1',
       metadata: { nativeContentIncomplete: true } }, 'telegram', new Date('2026-10-18T12:00:00Z'));
     expect(readContentCapture(captured)?.presentationComplete).toBe(false);
+  });
+
+  it('does not split an emoji at the retained text limit', () => {
+    const page = parseTelegramPreview(telegramHtml(telegramMessageHtml(7, 'a'.repeat(63_999) + '😀 suffix')), 'example_channel');
+    expect(page.posts[0]?.text).toBe('a'.repeat(63_999));
+    expect(page.posts[0]?.incomplete).toBe(true);
   });
 });

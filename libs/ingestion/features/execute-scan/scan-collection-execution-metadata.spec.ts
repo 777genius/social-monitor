@@ -11,6 +11,7 @@ describe("scan collection execution metadata", () => {
         sourceQuery: windowedQuery,
         telemetry: {
           collectionComplete: false,
+          contentComplete: false,
           backfillPending: true,
           targetItemCount: 80,
           collectedItemCount: 73,
@@ -35,6 +36,7 @@ describe("scan collection execution metadata", () => {
       targetPublishedWindowStartedAt: periodStartedAt.toISOString(),
       targetPublishedWindowEndedAt: periodEndedAt.toISOString(),
       collectionComplete: false,
+      contentComplete: false,
       backfillPending: true,
       targetItemCount: 80,
       collectedItemCount: 73,
