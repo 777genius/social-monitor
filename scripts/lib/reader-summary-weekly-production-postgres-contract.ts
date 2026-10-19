@@ -714,10 +714,10 @@ const certificationBlockingReasons = (
     certification.providerEvidence.every(
       (evidence) => evidence.providerKey !== "github-trending-page",
     );
-  if (
-    !honestHistoricalUnavailable &&
-    (github.mode !== "verified" || githubCount !== 10)
-  ) {
+  const honestGithubBoard =
+    (github.mode === "verified" || github.mode === "archived_verified") &&
+    githubCount === 10;
+  if (!honestHistoricalUnavailable && !honestGithubBoard) {
     reasons.push(
       `${certification.requestedUtcDate} lacks verified GitHub DB evidence`,
     );

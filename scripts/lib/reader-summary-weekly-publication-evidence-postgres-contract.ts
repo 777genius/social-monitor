@@ -18,6 +18,7 @@ export type ReaderSummaryPublicationEvidenceFixture = Readonly<{
 }>;
 export type ReaderSummaryPublicationGitHubEvidenceMode =
   | "verified"
+  | "archived_verified"
   | "ordinary_not_required"
   | "historical_unavailable";
 export type EvidenceFixtureOverrides = Readonly<{
@@ -434,18 +435,20 @@ export const assertReaderSummaryWeeklyPublicationEvidenceRow = async (
         AND reader_summary_artifact_id = $2`,
     [fixture.jobId, fixture.artifactId],
   );
+  const githubBoardMode =
+    githubMode === "verified" || githubMode === "archived_verified";
   const expectedProviderCount =
-    githubMode === "verified" ? 10 : status === "COMPLETED" ? 1 : 0;
+    githubBoardMode ? 10 : status === "COMPLETED" ? 1 : 0;
   const expectedProviderCounts = [
     {
       providerKey: "github-trending-page",
-      count: githubMode === "verified" ? 10 : 0,
+      count: githubBoardMode ? 10 : 0,
     },
     { providerKey: "hacker-news", count: 0 },
     { providerKey: "reddit", count: 0 },
     {
       providerKey: "rss",
-      count: githubMode === "verified" ? 0 : expectedProviderCount,
+      count: githubBoardMode ? 0 : expectedProviderCount,
     },
     { providerKey: "x-twitter", count: 0 },
   ];
@@ -474,8 +477,8 @@ export const assertReaderSummaryWeeklyPublicationEvidenceRow = async (
       row.provider_count === expectedProviderCount &&
       row.report_citation_count === expectedProviderCount &&
       row.github_mode === githubMode &&
-      row.github_count === (githubMode === "verified" ? 10 : 0) &&
-      row.github_repositories === (githubMode === "verified" ? 10 : 0) &&
+      row.github_count === (githubBoardMode ? 10 : 0) &&
+      row.github_repositories === (githubBoardMode ? 10 : 0) &&
       row.stored_canonical_matches &&
       postgresCanonical === jsEvidence.canonicalJson &&
       row.canonical_sha256 === jsEvidence.sha256 &&
