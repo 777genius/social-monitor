@@ -1,4 +1,5 @@
 import { parseTelegramPreview } from './telegram-preview-html';
+import { captureNativeText, readContentCapture } from '../../../domain/value-objects/source-content-capture';
 import { TelegramSourceProvider } from './telegram-source.provider';
 import { writeTelegramCursor } from './telegram-preview-cursor';
 import { scanTelegram, telegramClock, telegramHtml, telegramMessageHtml } from './telegram-preview.spec-support';
@@ -11,6 +12,15 @@ const fromHtml = (html: string) => new TelegramSourceProvider({
 }, telegramClock);
 
 describe('Telegram preview coverage and content boundaries', () => {
+  it('keeps an emoji at the title limit valid through UTF-8 capture and digest verification', async () => {
+    const result = await scanTelegram(fromHtml(message(5, 'a'.repeat(159) + '😀 suffix', '2026-10-18T10:30:00Z')));
+    const captured = captureNativeText(result.items[0]!, 'telegram', telegramClock.now());
+    expect(captured.title).toBe('a'.repeat(159));
+    const stored = { ...captured, title: Buffer.from(captured.title, 'utf8').toString('utf8'),
+      body: Buffer.from(captured.body, 'utf8').toString('utf8') };
+    expect(readContentCapture(stored)).toBeDefined();
+  });
+
   it('collects the inclusive start/exclusive end without importing unrelated preview warnings', async () => {
     const provider = fromHtml([
       message(5, '', window.endExclusive),

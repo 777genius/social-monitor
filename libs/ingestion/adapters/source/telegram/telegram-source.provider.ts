@@ -5,6 +5,7 @@ import type {
     SourceProviderScanContext, SourceProviderScanPlan, SourceProviderScanResult, SourceQuery, SourcePaginationStopReason,
 } from '../../../ports';
 import { telegramPreviewConfig, validateTelegramQuery } from './telegram-preview-config';
+import { unicodePrefix } from '../../../domain/value-objects/source-content-capture';
 import { TelegramPreviewError, type TelegramPreviewClientPort, type TelegramPreviewPost } from './telegram-preview-client.port';
 import { readTelegramCursor, writeTelegramCursor } from './telegram-preview-cursor';
 
@@ -154,7 +155,7 @@ export class TelegramSourceProvider implements SourceProviderPort {
 
 const sourceItem = (channel: string, post: TelegramPreviewPost): FetchedSourceItem => ({
   externalId: `${channel}/${post.id}`, canonicalUrl: `https://t.me/${channel}/${post.id}`,
-  title: (post.text.split(/\n\s*\n/)[0] ?? post.text).replace(/\s+/g, ' ').slice(0, 160).trim() || `Telegram post ${post.id}`,
+  title: unicodePrefix((post.text.split(/\n\s*\n/)[0] ?? post.text).replace(/\s+/g, ' '), 160).trim() || `Telegram post ${post.id}`,
   body: post.text, authorHandle: `@${channel}`, publishedAt: post.publishedAt!,
   metadata: { channel, messageId: String(post.id), nativeContentComplete: !post.incomplete && post.text.trim().length > 0,
     nativeContentIncomplete: post.incomplete || post.text.trim().length === 0,

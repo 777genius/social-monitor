@@ -1,4 +1,5 @@
 import { JSDOM } from 'jsdom';
+import { unicodePrefix } from '../../../domain/value-objects/source-content-capture';
 import type { TelegramPreviewPage, TelegramPreviewPost } from './telegram-preview-client.port';
 import { TelegramPreviewError } from './telegram-preview-client.port';
 
@@ -50,7 +51,7 @@ export const parseTelegramPreview = (html: string, channel: string): TelegramPre
           '.tgme_widget_message_voice_player, .tgme_widget_message_audio_player, .tgme_widget_message_sticker_wrap') !== null;
       if (incomplete) warnings.push('telegram.preview_content_incomplete');
       if (publishedAt === undefined) warnings.push('telegram.collection_incomplete:invalid_post_timestamp');
-      posts.push({ id, text: raw.slice(0, textLimit), publishedAt, links: [...links], incomplete,
+      posts.push({ id, text: unicodePrefix(raw, textLimit), publishedAt, links: [...links], incomplete,
         views: parseViews(message.querySelector('.tgme_widget_message_views')?.textContent ?? '') });
     }
     if (messages.length > 0 && posts.length === 0) {

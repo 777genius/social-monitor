@@ -50,4 +50,10 @@ describe('Telegram inert HTML parsing', () => {
       metadata: { nativeContentIncomplete: true } }, 'telegram', new Date('2026-10-18T12:00:00Z'));
     expect(readContentCapture(captured)?.presentationComplete).toBe(false);
   });
+
+  it('does not split an emoji at the retained text limit', () => {
+    const page = parseTelegramPreview(telegramHtml(telegramMessageHtml(7, 'a'.repeat(63_999) + '😀 suffix')), 'example_channel');
+    expect(page.posts[0]?.text).toBe('a'.repeat(63_999));
+    expect(page.posts[0]?.incomplete).toBe(true);
+  });
 });
