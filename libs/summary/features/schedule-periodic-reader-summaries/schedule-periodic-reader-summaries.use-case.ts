@@ -29,7 +29,10 @@ const MAX_LIMIT = 100;
 export class SchedulePeriodicReaderSummariesUseCase {
   constructor(
     private readonly readerSummaryPolicies: ReaderSummaryPolicyRepositoryPort,
-    private readonly requestReaderSummary: RequestReaderSummaryUseCase,
+    private readonly requestReaderSummary: Pick<
+      RequestReaderSummaryUseCase,
+      "execute"
+    >,
   ) {}
 
   async execute(
