@@ -9,7 +9,8 @@ import '../composition/feed_feature_module_host.dart';
 import '../stores/feed_items_store.dart';
 
 class FeedFeatureRoute extends StatelessWidget {
-  FeedFeatureRoute({super.key}) : _module = FeedFeatureModule();
+  FeedFeatureRoute({super.key, this.onOpenSource})
+    : _module = FeedFeatureModule();
 
   FeedFeatureRoute.generatedApi({
     super.key,
@@ -17,6 +18,7 @@ class FeedFeatureRoute extends StatelessWidget {
     required WorkspaceScope scope,
     String? interestId,
     String? interestTitle,
+    this.onOpenSource,
   }) : _module = FeedFeatureModule.generatedApi(
          generatedApiRuntime: generatedApiRuntime,
          scope: scope,
@@ -25,15 +27,16 @@ class FeedFeatureRoute extends StatelessWidget {
        );
 
   final FeedFeatureModule _module;
+  final Future<bool> Function(Uri)? onOpenSource;
 
   @override
   Widget build(BuildContext context) {
-    const host = FeedFeatureModuleHost();
+    final host = FeedFeatureModuleHost(onOpenSource: onOpenSource);
     return ModuleScope<FeedFeatureModule>(
       module: _module,
       retentionPolicy: ModuleRetentionPolicy.routeBound,
       retentionKey: _module.retentionKey,
-      loadingBuilder: (context) => const _LoadedModuleFallback(child: host),
+      loadingBuilder: (context) => _LoadedModuleFallback(child: host),
       child: host,
     );
   }

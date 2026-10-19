@@ -8,7 +8,14 @@ final class UrlLauncherReaderSourceLauncher implements ReaderSourceLauncher {
 
   @override
   Future<Result<Unit>> open(Uri uri) async {
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final browserUri = sourceBrowserUri(uri.toString());
+    final launched =
+        browserUri != null &&
+        await launchUrl(
+          browserUri,
+          mode: LaunchMode.externalApplication,
+          webOnlyWindowName: '_blank',
+        );
     if (!launched) {
       return Result.failure(
         UnexpectedFailure(

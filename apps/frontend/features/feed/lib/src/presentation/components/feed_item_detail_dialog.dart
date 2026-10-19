@@ -11,11 +11,13 @@ class FeedItemDetailDialog extends StatelessWidget {
     required this.item,
     required this.isLoading,
     required this.failure,
+    this.onOpenSource,
   });
 
   final FeedItem item;
   final bool isLoading;
   final AppFailure? failure;
+  final Future<bool> Function(Uri)? onOpenSource;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +60,7 @@ class FeedItemDetailDialog extends StatelessWidget {
                     item: item,
                     isLoading: isLoading,
                     failure: failure,
+                    onOpenSource: onOpenSource,
                   ),
                 ),
               ),

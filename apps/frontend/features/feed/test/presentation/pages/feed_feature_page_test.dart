@@ -14,6 +14,47 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../support/feed_test_fixtures.dart';
 
 void main() {
+  for (final size in [const Size(390, 844), const Size(1280, 820)]) {
+    testWidgets(
+      'Telegram card opens a browser preview at width ${size.width}',
+      (tester) async {
+        final opened = <Uri>[];
+        final store = _store([
+          feedItemApiDto(
+            providerKey: 'telegram',
+            title: 'Public channel update',
+            canonicalUrl: 'https://t.me/example_channel/42',
+            authorHandle: '@example_channel',
+          ),
+        ]);
+        await _pumpSizedFeature(
+          tester,
+          store: store,
+          size: size,
+          onOpenSource: (uri) async {
+            opened.add(uri);
+            return true;
+          },
+        );
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.telegram), findsWidgets);
+        expect(find.text('Telegram'), findsWidgets);
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('feed-item-card-feed-1')),
+        );
+        await tester.tap(find.byKey(const ValueKey('feed-item-card-feed-1')));
+        await tester.pumpAndSettle();
+        expect(find.text('https://t.me/s/example_channel/42'), findsOneWidget);
+        final action = find.text('Open Telegram web preview');
+        await tester.ensureVisible(action);
+        await tester.tap(action);
+        await tester.pumpAndSettle();
+        expect(opened, [Uri.parse('https://t.me/s/example_channel/42')]);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('opens backend-real feed detail in a dialog', (tester) async {
     final store = _store([
       feedItemApiDto(
@@ -300,6 +341,7 @@ Future<void> _pumpSizedFeature(
   required FeedItemsStore store,
   required Size size,
   bool autoload = true,
+  Future<bool> Function(Uri)? onOpenSource,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -307,7 +349,12 @@ Future<void> _pumpSizedFeature(
   addTearDown(tester.view.resetDevicePixelRatio);
 
   await tester.pumpWidget(
-    _TestApp(store: store, size: size, autoload: autoload),
+    _TestApp(
+      store: store,
+      size: size,
+      autoload: autoload,
+      onOpenSource: onOpenSource,
+    ),
   );
 }
 
@@ -316,11 +363,13 @@ class _TestApp extends StatelessWidget {
     required this.store,
     required this.size,
     required this.autoload,
+    this.onOpenSource,
   });
 
   final FeedItemsStore store;
   final Size size;
   final bool autoload;
+  final Future<bool> Function(Uri)? onOpenSource;
 
   @override
   Widget build(BuildContext context) {
@@ -333,7 +382,11 @@ class _TestApp extends StatelessWidget {
         home: MediaQuery(
           data: MediaQueryData(size: size),
           child: Scaffold(
-            body: FeedFeaturePage(store: store, autoload: autoload),
+            body: FeedFeaturePage(
+              store: store,
+              autoload: autoload,
+              onOpenSource: onOpenSource,
+            ),
           ),
         ),
       ),
