@@ -1,3 +1,4 @@
+import { assertMimoSchemaRoot } from "./mimo-schema-root-policy";
 import { mimoSchemaMarkers } from "./reader-summary-mimo-schema-markers";
 import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
 import {
@@ -235,23 +236,6 @@ export const admitSubscriptionRuntimeRequest = (
   };
 };
 
-const assertMimoSchemaRoot = (
-  purpose: string,
-  schema: Record<string, unknown>,
-): void => {
-  const expected = mimoSchemaMarkers[purpose]?.[2];
-  const properties = schema.properties as Record<string, unknown> | undefined;
-  const required = schema.required as readonly string[] | undefined;
-  const first = expected?.[0];
-  const firstSchema = first === undefined ? undefined : properties?.[first] as Record<string, unknown> | undefined;
-  if (expected === undefined || schema.type !== "object" || schema.additionalProperties !== false ||
-    !properties || Array.isArray(properties) || !Array.isArray(required) ||
-    required.length !== expected?.length ||
-    expected.some((key) => !required.includes(key) || !Object.hasOwn(properties, key)) ||
-    firstSchema?.type !== (first === "headline" ? "string" : "array")) {
-    throw new Error("outputSchema conflicts with MiMo purpose policy");
-  }
-};
 
 export const subscriptionRuntimeOutputMatchesProfile = (
   admission: AdmittedSubscriptionRuntimeRequest,

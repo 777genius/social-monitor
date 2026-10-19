@@ -68,7 +68,7 @@ const approvedSubscriptionRuntimeDependencies = Object.freeze({
   "codex-auth-pool-routing.mjs":
     "5b76a13787a92852282488d5beec8ebb3bfd27f9dfbc059daa8bb521b5524c49",
   "subscription-runtime-purpose-model-policy.mjs":
-    "d96beb211e8ac582019bd0ab05554205b129a7ea113ee1068253540e43b50b2c",
+    "18b53f4cedf7bc1758921bbd28247de125e89fd992174722dd5b81a8676a1b65",
   "reader-promotion-v2-canary-contract.cjs":
     "13432d41d7999d15f22880017e73cbd943c209db62161b2a6a2bec6b0766775c",
 });
