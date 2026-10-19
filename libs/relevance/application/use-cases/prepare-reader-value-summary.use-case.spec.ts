@@ -233,6 +233,19 @@ describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
     expect(fixture.builder.prepare).not.toHaveBeenCalled();
   });
 
+  // Regression: legacy sources without capture provenance keep unknown
+  // availability and are dropped like candidate qualification instead of
+  // failing the whole historical window.
+  it("drops a legacy source without capture availability instead of failing the window", async () => {
+    const fixture = setup(item({ availableAt: null }));
+    const result = await prepare(fixture.subject);
+
+    expect(result).toMatchObject({ ok: true, manifest: { candidates: [] } });
+    expect(fixture.builder.prepare).not.toHaveBeenCalled();
+    expect(fixture.store.ensure).not.toHaveBeenCalled();
+    expect(fixture.store.pin).toHaveBeenCalledTimes(1);
+  });
+
   // Regression: a source revision can change without changing captured text.
   // The old cache row must be bypassed with a revision-bound assessment so a
   // weekly workspace can still prepare every candidate and pin exact provenance.

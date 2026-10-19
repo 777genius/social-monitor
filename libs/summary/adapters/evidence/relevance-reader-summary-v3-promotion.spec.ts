@@ -261,20 +261,23 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
       value.readerHeadline?.status === "accepted")).toBe(true);
   });
 
-  it("fails before presentation when pairwise story work exceeds its budget", async () => {
-    // 257 distinct keys require 32,896 membership checks, above the finite 32,768 bound.
-    const candidates = Array.from({ length: 257 }, (_, index) => ({
+  it("fits a weekly-scale 1200-story workspace within the pairwise budget", async () => {
+    // 1,200 distinct keys need 719,400 membership checks inside the raised bound.
+    const candidates = Array.from({ length: 1_200 }, (_, index) => ({
       ...candidate(index + 1, "useful", "relevant"),
+      provider: "rss",
       publishedAt: "2026-09-20T12:00:00.000001Z",
       observedAt: "2026-09-20T12:01:00.000001Z",
-      body: `Distinct source ${index} ${"details ".repeat(600)}`,
     }));
     const presentation = new TestPresentation();
     const fixture = workspaceSetup(candidates, undefined, presentation);
 
-    await expect(fixture.subject.build({ job: fixture.job,
-      manifest: fixture.manifest })).resolves.toEqual({ kind: "budget_exhausted" });
-    expect(presentation.attempted).toBe(0);
+    const result = await fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest });
+
+    expect(result.kind).toBe("ready");
+    expect(presentation.attempted).toBeGreaterThan(0);
+    expect(presentation.attempted).toBeLessThanOrEqual(32);
   });
 
   // Regression: the same source can carry conflicting Jev answers. The
