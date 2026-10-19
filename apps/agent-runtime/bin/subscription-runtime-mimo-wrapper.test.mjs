@@ -261,3 +261,85 @@ test("MiMo worker binds each daily purpose to its schema and output family", asy
     await assert.rejects(rejected.run({ runId: "synthetic-run" }), /output was rejected/u);
   }
 });
+
+const retryDependencies = (createOneShotExecutor) => ({
+  mimoRuntime: { createOneShotExecutor },
+  mimoApiKey: "synthetic-mimo-retry-key",
+  admission: summaryAdmission,
+  mimoCustody: { processFactory: () => {} },
+  codexAuthPoolExecutionPolicy: {},
+  codexAuthPoolTaskHash: (id) => `hash:${id}`,
+  nonEmptyRunId: (id) => id,
+  join,
+  mkdir: async () => {},
+  resolvePinnedCodexBinaryPath: () => "/synthetic/codex",
+  subscriptionOnlyCodexEnvironment: () => ({}),
+  SubscriptionWorkerError: class extends Error {
+    constructor(code, message) { super(message); this.code = code; }
+  },
+});
+
+test("MiMo summary factory retries transient failures with attempt-scoped ids", async () => {
+  const seen = [];
+  const dependencies = retryDependencies((options) => {
+    const entry = { options, jobs: [], disposed: 0 };
+    seen.push(entry);
+    return {
+      async run(job) {
+        entry.jobs.push(job);
+        if (seen.length === 1) {
+          return { status: "partial", failureReason: "goal_slice_exhausted" };
+        }
+        return { status: "completed",
+          result: { structuredOutput: { headline: "Synthetic" } } };
+      },
+      async dispose() { entry.disposed += 1; },
+    };
+  });
+  const factory = new Function(
+    ...Object.keys(dependencies), `${body}\nreturn createMimoSummaryWorker;`,
+  )(...Object.values(dependencies));
+  const worker = factory({
+    input: { stateRootDir: "/synthetic/state", encryptionKey: "synthetic",
+      timeoutMs: 60_000 },
+    model: "mimo-v2.6-pro",
+  });
+  assert.deepEqual(await worker.run({ runId: "synthetic-run",
+    prompt: "Synthetic prompt.", systemPrompt: "Synthetic system." }),
+  { structuredOutput: { headline: "Synthetic" } });
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0].jobs[0].taskId, "synthetic-run");
+  assert.equal(seen[1].jobs[0].taskId, "synthetic-run:attempt-2");
+  assert.equal(seen[1].jobs[0].runId, "synthetic-run:attempt-2");
+  assert.ok(seen[1].options.executorId.endsWith("hash:synthetic-run:attempt-2"));
+  assert.equal(seen[0].disposed, 1);
+  assert.ok(seen[1].options.accounts[0].worker.taskTimeoutMs <= 51_000);
+  assert.equal(seen[1].options.safeExecutionPolicy.maxAttempts, 1);
+  assert.equal(seen[1].options.safeExecutionPolicy.continuationMode, "disabled");
+  await worker.dispose();
+});
+
+test("MiMo summary factory does not retry non-retryable failures", async () => {
+  let runs = 0;
+  let disposed = 0;
+  const dependencies = retryDependencies(() => ({
+    async run() {
+      runs += 1;
+      return { status: "partial", failureReason: "budget_exceeded" };
+    },
+    async dispose() { disposed += 1; },
+  }));
+  const factory = new Function(
+    ...Object.keys(dependencies), `${body}\nreturn createMimoSummaryWorker;`,
+  )(...Object.values(dependencies));
+  const worker = factory({
+    input: { stateRootDir: "/synthetic/state", encryptionKey: "synthetic" },
+    model: "mimo-v2.6-pro",
+  });
+  await assert.rejects(worker.run({ runId: "synthetic-run" }), (error) =>
+    error.code === "subscription_worker_run_failed" &&
+    error.message === "MiMo reader summary did not complete");
+  assert.equal(runs, 1);
+  await worker.dispose();
+  assert.equal(disposed, 1);
+});

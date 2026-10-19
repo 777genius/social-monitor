@@ -185,6 +185,32 @@ function createMimoSummaryWorker({ input, model }) {
   const outputContract = `TRUSTED NAMED OUTPUT CONTRACT:
 The final answer must be one JSON object matching the admitted schema "${schemaName}" below, including the required top-level property "${expected[1]}" of type "${expected[2]}". Return the output object, not the original input envelope or a schema description.
 ${JSON.stringify(summaryTask.controls.outputSchema)}`;
+  const mimoSummaryAttemptLimit = 3;
+  const mimoSummaryNonRetryableMarkers = [
+    "user_abort",
+    "task_cancelled",
+    "permission_required",
+    "budget_exceeded",
+    "account_unavailable",
+    "quota_limited",
+    "capacity_unavailable",
+  ];
+  const mimoSummaryFailureIsRetryable = (value) => {
+    let text;
+    try {
+      text = `${String(value?.message ?? "")} ${String(value?.failureReason ?? "")} ${JSON.stringify(value ?? {})}`;
+    } catch {
+      text = `${String(value?.message ?? "")} ${String(value?.failureReason ?? "")}`;
+    }
+    return !mimoSummaryNonRetryableMarkers.some((marker) => text.includes(marker));
+  };
+  const disposeMimoSummaryAttempt = async (attemptExecutor) => {
+    try {
+      await attemptExecutor?.dispose();
+    } catch {
+      // Best-effort cleanup between bounded attempts.
+    }
+  };
   let executor;
   return {
     async start() {},
@@ -197,8 +223,16 @@ ${JSON.stringify(summaryTask.controls.outputSchema)}`;
         throw new Error("MiMo reader summary accepts one task without continuation");
       }
       const taskId = nonEmptyRunId(job.runId);
-      const taskHash = codexAuthPoolTaskHash(taskId);
+      const attemptBudgetMs = input.timeoutMs
+        ? Math.floor(input.timeoutMs * 0.85) : undefined;
+      const attemptStartedAt = Date.now();
+      let failure;
+      for (let attempt = 1; attempt <= mimoSummaryAttemptLimit; attempt += 1) {
+      const attemptTaskId = attempt === 1 ? taskId : `${taskId}:attempt-${attempt}`;
+      const taskHash = codexAuthPoolTaskHash(attemptTaskId);
       const workspacePath = join(input.stateRootDir, "task-workspaces", taskHash);
+      const attemptTimeoutMs = attemptBudgetMs === undefined ? undefined
+        : Math.max(1_000, attemptBudgetMs - (Date.now() - attemptStartedAt));
       await mkdir(workspacePath, { recursive: true, mode: 0o700 });
       executor = mimoRuntime.createOneShotExecutor({
         executorId: `social-monitor-mimo-summary:${taskHash}`,
@@ -238,13 +272,14 @@ ${JSON.stringify(summaryTask.controls.outputSchema)}`;
           ...(oneTurnCompletion === undefined ? {} : {
             maxGoalTurns: 1, completedGoalOutputValidator: oneTurnCompletion,
           }),
-          ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
+          ...(attemptTimeoutMs === undefined ? {} : { taskTimeoutMs: attemptTimeoutMs }),
         } }],
       });
       let result;
       try {
         result = await executor.run({
           ...job,
+          runId: attemptTaskId,
           prompt: oneTurnCompletion !== undefined ? `${presentationCompletion !== undefined
             ? "Prepare the complete named presentation output for every supplied candidate."
             : "Prepare the complete named reader-summary output, preserving every original evidence and cutoff requirement."} An active native Goal already exists; do not create another Goal. The trusted host validates the completed output and finishes that native Goal. Return only the final JSON object; do not call lifecycle tools or request another turn.
@@ -268,7 +303,7 @@ ${outputContract}` : `${job.systemPrompt ?? ""}
 An active native Goal already exists; do not create another goal. Call native get_goal first and native update_goal({status:'complete'}) after fulfilling the task and preparing its named output, before the final answer. Filesystem, shell, web, delegation, SQL, source, and publication effects are unavailable and must not be attempted. Use only the supplied prompt and evidence, preserve the original named schema, cutoff and evidence rules, and make one attempt. The final-answer JSON-only rule applies after lifecycle tools.
 
 ${outputContract}`,
-          taskId,
+          taskId: attemptTaskId,
           originalPrompt: job.prompt,
           effectMode: "read_only",
           maxAccountCycles: 1,
@@ -282,11 +317,14 @@ ${outputContract}`,
           },
         });
       } catch (error) {
-        throw new SubscriptionWorkerError(
-          "subscription_worker_run_failed",
-          "MiMo reader summary did not complete",
-          { details: presentationCompletion?.failureDetails(error) ?? {} },
-        );
+        failure = error;
+        if (attempt < mimoSummaryAttemptLimit && mimoSummaryFailureIsRetryable(error) &&
+            (attemptBudgetMs === undefined ||
+              Date.now() - attemptStartedAt < attemptBudgetMs)) {
+          await disposeMimoSummaryAttempt(executor);
+          continue;
+        }
+        break;
       }
       if (result.status === "completed") {
         if (JSON.stringify(result.result ?? {}).includes(mimoApiKey)) {
@@ -309,10 +347,19 @@ ${outputContract}`,
         }
         return result.result;
       }
+      failure = result;
+      if (attempt < mimoSummaryAttemptLimit && mimoSummaryFailureIsRetryable(result) &&
+          (attemptBudgetMs === undefined ||
+            Date.now() - attemptStartedAt < attemptBudgetMs)) {
+        await disposeMimoSummaryAttempt(executor);
+        continue;
+      }
+      break;
+      }
       throw new SubscriptionWorkerError(
         "subscription_worker_run_failed",
         "MiMo reader summary did not complete",
-        { details: presentationCompletion?.failureDetails(result) ?? {} },
+        { details: presentationCompletion?.failureDetails(failure) ?? {} },
       );
     },
     async dispose() {
