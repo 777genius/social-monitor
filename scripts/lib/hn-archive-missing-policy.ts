@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { HN_FIREBASE_COMMENT_ASSOCIATIONS, verifyHnArchiveCommentAssociations } from './hn-archive-comment-association';
 
 export type HnArchiveScope = Readonly<{
   tenantId: string; workspaceId: string; interestId: string;
@@ -6,6 +7,8 @@ export type HnArchiveScope = Readonly<{
 }>;
 export type HnArchiveComment = Readonly<{
   id: number; author: string; createdAt: string; depth: number; text: string;
+  /** Derived only from verified provider evidence; never accepted as an archive comment field. */
+  verifiedParentId?: number;
 }>;
 export type HnArchiveItem = Readonly<{
   externalId: string; objectId: number; title: string; url: string | null;
@@ -119,12 +122,18 @@ export function qualifyHnArchiveItem(input: unknown, day: string, ordinal: numbe
       typeof comment.author === 'string' && Number.isInteger(comment.depth) && Number(comment.depth) >= 1 &&
       typeof comment.text === 'string' && comment.text.trim().length > 0, `HN comment ${ordinal}.${index} invalid`);
     iso(comment.createdAt, `HN comment ${ordinal}.${index} createdAt invalid`);
-    archiveNeed(Date.parse(comment.createdAt as string) >= Date.parse(value.createdAt as string),
-      `HN comment ${ordinal}.${index} predates story`);
     ids.add(id);
     return { ...comment, id } as unknown as HnArchiveComment;
   });
-  return { ...value, objectId, comments } as unknown as HnArchiveItem;
+  const parents = verifyHnArchiveCommentAssociations({ storyId: objectId, comments,
+    evidence: provenance[HN_FIREBASE_COMMENT_ASSOCIATIONS] });
+  const qualified = comments.map((comment, index) => {
+    archiveNeed(Date.parse(comment.createdAt) >= Date.parse(value.createdAt as string) || parents.has(comment.id),
+      `HN comment ${ordinal}.${index} predates story without provider association`);
+    const verifiedParentId = parents.get(comment.id);
+    return verifiedParentId === undefined ? comment : { ...comment, verifiedParentId };
+  });
+  return { ...value, objectId, comments: qualified } as unknown as HnArchiveItem;
 }
 function nativeHnId(value: unknown, reason: string): number {
   const id = typeof value === 'string' && /^[1-9][0-9]*$/u.test(value) ? Number(value) : value;

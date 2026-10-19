@@ -81,12 +81,15 @@ function normalizeComments(item: HnArchiveItem): readonly FetchedConversationUni
     authorHandle: comment.author,
     publishedAt: new Date(comment.createdAt),
     threadExternalId: rootExternalId,
+    ...(comment.verifiedParentId === undefined || comment.depth === 1 ? {}
+      : { parentProviderUnitId: `hn:${comment.verifiedParentId}` }),
     depth: comment.depth,
     role: comment.depth === 1 ? 'top_level_comment' : 'reply',
     metadata: {
       kind: 'hacker_news_comment', contentType: 'comment', rootProviderItemId: item.objectId,
       commentId: comment.id, author: comment.author, createdAt: comment.createdAt,
       depth: comment.depth, text: comment.text,
+      ...(comment.verifiedParentId === undefined ? {} : { parentId: comment.verifiedParentId }),
       provenance: requireJsonObject(item.provenance, 'HN item provenance must be JSON'),
     },
   }));
