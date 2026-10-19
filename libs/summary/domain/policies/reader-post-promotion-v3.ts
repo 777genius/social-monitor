@@ -60,6 +60,8 @@ export type ReaderPostPromotionV3ExclusionReason =
   | "capacity_exhausted";
 
 export type ReaderPostPromotionV3Selection = {
+  /** Internal coverage disclosure; publication still binds only canonical sealed survivors. */
+  readonly presentationCoverageLimited?: true;
   readonly policyVersion: typeof READER_PROMOTION_POLICY_V3;
   readonly outcome: "ready" | "no_signal" | "presentation_unavailable" |
     "budget_exhausted";
