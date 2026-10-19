@@ -15,11 +15,12 @@ import {
   exactReaderSummaryWeeklyUtcDay,
   exactReaderSummaryWeeklyUtcTimestamp,
 } from "./reader-summary-weekly-canonical-json";
-
 export const readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion =
   "reader_summary.weekly_publication_github_evidence.v1" as const;
 export const readerSummaryWeeklyHistoricalUnavailableReasonMode =
   "github_projection_unavailable_historical" as const;
+const readerSummaryWeeklyGitHubProviderBoardSchemaVersion =
+  "reader_summary.github_provider_board.v1" as const;
 
 type RepositoryEvidence = Readonly<{
   rank: number;
@@ -35,7 +36,11 @@ type RepositoryEvidence = Readonly<{
 export type ReaderSummaryWeeklyPublicationGitHubEvidence = Readonly<{
   schemaVersion:
     typeof readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion;
-  mode: "verified" | "ordinary_not_required" | "historical_unavailable";
+  mode:
+    | "verified"
+    | "archived_verified"
+    | "ordinary_not_required"
+    | "historical_unavailable";
   requestedUtcDay: string;
   providerKey: "github-trending-page";
   scanJobId: string | null;
@@ -91,7 +96,9 @@ export const deriveReaderSummaryWeeklyPublicationGitHubEvidence = (params: {
     params.audit.requestedUtcDay,
   );
   if (params.audit.status === "verified") {
-    return sealVerifiedGitHubEvidence(params.audit, requestedUtcDay);
+    return params.audit.archivedProjection === undefined
+      ? sealVerifiedGitHubEvidence(params.audit, requestedUtcDay)
+      : sealArchivedVerifiedGitHubEvidence(params.audit, requestedUtcDay);
   }
   if (params.audit.historicalOmission !== undefined) {
     return sealHistoricalGitHubEvidence(params.audit, requestedUtcDay);
@@ -204,6 +211,93 @@ const sealVerifiedGitHubEvidence = (
     historicalUnavailableReason: null,
     authorizedAt: null,
     sourceProviderContentHash: repositories[0]!.sourceProviderContentHash,
+    repositories,
+  });
+};
+
+const sealArchivedVerifiedGitHubEvidence = (
+  audit: ReaderSummaryGitHubProjectionAudit,
+  requestedUtcDay: string,
+): ReaderSummaryWeeklyPublicationGitHubEvidence => {
+  const bindings = [...(audit.archivedProjection?.bindings ?? [])].sort(
+    (left, right) =>
+      left.observation.trending.rank - right.observation.trending.rank,
+  );
+  if (
+    bindings.length !== 10 ||
+    bindings.some(
+      (binding, index) => binding.observation.trending.rank !== index + 1,
+    ) ||
+    new Set(bindings.map((binding) => binding.sourceBindingId)).size !== 1
+  ) {
+    throw new Error(
+      "Reader summary weekly publication GitHub board is not exact",
+    );
+  }
+  const sourceBindingId = exactReaderSummaryWeeklyIdentity(
+    bindings[0]!.sourceBindingId,
+    "GitHub source binding id",
+  );
+  // Mirrors the board seal recorded by
+  // record_reader_summary_weekly_publication_evidence_base on prod.
+  const sourceProviderContentHash = exactReaderSummaryWeeklySha256(
+    canonicalizeReaderSummaryWeeklyJson(
+      {
+        schemaVersion: readerSummaryWeeklyGitHubProviderBoardSchemaVersion,
+        requestedUtcDay,
+        scanJobId: null,
+        sourceBindingId,
+        sourceProviderContentHashes: bindings.map((binding) =>
+          exactReaderSummaryWeeklySha256(
+            binding.sourceProviderContentHash,
+            "GitHub provider content hash",
+          ),
+        ),
+      },
+      "GitHub provider board evidence",
+    ).sha256,
+    "GitHub provider content hash",
+  );
+  const repositories = bindings.map((binding) =>
+    deepFreezeReaderSummaryWeekly({
+      rank: binding.observation.trending.rank,
+      citationId: exactReaderSummaryWeeklyIdentity(
+        binding.citationId,
+        "GitHub citation id",
+      ),
+      feedItemId: exactReaderSummaryWeeklyIdentity(
+        binding.feedItemId,
+        "GitHub feed item id",
+      ),
+      sourceItemId: exactReaderSummaryWeeklyIdentity(
+        binding.sourceItemId,
+        "GitHub source item id",
+      ),
+      repositoryIdentity: exactReaderSummaryWeeklyIdentity(
+        canonicalGitHubRepositoryIdentity(binding.canonicalUrl) ?? "",
+        "GitHub repository identity",
+      ),
+      canonicalUrl: exactReaderSummaryWeeklyIdentity(
+        binding.canonicalUrl,
+        "GitHub canonical URL",
+      ),
+      sourceContentHash: exactReaderSummaryWeeklySha256(
+        binding.sourceContentHash,
+        "GitHub source content hash",
+      ),
+      sourceProviderContentHash,
+    }),
+  );
+  return sealGitHubEvidence({
+    mode: "archived_verified",
+    requestedUtcDay,
+    providerKey: "github-trending-page",
+    scanJobId: null,
+    sourceBindingId,
+    evidenceCount: repositories.length,
+    historicalUnavailableReason: null,
+    authorizedAt: null,
+    sourceProviderContentHash,
     repositories,
   });
 };
@@ -342,7 +436,16 @@ const assertGitHubEvidenceMode = (
     evidence.historicalUnavailableReason.length > 0 &&
     evidence.historicalUnavailableReason.length <= 4_096 &&
     evidence.authorizedAt !== null;
-  if (!verified && !ordinary && !historical) {
+  const archived =
+    evidence.mode === "archived_verified" &&
+    evidence.evidenceCount === 10 &&
+    evidence.repositories.length === 10 &&
+    evidence.scanJobId === null &&
+    evidence.sourceBindingId !== null &&
+    evidence.sourceProviderContentHash !== null &&
+    evidence.historicalUnavailableReason === null &&
+    evidence.authorizedAt === null;
+  if (!verified && !ordinary && !historical && !archived) {
     throw new Error(
       "Reader summary weekly publication GitHub evidence mode is invalid",
     );
@@ -365,10 +468,13 @@ const assertGitHubEvidenceMode = (
   if (ordinary) {
     return;
   }
-  const scanJobId = exactReaderSummaryWeeklyIdentity(
-    evidence.scanJobId,
-    "GitHub scan job id",
-  );
+  const scanJobId =
+    evidence.scanJobId === null
+      ? null
+      : exactReaderSummaryWeeklyIdentity(
+          evidence.scanJobId,
+          "GitHub scan job id",
+        );
   const sourceBindingId = exactReaderSummaryWeeklyIdentity(
     evidence.sourceBindingId,
     "GitHub source binding id",
@@ -447,7 +553,7 @@ const assertGitHubEvidenceMode = (
     }
   });
   if (
-    scanJobId.length === 0 ||
+    (scanJobId !== null && scanJobId.length === 0) ||
     sourceBindingId.length === 0 ||
     Object.values(identities).some((identity) => identity.size !== 10)
   ) {
