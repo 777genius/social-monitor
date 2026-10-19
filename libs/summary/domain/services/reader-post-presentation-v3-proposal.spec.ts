@@ -44,6 +44,27 @@ describe("trusted presentation proposals", () => {
     expect(readerPostPresentationProposalFailure({ presentations: [value] }, [candidate])).toEqual({ code, index: 0 });
   });
 
+  it.each([
+    "Useful method...", "Useful method… in preview", "Useful method..", "Useful https://example.invalid method",
+    "Useful <method>", "Useful\nmethod", "Useful\tmethod", "Useful\u007fmethod", "Useful\u0085method",
+    "Useful\u2028method", "Useful\u2029method", "Useful\u202emethod", "Useful\u2066method",
+    " Useful method", "Useful method ", "", "Here is a useful method", "I built a useful method",
+    "Useful method just dropped", "A source says a useful method is available", "Source-reported: useful method",
+  ])("retains display rejection for schema-sized text %j", text => {
+    const value = { ...proposal(), text, qualifications: [], qualificationJudgment: "none" };
+    expect(readerPostPresentationProposalFailure({ presentations: [value] }, [candidate]))
+      .toEqual({ code: "display_text", index: 0 });
+  });
+
+  it("counts decoded UTF-16 units rather than visible characters at the 119 boundary", () => {
+    const value = { ...proposal(), text: "A".repeat(117) + "😀", qualifications: [], qualificationJudgment: "none" };
+    expect(value.text).toHaveLength(119);
+    expect(accepts(value)).toBe(true);
+    const oversized = { ...value, text: value.text + "A" };
+    expect(readerPostPresentationProposalFailure({ presentations: [oversized] }, [candidate]))
+      .toEqual({ code: "proposal_fields", index: 0 });
+  });
+
   it("requires all and only original IDs once, regardless of response order", () => {
     const candidates = [candidate, { ...candidate, candidateId: "candidate-2" }];
     const second = { ...proposal(), candidateId: "candidate-2" };
