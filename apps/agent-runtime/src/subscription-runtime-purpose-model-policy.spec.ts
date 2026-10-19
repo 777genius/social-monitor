@@ -1,3 +1,4 @@
+import { mimoQualifiedHeadlineOutputSchema } from "@social-monitor/summary/domain";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
@@ -100,6 +101,31 @@ describe("subscription runtime purpose policy", () => {
         properties: Object.fromEntries(["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"].map((key) => [key, { type: key === "headline" ? "string" : "array" }])) }),
       controlsJson: '{"model":"gpt-5.6-sol","modelBackend":"xiaomi-mimo-token-plan","outputSchemaName":"social_monitor_reader_summary_artifact","schemaVersion":"reader_summary.artifact.v1"}',
     }))).toThrow("model conflicts with purpose policy");
+  });
+
+  it('admits only the exact versioned presentation root in both policies', () => {
+    const schema = mimoQualifiedHeadlineOutputSchema([{ candidateId: 'synthetic', title: 'Useful method', sourceText: 'Useful source.' }]);
+    const original = request({ purpose: 'social_monitor.reader_summary.promotion_presentation.v3',
+      outputSchemaJson: JSON.stringify(schema), controlsJson: JSON.stringify({ modelBackend: 'xiaomi-mimo-token-plan',
+        model: 'mimo-v2.6-pro', reasoningEffort: 'none', outputSchemaName: 'social_monitor_reader_post_presentation_v3', schemaVersion: 'reader_post_presentation.v3' }) });
+    const admitted = admitSubscriptionRuntimeRequest(original);
+    expect(admitWithMjsWrapper({ request: admitted.canonicalRequest, ...admitted.profile })).toMatchObject({ ok: true });
+    const malformed = [
+      { ...schema, properties: { ...schema.properties, contractVersion: { type: 'string', const: 'unknown.v1' } } },
+      { ...schema, properties: { ...schema.properties, contractVersion: { type: 'array', const: 'mimo_qualified_headline.v1' } } },
+      { ...schema, properties: { ...schema.properties, contractVersion: { type: 'string' } } },
+      { ...schema, required: ['presentations'] },
+      { ...schema, required: ['contractVersion', 'contractVersion'] },
+      { ...schema, properties: { ...schema.properties, extra: { type: 'string' } } },
+    ];
+    for (const outputSchema of malformed) {
+      expect(() => admitSubscriptionRuntimeRequest({ ...original, outputSchemaJson: JSON.stringify(outputSchema) })).toThrow();
+      const canonical = structuredClone(admitted.canonicalRequest);
+      ((canonical.task as Record<string, unknown>).controls as Record<string, unknown>).outputSchema = outputSchema;
+      expect(admitWithMjsWrapper({ request: canonical, ...admitted.profile })).toMatchObject({ ok: false });
+    }
+    expect(() => admitSubscriptionRuntimeRequest({ ...original, purpose: 'social_monitor.reader_summary.topic_map.label.v2',
+      controlsJson: JSON.stringify({ modelBackend: 'xiaomi-mimo-token-plan', outputSchemaName: 'social_monitor_reader_summary_topic_map_labels', schemaVersion: 'reader_summary.topic_map.v1' }) })).toThrow();
   });
 
   it("requires the exact high production service default", () => {

@@ -1,3 +1,7 @@
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import { AgentRuntimePromotionPresentationV3Builder } from "@social-monitor/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder";
+import type { AgentRuntimeTaskCommand } from "@social-monitor/summary/ports";
+import { createMimoPresentationCompletionValidator } from "./mimo-presentation-completion";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
@@ -181,6 +185,38 @@ describe("subscription runtime installation admission", () => {
       allowedModelBackends: ["xiaomi-mimo-token-plan"],
     }).checkHealth();
     expect(health).toMatchObject({ healthy: true, runtimeVersion: "0.1.0-main.40-sm-mimo.12" });
+  }, distributionIoTimeoutMs);
+
+  it("admits and attests the real versioned presentation builder with exact installed helper bytes", async () => {
+    const command = join(await copyInstallation(), launcherName);
+    const inspector = new FileSubscriptionRuntimeInstallationInspector();
+    const admittedInstallation = await inspector.inspect(command, "xiaomi-mimo-token-plan");
+    const wire = { contractVersion: "mimo_qualified_headline.v1", presentations: [{ candidateId: "synthetic",
+      status: "available", kind: "claim", baseHeadline: "Useful database method", confidence: 0.9,
+      support: [{ field: "bodyPreview", start: 0, end: 19, quote: "Useful body source." }],
+      qualifications: [{ phrase: "source", evidence: [{ field: "bodyPreview", start: 0, end: 19, quote: "Useful body source." }] }],
+    }] };
+    const client = { runTask: async (taskCommand: AgentRuntimeTaskCommand) => {
+      const request = { ...taskCommand, systemPrompt: taskCommand.systemPrompt ?? "", metadata: taskCommand.metadata ?? {},
+        controlsJson: JSON.stringify(taskCommand.controls), outputSchemaJson: JSON.stringify(taskCommand.outputSchema) };
+      const admission = admitSubscriptionRuntimeRequest(request);
+      const validate = createMimoPresentationCompletionValidator({ purpose: taskCommand.purpose, provider: "codex",
+        model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "none",
+        task: admission.canonicalRequest.task as { prompt: unknown; outputSchemaName: unknown; controls: unknown } });
+      expect(validate(wire)).toBe(true);
+      const result = await attachExecutorOwnedExecutionAttestation({ command, request, ...admission,
+        result: { status: "completed", structuredOutput: wire, warnings: [] }, admittedInstallation, installationInspector: inspector });
+      expect(result.status).toBe("completed");
+      expect(result.executionAttestation?.selectedOutputSha256).toBe(canonicalJsonSha256(wire));
+      return result;
+    }, checkHealth: async () => ({ status: "serving" as const, runtimeEngine: "synthetic", runtimeVersion: "synthetic", warnings: [] }) };
+    const result = await new AgentRuntimePromotionPresentationV3Builder({ client, modelBackend: "xiaomi-mimo-token-plan" }).build([{
+      tenantId: "00000000-0000-4000-8000-000000000001", workspaceId: "00000000-0000-4000-8000-000000000002",
+      interestId: "00000000-0000-4000-8000-000000000003", candidateId: "synthetic", sourceItemId: "00000000-0000-4000-8000-000000000005",
+      sourceBindingId: "00000000-0000-4000-8000-000000000006", providerKey: "rss", trustedIntent: "synthetic interest",
+      sourceSnapshotSha256: "1".repeat(64), title: "Useful database method", body: "Useful body source.", captureComplete: true,
+    }]);
+    expect(result[0]).toMatchObject({ status: "available", seal: { headline: { text: "Useful database method (source)" } } });
   }, distributionIoTimeoutMs);
 
   it("rejects the base archive without its locked installed dependency completion", async () => {

@@ -1,5 +1,8 @@
 import { AgentRuntimePromotionPresentationV3Builder } from "@social-monitor/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder";
-import { withTestExecutionAttestation } from "@social-monitor/summary/adapters/model/reader-summary-execution-attestation.spec-support";
+import { admitSubscriptionRuntimeRequest } from "./subscription-runtime-purpose-model-policy";
+import { attachExecutorOwnedExecutionAttestation } from "./subscription-runtime-execution-attestation";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import type { AgentRuntimeTaskCommand } from "@social-monitor/summary/ports";
 import { readerPostPresentationCandidates, mimoQualifiedHeadlineOutputSchema } from "@social-monitor/summary/domain";
 import { createMimoPresentationCompletionValidator } from "./mimo-presentation-completion";
@@ -22,12 +25,24 @@ describe("source-owned MiMo presentation completion", () => {
       confidence: 0.9,
     }] };
     const client = { runTask: async (command: AgentRuntimeTaskCommand) => {
-      const validate = createMimoPresentationCompletionValidator({ ...input(), task: {
-        prompt: command.prompt, outputSchemaName: command.controls.outputSchemaName,
-        controls: { ...command.controls, outputSchema: command.outputSchema },
-      } });
+      const request = { ...command, systemPrompt: command.systemPrompt ?? "", metadata: command.metadata ?? {},
+        controlsJson: JSON.stringify(command.controls), outputSchemaJson: JSON.stringify(command.outputSchema) };
+      const admission = admitSubscriptionRuntimeRequest(request);
+      const wrapper = spawnSync(process.execPath, ['--input-type=module', '-e',
+        'import { admitSubscriptionRuntimeWrapperRequest as admit } from "./apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.mjs"; console.log(JSON.stringify(admit(JSON.parse(process.argv[1]))));',
+        JSON.stringify({ request: admission.canonicalRequest, ...admission.profile })], { cwd: join(__dirname, '../../..'), encoding: 'utf8' });
+      expect(wrapper.status).toBe(0);
+      const task = admission.canonicalRequest.task as ReturnType<typeof input>['task'];
+      const validate = createMimoPresentationCompletionValidator({ ...input(), task });
       expect(validate(wire)).toBe(true);
-      return withTestExecutionAttestation(command, { status: "completed", structuredOutput: wire, warnings: [] });
+      const installation = { executablePath: '/synthetic/launcher', packageRootRealpath: '/synthetic',
+        runtimePackageVersion: '0.1.0-main.2', mimoRuntimePackageVersion: '0.1.0-main.40-sm-mimo.12', launcherSha256: 'a'.repeat(64) };
+      const result = await attachExecutorOwnedExecutionAttestation({ command: 'synthetic-launcher', request,
+        ...admission, result: { status: 'completed', structuredOutput: wire, warnings: [] },
+        admittedInstallation: installation, installationInspector: { inspect: async () => installation } });
+      expect(result.status).toBe('completed');
+      expect(result.executionAttestation).toMatchObject({ model: 'mimo-v2.6-pro', reasoningEffort: 'none' });
+      return result;
     }, checkHealth: async () => ({ status: "serving" as const, runtimeEngine: "test", runtimeVersion: "test", warnings: [] }) };
     const result = await new AgentRuntimePromotionPresentationV3Builder({ client, modelBackend: "xiaomi-mimo-token-plan" }).build([{
       tenantId: "00000000-0000-4000-8000-000000000001", workspaceId: "00000000-0000-4000-8000-000000000002",

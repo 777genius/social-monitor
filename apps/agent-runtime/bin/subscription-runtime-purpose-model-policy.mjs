@@ -262,9 +262,17 @@ export const admitSubscriptionRuntimeWrapperRequest = (
 };
 
 const assertMimoSchemaRoot = (purpose, schema) => {
-  const expected = mimoRootProperties[purpose];
+  const markers = mimoRootProperties[purpose];
   const properties = schema.properties;
   const required = schema.required;
+  const versioned = purpose === "social_monitor.reader_summary.promotion_presentation.v3" &&
+    properties !== null && typeof properties === "object" && Object.hasOwn(properties, "contractVersion");
+  const expected = versioned ? ["presentations", "contractVersion"] : markers;
+  const version = properties?.contractVersion;
+  if (versioned && (Object.keys(properties).length !== 2 || !version || typeof version !== "object" || Array.isArray(version)
+    || Object.keys(version).length !== 2 || version.type !== "string" || version.const !== "mimo_qualified_headline.v1")) {
+    throw new Error("outputSchema conflicts with MiMo purpose policy");
+  }
   if (expected === undefined || schema.type !== "object" ||
       schema.additionalProperties !== false ||
       properties === null || typeof properties !== "object" || Array.isArray(properties) ||
