@@ -115,7 +115,7 @@ function firebaseResponse(id, parent, createdAt, extra = {}) {
 }
 function associatedOlderItem() {
   const leaf = { ...item.comments[0], createdAt: '2026-10-17T07:55:00.000Z' };
-  return { ...structuredClone(item), comments: [leaf], provenance: { ...item.provenance,
+  return { ...globalThis.structuredClone(item), comments: [leaf], provenance: { ...item.provenance,
     [associationKey]: { schemaVersion: 1, storyId: item.objectId, chains: [{ commentId: leaf.id, responses: [
       firebaseResponse(leaf.id, 44, leaf.createdAt),
       firebaseResponse(44, item.objectId, '2026-10-17T07:50:00.000Z'),
@@ -130,7 +130,7 @@ function changeResponse(wire, index, patch) {
 }
 
 test('HN verifies older nested comments without rewriting retained timestamps, text or depth', () => {
-  const wire = associatedOlderItem(), original = structuredClone(wire);
+  const wire = associatedOlderItem(), original = globalThis.structuredClone(wire);
   const result = normalizeHnArchiveMissing({ ...manifest, items: [wire] }, plan.day, plan.selectedIds);
   assert.equal(result.items[0].publishedAt.toISOString(), item.createdAt);
   assert.deepEqual(result.conversationUnits.map(unit => ({ id: unit.providerUnitId,
@@ -175,7 +175,7 @@ const invalidAssociations = [
   ['foreign response URL', wire => { wire.provenance[associationKey].chains[0].responses[0].url = 'https://example.test/item/43.json'; }],
   ['oversize response', wire => { const response = wire.provenance[associationKey].chains[0].responses[0];
     response.body += ' '.repeat(64 * 1024); response.sha256 = sha(response.body); }],
-  ['duplicate leaf proofs', wire => { const chains = wire.provenance[associationKey].chains; chains.push(structuredClone(chains[0])); }],
+  ['duplicate leaf proofs', wire => { const chains = wire.provenance[associationKey].chains; chains.push(globalThis.structuredClone(chains[0])); }],
   ['injected derived parent', wire => { wire.comments[0].verifiedParentId = 42; }],
 ];
 for (const [label, mutate] of invalidAssociations) {

@@ -33,6 +33,7 @@ COPY scripts/import-rss-sep24-verified.ts scripts/recover-rss-sep24-verified.ts 
 COPY scripts/import-hn-archive-missing.ts scripts/import-rss-archive-missing.ts \
   scripts/plan-hn-archive-missing-packets.ts scripts/plan-rss-archive-missing-packets.ts ./scripts/
 COPY scripts/lib/hn-archive-missing-policy.ts scripts/lib/hn-archive-missing-normalizer.ts \
+  scripts/lib/hn-archive-comment-association.ts \
   scripts/lib/rss-archive-missing-policy.ts scripts/lib/rss-archive-missing-normalizer.ts \
   scripts/lib/github-archive-finite-journal.ts scripts/lib/github-archive-finite-role-policy.ts ./scripts/lib/
 # Sep24 source entrypoints and their script closure. Publication grants no capture authority.
