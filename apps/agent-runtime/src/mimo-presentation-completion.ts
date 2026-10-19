@@ -1,5 +1,5 @@
-import { readerPostPresentationCandidates, readerPostPresentationCatalogOutputSchema,
-  readerPostPresentationCatalogProposalFailure } from "@social-monitor/summary/domain";
+import { readerPostPresentationCandidates, mimoQualifiedHeadlineOutputSchema,
+  decodeMimoQualifiedHeadlines } from "@social-monitor/summary/domain";
 import { canonicalPromotionPayload } from "@social-monitor/summary/domain/services/reader-post-promotion-attestation";
 import { readRuntimeOutputFailureDiagnostics } from "./runtime-output-failure-diagnostics";
 
@@ -55,13 +55,13 @@ export const createMimoPresentationCompletionValidator = (input: {
     throw new Error("MiMo presentation completion contract is invalid");
   }
   const candidates = readerPostPresentationCandidates(input.task.prompt);
-  if (canonicalPromotionPayload(values.outputSchema) !== canonicalPromotionPayload(readerPostPresentationCatalogOutputSchema(candidates))) {
+  if (canonicalPromotionPayload(values.outputSchema) !== canonicalPromotionPayload(mimoQualifiedHeadlineOutputSchema(candidates))) {
     throw new Error("MiMo presentation completion contract is invalid");
   }
   const observation: CompletionObservation = { called: false };
   return Object.assign((output: unknown): boolean => {
     observation.called = true;
-    const rejection = readerPostPresentationCatalogProposalFailure(output, candidates);
+    const rejection = decodeMimoQualifiedHeadlines(output, candidates).failure;
     const accepted = rejection === null;
     observation.rejectionCode = rejection?.code;
     observation.rejectedIndex = rejection?.index;

@@ -1,5 +1,6 @@
 import { PrismaReaderValueInventory } from './prisma-reader-value-inventory';
 import type { AssessmentSqlClient, AssessmentSqlTransaction } from './assessment-sql';
+import { liveAssessmentScope } from './assessment-sql';
 import { classifyReaderValueSourceKind } from '../../domain/reader-value/reader-value-source-kind';
 import { ReaderValueInventoryByteCeilingExceeded,
   ReaderValueInventorySnapshotUnavailable,
@@ -10,6 +11,47 @@ const scope = {tenantId:'11111111-1111-4111-8111-111111111111',
   workspaceId:'22222222-2222-4222-8222-222222222222',
   interestId:'44444444-4444-4444-8444-444444444444'};
 describe('Prisma reader-value inventory JSON boundary', () => {
+  // Regression: PostgreSQL flattened the source join and scanned the whole
+  // workspace before every 25-row page, exhausting a weekly snapshot's 110s.
+  // Preserve the dependent lookup barrier without moving LIMIT ahead of any
+  // live-scope predicate or bypassing the byte preflight/materialization split.
+  it('keeps the source lookup dependent on the fully guarded keyset page', async () => {
+    let sql = '';
+    let parameters: unknown[] = [];
+    const tx: AssessmentSqlTransaction = {
+      $executeRawUnsafe: async () => 0,
+      $queryRawUnsafe: async <T>(query: string, ...values: unknown[]) => {
+        sql = query; parameters = values; return [] as T;
+      },
+    };
+    const client: AssessmentSqlClient = { ...tx,
+      $transaction: async (operation) => operation(tx) };
+    const cursor = { publishedAt: '2026-10-13T12:00:00.000001Z',
+      feedItemId: '55555555-5555-4555-8555-555555555555' };
+    await new PrismaReaderValueInventory(client).readSnapshot(scope, (snapshot) =>
+      snapshot.page('2026-10-12T00:00:00Z', cursor, 25, 1_024,
+        '2026-10-19T00:00:00Z'), { includeExpiredSources: true });
+
+    expect(sql).toMatch(/JOIN LATERAL \(SELECT s\.\* FROM source_items s WHERE s\.tenant_id=f\.tenant_id\s+AND s\.workspace_id=f\.workspace_id AND s\.id=f\.source_item_id\s+AND s\.provider_key=f\.provider_key OFFSET 0\) s ON true/u);
+    expect(sql).toContain(liveAssessmentScope);
+    expect(sql.indexOf(liveAssessmentScope)).toBeLessThan(sql.indexOf('LIMIT $7'));
+    expect(sql).toContain("b.status='ENABLED' AND b.deleted_at IS NULL");
+    expect(sql).toContain('c.provider_key=f.provider_key');
+    expect(sql).toContain("f.status='VISIBLE'");
+    expect(sql).toContain('(f.published_at,f.id)>($5::timestamptz,$6::uuid)');
+    expect(sql).toContain('f.published_at < $8::timestamptz');
+    expect(sql).toContain("($9::boolean OR s.created_at+interval '180 days'>clock_timestamp())");
+    expect(sql).toContain('ORDER BY f.published_at,f.id LIMIT $7');
+    expect(sql).toContain('octet_length(s.title)+octet_length(s.body)');
+    expect(sql).not.toContain('s.title,s.body');
+    expect(parameters).toEqual([scope.tenantId, scope.workspaceId, scope.interestId,
+      '2026-10-12T00:00:00Z', cursor.publishedAt, cursor.feedItemId, 25,
+      '2026-10-19T00:00:00Z', true]);
+    await expect(new PrismaReaderValueInventory(client).readSnapshot(scope, (snapshot) =>
+      snapshot.page('2026-10-12T00:00:00Z', undefined, 26)))
+      .rejects.toThrow('Reader value inventory page limit is 25');
+  });
+
   it.each([null,42,'legacy',[],true])('maps malformed source/feed metadata to unsupported kinds and preserves the next row', async (providerMetadata) => {
     const source = {published_at:'2026-09-10 00:00:00.000001+00',
       observed_at:'2026-09-10 00:00:01.2+00:00',interest_id:'interest',source_item_id:'source',
