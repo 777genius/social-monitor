@@ -158,8 +158,11 @@ implements ReaderValueSummaryPreparation {
                   return { ok: false, code: "config_unavailable" };
                 }
               }
-              if (item.source.availableAt === null ||
-                  compareTimestamp(item.source.availableAt, command.cutoffAt) > 0 ||
+              // A legacy source without capture provenance keeps unknown
+              // availability forever; drop it like candidate qualification
+              // instead of failing the whole window.
+              if (item.source.availableAt === null) continue;
+              if (compareTimestamp(item.source.availableAt, command.cutoffAt) > 0 ||
                   compareTimestamp(item.sourceUpdatedAt, command.cutoffAt) > 0) {
                 return { ok: false, code: "assessment_snapshot_unavailable" };
               }
