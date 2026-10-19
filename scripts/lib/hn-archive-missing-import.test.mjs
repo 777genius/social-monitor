@@ -108,6 +108,129 @@ test('HN rejects noncanonical or unsafe wire IDs', () => {
   }
 });
 
+const associationKey = 'hnFirebaseCommentAssociationsV1';
+function firebaseResponse(id, parent, createdAt, extra = {}) {
+  const body = JSON.stringify({ id, parent, type: 'comment', time: Date.parse(createdAt) / 1000, ...extra });
+  return { url: `https://hacker-news.firebaseio.com/v0/item/${id}.json`, body, sha256: sha(body) };
+}
+function associatedOlderItem() {
+  const leaf = { ...item.comments[0], createdAt: '2026-10-17T07:55:00.000Z' };
+  return { ...globalThis.structuredClone(item), comments: [leaf], provenance: { ...item.provenance,
+    [associationKey]: { schemaVersion: 1, storyId: item.objectId, chains: [{ commentId: leaf.id, responses: [
+      firebaseResponse(leaf.id, 44, leaf.createdAt),
+      firebaseResponse(44, item.objectId, '2026-10-17T07:50:00.000Z'),
+    ] }] },
+  } };
+}
+function changeResponse(wire, index, patch) {
+  const responses = wire.provenance[associationKey].chains[0].responses;
+  const raw = { ...JSON.parse(responses[index].body), ...patch };
+  responses[index].body = JSON.stringify(raw);
+  responses[index].sha256 = sha(responses[index].body);
+}
+
+test('HN verifies older nested comments without rewriting retained timestamps, text or depth', () => {
+  const wire = associatedOlderItem(), original = globalThis.structuredClone(wire);
+  const result = normalizeHnArchiveMissing({ ...manifest, items: [wire] }, plan.day, plan.selectedIds);
+  assert.equal(result.items[0].publishedAt.toISOString(), item.createdAt);
+  assert.deepEqual(result.conversationUnits.map(unit => ({ id: unit.providerUnitId,
+    publishedAt: unit.publishedAt.toISOString(), text: unit.body, depth: unit.depth,
+    parent: unit.parentProviderUnitId, parentId: unit.metadata.parentId })), [{
+    id: 'hn:43', publishedAt: original.comments[0].createdAt, text: original.comments[0].text,
+    depth: 2, parent: 'hn:44', parentId: 44,
+  }]);
+  assert.deepEqual(wire, original);
+});
+
+test('HN accepts an exact older direct-parent proof without fabricating a comment parent unit', () => {
+  const wire = associatedOlderItem();
+  wire.comments[0].depth = 1;
+  wire.provenance[associationKey].chains[0].responses = [
+    firebaseResponse(43, item.objectId, wire.comments[0].createdAt),
+  ];
+  const [unit] = normalizeHnArchiveMissing({ ...manifest, items: [wire] }, plan.day, plan.selectedIds).conversationUnits;
+  assert.equal(unit.publishedAt.toISOString(), wire.comments[0].createdAt);
+  assert.equal(unit.metadata.parentId, item.objectId);
+  assert.equal(unit.parentProviderUnitId, undefined);
+  assert.equal(unit.role, 'top_level_comment');
+});
+
+const invalidAssociations = [
+  ['missing proof', wire => { delete wire.provenance[associationKey]; }],
+  ['boolean proof', wire => { wire.provenance[associationKey] = true; }],
+  ['arbitrary parent', wire => { delete wire.provenance[associationKey]; wire.provenance.parent = item.objectId; }],
+  ['wrong root', wire => { wire.provenance[associationKey].storyId = 99; }],
+  ['foreign final parent', wire => { changeResponse(wire, 1, { parent: 99 }); }],
+  ['cycle', wire => { changeResponse(wire, 1, { parent: 43 }); }],
+  ['wrong leaf', wire => { changeResponse(wire, 0, { id: 99 }); }],
+  ['changed leaf time', wire => { changeResponse(wire, 0, { time: 1 }); }],
+  ['wrong provider type', wire => { changeResponse(wire, 0, { type: 'story' }); }],
+  ['string parent', wire => { changeResponse(wire, 0, { parent: '44' }); }],
+  ['missing parent response', wire => { wire.provenance[associationKey].chains[0].responses.pop(); }],
+  ['wrong depth', wire => { wire.comments[0].depth = 3; }],
+  ['excessive depth', wire => { wire.comments[0].depth = 65;
+    const chain = wire.provenance[associationKey].chains[0]; chain.responses = Array(65).fill(chain.responses[0]); }],
+  ['tampered raw bytes', wire => { wire.provenance[associationKey].chains[0].responses[0].body += ' '; }],
+  ['invalid raw hash', wire => { wire.provenance[associationKey].chains[0].responses[0].sha256 = 'a'.repeat(64); }],
+  ['foreign response URL', wire => { wire.provenance[associationKey].chains[0].responses[0].url = 'https://example.test/item/43.json'; }],
+  ['oversize response', wire => { const response = wire.provenance[associationKey].chains[0].responses[0];
+    response.body += ' '.repeat(64 * 1024); response.sha256 = sha(response.body); }],
+  ['duplicate leaf proofs', wire => { const chains = wire.provenance[associationKey].chains; chains.push(globalThis.structuredClone(chains[0])); }],
+  ['injected derived parent', wire => { wire.comments[0].verifiedParentId = 42; }],
+];
+for (const [label, mutate] of invalidAssociations) {
+  test(`HN rejects ${label} before dependency reads or writes`, async () => {
+    const wire = associatedOlderItem(); mutate(wire);
+    const calls = [];
+    await assert.rejects(executeHnArchiveMissingImport(plan, { ...manifest, items: [wire] }, {
+      existingIds: async () => { calls.push('read'); return []; },
+      insertMissing: async () => { calls.push('insert'); return 1; },
+      present: async () => { calls.push('present'); return 1; },
+      projectComments: async () => { calls.push('comments'); return 1; },
+    }));
+    assert.deepEqual(calls, []);
+  });
+}
+
+test('HN rejects inconsistent retained ancestor identity even when its raw response hash is valid', () => {
+  const wire = associatedOlderItem();
+  wire.comments.push({ ...wire.comments[0], id: 44, depth: 1, createdAt: '2026-10-17T07:51:00.000Z' });
+  wire.commentCount = 2;
+  assert.throws(() => normalizeHnArchiveMissing({ ...manifest, items: [wire] }, plan.day, plan.selectedIds),
+    /retained identity\/time\/depth mismatch/);
+});
+
+test('HN rejects conflicting provider observations across otherwise valid parent chains', () => {
+  const wire = associatedOlderItem();
+  wire.comments.push({ ...wire.comments[0], id: 45 }); wire.commentCount = 2;
+  wire.provenance[associationKey].chains.push({ commentId: 45, responses: [
+    firebaseResponse(45, 44, wire.comments[1].createdAt),
+    firebaseResponse(44, item.objectId, '2026-10-17T07:51:00.000Z'),
+  ] });
+  assert.throws(() => normalizeHnArchiveMissing({ ...manifest, items: [wire] }, plan.day, plan.selectedIds),
+    /conflicting provider observations/);
+});
+
+test('HN chronological archives remain unchanged and older comments cannot use an unrelated proof', () => {
+  assert.deepEqual(policy.qualifyHnArchiveItem(item, plan.day, 0), item);
+  const wire = associatedOlderItem();
+  wire.comments.push({ ...wire.comments[0], id: 45 }); wire.commentCount = 2;
+  assert.throws(() => normalizeHnArchiveMissing({ ...manifest, items: [wire] }, plan.day, plan.selectedIds),
+    /predates story without provider association/);
+});
+
+test('HN planner binds exact association response bytes into the packet digest', async () => {
+  const { planHnArchiveMissingPackets } = await import('../plan-hn-archive-missing-packets.ts');
+  const env = { MISSING_IMPORT_SCOPE_JSON: JSON.stringify(scope), MISSING_IMPORT_BINDING_CONFIG: '{}' };
+  const wire = associatedOlderItem();
+  const [first] = planHnArchiveMissingPackets({ ...manifest, items: [wire] }, env);
+  const response = wire.provenance[associationKey].chains[0].responses[0];
+  response.body += '\n'; response.sha256 = sha(response.body);
+  const [second] = planHnArchiveMissingPackets({ ...manifest, items: [wire] }, env);
+  assert.notEqual(first.plan.packetSha256, second.plan.packetSha256);
+  assert.notEqual(first.plan.planSha256, second.plan.planSha256);
+});
+
 test('HN re-run is idempotent over already-present native IDs', async () => {
   const first = await executeHnArchiveMissingImport(plan, manifest, {
     existingIds: async () => [], insertMissing: async () => 1,

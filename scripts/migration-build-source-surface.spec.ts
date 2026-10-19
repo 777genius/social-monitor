@@ -37,6 +37,7 @@ const missingImportScripts = [
   'scripts/plan-rss-archive-missing-packets.ts',
   'scripts/lib/hn-archive-missing-policy.ts',
   'scripts/lib/hn-archive-missing-normalizer.ts',
+  'scripts/lib/hn-archive-comment-association.ts',
   'scripts/lib/rss-archive-missing-policy.ts',
   'scripts/lib/rss-archive-missing-normalizer.ts',
   'scripts/lib/github-archive-finite-journal.ts',
