@@ -238,9 +238,12 @@ const assertV3Attestations = (
     candidateIds.add(attestation.candidateId);
   }
   for (const placement of ["top", "additional"] as const) {
-    const ordered = attestations.filter((value) => value.placement === placement);
+    const ordered = attestations.map((attestation, index) => ({ attestation,
+      signalScore: cards[index]!.card.signalScore }))
+      .filter((value) => value.attestation.placement === placement);
     if (ordered.some((value, index) => index > 0 &&
-        compareV3Attestation(ordered[index - 1]!, value) > 0)) {
+        compareV3Attestation(ordered[index - 1]!.attestation, value.attestation,
+          ordered[index - 1]!.signalScore, value.signalScore) > 0)) {
       throw new Error("Reader summary Promotion V3 order is invalid");
     }
   }
@@ -251,6 +254,8 @@ const compareV3Attestation = (
     { readonly schemaVersion: "reader_post_promotion_attestation.v3" }>,
   right: Extract<ReaderPostPromotionAttestationAny,
     { readonly schemaVersion: "reader_post_promotion_attestation.v3" }>,
+  leftSignalScore: number,
+  rightSignalScore: number,
 ): number => {
   const usefulness = { important: 3, useful: 2, context: 1, noise: 0,
     insufficient_context: -1 } as const;
@@ -259,6 +264,7 @@ const compareV3Attestation = (
   return usefulness[right.comparator.usefulness] -
     usefulness[left.comparator.usefulness] ||
     relevance[right.comparator.relevance] - relevance[left.comparator.relevance] ||
+    rightSignalScore - leftSignalScore ||
     Buffer.compare(Buffer.from(right.publishedAt), Buffer.from(left.publishedAt)) ||
     Buffer.compare(Buffer.from(left.candidateId), Buffer.from(right.candidateId));
 };

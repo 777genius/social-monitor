@@ -1,6 +1,7 @@
 import type { ReaderValueAnswers } from
   "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
 
+import { normalizeSignalScore } from "../value-objects/signal-score";
 import { readerPostPromotionTopProviderCap } from
   "./top-read-provider-diversity-policy";
 
@@ -102,7 +103,10 @@ export const compareReaderPostPromotionV3 = (
     usefulnessRank[left.answers.usefulness.choice] ||
   relevanceRank[right.answers.relevance.choice] -
     relevanceRank[left.answers.relevance.choice] ||
-  (right.engagementStrength ?? 0) - (left.engagementStrength ?? 0) ||
+  // Rounded to card.signalScore precision: Promotion V3 order validation
+  // derives this tie-break from the bound card only.
+  normalizeSignalScore(right.engagementStrength ?? 0) -
+    normalizeSignalScore(left.engagementStrength ?? 0) ||
   compareTimestampDesc(left.publishedAt, right.publishedAt) ||
   compareUtf8Bytes(left.candidateId, right.candidateId);
 
