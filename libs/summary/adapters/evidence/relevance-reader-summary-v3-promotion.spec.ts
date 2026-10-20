@@ -155,7 +155,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     const result = await fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest });
     expect(result.kind).toBe("ready");
-    expect(presentation.attempted).toBeLessThanOrEqual(32);
+    expect(presentation.attempted).toBeLessThanOrEqual(64);
     expect(presentation.batches.flat()).toContain(id(33));
     expect(presentation.batches.flat()).toContain(id(34));
     if (result.kind !== "ready") return;
@@ -256,7 +256,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(new Set([...selection.top, ...selection.additional, ...selection.excluded]
       .map((value) => value.candidateId))).toEqual(new Set(candidates.map((value) => value.id)));
     expect(result.evidence.selectedEvidence).toHaveLength(16);
-    expect(presentation.attempted).toBeLessThanOrEqual(32);
+    expect(presentation.attempted).toBeLessThanOrEqual(64);
     expect(result.evidence.selectedEvidence.every((value) =>
       value.readerHeadline?.status === "accepted")).toBe(true);
   });
@@ -277,7 +277,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
 
     expect(result.kind).toBe("ready");
     expect(presentation.attempted).toBeGreaterThan(0);
-    expect(presentation.attempted).toBeLessThanOrEqual(32);
+    expect(presentation.attempted).toBeLessThanOrEqual(64);
   });
 
   // Regression: the same source can carry conflicting Jev answers. The
@@ -617,9 +617,9 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(projection.admittedClusters[0]?.duplicateFeedItemIds).toEqual([lead.id]);
   });
 
-  it("bounds presentation at 32 and marks the rest budget exhausted", async () => {
+  it("bounds presentation at 64 and marks the rest budget exhausted", async () => {
     const presentation = new TestPresentation();
-    const fixture = setup(Array.from({ length: 35 }, (_, index) =>
+    const fixture = setup(Array.from({ length: 67 }, (_, index) =>
       candidate(index + 1, "useful", "relevant", `story-${index + 1}`)),
     presentation);
 
@@ -627,7 +627,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
       manifest: fixture.manifest });
 
     expect(result.kind).toBe("ready");
-    expect(presentation.attempted).toBe(32);
+    expect(presentation.attempted).toBe(64);
     if (result.kind !== "ready") return;
     expect(result.evidence.promotionV3?.excluded.filter((value) =>
       value.reason === "presentation_budget_exhausted")).toHaveLength(3);
@@ -636,8 +636,8 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
   // Regression: a short Top cannot publish while unpresented qualifying
   // stories remain outside the explicit presentation attempt budget.
   it("fails an incomplete global presentation instead of publishing a short Top", async () => {
-    const unavailable = new Set(Array.from({ length: 31 }, (_, index) => id(index + 2)));
-    const fixture = workspaceSetup(Array.from({ length: 33 }, (_, index) =>
+    const unavailable = new Set(Array.from({ length: 63 }, (_, index) => id(index + 2)));
+    const fixture = workspaceSetup(Array.from({ length: 65 }, (_, index) =>
       candidate(index + 1, "useful", "relevant")),
     undefined, new TestPresentation(unavailable));
 
@@ -710,7 +710,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     const lead = { ...candidate(1, "important", "central", "shared-story"),
       body: "a".repeat(64_001) };
     const fallback = candidate(2, "useful", "central", "shared-story");
-    const lower = Array.from({ length: 31 }, (_, index) =>
+    const lower = Array.from({ length: 63 }, (_, index) =>
       candidate(index + 3, "useful", "relevant", `lower-${index}`));
     const presentation = new TestPresentation();
     const fixture = setup([lead, fallback, ...lower], presentation);
@@ -719,17 +719,17 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
       manifest: fixture.manifest });
 
     expect(result.kind).toBe("ready");
-    expect(presentation.batches[0]).toEqual([id(33), id(32), id(31)]);
+    expect(presentation.batches[0]).toEqual([id(65), id(64), id(63)]);
     expect(presentation.batches[1]?.[0]).toBe(id(2));
-    expect(presentation.attempted).toBe(31);
+    expect(presentation.attempted).toBe(63);
   });
 
-  it("still charges 32 distinct local oversize bindings", async () => {
-    const oversized = Array.from({ length: 32 }, (_, index) => ({
+  it("still charges 64 distinct local oversize bindings", async () => {
+    const oversized = Array.from({ length: 64 }, (_, index) => ({
       ...candidate(index + 1, "important", "central", `story-${index + 1}`),
       body: "a".repeat(64_001),
     }));
-    const distinct = candidate(33, "useful", "relevant", "eligible-story");
+    const distinct = candidate(65, "useful", "relevant", "eligible-story");
     const presentation = new TestPresentation();
     const fixture = setup([...oversized, distinct], presentation);
 
@@ -740,9 +740,9 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(presentation.attempted).toBe(0);
   });
 
-  it("reserves the highest-ranked eligible binding before 32 lower local failures", async () => {
+  it("reserves the highest-ranked eligible binding before 64 lower local failures", async () => {
     const eligible = candidate(1, "important", "central", "eligible-story");
-    const oversized = Array.from({ length: 32 }, (_, index) => ({
+    const oversized = Array.from({ length: 64 }, (_, index) => ({
       ...candidate(index + 2, "useful", "relevant", `oversize-${index + 1}`),
       body: "a".repeat(64_001),
     }));
