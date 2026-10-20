@@ -251,8 +251,15 @@ bool _validV3PromotionSlate(
     )) {
       return false;
     }
-    for (var index = 1; index < attestations.length; index += 1) {
-      if (_compareV3Attestation(attestations[index - 1], attestations[index]) >
+    for (var index = 1; index < items.length; index += 1) {
+      final previous = items[index - 1];
+      final current = items[index];
+      if (_compareV3Attestation(
+            previous.promotionAttestation!,
+            current.promotionAttestation!,
+            previous.signalScore.value,
+            current.signalScore.value,
+          ) >
           0) {
         return false;
       }
@@ -277,9 +284,23 @@ bool _validV3PromotionSlate(
 int _compareV3Attestation(
   ReaderPostPromotionAttestation left,
   ReaderPostPromotionAttestation right,
+  double leftScore,
+  double rightScore,
 ) {
-  const usefulness = {'important': 3, 'useful': 2};
-  const relevance = {'central': 3, 'relevant': 2};
+  const usefulness = {
+    'important': 3,
+    'useful': 2,
+    'context': 1,
+    'noise': 0,
+    'insufficient_context': -1,
+  };
+  const relevance = {
+    'central': 3,
+    'relevant': 2,
+    'adjacent': 1,
+    'unrelated': 0,
+    'insufficient_context': -1,
+  };
   final leftUsefulness = left.comparator?['usefulness'];
   final rightUsefulness = right.comparator?['usefulness'];
   final leftRelevance = left.comparator?['relevance'];
@@ -295,6 +316,8 @@ int _compareV3Attestation(
       ? usefulness[rightUsefulness]! - usefulness[leftUsefulness]!
       : relevance[rightRelevance]! - relevance[leftRelevance]!;
   if (semantic != 0) return semantic;
+  final engagement = rightScore.compareTo(leftScore);
+  if (engagement != 0) return engagement;
   final leftPublishedAt = DateTime.tryParse(left.exactPublishedAt!);
   final rightPublishedAt = DateTime.tryParse(right.exactPublishedAt!);
   if (leftPublishedAt == null || rightPublishedAt == null) return 1;
