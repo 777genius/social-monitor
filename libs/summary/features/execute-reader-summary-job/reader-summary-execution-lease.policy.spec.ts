@@ -22,4 +22,14 @@ describe("ReaderSummaryExecutionLeasePolicy", () => {
       () => new ReaderSummaryExecutionLeasePolicy(24 * 60 * 60 * 1_000 + 1),
     ).toThrow("no greater than 24 hours");
   });
+
+  it("keeps the default lease fresh for weekly-scale three-hour runs", () => {
+    const policy = new ReaderSummaryExecutionLeasePolicy();
+    const now = new Date("2026-08-14T12:30:00.000Z");
+    const weeklyRunStarted = new Date("2026-08-14T09:25:00.000Z");
+
+    expect(
+      policy.staleRunningStartedBefore(now).getTime(),
+    ).toBeLessThan(weeklyRunStarted.getTime());
+  });
 });
