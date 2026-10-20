@@ -365,7 +365,7 @@ export const buildSupplementalTrendNarrativeAppendix =
 export const withSupplementalTrendNarrativeAppendix =
   withGitHubTrendingNarrativeAppendix;
 
-const archivedGitHubEvidenceDay = (item: SummaryEvidenceItem): string | undefined => {
+export const archivedGitHubEvidenceDay = (item: SummaryEvidenceItem): string | undefined => {
   const metric = item.providerMetricLabels?.find((candidate) =>
     /^GitHub Trending archive \d{4}-\d{2}-\d{2}$/u.test(candidate.label));
   const day = metric?.label.slice("GitHub Trending archive ".length);

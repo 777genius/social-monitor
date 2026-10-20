@@ -4,6 +4,7 @@ import { githubBoardArtifact, githubProjectionInput } from "./reader-summary-git
 import type { ReaderSummaryGitHubProjectionItem } from "./reader-summary-github-projection-audit";
 import { ReaderSummaryArtifact } from "../entities/reader-summary-artifact";
 import { buildGitHubTrendingNarrativeAppendix, selectGitHubTrendingDisplayRepositories } from "./reader-summary-github-trending-policy";
+import { buildReaderSummarySupplementalTrendSelectedPosts } from "../services/reader-summary-supplemental-selected-posts";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 
 const day = "2026-07-10";
@@ -106,5 +107,54 @@ describe("archived GitHub publication custody", () => {
       providerKey: row.providerKey, field: "canonicalUrl", canonicalUrl: row.canonicalUrl }] });
     expect(appendix?.title).toBe(`GitHub Trending archive ${day}`);
     expect(appendix?.text).toBe(`- **owner/repo-1** (#1): +1,001 stars on ${day} (archived observation).`);
+  });
+
+  const supplementalBoard = (rows: readonly ReaderSummaryGitHubProjectionItem[],
+    metric: (row: ReaderSummaryGitHubProjectionItem) => { label: string; value: string }) => {
+    const evidence = rows.map((row) => ({ ...row, interestId: "test-interest",
+      title: row.repositoryFullName!, score: 0, whyImportant: [],
+      providerMetricLabels: [metric(row)] })) as readonly SummaryEvidenceItem[];
+    const citations = rows.map((row) => ({ citationId: `github-citation-${row.rank}`,
+      feedItemId: row.feedItemId, sourceItemId: row.sourceItemId,
+      providerKey: row.providerKey, field: "canonicalUrl" as const, canonicalUrl: row.canonicalUrl }));
+    return { evidence, citations };
+  };
+
+  it("materializes and verifies a 9-row archived board through the production supplemental builder", () => {
+    const rows = items().slice(0, 9);
+    const { evidence, citations } = supplementalBoard(rows, (row) => ({
+      label: `GitHub Trending archive ${day}`,
+      value: `#${row.rank}, +${row.starsGained!.toLocaleString("en-US")} stars on ${day}` }));
+    const posts = buildReaderSummarySupplementalTrendSelectedPosts({
+      selectedEvidence: evidence, citations });
+    expect(posts).toHaveLength(9);
+    const appendix = buildGitHubTrendingNarrativeAppendix({ evidence, citations });
+    const base = githubBoardArtifact({ selectedPostCount: 9 }).toSnapshot();
+    const artifact = ReaderSummaryArtifact.create({ ...base, content: { ...base.content!,
+      selectedPosts: [...posts],
+      narrativeSections: [...base.content!.narrativeSections!,
+        ...(appendix === undefined ? [] : [appendix])] } });
+    const result = evaluate(rows, artifact);
+    expect(result.findings).toEqual([]);
+    expect(result.audit.status).toBe("verified");
+    expect(readerSummaryHasVerifiedGitHubProjection({ artifact, audit: result.audit })).toBe(true);
+  });
+
+  it("keeps materializing the complete live Top 10 board", () => {
+    const rows = githubProjectionInput();
+    const { evidence, citations } = supplementalBoard(rows, (row) => ({
+      label: "GitHub Trending today",
+      value: `#${row.rank}, +${row.starsGained} stars today` }));
+    expect(buildReaderSummarySupplementalTrendSelectedPosts({
+      selectedEvidence: evidence, citations })).toHaveLength(10);
+  });
+
+  it("still refuses an incomplete live board from the production supplemental builder", () => {
+    const rows = githubProjectionInput().slice(0, 9);
+    const { evidence, citations } = supplementalBoard(rows, (row) => ({
+      label: "GitHub Trending today",
+      value: `#${row.rank}, +${row.starsGained} stars today` }));
+    expect(buildReaderSummarySupplementalTrendSelectedPosts({
+      selectedEvidence: evidence, citations })).toEqual([]);
   });
 });
