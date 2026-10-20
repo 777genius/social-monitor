@@ -6,6 +6,7 @@ import type { ReaderSummaryPreparationCandidate,
   ReaderDisplayHeadlineSeal, SummaryEvidenceItem } from "../../domain";
 import type { ReaderPostPresentationV3Input } from
   "../../domain/services/reader-post-presentation-v3";
+import { providerMetricFacts } from "./reader-summary-provider-evidence";
 
 export const evidenceItem = (
   frozen: ReaderSummaryPreparationCandidate,
@@ -21,6 +22,10 @@ export const evidenceItem = (
   publishedAt: new Date(frozen.publishedAt), observedAt: new Date(frozen.observedAt),
   score: 0, whyImportant: [], readerActionKind: "read_source",
   storyKeyHint: frozen.storyId,
+  ...providerMetricFacts({
+    providerKey: frozen.providerKey,
+    providerMetadata: frozen.providerMetadata,
+  }),
 });
 
 export const clusteringEvidenceItem = (
@@ -34,4 +39,8 @@ export const clusteringEvidenceItem = (
   title: input.title, bodyPreview: input.body, sourceText: input.body,
   publishedAt: new Date(frozen.publishedAt), observedAt: new Date(frozen.observedAt),
   score: 0, whyImportant: [], storyKeyHint: frozen.storyId,
+  ...providerMetricFacts({
+    providerKey: frozen.providerKey,
+    providerMetadata: frozen.providerMetadata,
+  }),
 });

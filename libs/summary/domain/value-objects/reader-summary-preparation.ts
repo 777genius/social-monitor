@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import type { JsonObject } from "@social-monitor/shared-kernel";
+
 export const readerSummarySelectionStrategies = [
   "legacy_v2",
   "jev_shadow",
@@ -46,6 +48,8 @@ export type ReaderSummaryPreparationCandidate = {
   readonly sourceKind: string;
   readonly canonicalIdentity: string;
   readonly storyId?: string;
+  /** Frozen provider metadata; the only carrier of observed engagement. */
+  readonly providerMetadata?: JsonObject;
 };
 
 export type ReaderSummaryInterestPreparationManifest = {

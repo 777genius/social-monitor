@@ -1,3 +1,5 @@
+import type { JsonObject } from "@social-monitor/shared-kernel";
+
 export type ReaderValueSummaryPreparationConfig = {
   readonly schemaVersion: "reader_summary_preparation_config.v1";
   readonly interestId: string; readonly interestSha256: string;
@@ -17,6 +19,8 @@ export type ReaderValueSummaryPreparationManifest = {
     readonly publishedAt: string; readonly observedAt: string;
     readonly sourceKind: string;
     readonly canonicalIdentity: string; readonly storyId?: string;
+    /** Frozen provider metadata; the only carrier of observed engagement. */
+    readonly providerMetadata?: JsonObject;
   }[];
 };
 

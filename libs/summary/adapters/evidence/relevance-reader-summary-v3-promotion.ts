@@ -180,7 +180,8 @@ implements ReaderSummaryV3PromotionPort {
           snapshot.capture.availability !== "truncated",
       };
       presentationInputById.set(frozen.candidateId, presentationInput);
-      frozenEvidence.push(clusteringEvidenceItem(frozen, presentationInput, assessment));
+      const lead = clusteringEvidenceItem(frozen, presentationInput, assessment);
+      frozenEvidence.push(lead);
       return {
         candidateId: frozen.candidateId, interestId,
         providerKey: frozen.providerKey,
@@ -195,7 +196,9 @@ implements ReaderSummaryV3PromotionPort {
         inputSha256: assessment.input.inputSha256,
         rubricSha256: assessment.input.rubricSha256,
         modelConfigVersion: assessment.input.modelConfigVersion,
-        answers: assessment.answers, presentation: { status: "pending" as const },
+        answers: assessment.answers,
+        engagementStrength: lead.providerMetricStrength ?? 0,
+        presentation: { status: "pending" as const },
         appendixOnly: frozen.sourceKind === "trending_repository",
         scopeValid: true, sourceIdentityValid: frozen.canonicalIdentity.trim().length > 0,
         freshnessValid: inFrozenWindow(frozen.publishedAt, job.period.startedAt,

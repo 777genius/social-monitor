@@ -39,6 +39,8 @@ export type ReaderPostPromotionV3Candidate = {
   readonly rubricSha256: string;
   readonly modelConfigVersion: string;
   readonly answers: ReaderValueAnswers;
+  /** Deterministic engagement strength from typed provider metrics. */
+  readonly engagementStrength?: number;
   readonly presentation: ReaderPostPromotionV3Presentation;
   readonly appendixOnly?: boolean;
   readonly scopeValid: boolean;
@@ -88,7 +90,10 @@ const relevanceRank = Object.freeze({
   insufficient_context: -1,
 });
 
-/** The only V3 ordering authority. Provider probabilities and popularity are absent. */
+/**
+ * The only V3 ordering authority. Provider probabilities are absent; observed
+ * engagement only breaks semantic ties before recency.
+ */
 export const compareReaderPostPromotionV3 = (
   left: ReaderPostPromotionV3Candidate,
   right: ReaderPostPromotionV3Candidate,
@@ -97,6 +102,7 @@ export const compareReaderPostPromotionV3 = (
     usefulnessRank[left.answers.usefulness.choice] ||
   relevanceRank[right.answers.relevance.choice] -
     relevanceRank[left.answers.relevance.choice] ||
+  (right.engagementStrength ?? 0) - (left.engagementStrength ?? 0) ||
   compareTimestampDesc(left.publishedAt, right.publishedAt) ||
   compareUtf8Bytes(left.candidateId, right.candidateId);
 
