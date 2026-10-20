@@ -36,7 +36,9 @@ export const providerMetricFacts = (params: {
     return {
       providerMetricLabels: formatFeedProviderMetrics(appendixMetrics),
       providerMetricSummary: summarizeFeedProviderMetrics(appendixMetrics),
-      providerMetricStrength: feedProviderMetricStrength(appendixMetrics),
+      providerMetricStrength: appendixMetrics === undefined
+        ? undefined
+        : feedProviderMetricStrength(appendixMetrics),
     };
   }
   const eligibility = classifyFeedPromotionEligibility(params);
