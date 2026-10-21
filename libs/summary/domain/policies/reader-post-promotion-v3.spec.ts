@@ -103,10 +103,10 @@ describe("Reader promotion V3", () => {
       reason: "story_representative" });
   });
 
-  it.each([[1, 8], [2, 6], [3, 4]])(
-    "applies the existing %i-provider cap of %i once", (providerCount, cap) => {
+  it.each([[1, 12], [2, 7], [3, 4]])(
+    "applies the %i-provider cap of %i across 12+12 slots", (providerCount, cap) => {
       const providers = ["x", "reddit", "rss"] as const;
-      const candidates = Array.from({ length: 20 }, (_, index) => candidate(index + 1, {
+      const candidates = Array.from({ length: 24 }, (_, index) => candidate(index + 1, {
         providerFamily: providers[index % providerCount]!, presentation: "available",
         storyId: `story-${index}`,
       }));
@@ -115,8 +115,8 @@ describe("Reader promotion V3", () => {
       selected.top.forEach((item) => counts.set(item.providerFamily,
         (counts.get(item.providerFamily) ?? 0) + 1));
       expect(Math.max(...counts.values())).toBeLessThanOrEqual(cap);
-      expect(selected.top.length).toBeLessThanOrEqual(8);
-      expect(selected.additional.length).toBe(8);
+      expect(selected.top.length).toBe(12);
+      expect(selected.additional.length).toBe(12);
     });
 
   it("distinguishes no signal, presentation unavailable, and budget exhaustion", () => {

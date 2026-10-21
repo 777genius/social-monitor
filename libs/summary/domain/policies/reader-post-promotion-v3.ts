@@ -169,24 +169,24 @@ export const selectReaderPostPromotionsV3 = (
   }
 
   const activeProviderCount = new Set(ready.map((item) => item.providerFamily)).size;
-  const providerCap = Math.min(8, readerPostPromotionTopProviderCap(activeProviderCount));
+  const providerCap = Math.min(12, readerPostPromotionTopProviderCap(activeProviderCount));
   const providerCounts = new Map<ReaderPostPromotionV3Provider, number>();
   const top: ReaderPostPromotionV3Candidate[] = [];
   const remainder: ReaderPostPromotionV3Candidate[] = [];
   for (const candidate of ready) {
     const count = providerCounts.get(candidate.providerFamily) ?? 0;
-    if (top.length < 8 && count < providerCap) {
+    if (top.length < 12 && count < providerCap) {
       top.push(candidate);
       providerCounts.set(candidate.providerFamily, count + 1);
     } else {
       remainder.push(candidate);
-      if (top.length < 8) {
+      if (top.length < 12) {
         exclusions.push({ candidateId: candidate.candidateId, reason: "top_provider_cap" });
       }
     }
   }
-  const additional = remainder.slice(0, 8);
-  for (const candidate of remainder.slice(8)) {
+  const additional = remainder.slice(0, 12);
+  for (const candidate of remainder.slice(12)) {
     exclusions.push({ candidateId: candidate.candidateId, reason: "capacity_exhausted" });
   }
   return freezeSelection("ready", top, additional, exclusions);

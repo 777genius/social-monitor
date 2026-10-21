@@ -122,7 +122,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     });
 
   // Regression: each interest used to form its own shortlist. Workspace Top
-  // and Additional must instead share one eight-slot cap and provider limit.
+  // and Additional must instead share one global cap and provider limit.
   it("applies one deterministic Top and Additional cap across both interests", async () => {
     const candidates = Array.from({ length: 20 }, (_, index) => ({
       ...candidate(index + 1, "important", "central"),
@@ -136,12 +136,12 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
     expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
-      .toEqual([20, 19, 18, 17, 16, 15, 10, 9].map(id));
+      .toEqual([20, 19, 18, 17, 16, 15, 14, 10, 9, 8, 7, 6].map(id));
     expect(result.evidence.promotionV3?.additional.map((value) => value.candidateId))
-      .toEqual([14, 13, 12, 11, 8, 7, 6, 5].map(id));
+      .toEqual([13, 12, 11, 5, 4, 3, 2, 1].map(id));
     expect(result.evidence.promotionV3?.top.filter((value) =>
-      value.providerKey === "reddit")).toHaveLength(6);
-    expect(result.evidence.selectedEvidence).toHaveLength(16);
+      value.providerKey === "reddit")).toHaveLength(7);
+    expect(result.evidence.selectedEvidence).toHaveLength(20);
   });
 
   it("presents a later provider that can change a full global Top", async () => {
@@ -160,7 +160,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(presentation.batches.flat()).toContain(id(34));
     if (result.kind !== "ready") return;
     expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
-      .toEqual([32, 31, 30, 29, 28, 27, 34, 33].map(id));
+      .toEqual([32, 31, 30, 29, 28, 27, 26, 34, 33].map(id));
   });
 
   // Regression: a weekly workspace can contain thousands of assessed noise
@@ -251,11 +251,11 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
 
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
-    expect(result.evidence.clusters).toHaveLength(16);
+    expect(result.evidence.clusters).toHaveLength(24);
     const selection = result.evidence.promotionV3!;
     expect(new Set([...selection.top, ...selection.additional, ...selection.excluded]
       .map((value) => value.candidateId))).toEqual(new Set(candidates.map((value) => value.id)));
-    expect(result.evidence.selectedEvidence).toHaveLength(16);
+    expect(result.evidence.selectedEvidence).toHaveLength(24);
     expect(presentation.attempted).toBeLessThanOrEqual(64);
     expect(result.evidence.selectedEvidence.every((value) =>
       value.readerHeadline?.status === "accepted")).toBe(true);

@@ -25,19 +25,19 @@ function setup(survivors = 9, mergeFirstThree = false) {
 }
 
 describe('explicit bounded V3 presentation survivors', () => {
-  it('freezes nine sealed stories as seven Top and two Additional and discloses limited coverage in the public artifact', async () => {
+  it('freezes nine sealed stories as eight Top and one Additional and discloses limited coverage in the public artifact', async () => {
     const fixture = setup(), result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
     expect(result.kind).toBe('ready');
     expect(fixture.tracked.attempted).toBe(64);
     if (result.kind !== 'ready') throw new Error(result.kind);
     const evidence = result.evidence, selection = evidence.promotionV3!;
     expect(selection.presentationCoverageLimited).toBe(true);
-    expect(selection.top).toHaveLength(7);
-    expect(selection.additional).toHaveLength(2);
+    expect(selection.top).toHaveLength(8);
+    expect(selection.additional).toHaveLength(1);
     expect(selection.excluded.some(item => item.reason === 'presentation_budget_exhausted')).toBe(true);
     expect(selection.excluded.some(item => item.reason === 'presentation_unavailable')).toBe(true);
     const selected = [...selection.top, ...selection.additional];
-    expect(selected.map(item => item.candidateId)).toEqual([1, 2, 3, 4, 5, 6, 9, 7, 8].map(id));
+    expect(selected.map(item => item.candidateId)).toEqual([1, 2, 3, 4, 5, 6, 7, 9, 8].map(id));
     expect(selected.every(item => item.presentation.status === 'available' && !fixture.rejected.has(item.candidateId))).toBe(true);
     const original = baselineArtifact().toSnapshot();
     const citationMap = evidence.selectedEvidence.map((item, index) => ({ citationId: `c${index + 1}`,
@@ -70,8 +70,8 @@ describe('explicit bounded V3 presentation survivors', () => {
     expect(publicArtifact.qualityFlags).toContain('limited_sources');
     expect(publicArtifact.readerBrief?.qualityState).toMatchObject({ status: 'limited_sources', flags: ['limited_sources'] });
     expect(publicArtifact.readerBrief?.qualityState.warnings).toContain('Coverage is limited because the headline verification budget was reached; some story headlines were not checked.');
-    expect(publicArtifact.readerBrief?.topReads).toHaveLength(7);
-    expect(publicArtifact.readerBrief?.selectedPosts).toHaveLength(2);
+    expect(publicArtifact.readerBrief?.topReads).toHaveLength(8);
+    expect(publicArtifact.readerBrief?.selectedPosts).toHaveLength(1);
     expect(loaded.toSnapshot().promotionAttestations).toHaveLength(9);
     expect([...(publicArtifact.readerBrief?.topReads ?? []), ...(publicArtifact.readerBrief?.selectedPosts ?? [])]
       .map(card => card.promotionAttestation?.candidateId)).toEqual(selected.map(item => item.candidateId));

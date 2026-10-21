@@ -9,9 +9,9 @@ describe('conservative reader-value model input', () => {
   it('binds the calibrated rubric to a distinct assessment identity without changing source or model', () => {
     const input = preparedInput();
     const wire = JSON.parse(input.requestBody);
-    expect(READER_VALUE_RUBRIC_VERSION).toBe('reader-value.v2.capability-contrast');
+    expect(READER_VALUE_RUBRIC_VERSION).toBe('reader-value.v3.newsworthiness');
     expect(input.rubricVersion).toBe(READER_VALUE_RUBRIC_VERSION);
-    expect(input.rubricSha256).toBe('70a31b6c75fb5af38c831948486fe85700b919555838d54c68dafbeaa6aa897c');
+    expect(input.rubricSha256).toBe('13fc53176b33bd5df7cc969d1e80a5bb51ae30bd97e7c985a3b99be1117c3b86');
     expect(readerValueSha256(JSON.stringify(wire.questions))).toBe(input.rubricSha256);
     // Existing V1 assessment identity remains distinct, even for unchanged source.
     expect(input.rubricVersion).not.toBe('reader-value.v1');
@@ -28,8 +28,8 @@ describe('conservative reader-value model input', () => {
     const unchangedContract = { usefulnessCriteria: readerValueQuestions.usefulness.criteria,
       relevance: readerValueQuestions.relevance, context_sufficiency: readerValueQuestions.context_sufficiency,
       evidence_basis: readerValueQuestions.evidence_basis };
-    // Frozen V1 contract digest: the contrast changes instructions, not these semantics.
-    expect(readerValueSha256(JSON.stringify(unchangedContract))).toBe('908b4f0309497c24193d8c6c430585062bd0278b0a69e248cc95d99c75664d47');
+    // Contract digest pin: v3 restates usefulness levels; the other three questions are unchanged.
+    expect(readerValueSha256(JSON.stringify(unchangedContract))).toBe('0ddde7af6328aae3394beb686c2669190b241d91978439784694af831aa9a2b4');
   });
   it('binds exact raw interest edits even when redacted request bytes are identical', () => {
     const first = preparedInput({ interest: 'Testing methods password=fixture-one' });

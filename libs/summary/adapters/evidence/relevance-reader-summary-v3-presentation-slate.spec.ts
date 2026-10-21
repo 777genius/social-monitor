@@ -23,11 +23,11 @@ describe("bounded workspace presentation slate", () => {
     expect(presentation.attempted).toBeLessThanOrEqual(64);
     if (result.kind !== "ready") return;
     expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
-      .toEqual([1, 2, 3, 4, 70, 71, 72, 73].map(id));
+      .toEqual([1, 2, 3, 4, 70, 71, 72, 73, 76].map(id));
     expect(result.evidence.promotionV3?.additional.map((value) => value.candidateId))
-      .toEqual([5, 6, 7, 8, 9, 10, 11, 12].map(id));
+      .toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map(id));
     expect(presentation.batches.flat()).toContain(id(76));
-    expect(result.evidence.selectedEvidence).toHaveLength(16);
+    expect(result.evidence.selectedEvidence).toHaveLength(21);
     expect(result.evidence.selectedEvidence.every((item) =>
       item.readerHeadline?.status === "accepted")).toBe(true);
   });
@@ -40,7 +40,7 @@ describe("bounded workspace presentation slate", () => {
     return { tracked, presentation };
   };
 
-  it("continues past rejected batches to sixteen sealed stories without repeating bindings", async () => {
+  it("continues past rejected batches to twenty-one sealed stories without repeating bindings", async () => {
     const { tracked, presentation } = withRejectedPresentations(new Set([1, 2, 3, 4].map(id)));
     const fixture = workspaceSetup(distinct(76), undefined, presentation);
     const result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
@@ -48,7 +48,7 @@ describe("bounded workspace presentation slate", () => {
     expect(tracked.attempted).toBeLessThanOrEqual(64);
     expect(new Set(tracked.batches.flat()).size).toBe(tracked.attempted);
     if (result.kind !== "ready") return;
-    expect(result.evidence.selectedEvidence).toHaveLength(16);
+    expect(result.evidence.selectedEvidence).toHaveLength(21);
     expect(result.evidence.selectedEvidence.every((item) => item.readerHeadline?.status === "accepted"))
       .toBe(true);
     for (const rejectedId of [id(1), id(2), id(3), id(4)]) {

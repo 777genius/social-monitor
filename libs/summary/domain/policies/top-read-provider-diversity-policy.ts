@@ -33,4 +33,4 @@ const multiProviderDominantShare = 0.4;
 
 // Promotion V1 audits the reader surface against ten editorial slots even
 // though the published Top array exposes at most eight.
-const promotionRankingAuditLimit = 10;
+const promotionRankingAuditLimit = 12;
