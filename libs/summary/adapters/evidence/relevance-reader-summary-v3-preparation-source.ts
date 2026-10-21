@@ -110,7 +110,7 @@ implements ReaderSummaryV3PreparationSourcePort {
       periodKey: snapshot.period.periodKey,
       interests: config.interests, candidates };
     const encoded = JSON.stringify(manifest);
-    if (Buffer.byteLength(encoded, "utf8") > 16 * 1024 * 1024) {
+    if (Buffer.byteLength(encoded, "utf8") > 64 * 1024 * 1024) {
       return { ok: false, code: "assessment_inventory_over_budget" };
     }
     return { ok: true, config, manifest,

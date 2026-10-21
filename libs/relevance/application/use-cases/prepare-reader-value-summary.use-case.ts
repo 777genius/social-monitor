@@ -268,7 +268,7 @@ implements ReaderValueSummaryPreparation {
       modelConfigVersion: scan.config.modelConfigVersion,
       candidates,
     };
-    if (Buffer.byteLength(JSON.stringify(manifest), "utf8") > 16 * 1024 * 1024) {
+    if (Buffer.byteLength(JSON.stringify(manifest), "utf8") > 64 * 1024 * 1024) {
       return overBudget();
     }
     return { ok: true, config: scan.config, manifest,

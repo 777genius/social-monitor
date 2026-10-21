@@ -168,7 +168,7 @@ export const assertReaderSummaryPreparationManifest = (
         manifest.periodKey.trim().length === 0 ||
         Buffer.byteLength(manifest.periodKey, "utf8") > 512 ||
         !Number.isFinite(Date.parse(manifest.cutoffAt)) ||
-        Buffer.byteLength(JSON.stringify(manifest), "utf8") > 16 * 1024 * 1024) {
+        Buffer.byteLength(JSON.stringify(manifest), "utf8") > 64 * 1024 * 1024) {
       throw new Error("Workspace reader summary preparation manifest is invalid");
     }
     const ids = new Set<string>();
@@ -213,8 +213,8 @@ export const assertReaderSummaryPreparationManifest = (
     throw new Error("Reader summary preparation manifest is invalid");
   }
   const bytes = Buffer.byteLength(JSON.stringify(manifest), "utf8");
-  if (bytes > 16 * 1024 * 1024) {
-    throw new Error("Reader summary preparation manifest exceeds 16 MiB");
+  if (bytes > 64 * 1024 * 1024) {
+    throw new Error("Reader summary preparation manifest exceeds 64 MiB");
   }
   const ids = new Set<string>();
   for (const candidate of manifest.candidates) {
