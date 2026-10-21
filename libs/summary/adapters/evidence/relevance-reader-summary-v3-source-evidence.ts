@@ -1,6 +1,7 @@
-import { publicCanonicalUrlIdentity } from "@social-monitor/shared-kernel";
 import type { ReaderValueAssessment } from
   "@social-monitor/relevance/application/contracts/reader-value-assessment-store";
+import { sanitizeSourceUrl } from
+  "@social-monitor/relevance/domain/source-content-safety";
 
 import type { ReaderSummaryPreparationCandidate,
   ReaderDisplayHeadlineSeal, SummaryEvidenceItem } from "../../domain";
@@ -17,7 +18,7 @@ export const evidenceItem = (
   readerHeadline: seal.headline,
   feedItemId: frozen.candidateId, sourceItemId: frozen.sourceItemId,
   sourceBindingId: frozen.sourceBindingId, interestId: assessment.input.interestId,
-  providerKey: frozen.providerKey, canonicalUrl: publicCanonicalUrlIdentity(frozen.canonicalIdentity),
+  providerKey: frozen.providerKey, canonicalUrl: displayCanonicalUrl(frozen.canonicalIdentity),
   title: input.title, bodyPreview: input.body, sourceText: input.body,
   publishedAt: new Date(frozen.publishedAt), observedAt: new Date(frozen.observedAt),
   score: 0, whyImportant: [], readerActionKind: "read_source",
@@ -28,6 +29,10 @@ export const evidenceItem = (
   }),
 });
 
+// Must mirror public.reader_summary_safe_citation_url; the identity form is promotion-only.
+const displayCanonicalUrl = (identity: string): string =>
+  sanitizeSourceUrl(identity).value ?? identity;
+
 export const clusteringEvidenceItem = (
   frozen: ReaderSummaryPreparationCandidate,
   input: ReaderPostPresentationV3Input,
@@ -35,7 +40,7 @@ export const clusteringEvidenceItem = (
 ): SummaryEvidenceItem => ({
   feedItemId: frozen.candidateId, sourceItemId: frozen.sourceItemId,
   sourceBindingId: frozen.sourceBindingId, interestId: assessment.input.interestId,
-  providerKey: frozen.providerKey, canonicalUrl: publicCanonicalUrlIdentity(frozen.canonicalIdentity),
+  providerKey: frozen.providerKey, canonicalUrl: displayCanonicalUrl(frozen.canonicalIdentity),
   title: input.title, bodyPreview: input.body, sourceText: input.body,
   publishedAt: new Date(frozen.publishedAt), observedAt: new Date(frozen.observedAt),
   score: 0, whyImportant: [], storyKeyHint: frozen.storyId,

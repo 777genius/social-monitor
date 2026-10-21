@@ -493,9 +493,11 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
         field: 'canonicalUrl', canonicalUrl: item.canonicalUrl }],
       attestationBinding: { artifactId: id(997), sourceWindow: result.evidence.sourceWindow },
     });
-    expect(item.canonicalUrl).toBe(safe);
-    expect(projection.topReads[0]?.canonicalUrl).toBe(safe);
-    expect(projection.admittedCitations[0]?.canonicalUrl).toBe(safe);
+    // Display/citation URLs follow reader_summary_safe_citation_url: no query.
+    const display = safe.slice(0, safe.indexOf('?'));
+    expect(item.canonicalUrl).toBe(display);
+    expect(projection.topReads[0]?.canonicalUrl).toBe(display);
+    expect(projection.admittedCitations[0]?.canonicalUrl).toBe(display);
     expect(projection.attestations[0]?.canonicalIdentity).toBe(safe);
     expect(JSON.stringify({ evidence: projection.admittedEvidence, cards: projection.topReads,
       citations: projection.admittedCitations, attestations: projection.attestations }))
