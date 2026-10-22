@@ -149,11 +149,15 @@ const v3Fixture = (candidateCount = 1) => {
   });
   const candidates = slots.map((slot, index): ReaderPostPromotionV3Candidate => {
     const evidenceLead = evidenceLeads[index]!;
+    const headline = evidenceLead.readerHeadline!;
+    if (headline.status !== "accepted") {
+      throw new Error("invalid accepted headline fixture");
+    }
     const input = { tenantId: base.tenantId, workspaceId: base.workspaceId,
       interestId: evidenceLead.interestId, candidateId: slot.candidateId,
       sourceItemId: slot.sourceItemId, sourceBindingId: slot.sourceBindingId,
       providerKey: "rss",
-      trustedIntent: evidenceLead.readerHeadline!.binding.trustedIntent,
+      trustedIntent: headline.binding.trustedIntent,
       sourceSnapshotSha256: "1".repeat(64), title: evidenceLead.title,
       body: evidenceLead.sourceText!, captureComplete: true };
     return {
