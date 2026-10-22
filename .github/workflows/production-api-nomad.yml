@@ -1,0 +1,89 @@
+name: Production API image (Nomad MVP)
+
+# Build-only. This workflow never deploys, never opens the production SSH
+# connection, and never touches the `production` GitHub environment: it only
+# produces an immutable, digest-addressed API image plus a small release
+# manifest as CI evidence. Nomad-driven rollout is a separate workflow added
+# in a later PR once ops/nomad/release.mjs exists.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ops/nomad/api.Dockerfile
+      - ops/nomad/contracts.mjs
+      - .github/workflows/production-api-nomad.yml
+      - apps/api-gateway/**
+      - libs/**
+      - prisma/**
+      - package.json
+      - package-lock.json
+      - prisma.config.ts
+      - tsconfig.json
+      - tsconfig.build.json
+      - vendor/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: social-monitor-production-api-nomad-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build_api_image:
+    name: Build and publish API image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with: { fetch-depth: 0 }
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push immutable API image
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: .
+          file: ops/nomad/api.Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            SOCIAL_MONITOR_RELEASE_SHA=${{ github.sha }}
+          tags: ghcr.io/777genius/social-monitor-api:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Write release manifest evidence
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg schemaVersion "1" \
+            --arg sourceSha "$GITHUB_SHA" \
+            --arg repository "777genius/social-monitor-api" \
+            --arg digest "$IMAGE_DIGEST" \
+            --arg platform "linux/amd64" \
+            --arg ciRunId "$GITHUB_RUN_ID" \
+            '{schemaVersion: ($schemaVersion | tonumber), sourceSha: $sourceSha, image: {repository: $repository, digest: $digest, platform: $platform}, ciRunId: $ciRunId}' \
+            > release-manifest.json
+          cat release-manifest.json
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: social-monitor-api-release-manifest-${{ github.sha }}
+          path: release-manifest.json
+          retention-days: 90
