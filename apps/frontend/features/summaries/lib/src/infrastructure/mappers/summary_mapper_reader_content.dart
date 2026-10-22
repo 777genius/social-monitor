@@ -162,7 +162,7 @@ bool _validPromotionBoard(
   required bool hasCitations,
   required bool noSignal,
 }) {
-  if (topReads.length > 8 || selectedPosts.length > 8) return false;
+  if (topReads.length > 12 || selectedPosts.length > 12) return false;
   final all = [...topReads, ...selectedPosts];
   if (all.isEmpty) {
     return noSignal &&

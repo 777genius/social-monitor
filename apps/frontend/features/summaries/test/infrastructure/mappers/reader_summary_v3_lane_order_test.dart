@@ -74,6 +74,42 @@ void main() {
       ReaderSummaryPromotionBoardAvailability.available,
     );
   });
+  test('accepts the full 12+12 promotion budget per lane', () {
+    final summary = _summary([
+      for (var slot = 1; slot <= 12; slot += 1)
+        _item(
+          storyClusterId: 'story:$slot',
+          candidateId: 'candidate-$slot',
+          slot: slot,
+          signalScore: (13 - slot).toDouble(),
+          publishedAt: '2026-10-19T0${slot % 10}:00:00.000000Z',
+        ),
+    ]);
+    expect(
+      summary.content.promotionBoardAvailability,
+      ReaderSummaryPromotionBoardAvailability.available,
+    );
+    expect(summary.content.topReads, hasLength(12));
+  });
+
+  test('rejects a promotion lane over the 12-card budget', () {
+    final summary = _summary([
+      for (var slot = 1; slot <= 13; slot += 1)
+        _item(
+          storyClusterId: 'story:$slot',
+          candidateId: 'candidate-$slot',
+          slot: slot,
+          signalScore: (14 - slot).toDouble(),
+          publishedAt: '2026-10-19T0${slot % 10}:00:00.000000Z',
+        ),
+    ]);
+    expect(
+      summary.content.promotionBoardAvailability,
+      ReaderSummaryPromotionBoardAvailability.unavailable,
+    );
+    expect(summary.content.topReads, isEmpty);
+  });
+
 }
 
 ReaderSummary _summary(List<TopReadApiDto> topReads) {
