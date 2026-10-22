@@ -641,7 +641,7 @@ v_publication."period_timezone", v_day, v_job."id", v_artifact."id",
 'reader-summary-proof:' || v_publication."id"::TEXT,
 v_publication."semantic_status", v_report, v_report_sha, v_publication."exact_proof", v_proof_sha,
 v_body->>'artifactPayloadSha256', v_provider, v_provider_sha, v_github, v_body, v_bytes, v_sha,
-'reader_summary.weekly_publication_evidence.v1:' || v_sha, v_publication."published_at" ); END; $function$
+'reader_summary.weekly_publication_evidence.v1:' || v_sha, v_publication."published_at" ); END; $function$;
 
 RESET ROLE;
 SET LOCAL ROLE "social_monitor_public_schema_owner";
