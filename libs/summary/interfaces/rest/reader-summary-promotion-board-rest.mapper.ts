@@ -235,7 +235,7 @@ const buildReaderCardRestAuthority = (
       (attestation) => [attestation.candidateId, attestation] as const,
     ));
     const topCards = view.content.topReads;
-    if (topCards.length > 8 || additionalCards.length > 8) return undefined;
+    if (topCards.length > 12 || additionalCards.length > 12) return undefined;
     const promotionCards = [...topCards, ...additionalCards];
     const promotionCandidateIds = promotionCards.map((item) =>
       item.promotionCandidateId?.trim() ?? "",
