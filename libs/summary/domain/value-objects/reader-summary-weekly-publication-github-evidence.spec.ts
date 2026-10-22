@@ -111,7 +111,10 @@ const resealed = (
     Omit<ReaderSummaryWeeklyPublicationGitHubEvidence, "sha256">
   >,
 ): unknown => {
-  const { sha256: _sha256, ...body } = { ...derivedEvidence(), ...overrides };
+  const merged = { ...derivedEvidence(), ...overrides };
+  const body = Object.fromEntries(
+    Object.entries(merged).filter(([key]) => key !== "sha256"),
+  );
   return { ...body, sha256: canonicalizeReaderSummaryWeeklyJson(body).sha256 };
 };
 
