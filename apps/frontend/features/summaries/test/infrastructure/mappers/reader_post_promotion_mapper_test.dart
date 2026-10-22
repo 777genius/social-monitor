@@ -167,7 +167,7 @@ void main() {
 
   test('atomically rejects an over-cap lane without filtering', () {
     final topReads = List.generate(
-      9,
+      13,
       (index) => _item(
         cardKind: 'curated_top_read',
         attestation: _attestation(
