@@ -30,21 +30,32 @@ describe("Promotion V3 artifact and publication headline binding", () => {
       .toEqual([]);
   });
 
-  // Regression: a malformed V3 projection cannot publish nine cards in a
+  // Regression: a malformed V3 projection cannot publish thirteen cards in a
   // global placement, even when the presentation and citation data are present.
   it.each(["top", "additional"] as const)(
-    "rejects more than eight %s V3 cards", (placement) => {
+    "rejects more than twelve %s V3 cards", (placement) => {
       const fixture = v3Fixture();
       const card = fixture.props.content!.topReads[0]!;
-      const cards = Array.from({ length: 9 }, () => card);
+      const cards = Array.from({ length: 13 }, () => card);
       const props = { ...fixture.props, content: { ...fixture.props.content!,
         topReads: placement === "top" ? cards : [],
         selectedPosts: placement === "additional" ? cards : [] } };
 
       expect(() => assertReaderSummaryPromotionAttestations(
-        props, Array.from({ length: 9 }, () => fixture.projection.attestations[0]!),
+        props, Array.from({ length: 13 }, () => fixture.projection.attestations[0]!),
       )).toThrow("Reader summary Promotion V3 placement cap is invalid");
     });
+
+  it("accepts a twelve-card top and additional lane", () => {
+    const fixture = v3Fixture(24);
+
+    expect(fixture.props.content!.topReads).toHaveLength(12);
+    expect(fixture.props.content!.selectedPosts).toHaveLength(12);
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props,
+      fixture.projection.attestations,
+    )).not.toThrow();
+  });
 
   it("rejects a card headline that differs from its V3 seal", () => {
     const fixture = v3Fixture();
@@ -112,67 +123,87 @@ describe("Promotion V3 artifact and publication headline binding", () => {
   });
 });
 
-const v3Fixture = () => {
+const v3Fixture = (candidateCount = 1) => {
   const base = dailySynthesisArtifact().toSnapshot();
   const source = dailyEvidenceSelection(25).selectedEvidence[0]!;
-  const candidateId = "00000000-0000-4000-8000-000000000101";
-  const sourceItemId = "00000000-0000-4000-8000-000000000102";
-  const sourceBindingId = "00000000-0000-4000-8000-000000000103";
-  const evidenceLead = acceptedFixtureReaderHeadline({ ...source,
-    feedItemId: candidateId, sourceItemId, sourceBindingId,
-    providerKey: "rss", canonicalUrl: "https://example.test/v3",
-    interestId: "00000000-0000-4000-8000-000000000104",
-  }, { tenantId: base.tenantId, workspaceId: base.workspaceId });
-  if (evidenceLead.readerHeadline?.status !== "accepted") {
-    throw new Error("invalid accepted headline fixture");
-  }
-  const input = { tenantId: base.tenantId, workspaceId: base.workspaceId,
-    interestId: evidenceLead.interestId, candidateId,
-    sourceItemId, sourceBindingId, providerKey: "rss",
-    trustedIntent: evidenceLead.readerHeadline.binding.trustedIntent,
-    sourceSnapshotSha256: "1".repeat(64), title: evidenceLead.title,
-    body: evidenceLead.sourceText!, captureComplete: true };
-  const candidate: ReaderPostPromotionV3Candidate = {
-    candidateId, providerKey: "rss", providerFamily: "rss", sourceItemId,
-    canonicalIdentity: evidenceLead.canonicalUrl,
-    storyId: "story-v3", publishedAt: "2026-07-05T08:00:00.123456Z",
-    assessmentId: "00000000-0000-4000-8000-000000000105",
-    assessedAt: "2026-07-05T08:30:00.123456Z",
-    rubricVersion: "reader-value.v1", sourceSnapshotSha256: "1".repeat(64),
-    inputSha256: "2".repeat(64), rubricSha256: "3".repeat(64),
-    modelConfigVersion: "jev.v1", answers: answers(),
-    presentation: { status: "available",
-      presentationInputDigest: readerPostPresentationV3InputDigest(input) },
-    scopeValid: true, sourceIdentityValid: true, freshnessValid: true,
-    safetyValid: true, citationValid: true, blocked: false,
-  };
-  const promotionV3 = selectReaderPostPromotionsV3([candidate]);
+  const uuid = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
+  const slots = Array.from({ length: candidateCount }, (_, index) => {
+    const n = 256 + index * 8;
+    return { candidateId: uuid(n + 1), sourceItemId: uuid(n + 2),
+      sourceBindingId: uuid(n + 3), interestId: uuid(n + 4),
+      assessmentId: uuid(n + 5),
+      canonicalUrl: `https://example.test/v3-${index}`,
+      storyId: `story-v3-${index}` };
+  });
+  const evidenceLeads = slots.map((slot) => {
+    const lead = acceptedFixtureReaderHeadline({ ...source,
+      feedItemId: slot.candidateId, sourceItemId: slot.sourceItemId,
+      sourceBindingId: slot.sourceBindingId, providerKey: "rss",
+      canonicalUrl: slot.canonicalUrl, interestId: slot.interestId,
+    }, { tenantId: base.tenantId, workspaceId: base.workspaceId });
+    if (lead.readerHeadline?.status !== "accepted") {
+      throw new Error("invalid accepted headline fixture");
+    }
+    return lead;
+  });
+  const candidates = slots.map((slot, index): ReaderPostPromotionV3Candidate => {
+    const evidenceLead = evidenceLeads[index]!;
+    const input = { tenantId: base.tenantId, workspaceId: base.workspaceId,
+      interestId: evidenceLead.interestId, candidateId: slot.candidateId,
+      sourceItemId: slot.sourceItemId, sourceBindingId: slot.sourceBindingId,
+      providerKey: "rss",
+      trustedIntent: evidenceLead.readerHeadline!.binding.trustedIntent,
+      sourceSnapshotSha256: "1".repeat(64), title: evidenceLead.title,
+      body: evidenceLead.sourceText!, captureComplete: true };
+    return {
+      candidateId: slot.candidateId, providerKey: "rss",
+      providerFamily: "rss", sourceItemId: slot.sourceItemId,
+      canonicalIdentity: slot.canonicalUrl, storyId: slot.storyId,
+      publishedAt: "2026-07-05T08:00:00.123456Z",
+      assessmentId: slot.assessmentId,
+      assessedAt: "2026-07-05T08:30:00.123456Z",
+      rubricVersion: "reader-value.v1", sourceSnapshotSha256: "1".repeat(64),
+      inputSha256: "2".repeat(64), rubricSha256: "3".repeat(64),
+      modelConfigVersion: "jev.v1", answers: answers(),
+      presentation: { status: "available",
+        presentationInputDigest: readerPostPresentationV3InputDigest(input) },
+      scopeValid: true, sourceIdentityValid: true, freshnessValid: true,
+      safetyValid: true, citationValid: true, blocked: false,
+    };
+  });
+  const promotionV3 = selectReaderPostPromotionsV3(candidates);
   const sourceWindow = { ...base.sourceWindow,
     exactIngestionCutoff: base.sourceWindow.ingestionCutoff?.toISOString()
       .replace(/\.(\d{3})Z$/u, ".$1000Z"),
-    selectedFeedItemIds: [candidateId], storyClusterIds: [candidate.storyId] };
-  const cluster = { id: candidate.storyId, storyKey: candidate.storyId,
+    selectedFeedItemIds: slots.map((slot) => slot.candidateId),
+    storyClusterIds: slots.map((slot) => slot.storyId) };
+  const clusters = slots.map((slot, index) => ({ id: slot.storyId,
+    storyKey: slot.storyId,
     rankingPolicyVersion: "reader_promotion_policy.v3",
-    representativeFeedItemId: candidateId, duplicateFeedItemIds: [],
-    interestIds: [evidenceLead.interestId], providerKeys: ["rss"], score: 0,
-    observedAtRange: { startedAt: evidenceLead.observedAt,
-      endedAt: evidenceLead.observedAt }, whyImportant: [] };
-  const citation = { citationId: "citation-v3", feedItemId: candidateId,
-    sourceItemId, providerKey: "rss", field: "bodyPreview" as const,
-    canonicalUrl: evidenceLead.canonicalUrl };
+    representativeFeedItemId: slot.candidateId, duplicateFeedItemIds: [],
+    interestIds: [slot.interestId], providerKeys: ["rss"], score: 0,
+    observedAtRange: { startedAt: evidenceLeads[index]!.observedAt,
+      endedAt: evidenceLeads[index]!.observedAt }, whyImportant: [] }));
+  const citations = slots.map((slot, index) => ({
+    citationId: `citation-v3-${index}`, feedItemId: slot.candidateId,
+    sourceItemId: slot.sourceItemId, providerKey: "rss",
+    field: "bodyPreview" as const,
+    canonicalUrl: evidenceLeads[index]!.canonicalUrl }));
   const evidence = { rankingPolicyVersion: "reader_promotion_policy.v3",
-    sourceWindow, clusters: [cluster], selectedEvidence: [evidenceLead], promotionV3 };
+    sourceWindow, clusters, selectedEvidence: evidenceLeads, promotionV3 };
   const projection = buildReaderPostPromotionProjection({
     evidence: evidence.selectedEvidence,
     clusters: evidence.clusters,
     sourceWindow: evidence.sourceWindow,
     promotionV3: evidence.promotionV3,
-    citations: [citation], attestationBinding: {
+    citations, attestationBinding: {
       artifactId: base.readerSummaryId, sourceWindow } });
-  const props = { ...base, sourceWindow, storyClusters: [cluster],
-    citationMap: [citation], promotionAttestations: projection.attestations,
+  const props = { ...base, sourceWindow, storyClusters: clusters,
+    citationMap: citations, promotionAttestations: projection.attestations,
     promotionEvidenceFacts: [], content: { ...base.content!,
-      topReads: projection.topReads, selectedPosts: projection.additionalPosts } };
+      topReads: projection.topReads,
+      selectedPosts: projection.additionalPosts } };
   return { evidence, projection, props };
 };
 
