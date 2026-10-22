@@ -78,7 +78,7 @@ const boardRow = (
     schemaVersion: readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion,
     mode,
     requestedUtcDay: date,
-    providerKey: "github-trending-page",
+    providerKey: "github-trending-page" as const,
     scanJobId: mode === "verified" ? `scan:${date}` : null,
     sourceBindingId: `binding:${date}`,
     evidenceCount: repositories.length,
@@ -93,11 +93,11 @@ const boardRow = (
   };
   const providerEvidence = repositories.map((repository, index) => ({
     citationId: repository.citationId,
-    citationField: "title",
+    citationField: "title" as const,
     feedItemId: repository.feedItemId,
     sourceItemId: repository.sourceItemId,
     sourceBindingId: `binding:${date}:${index}`,
-    providerKey: "github-trending-page",
+    providerKey: "github-trending-page" as const,
     providerItemId: `provider-item:${date}:${index}`,
     canonicalUrl: repository.canonicalUrl,
     title: `Durable weekly evidence github ${date}`,
