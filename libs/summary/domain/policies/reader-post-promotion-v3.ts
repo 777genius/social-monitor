@@ -1,6 +1,7 @@
 import type { ReaderValueAnswers } from
   "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
 
+import { normalizeSignalScore } from "../value-objects/signal-score";
 import { readerPostPromotionTopProviderCap } from
   "./top-read-provider-diversity-policy";
 
@@ -39,6 +40,8 @@ export type ReaderPostPromotionV3Candidate = {
   readonly rubricSha256: string;
   readonly modelConfigVersion: string;
   readonly answers: ReaderValueAnswers;
+  /** Deterministic engagement strength from typed provider metrics. */
+  readonly engagementStrength?: number;
   readonly presentation: ReaderPostPromotionV3Presentation;
   readonly appendixOnly?: boolean;
   readonly scopeValid: boolean;
@@ -88,7 +91,10 @@ const relevanceRank = Object.freeze({
   insufficient_context: -1,
 });
 
-/** The only V3 ordering authority. Provider probabilities and popularity are absent. */
+/**
+ * The only V3 ordering authority. Provider probabilities are absent; observed
+ * engagement only breaks semantic ties before recency.
+ */
 export const compareReaderPostPromotionV3 = (
   left: ReaderPostPromotionV3Candidate,
   right: ReaderPostPromotionV3Candidate,
@@ -97,6 +103,10 @@ export const compareReaderPostPromotionV3 = (
     usefulnessRank[left.answers.usefulness.choice] ||
   relevanceRank[right.answers.relevance.choice] -
     relevanceRank[left.answers.relevance.choice] ||
+  // Rounded to card.signalScore precision: Promotion V3 order validation
+  // derives this tie-break from the bound card only.
+  normalizeSignalScore(right.engagementStrength ?? 0) -
+    normalizeSignalScore(left.engagementStrength ?? 0) ||
   compareTimestampDesc(left.publishedAt, right.publishedAt) ||
   compareUtf8Bytes(left.candidateId, right.candidateId);
 
@@ -159,24 +169,24 @@ export const selectReaderPostPromotionsV3 = (
   }
 
   const activeProviderCount = new Set(ready.map((item) => item.providerFamily)).size;
-  const providerCap = Math.min(8, readerPostPromotionTopProviderCap(activeProviderCount));
+  const providerCap = Math.min(12, readerPostPromotionTopProviderCap(activeProviderCount));
   const providerCounts = new Map<ReaderPostPromotionV3Provider, number>();
   const top: ReaderPostPromotionV3Candidate[] = [];
   const remainder: ReaderPostPromotionV3Candidate[] = [];
   for (const candidate of ready) {
     const count = providerCounts.get(candidate.providerFamily) ?? 0;
-    if (top.length < 8 && count < providerCap) {
+    if (top.length < 12 && count < providerCap) {
       top.push(candidate);
       providerCounts.set(candidate.providerFamily, count + 1);
     } else {
       remainder.push(candidate);
-      if (top.length < 8) {
+      if (top.length < 12) {
         exclusions.push({ candidateId: candidate.candidateId, reason: "top_provider_cap" });
       }
     }
   }
-  const additional = remainder.slice(0, 8);
-  for (const candidate of remainder.slice(8)) {
+  const additional = remainder.slice(0, 12);
+  for (const candidate of remainder.slice(12)) {
     exclusions.push({ candidateId: candidate.candidateId, reason: "capacity_exhausted" });
   }
   return freezeSelection("ready", top, additional, exclusions);

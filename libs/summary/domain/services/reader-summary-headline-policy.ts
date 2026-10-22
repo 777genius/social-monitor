@@ -11,6 +11,7 @@ export const groundedReaderHeadline = (params: {
   readonly sourceMix: readonly SourceMixEntry[];
   readonly sourceTitles?: readonly string[];
   readonly topReads: readonly TopRead[];
+  readonly narrativeLeadTitle?: string;
   readonly thematicSynthesisSupport?: {
     readonly clusterCount: number;
     readonly providerCount: number;
@@ -62,7 +63,8 @@ export const groundedReaderHeadline = (params: {
             providerNames.length > 3 ? ` +${providerNames.length - 3}` : ""
           }`;
   return readerSummaryHeadline(
-    buildHumanReaderHeadline(params.topReads) ?? `${providerSummary} summary`,
+    buildHumanReaderHeadline(params.topReads, params.narrativeLeadTitle) ??
+      `${providerSummary} summary`,
   );
 };
 
@@ -139,18 +141,32 @@ export const isExplicitlySourceFramedText = (
 
 const buildHumanReaderHeadline = (
   topReads: readonly TopRead[],
+  narrativeLeadTitle?: string,
 ): string | undefined => {
+  // The headline sits above the lead narrative, so its fallback frame must
+  // describe that narrative's story instead of the top-ranked card.
+  const narrativeTitle = narrativeLeadTitle?.trim();
+  if (narrativeTitle !== undefined && narrativeTitle.length > 0) {
+    return humanReaderLeadHeadline(narrativeTitle, { title: narrativeTitle });
+  }
   const lead = topReads[0];
   if (lead === undefined) return undefined;
+  return humanReaderLeadHeadline(lead.title, lead);
+};
+
+const humanReaderLeadHeadline = (
+  title: string,
+  legalGuard: Parameters<typeof isUnverifiedLegalTopRead>[0],
+): string => {
   // Only reuse a complete short heading. Never extract a sentence or a prefix
   // from available source context, or discard an unverified legal qualification.
-  if (lead.title.length > 118 || /[\r\n]|[.!?。！？]\s+\S/u.test(lead.title) ||
-      isUnverifiedLegalTopRead(lead)) {
+  if (title.length > 118 || /[\r\n]|[.!?。！？]\s+\S/u.test(title) ||
+      isUnverifiedLegalTopRead(legalGuard)) {
     return "Discussion from monitored sources";
   }
   // Source framing or corroboration does not make a copied heading synthesis.
   // Keep the complete short title in the report frame, just as for other leads.
-  return `Reports discuss ${lead.title}`;
+  return `Reports discuss ${title}`;
 };
 
 export const isUnverifiedLegalTopRead = (lead: {

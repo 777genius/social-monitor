@@ -2,6 +2,7 @@ import type { ReaderSummaryCitation } from "../entities/citation";
 import type { TopRead } from "../entities/top-read";
 import { hasFirstPartyOfficialEvidence } from "../policies/reader-summary-source-authority-policy";
 import {
+  archivedGitHubEvidenceDay,
   maxGitHubTrendingDisplayRepositories,
   selectGitHubTrendingDisplayRepositories,
 } from "../policies/reader-summary-github-trending-policy";
@@ -18,7 +19,15 @@ export const buildReaderSummarySupplementalTrendSelectedPosts = (params: {
   const repositories = selectGitHubTrendingDisplayRepositories(
     params.selectedEvidence,
   );
-  if (repositories.length !== maxGitHubTrendingDisplayRepositories) {
+  // Live boards publish exactly the Top 10; an archived board binds exactly the
+  // rows the immutable archive published (1..10).
+  const archivedBoard =
+    repositories.length > 0 &&
+    repositories.every((item) => archivedGitHubEvidenceDay(item) !== undefined);
+  if (
+    repositories.length !== maxGitHubTrendingDisplayRepositories &&
+    !archivedBoard
+  ) {
     return [];
   }
   const citationByFeedItemId = new Map(

@@ -1,6 +1,8 @@
 import { isGitHubTrendingArchivedObservation, parseGitHubTrendingArchiveMetadata } from "@social-monitor/ingestion/domain";
 import {
   classifyFeedPromotionEligibility,
+  feedPromotionMetricStrength,
+  feedProviderMetricStrength,
   feedProviderMetricsFromMetadata,
   formatFeedProviderMetrics,
   summarizeFeedProviderMetrics,
@@ -18,7 +20,7 @@ export const providerMetricFacts = (params: {
   readonly providerMetadata?: JsonObject;
 }): Pick<
   SummaryEvidenceItem,
-  "providerMetricLabels" | "providerMetricSummary"
+  "providerMetricLabels" | "providerMetricSummary" | "providerMetricStrength"
 > => {
   if (params.providerKey === "github-trending-page") {
     const archive = parseGitHubTrendingArchiveMetadata(params.providerMetadata);
@@ -34,6 +36,9 @@ export const providerMetricFacts = (params: {
     return {
       providerMetricLabels: formatFeedProviderMetrics(appendixMetrics),
       providerMetricSummary: summarizeFeedProviderMetrics(appendixMetrics),
+      providerMetricStrength: appendixMetrics === undefined
+        ? undefined
+        : feedProviderMetricStrength(appendixMetrics),
     };
   }
   const eligibility = classifyFeedPromotionEligibility(params);
@@ -47,6 +52,7 @@ export const providerMetricFacts = (params: {
     providerMetricSummary: labels
       .map((metric) => `${metric.value} ${metric.label.toLowerCase()}`)
       .join(", "),
+    providerMetricStrength: feedPromotionMetricStrength(eligibility.metrics),
   };
 };
 

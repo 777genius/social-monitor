@@ -1,6 +1,7 @@
-// The production capture budget is 116 minutes. Keep the lease above that
-// bounded runtime so an in-flight maximum-budget generation remains fresh.
-export const DEFAULT_READER_SUMMARY_EXECUTION_LEASE_MS = 2 * 60 * 60 * 1_000;
+// The production capture budget is 116 minutes and weekly generations run
+// past three hours on provider retries. Keep the lease above those bounded
+// runtimes so an in-flight maximum-budget generation remains fresh.
+export const DEFAULT_READER_SUMMARY_EXECUTION_LEASE_MS = 6 * 60 * 60 * 1_000;
 export const MAX_READER_SUMMARY_EXECUTION_LEASE_MS = 24 * 60 * 60 * 1_000;
 
 export class ReaderSummaryExecutionLeasePolicy {

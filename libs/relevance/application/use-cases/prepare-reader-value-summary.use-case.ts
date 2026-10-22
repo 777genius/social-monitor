@@ -1,4 +1,4 @@
-import { tenantId, workspaceId, type Clock, type IdGenerator } from "@social-monitor/shared-kernel";
+import { tenantId, workspaceId, type Clock, type IdGenerator, type JsonObject } from "@social-monitor/shared-kernel";
 import { performance } from "node:perf_hooks";
 
 import { classifyReaderValueSourceKind } from
@@ -39,6 +39,7 @@ type PreparedCandidate = {
     readonly providerKey: string; readonly observedAt: string;
     readonly publishedAt: string; readonly sourceKind: string;
     readonly canonicalIdentity: string; readonly storyId?: string;
+    readonly providerMetadata?: JsonObject;
   };
 };
 type PersistedCandidate = ReaderValueSummaryPreparationManifest["candidates"][number];
@@ -200,6 +201,7 @@ implements ReaderValueSummaryPreparation {
                 publishedAt: item.cursor.publishedAt,
                 sourceKind: sourceKind.kind,
                 canonicalIdentity: item.source.canonicalUrl,
+                providerMetadata: item.metadata,
                 ...(storyId === undefined ? {} : { storyId }),
               } });
               candidateCount += 1;
@@ -266,7 +268,7 @@ implements ReaderValueSummaryPreparation {
       modelConfigVersion: scan.config.modelConfigVersion,
       candidates,
     };
-    if (Buffer.byteLength(JSON.stringify(manifest), "utf8") > 16 * 1024 * 1024) {
+    if (Buffer.byteLength(JSON.stringify(manifest), "utf8") > 64 * 1024 * 1024) {
       return overBudget();
     }
     return { ok: true, config: scan.config, manifest,

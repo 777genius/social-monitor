@@ -184,6 +184,52 @@ describe("groundedReaderHeadline", () => {
     ).toBe("Reports discuss Acme launches a lower-cost coding model");
   });
 
+  it("frames the fallback headline around the lead narrative title, not the top card", () => {
+    const lead = {
+      ...topRead(),
+      title:
+        "Week in review (Hidden implant in Ledger wallets; linked to $93M theft)",
+      confidence: {
+        level: "low" as const,
+        score: 0.4,
+        rationale: "Single source",
+      },
+      confirmedProviderKeys: ["rss"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "Acme's release tops a day of model-cost and access chatter",
+        topReads: [lead],
+        sourceMix: [],
+        narrativeLeadTitle: "Source-reported Unreal Engine integration",
+      }),
+    ).toBe("Reports discuss Source-reported Unreal Engine integration");
+  });
+
+  it("keeps a neutral frame when the lead narrative title is not a complete short heading", () => {
+    const lead = {
+      ...topRead(),
+      title: "Week in review (Hidden implant in Ledger wallets)",
+      confidence: {
+        level: "low" as const,
+        score: 0.4,
+        rationale: "Single source",
+      },
+      confirmedProviderKeys: ["rss"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "Acme's release tops a day of model-cost and access chatter",
+        topReads: [lead],
+        sourceMix: [],
+        narrativeLeadTitle:
+          "An X discussion reports the release. The post then explains setup steps.",
+      }),
+    ).toBe("Discussion from monitored sources");
+  });
+
   it("does not trust a thematic headline when its citations come from one provider group", () => {
     const lead = {
       ...topRead(),

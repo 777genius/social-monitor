@@ -27,6 +27,7 @@ import type {
   SummaryQuotaPort,
 } from "@social-monitor/summary/ports";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { ReaderSummaryExecutionLeasePolicy } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-execution-lease.policy";
 import {
   NOOP_READER_SUMMARY_PROMOTION_METRICS,
   readerSummaryPromotionControl,
@@ -178,6 +179,9 @@ describe("reader summary DB publication reconciliation", () => {
       successfulEmptyTopicMapBuilder(),
       new AlwaysPublishPolicy(),
       zeroEligibleGitHubProjectionReader(),
+      undefined,
+      undefined,
+      new ReaderSummaryExecutionLeasePolicy(2 * 60 * 60 * 1_000),
     );
     const recovered = await recoveryExecutor.execute({
       tenantId: tenant,

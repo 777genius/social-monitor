@@ -165,6 +165,25 @@ describe("reader summary weekly production postgres contract", () => {
     expect(state.blockingReasons).toEqual([]);
   });
 
+  it("accepts an honest archived_verified sub-Top-10 GitHub board", async () => {
+    const rows = week.dates.map((date) =>
+      rowForDate(
+        date,
+        date === "2026-07-23"
+          ? { githubMode: "archived_verified", githubRepositoryCount: 9 }
+          : undefined,
+      ),
+    );
+    const state = await loadReaderSummaryWeeklyProductionDbState(
+      fakeClient(rows),
+      scope,
+      week,
+    );
+
+    expect(state.status).toBe("complete");
+    expect(state.blockingReasons).toEqual([]);
+  });
+
   it("maps the exact seal and daily authorities without inventing Jul 23 GitHub evidence", async () => {
     const state = await loadReaderSummaryWeeklyProductionDbState(
       fakeClient(week.dates.map((date) => rowForDate(
@@ -680,23 +699,28 @@ type RowOptions = Readonly<{
   semanticStatus?: "COMPLETED" | "NO_SIGNAL";
   githubMode?:
     | "verified"
+    | "archived_verified"
     | "ordinary_not_required"
     | "historical_unavailable";
+  githubRepositoryCount?: number;
 }>;
 
 function rowForDate(date: string, options: RowOptions = {}) {
   const semanticStatus = options.semanticStatus ?? "COMPLETED";
   const githubMode = options.githubMode ?? "verified";
-  const githubEvidence = githubEvidenceFor(date, githubMode);
+  const githubBoardSize = githubMode === "archived_verified"
+    ? (options.githubRepositoryCount ?? 9)
+    : 10;
+  const githubEvidence = githubEvidenceFor(date, githubMode, githubBoardSize);
   const providerEvidence =
     semanticStatus === "NO_SIGNAL"
       ? []
-      : githubMode === "verified"
+      : githubMode === "verified" || githubMode === "archived_verified"
         ? [
-            ...Array.from({ length: 10 }, (_, index) =>
+            ...Array.from({ length: githubBoardSize }, (_, index) =>
               evidence(date, "github-trending-page", index),
             ),
-            evidence(date, "rss", 10),
+            evidence(date, "rss", githubBoardSize),
           ]
         : [evidence(date, "rss", 0)];
   const canonicalRecord = {
@@ -711,7 +735,9 @@ function rowForDate(date: string, options: RowOptions = {}) {
           providerKey === "github-trending-page"
             ? githubMode === "verified"
               ? 10
-              : 0
+              : githubMode === "archived_verified"
+                ? githubBoardSize
+                : 0
             : providerKey === "rss"
               ? semanticStatus === "COMPLETED"
                 ? 1
@@ -853,11 +879,13 @@ function resealRow(
 function githubEvidenceFor(
   date: string,
   mode: NonNullable<RowOptions["githubMode"]>,
+  boardSize = 10,
 ) {
   const providerHash = sha(`github-provider:${date}`);
+  const boardMode = mode === "verified" || mode === "archived_verified";
   const repositories =
-    mode === "verified"
-      ? Array.from({ length: 10 }, (_, index) => ({
+    boardMode
+      ? Array.from({ length: mode === "verified" ? 10 : boardSize }, (_, index) => ({
           rank: index + 1,
           citationId: `citation:${date}:github:${index}`,
           feedItemId: `feed:${date}:github:${index}`,
@@ -874,7 +902,7 @@ function githubEvidenceFor(
     requestedUtcDay: date,
     providerKey: "github-trending-page",
     scanJobId: mode === "verified" ? `scan:${date}` : null,
-    sourceBindingId: mode === "verified" ? `binding:${date}` : null,
+    sourceBindingId: boardMode ? `binding:${date}` : null,
     evidenceCount: repositories.length,
     historicalUnavailableReason:
       mode === "historical_unavailable"
@@ -884,7 +912,7 @@ function githubEvidenceFor(
       mode === "historical_unavailable"
         ? `${nextDate(date)}T00:00:00.000Z`
         : null,
-    sourceProviderContentHash: mode === "verified" ? providerHash : null,
+    sourceProviderContentHash: boardMode ? providerHash : null,
     repositories,
   };
   return {

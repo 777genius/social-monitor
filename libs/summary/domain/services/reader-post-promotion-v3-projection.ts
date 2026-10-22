@@ -77,12 +77,13 @@ export const buildReaderPostPromotionV3Projection = (
         `reader-value:usefulness:${candidate.answers.usefulness.choice}`,
         `reader-value:relevance:${candidate.answers.relevance.choice}`,
       ],
-      signalScore: normalizeSignalScore(0),
+      signalScore: normalizeSignalScore(lead.providerMetricStrength ?? 0),
       confidence: { level: confidence >= 0.8 ? "high" as const
         : confidence >= 0.55 ? "medium" as const : "low" as const,
       score: confidence,
       rationale: "Confidence is diagnostic only and does not affect V3 order." },
-      confirmedProviderKeys: [candidate.providerKey], providerMetrics: [],
+      confirmedProviderKeys: [candidate.providerKey],
+      providerMetrics: lead.providerMetricLabels ?? [],
       whyImportant: [candidate.answers.usefulness.choice === "important"
         ? "Assessed as important and directly relevant."
         : "Assessed as useful and directly relevant."],

@@ -586,7 +586,7 @@ const modelDays = (
           readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
       });
     }
-    if (mode !== "verified") {
+    if (mode !== "verified" && mode !== "archived_verified") {
       throw new Error("Reader summary weekly non-verified GitHub authority is not modelable");
     }
     return Object.freeze({
@@ -619,10 +619,15 @@ const githubEvidenceSha = (
 
 const githubEvidenceMode = (
   certification: ReaderSummaryWeeklyProductionCertification,
-): "verified" | "ordinary_not_required" | "historical_unavailable" => {
+):
+  | "verified"
+  | "archived_verified"
+  | "ordinary_not_required"
+  | "historical_unavailable" => {
   const mode = certification.githubEvidence.mode;
   if (
     mode !== "verified" &&
+    mode !== "archived_verified" &&
     mode !== "ordinary_not_required" &&
     mode !== "historical_unavailable"
   ) {

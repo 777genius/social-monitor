@@ -115,6 +115,7 @@ extension on SummaryMapper {
           dto.citationIds,
         );
 
+    final cleanTitle = _stripReaderHtml(dto.title);
     return TopRead(
       storyClusterId: storyClusterId,
       cardKind: switch (explicitCardKind) {
@@ -141,16 +142,18 @@ extension on SummaryMapper {
       relationId: relatedTopicIsValid ? relationId : null,
       targetStoryClusterId: relatedTopicIsValid ? targetStoryClusterId : null,
       promotionAttestation: promotionAttestation,
-      title: dto.title,
+      title: cleanTitle,
       displayHeadline: promotionCardIsValid
-          ? mapReaderDisplayHeadline(dto.displayHeadline)
+          ? _sanitizeDisplayHeadline(
+              mapReaderDisplayHeadline(dto.displayHeadline),
+            )
           : null,
       capturedSource: promotionCardIsValid
-          ? mapReaderCapturedSource(dto.capturedSource)
+          ? _sanitizeCapturedSource(mapReaderCapturedSource(dto.capturedSource))
           : null,
-      summary: promotionCardIsValid ? dto.summary : null,
+      summary: promotionCardIsValid ? _itemSummaryText(dto.summary) : null,
       providerKey: _nonEmpty(dto.providerKey, fallback: 'unknown'),
-      reason: _readerItemReason(dto.reason, dto.title),
+      reason: _readerItemReason(dto.reason, cleanTitle),
       matchedInterestIds: _safeTextList(dto.matchedInterestIds),
       matchedRules: _safeTextList(dto.matchedRules),
       signalScore: SignalScore.normalized(dto.signalScore),
@@ -177,7 +180,7 @@ extension on SummaryMapper {
           )
           .toList(growable: false),
       whyImportant: dto.whyImportant
-          .map((value) => _readerItemReason(value, dto.title))
+          .map((value) => _readerItemReason(value, cleanTitle))
           .where((value) => value.isNotEmpty)
           .toList(growable: false),
       whyNow: _safeText(
@@ -189,6 +192,11 @@ extension on SummaryMapper {
       canonicalUrl: _safeUrl(dto.canonicalUrl),
       previewMedia: _previewMediaToDomain(dto.previewMedia),
     );
+  }
+
+  String? _itemSummaryText(String? raw) {
+    final text = _safeText(raw ?? '', fallback: '', maxLength: 720);
+    return text.isEmpty ? null : text;
   }
 
   String _readerItemReason(String value, String sourceText) {

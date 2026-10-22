@@ -123,6 +123,8 @@ export type SummaryEvidenceItem = {
   readonly whyImportant: readonly string[];
   readonly providerMetricLabels?: readonly ProviderMetric[];
   readonly providerMetricSummary?: string;
+  /** Engagement strength derived from typed provider metrics. */
+  readonly providerMetricStrength?: number;
   readonly previewMedia?: PreviewMedia;
   readonly conversationContext?: SummaryEvidenceConversationContext;
   readonly contentQuality?: SummaryEvidenceContentQuality;

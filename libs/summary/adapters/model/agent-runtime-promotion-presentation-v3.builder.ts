@@ -153,7 +153,25 @@ implements PromotionPresentationBuilder {
       timeoutMs: this.timeoutMs,
       metadata: { adapter: "agent-runtime-promotion-presentation-v3" },
     };
-    const result = await this.client.runTask(command);
+    let result = await this.client.runTask(command);
+    // A cancellation (promoted to task_cancelled by the runtime client, with only
+    // sanitized reason details) carries no validation evidence and says nothing
+    // about the story: retry once, then degrade the candidates instead of letting
+    // one harness abort kill the whole day.
+    const cancelledWithoutEvidence = (): boolean => {
+      if (result.status !== "failed" ||
+          result.failure?.code !== "task_cancelled") return false;
+      return !Object.keys(result.failure.details ?? {}).some((key) =>
+        key.startsWith("outputValidation") ||
+        key.startsWith("presentationValidation") ||
+        key.startsWith("presentationRejected"));
+    };
+    if (this.modelBackend === mimoReaderSummaryBackend && cancelledWithoutEvidence()) {
+      result = await this.client.runTask(command);
+      if (cancelledWithoutEvidence()) {
+        return inputs.map(() => ({ status: "unavailable", reason: "invalid_presentation" }));
+      }
+    }
     const failure = result.status === "failed" ? result.failure : undefined;
     if (failure && (failure.code === "unknown_runtime_failure" ||
         failure.code === "provider_output_invalid") &&

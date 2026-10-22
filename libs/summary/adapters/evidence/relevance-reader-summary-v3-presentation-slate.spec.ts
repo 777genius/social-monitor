@@ -13,21 +13,21 @@ const distinct = (count: number) => Array.from({ length: count }, (_, index) => 
 }));
 
 describe("bounded workspace presentation slate", () => {
-  it("selects 76 admitted stories including later HN and Reddit within 32 attempts", async () => {
+  it("selects 76 admitted stories including later HN and Reddit within 64 attempts", async () => {
     const presentation = new TestPresentation();
     const fixture = workspaceSetup(distinct(76), undefined, presentation);
     const result = await fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest });
 
     expect(result.kind).toBe("ready");
-    expect(presentation.attempted).toBeLessThanOrEqual(32);
+    expect(presentation.attempted).toBeLessThanOrEqual(64);
     if (result.kind !== "ready") return;
     expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
-      .toEqual([1, 2, 3, 4, 70, 71, 72, 73].map(id));
+      .toEqual([1, 2, 3, 4, 70, 71, 72, 73, 76].map(id));
     expect(result.evidence.promotionV3?.additional.map((value) => value.candidateId))
-      .toEqual([5, 6, 7, 8, 9, 10, 11, 12].map(id));
+      .toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map(id));
     expect(presentation.batches.flat()).toContain(id(76));
-    expect(result.evidence.selectedEvidence).toHaveLength(16);
+    expect(result.evidence.selectedEvidence).toHaveLength(21);
     expect(result.evidence.selectedEvidence.every((item) =>
       item.readerHeadline?.status === "accepted")).toBe(true);
   });
@@ -40,15 +40,15 @@ describe("bounded workspace presentation slate", () => {
     return { tracked, presentation };
   };
 
-  it("continues past rejected batches to sixteen sealed stories without repeating bindings", async () => {
+  it("continues past rejected batches to twenty-one sealed stories without repeating bindings", async () => {
     const { tracked, presentation } = withRejectedPresentations(new Set([1, 2, 3, 4].map(id)));
     const fixture = workspaceSetup(distinct(76), undefined, presentation);
     const result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
     expect(result.kind).toBe("ready");
-    expect(tracked.attempted).toBeLessThanOrEqual(32);
+    expect(tracked.attempted).toBeLessThanOrEqual(64);
     expect(new Set(tracked.batches.flat()).size).toBe(tracked.attempted);
     if (result.kind !== "ready") return;
-    expect(result.evidence.selectedEvidence).toHaveLength(16);
+    expect(result.evidence.selectedEvidence).toHaveLength(21);
     expect(result.evidence.selectedEvidence.every((item) => item.readerHeadline?.status === "accepted"))
       .toBe(true);
     for (const rejectedId of [id(1), id(2), id(3), id(4)]) {
@@ -80,13 +80,13 @@ describe("bounded workspace presentation slate", () => {
     if (result.kind === "ready") expect(result.evidence.selectedEvidence).toHaveLength(8);
   });
 
-  it("keeps the thirty-two attempt ceiling when every presentation is rejected", async () => {
+  it("keeps the sixty-four attempt ceiling when every presentation is rejected", async () => {
     const { tracked, presentation } = withRejectedPresentations(new Set(distinct(76).map((row) => row.id)));
     const fixture = workspaceSetup(distinct(76), undefined, presentation);
     await expect(fixture.subject.build({ job: fixture.job, manifest: fixture.manifest }))
       .resolves.toEqual({ kind: "budget_exhausted" });
-    expect(tracked.attempted).toBe(32);
-    expect(new Set(tracked.batches.flat()).size).toBe(32);
+    expect(tracked.attempted).toBe(64);
+    expect(new Set(tracked.batches.flat()).size).toBe(64);
   });
 
   it("retains a finite comparison ceiling before presentation", async () => {
@@ -107,7 +107,7 @@ describe("bounded workspace presentation slate", () => {
     const result = await fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest });
     expect(result.kind).toBe("ready");
-    expect(presentation.attempted).toBeLessThanOrEqual(32);
+    expect(presentation.attempted).toBeLessThanOrEqual(64);
     expect(presentation.batches.flat().filter((value) => value === id(2)))
       .toHaveLength(1);
     if (result.kind !== "ready") return;
@@ -116,11 +116,11 @@ describe("bounded workspace presentation slate", () => {
       .not.toContain(id(1));
   });
 
-  it("refuses an unresolved better slate when 32 real attempts have failed", async () => {
+  it("refuses an unresolved better slate when 64 real attempts have failed", async () => {
     const presentation = new TestPresentation(new Set(distinct(76).map((row) => row.id)));
     const fixture = workspaceSetup(distinct(76), undefined, presentation);
     await expect(fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest })).resolves.toEqual({ kind: "budget_exhausted" });
-    expect(presentation.attempted).toBe(32);
+    expect(presentation.attempted).toBe(64);
   });
 });

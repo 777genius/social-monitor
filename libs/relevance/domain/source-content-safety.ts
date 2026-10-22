@@ -106,7 +106,8 @@ const sanitizeSourceText = (value: string): {
   };
 };
 
-const sanitizeSourceUrl = (value: string | undefined): {
+/** Mirrors public.reader_summary_safe_citation_url: display-safe citation URL. */
+export const sanitizeSourceUrl = (value: string | undefined): {
   readonly value?: string;
   readonly hadSensitiveData: boolean;
 } => {

@@ -19,7 +19,7 @@ describe("ReaderSummaryJobPollingLoop completion counters", () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it("dispatches due recovery candidates with the two-hour stale boundary", async () => {
+  it("dispatches due recovery candidates with the six-hour stale boundary", async () => {
     const scenario = buildScenario("failed");
 
     await scenario.loop.onModuleInit();
@@ -27,7 +27,7 @@ describe("ReaderSummaryJobPollingLoop completion counters", () => {
     expect(scenario.repository.findDueForPolling).toHaveBeenCalledWith({
       limit: 1,
       now: new Date("2026-09-22T00:00:00.000Z"),
-      staleRunningStartedBefore: new Date("2026-09-21T22:00:00.000Z"),
+      staleRunningStartedBefore: new Date("2026-09-21T18:00:00.000Z"),
     });
     expect(scenario.handler.handle).toHaveBeenCalledTimes(1);
     await scenario.loop.onModuleDestroy();

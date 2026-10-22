@@ -53,6 +53,26 @@ describe("Reader promotion V3", () => {
         candidates[1]!.candidateId, candidates[0]!.candidateId]);
   });
 
+  it("breaks semantic ties by observed engagement before recency", () => {
+    const popular = candidate(1, { usefulness: "important", relevance: "central",
+      publishedAt: "2026-09-19T00:00:00.000001Z", engagementStrength: 6 });
+    const fresh = candidate(2, { usefulness: "important", relevance: "central",
+      publishedAt: "2026-09-20T00:00:00.000001Z", engagementStrength: 1 });
+    expect([fresh, popular].sort(compareReaderPostPromotionV3)
+      .map((item) => item.candidateId))
+      .toEqual([popular.candidateId, fresh.candidateId]);
+  });
+
+  it("keeps semantic rank dominant over observed engagement", () => {
+    const importantQuiet = candidate(1, { usefulness: "important", relevance: "central",
+      publishedAt: "2026-09-19T00:00:00.000001Z", engagementStrength: 0 });
+    const usefulPopular = candidate(2, { usefulness: "useful", relevance: "central",
+      publishedAt: "2026-09-19T00:00:00.000001Z", engagementStrength: 99 });
+    expect([usefulPopular, importantQuiet].sort(compareReaderPostPromotionV3)
+      .map((item) => item.candidateId))
+      .toEqual([importantQuiet.candidateId, usefulPopular.candidateId]);
+  });
+
   it("falls back within a story and preserves one global order across presentation delays", () => {
     const unavailableLead = candidate(1, { storyId: "story-a", usefulness: "important",
       relevance: "central", presentation: "unavailable" });
@@ -83,10 +103,10 @@ describe("Reader promotion V3", () => {
       reason: "story_representative" });
   });
 
-  it.each([[1, 8], [2, 6], [3, 4]])(
-    "applies the existing %i-provider cap of %i once", (providerCount, cap) => {
+  it.each([[1, 12], [2, 7], [3, 4]])(
+    "applies the %i-provider cap of %i across 12+12 slots", (providerCount, cap) => {
       const providers = ["x", "reddit", "rss"] as const;
-      const candidates = Array.from({ length: 20 }, (_, index) => candidate(index + 1, {
+      const candidates = Array.from({ length: 24 }, (_, index) => candidate(index + 1, {
         providerFamily: providers[index % providerCount]!, presentation: "available",
         storyId: `story-${index}`,
       }));
@@ -95,8 +115,8 @@ describe("Reader promotion V3", () => {
       selected.top.forEach((item) => counts.set(item.providerFamily,
         (counts.get(item.providerFamily) ?? 0) + 1));
       expect(Math.max(...counts.values())).toBeLessThanOrEqual(cap);
-      expect(selected.top.length).toBeLessThanOrEqual(8);
-      expect(selected.additional.length).toBe(8);
+      expect(selected.top.length).toBe(12);
+      expect(selected.additional.length).toBe(12);
     });
 
   it("distinguishes no signal, presentation unavailable, and budget exhaustion", () => {
@@ -124,6 +144,7 @@ type ChoiceOverrides = {
   storyId?: string;
   mismatch?: boolean;
   tie?: boolean;
+  engagementStrength?: number;
 };
 
 const candidate = (ordinal: number, overrides: ChoiceOverrides = {}):
@@ -144,6 +165,9 @@ ReaderPostPromotionV3Candidate => ({
   sourceSnapshotSha256: "a".repeat(64), inputSha256: "b".repeat(64),
   rubricSha256: "c".repeat(64), modelConfigVersion: "jev-config.v1",
   answers: answers(overrides),
+  ...(overrides.engagementStrength === undefined
+    ? {}
+    : { engagementStrength: overrides.engagementStrength }),
   presentation: overrides.presentation === "available" || overrides.presentation === undefined
     ? { status: "available", presentationInputDigest: "d".repeat(64) }
     : overrides.presentation === "unavailable"

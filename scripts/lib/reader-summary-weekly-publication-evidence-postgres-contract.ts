@@ -9,6 +9,7 @@ import {
   type ReaderSummaryWeeklyPublicationProviderEvidence,
 } from "../../libs/summary/domain";
 import { createVerifiedReaderSummaryGitHubFixtureAuthority } from "./reader-summary-weekly-publication-github-fixture";
+import { maxGitHubTrendingDisplayRepositories } from "../../libs/summary/domain/policies/reader-summary-github-trending-policy";
 export type ReaderSummaryPublicationEvidenceFixture = Readonly<{
   jobId: string;
   artifactId: string;
@@ -18,6 +19,7 @@ export type ReaderSummaryPublicationEvidenceFixture = Readonly<{
 }>;
 export type ReaderSummaryPublicationGitHubEvidenceMode =
   | "verified"
+  | "archived_verified"
   | "ordinary_not_required"
   | "historical_unavailable";
 export type EvidenceFixtureOverrides = Readonly<{
@@ -434,23 +436,37 @@ export const assertReaderSummaryWeeklyPublicationEvidenceRow = async (
         AND reader_summary_artifact_id = $2`,
     [fixture.jobId, fixture.artifactId],
   );
+  const row = result.rows[0];
+  assert(row !== undefined, `${status} publication evidence row is missing`);
+  const githubBoardMode =
+    githubMode === "verified" || githubMode === "archived_verified";
+  const expectedGithubCount =
+    githubMode === "verified"
+      ? 10
+      : githubMode === "archived_verified"
+        ? row.github_evidence.evidenceCount
+        : 0;
+  assert(
+    row.github_evidence.repositories.length === expectedGithubCount &&
+      expectedGithubCount <= maxGitHubTrendingDisplayRepositories &&
+      expectedGithubCount >= (githubBoardMode ? 1 : 0),
+    `${status} publication evidence GitHub board is not exact`,
+  );
   const expectedProviderCount =
-    githubMode === "verified" ? 10 : status === "COMPLETED" ? 1 : 0;
+    githubBoardMode ? expectedGithubCount : status === "COMPLETED" ? 1 : 0;
   const expectedProviderCounts = [
     {
       providerKey: "github-trending-page",
-      count: githubMode === "verified" ? 10 : 0,
+      count: expectedGithubCount,
     },
     { providerKey: "hacker-news", count: 0 },
     { providerKey: "reddit", count: 0 },
     {
       providerKey: "rss",
-      count: githubMode === "verified" ? 0 : expectedProviderCount,
+      count: githubBoardMode ? 0 : expectedProviderCount,
     },
     { providerKey: "x-twitter", count: 0 },
   ];
-  const row = result.rows[0];
-  assert(row !== undefined, `${status} publication evidence row is missing`);
   const postgresCanonical = await canonicalJson(canonicalJsonAuditor, row.canonical_record);
   const jsEvidence = deriveReaderSummaryWeeklyPublicationEvidence({
     tenantId: row.tenant_id,
@@ -474,8 +490,8 @@ export const assertReaderSummaryWeeklyPublicationEvidenceRow = async (
       row.provider_count === expectedProviderCount &&
       row.report_citation_count === expectedProviderCount &&
       row.github_mode === githubMode &&
-      row.github_count === (githubMode === "verified" ? 10 : 0) &&
-      row.github_repositories === (githubMode === "verified" ? 10 : 0) &&
+      row.github_count === expectedGithubCount &&
+      row.github_repositories === expectedGithubCount &&
       row.stored_canonical_matches &&
       postgresCanonical === jsEvidence.canonicalJson &&
       row.canonical_sha256 === jsEvidence.sha256 &&

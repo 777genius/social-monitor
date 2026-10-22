@@ -7,7 +7,7 @@ import type { ReaderSummaryArtifact } from "../entities/reader-summary-artifact"
 import type { ReaderSummaryGitHubProjectionAudit, ReaderSummaryGitHubProjectionEvaluation,
   ReaderSummaryGitHubProjectionItem } from "./reader-summary-github-projection-audit";
 import { githubTrendingWatchText, minimumGitHubTrendingStarsGained,
-  maxGitHubTrendingHighlights } from "./reader-summary-github-trending-policy";
+  maxGitHubTrendingHighlights, maxGitHubTrendingDisplayRepositories } from "./reader-summary-github-trending-policy";
 import { normalizeGitHubRepositoryFullName } from "../value-objects/github-repository-identity";
 import { normalizeJsonObject } from "@social-monitor/shared-kernel";
 
@@ -54,7 +54,8 @@ const artifactFollowsArchive = (artifact: ReaderSummaryArtifact,
   const snapshot = artifact.toSnapshot();
   const posts = (snapshot.content?.selectedPosts ?? []).filter(post => post.providerKey === "github-trending-page");
   const citations = new Map(snapshot.citationMap.map(citation => [citation.citationId, citation]));
-  if (posts.length !== 10 || bindings.length !== 10 || !bindings.every((binding, index) => {
+  if (posts.length !== bindings.length || bindings.length < 1 ||
+      bindings.length > maxGitHubTrendingDisplayRepositories || !bindings.every((binding, index) => {
     const post = posts[index], citation = citations.get(binding.citationId), m = binding.observation;
     const metric = post?.providerMetrics.find(value => value.label === `GitHub Trending archive ${day.day}`);
     return binding.selectedPostIndex === index && m.trending.rank === index + 1 &&
@@ -92,10 +93,12 @@ export const hasVerifiedArchivedGitHubProjection = (params: {
   const cutoff = audit.observedThrough ?? "";
   if (audit.archivedProjection?.observationKind !== "archived" || audit.status !== "verified" ||
       audit.requestedUtcDay !== day.day || !Number.isSafeInteger(audit.pageCount) || audit.pageCount < 1 ||
-      !Number.isSafeInteger(audit.scannedItemCount) || audit.scannedItemCount < 10 ||
+      !Number.isSafeInteger(audit.scannedItemCount) || audit.scannedItemCount < 1 ||
       audit.eligibleBindingIds.length !== 1 || audit.bindings.length !== 0 ||
       audit.projectionCheckedAt !== undefined || audit.telemetry !== undefined ||
-      audit.historicalOmission !== undefined || !exactInstant(cutoff) || bindings.length !== 10 ||
+      audit.historicalOmission !== undefined || !exactInstant(cutoff) ||
+      bindings.length < 1 || bindings.length > maxGitHubTrendingDisplayRepositories ||
+      audit.scannedItemCount !== bindings.length ||
       audit.violationCodes.length !== 0 || audit.reasons.length !== 0) return false;
   const first = bindings[0]!.observation;
   return unique(bindings.map(binding => binding.feedItemId)) &&
@@ -148,6 +151,6 @@ export const evaluateArchivedGitHubProjection = (params: {
     return { audit, findings: [] };
   }
   const finding = { code: "github_projection_identity_invalid" as const,
-    reason: "Archived GitHub projection must bind one complete immutable Top 10 archive, original publication day, truthful acquisition cutoff, exact citations and dated archive metrics; it cannot claim live scan custody." };
+    reason: "Archived GitHub projection must bind one complete immutable archive board as published (up to Top 10), original publication day, truthful acquisition cutoff, exact citations and dated archive metrics; it cannot claim live scan custody." };
   return { audit: { ...audit, status: "rejected", violationCodes: [finding.code], reasons: [finding.reason] }, findings: [finding] };
 };

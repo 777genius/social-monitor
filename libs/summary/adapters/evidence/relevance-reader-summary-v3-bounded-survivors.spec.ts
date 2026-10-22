@@ -10,7 +10,7 @@ import { presentReaderSummaryArtifact } from '../../features/shared/reader-summa
 import { candidate, id, TestPresentation, workspaceSetup } from './relevance-reader-summary-v3-promotion.fixture';
 
 function setup(survivors = 9, mergeFirstThree = false) {
-  const rows = Array.from({ length: 40 }, (_, index) => ({
+  const rows = Array.from({ length: 72 }, (_, index) => ({
     ...candidate(index + 1, 'important', 'central'), provider: index < 8 ? 'reddit' : index === 8 ? 'x-twitter' : 'hacker-news',
     publishedAt: '2026-09-20T12:00:00.000001Z', observedAt: '2026-09-20T12:01:00.000001Z',
     title: `Independent event ${index}`, body: `Independent observed event ${index} with exact source evidence.`,
@@ -25,19 +25,19 @@ function setup(survivors = 9, mergeFirstThree = false) {
 }
 
 describe('explicit bounded V3 presentation survivors', () => {
-  it('freezes nine sealed stories as seven Top and two Additional and discloses limited coverage in the public artifact', async () => {
+  it('freezes nine sealed stories as eight Top and one Additional and discloses limited coverage in the public artifact', async () => {
     const fixture = setup(), result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
     expect(result.kind).toBe('ready');
-    expect(fixture.tracked.attempted).toBe(32);
+    expect(fixture.tracked.attempted).toBe(64);
     if (result.kind !== 'ready') throw new Error(result.kind);
     const evidence = result.evidence, selection = evidence.promotionV3!;
     expect(selection.presentationCoverageLimited).toBe(true);
-    expect(selection.top).toHaveLength(7);
-    expect(selection.additional).toHaveLength(2);
+    expect(selection.top).toHaveLength(8);
+    expect(selection.additional).toHaveLength(1);
     expect(selection.excluded.some(item => item.reason === 'presentation_budget_exhausted')).toBe(true);
     expect(selection.excluded.some(item => item.reason === 'presentation_unavailable')).toBe(true);
     const selected = [...selection.top, ...selection.additional];
-    expect(selected.map(item => item.candidateId)).toEqual([1, 2, 3, 4, 5, 6, 9, 7, 8].map(id));
+    expect(selected.map(item => item.candidateId)).toEqual([1, 2, 3, 4, 5, 6, 7, 9, 8].map(id));
     expect(selected.every(item => item.presentation.status === 'available' && !fixture.rejected.has(item.candidateId))).toBe(true);
     const original = baselineArtifact().toSnapshot();
     const citationMap = evidence.selectedEvidence.map((item, index) => ({ citationId: `c${index + 1}`,
@@ -70,8 +70,8 @@ describe('explicit bounded V3 presentation survivors', () => {
     expect(publicArtifact.qualityFlags).toContain('limited_sources');
     expect(publicArtifact.readerBrief?.qualityState).toMatchObject({ status: 'limited_sources', flags: ['limited_sources'] });
     expect(publicArtifact.readerBrief?.qualityState.warnings).toContain('Coverage is limited because the headline verification budget was reached; some story headlines were not checked.');
-    expect(publicArtifact.readerBrief?.topReads).toHaveLength(7);
-    expect(publicArtifact.readerBrief?.selectedPosts).toHaveLength(2);
+    expect(publicArtifact.readerBrief?.topReads).toHaveLength(8);
+    expect(publicArtifact.readerBrief?.selectedPosts).toHaveLength(1);
     expect(loaded.toSnapshot().promotionAttestations).toHaveLength(9);
     expect([...(publicArtifact.readerBrief?.topReads ?? []), ...(publicArtifact.readerBrief?.selectedPosts ?? [])]
       .map(card => card.promotionAttestation?.candidateId)).toEqual(selected.map(item => item.candidateId));
@@ -81,7 +81,7 @@ describe('explicit bounded V3 presentation survivors', () => {
   it.each([[7, false], [9, true]] as const)('fails below eight unique sealed stories after clustering (%i raw survivors, merged=%s)', async (count, merged) => {
     const fixture = setup(count, merged);
     await expect(fixture.subject.build({ job: fixture.job, manifest: fixture.manifest })).resolves.toEqual({ kind: 'budget_exhausted' });
-    expect(fixture.tracked.attempted).toBe(32);
+    expect(fixture.tracked.attempted).toBe(64);
   });
 
   it('does not mark an ordinary fully examined small slate as budget limited', async () => {

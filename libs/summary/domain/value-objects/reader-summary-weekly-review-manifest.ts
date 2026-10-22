@@ -26,11 +26,16 @@ export type ReaderSummaryWeeklyReviewAuthorityEvidence = Readonly<{
   sourceItemId: string; sourceBindingId: string; providerItemId: string; canonicalUrl: string;
   sourceContentHash: string; publishedAt: string; observedAt: string; title: string; sourceText: string;
 }>;
+export type ReaderSummaryWeeklyReviewGitHubMode =
+  | "verified"
+  | "archived_verified"
+  | "ordinary_not_required"
+  | "historical_unavailable";
 export type ReaderSummaryWeeklyReviewAuthorityDay = Readonly<{
   requestedUtcDate: string; publicationId: string; publicationEvidenceIdentity: string;
   publicationEvidenceSha256: string; providerEvidenceSha256: string; githubEvidenceSha256: string;
   semanticStatus: "COMPLETED" | "NO_SIGNAL";
-  githubMode: "verified" | "ordinary_not_required" | "historical_unavailable";
+  githubMode: ReaderSummaryWeeklyReviewGitHubMode;
   providerEvidence: readonly ReaderSummaryWeeklyReviewAuthorityEvidence[];
 }>;
 export type ReaderSummaryWeeklyReviewAuthority = Readonly<{
@@ -69,7 +74,7 @@ type ReaderSummaryWeeklyReviewAuthorityBinding = Readonly<{
     requestedUtcDate: string; publicationId: string; publicationEvidenceIdentity: string;
     publicationEvidenceSha256: string; providerEvidenceSha256: string; githubEvidenceSha256: string;
     semanticStatus: "COMPLETED" | "NO_SIGNAL";
-    githubMode: "verified" | "ordinary_not_required" | "historical_unavailable";
+    githubMode: ReaderSummaryWeeklyReviewGitHubMode;
   }>[];
 }>;
 export type ReaderSummaryWeeklyReviewedCitation = Readonly<{
@@ -388,7 +393,7 @@ const exactSemanticStatus = (input: unknown): "COMPLETED" | "NO_SIGNAL" => {
   throw new Error("Reader summary weekly review status is invalid");
 };
 const exactGithubMode = (input: unknown): ReaderSummaryWeeklyReviewAuthorityDay["githubMode"] => {
-  if (input === "verified" || input === "ordinary_not_required" || input === "historical_unavailable") return input;
+  if (input === "verified" || input === "archived_verified" || input === "ordinary_not_required" || input === "historical_unavailable") return input;
   throw new Error("Reader summary weekly review GitHub mode is invalid");
 };
 const exactText = (input: unknown, label: string, maxLength: number): string => {

@@ -457,7 +457,7 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       promotionBoardState: "legacy_unavailable" as const,
     })).toThrow("promotion board is invalid");
 
-    const overCapCards = Array.from({ length: 9 }, (_, slot) => ({
+    const overCapCards = Array.from({ length: 13 }, (_, slot) => ({
       ...readerSummaryView.content.topReads[0]!,
       promotionCandidateId: `feed-cap-${slot}`,
       promotionCanonicalIdentity: `repo:openai/codex-${slot}`,

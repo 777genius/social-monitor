@@ -5,6 +5,7 @@ import {
   readerSummaryIsOrdinaryNoSignalWithoutEvidence,
   type ReaderSummaryGitHubProjectionAudit,
 } from "../policies/reader-summary-github-projection-audit";
+import { maxGitHubTrendingDisplayRepositories } from "../policies/reader-summary-github-trending-policy";
 import {
   assertReaderSummaryWeeklyDenseArray,
   assertReaderSummaryWeeklyExactObject,
@@ -15,11 +16,13 @@ import {
   exactReaderSummaryWeeklyUtcDay,
   exactReaderSummaryWeeklyUtcTimestamp,
 } from "./reader-summary-weekly-canonical-json";
-
+import { assertGitHubEvidenceMode } from "./reader-summary-weekly-publication-github-evidence-mode";
 export const readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion =
   "reader_summary.weekly_publication_github_evidence.v1" as const;
 export const readerSummaryWeeklyHistoricalUnavailableReasonMode =
   "github_projection_unavailable_historical" as const;
+const readerSummaryWeeklyGitHubProviderBoardSchemaVersion =
+  "reader_summary.github_provider_board.v1" as const;
 
 type RepositoryEvidence = Readonly<{
   rank: number;
@@ -35,7 +38,11 @@ type RepositoryEvidence = Readonly<{
 export type ReaderSummaryWeeklyPublicationGitHubEvidence = Readonly<{
   schemaVersion:
     typeof readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion;
-  mode: "verified" | "ordinary_not_required" | "historical_unavailable";
+  mode:
+    | "verified"
+    | "archived_verified"
+    | "ordinary_not_required"
+    | "historical_unavailable";
   requestedUtcDay: string;
   providerKey: "github-trending-page";
   scanJobId: string | null;
@@ -62,16 +69,6 @@ const githubEvidenceKeys = [
   "repositories",
   "sha256",
 ] as const;
-const repositoryEvidenceKeys = [
-  "rank",
-  "citationId",
-  "feedItemId",
-  "sourceItemId",
-  "repositoryIdentity",
-  "canonicalUrl",
-  "sourceContentHash",
-  "sourceProviderContentHash",
-] as const;
 
 export const deriveReaderSummaryWeeklyPublicationGitHubEvidence = (params: {
   readonly artifact: ReaderSummaryArtifact;
@@ -91,7 +88,9 @@ export const deriveReaderSummaryWeeklyPublicationGitHubEvidence = (params: {
     params.audit.requestedUtcDay,
   );
   if (params.audit.status === "verified") {
-    return sealVerifiedGitHubEvidence(params.audit, requestedUtcDay);
+    return params.audit.archivedProjection === undefined
+      ? sealVerifiedGitHubEvidence(params.audit, requestedUtcDay)
+      : sealArchivedVerifiedGitHubEvidence(params.audit, requestedUtcDay);
   }
   if (params.audit.historicalOmission !== undefined) {
     return sealHistoricalGitHubEvidence(params.audit, requestedUtcDay);
@@ -208,6 +207,94 @@ const sealVerifiedGitHubEvidence = (
   });
 };
 
+const sealArchivedVerifiedGitHubEvidence = (
+  audit: ReaderSummaryGitHubProjectionAudit,
+  requestedUtcDay: string,
+): ReaderSummaryWeeklyPublicationGitHubEvidence => {
+  const bindings = [...(audit.archivedProjection?.bindings ?? [])].sort(
+    (left, right) =>
+      left.observation.trending.rank - right.observation.trending.rank,
+  );
+  if (
+    bindings.length < 1 ||
+    bindings.length > maxGitHubTrendingDisplayRepositories ||
+    bindings.some(
+      (binding, index) => binding.observation.trending.rank !== index + 1,
+    ) ||
+    new Set(bindings.map((binding) => binding.sourceBindingId)).size !== 1
+  ) {
+    throw new Error(
+      "Reader summary weekly publication GitHub board is not exact",
+    );
+  }
+  const sourceBindingId = exactReaderSummaryWeeklyIdentity(
+    bindings[0]!.sourceBindingId,
+    "GitHub source binding id",
+  );
+  // Mirrors the board seal recorded by
+  // record_reader_summary_weekly_publication_evidence_base on prod.
+  const sourceProviderContentHash = exactReaderSummaryWeeklySha256(
+    canonicalizeReaderSummaryWeeklyJson(
+      {
+        schemaVersion: readerSummaryWeeklyGitHubProviderBoardSchemaVersion,
+        requestedUtcDay,
+        scanJobId: null,
+        sourceBindingId,
+        sourceProviderContentHashes: bindings.map((binding) =>
+          exactReaderSummaryWeeklySha256(
+            binding.sourceProviderContentHash,
+            "GitHub provider content hash",
+          ),
+        ),
+      },
+      "GitHub provider board evidence",
+    ).sha256,
+    "GitHub provider content hash",
+  );
+  const repositories = bindings.map((binding) =>
+    deepFreezeReaderSummaryWeekly({
+      rank: binding.observation.trending.rank,
+      citationId: exactReaderSummaryWeeklyIdentity(
+        binding.citationId,
+        "GitHub citation id",
+      ),
+      feedItemId: exactReaderSummaryWeeklyIdentity(
+        binding.feedItemId,
+        "GitHub feed item id",
+      ),
+      sourceItemId: exactReaderSummaryWeeklyIdentity(
+        binding.sourceItemId,
+        "GitHub source item id",
+      ),
+      repositoryIdentity: exactReaderSummaryWeeklyIdentity(
+        canonicalGitHubRepositoryIdentity(binding.canonicalUrl) ?? "",
+        "GitHub repository identity",
+      ),
+      canonicalUrl: exactReaderSummaryWeeklyIdentity(
+        binding.canonicalUrl,
+        "GitHub canonical URL",
+      ),
+      sourceContentHash: exactReaderSummaryWeeklySha256(
+        binding.sourceContentHash,
+        "GitHub source content hash",
+      ),
+      sourceProviderContentHash,
+    }),
+  );
+  return sealGitHubEvidence({
+    mode: "archived_verified",
+    requestedUtcDay,
+    providerKey: "github-trending-page",
+    scanJobId: null,
+    sourceBindingId,
+    evidenceCount: repositories.length,
+    historicalUnavailableReason: null,
+    authorizedAt: null,
+    sourceProviderContentHash,
+    repositories,
+  });
+};
+
 const sealHistoricalGitHubEvidence = (
   audit: ReaderSummaryGitHubProjectionAudit,
   requestedUtcDay: string,
@@ -296,163 +383,4 @@ const sealGitHubEvidence = (
       "publication GitHub evidence",
     ).sha256,
   });
-};
-
-const assertGitHubEvidenceMode = (
-  evidence: ReaderSummaryWeeklyPublicationGitHubEvidence,
-): void => {
-  exactReaderSummaryWeeklyUtcDay(evidence.requestedUtcDay);
-  if (
-    evidence.providerKey !== "github-trending-page" ||
-    !Number.isSafeInteger(evidence.evidenceCount) ||
-    evidence.evidenceCount < 0
-  ) {
-    throw new Error(
-      "Reader summary weekly publication GitHub evidence mode is invalid",
-    );
-  }
-  const verified =
-    evidence.mode === "verified" &&
-    evidence.evidenceCount === 10 &&
-    evidence.repositories.length === 10 &&
-    evidence.scanJobId !== null &&
-    evidence.sourceBindingId !== null &&
-    evidence.sourceProviderContentHash !== null &&
-    evidence.historicalUnavailableReason === null &&
-    evidence.authorizedAt === null;
-  const ordinary =
-    evidence.mode === "ordinary_not_required" &&
-    evidence.evidenceCount === 0 &&
-    evidence.repositories.length === 0 &&
-    evidence.scanJobId === null &&
-    evidence.sourceBindingId === null &&
-    evidence.sourceProviderContentHash === null &&
-    evidence.historicalUnavailableReason === null &&
-    evidence.authorizedAt === null;
-  const historical =
-    evidence.mode === "historical_unavailable" &&
-    evidence.evidenceCount === 0 &&
-    evidence.repositories.length === 0 &&
-    evidence.scanJobId === null &&
-    evidence.sourceBindingId === null &&
-    evidence.sourceProviderContentHash === null &&
-    evidence.historicalUnavailableReason !== null &&
-    evidence.historicalUnavailableReason ===
-      evidence.historicalUnavailableReason.trim() &&
-    evidence.historicalUnavailableReason.length > 0 &&
-    evidence.historicalUnavailableReason.length <= 4_096 &&
-    evidence.authorizedAt !== null;
-  if (!verified && !ordinary && !historical) {
-    throw new Error(
-      "Reader summary weekly publication GitHub evidence mode is invalid",
-    );
-  }
-  if (historical) {
-    const authorizedAt = exactReaderSummaryWeeklyUtcTimestamp(
-      evidence.authorizedAt,
-      "historical GitHub authorizedAt",
-    );
-    if (
-      Date.parse(authorizedAt) <
-      Date.parse(`${evidence.requestedUtcDay}T00:00:00.000Z`) + 86_400_000
-    ) {
-      throw new Error(
-        "Reader summary weekly historical GitHub authorization is invalid",
-      );
-    }
-    return;
-  }
-  if (ordinary) {
-    return;
-  }
-  const scanJobId = exactReaderSummaryWeeklyIdentity(
-    evidence.scanJobId,
-    "GitHub scan job id",
-  );
-  const sourceBindingId = exactReaderSummaryWeeklyIdentity(
-    evidence.sourceBindingId,
-    "GitHub source binding id",
-  );
-  const providerContentHash = exactReaderSummaryWeeklySha256(
-    evidence.sourceProviderContentHash,
-    "GitHub provider content hash",
-  );
-  const identities = {
-    citations: new Set<string>(),
-    feeds: new Set<string>(),
-    sources: new Set<string>(),
-    repositories: new Set<string>(),
-  };
-  evidence.repositories.forEach((repository, index) => {
-    assertReaderSummaryWeeklyExactObject(
-      repository,
-      repositoryEvidenceKeys,
-      "publication GitHub repository",
-      { allowAuthoritativeHashes: true },
-    );
-    if (repository.rank !== index + 1) {
-      throw new Error(
-        "Reader summary weekly publication GitHub board is not exact",
-      );
-    }
-    identities.citations.add(
-      exactReaderSummaryWeeklyIdentity(
-        repository.citationId,
-        "GitHub citation id",
-      ),
-    );
-    identities.feeds.add(
-      exactReaderSummaryWeeklyIdentity(
-        repository.feedItemId,
-        "GitHub feed item id",
-      ),
-    );
-    identities.sources.add(
-      exactReaderSummaryWeeklyIdentity(
-        repository.sourceItemId,
-        "GitHub source item id",
-      ),
-    );
-    identities.repositories.add(
-      exactReaderSummaryWeeklyIdentity(
-        repository.repositoryIdentity,
-        "GitHub repository identity",
-      ),
-    );
-    exactReaderSummaryWeeklyIdentity(
-      repository.canonicalUrl,
-      "GitHub canonical URL",
-    );
-    if (
-      canonicalGitHubRepositoryIdentity(repository.canonicalUrl) !==
-      repository.repositoryIdentity
-    ) {
-      throw new Error(
-        "Reader summary weekly publication GitHub board is not exact",
-      );
-    }
-    exactReaderSummaryWeeklySha256(
-      repository.sourceContentHash,
-      "GitHub source content hash",
-    );
-    if (
-      exactReaderSummaryWeeklySha256(
-        repository.sourceProviderContentHash,
-        "GitHub provider content hash",
-      ) !== providerContentHash
-    ) {
-      throw new Error(
-        "Reader summary weekly publication GitHub board is not exact",
-      );
-    }
-  });
-  if (
-    scanJobId.length === 0 ||
-    sourceBindingId.length === 0 ||
-    Object.values(identities).some((identity) => identity.size !== 10)
-  ) {
-    throw new Error(
-      "Reader summary weekly publication GitHub board is not exact",
-    );
-  }
 };
