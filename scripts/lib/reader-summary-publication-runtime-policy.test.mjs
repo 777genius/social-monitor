@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -98,4 +99,16 @@ test("MiMo publication provenance accepts the pinned mixed topic identity only",
   assert.equal(isPublicationRuntimeProvenance({ ...mimoProvenance(),
     topicLabeler: { ...mimoProvenance().topicLabeler, reasoningEffort: "xhigh" },
   }, true), false);
+});
+
+test("publication policy launcher digest matches the runtime admission pin", () => {
+  const installation = readFileSync(new URL(
+    "../../apps/agent-runtime/src/subscription-runtime-installation.ts",
+    import.meta.url,
+  ), "utf8");
+  const pinned = installation.match(
+    /approvedSubscriptionRuntimeLauncherSha256 =\s*"([0-9a-f]{64})"/u,
+  );
+  assert.ok(pinned, "runtime admission launcher pin must exist");
+  assert.equal(approvedLauncherSha256, pinned[1]);
 });

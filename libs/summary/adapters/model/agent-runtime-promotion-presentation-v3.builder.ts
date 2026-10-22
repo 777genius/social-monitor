@@ -160,8 +160,7 @@ implements PromotionPresentationBuilder {
     // one harness abort kill the whole day.
     const cancelledWithoutEvidence = (): boolean => {
       if (result.status !== "failed" ||
-          (result.failure?.code !== "unknown_runtime_failure" &&
-            result.failure?.code !== "task_cancelled")) return false;
+          result.failure?.code !== "task_cancelled") return false;
       return !Object.keys(result.failure.details ?? {}).some((key) =>
         key.startsWith("outputValidation") ||
         key.startsWith("presentationValidation") ||

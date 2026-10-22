@@ -128,26 +128,24 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toBe(failure);
   });
 
-  it("degrades an empty-details cancellation instead of killing the day", async () => {
+  it("preserves an empty-details runtime failure instead of degrading it", async () => {
     const client = new PresentationRuntimeClient();
     jest.spyOn(client, "runTask").mockResolvedValue({ status: "failed", warnings: [],
       failure: { code: "unknown_runtime_failure", safeMessage: "MiMo reader summary did not complete",
         retryable: false, reconnectRequired: false, causeCategory: "agent_runtime", details: {} } });
     await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
-      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).resolves.toEqual([
-      { status: "unavailable", reason: "invalid_presentation" }]);
-    expect(client.runTask).toHaveBeenCalledTimes(2);
+      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toBeDefined();
+    expect(client.runTask).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the retried presentation after an empty-details cancellation", async () => {
+  it("does not retry a non-cancellation empty-details runtime failure", async () => {
     const client = new AttestedPresentationRuntimeClient();
-    jest.spyOn(client, "runTask").mockResolvedValueOnce({ status: "failed", warnings: [],
+    jest.spyOn(client, "runTask").mockResolvedValue({ status: "failed", warnings: [],
       failure: { code: "unknown_runtime_failure", safeMessage: "MiMo reader summary did not complete",
         retryable: false, reconnectRequired: false, causeCategory: "agent_runtime", details: {} } });
     await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
-      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).resolves.toEqual([
-      expect.objectContaining({ status: "available" })]);
-    expect(client.runTask).toHaveBeenCalledTimes(2);
+      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toBeDefined();
+    expect(client.runTask).toHaveBeenCalledTimes(1);
   });
 
   it("degrades the promoted task_cancelled shape the runtime client really delivers", async () => {

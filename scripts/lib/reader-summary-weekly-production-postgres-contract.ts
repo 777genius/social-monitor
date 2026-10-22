@@ -6,6 +6,7 @@ import {
 import { readerSummaryWeeklyCanonicalProviderKeys } from "../../libs/summary/domain/value-objects/reader-summary-weekly-daily-certification";
 import type { ReaderSummaryWeeklyCanonicalProviderKey } from "../../libs/summary/domain/value-objects/reader-summary-weekly-daily-certification";
 import { readerSummaryWeeklyPublicationEvidenceSchemaVersion } from "../../libs/summary/domain/value-objects/reader-summary-weekly-publication-evidence";
+import { maxGitHubTrendingDisplayRepositories } from "../../libs/summary/domain/policies/reader-summary-github-trending-policy";
 import {
   assertReaderSummaryWeeklyPublicationGitHubEvidence,
   type ReaderSummaryWeeklyPublicationGitHubEvidence,
@@ -715,8 +716,11 @@ const certificationBlockingReasons = (
       (evidence) => evidence.providerKey !== "github-trending-page",
     );
   const honestGithubBoard =
-    (github.mode === "verified" || github.mode === "archived_verified") &&
-    githubCount === 10;
+    (github.mode === "verified" && githubCount === 10) ||
+    (github.mode === "archived_verified" &&
+      githubCount >= 1 &&
+      githubCount <= maxGitHubTrendingDisplayRepositories &&
+      githubCount === github.evidenceCount);
   if (!honestHistoricalUnavailable && !honestGithubBoard) {
     reasons.push(
       `${certification.requestedUtcDate} lacks verified GitHub DB evidence`,
