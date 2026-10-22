@@ -1,4 +1,3 @@
-import type { PoolClient } from "pg";
 import {
   canonicalizeReaderSummaryWeeklyJson,
   readerSummaryWeeklyDailyPeriod,
@@ -9,6 +8,9 @@ import {
   assertReaderSummaryWeeklyPublicationEvidenceRow,
   stableJson,
 } from "./reader-summary-weekly-publication-evidence-postgres-contract";
+
+type ContractClient =
+  Parameters<typeof assertReaderSummaryWeeklyPublicationEvidenceRow>[0];
 
 const tenantId = "11111111-1111-4111-8111-111111111111";
 const workspaceId = "22222222-2222-4222-8222-222222222222";
@@ -183,12 +185,12 @@ const boardRow = (
   };
 };
 
-const fakeRuntimeClient = (row: unknown): PoolClient =>
+const fakeRuntimeClient = (row: unknown): ContractClient =>
   ({
     query: async () => ({ rows: [row] }),
-  }) as unknown as PoolClient;
+  }) as unknown as ContractClient;
 
-const fakeCanonicalJsonAuditor = (): PoolClient =>
+const fakeCanonicalJsonAuditor = (): ContractClient =>
   ({
     query: async (_sql: string, params: readonly string[]) => ({
       rows: [
@@ -199,7 +201,7 @@ const fakeCanonicalJsonAuditor = (): PoolClient =>
         },
       ],
     }),
-  }) as unknown as PoolClient;
+  }) as unknown as ContractClient;
 
 const sha = (input: string): string =>
   canonicalizeReaderSummaryWeeklyJson({ input }).sha256;
