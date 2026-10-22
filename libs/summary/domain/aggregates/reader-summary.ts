@@ -186,6 +186,20 @@ export class ReaderSummary {
         citations: input.citationMap,
       }),
     });
+    const publishedLeadSection = publishedNarrativeSections.find(
+      (section) => section.kind === "lead",
+    );
+    // Frame the fallback headline around the lead narrative only when that
+    // narrative is the top story and the top-ranked card is a different story;
+    // otherwise the frame must keep describing the top-ranked card.
+    const narrativeLeadTitle =
+      publishedLeadSection !== undefined &&
+      publishedLeadSection.storyClusterId !== undefined &&
+      publishedLeadSection.storyClusterId ===
+        readerTopStories[0]?.storyClusterId &&
+      publishedLeadSection.storyClusterId !== topReads[0]?.storyClusterId
+        ? publishedLeadSection.title
+        : undefined;
     return ReaderSummary.create({
       headline: groundedReaderHeadline({
         headline,
@@ -197,6 +211,7 @@ export class ReaderSummary {
         ).map((item) => item.title),
         sourceMix,
         topReads,
+        narrativeLeadTitle,
         ...(narrativeSections.some(
           (section) =>
             section.kind === "lead" && section.storyClusterId === undefined,
