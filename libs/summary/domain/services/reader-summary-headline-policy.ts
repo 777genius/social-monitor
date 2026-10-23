@@ -36,9 +36,15 @@ export const groundedReaderHeadline = (params: {
   const safelySupportedThematicSynthesis =
     (params.thematicSynthesisSupport?.clusterCount ?? 0) >= 2 &&
     (params.thematicSynthesisSupport?.providerCount ?? 0) >= 2;
+  // A headline that restates the top-ranked read while the lead narrative
+  // covers another story is off-lead: source framing must not bless it.
+  const copiesOffLeadTopReadTitle =
+    (params.narrativeLeadTitle?.trim().length ?? 0) > 0 &&
+    normalizedContains(fallback, lead.title);
   const safeSemanticHeadline =
     !isTechnicalReaderHeadline(fallback) &&
     !isVagueDailyWrapHeadline(fallback) &&
+    !copiesOffLeadTopReadTitle &&
     (safelySupportedThematicSynthesis ||
       explicitlySourceFramed ||
       (hasGroundedLead && !isUnverifiedLegalTopRead(lead)));
@@ -136,6 +142,20 @@ export const isExplicitlySourceFramedText = (
     (provider.length > 0 &&
       providerPrefixes.some((prefix) => normalized.startsWith(prefix))) ||
     /^(?:a |an |the )?(?:post|discussion|thread|reports?)\b/iu.test(normalized)
+  );
+};
+
+const normalizedContains = (haystack: string, needle: string): boolean => {
+  const normalize = (value: string): string =>
+    value
+      .normalize("NFKC")
+      .toLocaleLowerCase("en-US")
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim()
+      .replace(/\s+/gu, " ");
+  const normalizedNeedle = normalize(needle);
+  return (
+    normalizedNeedle.length > 0 && normalize(haystack).includes(normalizedNeedle)
   );
 };
 
