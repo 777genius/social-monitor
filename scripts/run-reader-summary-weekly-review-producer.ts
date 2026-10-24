@@ -20,6 +20,7 @@ import {
 import {
   runReaderSummaryWeeklyReviewProducer,
 } from "./lib/reader-summary-weekly-review-producer";
+import { weeklyAgentRuntimeDefaultCwd } from "./lib/weekly-agent-runtime-default-cwd";
 
 loadDotenvIfPresent(".env");
 
@@ -84,6 +85,7 @@ const lazyAgentRuntime = (): AgentRuntimeClientPort => {
       options: {
         timeoutMs: 600_000,
         serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN,
+        defaultCwd: weeklyAgentRuntimeDefaultCwd(process.env.AGENT_RUNTIME_TASK_CWD),
       },
     });
     return client;

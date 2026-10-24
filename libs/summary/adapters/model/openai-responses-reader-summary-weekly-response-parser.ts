@@ -3,6 +3,25 @@ import type {
   ReaderSummaryWeeklyModelInput,
   ReaderSummaryWeeklyModelOutput,
 } from "../../ports/reader-summary-weekly-model.port";
+import {
+  assertFiniteDenseJson,
+  exactStringArray,
+  expandedLegacyOutputKeys,
+  expandedLegacySectionKeys,
+  expandedLegacySectionKeysWithoutClaimType,
+  expandedLegacyStoryKeys,
+  hasExactKeys,
+  legacyOutputKeys,
+  legacySectionKeys,
+  legacySectionKeysWithoutTakeaway,
+  normalizeExpandedLegacySectionKind,
+  normalizeExpandedLegacyStoryStatus,
+  normalizeLegacySectionKind,
+  normalizeLegacyStoryStatus,
+  sealedCompactOutputKeys,
+  sealedCompactStoryKeys,
+  sealedCompactStoryKeysWithHeadline,
+} from "./openai-responses-reader-summary-weekly-response-shapes";
 
 export const parseOpenAiReaderSummaryWeeklyResponse = (
   input: ReaderSummaryWeeklyModelInput,
@@ -45,57 +64,6 @@ export const parseOpenAiReaderSummaryWeeklyValue = (
   }
 };
 
-const legacyOutputKeys = [
-  "schemaVersion",
-  "sealId",
-  "sealSha",
-  "weekStartedOn",
-  "weekEndedOn",
-  "observedFrom",
-  "observedThrough",
-  "headline",
-  "takeaway",
-  "synthesis",
-  "citationIds",
-  "sections",
-] as const;
-const expandedLegacyOutputKeys = [
-  "schemaVersion", "sealId", "sealSha", "weekStartedOn", "weekEndedOn",
-  "headline", "takeaway", "synthesis", "claimType", "citationIds",
-  "observedFrom", "observedThrough", "stories", "sections",
-] as const;
-const sealedCompactOutputKeys = [
-  "schemaVersion", "sealId", "sealSha", "weekStartedOn", "weekEndedOn",
-  "headline", "takeaway", "synthesis", "citationIds", "observedFrom",
-  "observedThrough", "stories", "sections",
-] as const;
-const sealedCompactStoryKeys = [
-  "storyId", "status", "claimType", "observedFrom", "observedThrough",
-  "synthesis", "citationIds",
-] as const;
-const expandedLegacyStoryKeys = [
-  "storyId", "headline", "synthesis", "status", "claimType",
-  "citationIds", "observedFrom", "observedThrough",
-] as const;
-const expandedLegacySectionKeys = [
-  "sectionId", "kind", "storyId", "headline", "synthesis", "claimType",
-  "citationIds", "observedFrom", "observedThrough",
-] as const;
-
-const legacySectionKeys = [
-  "sectionId",
-  "kind",
-  "storyId",
-  "claimType",
-  "status",
-  "observedFrom",
-  "observedThrough",
-  "headline",
-  "takeaway",
-  "synthesis",
-  "citationIds",
-] as const;
-
 const normalizeLegacyWeeklyModelOutput = (
   input: ReaderSummaryWeeklyModelInput,
   value: unknown,
@@ -123,8 +91,13 @@ const normalizeLegacyWeeklyModelOutput = (
   ) {
     throw new Error("Legacy weekly output fabricates root chronology");
   }
-  const sections = value.sections.map((section, index) => {
-    if (!hasExactKeys(section, legacySectionKeys)) {
+  const sections = value.sections.map((rawSection, index) => {
+    const section = hasExactKeys(rawSection, legacySectionKeys)
+      ? rawSection
+      : hasExactKeys(rawSection, legacySectionKeysWithoutTakeaway)
+        ? { ...rawSection, takeaway: rawSection.synthesis }
+        : undefined;
+    if (section === undefined) {
       throw new Error(
         `Legacy weekly output section ${index + 1} must contain exactly the supported fields`,
       );
@@ -194,8 +167,20 @@ const normalizeSealedCompactWeeklyModelOutput = (
     value,
     "sealed compact weekly output",
   );
-  const sections = value.sections.map((section, index) => {
-    if (!hasExactKeys(section, expandedLegacySectionKeys)) {
+  const sections = value.sections.map((rawSection, index) => {
+    const section = hasExactKeys(rawSection, expandedLegacySectionKeys)
+      ? rawSection
+      : hasExactKeys(rawSection, expandedLegacySectionKeysWithoutClaimType)
+        ? {
+            ...rawSection,
+            claimType: legacyClaimTypeFromStories(
+              value.stories,
+              rawSection.storyId,
+              `sealed compact weekly section ${index + 1}`,
+            ),
+          }
+        : undefined;
+    if (section === undefined) {
       throw new Error(
         `Sealed compact weekly section ${index + 1} must contain exactly the supported fields`,
       );
@@ -220,8 +205,13 @@ const normalizeSealedCompactWeeklyModelOutput = (
       citationIds,
     };
   });
-  const stories = value.stories.map((story, index) => {
-    if (!hasExactKeys(story, sealedCompactStoryKeys)) {
+  const stories = value.stories.map((rawStory, index) => {
+    const story = hasExactKeys(rawStory, sealedCompactStoryKeys)
+      ? rawStory
+      : hasExactKeys(rawStory, sealedCompactStoryKeysWithHeadline)
+        ? rawStory
+        : undefined;
+    if (story === undefined) {
       throw new Error(
         `Sealed compact weekly story ${index + 1} must contain exactly the supported fields`,
       );
@@ -308,8 +298,20 @@ const normalizeExpandedLegacyWeeklyModelOutput = (
       citationIds,
     };
   });
-  const sections = value.sections.map((section, index) => {
-    if (!hasExactKeys(section, expandedLegacySectionKeys)) {
+  const sections = value.sections.map((rawSection, index) => {
+    const section = hasExactKeys(rawSection, expandedLegacySectionKeys)
+      ? rawSection
+      : hasExactKeys(rawSection, expandedLegacySectionKeysWithoutClaimType)
+        ? {
+            ...rawSection,
+            claimType: legacyClaimTypeFromStories(
+              value.stories,
+              rawSection.storyId,
+              `expanded legacy weekly section ${index + 1}`,
+            ),
+          }
+        : undefined;
+    if (section === undefined) {
       throw new Error(
         `Expanded legacy weekly section ${index + 1} must contain exactly the supported fields`,
       );
@@ -377,33 +379,29 @@ const exactLegacyClaimType = (value: unknown, label: string): string => {
   return value;
 };
 
-const normalizeExpandedLegacyStoryStatus = (value: unknown): unknown =>
-  value === "snapshot" ? "new" : normalizeLegacyStoryStatus(value);
-
-const normalizeExpandedLegacySectionKind = (value: unknown): unknown =>
-  value === "story" ? "development" : normalizeLegacySectionKind(value);
-
-const hasExactKeys = <const Keys extends readonly string[]>(
-  value: unknown,
-  expected: Keys,
-): value is Record<Keys[number], unknown> =>
-  value !== null &&
-  typeof value === "object" &&
-  !Array.isArray(value) &&
-  Object.keys(value).length === expected.length &&
-  expected.every((key) => Object.prototype.hasOwnProperty.call(value, key));
-
-const exactStringArray = (value: readonly unknown[], label: string): string[] => {
-  const strings = value.map((item) => {
-    if (typeof item !== "string") {
-      throw new Error(`${label} must contain only strings`);
-    }
-    return item;
-  });
-  if (strings.length === 0 || new Set(strings).size !== strings.length) {
-    throw new Error(`${label} must be non-empty and unique`);
+const legacyClaimTypeFromStories = (
+  stories: unknown,
+  storyId: unknown,
+  label: string,
+): string => {
+  if (!Array.isArray(stories)) {
+    throw new Error(`${label} must inherit its claim type from a story`);
   }
-  return strings;
+  const matches = stories.filter(
+    (story) =>
+      story !== null &&
+      typeof story === "object" &&
+      (story as Record<string, unknown>).storyId === storyId,
+  );
+  if (matches.length !== 1) {
+    throw new Error(
+      `${label} must inherit its claim type from exactly one story`,
+    );
+  }
+  return exactLegacyClaimType(
+    (matches[0] as Record<string, unknown>).claimType,
+    label,
+  );
 };
 
 const citedRange = (
@@ -427,12 +425,6 @@ const citedRange = (
   };
 };
 
-const normalizeLegacySectionKind = (value: unknown): unknown =>
-  value === "supporting" ? "development" : value;
-
-const normalizeLegacyStoryStatus = (value: unknown): unknown =>
-  value === "open" ? "watch" : value;
-
 export class OpenAiReaderSummaryWeeklyOutputParseError extends Error {
   constructor(readonly detail: string) {
     super(`OpenAI reader summary weekly output is invalid: ${detail}`);
@@ -440,42 +432,3 @@ export class OpenAiReaderSummaryWeeklyOutputParseError extends Error {
   }
 }
 
-const assertFiniteDenseJson = (
-  value: unknown,
-  path: string,
-  ancestors: Set<object>,
-): void => {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean"
-  ) {
-    return;
-  }
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
-      throw new Error(`${path} contains a non-finite number`);
-    }
-    return;
-  }
-  if (typeof value !== "object") {
-    throw new Error(`${path} contains a non-JSON value`);
-  }
-  if (ancestors.has(value)) {
-    throw new Error(`${path} contains a circular reference`);
-  }
-  ancestors.add(value);
-  if (Array.isArray(value)) {
-    for (let index = 0; index < value.length; index += 1) {
-      if (!Object.prototype.hasOwnProperty.call(value, index)) {
-        throw new Error(`${path} contains a non-dense array`);
-      }
-      assertFiniteDenseJson(value[index], `${path}[${index}]`, ancestors);
-    }
-  } else {
-    for (const [key, child] of Object.entries(value)) {
-      assertFiniteDenseJson(child, `${path}.${key}`, ancestors);
-    }
-  }
-  ancestors.delete(value);
-};
