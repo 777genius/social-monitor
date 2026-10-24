@@ -117,6 +117,73 @@ export const historicalGithubUnavailableDbState = (
   });
 };
 
+export const archivedGithubSubTop10DbState = (
+  requestedUtcDate = "2026-07-23",
+  repoCount = 9,
+): ReaderSummaryWeeklyProductionDbState => {
+  const base = completeDbState();
+  const certifications = Object.freeze(base.certifications.map((certification) =>
+    certification.requestedUtcDate !== requestedUtcDate
+      ? certification
+      : Object.freeze({
+          ...certification,
+          providerCounts: Object.freeze(
+            certification.providerCounts.map((count) => Object.freeze({
+              ...count,
+              count: count.providerKey === "github-trending-page" ? repoCount : count.count,
+            })),
+          ),
+          githubEvidence: Object.freeze({
+            ...certification.githubEvidence,
+            mode: "archived_verified",
+            evidenceCount: repoCount,
+            repositories: Object.freeze(
+              Array.from({ length: repoCount }, (_, repoIndex) => ({ rank: repoIndex + 1 })),
+            ),
+            sha256: sha(`github:${requestedUtcDate}:archived-subtop10`),
+          }),
+        }),
+  ));
+  return Object.freeze({
+    ...base,
+    certifications,
+    weeklyCertificationSeal: certificationSealFor(certifications),
+  });
+};
+
+export const shortVerifiedGithubDbState = (
+  requestedUtcDate = "2026-07-23",
+  repoCount = 9,
+): ReaderSummaryWeeklyProductionDbState => {
+  const base = completeDbState();
+  const certifications = Object.freeze(base.certifications.map((certification) =>
+    certification.requestedUtcDate !== requestedUtcDate
+      ? certification
+      : Object.freeze({
+          ...certification,
+          providerCounts: Object.freeze(
+            certification.providerCounts.map((count) => Object.freeze({
+              ...count,
+              count: count.providerKey === "github-trending-page" ? repoCount : count.count,
+            })),
+          ),
+          githubEvidence: Object.freeze({
+            ...certification.githubEvidence,
+            evidenceCount: repoCount,
+            repositories: Object.freeze(
+              Array.from({ length: repoCount }, (_, repoIndex) => ({ rank: repoIndex + 1 })),
+            ),
+            sha256: sha(`github:${requestedUtcDate}:short-verified`),
+          }),
+        }),
+  ));
+  return Object.freeze({
+    ...base,
+    certifications,
+    weeklyCertificationSeal: certificationSealFor(certifications),
+  });
+};
+
 export const sha = (input: string): string =>
   canonicalizeReaderSummaryWeeklyJson({ input }).sha256;
 

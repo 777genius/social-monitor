@@ -342,7 +342,8 @@ const assertModelDays = (
           "Reader summary weekly model GitHub authority is invalid",
         );
       }
-    } else if (githubBoardStatus === "verified") {
+    } else if (githubBoardStatus === "verified" ||
+        githubBoardStatus === "archived_verified") {
       assertReaderSummaryWeeklyExactObject(
         day,
         dayKeys,
@@ -382,9 +383,14 @@ const canonicalProviderCounts = (
       throw new Error("Reader summary weekly provider count is invalid");
     }
   });
-  const expectedGitHubCount =
-    githubBoardStatus === "verified" ? 10 : 0;
-  if (input[0]?.count !== expectedGitHubCount) {
+  const githubCount = input[0]?.count;
+  const truthfulGitHubCount =
+    githubBoardStatus === "verified"
+      ? githubCount === 10
+      : githubBoardStatus === "archived_verified"
+        ? githubCount !== undefined && githubCount >= 1 && githubCount <= 10
+        : githubCount === 0;
+  if (!truthfulGitHubCount) {
     throw new Error(
       "Reader summary weekly day does not bind truthful GitHub evidence");
   }
