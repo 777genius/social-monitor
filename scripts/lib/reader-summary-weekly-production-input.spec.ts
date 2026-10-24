@@ -12,10 +12,12 @@ import {
   readerSummaryWeeklyReviewAuthorityFromProductionState,
 } from "./reader-summary-weekly-production-postgres-contract";
 import {
+  archivedGithubSubTop10DbState,
   completeDbState,
   historicalGithubUnavailableDbState,
   reviewManifestFor,
   sha,
+  shortVerifiedGithubDbState,
 } from "./reader-summary-weekly-production-test-fixture";
 
 describe("reader summary weekly production manifest input admission", () => {
@@ -50,6 +52,27 @@ describe("reader summary weekly production manifest input admission", () => {
         sourceSha256: reviewed.sourceContentHash,
       });
     }
+  });
+
+  it("admits an archived sub-Top-10 GitHub board as truthful evidence", () => {
+    const dbState = archivedGithubSubTop10DbState();
+    const manifest = reviewManifestFor(dbState);
+    const built = buildModelInputFromDbState(dbState, manifest);
+
+    if (built.status !== "complete") throw new Error(built.reasons.join("; "));
+    const day = built.input.days.find((candidate) => candidate.date === "2026-07-23");
+    expect(day?.githubBoardStatus).toBe("archived_verified");
+    expect(
+      day?.providerCounts.find((count) => count.providerKey === "github-trending-page")?.count,
+    ).toBe(9);
+  });
+
+  it("still rejects a short board that claims the verified status", () => {
+    const dbState = shortVerifiedGithubDbState();
+    const manifest = reviewManifestFor(dbState);
+    const built = buildModelInputFromDbState(dbState, manifest);
+
+    expect(built.status).toBe("partial");
   });
 
   it("keeps cross-date duplicate local citation ids isolated by exact manifest selectors", () => {

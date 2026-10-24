@@ -49,7 +49,7 @@ export type ReaderSummaryWeeklyModelProviderCount = Readonly<{
 type ReaderSummaryWeeklyVerifiedModelDay = Readonly<{
   date: string; dailyCertificationId: string; dailyCertificationSha: string;
   dailyCertificationStatus: "certified"; githubBoardId: string;
-  githubBoardSha: string; githubBoardStatus: "verified";
+  githubBoardSha: string; githubBoardStatus: "verified" | "archived_verified";
   providerCounts: readonly ReaderSummaryWeeklyModelProviderCount[];
 }>;
 type ReaderSummaryWeeklyHistoricalModelDay = Readonly<{

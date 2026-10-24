@@ -586,7 +586,13 @@ const modelDays = (
           readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
       });
     }
-    if (mode !== "verified" && mode !== "archived_verified") {
+    if (mode === "archived_verified") {
+      return Object.freeze({
+        ...common,
+        githubBoardStatus: "archived_verified" as const,
+      });
+    }
+    if (mode !== "verified") {
       throw new Error("Reader summary weekly non-verified GitHub authority is not modelable");
     }
     return Object.freeze({
