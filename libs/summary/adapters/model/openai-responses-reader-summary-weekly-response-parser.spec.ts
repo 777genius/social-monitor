@@ -131,6 +131,25 @@ describe("OpenAI reader summary weekly response parser", () => {
     ).toThrow("exactly one story");
   });
 
+  it("normalizes the observed context section kind to development", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const compact = sealedCompactWeeklyOutput(input, current);
+    const withContextKind = {
+      ...compact,
+      sections: compact.sections.map((section, index) =>
+        index === 1 ? { ...section, kind: "context" } : section,
+      ),
+    };
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, withContextKind);
+
+    expect(parsed.sections.map((section) => section.kind)).toEqual([
+      "lead",
+      "development",
+    ]);
+  });
+
   it("normalizes the observed risk section kind to watch", () => {
     const input = weeklyInput();
     const current = weeklyOutput(input);

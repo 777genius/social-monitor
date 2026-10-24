@@ -508,7 +508,7 @@ const citedRange = (
 };
 
 const normalizeLegacySectionKind = (value: unknown): unknown =>
-  value === "supporting"
+  value === "supporting" || value === "context"
     ? "development"
     : value === "risk"
       ? "watch"
