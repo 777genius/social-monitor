@@ -82,7 +82,7 @@ describe("OpenAI reader summary weekly response parser", () => {
     const legacy = legacyWeeklyOutput(input, current);
     const withoutTakeaway = {
       ...legacy,
-      sections: legacy.sections.map(({ takeaway: _takeaway, ...section }) => section),
+      sections: legacy.sections.map((section) => omitKeys(section, ["takeaway"])),
     };
 
     const parsed = parseOpenAiReaderSummaryWeeklyValue(input, withoutTakeaway);
@@ -103,8 +103,8 @@ describe("OpenAI reader summary weekly response parser", () => {
         headline: current.stories.find((item) => item.storyId === story.storyId)!
           .headline,
       })),
-      sections: compact.sections.map(
-        ({ claimType: _claimType, ...section }) => section,
+      sections: compact.sections.map((section) =>
+        omitKeys(section, ["claimType"]),
       ),
     };
 
@@ -137,8 +137,8 @@ describe("OpenAI reader summary weekly response parser", () => {
     const expanded = expandedLegacyWeeklyOutput(input, current);
     const withoutClaimType = {
       ...expanded,
-      sections: expanded.sections.map(
-        ({ claimType: _claimType, ...section }) => section,
+      sections: expanded.sections.map((section) =>
+        omitKeys(section, ["claimType"]),
       ),
     };
 
@@ -597,6 +597,14 @@ const weeklyOutput = (
     },
   ],
 });
+
+const omitKeys = (
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(value).filter(([key]) => !keys.includes(key)),
+  );
 
 const legacyWeeklyOutput = (
   input: ReaderSummaryWeeklyModelInput,
