@@ -70,5 +70,10 @@ describe("reader summary top read builder signal score", () => {
 
     expect(topRead.signalScore).toBe(7.818);
     expect(topRead.signalScore).toBeGreaterThan(0);
+    // Confidence keeps the engagement-only signal so content strength only
+    // changes the displayed Signal value.
+    expect(topRead.confidence).toEqual(
+      expect.objectContaining({ level: "low", score: 0.18 }),
+    );
   });
 });

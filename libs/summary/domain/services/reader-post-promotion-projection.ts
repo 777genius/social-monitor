@@ -24,7 +24,7 @@ import type {
 } from "../value-objects/summary-evidence-item";
 import type { ReaderSummaryEditorialSlate } from
   "../value-objects/reader-summary-editorial-slate";
-import { normalizeSignalScore } from "../value-objects/signal-score";
+import { engagementOrContentStrengthSignalScore } from "../value-objects/signal-score";
 import { readerSummaryIndependentProviderFamily } from
   "../value-objects/reader-summary-provider-identity";
 import { compactUnique } from "../value-objects/summary-text";
@@ -290,7 +290,10 @@ const promotedPost = (params: {
       interestIds.length === 0 ? ["unknown-interest"] : interestIds,
       lead.providerKey,
     ),
-    signalScore: normalizeSignalScore(params.selected.normalizedStrength),
+    signalScore: engagementOrContentStrengthSignalScore({
+      engagementStrength: params.selected.normalizedStrength,
+      contentQuality: lead.contentQuality,
+    }),
     confidence: {
       level: confidenceScore >= 0.8
         ? "high"

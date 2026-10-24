@@ -3,10 +3,11 @@ import type { ReaderValueAnswers, ReaderValueCriterion } from
 
 import {
   compareReaderPostPromotionV3,
-  readerPostPromotionV3SignalScore,
   selectReaderPostPromotionsV3,
   type ReaderPostPromotionV3Candidate,
 } from "./reader-post-promotion-v3";
+import { engagementOrContentStrengthSignalScore } from
+  "../value-objects/signal-score";
 
 describe("Reader promotion V3", () => {
   it("admits provider choice without popularity, old quality floors, or context gates", () => {
@@ -143,14 +144,14 @@ describe("Reader promotion V3", () => {
   });
 
   it("derives signal score from engagement or content strength", () => {
-    expect(readerPostPromotionV3SignalScore({ engagementStrength: 6.708 }))
+    expect(engagementOrContentStrengthSignalScore({ engagementStrength: 6.708 }))
       .toBe(6.708);
-    expect(readerPostPromotionV3SignalScore({ engagementStrength: 0,
+    expect(engagementOrContentStrengthSignalScore({ engagementStrength: 0,
       contentQuality: { qualityScore: 0.8, interestRelevanceScore: 0.88,
         engagementIntegrityScore: 0.94, eligibleForSummary: true,
         eligibleForTopRead: true, needsLlmReview: false, decision: "admit",
         flags: [], reason: "fixture" } })).toBe(8.691);
-    expect(readerPostPromotionV3SignalScore({})).toBe(0);
+    expect(engagementOrContentStrengthSignalScore({})).toBe(0);
   });
 });
 
@@ -192,7 +193,7 @@ ReaderPostPromotionV3Candidate => ({
     ? {}
     : { engagementStrength: overrides.engagementStrength }),
   signalScore: overrides.signalScore ??
-    readerPostPromotionV3SignalScore({
+    engagementOrContentStrengthSignalScore({
       engagementStrength: overrides.engagementStrength,
     }),
   presentation: overrides.presentation === "available" || overrides.presentation === undefined

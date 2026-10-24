@@ -7,8 +7,8 @@ import { acceptedFixtureReaderHeadline } from "../../test-fixtures/accepted-read
 import type {
   ReaderSummaryPreparationCandidate, SummaryEvidenceItem,
 } from "../../domain";
-import { readerPostPromotionV3SignalScore } from
-  "../../domain/policies/reader-post-promotion-v3";
+import { engagementOrContentStrengthSignalScore } from
+  "../../domain/value-objects/signal-score";
 import type { ReaderPostPromotionV3Candidate } from
   "../../domain/policies/reader-post-promotion-v3";
 import { buildReaderPostPromotionProjection } from
@@ -69,6 +69,53 @@ describe("V3 engagement metric substitution", () => {
     expect(card.providerMetrics).toEqual(expectedLabels);
     expect(card.signalScore).toBeGreaterThan(0);
   });
+
+  it("projects a content-strength signal score for no-engagement top-read cards", () => {
+    const rssFrozen: ReaderSummaryPreparationCandidate = {
+      ...frozen(),
+      candidateId: "00000000-0000-4000-8000-000000000006",
+      sourceItemId: "source-quality",
+      sourceBindingId: "binding-quality",
+      assessmentId: "assessment-quality",
+      providerKey: "rss",
+      providerMetadata: undefined,
+      canonicalIdentity: "https://example.test/post/quality",
+    };
+    const input: ReaderPostPresentationV3Input = {
+      ...presentationInput(),
+      candidateId: "00000000-0000-4000-8000-000000000006",
+      sourceItemId: "source-quality",
+      sourceBindingId: "binding-quality",
+      providerKey: "rss",
+      title: "Content quality headline",
+      body: "Content quality body",
+    };
+    const lead = clusteringEvidenceItem(rssFrozen, input, assessment());
+    expect(lead.providerMetricStrength).toBeUndefined();
+    const display = acceptedFixtureReaderHeadline(lead, scope);
+    const sealed: SummaryEvidenceItem = evidenceItem(rssFrozen, input,
+      assessment(), { headline: display.readerHeadline! });
+    const candidate: ReaderPostPromotionV3Candidate = {
+      ...promotionCandidate(sealed),
+      providerFamily: "rss",
+    };
+    const projection = buildReaderPostPromotionProjection({
+      evidence: [sealed], clusters: [], citations: [{
+        citationId: "citation-quality", feedItemId: sealed.feedItemId,
+        sourceItemId: sealed.sourceItemId, providerKey: sealed.providerKey,
+        field: "canonicalUrl", canonicalUrl: sealed.canonicalUrl,
+      }],
+      sourceWindow: { windowId: "window-quality",
+        startedAt: new Date("2026-07-05T08:00:00Z"),
+        endedAt: new Date("2026-07-05T09:00:00Z"),
+        selectedFeedItemIds: [sealed.feedItemId],
+        storyClusterIds: [candidate.storyId] },
+      promotionV3: { policyVersion: "reader_promotion_policy.v3", outcome: "ready",
+        top: [candidate], additional: [], excluded: [] },
+    });
+    const card = projection.topReads[0]!;
+    expect(card.signalScore).toBeGreaterThan(0);
+  });
 });
 
 const frozen = (): ReaderSummaryPreparationCandidate => ({
@@ -119,7 +166,7 @@ ReaderPostPromotionV3Candidate => ({
   rubricSha256: "3".repeat(64),
   modelConfigVersion: "model.v1",
   answers: answers("important"),
-  signalScore: readerPostPromotionV3SignalScore({
+  signalScore: engagementOrContentStrengthSignalScore({
     engagementStrength: lead.providerMetricStrength,
     contentQuality: lead.contentQuality,
   }),
