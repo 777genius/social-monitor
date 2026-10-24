@@ -422,6 +422,7 @@ const certifiedGitHubAuthorityMatches = (
   day: ReaderSummaryWeeklyArtifactProps["input"]["days"][number],
 ): boolean =>
   day.githubBoardStatus === "verified" ||
+  day.githubBoardStatus === "archived_verified" ||
   (day.githubBoardStatus === "historical_unavailable" &&
     day.githubAuthorizationIdentity ===
       readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity);

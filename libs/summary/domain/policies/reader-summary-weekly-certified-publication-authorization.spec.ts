@@ -82,6 +82,21 @@ describe("reader summary weekly certified publication authorization", () => {
     )).toBe(true);
   });
 
+  it("authorizes sealed archived_verified sub-Top-10 GitHub days", () => {
+    const fixture = certifiedFixture(undefined, false, false, true);
+    const details = readReaderSummaryWeeklyPublicationAuthorization(
+      authorizeCertified(fixture),
+    );
+
+    expect(details.proof.authorities).toHaveLength(7);
+    expect(fixture.command.modelInput.days.every((day) =>
+      day.githubBoardStatus === "archived_verified"
+    )).toBe(true);
+    expect(fixture.bindings[0]!.evidence.filter((item) =>
+      item.providerKey === "github-trending-page"
+    )).toHaveLength(9);
+  });
+
   it("fails closed for duplicate story handles and divergent model day counts", () => {
     const duplicate = certifiedFixture();
     expect(() => authorizeReaderSummaryWeeklyCertifiedPublication(
@@ -190,12 +205,13 @@ const certifiedFixture = (
   mutateModelBody?: (body: Record<string, unknown>) => void,
   reuseLocalCitationIds = false,
   historicalGitHub = false,
+  archivedGitHub = false,
 ) => {
   const bindings = dates.map((date, index) =>
-    storyBinding(date, index, reuseLocalCitationIds, historicalGitHub),
+    storyBinding(date, index, reuseLocalCitationIds, historicalGitHub, archivedGitHub),
   );
   const seal = certificationSeal(bindings);
-  const modelInput = modelInputFor(seal, bindings, mutateModelBody);
+  const modelInput = modelInputFor(seal, bindings, mutateModelBody, archivedGitHub);
   const output = weeklyOutput(modelInput);
   const artifact = ReaderSummaryWeeklyArtifact.create({ input: modelInput, output });
   const sealHandle = opaqueSealHandle();
@@ -234,6 +250,7 @@ const storyBinding = (
   index: number,
   reuseLocalCitationIds = false,
   historicalGitHub = false,
+  archivedGitHub = false,
 ): ReaderSummaryWeeklyStoryAuthorityBinding => {
   const publicationId = `publication:${date}`;
   const publicationEvidenceSha256 = canonicalizeReaderSummaryWeeklyJson({
@@ -244,6 +261,7 @@ const storyBinding = (
     index,
     reuseLocalCitationIds,
     historicalGitHub,
+    archivedGitHub,
   );
   const body = {
     schemaVersion: readerSummaryWeeklyStoryAuthoritySchemaVersion,
@@ -283,6 +301,7 @@ const authorityEvidence = (
   dayIndex: number,
   reuseLocalCitationIds = false,
   historicalGitHub = false,
+  archivedGitHub = false,
 ): readonly ReaderSummaryWeeklyStoryAuthorityEvidence[] => {
   const citedIndex = citedDays.indexOf(dayIndex as (typeof citedDays)[number]);
   const providerKey = citedIndex >= 0 && reuseLocalCitationIds &&
@@ -296,7 +315,7 @@ const authorityEvidence = (
     ? evidenceItem(date, providerKey, citationId, 11)
     : evidenceItem(date, "rss", `citation:${date}:uncited`, 11);
   return [
-    ...Array.from({ length: historicalGitHub ? 0 : 10 }, (_, index) => evidenceItem(
+    ...Array.from({ length: historicalGitHub ? 0 : archivedGitHub ? 9 : 10 }, (_, index) => evidenceItem(
       date,
       "github-trending-page",
       `github:${date}:${String(index + 1).padStart(2, "0")}`,
@@ -370,6 +389,7 @@ const modelInputFor = (
   seal: ReaderSummaryWeeklyCertificationSealBinding,
   bindings: readonly ReaderSummaryWeeklyStoryAuthorityBinding[],
   mutate?: (body: Record<string, unknown>) => void,
+  archivedGitHub = false,
 ): ReaderSummaryWeeklyModelInput => {
   const observations = citedDays.map((dayIndex, index) => {
     const authority = bindings[dayIndex]!;
@@ -425,7 +445,11 @@ const modelInputFor = (
           `${readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion}:${binding.githubEvidenceSha256}`,
         githubBoardSha: binding.githubEvidenceSha256,
         githubBoardStatus:
-          githubCount === 0 ? "historical_unavailable" : "verified",
+          githubCount === 0
+            ? "historical_unavailable"
+            : archivedGitHub
+              ? "archived_verified"
+              : "verified",
         ...(githubCount === 0
           ? {
               githubAuthorizationIdentity:
