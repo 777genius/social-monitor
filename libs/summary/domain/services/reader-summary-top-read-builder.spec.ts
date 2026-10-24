@@ -916,6 +916,63 @@ describe("reader summary top read builder", () => {
       { label: "Replies", value: "49" },
     ]);
   });
+
+  it("derives the top read signal score from content strength without engagement", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:rss-security",
+      title: "Cybersecurity threat prompts scramble",
+      summary: "Selected by reader-value semantic assessment.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["rss"],
+      citationIds: ["citation-rss"],
+    };
+    const evidence = [
+      evidenceItem({
+        feedItemId: "feed-rss",
+        sourceItemId: "source-rss",
+        providerKey: "rss",
+        providerName: "rss",
+        title: "Cybersecurity threat prompts scramble",
+        score: 0,
+        contentQuality: {
+          qualityScore: 0.8,
+          interestRelevanceScore: 0.7,
+          engagementIntegrityScore: 1,
+          eligibleForSummary: true,
+          eligibleForTopRead: true,
+          needsLlmReview: false,
+          decision: "eligible",
+          flags: [],
+          reason: "Substantive standalone coverage.",
+        },
+      }),
+    ];
+    const citations = [
+      citation({
+        citationId: "citation-rss",
+        feedItemId: "feed-rss",
+        sourceItemId: "source-rss",
+        providerKey: "rss",
+      }),
+    ];
+    const citationById = new Map(
+      citations.map((item) => [item.citationId, item] as const),
+    );
+    const evidenceByFeedItemId = new Map(
+      evidence.map((item) => [item.feedItemId, item] as const),
+    );
+
+    const topRead = storyToTopRead(
+      story,
+      citationById,
+      evidenceByFeedItemId,
+      new Map(),
+      evidenceClusterMap([], evidenceByFeedItemId),
+    );
+
+    expect(topRead.signalScore).toBe(7.818);
+    expect(topRead.signalScore).toBeGreaterThan(0);
+  });
 });
 
 const evidenceItem = (

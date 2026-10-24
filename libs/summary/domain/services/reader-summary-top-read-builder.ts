@@ -9,7 +9,7 @@ import {
   independentEvidenceItems,
   readerSummaryProviderIdentity,
 } from "../value-objects/reader-summary-provider-identity";
-import { normalizeSignalScore } from "../value-objects/signal-score";
+import { readerPostPromotionV3SignalScore } from "../policies/reader-post-promotion-v3";
 import { compactUnique, uniqueNonEmpty } from "../value-objects/summary-text";
 import {
   readerItemConfidence,
@@ -151,9 +151,10 @@ export const storyToTopRead = (
     ...(cluster?.interestIds ?? []),
     ...supportEvidence.map((item) => item.interestId),
   ]);
-  const signalScore = normalizeSignalScore(
-    cluster?.score ?? evidence?.score ?? 0,
-  );
+  const signalScore = readerPostPromotionV3SignalScore({
+    engagementStrength: cluster?.score ?? evidence?.score ?? 0,
+    contentQuality: evidence?.contentQuality,
+  });
   const confirmedProviders = confirmedProviderKeys({
     cluster: undefined,
     evidence: supportEvidence,
