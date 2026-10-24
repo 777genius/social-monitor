@@ -140,6 +140,9 @@ const parseSelection = (
     );
     const before = exactCitationSelector(evolution.before);
     const after = exactCitationSelector(evolution.after);
+    if (before === after) {
+      throw new Error("Reader summary weekly review model citation selectors are invalid");
+    }
     return deepFreezeReaderSummaryWeekly({
       story: exactStorySelector(record.story),
       label: "evolution" as const,

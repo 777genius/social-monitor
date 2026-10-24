@@ -84,6 +84,10 @@ describe("reader summary weekly review response", () => {
       schemaVersion: "reader_summary.weekly_review_response.v1",
       selections: [{ story, evolution: { before: firstCitation } }],
     })).toThrow();
+    expect(() => parseReaderSummaryWeeklyReviewResponse({
+      schemaVersion: "reader_summary.weekly_review_response.v1",
+      selections: [{ story, evolution: { before: firstCitation, after: firstCitation } }],
+    })).toThrow();
   });
 
   it("normalizes the compact nested resolution selection", () => {
