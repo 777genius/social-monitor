@@ -1,6 +1,8 @@
 import type {
   SummaryEvidenceItem,
 } from "../../domain";
+import type { ReaderSummaryEditorialSlate } from
+  "../../domain/value-objects/reader-summary-editorial-slate";
 import { buildReaderPostPromotionProjection } from "../../domain";
 import { buildReaderPostPromotionTitle, hasReaderFacingPromotionTitle } from
   "../../domain/services/reader-post-promotion-title";
@@ -521,5 +523,66 @@ describe("Reader Promotion V2 editorial slate", () => {
       "citation-valid-support-lead",
       "citation-valid-support-peer",
     ]);
+  });
+
+  it("derives legacy top-read Signal from content strength without engagement", () => {
+    const base = redditEvidence("legacy-rss-lead", 100, {
+      canonicalIdentity: "story:legacy-rss-lead",
+    });
+    const lead: SummaryEvidenceItem = {
+      ...base,
+      providerKey: "rss",
+      promotionFacts: {
+        ...base.promotionFacts!,
+        metricsState: "missing",
+        metrics: undefined,
+      },
+    };
+    const slate: ReaderSummaryEditorialSlate = {
+      policyVersion: "reader_promotion_policy.v2",
+      top: [{
+        policyVersion: "reader_promotion_policy.v2",
+        placement: "top",
+        slot: 1,
+        candidateId: lead.feedItemId,
+        canonicalIdentity: "story:legacy-rss-lead",
+        provider: "reddit",
+        storyClusterId: "cluster-legacy-rss-lead",
+        scoreComponents: {
+          engagementSalience: 0,
+          relevance: 0,
+          evidenceQuality: 0,
+          integrity: 0,
+          freshness: 0,
+          weightedEngagement: 0,
+          weightedRelevance: 0,
+          weightedEvidenceQuality: 0,
+          weightedIntegrity: 0,
+          weightedFreshness: 0,
+          total: 0,
+        },
+        reasonCodes: ["reader_promotion_v2_admitted"],
+        candidateDigestInput: "candidate-digest",
+        digestInput: "entry-digest",
+      }],
+      additional: [],
+      excluded: [],
+      orderedCandidateIds: [lead.feedItemId],
+      orderedCanonicalIdentities: ["story:legacy-rss-lead"],
+      digestInputs: ["entry-digest"],
+      digestMaterial: "slate-digest",
+    };
+    const source = selection([lead], [storyCluster(lead.feedItemId, [lead])]);
+    const projection = buildReaderPostPromotionProjection({
+      evidence: source.selectedEvidence,
+      clusters: source.clusters,
+      sourceWindow: source.sourceWindow,
+      editorialSlate: slate,
+      citations: [],
+    });
+
+    // Zero engagement strength falls back to content quality so RSS leads
+    // without metrics never render a 0.00 Signal.
+    expect(projection.topReads[0]?.signalScore).toBe(9);
   });
 });

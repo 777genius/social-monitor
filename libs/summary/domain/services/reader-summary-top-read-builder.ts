@@ -9,7 +9,7 @@ import {
   independentEvidenceItems,
   readerSummaryProviderIdentity,
 } from "../value-objects/reader-summary-provider-identity";
-import { normalizeSignalScore } from "../value-objects/signal-score";
+import { engagementOrContentStrengthSignalScore, normalizeSignalScore } from "../value-objects/signal-score";
 import { compactUnique, uniqueNonEmpty } from "../value-objects/summary-text";
 import {
   readerItemConfidence,
@@ -151,9 +151,13 @@ export const storyToTopRead = (
     ...(cluster?.interestIds ?? []),
     ...supportEvidence.map((item) => item.interestId),
   ]);
-  const signalScore = normalizeSignalScore(
+  const engagementSignalScore = normalizeSignalScore(
     cluster?.score ?? evidence?.score ?? 0,
   );
+  const signalScore = engagementOrContentStrengthSignalScore({
+    engagementStrength: engagementSignalScore,
+    contentQuality: evidence?.contentQuality,
+  });
   const confirmedProviders = confirmedProviderKeys({
     cluster: undefined,
     evidence: supportEvidence,
@@ -177,7 +181,7 @@ export const storyToTopRead = (
     cluster,
     independentEvidenceCount: independentEvidenceItems(supportEvidence).length,
     confirmedProviderCount: confirmedProviders.length,
-    signalScore,
+    signalScore: engagementSignalScore,
     firstPartyOfficial: hasFirstPartyOfficialEvidence(supportEvidence),
   });
   // Legal demotion below still applies; rewriting/clipping source text would

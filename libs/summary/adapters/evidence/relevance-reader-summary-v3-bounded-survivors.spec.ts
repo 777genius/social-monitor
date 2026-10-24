@@ -37,7 +37,7 @@ describe('explicit bounded V3 presentation survivors', () => {
     expect(selection.excluded.some(item => item.reason === 'presentation_budget_exhausted')).toBe(true);
     expect(selection.excluded.some(item => item.reason === 'presentation_unavailable')).toBe(true);
     const selected = [...selection.top, ...selection.additional];
-    expect(selected.map(item => item.candidateId)).toEqual([1, 2, 3, 4, 5, 6, 7, 9, 8].map(id));
+    expect(selected.map(item => item.candidateId)).toEqual([9, 1, 2, 3, 4, 5, 6, 7, 8].map(id));
     expect(selected.every(item => item.presentation.status === 'available' && !fixture.rejected.has(item.candidateId))).toBe(true);
     const original = baselineArtifact().toSnapshot();
     const citationMap = evidence.selectedEvidence.map((item, index) => ({ citationId: `c${index + 1}`,

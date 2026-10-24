@@ -1,9 +1,6 @@
 import type { ReaderValueAnswers } from
   "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
 
-import { normalizeSignalScore } from "../value-objects/signal-score";
-import type { SummaryEvidenceContentQuality } from
-  "../value-objects/summary-evidence-item";
 import { readerPostPromotionTopProviderCap } from
   "./top-read-provider-diversity-policy";
 
@@ -94,26 +91,6 @@ const relevanceRank = Object.freeze({
   unrelated: 0,
   insufficient_context: -1,
 });
-
-export const readerPostPromotionV3SignalScore = (params: {
-  readonly engagementStrength?: number;
-  readonly contentQuality?: SummaryEvidenceContentQuality;
-}): number => {
-  const engagement = params.engagementStrength ?? 0;
-  if (engagement > 0) {
-    return normalizeSignalScore(engagement);
-  }
-  const quality = params.contentQuality;
-  return quality === undefined
-    ? 0
-    : normalizeSignalScore(
-        (10 *
-          (0.3 * quality.interestRelevanceScore +
-            0.15 * quality.qualityScore +
-            0.1 * quality.engagementIntegrityScore)) /
-          0.55,
-      );
-};
 
 /**
  * The only V3 ordering authority. Provider probabilities are absent; observed
