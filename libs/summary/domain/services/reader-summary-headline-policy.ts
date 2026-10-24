@@ -154,8 +154,11 @@ const normalizedContains = (haystack: string, needle: string): boolean => {
       .trim()
       .replace(/\s+/gu, " ");
   const normalizedNeedle = normalize(needle);
-  return (
-    normalizedNeedle.length > 0 && normalize(haystack).includes(normalizedNeedle)
+  if (normalizedNeedle.length === 0) return false;
+  // Whole-token boundaries: a short title like "AI" must not match inside "daily".
+  const escapedNeedle = normalizedNeedle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|\\s)${escapedNeedle}(?:\\s|$)`, "u").test(
+    normalize(haystack),
   );
 };
 

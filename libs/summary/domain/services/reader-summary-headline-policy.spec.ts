@@ -1,4 +1,6 @@
+import type { TopRead } from "../entities/top-read";
 import {
+  groundedReaderHeadline,
   groundedTopReadTitle,
   isUnverifiedLegalTopRead,
 } from "./reader-summary-headline-policy";
@@ -134,5 +136,66 @@ describe("reader summary top read headline policy", () => {
         },
       }),
     ).toBe(false);
+  });
+});
+
+describe("reader summary grounded headline policy", () => {
+  const topRead = (title: string): TopRead =>
+    ({
+      title,
+      providerKey: "test-provider",
+      providerName: "Test Provider",
+      primaryActionKind: "read_source",
+      reason: "Grounded reason.",
+      matchedInterestIds: [],
+      matchedRules: [],
+      confirmedProviderKeys: ["test-provider", "other-provider"],
+      providerMetrics: [],
+      whyImportant: ["Context."],
+      whyNow: "Now.",
+      citationIds: ["c1"],
+      confidence: {
+        level: "high",
+        score: 0.9,
+        rationale: "Two monitored source groups support this story.",
+      },
+    }) as unknown as TopRead;
+
+  it("rebuilds an off-lead top-read copy around the narrative lead", () => {
+    expect(
+      groundedReaderHeadline({
+        headline:
+          "Reports discuss Varonis' $6.3 billion sale shows (risks of growing old in cybersecurity)",
+        sourceMix: [],
+        topReads: [
+          topRead(
+            "Varonis' $6.3 billion sale shows (risks of growing old in cybersecurity)",
+          ),
+        ],
+        narrativeLeadTitle: "WorkBuddy's multi-model workflow",
+      }),
+    ).toBe("Reports discuss WorkBuddy's multi-model workflow");
+  });
+
+  it("matches the top-read title only at whole-token boundaries", () => {
+    expect(
+      groundedReaderHeadline({
+        headline: "Daily quantum chip progress leads discussion",
+        sourceMix: [],
+        topReads: [topRead("AI")],
+        narrativeLeadTitle: "Quantum chips reach milestone",
+      }),
+    ).toBe("Daily quantum chip progress leads discussion");
+  });
+
+  it("still rebuilds when the top-read title matches as whole tokens", () => {
+    expect(
+      groundedReaderHeadline({
+        headline: "Reports discuss quantum chips milestone news",
+        sourceMix: [],
+        topReads: [topRead("quantum chips")],
+        narrativeLeadTitle: "Robot fleets learn shared maps",
+      }),
+    ).toBe("Reports discuss Robot fleets learn shared maps");
   });
 });
