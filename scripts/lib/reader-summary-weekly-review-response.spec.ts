@@ -106,6 +106,21 @@ describe("reader summary weekly review response", () => {
     })).toThrow();
   });
 
+  it("normalizes the compact nested observation citations selection", () => {
+    expect(parseReaderSummaryWeeklyReviewResponse({
+      schemaVersion: "reader_summary.weekly_review_response.v1",
+      selections: [{ story, observation: { citations: [firstCitation, secondCitation] } }],
+    })).toEqual([{
+      story,
+      label: "observation",
+      citationSelectors: [firstCitation, secondCitation],
+    }]);
+    expect(() => parseReaderSummaryWeeklyReviewResponse({
+      schemaVersion: "reader_summary.weekly_review_response.v1",
+      selections: [{ story, observation: { citations: [firstCitation, firstCitation] } }],
+    })).toThrow();
+  });
+
   it("rejects observation findings for another seal or with extra fields", () => {
     const sealId = `reader_summary.weekly_certification_seal.v1:${"d".repeat(64)}`;
     expect(() => parseReaderSummaryWeeklyReviewResponse({
