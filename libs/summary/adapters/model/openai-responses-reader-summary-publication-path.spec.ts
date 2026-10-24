@@ -200,6 +200,7 @@ const v3EvidenceSelection = (): SummaryEvidenceSelection => {
     rubricSha256: "c".repeat(64),
     modelConfigVersion: "jev.v1",
     answers: admittedAnswers(),
+    signalScore: 0,
     presentation: {
       status: "available",
       presentationInputDigest: "d".repeat(64),

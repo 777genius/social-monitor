@@ -121,9 +121,19 @@ describe("Promotion V3 artifact and publication headline binding", () => {
       fixture.props, [resealed],
     )).toThrow("Reader summary Promotion V3 attestation is invalid");
   });
+
+  it("keeps card signalScore equal to the ordering tie-break score", () => {
+    const fixture = v3Fixture(3, [4.2, 8.691, 1.5]);
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props, fixture.projection.attestations,
+    )).not.toThrow();
+    expect(fixture.projection.topReads.map((read) => read.signalScore))
+      .toEqual([8.691, 4.2, 1.5]);
+  });
 });
 
-const v3Fixture = (candidateCount = 1) => {
+const v3Fixture = (candidateCount = 1,
+  signalScores?: readonly number[]) => {
   const base = dailySynthesisArtifact().toSnapshot();
   const source = dailyEvidenceSelection(25).selectedEvidence[0]!;
   const uuid = (n: number) =>
@@ -170,6 +180,7 @@ const v3Fixture = (candidateCount = 1) => {
       rubricVersion: "reader-value.v1", sourceSnapshotSha256: "1".repeat(64),
       inputSha256: "2".repeat(64), rubricSha256: "3".repeat(64),
       modelConfigVersion: "jev.v1", answers: answers(),
+      signalScore: signalScores?.[index] ?? 0,
       presentation: { status: "available",
         presentationInputDigest: readerPostPresentationV3InputDigest(input) },
       scopeValid: true, sourceIdentityValid: true, freshnessValid: true,

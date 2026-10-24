@@ -10,6 +10,7 @@ import { validateReaderValueAnswers } from
 
 import {
   compareReaderPostPromotionV3,
+  readerPostPromotionV3SignalScore,
   selectGitHubTrendingSupplementalEvidence,
   selectReaderPostPromotionsV3,
   type ReaderPostPromotionV3Candidate,
@@ -198,6 +199,10 @@ implements ReaderSummaryV3PromotionPort {
         modelConfigVersion: assessment.input.modelConfigVersion,
         answers: assessment.answers,
         engagementStrength: lead.providerMetricStrength ?? 0,
+        signalScore: readerPostPromotionV3SignalScore({
+          engagementStrength: lead.providerMetricStrength,
+          contentQuality: lead.contentQuality,
+        }),
         presentation: { status: "pending" as const },
         appendixOnly: frozen.sourceKind === "trending_repository",
         scopeValid: true, sourceIdentityValid: frozen.canonicalIdentity.trim().length > 0,

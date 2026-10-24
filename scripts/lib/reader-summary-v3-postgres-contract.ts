@@ -745,7 +745,8 @@ export const buildApplicationV3FixturePayload = async (client: PoolClient,
     rubricVersion: "reader-value.v1",
     sourceSnapshotSha256: input.sourceSnapshotSha256, inputSha256: "2".repeat(64),
     rubricSha256: "b".repeat(64), modelConfigVersion: "jev.v1",
-    answers: fixtureReaderValueAnswers(), presentation: {
+    answers: fixtureReaderValueAnswers(), signalScore: 0,
+    presentation: {
       status: "available" as const,
       presentationInputDigest: presentation.presentationInputDigest },
     scopeValid: true, sourceIdentityValid: true, freshnessValid: true,
