@@ -81,6 +81,14 @@ const expandedLegacySectionKeys = [
   "sectionId", "kind", "storyId", "headline", "synthesis", "claimType",
   "citationIds", "observedFrom", "observedThrough",
 ] as const;
+const expandedLegacySectionKeysWithoutClaimType = [
+  "sectionId", "kind", "storyId", "headline", "synthesis",
+  "citationIds", "observedFrom", "observedThrough",
+] as const;
+const sealedCompactStoryKeysWithHeadline = [
+  "storyId", "status", "claimType", "headline", "observedFrom",
+  "observedThrough", "synthesis", "citationIds",
+] as const;
 
 const legacySectionKeys = [
   "sectionId",
@@ -212,8 +220,20 @@ const normalizeSealedCompactWeeklyModelOutput = (
     value,
     "sealed compact weekly output",
   );
-  const sections = value.sections.map((section, index) => {
-    if (!hasExactKeys(section, expandedLegacySectionKeys)) {
+  const sections = value.sections.map((rawSection, index) => {
+    const section = hasExactKeys(rawSection, expandedLegacySectionKeys)
+      ? rawSection
+      : hasExactKeys(rawSection, expandedLegacySectionKeysWithoutClaimType)
+        ? {
+            ...rawSection,
+            claimType: legacyClaimTypeFromStories(
+              value.stories,
+              rawSection.storyId,
+              `sealed compact weekly section ${index + 1}`,
+            ),
+          }
+        : undefined;
+    if (section === undefined) {
       throw new Error(
         `Sealed compact weekly section ${index + 1} must contain exactly the supported fields`,
       );
@@ -238,8 +258,13 @@ const normalizeSealedCompactWeeklyModelOutput = (
       citationIds,
     };
   });
-  const stories = value.stories.map((story, index) => {
-    if (!hasExactKeys(story, sealedCompactStoryKeys)) {
+  const stories = value.stories.map((rawStory, index) => {
+    const story = hasExactKeys(rawStory, sealedCompactStoryKeys)
+      ? rawStory
+      : hasExactKeys(rawStory, sealedCompactStoryKeysWithHeadline)
+        ? rawStory
+        : undefined;
+    if (story === undefined) {
       throw new Error(
         `Sealed compact weekly story ${index + 1} must contain exactly the supported fields`,
       );
@@ -326,8 +351,20 @@ const normalizeExpandedLegacyWeeklyModelOutput = (
       citationIds,
     };
   });
-  const sections = value.sections.map((section, index) => {
-    if (!hasExactKeys(section, expandedLegacySectionKeys)) {
+  const sections = value.sections.map((rawSection, index) => {
+    const section = hasExactKeys(rawSection, expandedLegacySectionKeys)
+      ? rawSection
+      : hasExactKeys(rawSection, expandedLegacySectionKeysWithoutClaimType)
+        ? {
+            ...rawSection,
+            claimType: legacyClaimTypeFromStories(
+              value.stories,
+              rawSection.storyId,
+              `expanded legacy weekly section ${index + 1}`,
+            ),
+          }
+        : undefined;
+    if (section === undefined) {
       throw new Error(
         `Expanded legacy weekly section ${index + 1} must contain exactly the supported fields`,
       );
@@ -393,6 +430,31 @@ const exactLegacyClaimType = (value: unknown, label: string): string => {
     throw new Error(`${label} claim type is invalid`);
   }
   return value;
+};
+
+const legacyClaimTypeFromStories = (
+  stories: unknown,
+  storyId: unknown,
+  label: string,
+): string => {
+  if (!Array.isArray(stories)) {
+    throw new Error(`${label} must inherit its claim type from a story`);
+  }
+  const matches = stories.filter(
+    (story) =>
+      story !== null &&
+      typeof story === "object" &&
+      (story as Record<string, unknown>).storyId === storyId,
+  );
+  if (matches.length !== 1) {
+    throw new Error(
+      `${label} must inherit its claim type from exactly one story`,
+    );
+  }
+  return exactLegacyClaimType(
+    (matches[0] as Record<string, unknown>).claimType,
+    label,
+  );
 };
 
 const normalizeExpandedLegacyStoryStatus = (value: unknown): unknown =>

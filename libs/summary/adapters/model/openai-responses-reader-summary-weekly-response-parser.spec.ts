@@ -92,6 +92,64 @@ describe("OpenAI reader summary weekly response parser", () => {
     );
   });
 
+  it("normalizes sealed compact sections without claim type and stories with headline", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const compact = sealedCompactWeeklyOutput(input, current);
+    const drifted = {
+      ...compact,
+      stories: compact.stories.map((story) => ({
+        ...story,
+        headline: current.stories.find((item) => item.storyId === story.storyId)!
+          .headline,
+      })),
+      sections: compact.sections.map(
+        ({ claimType: _claimType, ...section }) => section,
+      ),
+    };
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, drifted);
+
+    expect(parsed).toMatchObject({
+      stories: [
+        { storyId: "story:alpha", headline: current.sections[0]!.heading },
+        { storyId: "story:beta", headline: current.sections[1]!.heading },
+      ],
+    });
+    expect(parsed.sections.map((section) => section.claimType)).toEqual([
+      "snapshot",
+      "snapshot",
+    ]);
+    expect(() =>
+      parseOpenAiReaderSummaryWeeklyValue(input, {
+        ...drifted,
+        sections: drifted.sections.map((section) => ({
+          ...section,
+          storyId: "story:missing",
+        })),
+      }),
+    ).toThrow("exactly one story");
+  });
+
+  it("normalizes expanded legacy sections that omit claim type", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const expanded = expandedLegacyWeeklyOutput(input, current);
+    const withoutClaimType = {
+      ...expanded,
+      sections: expanded.sections.map(
+        ({ claimType: _claimType, ...section }) => section,
+      ),
+    };
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, withoutClaimType);
+
+    expect(parsed.sections.map((section) => section.claimType)).toEqual([
+      "snapshot",
+      "snapshot",
+    ]);
+  });
+
   it("normalizes the exact expanded legacy weekly envelope", () => {
     const input = weeklyInput();
     const current = weeklyOutput(input);
