@@ -10,7 +10,6 @@ import { validateReaderValueAnswers } from
 
 import { engagementOrContentStrengthSignalScore } from
   "../../domain/value-objects/signal-score";
-
 import {
   compareReaderPostPromotionV3,
   selectGitHubTrendingSupplementalEvidence,
