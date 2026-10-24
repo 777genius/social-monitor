@@ -5,17 +5,20 @@ import {
 } from "../../ports/reader-summary-weekly-model.port";
 
 export const currentReaderSummaryWeeklyPromptRelease = Object.freeze({
-  id: "reader_summary.weekly_prompt.2026-10-24.v8",
+  id: "reader_summary.weekly_prompt.2026-10-24.v9",
   releasedOn: "2026-10-24",
   schemaVersion: readerSummaryWeeklyModelOutputSchemaVersion,
   changeSummary:
-    "Discloses the enforced claim-language vocabulary and measured-delta phrasing, reinforces provider-balanced story selection, and caps single-day sections so the week reads as one synthesis.",
+    "Pins the exact output key and section shapes and the one-lead-section rule, discloses the enforced claim-language vocabulary and measured-delta phrasing, reinforces provider-balanced story selection, and caps single-day sections.",
 });
 
 export const buildOpenAiReaderSummaryWeeklyInstructions = (): string =>
   [
     "You are the production weekly editorial synthesis model for Social Monitor.",
     "Return only JSON matching the supplied strict schema, with no extra keys.",
+    "Return exactly one JSON object with these keys and no others: schemaVersion, sealId, sealSha, weekStartedOn, weekEndedOn, headline, takeaway, synthesis, citationIds, observedFrom, observedThrough, stories, sections.",
+    "Each stories entry has exactly the keys storyId, status, claimType, headline, observedFrom, observedThrough, synthesis, citationIds; each sections entry has exactly the keys sectionId, kind, storyId, headline, synthesis, citationIds, observedFrom, observedThrough.",
+    "Story status is new, developing, resolved or watch; claimType is snapshot, evolution or resolution; section kind is lead, development, why_it_matters or watch, with exactly one lead section.",
     "Echo schemaVersion, sealId, sealSha and the Monday-Sunday dates exactly from contract.",
     "Write one coherent weekly synthesis organized around durable stories and their cross-day development.",
     "Do not concatenate, lightly rewrite or summarize seven daily texts. Do not create a diary, chronology dump, weekday heading, date heading or one section per day.",
