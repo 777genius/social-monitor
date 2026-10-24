@@ -30,7 +30,7 @@ describe("OpenAI reader summary weekly prompt contract", () => {
 
     expect(currentReaderSummaryWeeklyPromptRelease).toMatchObject({
       schemaVersion: readerSummaryWeeklyModelOutputSchemaVersion,
-      id: "reader_summary.weekly_prompt.2026-10-24.v7",
+      id: "reader_summary.weekly_prompt.2026-10-24.v8",
       releasedOn: "2026-10-24",
     });
     for (const requirement of [
@@ -60,6 +60,7 @@ describe("OpenAI reader summary weekly prompt contract", () => {
       "went live",
       "reached a final outcome or resolution",
       "prefer the mix of stories spread across providers",
+      "At most two sections may cite evidence from a single certified day",
     ]) {
       expect(instructions).toContain(requirement);
     }

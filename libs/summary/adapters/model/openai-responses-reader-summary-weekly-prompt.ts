@@ -5,11 +5,11 @@ import {
 } from "../../ports/reader-summary-weekly-model.port";
 
 export const currentReaderSummaryWeeklyPromptRelease = Object.freeze({
-  id: "reader_summary.weekly_prompt.2026-10-24.v7",
+  id: "reader_summary.weekly_prompt.2026-10-24.v8",
   releasedOn: "2026-10-24",
   schemaVersion: readerSummaryWeeklyModelOutputSchemaVersion,
   changeSummary:
-    "Discloses the enforced claim-language vocabulary and measured-delta phrasing, and reinforces provider-balanced story selection.",
+    "Discloses the enforced claim-language vocabulary and measured-delta phrasing, reinforces provider-balanced story selection, and caps single-day sections so the week reads as one synthesis.",
 });
 
 export const buildOpenAiReaderSummaryWeeklyInstructions = (): string =>
@@ -20,6 +20,7 @@ export const buildOpenAiReaderSummaryWeeklyInstructions = (): string =>
     "Write one coherent weekly synthesis organized around durable stories and their cross-day development.",
     "Do not concatenate, lightly rewrite or summarize seven daily texts. Do not create a diary, chronology dump, weekday heading, date heading or one section per day.",
     "Use at most six story-organized sections; omitting a weak section is better than reproducing daily slots.",
+    "Prefer sections for stories with evidence on multiple certified days and cite each such section across all of its days. At most two sections may cite evidence from a single certified day; omit a section rather than adding a third single-day section.",
     "Do not write provider inventories, source lists, coverage counts, telemetry, model/process prose, evidence-selection notes, certification prose, schema prose or quality-gate commentary.",
     "Lead with the most consequential supported cross-day development and explain what changed and why it matters to the reader when evidence supports it.",
     "Use only storyId values supplied in untrustedEvidenceData.stories. Never invent, merge, split, rename or reassign a storyId.",
