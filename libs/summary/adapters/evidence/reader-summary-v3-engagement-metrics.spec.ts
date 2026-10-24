@@ -7,6 +7,8 @@ import { acceptedFixtureReaderHeadline } from "../../test-fixtures/accepted-read
 import type {
   ReaderSummaryPreparationCandidate, SummaryEvidenceItem,
 } from "../../domain";
+import { readerPostPromotionV3SignalScore } from
+  "../../domain/policies/reader-post-promotion-v3";
 import type { ReaderPostPromotionV3Candidate } from
   "../../domain/policies/reader-post-promotion-v3";
 import { buildReaderPostPromotionProjection } from
@@ -117,6 +119,10 @@ ReaderPostPromotionV3Candidate => ({
   rubricSha256: "3".repeat(64),
   modelConfigVersion: "model.v1",
   answers: answers("important"),
+  signalScore: readerPostPromotionV3SignalScore({
+    engagementStrength: lead.providerMetricStrength,
+    contentQuality: lead.contentQuality,
+  }),
   presentation: { status: "available", presentationInputDigest: "4".repeat(64) },
   scopeValid: true, sourceIdentityValid: true, freshnessValid: true,
   safetyValid: true, citationValid: true, blocked: false,

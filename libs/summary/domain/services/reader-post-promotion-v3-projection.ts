@@ -4,7 +4,6 @@ import type { ReaderSummaryCitation } from "../entities/citation";
 import type { TopRead } from "../entities/top-read";
 import type { StoryCluster, SummaryEvidenceItem, SummarySourceWindow } from
   "../value-objects/summary-evidence-item";
-import { normalizeSignalScore } from "../value-objects/signal-score";
 import { buildReaderPostPromotionAttestationV3 } from
   "./reader-post-promotion-attestation-v3";
 import { publicReaderPostPresentationV3Seal, readerPostPresentationV3MatchesCard } from
@@ -77,7 +76,7 @@ export const buildReaderPostPromotionV3Projection = (
         `reader-value:usefulness:${candidate.answers.usefulness.choice}`,
         `reader-value:relevance:${candidate.answers.relevance.choice}`,
       ],
-      signalScore: normalizeSignalScore(lead.providerMetricStrength ?? 0),
+      signalScore: candidate.signalScore,
       confidence: { level: confidence >= 0.8 ? "high" as const
         : confidence >= 0.55 ? "medium" as const : "low" as const,
       score: confidence,

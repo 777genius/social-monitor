@@ -2,6 +2,8 @@ import type { ReaderValueAnswers } from
   "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
 
 import { normalizeSignalScore } from "../value-objects/signal-score";
+import type { SummaryEvidenceContentQuality } from
+  "../value-objects/summary-evidence-item";
 import { readerPostPromotionTopProviderCap } from
   "./top-read-provider-diversity-policy";
 
@@ -42,6 +44,8 @@ export type ReaderPostPromotionV3Candidate = {
   readonly answers: ReaderValueAnswers;
   /** Deterministic engagement strength from typed provider metrics. */
   readonly engagementStrength?: number;
+  /** Canonical tie-break score shared by ordering and the projected card. */
+  readonly signalScore: number;
   readonly presentation: ReaderPostPromotionV3Presentation;
   readonly appendixOnly?: boolean;
   readonly scopeValid: boolean;
@@ -91,6 +95,26 @@ const relevanceRank = Object.freeze({
   insufficient_context: -1,
 });
 
+export const readerPostPromotionV3SignalScore = (params: {
+  readonly engagementStrength?: number;
+  readonly contentQuality?: SummaryEvidenceContentQuality;
+}): number => {
+  const engagement = params.engagementStrength ?? 0;
+  if (engagement > 0) {
+    return normalizeSignalScore(engagement);
+  }
+  const quality = params.contentQuality;
+  return quality === undefined
+    ? 0
+    : normalizeSignalScore(
+        (10 *
+          (0.3 * quality.interestRelevanceScore +
+            0.15 * quality.qualityScore +
+            0.1 * quality.engagementIntegrityScore)) /
+          0.55,
+      );
+};
+
 /**
  * The only V3 ordering authority. Provider probabilities are absent; observed
  * engagement only breaks semantic ties before recency.
@@ -105,8 +129,7 @@ export const compareReaderPostPromotionV3 = (
     relevanceRank[left.answers.relevance.choice] ||
   // Rounded to card.signalScore precision: Promotion V3 order validation
   // derives this tie-break from the bound card only.
-  normalizeSignalScore(right.engagementStrength ?? 0) -
-    normalizeSignalScore(left.engagementStrength ?? 0) ||
+  right.signalScore - left.signalScore ||
   compareTimestampDesc(left.publishedAt, right.publishedAt) ||
   compareUtf8Bytes(left.candidateId, right.candidateId);
 

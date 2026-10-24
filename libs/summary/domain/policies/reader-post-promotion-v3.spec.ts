@@ -3,6 +3,7 @@ import type { ReaderValueAnswers, ReaderValueCriterion } from
 
 import {
   compareReaderPostPromotionV3,
+  readerPostPromotionV3SignalScore,
   selectReaderPostPromotionsV3,
   type ReaderPostPromotionV3Candidate,
 } from "./reader-post-promotion-v3";
@@ -130,6 +131,27 @@ describe("Reader promotion V3", () => {
       candidate(3, { presentation: "budget_exhausted" }),
     ]).outcome).toBe("budget_exhausted");
   });
+
+  it("breaks semantic ties with the content-strength signal score", () => {
+    const weaker = candidate(1, { signalScore: 2.5,
+      publishedAt: "2026-09-21T00:00:00.000001Z" });
+    const stronger = candidate(2, { signalScore: 8.691,
+      publishedAt: "2026-09-20T00:00:00.000001Z" });
+    expect([weaker, stronger].sort(compareReaderPostPromotionV3)
+      .map((value) => value.candidateId))
+      .toEqual([stronger.candidateId, weaker.candidateId]);
+  });
+
+  it("derives signal score from engagement or content strength", () => {
+    expect(readerPostPromotionV3SignalScore({ engagementStrength: 6.708 }))
+      .toBe(6.708);
+    expect(readerPostPromotionV3SignalScore({ engagementStrength: 0,
+      contentQuality: { qualityScore: 0.8, interestRelevanceScore: 0.88,
+        engagementIntegrityScore: 0.94, eligibleForSummary: true,
+        eligibleForTopRead: true, needsLlmReview: false, decision: "admit",
+        flags: [], reason: "fixture" } })).toBe(8.691);
+    expect(readerPostPromotionV3SignalScore({})).toBe(0);
+  });
 });
 
 type ChoiceOverrides = {
@@ -145,6 +167,7 @@ type ChoiceOverrides = {
   mismatch?: boolean;
   tie?: boolean;
   engagementStrength?: number;
+  signalScore?: number;
 };
 
 const candidate = (ordinal: number, overrides: ChoiceOverrides = {}):
@@ -168,6 +191,10 @@ ReaderPostPromotionV3Candidate => ({
   ...(overrides.engagementStrength === undefined
     ? {}
     : { engagementStrength: overrides.engagementStrength }),
+  signalScore: overrides.signalScore ??
+    readerPostPromotionV3SignalScore({
+      engagementStrength: overrides.engagementStrength,
+    }),
   presentation: overrides.presentation === "available" || overrides.presentation === undefined
     ? { status: "available", presentationInputDigest: "d".repeat(64) }
     : overrides.presentation === "unavailable"

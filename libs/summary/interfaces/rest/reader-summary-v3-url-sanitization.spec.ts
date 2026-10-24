@@ -94,6 +94,7 @@ describe("Promotion V3 public canonical identity", () => {
       rubricSha256: "3".repeat(64),
       modelConfigVersion: "model.v1",
       answers: answers(),
+      signalScore: 0,
       presentation: { status: "available", presentationInputDigest: "4".repeat(64) },
       scopeValid: true, sourceIdentityValid: true, freshnessValid: true,
       safetyValid: true, citationValid: true, blocked: false,
