@@ -96,6 +96,19 @@ const legacySectionKeys = [
   "citationIds",
 ] as const;
 
+const legacySectionKeysWithoutTakeaway = [
+  "sectionId",
+  "kind",
+  "storyId",
+  "claimType",
+  "status",
+  "observedFrom",
+  "observedThrough",
+  "headline",
+  "synthesis",
+  "citationIds",
+] as const;
+
 const normalizeLegacyWeeklyModelOutput = (
   input: ReaderSummaryWeeklyModelInput,
   value: unknown,
@@ -123,8 +136,13 @@ const normalizeLegacyWeeklyModelOutput = (
   ) {
     throw new Error("Legacy weekly output fabricates root chronology");
   }
-  const sections = value.sections.map((section, index) => {
-    if (!hasExactKeys(section, legacySectionKeys)) {
+  const sections = value.sections.map((rawSection, index) => {
+    const section = hasExactKeys(rawSection, legacySectionKeys)
+      ? rawSection
+      : hasExactKeys(rawSection, legacySectionKeysWithoutTakeaway)
+        ? { ...rawSection, takeaway: rawSection.synthesis }
+        : undefined;
+    if (section === undefined) {
       throw new Error(
         `Legacy weekly output section ${index + 1} must contain exactly the supported fields`,
       );

@@ -76,6 +76,22 @@ describe("OpenAI reader summary weekly response parser", () => {
     ).toThrow("exactly");
   });
 
+  it("normalizes legacy weekly sections that omit the takeaway field", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const legacy = legacyWeeklyOutput(input, current);
+    const withoutTakeaway = {
+      ...legacy,
+      sections: legacy.sections.map(({ takeaway: _takeaway, ...section }) => section),
+    };
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, withoutTakeaway);
+
+    expect(parsed.stories.map((story) => story.summary)).toEqual(
+      parsed.sections.map((section) => section.text),
+    );
+  });
+
   it("normalizes the exact expanded legacy weekly envelope", () => {
     const input = weeklyInput();
     const current = weeklyOutput(input);
