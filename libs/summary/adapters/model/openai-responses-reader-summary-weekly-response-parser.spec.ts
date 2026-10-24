@@ -131,6 +131,25 @@ describe("OpenAI reader summary weekly response parser", () => {
     ).toThrow("exactly one story");
   });
 
+  it("normalizes the observed risk section kind to watch", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const compact = sealedCompactWeeklyOutput(input, current);
+    const withRiskKind = {
+      ...compact,
+      sections: compact.sections.map((section, index) =>
+        index === 1 ? { ...section, kind: "risk" } : section,
+      ),
+    };
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, withRiskKind);
+
+    expect(parsed.sections.map((section) => section.kind)).toEqual([
+      "lead",
+      "watch",
+    ]);
+  });
+
   it("normalizes expanded legacy sections that omit claim type", () => {
     const input = weeklyInput();
     const current = weeklyOutput(input);
