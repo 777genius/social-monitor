@@ -69,6 +69,7 @@ import {
   assertReaderSummaryWeeklyProductionSlot,
   prepareReaderSummaryWeeklyProductionSlot,
 } from "./lib/reader-summary-weekly-production-slot";
+import { weeklyAgentRuntimeDefaultCwd } from "./lib/weekly-agent-runtime-default-cwd";
 
 loadDotenvIfPresent(".env");
 
@@ -228,7 +229,7 @@ const lazyAgentRuntime = (
       options: {
         timeoutMs,
         serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN,
-        defaultCwd: process.env.AGENT_RUNTIME_TASK_CWD || "/run/task-workspace",
+        defaultCwd: weeklyAgentRuntimeDefaultCwd(process.env.AGENT_RUNTIME_TASK_CWD),
       },
     });
     return client;
