@@ -69,6 +69,39 @@ describe("reader summary weekly review response", () => {
     })).toThrow();
   });
 
+  it("normalizes the compact nested evolution selection", () => {
+    expect(parseReaderSummaryWeeklyReviewResponse({
+      schemaVersion: "reader_summary.weekly_review_response.v1",
+      selections: [{ story, evolution: { before: firstCitation, after: secondCitation } }],
+    })).toEqual([{
+      story,
+      label: "evolution",
+      citationSelectors: [firstCitation, secondCitation],
+      beforeCitationSelector: firstCitation,
+      afterCitationSelector: secondCitation,
+    }]);
+    expect(() => parseReaderSummaryWeeklyReviewResponse({
+      schemaVersion: "reader_summary.weekly_review_response.v1",
+      selections: [{ story, evolution: { before: firstCitation } }],
+    })).toThrow();
+  });
+
+  it("normalizes the compact nested resolution selection", () => {
+    expect(parseReaderSummaryWeeklyReviewResponse({
+      schemaVersion: "reader_summary.weekly_review_response.v1",
+      selections: [{ story, resolution: { terminal: secondCitation } }],
+    })).toEqual([{
+      story,
+      label: "resolution",
+      citationSelectors: [secondCitation],
+      terminalCitationSelector: secondCitation,
+    }]);
+    expect(() => parseReaderSummaryWeeklyReviewResponse({
+      schemaVersion: "reader_summary.weekly_review_response.v1",
+      selections: [{ story, resolution: { terminal: secondCitation }, prose: "not admitted" }],
+    })).toThrow();
+  });
+
   it("rejects observation findings for another seal or with extra fields", () => {
     const sealId = `reader_summary.weekly_certification_seal.v1:${"d".repeat(64)}`;
     expect(() => parseReaderSummaryWeeklyReviewResponse({

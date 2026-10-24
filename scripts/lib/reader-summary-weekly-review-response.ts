@@ -131,6 +131,38 @@ const parseSelection = (
       citationSelectors: [exactCitationSelector(record.observation)],
     });
   }
+  if (hasExactKeys(record, ["story", "evolution"])) {
+    const evolution = asRecord(record.evolution, "weekly review model evolution");
+    assertReaderSummaryWeeklyExactObject(
+      evolution,
+      ["before", "after"],
+      "weekly review model evolution",
+    );
+    const before = exactCitationSelector(evolution.before);
+    const after = exactCitationSelector(evolution.after);
+    return deepFreezeReaderSummaryWeekly({
+      story: exactStorySelector(record.story),
+      label: "evolution" as const,
+      citationSelectors: [before, after],
+      beforeCitationSelector: before,
+      afterCitationSelector: after,
+    });
+  }
+  if (hasExactKeys(record, ["story", "resolution"])) {
+    const resolution = asRecord(record.resolution, "weekly review model resolution");
+    assertReaderSummaryWeeklyExactObject(
+      resolution,
+      ["terminal"],
+      "weekly review model resolution",
+    );
+    const terminal = exactCitationSelector(resolution.terminal);
+    return deepFreezeReaderSummaryWeekly({
+      story: exactStorySelector(record.story),
+      label: "resolution" as const,
+      citationSelectors: [terminal],
+      terminalCitationSelector: terminal,
+    });
+  }
   const label = exactLabel(record.label);
   const expectedKeys = label === "evolution"
     ? [...selectionBaseKeys, "beforeCitationSelector", "afterCitationSelector"]
