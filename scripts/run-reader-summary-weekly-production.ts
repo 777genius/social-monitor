@@ -228,6 +228,7 @@ const lazyAgentRuntime = (
       options: {
         timeoutMs,
         serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN,
+        defaultCwd: process.env.AGENT_RUNTIME_TASK_CWD || "/run/task-workspace",
       },
     });
     return client;
