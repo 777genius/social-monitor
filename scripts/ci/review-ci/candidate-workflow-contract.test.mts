@@ -83,6 +83,7 @@ const mutations: [string, (w: Workflow) => void][] = [
   ['aggregate timeout drift', (w) => w.jobs.production_runtime['timeout-minutes'] = 10],
   ['aggregate heavy work added', (w) => w.jobs.production_runtime.steps.push({ name: 'Install', run: 'npm ci' })],
   ['aggregate not always', (w) => w.jobs.production_runtime.if = 'success()'],
+  ['aggregate survives cancellation', (w) => w.jobs.production_runtime.if = 'always()'],
   ['aggregate missing dependency', (w) => w.jobs.production_runtime.needs = ['production_candidate']],
   ['aggregate omitted child result', (w) => w.jobs.production_runtime.steps[0]!.run = 'set -euo pipefail\ntest "${{ needs.production_candidate.result }}" = "success"'],
   ['aggregate permits skipped/cancelled children', (w) => w.jobs.production_runtime.steps[0]!.run = String(w.jobs.production_runtime.steps[0]!.run).replaceAll('= "success"', '!= "failure"')],

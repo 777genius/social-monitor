@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.sha }}
-  cancel-in-progress: true
+  group: pull-request-checks-${{ github.event_name }}-${{ (github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group') && (github.event.pull_request.number || github.ref) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group' }}
 
 env:
   DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
@@ -311,7 +311,7 @@ jobs:
   backend_unit:
     name: Backend build and unit tests
     needs: [backend_unit_shards, backend_build_contracts]
-    if: always()
+    if: always() && !cancelled()
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 10
 
@@ -638,7 +638,7 @@ jobs:
   production_runtime:
     name: Production container and deploy lifecycle
     needs: [production_candidate, production_lifecycle]
-    if: always()
+    if: always() && !cancelled()
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
