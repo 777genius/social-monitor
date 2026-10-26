@@ -638,7 +638,7 @@ jobs:
   production_runtime:
     name: Production container and deploy lifecycle
     needs: [production_candidate, production_lifecycle]
-    if: always()
+    if: always() && !cancelled()
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
