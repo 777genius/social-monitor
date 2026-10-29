@@ -179,6 +179,7 @@ async function runCapture(options: Options = {}) {
 }
 
 it.each([
+  ["invalid scoring provider", { env: { READER_VALUE_SCORING_PROVIDER: "auto" } }, "READER_VALUE_SCORING_PROVIDER"],
   ["wrong configured model", { env: { AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "wrong-model" } }, "conflicts"],
   ["wrong physical authority", { wrongAuthority: true }, "authority diverged"],
   ["missing runtime authority", { missingAuthority: true }, "authority diverged"],

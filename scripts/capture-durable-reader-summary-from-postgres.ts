@@ -151,6 +151,7 @@ type FeedInventoryRow = {
 };
 
 async function main(): Promise<void> {
+  const scoringProvider = resolveReaderValueScoringProvider(process.env);
   const databaseUrl = requiredEnv(databaseUrlEnv);
   const { dailyReplay, operationalClock: clock } =
     createReaderSummaryDailyCaptureContext({
@@ -362,7 +363,6 @@ async function main(): Promise<void> {
       baseReaderSummaryPolicies;
     const configuredInterests = monitoringConnection === undefined ? undefined
       : new MonitoringConfiguredInterestReader(new PrismaInterestRepository(monitoringConnection));
-    const scoringProvider = resolveReaderValueScoringProvider(process.env);
     const qualification = createDailyJevCaptureQualification({
       fresh: dailyReplay === null, mode: process.env.READER_VALUE_MODE,
       client: summaryConnection, interests: configuredInterests, clock, scoringProvider,
