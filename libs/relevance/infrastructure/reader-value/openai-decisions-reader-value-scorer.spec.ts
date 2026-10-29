@@ -19,7 +19,7 @@ function setup(body: unknown = response(), status = 200, headers: Record<string,
   const transport = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>()
     .mockResolvedValue(new Response(JSON.stringify(body), { status, headers }));
   const clock = { now: jest.fn().mockReturnValueOnce(now).mockReturnValue(new Date(now.getTime() + 25)) };
-  return { transport, scorer: new OpenAiDecisionsReaderValueScorer('fixture-key', clock, transport) };
+  return { transport, scorer: new OpenAiDecisionsReaderValueScorer('test-openai-key', clock, transport) };
 }
 function replaceRequest(original: ReaderValuePreparedInput, wire: unknown): ReaderValuePreparedInput {
   const requestBody = JSON.stringify(wire);
@@ -39,9 +39,9 @@ describe('OpenAI Decisions reader-value scorer', () => {
     expect(transport).toHaveBeenCalledTimes(1);
     expect(transport).toHaveBeenCalledWith('https://api.openai.com/v1/decisions', {
       method: 'POST', redirect: 'error', signal: expect.any(AbortSignal), body: prepared.requestBody,
-      headers: { Authorization: 'Bearer fixture-key', 'Content-Type': 'application/json' },
+      headers: { Authorization: 'Bearer test-openai-key', 'Content-Type': 'application/json' },
     });
-    expect(JSON.stringify(result)).not.toContain('fixture-key');
+    expect(JSON.stringify(result)).not.toContain('test-openai-key');
   });
   it('maps shuffled arrays without replacing authoritative choice or probability ties', async () => {
     const payload = response();
@@ -136,7 +136,7 @@ describe('OpenAI Decisions reader-value scorer', () => {
   });
   it.each(['null', '[]', '"scalar"', '{malformed'])('rejects malformed successful response %s with header accounting', async (body) => {
     const transport: typeof fetch = async () => new Response(body, { headers: { 'x-request-id': 'req_bad' } });
-    const result = await new OpenAiDecisionsReaderValueScorer('fixture-key', { now: () => now }, transport).score(input());
+    const result = await new OpenAiDecisionsReaderValueScorer('test-openai-key', { now: () => now }, transport).score(input());
     expect(result).toMatchObject({ ok: false, failure: { code: 'schema_invalid', pauseDispatch: true },
       execution: { requestId: 'req_bad', inputTokens: null, outputTokens: null, costUsd: null } });
   });
@@ -146,7 +146,7 @@ describe('OpenAI Decisions reader-value scorer', () => {
         start(controller) { controller.error(new Error('private-stream-error')); },
       });
     const transport: typeof fetch = async () => new Response(body, { status: 401, headers: { 'x-request-id': 'req_failure' } });
-    const result = await new OpenAiDecisionsReaderValueScorer('fixture-key', { now: () => now }, transport).score(input());
+    const result = await new OpenAiDecisionsReaderValueScorer('test-openai-key', { now: () => now }, transport).score(input());
     expect(result).toMatchObject({ ok: false, failure: { code: 'auth_paused', retryable: true, pauseDispatch: true },
       execution: { requestId: 'req_failure', latencyMs: 0, inputTokens: null, outputTokens: null, costUsd: null } });
     expect(JSON.stringify(result)).not.toContain('private-stream-error');
@@ -156,7 +156,7 @@ describe('OpenAI Decisions reader-value scorer', () => {
     const transport: typeof fetch = async () => new Response(new ReadableStream({
       start(controller) { controller.enqueue(new Uint8Array(262_145)); }, cancel,
     }), { headers: { 'x-request-id': 'req_oversized' } });
-    expect(await new OpenAiDecisionsReaderValueScorer('fixture-key', { now: () => now }, transport).score(input()))
+    expect(await new OpenAiDecisionsReaderValueScorer('test-openai-key', { now: () => now }, transport).score(input()))
       .toMatchObject({ ok: false, failure: { code: 'response_too_large', pauseDispatch: true },
         execution: { requestId: 'req_oversized', costUsd: null } });
     expect(cancel).toHaveBeenCalledTimes(1);
@@ -165,7 +165,7 @@ describe('OpenAI Decisions reader-value scorer', () => {
     const transport: typeof fetch = async () => new Response(new ReadableStream({
       start(controller) { controller.error(new Error('private-stream-error')); },
     }), { headers: { 'x-request-id': 'req_read' } });
-    expect(await new OpenAiDecisionsReaderValueScorer('fixture-key', { now: () => now }, transport).score(input()))
+    expect(await new OpenAiDecisionsReaderValueScorer('test-openai-key', { now: () => now }, transport).score(input()))
       .toMatchObject({ ok: false, failure: { code: 'transport', retryable: true, pauseDispatch: false },
         execution: { requestId: 'req_read', inputTokens: null, outputTokens: null, costUsd: null } });
   });
@@ -176,7 +176,7 @@ describe('OpenAI Decisions reader-value scorer', () => {
       controller.abort(); throw new Error('private-transport-error');
     });
     try {
-      const result = await new OpenAiDecisionsReaderValueScorer('fixture-key', { now: () => now }, transport).score(input());
+      const result = await new OpenAiDecisionsReaderValueScorer('test-openai-key', { now: () => now }, transport).score(input());
       expect(result).toMatchObject({ ok: false, failure: { code: 'timeout', retryable: true, pauseDispatch: false },
         execution: { requestId: null, costUsd: null, usageUnknown: true } });
       expect(timeout).toHaveBeenCalledWith(30_000);

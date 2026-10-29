@@ -29,17 +29,19 @@ async function main() {
     }
     assert.equal(bounded.calls(), 2, 'two sources each spend one normal request');
     assert.equal(bounded.blockedCalls(), 0);
-    console.log(JSON.stringify({ check, passed: true, externalHttp: true,
+    return { check, passed: true, externalHttp: true,
       productionPrismaConnection: true, partialMigrationFixture: true, requestCeiling: 4,
       transportCalls: bounded.calls(), reuseCallDelta: 0, evidence,
       admittedIds: evidence.flatMap((item) => item.admittedIds),
       excludedIds: evidence.flatMap((item) => item.excludedIds),
-      finalSummaryWritingVerified: false }));
+      finalSummaryWritingVerified: false };
   } catch (error: unknown) {
     console.error(JSON.stringify({ check, passed: false, transportCalls: bounded.calls(),
       blockedCalls: bounded.blockedCalls(), errorCode: providerPipelineFailureCode(error) }));
     process.exitCode = 1;
+    return undefined;
   } finally { await fixture.close(); }
 }
 
-void main().catch((error: unknown) => reportProviderPipelineFailure('reader-value-openai-decisions-live-postgres', error));
+void main().then((report) => { if (report) console.log(JSON.stringify(report)); })
+  .catch((error: unknown) => reportProviderPipelineFailure('reader-value-openai-decisions-live-postgres', error));

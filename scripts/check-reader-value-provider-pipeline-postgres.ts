@@ -19,10 +19,11 @@ async function main() {
       assert.equal(bounded.blockedCalls(), 0);
     }
     const refusal = await checkPersistedProviderRefusal(fixture);
-    console.log(JSON.stringify({ check: 'reader-value-provider-pipeline-postgres', passed: true,
+    return { check: 'reader-value-provider-pipeline-postgres', passed: true,
       externalHttp: false, productionPrismaConnection: true, partialMigrationFixture: true,
-      evidence, refusal }));
+      evidence, refusal };
   } finally { await fixture.close(); }
 }
 
-void main().catch((error: unknown) => reportProviderPipelineFailure('reader-value-provider-pipeline-postgres', error));
+void main().then((report) => console.log(JSON.stringify(report)))
+  .catch((error: unknown) => reportProviderPipelineFailure('reader-value-provider-pipeline-postgres', error));
