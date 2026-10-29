@@ -29,6 +29,29 @@ language.
   normalized Signal. Unmarked legacy `selectedPosts`, including GitHub items,
   are unsupported and fail closed. Only legacy `topReads` may use list-context
   fallback for backward-compatible classification.
+- Ranked Board: "Top posts" (the first 12 ranked posts) and "Show more" (the
+  same sequence continued, up to 48 ranked posts in total). It holds posts of
+  ranked source families only (X, Reddit, Hacker News, GitHub), has no
+  per-network cap, and Show more exists only behind a full Top.
+- Hybrid Promotion Score: the order key of the Ranked Board,
+  `0.4 * model + 0.6 * popularity` with model important 1.0 and useful 0.5.
+  The frontend rebuilds it exactly as a `BigInt` fraction from the signed
+  comparator and never compares doubles; ties break by newest publishedAt,
+  then candidate id bytes.
+- Popularity Percentile: mid-rank `(below + equal / 2) / cohortSize` of a post
+  inside its own source family, among posts with a mature metric. Networks
+  are never compared by raw numbers. A family with fewer than 5 such posts
+  (minimum popularity cohort) has no popularity at all: popularity 0 in the
+  score and Signal 0, uniformly for the whole family.
+- Metric Maturity: a metric counts only when it was observed at least six
+  hours after publication; otherwise it is unknown and adds popularity 0.
+- News without rating: the separate block for sources without a popularity
+  rating (RSS), up to 16 posts, ordered by usefulness and then recency. Its
+  cards never show a Signal. A Google News publisher appears at most once.
+- Ranking Policy Stamp: `reader_promotion.2026-10-30`, the meaning of the
+  promotion order. A day ranked under another stamp is served with empty
+  boards and `ranking_policy_changed`; the UI shows it as waiting for a
+  rebuild, not as broken.
 - Related Topic: a non-transitive, non-credit card for one selected subject
   story that the backend explicitly relates to a distinct official-authority
   target story. It keeps the subject cluster id, stable relation id and target
@@ -43,6 +66,8 @@ language.
   explicitly consumes it.
 - Signal Score: normalized ranking score owned by Feed/Relevance/Summary
   selection logic. It is not a Reddit score, HN points, GitHub stars or X likes.
+  On a promoted V3 card it is the popularity percentile times 10 for a mature
+  ranked metric and 0 otherwise; it is display only, never an order input.
 - Provider Metric: readable native provider metric such as Reddit score, HN
   points, GitHub stars, X likes, comments or upvote ratio.
 - Source Mix: provider coverage summary for the workspace summary.

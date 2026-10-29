@@ -19,4 +19,4 @@ final class _ReaderItemContext {
   final Map<String, SummaryCitationApiDto> citationsById;
 }
 
-enum _ReaderItemKind { topRead, selectedPost, interestSection }
+enum _ReaderItemKind { topRead, selectedPost, newsPost, interestSection }

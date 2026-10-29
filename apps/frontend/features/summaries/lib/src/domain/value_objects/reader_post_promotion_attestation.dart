@@ -1,4 +1,8 @@
-enum ReaderPostPromotionPlacement { top, additional }
+import 'reader_promotion_comparator.dart';
+
+/// Lane of a promoted card: "Top posts", "Show more" (additional, the same
+/// ranked sequence) or "News without rating".
+enum ReaderPostPromotionPlacement { top, additional, news }
 
 final class ReaderPostPromotionAttestation {
   const ReaderPostPromotionAttestation({
@@ -43,7 +47,9 @@ final class ReaderPostPromotionAttestation {
   final String? slateDigest;
   final ReaderPostPromotionEvidenceLineage? evidenceLineage;
   final Map<String, Object?>? assessment;
-  final Map<String, Object?>? comparator;
+
+  /// Signed ordering material of a V3 attestation.
+  final ReaderPromotionComparator? comparator;
   final Map<String, Object?>? presentation;
   final String? providerKey;
   final String? storyId;

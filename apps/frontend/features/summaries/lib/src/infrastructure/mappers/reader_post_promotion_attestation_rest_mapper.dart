@@ -20,6 +20,7 @@ ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
   String? cardStoryClusterId,
   DateTime? cardPublishedAt,
   List<String>? cardCitationIds,
+  num? cardSignalScore,
   required String enclosingArtifactId,
   required String enclosingSourceWindowId,
   required DateTime enclosingPeriodStart,
@@ -104,6 +105,7 @@ ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
     cardStoryClusterId: cardStoryClusterId,
     cardPublishedAt: cardPublishedAt,
     cardCitationIds: cardCitationIds,
+    cardSignalScore: cardSignalScore,
     // V3 has two independent authorities: transport and signed body. Never
     // reconstruct missing outer fields from the signed body, because that
     // would turn an incomplete REST response into an apparently verified one.

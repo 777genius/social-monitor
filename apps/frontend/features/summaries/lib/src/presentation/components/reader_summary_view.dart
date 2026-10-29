@@ -126,7 +126,8 @@ class ReaderSummaryView extends StatelessWidget {
             onOpenUrl: onOpenUrl,
           ),
         ],
-        if (topPostsProjection != null && !topPostsProjection.isEmpty) ...[
+        if (topPostsProjection != null &&
+            topPostsProjection.hasRankedPosts) ...[
           const SizedBox(height: AppSpacing.md + 2),
           ReaderSummaryTopPosts(
             projection: topPostsProjection,

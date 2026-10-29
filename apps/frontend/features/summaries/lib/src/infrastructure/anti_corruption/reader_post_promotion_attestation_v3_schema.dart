@@ -52,6 +52,7 @@ ReaderPostPromotionAttestationApiDto? _verifyReaderPostPromotionAttestationV3({
   required String? cardStoryClusterId,
   required DateTime? cardPublishedAt,
   required List<String>? cardCitationIds,
+  required num? cardSignalScore,
   required Object? outerProvider,
   required Object? outerStoryId,
   required Object? outerPublishedAt,
@@ -65,7 +66,7 @@ ReaderPostPromotionAttestationApiDto? _verifyReaderPostPromotionAttestationV3({
 }) {
   if (!_v3ExactKeys(decoded, _v3Keys) ||
       decoded['schemaVersion'] != readerPostPromotionAttestationSchemaV3 ||
-      decoded['policyVersion'] != readerPostPromotionPolicyV3 ||
+      decoded['policyVersion'] != readerPromotionPolicyStamp ||
       decoded['digestVersion'] != readerPostPromotionDigestV3 ||
       // A matching digest only proves the received bytes were hashed. V3
       // signs one canonical representation, so whitespace and member-order
@@ -101,11 +102,8 @@ ReaderPostPromotionAttestationApiDto? _verifyReaderPostPromotionAttestationV3({
       !RegExp(
         r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
       ).hasMatch(candidateId) ||
-      !{'top', 'additional'}.contains(decoded['placement']) ||
-      decoded['decision'] !=
-          (decoded['placement'] == 'top'
-              ? 'promote_top'
-              : 'promote_additional') ||
+      !_v3Decisions.containsKey(decoded['placement']) ||
+      decoded['decision'] != _v3Decisions[decoded['placement']] ||
       decoded['provider'] is! String ||
       (decoded['provider']! as String).trim().isEmpty ||
       decoded['storyId'] is! String ||
@@ -144,25 +142,15 @@ ReaderPostPromotionAttestationApiDto? _verifyReaderPostPromotionAttestationV3({
       !_sameJson(comparator, outerComparator) ||
       !_sameJson(presentation, outerPresentation) ||
       !_validV3Assessment(assessment) ||
-      !_v3ExactKeys(comparator, {
-        'usefulness',
-        'relevance',
-        'publishedAt',
-        'candidateId',
-      }) ||
-      comparator['usefulness'] !=
-          _choice(
-            (assessment['answers']! as Map<String, Object?>)['usefulness'],
-          ) ||
-      comparator['relevance'] !=
-          _choice(
-            (assessment['answers']! as Map<String, Object?>)['relevance'],
-          ) ||
-      comparator['publishedAt'] != decoded['publishedAt'] ||
-      comparator['candidateId'] != decoded['candidateId'] ||
-      !const {'useful', 'important'}.contains(comparator['usefulness']) ||
-      !const {'relevant', 'central'}.contains(comparator['relevance']) ||
       !_canonicalV3Timestamp(decoded['publishedAt']) ||
+      _verifiedV3Comparator(
+            decoded: decoded,
+            comparator: comparator,
+            answers: assessment['answers']! as Map<String, Object?>,
+            capturedSource: capturedSource,
+            cardSignalScore: cardSignalScore,
+          ) ==
+          null ||
       !_v3ExactKeys(presentation, {
         'schemaVersion',
         'presentationInputDigest',
@@ -194,7 +182,7 @@ ReaderPostPromotionAttestationApiDto? _verifyReaderPostPromotionAttestationV3({
   }
   return ReaderPostPromotionAttestationApiDto(
     schemaVersion: readerPostPromotionAttestationSchemaV3,
-    policyVersion: readerPostPromotionPolicyV3,
+    policyVersion: readerPromotionPolicyStamp,
     candidateId: candidateId,
     canonicalIdentity: canonicalIdentity,
     placement: decoded['placement']! as String,
@@ -228,19 +216,7 @@ String _presentationIdentity(
     .toString();
 
 bool _sameJson(Object? left, Object? right) =>
-    jsonEncode(_sortedJson(left)) == jsonEncode(_sortedJson(right));
-
-Object? _sortedJson(Object? value) {
-  final normalized = jsonDecode(jsonEncode(value));
-  if (normalized is List<Object?>) return normalized.map(_sortedJson).toList();
-  if (normalized is Map<String, Object?>) {
-    final keys =
-        normalized.keys.where((key) => normalized[key] != null).toList()
-          ..sort();
-    return {for (final key in keys) key: _sortedJson(normalized[key])};
-  }
-  return normalized;
-}
+    readerPromotionTransportJson(left) == readerPromotionTransportJson(right);
 
 bool _canonicalV3Timestamp(Object? value) =>
     value is String &&
@@ -273,18 +249,12 @@ bool _v3ExactKeys(Map<String, Object?> value, Set<String> keys) =>
     value.length == keys.length && keys.every(value.containsKey);
 
 /// Mirrors the backend's canonicalPromotionPayload for V3's ASCII contract
-/// keys: recursively sort object keys and preserve list order and scalars.
-String _canonicalV3Payload(Object? value) => jsonEncode(_canonicalV3Value(value));
+/// keys, including JavaScript number formatting.
+String _canonicalV3Payload(Object? value) =>
+    readerPromotionCanonicalJson(value);
 
-Object? _canonicalV3Value(Object? value) {
-  if (value is List<Object?>) {
-    return value.map(_canonicalV3Value).toList(growable: false);
-  }
-  if (value is Map<String, Object?>) {
-    final keys = value.keys.toList()..sort();
-    return <String, Object?>{
-      for (final key in keys) key: _canonicalV3Value(value[key]),
-    };
-  }
-  return value;
-}
+const _v3Decisions = <Object?, String>{
+  'top': 'promote_top',
+  'additional': 'promote_additional',
+  'news': 'promote_news',
+};

@@ -13,8 +13,8 @@ part 'reader_summary_promotion_v3_presentation_dto.g.dart';
 class ReaderSummaryPromotionV3PresentationDto {
   const ReaderSummaryPromotionV3PresentationDto({
     required this.displayHeadline,
-    required this.presentationInputDigest,
     required this.presentationIdentity,
+    required this.presentationInputDigest,
     required this.schemaVersion,
   });
 
@@ -23,8 +23,8 @@ class ReaderSummaryPromotionV3PresentationDto {
   ) => _$ReaderSummaryPromotionV3PresentationDtoFromJson(json);
 
   final ReaderSummaryDisplayHeadlineSealDto displayHeadline;
-  final String presentationInputDigest;
   final String presentationIdentity;
+  final String presentationInputDigest;
   final ReaderSummaryPromotionV3PresentationDtoSchemaVersionSchemaVersion
   schemaVersion;
 

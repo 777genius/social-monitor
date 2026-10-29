@@ -10,6 +10,8 @@ enum ReaderSummaryPromotionAttestationDtoPlacementPlacement {
   top('top'),
   @JsonValue('additional')
   additional('additional'),
+  @JsonValue('news')
+  news('news'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);

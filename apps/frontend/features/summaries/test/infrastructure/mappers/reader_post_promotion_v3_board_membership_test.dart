@@ -3,14 +3,15 @@ import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.da
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 
+import '../../support/reader_promotion_board_api_fixture.dart';
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
   const mapper = SummaryMapper();
 
-  test('accepts a complete ordered V3 promotion board', () {
+  test('maps a complete V3 board with Top and News without rating', () {
     final summary = mapper.readerSummaryToDomain(
-      _summary(top: const [1, 2], additional: const [3, 4]),
+      promotionBoardSummaryApiDto(top: const [1, 2], news: const [3, 4]),
     );
 
     expect(
@@ -18,165 +19,110 @@ void main() {
       ReaderSummaryPromotionBoardAvailability.available,
     );
     expect(summary.content.topReads, hasLength(2));
-    expect(summary.content.selectedPosts, hasLength(2));
+    expect(summary.content.selectedPosts, isEmpty);
+    expect(
+      summary.content.newsWithoutRatingPosts.map((item) => item.cardKind),
+      everyElement(ReaderSummaryCardKind.newsWithoutRating),
+    );
+    expect(
+      summary.content.newsWithoutRatingPosts.map(
+        (item) => item.promotionAttestation!.placement,
+      ),
+      everyElement(ReaderPostPromotionPlacement.news),
+    );
   });
 
-  test('rejects a V3 board with its trailing Top card removed', () {
+  test('maps a news-only board of a workspace without ranked sources', () {
     final summary = mapper.readerSummaryToDomain(
-      _summary(
-        top: const [1],
-        additional: const [3],
-        authorityOrder: const [1, 2, 3],
-      ),
+      promotionBoardSummaryApiDto(top: const [], news: const [1]),
     );
 
     expect(
       summary.content.promotionBoardAvailability,
-      ReaderSummaryPromotionBoardAvailability.unavailable,
+      ReaderSummaryPromotionBoardAvailability.available,
     );
-    expect(summary.content.topReads, isEmpty);
-    expect(summary.content.selectedPosts, isEmpty);
+    expect(summary.content.newsWithoutRatingPosts, hasLength(1));
   });
 
-  test('rejects a V3 board with its trailing Additional card removed', () {
-    final summary = mapper.readerSummaryToDomain(
-      _summary(
-        top: const [1],
-        additional: const [2],
-        authorityOrder: const [1, 2, 3],
-      ),
-    );
+  for (final entry in <String, ({List<int> top, List<int> news})>{
+    'its trailing Top card removed': (top: const [1], news: const [3]),
+    'its trailing news card removed': (top: const [1], news: const [2]),
+  }.entries) {
+    test('rejects a V3 board with ${entry.key}', () {
+      final summary = mapper.readerSummaryToDomain(
+        promotionBoardSummaryApiDto(
+          top: entry.value.top,
+          news: entry.value.news,
+          authorityOrder: const [1, 2, 3],
+        ),
+      );
 
-    expect(
-      summary.content.promotionBoardAvailability,
-      ReaderSummaryPromotionBoardAvailability.unavailable,
-    );
-    expect(summary.content.topReads, isEmpty);
-    expect(summary.content.selectedPosts, isEmpty);
-  });
+      expect(
+        summary.content.promotionBoardAvailability,
+        ReaderSummaryPromotionBoardAvailability.unavailable,
+      );
+      expect(summary.content.topReads, isEmpty);
+      expect(summary.content.newsWithoutRatingPosts, isEmpty);
+    });
+  }
+
+  test(
+    'reads an emptied day ranked under an old policy as rebuild required',
+    () {
+      final rebuild = mapper.readerSummaryToDomain(
+        readerSummaryApiDto(
+          bindPromotionAttestations: false,
+          freshnessLabel: 'Stale',
+          freshnessReason: 'ranking_policy_changed',
+          content: readerSummaryContentApiDto(
+            topReads: const [],
+            selectedPosts: const [],
+            interestSections: const [],
+          ),
+        ),
+      );
+
+      expect(
+        rebuild.content.promotionBoardAvailability,
+        ReaderSummaryPromotionBoardAvailability.rebuildRequired,
+      );
+      expect(rebuild.content.topReads, isEmpty);
+      expect(rebuild.content.newsWithoutRatingPosts, isEmpty);
+    },
+  );
 
   test('accepts only an authority-empty no_signal promotion board', () {
-    final noSignal = mapper.readerSummaryToDomain(
-      readerSummaryApiDto(
-        bindPromotionAttestations: false,
-        topStories: const [],
-        storyClusterIds: const [],
-        storyClusterAuthorities: const [],
-        citations: const [],
-        content: readerSummaryContentApiDto(
-          qualityState: const ReaderSummaryQualityStateApiDto(
-            status: 'no_signal',
-            flags: ['no_signal'],
-            warnings: [],
-            isSingleSource: false,
+    ReaderSummary emptyBoard({required bool noSignal}) =>
+        mapper.readerSummaryToDomain(
+          readerSummaryApiDto(
+            bindPromotionAttestations: false,
+            topStories: const [],
+            storyClusterIds: const [],
+            storyClusterAuthorities: const [],
+            citations: const [],
+            content: readerSummaryContentApiDto(
+              qualityState: noSignal
+                  ? const ReaderSummaryQualityStateApiDto(
+                      status: 'no_signal',
+                      flags: ['no_signal'],
+                      warnings: [],
+                      isSingleSource: false,
+                    )
+                  : null,
+              topReads: const [],
+              selectedPosts: const [],
+              interestSections: const [],
+            ),
           ),
-          topReads: const [],
-          selectedPosts: const [],
-          interestSections: const [],
-        ),
-      ),
-    );
-    final ordinaryEmpty = mapper.readerSummaryToDomain(
-      readerSummaryApiDto(
-        bindPromotionAttestations: false,
-        topStories: const [],
-        storyClusterIds: const [],
-        storyClusterAuthorities: const [],
-        citations: const [],
-        content: readerSummaryContentApiDto(
-          topReads: const [],
-          selectedPosts: const [],
-          interestSections: const [],
-        ),
-      ),
-    );
+        );
 
     expect(
-      noSignal.content.promotionBoardAvailability,
+      emptyBoard(noSignal: true).content.promotionBoardAvailability,
       ReaderSummaryPromotionBoardAvailability.available,
     );
     expect(
-      ordinaryEmpty.content.promotionBoardAvailability,
+      emptyBoard(noSignal: false).content.promotionBoardAvailability,
       ReaderSummaryPromotionBoardAvailability.unavailable,
     );
   });
 }
-
-ReaderSummaryApiDto _summary({
-  required List<int> top,
-  required List<int> additional,
-  List<int>? authorityOrder,
-}) {
-  final authority = authorityOrder ?? [...top, ...additional];
-  return readerSummaryApiDto(
-    bindPromotionAttestations: false,
-    topStories: const [],
-    content: readerSummaryContentApiDto(
-      topReads: [
-        for (final entry in top.indexed)
-          _item(entry.$2, placement: 'top', slot: entry.$1 + 1),
-      ],
-      selectedPosts: [
-        for (final entry in additional.indexed)
-          _item(entry.$2, placement: 'additional', slot: entry.$1 + 1),
-      ],
-      interestSections: const [],
-    ),
-    storyClusterIds: [for (final index in authority) 'story-$index'],
-    storyClusterAuthorities: [
-      for (final index in authority)
-        ReaderSummaryStoryClusterAuthorityApiDto(
-          id: 'story-$index',
-          feedItemIds: ['feed-$index'],
-          providerKeys: const ['rss'],
-        ),
-    ],
-    citations: [
-      for (final index in authority)
-        summaryCitationApiDto(
-          id: 'citation-$index',
-          feedItemId: 'feed-$index',
-          sourceItemId: 'source-$index',
-          providerKey: 'rss',
-          canonicalUrl: 'https://example.test/story-$index',
-        ),
-    ],
-  );
-}
-
-TopReadApiDto _item(
-  int index, {
-  required String placement,
-  required int slot,
-}) => TopReadApiDto(
-  storyClusterId: 'story-$index',
-  cardKind: placement == 'top'
-      ? 'curated_top_read'
-      : 'additional_notable_story',
-  promotionAttestation: ReaderPostPromotionAttestationApiDto(
-    schemaVersion: 'reader_post_promotion_attestation.v3',
-    policyVersion: 'reader_post_promotion.v3',
-    candidateId: 'feed-$index',
-    canonicalIdentity: 'https://example.test/story-$index',
-    placement: placement,
-    slot: slot,
-    decision: placement == 'top' ? 'promote_top' : 'promote_additional',
-    citationIds: ['citation-$index'],
-    assessment: const {},
-    comparator: {
-      'usefulness': 'useful',
-      'relevance': 'central',
-    },
-    presentation: const {},
-    providerKey: 'rss',
-    storyId: 'story-$index',
-    exactPublishedAt: '2026-09-${20 - index}T08:00:00.000000Z',
-  ),
-  title: 'Synthetic story $index',
-  providerKey: 'rss',
-  reason: 'Synthetic policy-authorized evidence.',
-  confirmedProviderKeys: const ['rss'],
-  publishedAt: DateTime.utc(2026, 9, 20 - index, 8),
-  citationIds: ['citation-$index'],
-  canonicalUrl: 'https://example.test/story-$index',
-);
