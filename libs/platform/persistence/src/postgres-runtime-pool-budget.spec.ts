@@ -9,6 +9,7 @@ import {
 import {
   BOUNDED_POSTGRES_TEST_ONLY_FILES,
   BOUNDED_POSTGRES_TEST_POOL_MAXIMUMS,
+  POSTGRES_DIRECT_CONSTRUCTION_INVENTORY,
 } from './postgres-runtime-pool-budget-test-inventory';
 import {
   directDatabaseConstructions,
@@ -196,132 +197,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       .sort();
 
     // Cursor cleanup regression uses installed Pool lifecycle with a controlled wire client and an unused pool.
-    expect(rawConstructions).toEqual(expectedSourceList(`
-      libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts:Pool
-      libs/platform/persistence/src/postgres-runtime-pool-commit-ack.spec-support.ts:Pool
-      libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:Pool
-      libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:PrismaPg
-      libs/platform/persistence/src/postgres-runtime-pool.ts:Pool
-      libs/platform/persistence/src/postgres-runtime-pool.ts:PrismaPg
-      prisma/seed.ts:Pool
-      prisma/seed.ts:PrismaClient
-      prisma/seed.ts:PrismaPg
-      scripts/backfill-github-trending-feed.ts:Pool
-      scripts/backfill-reader-summary-weekly-daily-certifications.ts:Pool
-      scripts/backfill/rss-current-postgres-boundary-20261007/setup.ts:Pool
-      scripts/backfill/rss-current-postgres-boundary-20261007/setup.ts:PrismaClient
-      scripts/backfill/rss-current-postgres-boundary-20261007/setup.ts:PrismaPg
-      scripts/build-reader-summary-recovery-terminal-manifest.ts:Pool
-      scripts/capture-durable-backend-e2e-loop.ts:Pool
-      scripts/capture-reader-summary-multi-day-quality-corpus.ts:Pool
-      scripts/capture-reader-summary-multi-day-quality-target-manifest.ts:Pool
-      scripts/capture-reader-summary-promotion-v2-canary-receipt.ts:Pool
-      scripts/check-feed-promotion-index-recovery-postgres.ts:Pool
-      scripts/check-feed-promotion-index-recovery.ts:Pool
-      scripts/check-feed-promotion-keyset-plan-postgres.ts:Pool
-      scripts/check-feed-promotion-keyset-plan-postgres.ts:Pool
-      scripts/check-feed-promotion-keyset-plan-postgres.ts:PrismaPg
-      scripts/check-github-repo-radar-prisma-live-e2e.ts:Pool
-      scripts/check-hn-rss-recovery-local-postgres.ts:Pool
-      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
-      scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
-      scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
-      scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
-      scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts:Pool
-      scripts/check-reader-summary-multi-day-quality.ts:Pool
-      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
-      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
-      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
-      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
-      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
-      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
-      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
-      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
-      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
-      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
-      scripts/check-reader-summary-production-regeneration-smoke.ts:Pool
-      scripts/check-reader-summary-publication-postgres.ts:Pool
-      scripts/check-reader-summary-publication-postgres.ts:Pool
-      scripts/check-reader-summary-publication-postgres.ts:Pool
-      scripts/check-reader-summary-publication-postgres.ts:Pool
-      scripts/check-reader-summary-publication-postgres.ts:Pool
-      scripts/check-reader-summary-publication-postgres.ts:Pool
-      scripts/check-reader-summary-publication-postgres.ts:Pool
-      scripts/check-reader-summary-recovery-candidate-staging-postgres.ts:Pool
-      scripts/check-reader-summary-recovery-candidate-staging-postgres.ts:Pool
-      scripts/check-reader-summary-source-quality-trace.ts:Pool
-      scripts/check-reader-summary-top-read-ranking.ts:Pool
-      scripts/check-reader-summary-topic-map-real-data.ts:Pool
-      scripts/check-reader-summary-weekly-daily-certifications-postgres.ts:Pool
-      scripts/check-reader-summary-weekly-execution-receipt-postgres.ts:Pool
-      scripts/check-reader-summary-weekly-production-postgres.ts:Pool
-      scripts/check-source-query-planner-real-binding-canary.ts:Pool
-      scripts/check-summary-feedback-calibration-report.ts:Pool
-      scripts/check-summary-memory-product-loop.ts:Pool
-      scripts/check-summary-topic-recommendation-rest-prisma-live.ts:Pool
-      scripts/check-tenant-rls-postgres.ts:Pool
-      scripts/check-tenant-rls-postgres.ts:Pool
-      scripts/check-tenant-rls-postgres.ts:Pool
-      scripts/check-tenant-rls-postgres.ts:Pool
-      scripts/check-yesterday-reader-summary-artifact-quality.ts:Pool
-      scripts/check-yesterday-social-collection-quality.ts:Pool
-      scripts/import-hn-verified-remainder.ts:Pool
-      scripts/import-rss-sep24-verified.postgres.spec.ts:Pool
-      scripts/import-rss-sep24-verified.postgres.spec.ts:Pool
-      scripts/import-rss-sep24-verified.ts:Pool
-      scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
-      scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
-      scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts:Pool
-      scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts:Pool
-      scripts/lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli.ts:Pool
-      scripts/lib/reader-summary-daily-cursor-fixture-cleanup.spec.ts:Pool
-      scripts/lib/reader-summary-daily-cursor-fixture-cleanup.spec.ts:Pool
-      scripts/lib/reader-summary-daily-terminal-runtime-connection.ts:Pool
-      scripts/lib/reader-summary-first-publication-pg18-crash.spec-support.ts:Pool
-      scripts/lib/reader-summary-first-publication-pg18.spec-support.ts:Pool
-      scripts/lib/reader-summary-production-day-scope.ts:Pool
-      scripts/lib/reader-summary-promotion-v2-historical-postgres.ts:Pool
-      scripts/lib/reader-summary-quality-dashboard-report-builder.ts:Pool
-      scripts/lib/reader-summary-ready-delivery-postgres-fixture.ts:Pool
-      scripts/lib/reader-summary-ready-delivery-postgres-fixture.ts:Pool
-      scripts/lib/reader-summary-successor-fixture-migrations.ts:Pool
-      scripts/lib/reader-value-postgres-fixture.ts:Pool
-      scripts/lib/reader-value-postgres-fixture.ts:Pool
-      scripts/lib/reader-value-postgres-fixture.ts:Pool
-      scripts/lib/social-source-private-input-database.ts:Pool
-      scripts/lib/yesterday-social-replay-support.ts:Pool
-      scripts/prepare-reader-summary-successor-fixture.ts:Pool
-      scripts/prepare-reader-summary-successor-fixture.ts:Pool
-      scripts/quickstart/migrate.ts:Pool
-      scripts/quickstart/migrate.ts:Pool
-      scripts/quickstart/seed-workspace.ts:Pool
-      scripts/quickstart/seed-workspace.ts:PrismaClient
-      scripts/quickstart/seed-workspace.ts:PrismaPg
-      scripts/read-reader-summary-daily-terminal-set-receipt.ts:Pool
-      scripts/reader-summary-publication-postgres-legacy.ts:Pool
-      scripts/reader-summary-publication-postgres-privileges.ts:Pool
-      scripts/reader-summary-publication-postgres-privileges.ts:Pool
-      scripts/reader-summary-publication-postgres-privileges.ts:Pool
-      scripts/reader-summary-publication-postgres-privileges.ts:Pool
-      scripts/reader-summary-publication-postgres-privileges.ts:Pool
-      scripts/reader-summary-publication-postgres-privileges.ts:Pool
-      scripts/reader-summary-publication-postgres-privileges.ts:Pool
-      scripts/run-hn-rss-recovery.ts:Pool
-      scripts/run-reader-promotion-v2-production-canary.ts:Pool
-      scripts/run-reader-summary-clean-real-day-collection.ts:Pool
-      scripts/run-reader-summary-promotion-v2-rollback.ts:Pool
-      scripts/run-reader-summary-weekly-production.ts:Pool
-      scripts/run-reader-summary-weekly-review-producer.ts:Pool
-      test/feed-reader-summary-coverage-pool.integration.spec.ts:Pool
-      test/feed-reader-summary-coverage-pool.integration.spec.ts:PrismaPg
-    `));
+    expect(rawConstructions).toEqual(expectedSourceList(POSTGRES_DIRECT_CONSTRUCTION_INVENTORY));
   });
   it('keeps the historical refresh race writer reachable only from its native test gate', () => {
     const helper = 'scripts/lib/reader-summary-new-input-refresh-native-concurrency.ts';
@@ -473,6 +349,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-weekly-publication-github-fixture.ts
       scripts/lib/reader-summary-weekly-review-manifest-postgres-contract.ts
       scripts/lib/reader-value-assessment-publication-acl.ts
+      scripts/lib/reader-value-postgres-fixture-cleanup.spec.ts
+      scripts/lib/reader-value-postgres-fixture-cleanup.ts
       scripts/lib/reader-value-postgres-fixture.ts
       scripts/lib/social-source-private-input-database.spec.ts
       scripts/lib/social-source-private-input-database.ts
