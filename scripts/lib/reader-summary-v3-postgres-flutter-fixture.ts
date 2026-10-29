@@ -84,7 +84,7 @@ export const canonicalizeSqlRestTransport = (value: unknown): unknown => {
   };
   const transport = normalize(rawTransport) as Record<string, unknown>;
   const brief = requiredRecord(transport.readerBrief, "readerBrief");
-  for (const lane of ["topReads", "selectedPosts"] as const) {
+  for (const lane of ["topReads", "selectedPosts", "newsWithoutRatingPosts"] as const) {
     const cards = brief[lane];
     if (cards === undefined) continue;
     if (!Array.isArray(cards)) throw new Error(`SQL REST ${lane} is not an array`);
@@ -113,7 +113,7 @@ const validateV3TransportBindings = (
   transport: Record<string, unknown>,
 ): void => {
   const brief = requiredRecord(transport.readerBrief, "readerBrief");
-  for (const lane of ["topReads", "selectedPosts"] as const) {
+  for (const lane of ["topReads", "selectedPosts", "newsWithoutRatingPosts"] as const) {
     const cards = brief[lane];
     if (cards === undefined) continue;
     if (!Array.isArray(cards)) throw new Error(`SQL REST ${lane} is not an array`);

@@ -22,6 +22,12 @@ import { strictStoryRelationTitleEvidence } from
   "./story-relation-title-evidence";
 
 import { samePrimaryReleaseEvent } from "./story-release-event-identity";
+import {
+  isMultiSourceStoryHost,
+  isPlatformStoryCopy,
+  storyKeyHost,
+  storySourceIndependence,
+} from "./story-source-identity";
 
 export const belongsToVerifiedStoryCluster = (
   item: SummaryEvidenceItem,
@@ -32,10 +38,7 @@ export const belongsToVerifiedStoryCluster = (
 ): boolean =>
   clusterItems.length > 0 &&
   clusterItems.every((candidate) => {
-    if (
-      candidate.providerKey !== item.providerKey &&
-      isDeterministicCrossProviderStoryMatch(item, candidate, policy)
-    ) {
+    if (isDeterministicIndependentSourceStoryMatch(item, candidate, policy)) {
       return true;
     }
 
@@ -60,20 +63,32 @@ export const hasCrossProviderClaimFacetConflict = (
       !storyClaimFacetsAreCompatible(item, candidate, policy),
   );
 
-export const isDeterministicCrossProviderStoryMatch = (
+/**
+ * Deterministic same-story match of two posts from independent sources:
+ * different providers, or different publishers/authors on a multi-source
+ * host. How much evidence counts depends on that independence (see
+ * `storySourceIndependence`): posts of one platform need a copy (exact
+ * headline plus the same body or origin link), Google News publishers an
+ * exact or semantic headline match.
+ */
+export const isDeterministicIndependentSourceStoryMatch = (
   item: SummaryEvidenceItem,
   head: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
 ): boolean => {
-  if (item.providerKey === head.providerKey) {
-    return false;
-  }
   const itemKey = storyKey(item, policy);
   const headKey = storyKey(head, policy);
+  const independence = storySourceIndependence(item, itemKey, head, headKey);
+  if (independence === undefined) {
+    return false;
+  }
   if (itemKey !== headKey && canonicalStoryKeysConflict(itemKey, headKey)) {
     return false;
   }
 
+  if (independence === "platform_copy") {
+    return hasStrongExactTitleIdentity(item, head) && isPlatformStoryCopy(item, head);
+  }
   if (hasStrongExactTitleIdentity(item, head)) {
     return true;
   }
@@ -117,7 +132,7 @@ export const isDeterministicCrossProviderStoryMatch = (
     (sharedNonAnchorTokens > 0 || sharedModelVersionTokens > 0) &&
     sharedTokens >= policy.crossSourceMinSharedTopicTokens;
 
-  return semanticMatch || productEventMatch;
+  return semanticMatch || (independence === "provider" && productEventMatch);
 };
 
 export const storyClaimFacetsAreCompatible = (
@@ -187,14 +202,23 @@ export const hasSharedStoryEventFacet = (
   return itemEventFacets.some((facet) => candidateEventFacets.has(facet));
 };
 
+/**
+ * Two different canonical keys that name different stories by construction:
+ * two repositories, or two URLs of one ordinary site. URLs on a multi-source
+ * host (news.google.com, x.com, reddit.com) are posts of different sources
+ * and do not conflict.
+ */
 export const canonicalStoryKeysConflict = (
   left: string,
   right: string,
-): boolean =>
-  (left.startsWith("github-repo:") && right.startsWith("github-repo:")) ||
-  (left.startsWith("url:") &&
-    right.startsWith("url:") &&
-    left.slice(4).split("/").at(0) === right.slice(4).split("/").at(0));
+): boolean => {
+  if (left.startsWith("github-repo:") && right.startsWith("github-repo:")) {
+    return true;
+  }
+  const host = storyKeyHost(left);
+  return host !== undefined && host === storyKeyHost(right) &&
+    !isMultiSourceStoryHost(host);
+};
 
 export const verifiedStoryRelationPairKey = (
   leftFeedItemId: string,

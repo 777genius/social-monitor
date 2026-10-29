@@ -1,10 +1,13 @@
 import { validateReaderValueAnswers } from
   "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
-import { canonicalPromotionPayload, promotionPayloadDigest } from "../../../domain";
+import { canonicalPromotionPayload, promotionPayloadDigest,
+  READER_PROMOTION_POLICY_STAMP } from "../../../domain";
 import { readerPostPresentationV3Identity } from
   "../../../domain/services/reader-post-presentation-v3";
 import { assertV3PublicDisplayHeadlineSealPayload } from
   "./prisma-reader-summary-display-schema";
+import { assertPromotionComparatorPayload } from
+  "./prisma-reader-summary-promotion-comparator-schema";
 import { dates, exactKeys, exactValue, invalid, nonEmptyUniqueStringArray,
   nonNegativeInteger, oneOf, requireRecord, strings } from
   "./prisma-reader-summary-promotion-schema-primitives";
@@ -21,7 +24,7 @@ export const assertV3PromotionAttestation = (
   strings(item, ["schemaVersion", "policyVersion", "digestVersion", "digest",
     "canonicalPayload", "artifactId", "sourceWindowId", "placement", "candidateId",
     "provider", "canonicalIdentity", "storyId", "publishedAt", "decision"]);
-  exactValue(item.policyVersion, "reader_post_promotion.v3", "policyVersion");
+  exactValue(item.policyVersion, READER_PROMOTION_POLICY_STAMP, "policyVersion");
   exactValue(item.digestVersion, "reader_post_promotion_digest.sha256.v3", "digestVersion");
   if (!/^[0-9a-f]{64}$/u.test(item.digest as string)) invalid("digest");
   dates(item, ["periodStartedAt", "periodEndedAt", "ingestionCutoff"], []);
@@ -32,9 +35,8 @@ export const assertV3PromotionAttestation = (
     .test(item.publishedAt as string)) invalid("publishedAt");
   nonNegativeInteger(item.slot, "slot");
   if ((item.slot as number) < 1) invalid("slot");
-  oneOf(item.placement, ["top", "additional"], "placement");
-  exactValue(item.decision, item.placement === "top" ? "promote_top" :
-    "promote_additional", "decision");
+  oneOf(item.placement, ["top", "additional", "news"], "placement");
+  exactValue(item.decision, `promote_${item.placement as string}`, "decision");
   nonEmptyUniqueStringArray(item.citationIds, "citationIds");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
     .test(item.candidateId as string)) invalid("candidateId");
@@ -51,16 +53,12 @@ export const assertV3PromotionAttestation = (
   }
   if (!canonicalTimestamp(assessment.assessedAt) ||
       !validateReaderValueAnswers(assessment.answers).ok) invalid("assessment.answers");
-  const comparator = requireRecord(item.comparator, "comparator");
-  exactKeys(comparator, ["usefulness", "relevance", "publishedAt", "candidateId"],
-    [], "comparator");
   const answers = assessment.answers as Record<string, { readonly choice: unknown }>;
-  if (comparator.usefulness !== answers.usefulness?.choice ||
-      comparator.relevance !== answers.relevance?.choice ||
-      !["useful", "important"].includes(comparator.usefulness as string) ||
-      !["relevant", "central"].includes(comparator.relevance as string) ||
-      comparator.publishedAt !== item.publishedAt ||
-      comparator.candidateId !== item.candidateId) invalid("comparator");
+  assertPromotionComparatorPayload(item.comparator, {
+    usefulness: answers.usefulness?.choice, relevance: answers.relevance?.choice,
+    publishedAt: item.publishedAt, candidateId: item.candidateId,
+    newsPlacement: item.placement === "news",
+  });
   const presentation = requireRecord(item.presentation, "presentation");
   exactKeys(presentation, ["schemaVersion", "presentationInputDigest", "presentationIdentity",
     "displayHeadline"], [], "presentation");

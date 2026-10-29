@@ -1,11 +1,13 @@
 import {
   StoryClusteringService,
   type ReaderPostPromotionV3Candidate,
+  type ReaderSummaryPreparationCandidate,
   type StoryCluster,
   type SummaryEvidenceItem,
 } from "../../domain";
 import { STORY_RANKING_POLICY_V1 } from
   "../../domain/policies/story-ranking-policy";
+import { storyKey } from "../../domain/services/story-key-normalizer";
 import type { ReaderSummaryScopeIdentity } from
   "../../domain/value-objects/reader-summary-scope";
 
@@ -124,3 +126,81 @@ const compactExactStoryIdentities = (
 
 const compareUtf8Bytes = (left: string, right: string): number =>
   Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
+
+/**
+ * Joins candidates sharing a source item, an explicit story, a deterministic
+ * story key or a story-relation cluster into one story id.
+ */
+export const normalizeDuplicateStoryIds = (
+  candidates: readonly ReaderPostPromotionV3Candidate[],
+  explicitStoryIds: ReadonlyMap<string, string | undefined>,
+  deterministicStoryIds: ReadonlyMap<string, string>,
+  storyClusters: readonly StoryCluster[],
+): ReaderPostPromotionV3Candidate[] => {
+  const parent = new Map(candidates.map((candidate) =>
+    [candidate.candidateId, candidate.candidateId] as const));
+  const find = (id: string): string => {
+    const next = parent.get(id)!;
+    if (next === id) return id;
+    const root = find(next);
+    parent.set(id, root);
+    return root;
+  };
+  const union = (left: string, right: string): void => {
+    const roots = [find(left), find(right)].sort(compareUtf8Bytes);
+    if (roots[0] !== roots[1]) parent.set(roots[1]!, roots[0]!);
+  };
+  const bySource = new Map<string, string>();
+  const byStory = new Map<string, string>();
+  const byDeterministicStory = new Map<string, string>();
+  for (const candidate of candidates) {
+    for (const [key, map] of [[candidate.sourceItemId, bySource],
+      [candidate.storyId, byStory],
+      [deterministicStoryIds.get(candidate.candidateId)!, byDeterministicStory]] as const) {
+      const previous = map.get(key);
+      if (previous === undefined) map.set(key, candidate.candidateId);
+      else union(previous, candidate.candidateId);
+    }
+  }
+  for (const cluster of storyClusters) {
+    const memberIds = [cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds];
+    const first = memberIds[0];
+    if (first === undefined || !parent.has(first)) continue;
+    for (const memberId of memberIds.slice(1)) {
+      if (parent.has(memberId)) union(first, memberId);
+    }
+  }
+  const groups = new Map<string, ReaderPostPromotionV3Candidate[]>();
+  for (const candidate of candidates) {
+    const root = find(candidate.candidateId);
+    const group = groups.get(root);
+    if (group === undefined) groups.set(root, [candidate]);
+    else group.push(candidate);
+  }
+  const storyByCandidate = new Map<string, string>();
+  for (const group of groups.values()) {
+    const explicit = group.flatMap((candidate) => {
+      const value = explicitStoryIds.get(candidate.candidateId);
+      return value === undefined ? [] : [value];
+    }).sort(compareUtf8Bytes);
+    const storyId = explicit[0] ?? group.map((candidate) => candidate.storyId)
+      .sort(compareUtf8Bytes)[0]!;
+    for (const candidate of group) storyByCandidate.set(candidate.candidateId, storyId);
+  }
+  return candidates.map((candidate) => ({ ...candidate,
+    storyId: storyByCandidate.get(candidate.candidateId)! }));
+};
+
+/** Canonical story key of one frozen candidate (title, body and URL tokens). */
+export const deterministicPromotionStoryId = (
+  candidate: ReaderSummaryPreparationCandidate,
+  title: string,
+  body: string,
+): string => `story:${storyKey({
+  feedItemId: candidate.candidateId, sourceItemId: candidate.sourceItemId,
+  sourceBindingId: candidate.sourceBindingId, interestId: "frozen-v3",
+  providerKey: candidate.providerKey, canonicalUrl: candidate.canonicalIdentity,
+  title, bodyPreview: body, publishedAt: new Date(candidate.publishedAt),
+  observedAt: new Date(candidate.observedAt), score: 0, whyImportant: [],
+}, STORY_RANKING_POLICY_V1)}`;

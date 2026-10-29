@@ -394,6 +394,7 @@ const setup = async (cadence: "daily" | "weekly" = "weekly") => {
           assessmentId: request.interestId === id(10) ? id(50) : id(51),
           inputSha256: "d".repeat(64), publishedAt: "2026-09-20T12:00:00.000000Z",
           observedAt: "2026-09-20T12:01:00.000000Z", sourceKind: "article",
+          engagementObservedAt: null,
           canonicalIdentity: fixture.missingCanonicalIdentity
             ? "" : "https://example.test/source" }] };
       return { ok: true, config, manifest,

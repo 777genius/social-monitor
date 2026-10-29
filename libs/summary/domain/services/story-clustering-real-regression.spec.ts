@@ -4,7 +4,7 @@ import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item
 import { STORY_RANKING_POLICY_V1 } from "../policies/story-ranking-policy";
 import { StoryClusteringService } from "./story-clustering.service";
 import {
-  isDeterministicCrossProviderStoryMatch,
+  isDeterministicIndependentSourceStoryMatch,
   isVerifiedStoryRelationGuardEligible,
   verifiedStoryRelationPairKey,
 } from "./story-cluster-membership";
@@ -89,7 +89,7 @@ describe("real reader-summary clustering regressions", () => {
     const deterministic = clusterer.cluster({ identity, items, limit: 10 });
 
     expect(
-      isDeterministicCrossProviderStoryMatch(
+      isDeterministicIndependentSourceStoryMatch(
         items[0]!,
         items[1]!,
         STORY_RANKING_POLICY_V1,
@@ -296,7 +296,7 @@ describe("real reader-summary clustering regressions", () => {
 
     expect(
       pairs.map(([left, right]) =>
-        isDeterministicCrossProviderStoryMatch(
+        isDeterministicIndependentSourceStoryMatch(
           left,
           right,
           STORY_RANKING_POLICY_V1,

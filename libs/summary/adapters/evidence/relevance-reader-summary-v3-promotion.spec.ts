@@ -9,7 +9,7 @@ import { candidate, githubEvidence, id, setup, TestPresentation,
 describe("RelevanceReaderSummaryV3Promotion", () => {
   // Regression: a workspace must pool disjoint interest assessments before
   // selecting one global Top, with each assessment read in its own scope.
-  it("pools disjoint frozen interests into one globally ordered Top", async () => {
+  it("pools disjoint frozen interests into one globally ordered board", async () => {
     const first = candidate(1, "useful", "relevant");
     const second = candidate(2, "important", "central");
     const fixture = workspaceSetup([first, second]);
@@ -18,8 +18,11 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
 
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
+    // Reddit is ranked and RSS is unranked: one global board, two blocks.
     expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
-      .toEqual([second.id, first.id]);
+      .toEqual([second.id]);
+    expect(result.evidence.promotionV3?.news.map((value) => value.candidateId))
+      .toEqual([first.id]);
     expect(fixture.readInterests).toEqual([id(903), id(904)]);
     expect(result.evidence.selectedEvidence.map((value) => value.interestId))
       .toEqual([id(904), id(903)]);
@@ -48,8 +51,10 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
       (_, index) => id(903 + index)));
     expect(presentation.attempted).toBe(4);
     expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
-      .toEqual([id(22), id(23), id(45), id(67)]);
-    expect(result.evidence.promotionV3?.top[0]).toMatchObject({
+      .toEqual([id(23), id(67)]);
+    expect(result.evidence.promotionV3?.news.map((value) => value.candidateId))
+      .toEqual([id(22), id(45)]);
+    expect(result.evidence.promotionV3?.news[0]).toMatchObject({
       assessmentId: id(122), answers: { usefulness: { choice: "important" } },
     });
     expect(result.evidence.promotionV3?.excluded.filter((value) =>
@@ -122,11 +127,11 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     });
 
   // Regression: each interest used to form its own shortlist. Workspace Top
-  // and Additional must instead share one global cap and provider limit.
-  it("applies one deterministic Top and Additional cap across both interests", async () => {
+  // and Show more must instead share one global order without a network cap.
+  it("applies one deterministic Top and Show more order across both interests", async () => {
     const candidates = Array.from({ length: 20 }, (_, index) => ({
       ...candidate(index + 1, "important", "central"),
-      provider: index < 10 ? "rss" : "reddit",
+      provider: index < 10 ? "hacker-news" : "reddit",
     }));
     const fixture = workspaceSetup(candidates);
 
@@ -136,18 +141,18 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
     expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
-      .toEqual([20, 19, 18, 17, 16, 15, 14, 10, 9, 8, 7, 6].map(id));
+      .toEqual([20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9].map(id));
     expect(result.evidence.promotionV3?.additional.map((value) => value.candidateId))
-      .toEqual([13, 12, 11, 5, 4, 3, 2, 1].map(id));
+      .toEqual([8, 7, 6, 5, 4, 3, 2, 1].map(id));
     expect(result.evidence.promotionV3?.top.filter((value) =>
-      value.providerKey === "reddit")).toHaveLength(7);
+      value.providerKey === "reddit")).toHaveLength(10);
     expect(result.evidence.selectedEvidence).toHaveLength(20);
   });
 
-  it("presents a later provider that can change a full global Top", async () => {
+  it("presents lower-ranked posts that still fit Show more", async () => {
     const candidates = Array.from({ length: 34 }, (_, index) => ({
       ...candidate(index + 1, index < 32 ? "important" : "useful", "central"),
-      provider: index < 32 ? "rss" : "reddit",
+      provider: index < 32 ? "hacker-news" : "reddit",
     }));
     const presentation = new TestPresentation();
     const fixture = workspaceSetup(candidates, undefined, presentation);
@@ -160,7 +165,9 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(presentation.batches.flat()).toContain(id(34));
     if (result.kind !== "ready") return;
     expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
-      .toEqual([32, 31, 30, 29, 28, 27, 26, 34, 33].map(id));
+      .toEqual([32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21].map(id));
+    expect(result.evidence.promotionV3?.additional.slice(-2).map((value) =>
+      value.candidateId)).toEqual([34, 33].map(id));
   });
 
   // Regression: a weekly workspace can contain thousands of assessed noise
@@ -180,7 +187,9 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
     expect(result.evidence.promotionV3?.top.map((item) => item.candidateId))
-      .toEqual([id(1), id(2)]);
+      .toEqual([id(2)]);
+    expect(result.evidence.promotionV3?.news.map((item) => item.candidateId))
+      .toEqual([id(1)]);
   });
 
   // Regression: a large assessed noise cluster must fit the workspace budget
@@ -221,6 +230,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
   it("applies the relation inventory cap after exact source consolidation", async () => {
     const candidates = Array.from({ length: 5_001 }, (_, index) => ({
       ...candidate(index + 1, "useful", "relevant", "one-shared-story"),
+      provider: "reddit",
       sourceItemId: id(200), canonicalIdentity: "https://example.test/shared",
       publishedAt: "2026-09-20T12:00:00.000001Z",
       observedAt: "2026-09-20T12:01:00.000001Z",
@@ -251,11 +261,15 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
 
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
-    expect(result.evidence.clusters).toHaveLength(24);
+    // 86 ranked Reddit stories fill Top + Show more (48); 86 RSS stories fill news (16).
+    expect(result.evidence.clusters).toHaveLength(64);
     const selection = result.evidence.promotionV3!;
-    expect(new Set([...selection.top, ...selection.additional, ...selection.excluded]
-      .map((value) => value.candidateId))).toEqual(new Set(candidates.map((value) => value.id)));
-    expect(result.evidence.selectedEvidence).toHaveLength(24);
+    expect([selection.top.length, selection.additional.length, selection.news.length])
+      .toEqual([12, 36, 16]);
+    expect(new Set([...selection.top, ...selection.additional, ...selection.news,
+      ...selection.excluded].map((value) => value.candidateId)))
+      .toEqual(new Set(candidates.map((value) => value.id)));
+    expect(result.evidence.selectedEvidence).toHaveLength(64);
     expect(presentation.attempted).toBeLessThanOrEqual(64);
     expect(result.evidence.selectedEvidence.every((value) =>
       value.readerHeadline?.status === "accepted")).toBe(true);
@@ -316,7 +330,8 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
   // conflicting Jev tuples. The globally stronger complete tuple wins,
   // while the selected story still attributes both interests.
   it("selects the stronger qualifying assessment for an overlapping source", async () => {
-    const first = candidate(1, "useful", "central", "shared-story");
+    const first = { ...candidate(1, "useful", "central", "shared-story"),
+      provider: "reddit" };
     const second = { ...candidate(2, "important", "relevant", "shared-story"),
       sourceItemId: first.sourceItemId };
     const fixture = workspaceSetup([first, second]);
@@ -352,7 +367,8 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
       candidate(1, "important", "central", "story-a"),
       candidate(2, "useful", "central", "story-a"),
       candidate(3, "useful", "relevant", "story-b"),
-    ], new TestPresentation(new Set([id(1)])));
+    ].map((value) => ({ ...value, provider: "reddit" })),
+    new TestPresentation(new Set([id(1)])));
 
     const result = await fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest });
@@ -360,7 +376,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
     expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
-      .toEqual([id(2), id(3)]);
+      .toEqual([id(3), id(2)]);
     expect(result.evidence.selectedEvidence.every((item) =>
       item.readerHeadline?.status === "accepted")).toBe(true);
   });
@@ -384,10 +400,32 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
     expect(presentation.batches).toEqual([[lead.id], [fallback.id]]);
-    expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
+    expect(result.evidence.promotionV3?.news.map((value) => value.candidateId))
       .toEqual([fallback.id]);
     expect(result.evidence.selectedEvidence[0]?.readerHeadline?.status)
       .toBe("accepted");
+  });
+
+  // Regression: a failed news.google.com headline frees its publisher, so a
+  // higher post of an already presented story becomes its representative.
+  // The planner must present it instead of failing the day as budget_exhausted.
+  it("presents a story's new representative after a publisher slot is freed", async () => {
+    const news = (ordinal: number, story: string, title: string) => ({
+      ...candidate(ordinal, "useful", "central", story), provider: "rss", title,
+      canonicalIdentity: `https://news.google.com/rss/articles/item-${ordinal}` });
+    const first = news(9, "story-s", "Quantum chip export rules tighten - Reuters");
+    const second = news(7, "story-t", "Battery recycling plant opens in Ohio - Reuters");
+    const third = news(5, "story-t", "Ohio battery recycler starts operations - Bloomberg");
+    const presentation = new TestPresentation(new Set([first.id]));
+    const fixture = workspaceSetup([first, second, third], undefined, presentation);
+
+    const result = await fixture.subject.build({ job: fixture.job,
+      manifest: fixture.manifest });
+
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(result.evidence.promotionV3?.news.map((value) => value.candidateId))
+      .toEqual([second.id]);
   });
 
   it("distinguishes no signal and presentation unavailable", async () => {
@@ -405,7 +443,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
   });
 
   it("reuses canonical story-key deduplication without an explicit story id", async () => {
-    const first = { ...candidate(1, "useful", "central"),
+    const first = { ...candidate(1, "useful", "central"), provider: "reddit",
       canonicalIdentity: "https://example.test/shared", storyId: undefined };
     const second = { ...candidate(2, "useful", "relevant"),
       canonicalIdentity: "https://example.test/shared", storyId: undefined };
@@ -416,10 +454,11 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
 
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
+    // Relevance is a gate only; the newer of two unknown-metric posts leads.
     expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
-      .toEqual([id(1)]);
+      .toEqual([id(2)]);
     expect(result.evidence.clusters).toHaveLength(1);
-    expect(result.evidence.clusters[0]?.duplicateFeedItemIds).toEqual([id(2)]);
+    expect(result.evidence.clusters[0]?.duplicateFeedItemIds).toEqual([id(1)]);
   });
 
   it("keeps a repository release and security issue in Top and summary evidence", async () => {
@@ -433,7 +472,8 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
       canonicalIdentity: "https://github.com/openai/codex/issues/42",
       title: "OpenAI Codex security issue 42",
       body: "A vulnerability affects the agent workflow." };
-    const fixture = setup([release, issue], new TestPresentation());
+    const fixture = setup([release, issue].map((value) =>
+      ({ ...value, provider: "github-repo-radar" })), new TestPresentation());
 
     const result = await fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest });
@@ -479,7 +519,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
   ])('sanitizes %s URLs through promotion and projection', async (_case, raw, safe) => {
     const marker = 'synthetic-marker-only';
     const fixture = setup([{ ...candidate(1, 'useful', 'central'),
-      canonicalIdentity: raw,
+      provider: 'reddit', canonicalIdentity: raw,
     }], new TestPresentation());
     const result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
     expect(result.kind).toBe('ready');
@@ -581,7 +621,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
   });
 
   it("publishes one stable representative for feed items sharing an assessment source", async () => {
-    const lead = candidate(1, "useful", "central", "story-a");
+    const lead = { ...candidate(1, "useful", "central", "story-a"), provider: "reddit" };
     const duplicate = { ...candidate(2, "useful", "central", "story-b"),
       sourceItemId: lead.sourceItemId, assessmentId: lead.assessmentId,
       sourceSnapshotSha256: lead.sourceSnapshotSha256,
@@ -620,10 +660,12 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
   });
 
   it("bounds presentation at 64 and marks the rest budget exhausted", async () => {
-    const presentation = new TestPresentation();
-    const fixture = setup(Array.from({ length: 67 }, (_, index) =>
-      candidate(index + 1, "useful", "relevant", `story-${index + 1}`)),
-    presentation);
+    // The 19 newest headlines fail, so fallbacks spend the whole budget.
+    const presentation = new TestPresentation(new Set(Array.from({ length: 19 },
+      (_, index) => id(67 - index))));
+    const fixture = setup(Array.from({ length: 67 }, (_, index) => ({
+      ...candidate(index + 1, "useful", "relevant", `story-${index + 1}`),
+      provider: "reddit" })), presentation);
 
     const result = await fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest });
@@ -633,6 +675,8 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     if (result.kind !== "ready") return;
     expect(result.evidence.promotionV3?.excluded.filter((value) =>
       value.reason === "presentation_budget_exhausted")).toHaveLength(3);
+    expect(result.evidence.promotionV3!.top.length +
+      result.evidence.promotionV3!.additional.length).toBe(45);
   });
 
   // Regression: a short Top cannot publish while unpresented qualifying
@@ -652,7 +696,8 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
       candidate(index + 1, "important", "central", "shared-story"));
     const laterStory = candidate(33, "useful", "relevant", "later-story");
     const presentation = new TestPresentation();
-    const fixture = setup([...sameStory, laterStory], presentation);
+    const fixture = setup([...sameStory, laterStory].map((value) =>
+      ({ ...value, provider: "reddit" })), presentation);
 
     const result = await fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest });
@@ -671,7 +716,8 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     }));
     const distinct = candidate(33, "useful", "relevant", "distinct-story");
     const presentation = new TestPresentation();
-    const fixture = setup([...duplicates, distinct], presentation);
+    const fixture = setup([...duplicates, distinct].map((value) =>
+      ({ ...value, provider: "reddit" })), presentation);
 
     const result = await fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest });
@@ -688,6 +734,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     const shared = candidate(1, "important", "central", "shared-story");
     const duplicates = Array.from({ length: 32 }, (_, index) => ({
       ...candidate(index + 1, "important", "central", `explicit-${index + 1}`),
+      provider: shared.provider,
       sourceItemId: shared.sourceItemId, assessmentId: shared.assessmentId,
       sourceSnapshotSha256: shared.sourceSnapshotSha256,
       inputSha256: shared.inputSha256, body: "a".repeat(64_001),
@@ -709,13 +756,16 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
   });
 
   it("reselects a same-story fallback after a local oversize batch outcome", async () => {
+    // Relevance no longer orders the board, so the same-story fallback is
+    // important too and only the lead is newer.
     const lead = { ...candidate(1, "important", "central", "shared-story"),
-      body: "a".repeat(64_001) };
-    const fallback = candidate(2, "useful", "central", "shared-story");
+      publishedAt: "2026-09-20T00:30:00.000001Z", body: "a".repeat(64_001) };
+    const fallback = candidate(2, "important", "central", "shared-story");
     const lower = Array.from({ length: 63 }, (_, index) =>
       candidate(index + 3, "useful", "relevant", `lower-${index}`));
     const presentation = new TestPresentation();
-    const fixture = setup([lead, fallback, ...lower], presentation);
+    const fixture = setup([lead, fallback, ...lower].map((value) =>
+      ({ ...value, provider: "reddit" })), presentation);
 
     const result = await fixture.subject.build({ job: fixture.job,
       manifest: fixture.manifest });
@@ -723,7 +773,8 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
     expect(result.kind).toBe("ready");
     expect(presentation.batches[0]).toEqual([id(65), id(64), id(63)]);
     expect(presentation.batches[1]?.[0]).toBe(id(2));
-    expect(presentation.attempted).toBe(63);
+    // Only the 48 ranked slots are planned: the fallback plus 47 lower posts.
+    expect(presentation.attempted).toBe(48);
   });
 
   it("still charges 64 distinct local oversize bindings", async () => {
@@ -857,7 +908,7 @@ describe("RelevanceReaderSummaryV3Promotion", () => {
   });
 
   it("normalizes DB timestamp spellings before strict V3 attestation mapping", async () => {
-    const shaped = { ...candidate(1, "useful", "central"),
+    const shaped = { ...candidate(1, "useful", "central"), provider: "reddit",
       publishedAt: "2026-09-20 00:00:01.123456+00:00",
       observedAt: "2026-09-20 00:01:01.000001+00",
       assessedAt: "2026-09-20 00:10:00.000001+00:00" };

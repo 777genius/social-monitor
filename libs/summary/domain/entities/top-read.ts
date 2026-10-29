@@ -5,6 +5,7 @@ import type { ReaderActionKind } from "./reader-action";
 import type { ProviderMetric } from "../value-objects/provider-metric-label";
 import type { PreviewMedia } from "../value-objects/preview-media";
 import type { SignalScore } from "../value-objects/signal-score";
+import type { READER_PROMOTION_POLICY_STAMP } from "../policies/reader-promotion-ranking";
 import type {
   ReaderSummaryEditorialScoreComponents,
   ReaderSummaryEditorialSlateEntry,
@@ -25,6 +26,7 @@ export type TopReadConfidence = {
 export const readerSummaryCardKinds = [
   "curated_top_read",
   "additional_notable_story",
+  "news_without_rating",
   "related_topic",
   "supplemental_trend",
   "unsupported",
@@ -49,8 +51,8 @@ export type TopRead = {
   readonly promotionPolicyVersion?:
     | "reader_post_promotion.v1"
     | "reader_post_promotion.v2"
-    | "reader_post_promotion.v3";
-  readonly promotionTier?: "top" | "additional";
+    | typeof READER_PROMOTION_POLICY_STAMP;
+  readonly promotionTier?: "top" | "additional" | "news";
   readonly promotionCandidateId?: string;
   readonly promotionCanonicalIdentity?: string;
   readonly editorialPolicyVersion?: ReaderSummaryEditorialSlateEntry["policyVersion"];
@@ -78,7 +80,7 @@ export type TopRead = {
   readonly whyImportant: readonly string[];
   readonly whyNow: string;
   readonly publishedAt?: Date;
-  /** Exact six-digit UTC value retained for V3 signed ordering and API transport. */
+  /** Exact six-digit UTC value retained for signed ordering and API transport. */
   readonly exactPublishedAt?: string;
   readonly canonicalUrl?: string;
   readonly previewMedia?: PreviewMedia;

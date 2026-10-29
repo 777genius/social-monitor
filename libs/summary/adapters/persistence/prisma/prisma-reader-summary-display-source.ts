@@ -10,6 +10,8 @@ export const encodeDisplaySourceContent = (content: ReaderSummaryContent | undef
     ...content,
     topReads: content.topReads.map(encode),
     ...(content.selectedPosts === undefined ? {} : { selectedPosts: content.selectedPosts.map(encode) }),
+    ...(content.newsWithoutRatingPosts === undefined ? {} : {
+      newsWithoutRatingPosts: content.newsWithoutRatingPosts.map(encode) }),
     interestSections: content.interestSections.map((section) => ({
       ...section, items: section.items.map(encode),
     })),

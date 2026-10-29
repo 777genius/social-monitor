@@ -4,6 +4,7 @@ export type ReaderSummaryPromotionAggregateMetrics = {
   readonly candidateCount: number;
   readonly topCount: number;
   readonly additionalCount: number;
+  readonly newsCount: number;
   readonly admittedEvidenceCount: number;
   readonly omittedEvidenceCount: number;
   readonly lifecycle: "evaluated" | "rejected" | "delivered";
@@ -45,6 +46,7 @@ export const recordReaderSummaryPromotionLifecycle = (params: {
     additionalCount: attestations.filter(
       (item) => item.placement === "additional",
     ).length,
+    newsCount: attestations.filter((item) => item.placement === "news").length,
     admittedEvidenceCount: admittedPromotionEvidenceIds.size,
     omittedEvidenceCount: 0,
     lifecycle: params.lifecycle,

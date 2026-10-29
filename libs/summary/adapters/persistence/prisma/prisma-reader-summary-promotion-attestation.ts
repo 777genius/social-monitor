@@ -7,6 +7,8 @@ import type {
   ReaderSummaryContent,
 } from "../../../domain";
 import { readerPostPromotionCardFields } from "../../../domain";
+import { supersededPromotionBoard } from
+  "./prisma-reader-summary-promotion-board-stamp";
 import {
   requireArray,
   requireDate,
@@ -93,8 +95,10 @@ export const normalizePersistedPromotionBoard = (input: {
   promotionAttestations: readonly ReaderPostPromotionAttestationAny[];
   promotionEvidenceFacts: ReaderPostPromotionAttestation["supportFacts"];
   content: ReaderSummaryContent | undefined;
-  promotionBoardState?: "legacy_unavailable";
+  promotionBoardState?: "legacy_unavailable" | "rebuild_required";
 }> => {
+  const superseded = supersededPromotionBoard(input);
+  if (superseded !== undefined) return superseded;
   const promotionAttestations = normalizePromotionAttestations(
     input.promotionAttestations,
   );
@@ -134,6 +138,7 @@ const isPrePromotionPersistedBoard = (input: {
   const cards = [
     ...content.topReads,
     ...(content.selectedPosts ?? []),
+    ...(content.newsWithoutRatingPosts ?? []),
     ...content.interestSections.flatMap((section) => section.items),
   ];
   return cards.every((card) => readerPostPromotionCardFields.every(

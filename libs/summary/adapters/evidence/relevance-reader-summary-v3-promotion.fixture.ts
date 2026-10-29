@@ -3,7 +3,7 @@ import type { ReaderValueAssessmentStore,
   "@social-monitor/relevance/application/contracts/reader-value-assessment-store";
 import type { ReaderValueAnswers, ReaderValueCriterion } from
   "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { tenantId, workspaceId, type JsonObject } from "@social-monitor/shared-kernel";
 
 import { ReaderSummaryJob, type ReaderSummaryPreparationManifest } from
   "../../domain";
@@ -104,6 +104,9 @@ export const setup = (candidates: readonly Candidate[],
       publishedAt: value.publishedAt, observedAt: value.observedAt,
       sourceKind: "article", canonicalIdentity: value.canonicalIdentity,
       storyId: value.storyId,
+      ...(value.providerMetadata === undefined ? {} : {
+        providerMetadata: value.providerMetadata }),
+      engagementObservedAt: value.engagementObservedAt,
     })) };
   return { subject: new RelevanceReaderSummaryV3Promotion(
     store, presentation, supplementalEvidence),
@@ -178,7 +181,16 @@ export const candidate = (ordinal: number,
   assessedAt: "2026-09-20T00:10:00.000001Z",
   title: `Title ${id(ordinal)}`,
   body: "Useful body text with exact evidence.",
+  providerMetadata: undefined as JsonObject | undefined,
+  engagementObservedAt: null as string | null,
   usefulness, relevance });
+
+/** A ranked Reddit candidate with a mature, frozen score. */
+export const scoredRedditCandidate = (ordinal: number, score: number,
+  usefulness: ReaderValueAnswers["usefulness"]["choice"] = "useful") => ({
+  ...candidate(ordinal, usefulness, "central"), provider: "reddit",
+  providerMetadata: { kind: "reddit_post", score } as JsonObject,
+  engagementObservedAt: "2026-09-20T12:00:00.000000Z" });
 
 const assessment = (value: Candidate): ReaderValueAssessment => ({
   id: value.assessmentId, state: "assessed", attempts: 1, leaseToken: null,

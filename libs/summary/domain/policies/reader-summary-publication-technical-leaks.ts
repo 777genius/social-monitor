@@ -16,6 +16,7 @@ export const collectReaderSummaryUserFacingTechnicalLeaks = (
   const capturedTitles = unique([
     ...content.topReads,
     ...(content.selectedPosts ?? []),
+    ...(content.newsWithoutRatingPosts ?? []),
   ].flatMap((item) =>
     isCapturedSourceDisplayTitle(item.title, item.capturedSource, item.providerKey)
       ? [item.title]
@@ -34,6 +35,7 @@ export const collectReaderSummaryUserFacingTechnicalLeaks = (
     ...content.nextActions.flatMap((item) => [item.label, item.reason]),
     ...content.topReads.flatMap(topReadUserFacingText),
     ...(content.selectedPosts ?? []).flatMap(topReadUserFacingText),
+    ...(content.newsWithoutRatingPosts ?? []).flatMap(topReadUserFacingText),
   ].filter((value) => !onlyRepeatsCapturedSourceLeaks(value, capturedTitles)));
 };
 

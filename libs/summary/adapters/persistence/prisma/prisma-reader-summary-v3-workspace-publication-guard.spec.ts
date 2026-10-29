@@ -219,7 +219,7 @@ const setup = (change?: "added" | "disabled" | "changed" | "revoked" |
     canonicalIdentity: change === "missing_identity_no_signal"
       ? "" : "https://example.test/item",
     publishedAt: "2026-09-20T12:00:00.000000Z",
-    observedAt: "2026-09-20T12:01:00.000000Z",
+    observedAt: "2026-09-20T12:01:00.000000Z", engagementObservedAt: null,
   };
   const manifest = { schemaVersion: "reader_summary_preparation_manifest.v2",
     cutoffAt: cutoff,

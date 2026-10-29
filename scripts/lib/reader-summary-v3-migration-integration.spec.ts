@@ -113,13 +113,15 @@ describe("reader summary V3 PostgreSQL migration integration", () => {
     expect(source.report.artifactPayload.content).not.toHaveProperty("topReads");
     const result = await buildApplicationV3FixturePayload(client, source);
     const snapshot = result.applicationArtifact.toSnapshot();
-    const topReads = result.payload.report.artifactPayload.content?.topReads;
-    expect(snapshot.content?.topReads).toHaveLength(1);
+    // The fixture source is RSS: an unranked source lands only in the news block.
+    const newsPosts = result.payload.report.artifactPayload.content?.newsWithoutRatingPosts;
+    expect(snapshot.content?.topReads).toHaveLength(0);
+    expect(snapshot.content?.newsWithoutRatingPosts).toHaveLength(1);
     expect(snapshot.promotionAttestations).toHaveLength(1);
-    expect(topReads).toHaveLength(1);
-    const topRead = topReads?.[0];
+    expect(newsPosts).toHaveLength(1);
+    const topRead = newsPosts?.[0];
     if (typeof topRead?.exactPublishedAt !== "string") {
-      throw new Error("application-shaped V3 top read lacks exactPublishedAt");
+      throw new Error("application-shaped news post lacks exactPublishedAt");
     }
     expect(topRead.exactPublishedAt).toBe("2026-06-14T09:00:00.123456Z");
 

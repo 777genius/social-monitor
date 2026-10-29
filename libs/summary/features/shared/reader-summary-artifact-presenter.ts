@@ -13,6 +13,11 @@ import type {
   StoryCluster,
   TopRead,
 } from "../../domain";
+import {
+  presentReaderSummaryFreshness,
+  type ReaderSummaryFreshnessView,
+} from "./reader-summary-freshness-presenter";
+export type { ReaderSummaryFreshnessView } from "./reader-summary-freshness-presenter";
 import { presentPromotionAttestationV3,
   type ReaderPostPromotionAttestationV3View } from
   "./reader-summary-v3-artifact-presenter";
@@ -61,13 +66,14 @@ export type ReaderSummaryInterestSectionView = Omit<
 
 export type ReaderSummaryContentView = Omit<
   ReaderSummaryContent,
-  "interestSections" | "topReads" | "selectedPosts"
+  "interestSections" | "topReads" | "selectedPosts" | "newsWithoutRatingPosts"
 > & {
   readonly mainTopics: readonly string[];
   readonly topicMap: ReaderSummaryTopicMap;
   readonly interestSections: readonly ReaderSummaryInterestSectionView[];
   readonly topReads: readonly ReaderSummaryTopReadView[];
   readonly selectedPosts: readonly ReaderSummaryTopReadView[];
+  readonly newsWithoutRatingPosts: readonly ReaderSummaryTopReadView[];
 };
 
 export type ReaderSummaryContextArtifactView = Omit<
@@ -183,24 +189,6 @@ export type ReaderSummaryPeriodView = {
   readonly periodKey: string;
 };
 
-export type ReaderSummaryFreshnessView =
-  | {
-      readonly status: "fresh";
-      readonly checkedAt: string;
-    }
-  | {
-      readonly status: "stale";
-      readonly checkedAt: string;
-      readonly staleMarkedAt: string;
-      readonly reason:
-        | "new_evidence_after_window"
-        | "interest_bindings_changed"
-        | "reader_summary_policy_changed"
-        | "ranking_policy_changed";
-      readonly newestFeedItemId?: string;
-      readonly newestObservedAt?: string;
-    };
-
 export const presentReaderSummaryArtifact = (
   artifact: ReaderSummaryArtifact,
   freshness: ReaderSummaryFreshness,
@@ -214,7 +202,8 @@ export const presentReaderSummaryArtifact = (
     options.content ?? readerSummaryDomainContentForArtifactSnapshot(snapshot),
     snapshot.confidence,
   );
-  const freshnessView = presentFreshness(freshness);
+  const freshnessView = presentReaderSummaryFreshness(freshness,
+    snapshot.promotionBoardState);
   const {
     promotionEvidenceFacts: _promotionEvidenceFacts,
     ...publicSnapshot
@@ -402,6 +391,9 @@ const withReaderSummaryContentDefaults = (
     selectedPosts: (content.selectedPosts ?? []).map(
       sanitizeTopReadForPresentation,
     ),
+    newsWithoutRatingPosts: (content.newsWithoutRatingPosts ?? []).map(
+      sanitizeTopReadForPresentation,
+    ),
     interestSections: content.interestSections.map((section) => ({
       ...section,
       items: section.items.map(sanitizeTopReadForPresentation),
@@ -477,23 +469,3 @@ const presentReaderSummaryPeriod = (
   timezone: period.timezone,
   periodKey: period.periodKey,
 });
-
-const presentFreshness = (
-  freshness: ReaderSummaryFreshness,
-): ReaderSummaryFreshnessView => {
-  if (freshness.status === "fresh") {
-    return {
-      status: "fresh",
-      checkedAt: freshness.checkedAt.toISOString(),
-    };
-  }
-
-  return {
-    status: "stale",
-    checkedAt: freshness.checkedAt.toISOString(),
-    staleMarkedAt: freshness.staleMarkedAt.toISOString(),
-    reason: freshness.reason,
-    newestFeedItemId: freshness.newestFeedItemId,
-    newestObservedAt: freshness.newestObservedAt?.toISOString(),
-  };
-};

@@ -24,10 +24,8 @@ import {
 import { assertHistoricalV1EvidenceBinding } from
   "./reader-summary-promotion-v1-validation";
 import type { TopRead } from "./top-read";
-import { validateReaderValueAnswers } from
-  "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
-import { readerPostPresentationV3Identity, readerPostPresentationV3MatchesCard } from
-  "../services/reader-post-presentation-v3";
+import { assertReaderPromotionAttestations } from
+  "./reader-summary-promotion-order-validation";
 
 export const assertReaderSummaryPromotionAttestations = (
   props: ReaderSummaryArtifactProps,
@@ -39,7 +37,7 @@ export const assertReaderSummaryPromotionAttestations = (
     if (v3.length !== attestations.length) {
       throw new Error("Reader summary promotion attestation versions cannot be mixed");
     }
-    assertV3Attestations(props, v3);
+    assertReaderPromotionAttestations(props, v3);
     return;
   }
   const legacy = attestations as readonly ReaderPostPromotionAttestation[];
@@ -154,119 +152,6 @@ export const assertReaderSummaryPromotionAttestations = (
       throw new Error("Reader card promotion attestation placement is invalid");
     }
   }
-};
-
-const assertV3Attestations = (
-  props: ReaderSummaryArtifactProps,
-  attestations: readonly Extract<ReaderPostPromotionAttestationAny,
-    { readonly schemaVersion: "reader_post_promotion_attestation.v3" }>[],
-): void => {
-  if ((props.promotionEvidenceFacts ?? []).length !== 0) {
-    throw new Error("Promotion V3 must not persist legacy score facts");
-  }
-  const cards = [
-    ...(props.content?.topReads ?? []).map((card, index) => ({ card, placement: "top" as const, slot: index + 1 })),
-    ...(props.content?.selectedPosts ?? []).map((card, index) => ({ card, placement: "additional" as const, slot: index + 1 })),
-  ].filter(({ card }) => card.promotionMarker === "reader_post_promotion");
-  if (cards.filter((value) => value.placement === "top").length > 12 ||
-      cards.filter((value) => value.placement === "additional").length > 12) {
-    throw new Error("Reader summary Promotion V3 placement cap is invalid");
-  }
-  if (cards.length !== attestations.length) {
-    throw new Error("Every Promotion V3 card requires one attestation");
-  }
-  const candidateIds = new Set<string>();
-  for (const [index, attestation] of attestations.entries()) {
-    const bound = cards[index];
-    const assessment = attestation.assessment;
-    const answers = validateReaderValueAnswers(assessment.answers);
-    if (bound === undefined ||
-        attestation.policyVersion !== "reader_post_promotion.v3" ||
-        attestation.digestVersion !== "reader_post_promotion_digest.sha256.v3" ||
-        !verifyReaderPostPromotionAttestationDigest(attestation) ||
-        attestation.artifactId !== props.readerSummaryId ||
-        attestation.sourceWindowId !== props.sourceWindow.windowId ||
-        attestation.periodStartedAt.getTime() !== props.sourceWindow.periodStartedAt?.getTime() ||
-        attestation.periodEndedAt.getTime() !== props.sourceWindow.periodEndedAt?.getTime() ||
-        attestation.ingestionCutoff.getTime() !== props.sourceWindow.ingestionCutoff?.getTime() ||
-        attestation.exactIngestionCutoff !== props.sourceWindow.exactIngestionCutoff ||
-        Date.parse(attestation.exactIngestionCutoff) !== attestation.ingestionCutoff.getTime() ||
-        attestation.placement !== bound.placement || attestation.slot !== bound.slot ||
-        attestation.candidateId !== bound.card.promotionCandidateId ||
-        attestation.provider !== bound.card.providerKey ||
-        attestation.canonicalIdentity !== bound.card.promotionCanonicalIdentity ||
-        bound.card.promotionPolicyVersion !== "reader_post_promotion.v3" ||
-        attestation.storyId !== bound.card.storyClusterId ||
-        candidateIds.has(attestation.candidateId) ||
-        !/^[0-9a-f]{64}$/u.test(assessment.sourceSnapshotSha256) ||
-        !/^[0-9a-f]{64}$/u.test(assessment.inputSha256) ||
-        !/^[0-9a-f]{64}$/u.test(assessment.rubricSha256) ||
-        !/^[0-9a-f]{64}$/u.test(attestation.presentation.presentationInputDigest) ||
-        attestation.presentation.presentationIdentity !== readerPostPresentationV3Identity({
-          sourceSnapshotSha256: assessment.sourceSnapshotSha256,
-          presentationInputDigest: attestation.presentation.presentationInputDigest,
-          displayHeadline: attestation.presentation.displayHeadline,
-        }) ||
-        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u.test(
-          assessment.assessedAt) ||
-        !Number.isFinite(Date.parse(assessment.assessedAt)) ||
-        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u.test(
-          attestation.publishedAt) ||
-        !Number.isFinite(Date.parse(attestation.publishedAt)) || !answers.ok ||
-        attestation.comparator.usefulness !== assessment.answers.usefulness.choice ||
-        attestation.comparator.relevance !== assessment.answers.relevance.choice ||
-        attestation.comparator.publishedAt !== attestation.publishedAt ||
-        attestation.comparator.candidateId !== attestation.candidateId ||
-        !["useful", "important"].includes(assessment.answers.usefulness.choice) ||
-        !["relevant", "central"].includes(assessment.answers.relevance.choice) ||
-        !sameOrderedValues(attestation.citationIds, bound.card.citationIds) ||
-        attestation.presentation.displayHeadline.headline.status !== "accepted" ||
-        canonicalPromotionPayload(attestation.presentation.displayHeadline.headline) !==
-          canonicalPromotionPayload(bound.card.displayHeadline) ||
-        !readerPostPresentationV3MatchesCard({
-          title: bound.card.title,
-          providerKey: bound.card.providerKey,
-          candidateId: bound.card.promotionCandidateId,
-          capturedSource: bound.card.capturedSource,
-          headline: bound.card.displayHeadline,
-          seal: attestation.presentation.displayHeadline,
-          tenantId: props.tenantId,
-          workspaceId: props.workspaceId,
-        }) || bound.card.exactPublishedAt !== attestation.publishedAt) {
-      throw new Error("Reader summary Promotion V3 attestation is invalid");
-    }
-    candidateIds.add(attestation.candidateId);
-  }
-  for (const placement of ["top", "additional"] as const) {
-    const ordered = attestations.map((attestation, index) => ({ attestation,
-      signalScore: cards[index]!.card.signalScore }))
-      .filter((value) => value.attestation.placement === placement);
-    if (ordered.some((value, index) => index > 0 &&
-        compareV3Attestation(ordered[index - 1]!.attestation, value.attestation,
-          ordered[index - 1]!.signalScore, value.signalScore) > 0)) {
-      throw new Error("Reader summary Promotion V3 order is invalid");
-    }
-  }
-};
-
-const compareV3Attestation = (
-  left: Extract<ReaderPostPromotionAttestationAny,
-    { readonly schemaVersion: "reader_post_promotion_attestation.v3" }>,
-  right: Extract<ReaderPostPromotionAttestationAny,
-    { readonly schemaVersion: "reader_post_promotion_attestation.v3" }>,
-  leftSignalScore: number,
-  rightSignalScore: number,
-): number => {
-  const usefulness = { important: 3, useful: 2, context: 1, noise: 0,
-    insufficient_context: -1 } as const;
-  const relevance = { central: 3, relevant: 2, adjacent: 1, unrelated: 0,
-    insufficient_context: -1 } as const;
-  return usefulness[right.comparator.usefulness] -
-    usefulness[left.comparator.usefulness] ||
-    relevance[right.comparator.relevance] - relevance[left.comparator.relevance] ||
-    rightSignalScore - leftSignalScore ||
-    Buffer.compare(Buffer.from(right.publishedAt), Buffer.from(left.publishedAt)) ||
-    Buffer.compare(Buffer.from(left.candidateId), Buffer.from(right.candidateId));
 };
 
 const isPromotionAttestationV1 = (

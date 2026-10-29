@@ -12,6 +12,15 @@ export type ReaderValueInventoryItem = {
   readonly source: ReaderValueSource;
   readonly sourceRevisionKey: string;
   readonly metadata: JsonObject;
+  /**
+   * Time the frozen metrics in `metadata` were observed:
+   * `COALESCE(source_item_engagement_snapshots.last_observed_at,
+   * feed_items.observed_at)`, read in the same statement as `metadata`. The
+   * fallback is a lower bound of the metric age, not an exact snapshot time:
+   * days without engagement snapshots still carry metrics captured with the
+   * feed item, never earlier. Absent only in test fakes.
+   */
+  readonly engagementObservedAt?: string | null;
 };
 export interface ReaderValueInventory {
   page(scope: ReaderValueDiscoveryScope, backfillFrom: string, cursor: ReaderValueInventoryCursor | undefined,

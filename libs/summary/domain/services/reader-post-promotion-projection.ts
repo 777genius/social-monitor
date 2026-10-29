@@ -24,7 +24,7 @@ import type {
 } from "../value-objects/summary-evidence-item";
 import type { ReaderSummaryEditorialSlate } from
   "../value-objects/reader-summary-editorial-slate";
-import { engagementOrContentStrengthSignalScore } from "../value-objects/signal-score";
+import { normalizeSignalScore } from "../value-objects/signal-score";
 import { readerSummaryIndependentProviderFamily } from
   "../value-objects/reader-summary-provider-identity";
 import { compactUnique } from "../value-objects/summary-text";
@@ -54,6 +54,8 @@ import { buildReaderPostPromotionV3Projection } from
 export type ReaderPostPromotionProjection = {
   readonly topReads: readonly TopRead[];
   readonly additionalPosts: readonly TopRead[];
+  /** "News without rating" cards; only the Jev promotion path produces them. */
+  readonly newsPosts: readonly TopRead[];
   readonly admittedEvidence: readonly SummaryEvidenceItem[];
   readonly admittedCitations: readonly ReaderSummaryCitation[];
   readonly admittedClusters: readonly StoryCluster[];
@@ -62,7 +64,8 @@ export type ReaderPostPromotionProjection = {
   readonly attestedEvidenceFacts: readonly ReaderPostPromotionInput[];
   readonly evaluatedEvidence: readonly {
     readonly candidateId: string;
-    readonly decision: ReturnType<typeof evaluateReaderPostPromotion>["decision"];
+    readonly decision: ReturnType<typeof evaluateReaderPostPromotion>["decision"] |
+      "promote_news";
   }[];
 };
 
@@ -172,6 +175,7 @@ export const buildReaderPostPromotionProjection = (
   return {
     topReads,
     additionalPosts,
+    newsPosts: [],
     admittedEvidence,
     admittedCitations: params.citations.filter((citation) =>
       admittedIds.has(citation.feedItemId) &&
@@ -290,10 +294,7 @@ const promotedPost = (params: {
       interestIds.length === 0 ? ["unknown-interest"] : interestIds,
       lead.providerKey,
     ),
-    signalScore: engagementOrContentStrengthSignalScore({
-      engagementStrength: params.selected.normalizedStrength,
-      contentQuality: lead.contentQuality,
-    }),
+    signalScore: normalizeSignalScore(params.selected.normalizedStrength),
     confidence: {
       level: confidenceScore >= 0.8
         ? "high"
