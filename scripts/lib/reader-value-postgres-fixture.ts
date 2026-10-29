@@ -7,6 +7,7 @@ import type { AssessmentSqlClient, AssessmentSqlTransaction } from '../../libs/r
 import type { ReaderValuePreparedInput } from '../../libs/relevance/application/contracts/reader-value-assessment-store';
 import { SourceContentSafetyPolicy } from '../../libs/relevance/domain/source-content-safety';
 import { prepareReaderValueSourceSnapshot, sha256 } from '../../libs/relevance/infrastructure/reader-value/reader-value-source-snapshot';
+import { closeReaderValuePostgresFixture } from './reader-value-postgres-fixture-cleanup';
 
 export async function assessmentPostgresFixture() {
   const connectionString = process.env.READER_VALUE_TEST_ADMIN_DATABASE_URL;
@@ -28,11 +29,8 @@ export async function assessmentPostgresFixture() {
   let runtime: Pool | undefined;
   let runtimeConnection: PrismaReaderValueConnection | undefined;
   async function close() {
-    await runtimeConnection?.onApplicationShutdown();
-    await runtime?.end(); await setup?.end();
-    if (databaseCreated) await admin.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`);
-    for (const role of createdRoles.reverse()) await admin.query(`DROP ROLE "${role}"`);
-    await admin.end();
+    await closeReaderValuePostgresFixture({ runtimeConnection, runtime, setup,
+      admin, databaseName, databaseCreated, createdRoles });
   }
   try {
     for (const role of [ownerRole,capability,'social_monitor_reader_summary_publication_owner',runtimeRole]) {

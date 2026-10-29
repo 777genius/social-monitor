@@ -28,7 +28,7 @@ function setup(rows: ReaderValueInventoryItem[]) {
   const ensure = jest.fn<ReturnType<ReaderValueAssessmentStore['ensure']>, Parameters<ReaderValueAssessmentStore['ensure']>>(
     async () => ({ ...assessmentClaim(), state: 'assessed' as const }));
   const now = jest.fn(() => new Date('2026-09-20T00:00:00Z'));
-  const create = () => new DiscoverReaderValueBatchUseCase({ page }, { prepare }, { ensure }, { generate: () => 'id' }, { now });
+  const create = () => new DiscoverReaderValueBatchUseCase({ page }, { prepare, configuration: assessmentClaim().input }, { ensure }, { generate: () => 'id' }, { now });
   return { page, prepare, ensure, create, now, useCase: create() };
 }
 

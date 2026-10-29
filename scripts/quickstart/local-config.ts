@@ -8,6 +8,8 @@ import { constants } from 'node:fs';
 import { link, lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { productionAgentRuntimeModel } from '../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy';
+import { resolveReaderValueScoringProvider } from '../../libs/relevance/interfaces/rest/reader-value-scoring-provider-tokens';
+import type { ReaderValueScoringProvider } from '../../libs/relevance/infrastructure/reader-value/reader-value-provider-config';
 
 export type AiConnection = {
   readonly mode: 'codex' | 'external';
@@ -15,6 +17,7 @@ export type AiConnection = {
   readonly address: string;
   readonly serviceToken: string;
   readonly scoringApiKey: string;
+  readonly scoringProvider?: ReaderValueScoringProvider;
 };
 
 export type PublicDefaults = {
@@ -64,9 +67,10 @@ export async function readPublicDefaults(repositoryRoot = process.cwd()): Promis
 }
 
 export function validateConnection(connection: AiConnection): void {
+  resolveReaderValueScoringProvider({ READER_VALUE_SCORING_PROVIDER: connection.scoringProvider });
   if (connection.mode !== 'codex' && connection.mode !== 'external') throw new Error('ai_mode_invalid');
   if (typeof connection.scoringApiKey !== 'string'
-    || connection.scoringApiKey.length > 1024) throw new Error('openrouter_scoring_key_required');
+    || connection.scoringApiKey.length > 1024) throw new Error('scoring_key_invalid');
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u.test(connection.model)) throw new Error('ai_model_invalid');
   if (connection.mode === 'codex' && connection.model !== productionAgentRuntimeModel) {
     throw new Error('ai_model_not_supported_by_runtime_policy');
@@ -167,6 +171,7 @@ export function backendEnvironment(settings: LocalSettings): Record<string, stri
     INTELLIGENCE_READER_SUMMARY_JOB_LOOP_INTERVAL_MS: '10000',
     INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER: 'enabled',
     READER_VALUE_MODE: 'jev_primary_v3', READER_VALUE_SCORING_LOOP: 'enabled',
+    READER_VALUE_SCORING_PROVIDER: resolveReaderValueScoringProvider({ READER_VALUE_SCORING_PROVIDER: settings.connection.scoringProvider }),
     READER_VALUE_RETENTION_HOLD_WORKSPACE_IDS: '[]',
     SUMMARY_MODEL_PROVIDER: 'agent-runtime', READER_SUMMARY_MODEL_PROVIDER: 'agent-runtime',
     READER_SUMMARY_TOPIC_LABELER: 'agent-runtime', SUMMARY_MEMORY_MODE: 'disabled',
@@ -271,7 +276,7 @@ export async function materializeLocalConfiguration(input: {
   await atomicPrivateFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, replace);
   await atomicPrivateFile(join(directory, 'backend.env'), rawEnvironment(backendEnvironment(settings)), true);
   await atomicPrivateFile(join(directory, 'scoring.env'), rawEnvironment({
-    OPENROUTER_API_KEY: settings.connection.scoringApiKey,
+    [settings.connection.scoringProvider === 'openai-decisions' ? 'OPENAI_API_KEY' : 'OPENROUTER_API_KEY']: settings.connection.scoringApiKey,
   }), true);
   await atomicPrivateFile(join(directory, 'system.env'), rawEnvironment({
     DATABASE_URL: credentialUrl('postgresql://postgres:5432/social_monitor', 'social_monitor_system_app', settings.systemPassword),

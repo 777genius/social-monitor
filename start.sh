@@ -15,15 +15,19 @@ MODE=""
 ADDRESS=""
 TOKEN=
 SCORING_KEY=""
+SCORING_PROVIDER=openrouter-systemone
+SCORING_PROVIDER_SET=0
+SCORING_KEY_PROVIDER=""
 usage() {
   cat <<'HELP'
 Usage: ./start.sh [--port 8080] [--state-dir PATH] [--no-open]
                   [--ai codex|external] [--model MODEL] [--codex-auth-file PATH]
                   [--runtime-address HOST:PORT] [--runtime-token-file PATH]
-                  [--openrouter-key-file PATH]
+                  [--scoring-provider openrouter-systemone|openai-decisions]
+                  [--openrouter-key-file PATH | --openai-key-file PATH]
                   [--local-images] [--stop] [--without-ai]
 Default: start without AI and without questions; reuse existing configuration.
-To connect AI, pass --ai codex, --openrouter-key-file and --codex-auth-file.
+To connect AI, pass --ai codex, the selected provider's key file and --codex-auth-file.
 See docs/reference/self-hosting.md. --local-images never builds code.
 HELP
 }
@@ -41,11 +45,18 @@ while (($#)); do
     --codex-auth-file) AUTH_FILE=${2:?Missing auth path}; shift 2 ;;
     --runtime-address) ADDRESS=${2:?Missing runtime address}; shift 2 ;;
     --runtime-token-file) TOKEN=$(cat -- "${2:?Missing token path}"); shift 2 ;;
-    --openrouter-key-file) SCORING_KEY=$(cat -- "${2:?Missing key path}"); shift 2 ;;
+    --scoring-provider) SCORING_PROVIDER=${2:?Missing scoring provider}; SCORING_PROVIDER_SET=1; shift 2 ;;
+    --openrouter-key-file) [[ -z "$SCORING_KEY_PROVIDER" ]] || die 'Pass only one scoring key file.'; SCORING_KEY_PROVIDER=openrouter-systemone; SCORING_KEY=$(cat -- "${2:?Missing key path}"); shift 2 ;;
+    --openai-key-file) [[ -z "$SCORING_KEY_PROVIDER" ]] || die 'Pass only one scoring key file.'; SCORING_KEY_PROVIDER=openai-decisions; SCORING_KEY=$(cat -- "${2:?Missing key path}"); shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) usage >&2; die "Unknown option: $1" ;;
   esac
 done
+[[ "$SCORING_PROVIDER" == openrouter-systemone || "$SCORING_PROVIDER" == openai-decisions ]] || die 'Scoring provider must be openrouter-systemone or openai-decisions.'
+[[ -z "$SCORING_KEY_PROVIDER" || "$SCORING_KEY_PROVIDER" == "$SCORING_PROVIDER" ]] || die 'Scoring key file must match --scoring-provider.'
+if [[ -z "$MODE" ]] && ((SCORING_PROVIDER_SET == 1 || ${#SCORING_KEY_PROVIDER} > 0)); then
+  die 'Scoring options require --ai codex or --ai external. See docs/reference/self-hosting.md.'
+fi
 [[ "$PORT" =~ ^[0-9]{1,5}$ ]] && ((10#$PORT > 0 && 10#$PORT < 65536)) || die 'Port must be 1–65535.'
 command -v docker >/dev/null || die 'Install Docker Desktop or Docker Engine with Compose first.'
 docker info >/dev/null 2>&1 || die 'Docker is not running or is not accessible to this user.'
@@ -93,8 +104,11 @@ if [[ ! -f "$STATE/settings.json" || -n "$MODE" ]]; then
     [[ -n "$ADDRESS" && -n "$TOKEN" ]] || die 'External AI service requires --runtime-address and --runtime-token-file. See docs/reference/self-hosting.md.'
   fi
   if ((DEFER_AI == 1)); then SCORING_KEY=""
-  else [[ -n "$SCORING_KEY" ]] || die 'AI requires --openrouter-key-file PATH. See docs/reference/self-hosting.md.'; fi
-  printf '%s\n' "$MODE" "$MODEL" "$ADDRESS" "$TOKEN" "$SCORING_KEY" |
+  else [[ -n "$SCORING_KEY" ]] || die "AI requires the key file for $SCORING_PROVIDER. See docs/reference/self-hosting.md."; fi
+  {
+    printf '%s\n' "$MODE" "$MODEL" "$ADDRESS" "$TOKEN" "$SCORING_KEY"
+    if [[ "$SCORING_PROVIDER" == openai-decisions ]]; then printf '%s\n' "$SCORING_PROVIDER"; fi
+  } |
     docker run --rm -i --user "$SELFHOST_UID:$SELFHOST_GID" -v "$STATE:/state" \
       "$SELFHOST_BACKEND_IMAGE" node dist/scripts/quickstart/setup.js
 else

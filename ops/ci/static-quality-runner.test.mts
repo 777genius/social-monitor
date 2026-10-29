@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import type { WriteStream } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -193,7 +193,9 @@ if (process.argv[2] === 'leaf') {
   assert.ok(root);
   process.on('SIGTERM', () => {});
   process.on('SIGINT', () => {});
-  await writeFile(join(root, 'leaf-pid'), String(process.pid));
+  // Both synthetic lanes publish complete ownership evidence before observers read it.
+  await writeFile(join(root, 'leaf-pid.pending'), String(process.pid));
+  await rename(join(root, 'leaf-pid.pending'), join(root, 'leaf-pid'));
   setInterval(() => {}, 1000);
 } else if (process.argv[2] === 'tree') {
   const root = process.argv[3], mode = process.argv[4];

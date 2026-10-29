@@ -1,5 +1,6 @@
 import { materializeLocalConfiguration, readPublicDefaults, type AiConnection } from './local-config';
 import { productionAgentRuntimeModel } from '../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy';
+import { resolveReaderValueScoringProvider } from '../../libs/relevance/interfaces/rest/reader-value-scoring-provider-tokens';
 
 async function main(): Promise<void> {
   const parts: Buffer[] = [];
@@ -13,8 +14,9 @@ async function main(): Promise<void> {
       mode: lines[0], model: lines[1] || productionAgentRuntimeModel,
       address: lines[2] ?? '', serviceToken: lines[3] ?? '',
       scoringApiKey: lines[4] ?? '',
+      scoringProvider: resolveReaderValueScoringProvider({ READER_VALUE_SCORING_PROVIDER: lines[5] || undefined }),
     };
-    if (lines.slice(5).some((line) => line.length > 0)) throw new Error('setup_input_invalid');
+    if (lines.slice(6).some((line) => line.length > 0)) throw new Error('setup_input_invalid');
   }
   const settings = await materializeLocalConfiguration({
     directory: process.argv[2] ?? '/state', defaults: await readPublicDefaults(),

@@ -160,8 +160,9 @@ export function backendUnitShardingViolations(source) {
     push: { branches: ['main'] }, pull_request: null, merge_group: null, workflow_dispatch: null,
   })) errors.push('pull-request.yml: full push-main, PR, merge-group and dispatch triggers required');
   if (!equal(workflow.concurrency, {
-    group: "${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.sha }}", 'cancel-in-progress': true,
-  })) errors.push('pull-request.yml: newer main must cancel obsolete main CI while PRs, merge-group and dispatch SHAs stay isolated');
+    group: "pull-request-checks-${{ github.event_name }}-${{ (github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group') && (github.event.pull_request.number || github.ref) || github.run_id }}",
+    'cancel-in-progress': "${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group' }}",
+  })) errors.push('pull-request.yml: newer code checks must cancel obsolete CI while event groups and each manual run stay isolated');
   if (!equal(workflow.permissions, { contents: 'read' }) || workflow.defaults !== undefined ||
       !equal(Object.keys(workflow.env ?? {}), ['DATABASE_URL'])) errors.push('pull-request.yml: read-only authority and no hidden execution defaults');
   for (const job of Object.values(workflow.jobs ?? {})) {
@@ -197,8 +198,8 @@ export function backendUnitShardingViolations(source) {
   // it is excluded from both unit discovery and execution, and runs once.
   const needs = ['backend_unit_shards', 'backend_build_contracts'];
   const aggregate = jobs.backend_unit;
-  if (!equal(aggregate?.needs, needs) || !['always()', '${{ always() }}'].includes(aggregate?.if)) {
-    errors.push('backend_unit: always aggregate must depend on every backend command');
+  if (!equal(aggregate?.needs, needs) || !['always() && !cancelled()', '${{ always() && !cancelled() }}'].includes(aggregate?.if)) {
+    errors.push('backend_unit: failure aggregate must depend on every backend command and stop after cancellation');
   }
   jobChecks(aggregate, 'backend_unit', 'Backend build and unit tests', [
     { run: `set -euo pipefail\n${needs.map((id) => `test "\${{ needs.${id}.result }}" = "success"`).join('\n')}` },

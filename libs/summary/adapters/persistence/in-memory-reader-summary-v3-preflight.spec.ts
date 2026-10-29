@@ -3,6 +3,8 @@ import { PrepareReaderValueSummaryUseCase } from
   "@social-monitor/relevance/application/use-cases/prepare-reader-value-summary.use-case";
 import type { ReaderValuePreparationInventory } from
   "@social-monitor/relevance/application/contracts/reader-value-inventory";
+import { readerValueScoringConfiguration } from
+  "@social-monitor/relevance/infrastructure/reader-value/reader-value-provider-config";
 
 import { ReaderSummaryJob, readerSummaryWorkspaceManifestSha256,
   type ReaderSummaryPreparationManifest } from "../../domain";
@@ -29,7 +31,7 @@ describe("InMemoryReaderSummaryV3Preflight", () => {
         return [];
       } }) };
     const preparation = new PrepareReaderValueSummaryUseCase(inventory,
-      { prepare: () => err("unsafe_source") },
+      { prepare: () => err("unsafe_source"), configuration: readerValueScoringConfiguration('openrouter-systemone') },
       { ensure: async () => null, pin: async () => true },
       { generate: () => original.id },
       { readCurrent: async () => ({ kind: "available", interest: {

@@ -5,8 +5,7 @@ import { classifyReaderValueSourceKind } from
   "../../domain/reader-value/reader-value-source-kind";
 import { compareReaderValueTimestamps, readerValueTimestampMicros } from
   "../../domain/reader-value/canonical-reader-value-timestamp";
-import { READER_VALUE_INPUT_VERSION, READER_VALUE_MODEL_CONFIG,
-  READER_VALUE_RUBRIC_SHA256, readerValueSha256 } from
+import { readerValueSha256 } from
   "../../domain/reader-value/reader-value-config";
 import type { ReaderValueAssessmentStore, ReaderValuePreparedInput } from
   "../contracts/reader-value-assessment-store";
@@ -23,8 +22,6 @@ import type {
   ReaderValueSummaryPreparationManifest,
 } from "../contracts/reader-value-summary-preparation";
 import type { ConfiguredInterestReaderPort } from "../../ports";
-import { READER_VALUE_RUBRIC_VERSION } from
-  "../../domain/reader-value/reader-value-rubric";
 
 const physicalRowCeiling = 100_000;
 const candidateCeiling = 20_000;
@@ -82,10 +79,10 @@ implements ReaderValueSummaryPreparation {
       schemaVersion: "reader_summary_preparation_config.v1",
       interestId: command.interestId,
       interestSha256: readerValueSha256(interest.interest.query),
-      rubricVersion: READER_VALUE_RUBRIC_VERSION,
-      rubricSha256: READER_VALUE_RUBRIC_SHA256,
-      inputBuilderVersion: READER_VALUE_INPUT_VERSION,
-      modelConfigVersion: READER_VALUE_MODEL_CONFIG,
+      rubricVersion: this.builder.configuration.rubricVersion,
+      rubricSha256: this.builder.configuration.rubricSha256,
+      inputBuilderVersion: this.builder.configuration.inputBuilderVersion,
+      modelConfigVersion: this.builder.configuration.modelConfigVersion,
     } };
   }
 

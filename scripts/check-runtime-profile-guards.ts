@@ -10,6 +10,8 @@ import {
 } from '../apps/delivery-service/src/delivery-service-provider-tokens';
 import { resolveEventRelayLoopOptions } from '../apps/event-relay/src/event-relay-provider-tokens';
 import { resolveReaderValueRuntimeOptions } from '../apps/intelligence-worker/src/reader-value-runtime-options';
+import { resolveReaderValueScoringApiKey, resolveReaderValueScoringSelection } from
+  '../libs/relevance/interfaces/rest/reader-value-scoring-provider-tokens';
 import {
   resolveIngestionRabbitMqScanQueueReaderOptions,
   resolveIngestionScanQueueReaderMode,
@@ -492,6 +494,24 @@ assertThrows(() => resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'jev_pr
   READER_VALUE_DISCOVERY_SCOPES: '[{"tenantId":"11111111-1111-4111-8111-111111111111","workspaceId":"22222222-2222-4222-8222-222222222222","interestId":"44444444-4444-4444-8444-444444444444"}]',
   READER_VALUE_BACKFILL_FROM: '2026-09-01T00:00:00.000Z', INTELLIGENCE_READER_SUMMARY_JOB_LOOP: 'disabled',
 }), 'primary reader value mode cannot strand deferred work with a disabled poller');
+
+assert(resolveReaderValueScoringSelection({ OPENAI_API_KEY: 'fixture-only' }).provider === 'openrouter-systemone',
+  'reader value default must not infer its provider from available credentials');
+assertThrows(() => resolveReaderValueScoringSelection({ READER_VALUE_SCORING_PROVIDER: 'auto' }),
+  'reader value scoring must reject unknown selectors');
+for (const provider of ['openrouter-systemone', 'openai-decisions'] as const) {
+  const selected = resolveReaderValueScoringSelection({ READER_VALUE_SCORING_PROVIDER: provider });
+  assert(selected.provider === provider && selected.configuration.modelConfigVersion.length > 0,
+    'reader value preparation must select provider identity without a secret');
+  assert(resolveReaderValueScoringApiKey({}, provider, false) === '',
+    'disabled scoring must remain credential-free');
+  const key = provider === 'openai-decisions' ? 'OPENAI_API_KEY' : 'OPENROUTER_API_KEY';
+  const otherKey = provider === 'openai-decisions' ? 'OPENROUTER_API_KEY' : 'OPENAI_API_KEY';
+  assertThrows(() => resolveReaderValueScoringApiKey({ [otherKey]: 'fixture-only' }, provider, true),
+    'enabled scoring must require its selected credential even when another key exists');
+  assert(resolveReaderValueScoringApiKey({ [key]: 'fixture-only' }, provider, true) === 'fixture-only',
+    'enabled scoring must accept only its selected credential');
+}
 
 assert(resolveRelevanceContentQualityReviewerMode({
   ...betaEnv, AGENT_RUNTIME_GRPC_ADDRESS: 'synthetic-runtime:50051',

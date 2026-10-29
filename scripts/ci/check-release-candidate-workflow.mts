@@ -94,7 +94,7 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
       !run(lifecycleSteps[2], ['set -euo pipefail', ...GATES].join('\n')) ||
       aggregate.name !== 'Production container and deploy lifecycle' ||
       !isDeepStrictEqual(aggregate.needs, ['production_candidate', 'production_lifecycle']) ||
-      aggregate.if !== 'always()' || aggregateSteps.length !== 1 ||
+      aggregate.if !== 'always() && !cancelled()' || aggregateSteps.length !== 1 ||
       !run(aggregateSteps[0], ['set -euo pipefail',
         'test "${{ needs.production_candidate.result }}" = "success"',
         'test "${{ needs.production_lifecycle.result }}" = "success"'].join('\n'))) return fail;

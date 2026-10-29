@@ -773,7 +773,7 @@ requireScopedFlutterAppTests(productionWorkflow, productionWorkflowPath);
 const requiredFragments = [
   "permissions:\n  contents: read",
   "concurrency:",
-  "cancel-in-progress: true",
+  "cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group' }}",
   "DATABASE_URL: postgresql://social_monitor_ci:",
   "static_quality:",
   "security_contracts:",

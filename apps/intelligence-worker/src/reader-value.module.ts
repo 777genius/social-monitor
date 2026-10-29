@@ -4,8 +4,10 @@ import { AssessReaderValueBatchUseCase } from '@social-monitor/relevance/applica
 import { DiscoverReaderValueBatchUseCase } from '@social-monitor/relevance/application/use-cases/discover-reader-value-batch.use-case';
 import { RunReaderValueTickUseCase } from '@social-monitor/relevance/application/use-cases/run-reader-value-tick.use-case';
 import { PrismaReaderValueInventory } from '@social-monitor/relevance/infrastructure/reader-value/prisma-reader-value-inventory';
-import { ConservativeReaderValueInputBuilder, READER_VALUE_MODEL_CONFIG } from '@social-monitor/relevance/infrastructure/reader-value/reader-value-input-builder';
+import { ConservativeReaderValueInputBuilder } from '@social-monitor/relevance/infrastructure/reader-value/reader-value-input-builder';
 import { OpenRouterReaderValueScorer } from '@social-monitor/relevance/infrastructure/reader-value/openrouter-reader-value-scorer';
+import { OpenAiDecisionsReaderValueScorer } from '@social-monitor/relevance/infrastructure/reader-value/openai-decisions-reader-value-scorer';
+import { resolveReaderValueScoringApiKey, resolveReaderValueScoringSelection } from '@social-monitor/relevance/interfaces/rest/reader-value-scoring-provider-tokens';
 import { ReaderValueScoringLoop } from './reader-value-scoring-loop';
 import { resolveReaderValueRuntimeOptions } from './reader-value-runtime-options';
 import { Module } from '@nestjs/common';
@@ -29,19 +31,24 @@ import { READER_VALUE_CLEANUP_OPTIONS, resolveReaderValueCleanupOptions, type Re
       ) : null, inject: [PrismaReaderValueConnection, READER_VALUE_CLEANUP_OPTIONS] },
     { provide: RunReaderValueTickUseCase, useFactory: (connection: PrismaReaderValueConnection | null) => {
       const options = resolveReaderValueRuntimeOptions(process.env);
+      const selection = resolveReaderValueScoringSelection(process.env);
       if (!options.scoringLoopEnabled) return null;
-      const key = process.env.OPENROUTER_API_KEY;
-      if (!connection || !key?.trim()) throw new Error('Enabled reader value scorer requires persistence and OPENROUTER_API_KEY');
+      const key = resolveReaderValueScoringApiKey(process.env, selection.provider, options.scoringLoopEnabled);
+      if (!connection) throw new Error('Enabled reader value scorer requires persistence');
       const store = new PrismaReaderValueAssessmentStore(connection.client);
       const scopes = new PrismaReaderValueMaintenanceScopes(connection.client);
       const ids = new CryptoIdGenerator();
+      const clock = new SystemClock();
+      const builder = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy(), selection.provider);
+      const scorer = selection.provider === 'openai-decisions'
+        ? new OpenAiDecisionsReaderValueScorer(key, clock) : new OpenRouterReaderValueScorer(key, clock);
       return new RunReaderValueTickUseCase(
         new DiscoverReaderValueBatchUseCase(new PrismaReaderValueInventory(connection.client),
-          new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy()), store, ids, new SystemClock()),
-        new AssessReaderValueBatchUseCase(store, new OpenRouterReaderValueScorer(key, new SystemClock()), ids),
+          builder, store, ids, clock),
+        new AssessReaderValueBatchUseCase(store, scorer, ids),
         scopes,
         { discoveryScopes: options.discoveryScopes, backfillFrom: options.backfillFrom,
-          modelConfigVersion: READER_VALUE_MODEL_CONFIG, pinnedOnly: options.mode === 'legacy_v2',
+          modelConfigVersion: selection.configuration.modelConfigVersion, pinnedOnly: options.mode === 'legacy_v2',
           discoverAllActiveScopes: options.discoverAllActiveScopes }, store, scopes);
     }, inject: [PrismaReaderValueConnection] },
     ReaderValueScoringLoop,

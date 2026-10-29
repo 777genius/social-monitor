@@ -39,6 +39,24 @@ describe('reader-value batch dispatch',()=>{
     expect(await f.batch.execute(f.command)).toMatchObject({ok:true,value:{paused:true,dispatched:0,fatalFailureCode:code}});
     expect(f.scorer.score).toHaveBeenCalledTimes(1);
   });
+  it('completes a refusal as terminal and continues dispatching the next item',async()=>{
+    const f=fixture();
+    const refused=assessmentClaim('refused');
+    const next=assessmentClaim('next');
+    const refusal:ReaderValueScoringOutcome={ok:false,failure:{code:'provider_refused',
+      retryable:false,pauseDispatch:false,usageUnknown:true}};
+    f.store.claim.mockReset().mockResolvedValueOnce(refused).mockResolvedValueOnce(next).mockResolvedValue(null);
+    f.scorer.score.mockResolvedValueOnce(refusal).mockResolvedValueOnce(scoringSuccess());
+    expect(await f.batch.execute(f.command)).toMatchObject({ok:true,value:{
+      dispatched:2,assessed:1,failed:1,paused:false,fatalFailureCode:null,retries:0,
+    }});
+    expect(f.store.complete).toHaveBeenCalledWith(refused,refusal);
+    expect(f.store.complete).toHaveBeenCalledWith(next,expect.objectContaining({ok:true}));
+    expect(f.batch.isPaused()).toBe(false);
+    expect(f.scorer.score).toHaveBeenCalledTimes(2);
+    expect(await f.batch.execute(f.command)).toMatchObject({ok:true,value:{dispatched:0,paused:false}});
+    expect(f.scorer.score).toHaveBeenCalledTimes(2);
+  });
   it('uses exactly two simultaneous requests and rejects overlapping ticks',async()=>{
     const f=fixture(); let release!: (outcome:ReaderValueScoringOutcome)=>void;
     const pending=new Promise<ReaderValueScoringOutcome>((resolve)=>{release=resolve;});
