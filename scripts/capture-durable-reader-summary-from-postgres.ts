@@ -8,6 +8,9 @@ import { resolveAgentRuntimePromotionPresentationV3BuilderOptions } from "@socia
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { resolveFirstPublicationMode, readFirstPublicationOperation, assertFirstPublicationServingAuthority } from "./lib/reader-summary-first-publication";
 import { createDailyJevCaptureQualification } from "./lib/reader-summary-daily-jev-qualification";
+import { resolveReaderValueScoringProvider } from "@social-monitor/relevance/interfaces/rest/reader-value-scoring-provider-tokens";
+import { ConservativeReaderValueInputBuilder } from "@social-monitor/relevance/infrastructure/reader-value/reader-value-input-builder";
+import { SourceContentSafetyPolicy } from "@social-monitor/relevance/domain/source-content-safety";
 import { PrismaMonitoringConnection } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-connection";
 import { PrismaInterestRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-interest.repository";
 import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
@@ -148,6 +151,7 @@ type FeedInventoryRow = {
 };
 
 async function main(): Promise<void> {
+  const scoringProvider = resolveReaderValueScoringProvider(process.env);
   const databaseUrl = requiredEnv(databaseUrlEnv);
   const { dailyReplay, operationalClock: clock } =
     createReaderSummaryDailyCaptureContext({
@@ -361,7 +365,7 @@ async function main(): Promise<void> {
       : new MonitoringConfiguredInterestReader(new PrismaInterestRepository(monitoringConnection));
     const qualification = createDailyJevCaptureQualification({
       fresh: dailyReplay === null, mode: process.env.READER_VALUE_MODE,
-      client: summaryConnection, interests: configuredInterests, clock,
+      client: summaryConnection, interests: configuredInterests, clock, scoringProvider,
     });
     const publicationWiring =
       createReaderSummaryDailyCapturePublicationWiring({
@@ -489,7 +493,7 @@ async function main(): Promise<void> {
     }
     const nativeLease = nativeOwner === undefined ? undefined : new ReaderSummaryExecutionLeasePolicy(Math.max(DEFAULT_READER_SUMMARY_EXECUTION_LEASE_MS, Number(readEnv("DURABLE_READER_SUMMARY_NATIVE_V3_BUDGET_MS"))));
     const v3Preflight = nativeOwner === undefined ? undefined : createReaderSummaryV3Preflight(
-      summaryConnection, readerSummaryJobs, configuredInterests!, clock, ids, nativeLease);
+      summaryConnection, readerSummaryJobs, configuredInterests!, clock, ids, new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy(), scoringProvider), nativeLease);
     const v3Promotion = nativeOwner === undefined ? undefined : createReaderSummaryV3Promotion(
       summaryConnection, resolveAgentRuntimePromotionPresentationV3BuilderOptions(process.env, agentRuntimeClient!),
       agentRuntimeClient!, requireNativeSupplemental(relevanceEvidenceSelector));

@@ -33,37 +33,34 @@ export function validateReaderValueAnswers(
   }
   const validated: Partial<Record<ReaderValueCriterion, ReaderValueAnswer<ReaderValueCriterion>>> = {};
   for (const criterion of Object.keys(readerValueLabels) as ReaderValueCriterion[]) {
-    const answer = input[criterion];
-    const labels: readonly string[] = readerValueLabels[criterion];
-    if (!isRecord(answer) || typeof answer.choice !== 'string' || !labels.includes(answer.choice)
-      || !isProbability(answer.confidence) || !isRecord(answer.probabilities)
-      || !sameKeys(answer.probabilities, labels)) {
-      return err('invalid_answer');
-    }
-    const probabilities = answer.probabilities;
-    const values = labels.map((label) => probabilities[label]);
-    if (!values.every(isProbability) || Math.abs(values.reduce((sum, value) => sum + value, 0) - 1) > 0.02) {
-      return err('invalid_answer');
-    }
-    const maximum = Math.max(...values);
-    const choiceDiffersFromArgmax = probabilities[answer.choice] !== maximum;
-    const probabilityTie = values.filter((value) => value === maximum).length > 1;
-    if ((Object.hasOwn(answer, 'choiceDiffersFromArgmax') &&
-        answer.choiceDiffersFromArgmax !== choiceDiffersFromArgmax) ||
-        (Object.hasOwn(answer, 'probabilityTie') &&
-        answer.probabilityTie !== probabilityTie)) {
-      return err('invalid_answer');
-    }
-    validated[criterion] = {
-      choice: answer.choice as ReaderValueChoice<ReaderValueCriterion>,
-      probabilities: Object.freeze({ ...probabilities }) as ReaderValueAnswer<ReaderValueCriterion>['probabilities'],
-      confidence: answer.confidence,
-      choiceDiffersFromArgmax,
-      probabilityTie,
-    };
-    Object.freeze(validated[criterion]);
+    const answer = validateReaderValueAnswer(criterion, input[criterion]);
+    if (!answer.ok) return answer;
+    validated[criterion] = answer.value;
   }
   return ok(Object.freeze(validated) as ReaderValueAnswers);
+}
+
+/** A refusal in another criterion must not hide an invalid choice answer. */
+export function validateReaderValueAnswer<K extends ReaderValueCriterion>(
+  criterion: K, input: unknown,
+): Result<ReaderValueAnswer<K>, 'invalid_answer'> {
+  const labels: readonly string[] = readerValueLabels[criterion];
+  if (!isRecord(input) || typeof input.choice !== 'string' || !labels.includes(input.choice)
+    || !isProbability(input.confidence) || !isRecord(input.probabilities)
+    || !sameKeys(input.probabilities, labels)) return err('invalid_answer');
+  const probabilities = input.probabilities;
+  const values = labels.map((label) => probabilities[label]);
+  if (!values.every(isProbability) || Math.abs(values.reduce((sum, value) => sum + value, 0) - 1) > 0.02) {
+    return err('invalid_answer');
+  }
+  const maximum = Math.max(...values);
+  const choiceDiffersFromArgmax = probabilities[input.choice] !== maximum;
+  const probabilityTie = values.filter((value) => value === maximum).length > 1;
+  if ((Object.hasOwn(input, 'choiceDiffersFromArgmax') && input.choiceDiffersFromArgmax !== choiceDiffersFromArgmax)
+    || (Object.hasOwn(input, 'probabilityTie') && input.probabilityTie !== probabilityTie)) return err('invalid_answer');
+  return ok(Object.freeze({ choice: input.choice as ReaderValueChoice<K>,
+    probabilities: Object.freeze({ ...probabilities }) as ReaderValueAnswer<K>['probabilities'],
+    confidence: input.confidence, choiceDiffersFromArgmax, probabilityTie }));
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

@@ -1,4 +1,5 @@
 import { createDailyJevCaptureQualification } from "./reader-summary-daily-jev-qualification";
+import { resolveReaderValueScoringProvider } from '@social-monitor/relevance/interfaces/rest/reader-value-scoring-provider-tokens';
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
@@ -124,6 +125,7 @@ async function runCapture(options: Options = {}) {
     "AllowingSummaryQuota", "DatasetGuardedReaderSummaryEvidenceSelector", "PrismaReaderSummaryPublication",
     "InMemoryMetricsRecorder", "ReaderSummaryPromotionMetricsRecorder"]) doubles[name] = Empty;
   const modules: Record<string, unknown> = {
+    '@social-monitor/relevance/interfaces/rest/reader-value-scoring-provider-tokens': { resolveReaderValueScoringProvider },
     "./lib/reader-summary-daily-jev-qualification": { createDailyJevCaptureQualification },
     "@social-monitor/shared-kernel": { ...sharedKernel, SystemClock: doubles.SystemClock },
     "@social-monitor/summary/domain": { buildReaderSummaryPeriod },
@@ -177,6 +179,7 @@ async function runCapture(options: Options = {}) {
 }
 
 it.each([
+  ["invalid scoring provider", { env: { READER_VALUE_SCORING_PROVIDER: "auto" } }, "READER_VALUE_SCORING_PROVIDER"],
   ["wrong configured model", { env: { AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "wrong-model" } }, "conflicts"],
   ["wrong physical authority", { wrongAuthority: true }, "authority diverged"],
   ["missing runtime authority", { missingAuthority: true }, "authority diverged"],

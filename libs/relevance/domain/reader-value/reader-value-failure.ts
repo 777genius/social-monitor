@@ -1,7 +1,7 @@
 export type ReaderValueFailureCode =
   | 'rate_limited' | 'transport' | 'timeout' | 'auth_paused'
   | 'schema_invalid' | 'model_version_changed' | 'provider_changed'
-  | 'request_rejected' | 'response_too_large' | 'retry_exhausted'
+  | 'request_rejected' | 'provider_refused' | 'response_too_large' | 'retry_exhausted'
   | 'lease_expired' | 'scope_changed' | 'empty_input' | 'configuration_invalid';
 
 /** Contains no provider message, response body, credential or source text. */

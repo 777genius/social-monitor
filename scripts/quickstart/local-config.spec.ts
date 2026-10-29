@@ -8,6 +8,7 @@ import {
   materializeLocalConfiguration,
   readPublicDefaults,
   rawEnvironment,
+  validateConnection,
   type AiConnection,
 } from './local-config';
 
@@ -97,5 +98,31 @@ describe('local self-host configuration', () => {
     expect(await readFile(join(directory, 'compose.env'), 'utf8')).toContain('SELFHOST_AI_ENABLED=true\n');
     expect(await readFile(join(directory, 'scoring.env'), 'utf8')).toBe('OPENROUTER_API_KEY=fixture-only-scoring-key\n');
     expect(await readFile(join(directory, 'backend.env'), 'utf8')).not.toContain('OPENROUTER_API_KEY');
+    expect(await readFile(join(directory, 'backend.env'), 'utf8')).toContain('READER_VALUE_SCORING_PROVIDER=openrouter-systemone\n');
+  });
+
+  it('routes OpenAI credentials only to the private scorer file and reuses saved selection', async () => {
+    const defaults = await readPublicDefaults();
+    await materializeLocalConfiguration({ directory, defaults, now,
+      connection: { ...connection, scoringProvider: 'openai-decisions', scoringApiKey: 'fixture-openai-key' } });
+    const resumed = await materializeLocalConfiguration({ directory, defaults, now });
+    expect(resumed.connection.scoringProvider).toBe('openai-decisions');
+    expect(await readFile(join(directory, 'scoring.env'), 'utf8')).toBe('OPENAI_API_KEY=fixture-openai-key\n');
+    const backend = await readFile(join(directory, 'backend.env'), 'utf8');
+    expect(backend).toContain('READER_VALUE_SCORING_PROVIDER=openai-decisions\n');
+    expect(backend).not.toContain('fixture-openai-key');
+    expect(backend).not.toContain('OPENAI_API_KEY');
+    expect((await lstat(join(directory, 'scoring.env'))).mode & 0o077).toBe(0);
+    await materializeLocalConfiguration({ directory, defaults, now, connection });
+    expect(await readFile(join(directory, 'scoring.env'), 'utf8')).toBe('OPENROUTER_API_KEY=fixture-only-scoring-key\n');
+  });
+
+  it('accepts provider selection without a credential for collection and rejects unknown providers', async () => {
+    expect(() => validateConnection({ ...connection, scoringProvider: 'unsupported' as never }))
+      .toThrow('READER_VALUE_SCORING_PROVIDER');
+    await materializeLocalConfiguration({ directory, defaults: await readPublicDefaults(), now,
+      connection: { ...connection, scoringProvider: 'openai-decisions', scoringApiKey: '' } });
+    expect(await readFile(join(directory, 'compose.env'), 'utf8')).toContain('SELFHOST_AI_ENABLED=false\n');
+    expect(await readFile(join(directory, 'scoring.env'), 'utf8')).toBe('OPENAI_API_KEY=\n');
   });
 });

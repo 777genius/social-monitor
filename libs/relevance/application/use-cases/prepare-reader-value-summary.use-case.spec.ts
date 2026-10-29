@@ -16,8 +16,41 @@ import { PrepareReaderValueSummaryUseCase } from
 import { ConservativeReaderValueInputBuilder } from
   "../../infrastructure/reader-value/reader-value-input-builder";
 import { SourceContentSafetyPolicy } from "../../domain/source-content-safety";
+import { readerValueScoringConfiguration, type ReaderValueScoringProvider } from
+  "../../infrastructure/reader-value/reader-value-provider-config";
 
 describe("PrepareReaderValueSummaryUseCase timestamp cutoffs", () => {
+  it.each(['openrouter-systemone', 'openai-decisions'] as const)(
+    'freezes selected %s configuration with an empty inventory and rejects another provider', async (provider) => {
+      const inventory: ReaderValuePreparationInventory = { readSnapshot: async (_scope, operation) =>
+        operation({ page: async () => [] }) };
+      const fixture = setupWithInventory(inventory, undefined, provider);
+      const command = { tenantId: ids.tenant, workspaceId: ids.workspace, interestId: ids.interest,
+        jobId: ids.job, periodStartedAt: '2026-09-20T00:00:00Z',
+        periodEndedAt: '2026-09-21T00:00:00Z', cutoffAt: '2026-09-21T00:00:00Z' };
+      const configured = await fixture.subject.configuration(command);
+      if (!configured.ok) throw new Error('Selected configuration unavailable');
+      const identity = readerValueScoringConfiguration(provider);
+      expect(configured.config).toMatchObject({ rubricVersion: identity.rubricVersion,
+        rubricSha256: identity.rubricSha256, inputBuilderVersion: identity.inputBuilderVersion,
+        modelConfigVersion: identity.modelConfigVersion });
+      await expect(fixture.subject.prepare(command, configured.config)).resolves.toMatchObject({
+        ok: true, manifest: { modelConfigVersion: identity.modelConfigVersion,
+          inputBuilderVersion: identity.inputBuilderVersion, candidates: [] } });
+      const other = readerValueScoringConfiguration(provider === 'openai-decisions' ? 'openrouter-systemone' : 'openai-decisions');
+      await expect(fixture.subject.prepare(command, { ...configured.config,
+        modelConfigVersion: other.modelConfigVersion })).resolves.toEqual({ ok: false, code: 'config_unavailable' });
+    });
+
+  it('rejects a prepared input that disagrees with the advertised builder identity', async () => {
+    const fixture = setupWithInventory({ readSnapshot: async (_scope, operation) =>
+      operation({ page: async () => [item({})] }) }, undefined, 'openai-decisions');
+    const jev = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy(), 'openrouter-systemone');
+    fixture.builder.prepare.mockImplementation((source, revision) => jev.prepare(source, revision));
+    await expect(prepare(fixture.subject)).resolves.toEqual({ ok: false, code: 'config_unavailable' });
+    expect(fixture.store.ensure).not.toHaveBeenCalled();
+    expect(fixture.store.pin).not.toHaveBeenCalled();
+  });
   // Regression: incomplete workspace inventory must surface a snapshot
   // failure before assessment creation or an empty manifest can be published.
   it("classifies an unversioned visible source as snapshot unavailable", async () => {
@@ -534,9 +567,10 @@ const setup = (row: ReaderValueInventoryItem) => {
 };
 
 const setupWithInventory = (inventory: ReaderValuePreparationInventory,
-  clock?: Clock) => {
+  clock?: Clock, provider: ReaderValueScoringProvider = 'openrouter-systemone') => {
   const prepare: ReaderValueInputBuilder["prepare"] = () => err("unsafe_source");
   const builder: jest.Mocked<ReaderValueInputBuilder> = {
+    configuration: readerValueScoringConfiguration(provider),
     prepare: jest.fn(prepare),
   };
   const pin: ReaderValueAssessmentStore["pin"] = async (
