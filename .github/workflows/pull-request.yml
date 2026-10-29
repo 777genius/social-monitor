@@ -540,7 +540,7 @@ jobs:
       - name: Generate the pinned Prisma client
         run: npm run prisma:generate
 
-      - name: Prove Jev assessment, V3 publication and capture contracts
+      - name: Prove reader-value providers, V3 publication and capture contracts
         env:
           READER_VALUE_TEST_ADMIN_DATABASE_URL: postgresql://assessment_test_admin:social_monitor_local_password@127.0.0.1:5432/assessment_test_admin
           READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL: postgresql://assessment_test_admin:social_monitor_local_password@127.0.0.1:5432/assessment_test_admin
@@ -548,6 +548,7 @@ jobs:
         run: |
           set -euo pipefail
           npm run check:reader-value-assessments-postgres
+          npm run check:reader-value-provider-pipeline-postgres
           npm run check:reader-summary-v3-postgres
           npx jest --config jest.config.ts --runInBand --runTestsByPath libs/ingestion/adapters/persistence/prisma/prisma-article-capture.postgres.spec.ts
 

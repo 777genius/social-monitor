@@ -1,6 +1,7 @@
 import type { JsonObject, Result } from '@social-monitor/shared-kernel';
 import type { ReaderValueSource } from '../../domain/reader-value/reader-value-source';
 import type { ReaderValueDiscoveryScope, ReaderValuePreparedInput } from './reader-value-assessment-store';
+import type { ReaderValueScoringConfiguration } from './reader-value-scoring-configuration';
 
 export type ReaderValueInventoryCursor = { readonly publishedAt: string; readonly feedItemId: string };
 export type ReaderValueInventoryItem = {
@@ -58,5 +59,6 @@ export class ReaderValueInventorySnapshotUnavailable extends Error {
 export type ReaderValueInputFailure = 'unsafe_source';
 /** Deterministic preparation, including durable terminal diagnostics; no HTTP or database access. */
 export interface ReaderValueInputBuilder {
+  readonly configuration: ReaderValueScoringConfiguration;
   prepare(source: ReaderValueSource, sourceRevisionKey: string): Result<ReaderValuePreparedInput, ReaderValueInputFailure>;
 }

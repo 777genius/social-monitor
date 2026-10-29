@@ -31,7 +31,7 @@ AI if you have already connected it.
 
 You need two things for AI summaries:
 
-1. An **OpenRouter API key** for assessing and selecting collected content.
+1. An **OpenRouter API key** or an **OpenAI API key** with Decisions access for assessing and selecting collected content.
    Save it in a private text file containing only the key, outside this repository.
 2. A **Codex login** for writing summaries. Sign in with the Codex CLI first
    (`codex login`). Its login file is usually `~/.codex/auth.json`.
@@ -45,6 +45,30 @@ Then run (replace the key-file path):
   --openrouter-key-file "$HOME/.config/social-monitor/openrouter-key" \
   --codex-auth-file "$HOME/.codex/auth.json"
 ```
+
+OpenRouter SystemOne/Jev remains the default. To assess with OpenAI Decisions
+using `gpt-6-luna`, select it explicitly and provide its key file:
+
+```sh
+docker build -t social-monitor-backend:decisions .
+SELFHOST_BACKEND_IMAGE=social-monitor-backend:decisions \
+./start.sh --local-images --ai codex --scoring-provider openai-decisions \
+  --openai-key-file "$HOME/.config/social-monitor/openai-key" \
+  --codex-auth-file "$HOME/.codex/auth.json"
+```
+
+Run this after the initial credential-free startup so the frontend image is
+already installed. It builds the backend from the checked-out revision because
+the pinned `selfhost-preview-20261018` backend image does not contain Decisions.
+On later starts, keep the same `SELFHOST_BACKEND_IMAGE` override and
+`--local-images` to reuse this backend. A published backend image containing
+the integration can also be selected through `SELFHOST_BACKEND_IMAGE`.
+
+Both scoring providers answer the same four reader-value questions. The
+separate Codex service continues to write the final summaries. Setup saves the
+selected scoring credential in the private scoring configuration and applies
+the provider selection to the backend processes. Later starts reuse it.
+Use only the key-file argument that matches the selected provider.
 
 The Codex login file is mounted read-only; setup does not read or copy it.
 These settings are saved privately; later starts need only `./start.sh`.
@@ -100,6 +124,34 @@ The address must be reachable from Docker; container `localhost` is not your hos
   --runtime-token-file /absolute/private/runtime-token \
   --openrouter-key-file /absolute/private/openrouter-key
 ```
+
+## Advanced: scoring configuration
+
+For deployments configured through environment variables, set
+`READER_VALUE_SCORING_PROVIDER=openrouter-systemone` (the default) with
+`OPENROUTER_API_KEY`, or `READER_VALUE_SCORING_PROVIDER=openai-decisions` with
+`OPENAI_API_KEY`. Selection is explicit and does not depend on which keys exist.
+Summary preparation does not need the scoring key; only the enabled assessment
+worker requires its selected credential.
+
+V3 scoring requires `RELEVANCE_PERSISTENCE=prisma`,
+`SUMMARY_PERSISTENCE=prisma`, `READER_VALUE_SCORING_LOOP=enabled` and
+`INTELLIGENCE_READER_SUMMARY_JOB_LOOP=enabled`. The workflow remains
+`READER_VALUE_MODE=jev_primary_v3` with either provider; that historical mode
+name describes the durable selection pipeline. Configure the existing
+agent-runtime summary writer separately. The local launcher supplies these
+prerequisites when AI is connected.
+
+Use the same provider selection in the API/preflight, assessment worker and
+durable capture processes. Before switching an existing deployment, finish its
+frozen jobs using the previous selection, then update the processes together.
+Requests and cached assessments retain their exact provider configuration and
+hashes. Different selections cannot reuse or dispatch each other's inputs;
+unmatched work can remain pending or fail a preparation/coverage check. There
+is no cross-process startup handshake or automatic provider fallback.
+
+Decisions currently returns token usage without billed cost. Its persisted
+cost stays unknown; token counts do not represent a billing estimate.
 
 ## If setup stops
 

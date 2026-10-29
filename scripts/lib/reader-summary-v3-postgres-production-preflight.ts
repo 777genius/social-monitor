@@ -10,6 +10,8 @@ import { PrismaReaderValueInventory } from
   "@social-monitor/relevance/infrastructure/reader-value/prisma-reader-value-inventory";
 import { ConservativeReaderValueInputBuilder } from
   "@social-monitor/relevance/infrastructure/reader-value/reader-value-input-builder";
+import type { ReaderValueScoringProvider } from
+  "@social-monitor/relevance/infrastructure/reader-value/reader-value-provider-config";
 import type { AssessmentSqlClient, AssessmentSqlTransaction } from
   "@social-monitor/relevance/infrastructure/reader-value/assessment-sql";
 import type { ConfiguredInterestReaderPort } from "@social-monitor/relevance/ports";
@@ -25,6 +27,7 @@ import { postgresPreflightClient } from "./reader-summary-v3-postgres-preflight-
  * composition as production; only the isolated fixture's SQL transport is thin. */
 export const runProductionV3Preflight = async (client: PoolClient, scope: {
   readonly tenantId: string; readonly workspaceId: string; readonly jobId: string;
+  readonly scoringProvider?: ReaderValueScoringProvider;
 }) => {
   const prisma = postgresPreflightClient(client);
   const jobs = new PrismaReaderSummaryJobRepository(prisma);
@@ -35,7 +38,7 @@ export const runProductionV3Preflight = async (client: PoolClient, scope: {
   const store = new PrismaReaderValueAssessmentStore(assessmentClient);
   const source = new RelevanceReaderSummaryV3PreparationSource(
     new PrepareReaderValueSummaryUseCase(new PrismaReaderValueInventory(assessmentClient),
-      new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy()), store,
+      new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy(), scope.scoringProvider ?? 'openrouter-systemone'), store,
       new CryptoIdGenerator(), postgresConfiguredInterestReader(client)), store);
   return new PrismaReaderSummaryV3Preflight(prisma, jobs, source).advance({ job,
     requestedAt: job.toSnapshot().requestedAt, startedAt: job.toSnapshot().requestedAt });

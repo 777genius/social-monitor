@@ -5,9 +5,8 @@ import { normalizeReaderValuePersistedCostUsd } from
 import { validateReaderValueAnswers } from '../../domain/reader-value/reader-value-assessment';
 import type { ReaderValueFailure, ReaderValueFailureCode } from '../../domain/reader-value/reader-value-failure';
 import { readerValueHttpFailure } from './reader-value-http-failure';
-import { READER_VALUE_MODEL, READER_VALUE_MODEL_CONFIG, READER_VALUE_RESOLVED_MODEL,
-  READER_VALUE_RUBRIC_SHA256, READER_VALUE_INPUT_VERSION } from './reader-value-input-builder';
-import { sha256 } from './reader-value-source-snapshot';
+import { READER_VALUE_RESOLVED_MODEL } from './reader-value-input-builder';
+import { readerValueRequestMatches } from './reader-value-request-guard';
 
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -25,10 +24,7 @@ export class OpenRouterReaderValueScorer implements ReaderValueScorer {
   async score(input: ReaderValuePreparedInput): Promise<ReaderValueScoringOutcome> {
     if (input.terminalFailure) return { ok: false, failure: { code: input.terminalFailure,
       retryable: false, pauseDispatch: false, usageUnknown: false } };
-    if (!this.apiKey.trim() || input.requestedModel !== READER_VALUE_MODEL
-      || input.modelConfigVersion !== READER_VALUE_MODEL_CONFIG || input.rubricSha256 !== READER_VALUE_RUBRIC_SHA256
-      || input.inputBuilderVersion !== READER_VALUE_INPUT_VERSION || sha256(input.requestBody) !== input.requestSha256
-      || Buffer.byteLength(input.requestBody) > 56_000) return failure('configuration_invalid');
+    if (!this.apiKey.trim() || !readerValueRequestMatches(input, 'openrouter-systemone')) return failure('configuration_invalid');
     const started = this.clock.now().getTime();
     const signal = AbortSignal.timeout(30_000);
     let httpFailure: ReaderValueFailure | null = null;

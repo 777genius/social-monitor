@@ -1,8 +1,8 @@
 import type { ReaderSummaryExecutionLeasePolicy } from "../../features/execute-reader-summary-job/reader-summary-execution-lease.policy";
 import { PrepareReaderValueSummaryUseCase } from
   "@social-monitor/relevance/application/use-cases/prepare-reader-value-summary.use-case";
-import { SourceContentSafetyPolicy } from
-  "@social-monitor/relevance/domain/source-content-safety";
+import type { ReaderValueInputBuilder } from
+  "@social-monitor/relevance/application/contracts/reader-value-inventory";
 import type { AssessmentSqlClient } from
   "@social-monitor/relevance/infrastructure/reader-value/assessment-sql";
 import { PrismaReaderValueAssessmentStore } from
@@ -11,8 +11,6 @@ import { PrismaReaderValueInventory } from
   "@social-monitor/relevance/infrastructure/reader-value/prisma-reader-value-inventory";
 import { PrismaReaderValueWorkspaceInterests } from
   "@social-monitor/relevance/infrastructure/reader-value/prisma-reader-value-workspace-interests";
-import { ConservativeReaderValueInputBuilder } from
-  "@social-monitor/relevance/infrastructure/reader-value/reader-value-input-builder";
 import { type ConfiguredInterestReaderPort } from
   "@social-monitor/relevance/ports";
 import type { Clock, IdGenerator } from "@social-monitor/shared-kernel";
@@ -35,12 +33,12 @@ import { PrismaReaderSummaryV3Preflight } from
 import type { ReaderSummaryV3PreflightPort,
   ReaderSummaryV3PromotionPort } from "../../ports";
 
-export const createReaderSummaryV3Preflight = (client: PrismaSummaryClient, jobs: PrismaReaderSummaryJobRepository, interests: ConfiguredInterestReaderPort, clock: Clock, ids: IdGenerator, lease?: ReaderSummaryExecutionLeasePolicy): ReaderSummaryV3PreflightPort => {
+export const createReaderSummaryV3Preflight = (client: PrismaSummaryClient, jobs: PrismaReaderSummaryJobRepository, interests: ConfiguredInterestReaderPort, clock: Clock, ids: IdGenerator, builder: ReaderValueInputBuilder, lease?: ReaderSummaryExecutionLeasePolicy): ReaderSummaryV3PreflightPort => {
     const relevanceClient = client as unknown as AssessmentSqlClient;
     const store = new PrismaReaderValueAssessmentStore(relevanceClient);
     const source = new RelevanceReaderSummaryV3PreparationSource(
       new PrepareReaderValueSummaryUseCase(new PrismaReaderValueInventory(relevanceClient),
-        new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy()),
+        builder,
         store, ids, interests, clock), store,
       new PrismaReaderValueWorkspaceInterests(relevanceClient));
     if (!(jobs instanceof PrismaReaderSummaryJobRepository)) {
