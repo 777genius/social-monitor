@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
+import { createPrismaPgRuntimeConnection, resolvePostgresRuntimePoolConfig, runWithSystemDatabaseAccess,
+  type PrismaPgRuntimeClientConstructor } from '@social-monitor/platform-persistence';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import {
   causationId, correlationId, DomainError, eventId, redactSensitiveText,
@@ -22,6 +22,12 @@ type EventRow = { readonly id: string; readonly createdAt: Date; readonly payloa
   readonly interestId: string; readonly tenantId: string; readonly workspaceId: string; readonly name: string;
 } };
 
+type ProofClient = PrismaInterestCreationClient & {
+  $disconnect(): Promise<void>;
+  $queryRawUnsafe<T>(sql: string, ...values: unknown[]): Promise<T>;
+  $executeRawUnsafe(sql: string, ...values: unknown[]): Promise<number>;
+};
+
 const targetUrl = process.env.INTEREST_CREATION_TEST_DATABASE_URL;
 if (targetUrl === undefined) throw new Error('INTEREST_CREATION_TEST_DATABASE_URL must explicitly name a local test database');
 const target = new URL(targetUrl);
@@ -36,9 +42,19 @@ void main(targetUrl).catch((error: unknown) => {
 });
 
 async function main(url: string): Promise<void> {
-  const pool = new Pool({ connectionString: url, min: 0, max: 6, statement_timeout: 10_000 });
-  const PrismaClient = loadPrismaRuntimeClient<new (options: { adapter: PrismaPg }) => PrismaInterestCreationClient & { $disconnect(): Promise<void> }>();
-  const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+  // This standalone two-contender proof uses the existing two-connection API
+  // budget; it does not expand the delivery-service production pool budget.
+  const config = resolvePostgresRuntimePoolConfig({
+    DATABASE_URL: url, POSTGRES_RUNTIME_PROCESS: 'api-gateway',
+    POSTGRES_RUNTIME_POOL_MIN: '0', POSTGRES_RUNTIME_POOL_MAX: '2',
+  });
+  const PrismaClient = loadPrismaRuntimeClient<PrismaPgRuntimeClientConstructor<ProofClient>>();
+  const runtime = await createPrismaPgRuntimeConnection(config, PrismaClient, (lease) => lease);
+  const prisma = runtime.client;
+  const query = <T>(sql: string, values: readonly unknown[] = []): Promise<T[]> =>
+    runWithSystemDatabaseAccess('Interest creation scoped fixture reads', () => prisma.$queryRawUnsafe<T[]>(sql, ...values));
+  const execute = (sql: string, values: readonly unknown[] = []): Promise<number> =>
+    runWithSystemDatabaseAccess('Interest creation scoped fixture writes', () => prisma.$executeRawUnsafe(sql, ...values));
   const store = new PrismaInterestCreationStore(prisma);
   const tenantIds = [tenantId(randomUUID()), tenantId(randomUUID())];
   const scopes: Scope[] = [];
@@ -46,7 +62,7 @@ async function main(url: string): Promise<void> {
 
   const createScope = async (tenant = tenantIds[0]!): Promise<Scope> => {
     const scope = { tenantId: tenant, workspaceId: workspaceId(randomUUID()) };
-    await pool.query(`INSERT INTO workspaces (id,tenant_id,slug,name,updated_at)
+    await execute(`INSERT INTO workspaces (id,tenant_id,slug,name,updated_at)
       VALUES ($1,$2,$3,'Interest creation fixture',now())`, [scope.workspaceId, tenant, `interest-${scope.workspaceId}`]);
     scopes.push(scope);
     return scope;
@@ -61,12 +77,12 @@ async function main(url: string): Promise<void> {
     };
     return { interest, event, idempotencyKey: key, receiptId: randomUUID(), maxInterestsPerWorkspace };
   };
-  const interests = async (scope: Scope): Promise<InterestRow[]> => (await pool.query(`SELECT id,name,status,deleted_at AS "deletedAt"
-    FROM interests WHERE tenant_id=$1 AND workspace_id=$2 ORDER BY name`, [scope.tenantId, scope.workspaceId])).rows;
-  const events = async (scope: Scope): Promise<EventRow[]> => (await pool.query(`SELECT id,created_at AS "createdAt",payload FROM outbox_events
-    WHERE tenant_id=$1 AND workspace_id=$2 AND event_type='monitoring.interest.created' ORDER BY id`, [scope.tenantId, scope.workspaceId])).rows;
-  const receipts = async (scope: Scope): Promise<ReceiptRow[]> => (await pool.query(`SELECT key,response_payload AS "responsePayload",response_status AS "responseStatus"
-    FROM idempotency_keys WHERE tenant_id=$1 AND workspace_id=$2 AND scope='monitoring.create-interest' ORDER BY key`, [scope.tenantId, scope.workspaceId])).rows;
+  const interests = (scope: Scope): Promise<InterestRow[]> => query<InterestRow>(`SELECT id,name,status::text AS status,deleted_at AS "deletedAt"
+    FROM interests WHERE tenant_id=$1 AND workspace_id=$2 ORDER BY name`, [scope.tenantId, scope.workspaceId]);
+  const events = (scope: Scope): Promise<EventRow[]> => query<EventRow>(`SELECT id,created_at AS "createdAt",payload FROM outbox_events
+    WHERE tenant_id=$1 AND workspace_id=$2 AND event_type='monitoring.interest.created' ORDER BY id`, [scope.tenantId, scope.workspaceId]);
+  const receipts = (scope: Scope): Promise<ReceiptRow[]> => query<ReceiptRow>(`SELECT key,response_payload AS "responsePayload",response_status AS "responseStatus"
+    FROM idempotency_keys WHERE tenant_id=$1 AND workspace_id=$2 AND scope='monitoring.create-interest' ORDER BY key`, [scope.tenantId, scope.workspaceId]);
   const wrapped = (transform: (tx: Transaction) => Transaction): PrismaInterestCreationClient => {
     const transaction: PrismaInterestCreationClient['$transaction'] = (work, options) =>
       prisma.$transaction((tx) => work(transform(tx)), options);
@@ -99,7 +115,7 @@ async function main(url: string): Promise<void> {
 
   try {
     for (const tenant of tenantIds) {
-      await pool.query(`INSERT INTO tenants (id,slug,name,updated_at) VALUES ($1,$2,'Interest creation fixture',now())`, [tenant, `interest-${tenant}`]);
+      await execute(`INSERT INTO tenants (id,slug,name,updated_at) VALUES ($1,$2,'Interest creation fixture',now())`, [tenant, `interest-${tenant}`]);
     }
 
     // Receipt reservation must precede both aggregate/event writes, but a failed
@@ -204,7 +220,7 @@ async function main(url: string): Promise<void> {
 
     const archiveScope = await createScope();
     const archived = successful(await store.commit(input(archiveScope, 'Exact Case Topic', 'archive-original', 1)));
-    await pool.query(`UPDATE interests SET status='ARCHIVED',deleted_at=$1
+    await execute(`UPDATE interests SET status='ARCHIVED',deleted_at=$1
       WHERE id=$2 AND tenant_id=$3 AND workspace_id=$4`, [now, archived.interestId, archiveScope.tenantId, archiveScope.workspaceId]);
     domainFailure(await store.commit(input(archiveScope, 'Exact Case Topic', 'archive-conflict', 1)), 'operation.conflict');
     await assertCounts(archiveScope, [1, 1, 1]);
@@ -231,15 +247,14 @@ async function main(url: string): Promise<void> {
   } finally {
     try {
       for (const scope of scopes) {
-        await pool.query('DELETE FROM outbox_events WHERE tenant_id=$1 AND workspace_id=$2', [scope.tenantId, scope.workspaceId]);
-        await pool.query("DELETE FROM idempotency_keys WHERE tenant_id=$1 AND workspace_id=$2 AND scope='monitoring.create-interest'", [scope.tenantId, scope.workspaceId]);
-        await pool.query('DELETE FROM interests WHERE tenant_id=$1 AND workspace_id=$2', [scope.tenantId, scope.workspaceId]);
-        await pool.query('DELETE FROM workspaces WHERE id=$1 AND tenant_id=$2', [scope.workspaceId, scope.tenantId]);
+        await execute('DELETE FROM outbox_events WHERE tenant_id=$1 AND workspace_id=$2', [scope.tenantId, scope.workspaceId]);
+        await execute("DELETE FROM idempotency_keys WHERE tenant_id=$1 AND workspace_id=$2 AND scope='monitoring.create-interest'", [scope.tenantId, scope.workspaceId]);
+        await execute('DELETE FROM interests WHERE tenant_id=$1 AND workspace_id=$2', [scope.tenantId, scope.workspaceId]);
+        await execute('DELETE FROM workspaces WHERE id=$1 AND tenant_id=$2', [scope.workspaceId, scope.tenantId]);
       }
-      for (const tenant of tenantIds) await pool.query('DELETE FROM tenants WHERE id=$1', [tenant]);
+      for (const tenant of tenantIds) await execute('DELETE FROM tenants WHERE id=$1', [tenant]);
     } finally {
-      await prisma.$disconnect();
-      await pool.end();
+      await runtime.close();
     }
   }
 }

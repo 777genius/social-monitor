@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
+import { createPrismaPgRuntimeConnection, resolvePostgresRuntimePoolConfig, runWithSystemDatabaseAccess,
+  type PrismaPgRuntimeClientConstructor } from '@social-monitor/platform-persistence';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import type { PrismaDeliveryWorkflowClient } from '@social-monitor/delivery/adapters/persistence/prisma/prisma-delivery-workflow-client';
@@ -13,6 +13,12 @@ import { DeliveryTestClock, deferredDelivery, allowDelivery } from '../test/supp
 
 // This executable only accepts an explicitly supplied local test database. All
 // fixtures belong to fresh random scope; cleanup never touches unrelated rows.
+type ProofClient = PrismaDeliveryWorkflowClient & PrismaDeliveryClient & {
+  $disconnect(): Promise<void>;
+  $queryRawUnsafe<T>(sql: string, ...values: unknown[]): Promise<T>;
+  $executeRawUnsafe(sql: string, ...values: unknown[]): Promise<number>;
+};
+
 const targetUrl = process.env.DELIVERY_WORKFLOW_TEST_DATABASE_URL;
 if (targetUrl === undefined) throw new Error('DELIVERY_WORKFLOW_TEST_DATABASE_URL must explicitly name a local test database');
 const target = new URL(targetUrl);
@@ -23,9 +29,19 @@ if (!['localhost', '127.0.0.1', '[::1]'].includes(target.hostname) || !/test|san
 void main(targetUrl).catch((error: unknown) => { console.error(error); process.exitCode = 1; });
 
 async function main(url: string): Promise<void> {
-  const pool = new Pool({ connectionString: url, min: 0, max: 6, statement_timeout: 10_000 });
-  const PrismaClient = loadPrismaRuntimeClient<new (options: { adapter: PrismaPg }) => PrismaDeliveryWorkflowClient & PrismaDeliveryClient & { $disconnect(): Promise<void> }>();
-  const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+  // This standalone two-contender proof uses the existing two-connection API
+  // budget; it does not expand the delivery-service production pool budget.
+  const config = resolvePostgresRuntimePoolConfig({
+    DATABASE_URL: url, POSTGRES_RUNTIME_PROCESS: 'api-gateway',
+    POSTGRES_RUNTIME_POOL_MIN: '0', POSTGRES_RUNTIME_POOL_MAX: '2',
+  });
+  const PrismaClient = loadPrismaRuntimeClient<PrismaPgRuntimeClientConstructor<ProofClient>>();
+  const runtime = await createPrismaPgRuntimeConnection(config, PrismaClient, (lease) => lease);
+  const prisma = runtime.client;
+  const query = <T>(sql: string, values: readonly unknown[] = []): Promise<T[]> =>
+    runWithSystemDatabaseAccess('Delivery workflow scoped fixture reads', () => prisma.$queryRawUnsafe<T[]>(sql, ...values));
+  const execute = (sql: string, values: readonly unknown[] = []): Promise<number> =>
+    runWithSystemDatabaseAccess('Delivery workflow scoped fixture writes', () => prisma.$executeRawUnsafe(sql, ...values));
   const store = new PrismaDeliveryWorkflowStore(prisma);
   const repository = new PrismaDeliveryAttemptRepository(prisma);
   const tenant = tenantId(randomUUID());
@@ -40,20 +56,20 @@ async function main(url: string): Promise<void> {
   });
   const createAttempt = async () => {
     const id = randomUUID();
-    await pool.query(`INSERT INTO delivery_attempts
+    await execute(`INSERT INTO delivery_attempts
       (id,tenant_id,workspace_id,idempotency_key,channel,recipient_key,resource_type,resource_id,state,queued_at,max_retries,updated_at)
       VALUES ($1,$2,$3,$4,'webhook','fixture-endpoint','digest','fixture-digest','QUEUED',$5,3,$5)`,
     [id, tenant, workspace, `fixture:${id}`, clock.now()]);
     return id;
   };
-  const read = async (id: string) => (await pool.query(`SELECT * FROM delivery_attempts
-    WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, [id, tenant, workspace])).rows[0] as Record<string, unknown>;
-  const commandRows = async (id: string) => (await pool.query(`SELECT id FROM outbox_events
+  const read = async (id: string) => (await query<Record<string, unknown>>(`SELECT state::text AS state,retry_count,dispatch_command_id FROM delivery_attempts
+    WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, [id, tenant, workspace]))[0]!;
+  const commandRows = async (id: string) => query<{ id: string }>(`SELECT id FROM outbox_events
     WHERE tenant_id=$1 AND workspace_id=$2 AND message_kind='COMMAND' AND event_type='delivery.attempt.send'
-      AND payload->>'deliveryAttemptId'=$3`, [tenant, workspace, id])).rows as { id: string }[];
+      AND payload->>'deliveryAttemptId'=$3`, [tenant, workspace, id]);
   try {
-    await pool.query(`INSERT INTO tenants (id,slug,name,updated_at) VALUES ($1,$2,'Delivery workflow test',now())`, [tenant, `delivery-${tenant}`]);
-    await pool.query(`INSERT INTO workspaces (id,tenant_id,slug,name,updated_at) VALUES ($1,$2,$3,'Delivery workflow test',now())`, [workspace, tenant, `delivery-${workspace}`]);
+    await execute(`INSERT INTO tenants (id,slug,name,updated_at) VALUES ($1,$2,'Delivery workflow test',now())`, [tenant, `delivery-${tenant}`]);
+    await execute(`INSERT INTO workspaces (id,tenant_id,slug,name,updated_at) VALUES ($1,$2,$3,'Delivery workflow test',now())`, [workspace, tenant, `delivery-${workspace}`]);
 
     const raced = await createAttempt();
     const dispatches = await Promise.all([store.dispatch(dispatch(raced)), store.dispatch(dispatch(raced))]);
@@ -148,13 +164,12 @@ async function main(url: string): Promise<void> {
     console.log('Delivery workflow PostgreSQL checks OK: dispatch atomicity/concurrency, provider claim/replay, rollback, expired ownership/renewal, stale settlement, workspace scope, stale command and manual-retry generation fencing');
   } finally {
     try {
-      await pool.query('DELETE FROM outbox_events WHERE tenant_id=$1 AND workspace_id=$2', [tenant, workspace]);
-      await pool.query('DELETE FROM delivery_attempts WHERE tenant_id=$1 AND workspace_id=$2', [tenant, workspace]);
-      await pool.query('DELETE FROM workspaces WHERE id=$1 AND tenant_id=$2', [workspace, tenant]);
-      await pool.query('DELETE FROM tenants WHERE id=$1', [tenant]);
+      await execute('DELETE FROM outbox_events WHERE tenant_id=$1 AND workspace_id=$2', [tenant, workspace]);
+      await execute('DELETE FROM delivery_attempts WHERE tenant_id=$1 AND workspace_id=$2', [tenant, workspace]);
+      await execute('DELETE FROM workspaces WHERE id=$1 AND tenant_id=$2', [workspace, tenant]);
+      await execute('DELETE FROM tenants WHERE id=$1', [tenant]);
     } finally {
-      await prisma.$disconnect();
-      await pool.end();
+      await runtime.close();
     }
   }
 }
