@@ -7,7 +7,8 @@ import {
   causationId, correlationId, DomainError, eventId, redactSensitiveText,
   tenantId, workspaceId, type TenantId, type WorkspaceId,
 } from '@social-monitor/shared-kernel';
-import { Interest, type InterestCreatedEvent } from '@social-monitor/monitoring/domain';
+import { Interest, SourceBinding, type InterestCreatedEvent } from '@social-monitor/monitoring/domain';
+import { PrismaSourceBindingCreationStore, type PrismaSourceBindingCreationClient } from '@social-monitor/monitoring/adapters/persistence/prisma/prisma-source-binding-creation.store';
 import type { InterestCreationCommitPort } from '@social-monitor/monitoring/application/contracts/interest-creation-commit';
 import { PrismaInterestCreationStore, type PrismaInterestCreationClient,
   type PrismaInterestCreationTransaction } from '@social-monitor/monitoring/adapters/persistence/prisma/prisma-interest-creation.store';
@@ -58,6 +59,7 @@ async function main(url: string): Promise<void> {
   const store = new PrismaInterestCreationStore(prisma);
   const tenantIds = [tenantId(randomUUID()), tenantId(randomUUID())];
   const scopes: Scope[] = [];
+  const sourceCatalogIds: string[] = [];
   const now = new Date('2026-10-30T12:00:00.000Z');
 
   const createScope = async (tenant = tenantIds[0]!): Promise<Scope> => {
@@ -242,16 +244,134 @@ async function main(url: string): Promise<void> {
       await assertCounts(scope, [1, 1, 1]);
     }
     assert.equal(new Set(scopedResults.map((result) => result.interestId)).size, 3, 'Receipt/name/capacity scope must include tenant and workspace');
+    // Source binding creation is another independent aggregate + event + receipt
+    // transaction. Exercise it against the same real PostgreSQL 18 RLS/role,
+    // bounded two-connection factory and isolated per-test tenant/workspace.
+    const bindingStore = new PrismaSourceBindingCreationStore(prisma as unknown as PrismaSourceBindingCreationClient);
+    const catalogId = randomUUID();
+    const providerKey = `source-binding-creation-fixture-${catalogId}`;
+    await execute(`INSERT INTO source_catalog_entries
+      (id,provider_key,display_name,acquisition_mode,readiness,updated_at)
+      VALUES ($1,$2,'Binding creation fixture','api','ready',now())`, [catalogId, providerKey]);
+    sourceCatalogIds.push(catalogId);
+    const bindingScope = await createScope();
+    const bindingInterest = successful(await store.commit(input(bindingScope, 'Binding transaction topic', 'binding-topic')));
+    const bindingInput = (channel: string, key: string, maximum?: number) => {
+      const id = randomUUID();
+      const binding = SourceBinding.create({
+        id, ...bindingScope, interestId: bindingInterest.interestId,
+        providerKey, capabilityProfileVersion: 1,
+        config: { channel, secret: { encrypted: true, ciphertext: 'fixture-ciphertext' } },
+        createdAt: now,
+      });
+      return {
+        binding, idempotencyKey: key, receiptId: randomUUID(),
+        configIdentity: { field: 'channel', value: channel },
+        maxEnabledSourcesPerInterest: maximum,
+        event: {
+          eventId: eventId(randomUUID()), eventType: 'monitoring.source-binding.enabled',
+          schemaVersion: 1, occurredAt: now, ...bindingScope,
+          correlationId: correlationId(randomUUID()), causationId: causationId(key),
+          payload: { sourceBindingId: id, ...bindingScope,
+            interestId: bindingInterest.interestId, providerKey, capabilityProfileVersion: 1 },
+        },
+      } as Parameters<PrismaSourceBindingCreationStore['commit']>[0];
+    };
+    const bindingRows = () => query<{ id: string; config: Record<string, unknown> }>(`
+      SELECT id,config FROM source_bindings
+      WHERE tenant_id=$1 AND workspace_id=$2
+      ORDER BY created_at,id`, [bindingScope.tenantId, bindingScope.workspaceId]);
+    const bindingEvents = () => query<{ id: string; payload: { sourceBindingId: string } }>(`
+      SELECT id,payload FROM outbox_events
+      WHERE tenant_id=$1 AND workspace_id=$2 AND event_type='monitoring.source-binding.enabled'
+      ORDER BY id`, [bindingScope.tenantId, bindingScope.workspaceId]);
+    const bindingReceipts = () => query<{ key: string; responsePayload: unknown }>(`
+      SELECT key,response_payload AS "responsePayload" FROM idempotency_keys
+      WHERE tenant_id=$1 AND workspace_id=$2 AND scope='monitoring.bind-source' ORDER BY key`,
+      [bindingScope.tenantId, bindingScope.workspaceId]);
+    const assertBindingCounts = async (expected: readonly [number, number, number]) => {
+      const rows = await bindingRows();
+      const eventRows = await bindingEvents();
+      const receipts = await bindingReceipts();
+      assert.deepEqual([rows.length,eventRows.length,receipts.length],expected);
+      for (const event of eventRows) assert(rows.some((row) => row.id === event.payload.sourceBindingId),
+        'Every source-enabled event must reference one committed source binding');
+      for (const receipt of receipts) {
+        assert(receipt.responsePayload !== null, 'Unfinished binding reservation must not commit');
+        const payload = receipt.responsePayload as { sourceBindingId: string };
+        assert(rows.some((row) => row.id === payload.sourceBindingId),
+          'Binding receipt must reference one committed source binding');
+      }
+    };
+    const original = bindingInput('first-channel', 'first-binding', 1);
+    const failedOutbox = new PrismaSourceBindingCreationStore({
+      $transaction: (work, options) => prisma.$transaction((tx) => work({
+        ...tx, outboxEvent: {
+          ...tx.outboxEvent, create: async () => { throw new Error('Fixture binding event failure'); },
+        },
+      }), options),
+    });
+    const eventOutcome = await failedOutbox.commit(original);
+    assert(!eventOutcome.ok && /Fixture binding event failure/.test(eventOutcome.error.message));
+    await assertBindingCounts([0,0,0]);
+    const first = await bindingStore.commit(original);
+    assert(first.ok && first.value.created);
+    await assertBindingCounts([1,1,1]);
+    const rows = await bindingRows();
+    assert.deepEqual(rows[0]!.config.secret, { encrypted: true, ciphertext: 'fixture-ciphertext' });
+    const originalReceipts = await bindingReceipts();
+    const replay = await bindingStore.commit(bindingInput('wrong-channel', 'first-binding', 1));
+    assert(replay.ok && !replay.value.created && replay.value.sourceBindingId === first.value.sourceBindingId);
+    assert.deepEqual(await bindingReceipts(), originalReceipts, 'First-key binding receipt must be immutable');
+
+    const canonicalDuplicate = await bindingStore.commit(bindingInput('first-channel', 'other-key', 1));
+    assert(canonicalDuplicate.ok && !canonicalDuplicate.value.created);
+    assert.equal(canonicalDuplicate.value.sourceBindingId, first.value.sourceBindingId);
+    await assertBindingCounts([1,1,2]);
+    const rejectedQuota = await bindingStore.commit(bindingInput('second-channel', 'rejected-slot', 1));
+    assert(!rejectedQuota.ok && rejectedQuota.error instanceof DomainError &&
+      rejectedQuota.error.code === 'operation.quota_exceeded');
+    await assertBindingCounts([1,1,2]);
+
+    // Distinct identities race for the last slot on a separate workspace.
+    const capacityScope = await createScope();
+    const quotaInterest = successful(await store.commit(input(capacityScope, 'Binding capacity topic', 'capacity-topic')));
+    const capacityInput = (channel: string, key: string) => {
+      const id = randomUUID();
+      const binding = SourceBinding.create({ ...capacityScope, id,
+        interestId: quotaInterest.interestId, providerKey,
+        capabilityProfileVersion: 1, config: { channel }, createdAt: now });
+      return { binding, idempotencyKey: key, receiptId: randomUUID(), maxEnabledSourcesPerInterest: 1,
+        configIdentity: { field: 'channel', value: channel },
+        event: { eventId: eventId(randomUUID()), eventType: 'monitoring.source-binding.enabled',
+          schemaVersion: 1, occurredAt: now, ...capacityScope,
+          correlationId: correlationId(randomUUID()), causationId: causationId(key),
+          payload: { ...capacityScope, sourceBindingId: id, interestId: quotaInterest.interestId,
+            providerKey, capabilityProfileVersion: 1 } },
+      } as Parameters<PrismaSourceBindingCreationStore['commit']>[0];
+    };
+    const contenders = await Promise.all([
+      bindingStore.commit(capacityInput('alpha', 'capacity-alpha')),
+      bindingStore.commit(capacityInput('beta', 'capacity-beta')),
+    ]);
+    assert.equal(contenders.filter((result) => result.ok).length, 1,
+      'Serializable full enabled count must admit only one competing source binding');
+    assert.equal((await query<{ count: bigint }>(`SELECT COUNT(*)::bigint AS count FROM source_bindings
+      WHERE tenant_id=$1 AND workspace_id=$2 AND status='ENABLED'`,
+      [capacityScope.tenantId,capacityScope.workspaceId]))[0]!.count,1n);
+
 
     console.log('Interest creation PostgreSQL checks OK: event/receipt rollback, same-key and same-name contention, last-slot capacity, immutable replay, tenant/workspace, archive and exact-case semantics');
   } finally {
     try {
       for (const scope of scopes) {
+        await execute('DELETE FROM source_bindings WHERE tenant_id=$1 AND workspace_id=$2', [scope.tenantId, scope.workspaceId]);
         await execute('DELETE FROM outbox_events WHERE tenant_id=$1 AND workspace_id=$2', [scope.tenantId, scope.workspaceId]);
-        await execute("DELETE FROM idempotency_keys WHERE tenant_id=$1 AND workspace_id=$2 AND scope='monitoring.create-interest'", [scope.tenantId, scope.workspaceId]);
+        await execute("DELETE FROM idempotency_keys WHERE tenant_id=$1 AND workspace_id=$2 AND scope IN ('monitoring.create-interest','monitoring.bind-source')", [scope.tenantId, scope.workspaceId]);
         await execute('DELETE FROM interests WHERE tenant_id=$1 AND workspace_id=$2', [scope.tenantId, scope.workspaceId]);
         await execute('DELETE FROM workspaces WHERE id=$1 AND tenant_id=$2', [scope.workspaceId, scope.tenantId]);
       }
+      for (const id of sourceCatalogIds) await execute('DELETE FROM source_catalog_entries WHERE id=$1', [id]);
       for (const tenant of tenantIds) await execute('DELETE FROM tenants WHERE id=$1', [tenant]);
     } finally {
       await runtime.close();
