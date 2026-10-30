@@ -141,7 +141,7 @@ export class PrismaScanJobRepository
 
     return {
       scanJobs: page.map(scanJobFromPrisma),
-      nextCursor: next?.id,
+      nextCursor: next === undefined ? undefined : page.at(-1)?.id,
     };
   }
 

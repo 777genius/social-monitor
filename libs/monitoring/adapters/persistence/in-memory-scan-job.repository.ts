@@ -122,7 +122,7 @@ export class InMemoryScanJobRepository implements ScanJobRepositoryPort, ScanJob
 
     return {
       scanJobs: page,
-      nextCursor: next?.toSnapshot().id,
+      nextCursor: next === undefined ? undefined : page.at(-1)?.toSnapshot().id,
     };
   }
 
