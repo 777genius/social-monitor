@@ -39,14 +39,14 @@ const guardedSetup = (presentation: PromotionPresentationBuilder, count = 16) =>
 };
 
 describe('V3 promotion presentation runtime failures', () => {
-  it('skips isolated runtime-failed batches and discloses the gap in the published artifact', async () => {
-    const runtime = runtimeFailingBatches(call => call === 1 || call === 3);
+  it('skips a single runtime-failed batch and discloses the gap in the published artifact', async () => {
+    const runtime = runtimeFailingBatches(call => call === 2);
     const fixture = guardedSetup(runtime.presentation);
     const result = await fixture.run();
     expect(result.kind).toBe('ready');
     if (result.kind !== 'ready') throw new Error(result.kind);
     const evidence = result.evidence;
-    expect(runtime.failed.size).toBe(8);
+    expect(runtime.failed.size).toBe(4);
     expect(evidence.presentationRuntimeDegraded).toBe(true);
     expect(evidence.promotionV3?.presentationCoverageLimited).toBeUndefined();
     expect(evidence.selectedEvidence.length).toBeGreaterThan(0);
@@ -87,11 +87,21 @@ describe('V3 promotion presentation runtime failures', () => {
     expect(JSON.stringify(publicArtifact)).not.toContain('presentationRuntimeDegraded');
   });
 
-  it('stops the run as a dependency failure after two back-to-back runtime-failed batches', async () => {
-    const runtime = runtimeFailingBatches(() => true);
+  it.each([
+    ['two back-to-back failed batches', (call: number) => call <= 2, 2],
+    ['a failed share above max(4, 25%) of attempts', (call: number) => call === 1 || call === 3, 3],
+  ] as const)('stops the run as a dependency failure after %s', async (_name, failing, calls) => {
+    const runtime = runtimeFailingBatches(failing);
     await expect(guardedSetup(runtime.presentation).run()).resolves.toEqual({
       kind: 'dependency_failure', reason: 'presentation_runtime_failure_repeated' });
-    expect(runtime.calls()).toBe(2);
+    expect(runtime.calls()).toBe(calls);
+  });
+
+  it('reports the runtime, not the content, when skips leave nothing publishable', async () => {
+    const runtime = runtimeFailingBatches(() => true);
+    await expect(guardedSetup(runtime.presentation, 4).run()).resolves.toEqual({
+      kind: 'dependency_failure', reason: 'presentation_runtime_failure' });
+    expect(runtime.calls()).toBe(1);
   });
 
   it('starts every run with a fresh failure count and no disclosure when every task ran', async () => {

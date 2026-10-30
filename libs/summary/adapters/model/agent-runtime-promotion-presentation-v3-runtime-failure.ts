@@ -8,7 +8,6 @@ const transientPresentationRuntimeCodes = new Set([
   "provider_output_invalid",
   "agent_runtime.failed",
   "agent_runtime.cli_exit",
-  "agent_runtime.cli_error",
   "agent_runtime.invalid_cli_result",
 ]);
 // A timeout already spent the whole per-task deadline the native V3 budget
@@ -17,11 +16,11 @@ const timeoutPresentationRuntimeCodes = new Set([
   "task_timeout",
   "agent_runtime.cli_timeout",
 ]);
-
-// Quota, capacity and credentials are run-wide: every later batch would fail
-// the same way, so they must stop the job instead of degrading a story.
-const runWideFailureReasons = new Set([
-  "quota_limited", "capacity_unavailable", "account_unavailable", "reconnect_required",
+// Classified runtime reasons that stay per-task. Every other reason (quota,
+// capacity, account, reconnect, permission, model or budget) is run-wide.
+const transientPresentationRuntimeReasons = new Set([
+  "user_abort", "runtime_interrupted", "unknown_error", "provider_output_invalid",
+  "task_timeout",
 ]);
 const runWideFailureMarker =
   /quota|rate[\s_-]?limit|too[\s_-]many[\s_-]requests|\b429\b|attestation|credential|reconnect/u;
@@ -46,7 +45,7 @@ export const presentationRuntimeFailureDisposition = (
   const details = failure.details ?? {};
   if (Object.keys(details).some((key) => key === "capacityReason" ||
       validationEvidencePrefixes.some((prefix) => key.startsWith(prefix)))) return undefined;
-  if (runWideFailureReasons.has(details.reason ?? "") ||
+  if ((details.reason !== undefined && !transientPresentationRuntimeReasons.has(details.reason)) ||
       details.safeExecutorStatus === "waiting_capacity") return undefined;
   if (runWideFailureMarker.test(
     `${failure.code} ${failure.causeCategory} ${failure.safeMessage}`.toLowerCase())) return undefined;

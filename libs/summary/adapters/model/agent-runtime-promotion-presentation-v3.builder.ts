@@ -157,10 +157,11 @@ implements PromotionPresentationBuilder {
     };
     let result = await this.client.runTask(command);
     // A transient runtime failure (cancellation, crashed run, empty failure,
-    // timeout) says nothing about the stories on either backend: retry the exact
-    // task once unless it already used its deadline, then skip only this batch
-    // under its own runtime_failure reason. The promotion job discloses the gap
-    // and stops on repeated whole-batch failures.
+    // timeout) says nothing about the stories on either backend: resend the same
+    // request once unless it already used its deadline (a runtime that has
+    // exhausted this request answers at once), then skip only this batch under
+    // its own runtime_failure reason. The promotion run discloses the gap and
+    // stops when runtime failures repeat.
     if (presentationRuntimeFailureDisposition(result) === "retry") {
       result = await this.client.runTask(command);
     }

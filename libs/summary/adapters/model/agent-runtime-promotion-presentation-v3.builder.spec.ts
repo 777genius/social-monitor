@@ -57,6 +57,9 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     ["unknown_runtime_failure", "Failed", { safeExecutorStatus: "waiting_capacity" }, false],
     ["unknown_runtime_failure", "Rate limit reached for this account", {}, false],
     ["unknown_runtime_failure", "Failed", { reason: "quota_limited" }, false],
+    ["unknown_runtime_failure", "Failed", { reason: "model_unavailable" }, false],
+    ["unknown_runtime_failure", "Failed", { reason: "permission_required" }, false],
+    ["task_cancelled", "Failed", { reason: "budget_exceeded" }, false],
     ["task_timeout", "Task timed out", {}, true],
   ])("keeps run-wide %s (%s) fatal on both backends without retrying", async (code, safeMessage, details, reconnectRequired) => {
     for (const modelBackend of [undefined, "xiaomi-mimo-token-plan"] as const) {

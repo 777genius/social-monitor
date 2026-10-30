@@ -34,7 +34,7 @@ export type ReaderPostPresentationV3Result =
   | { readonly status: "unavailable"; readonly reason:
       "incomplete_source" | "input_over_budget" | "unsafe_text" |
       "insufficient_support" | "invalid_presentation" |
-      /** The runtime failed the task itself; nothing is known about the story. */
+      /** The runtime failed or rejected the task before any presentation was validated. */
       "runtime_failure" }
   | { readonly status: "dependency_failure"; readonly reason: string };
 
