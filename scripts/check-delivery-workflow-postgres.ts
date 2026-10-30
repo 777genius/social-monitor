@@ -68,6 +68,15 @@ async function main(url: string): Promise<void> {
   const commandRows = async (id: string) => query<{ id: string }>(`SELECT id FROM outbox_events
     WHERE tenant_id=$1 AND workspace_id=$2 AND message_kind='COMMAND' AND event_type='delivery.attempt.send'
       AND payload->>'deliveryAttemptId'=$3`, [tenant, workspace, id]);
+  const currentDbTime = async (): Promise<Date> =>
+    (await query<{ now: Date }>('SELECT clock_timestamp() AS now'))[0]!.now;
+  const assertOnlyFixtureClaimable = async (at: Date, ownedId: string): Promise<void> => {
+    const unrelated = await query<{ id: string }>(`SELECT id FROM outbox_events
+      WHERE message_kind='COMMAND' AND status='PENDING' AND available_at <= $1
+        AND (leased_until IS NULL OR leased_until <= $1)
+        AND id <> $2::uuid LIMIT 1`, [at, ownedId]);
+    assert.equal(unrelated.length, 0, 'Native command outbox fixture requires isolated claimable COMMAND rows');
+  };
   try {
     await execute(`INSERT INTO tenants (id,slug,name,updated_at) VALUES ($1,$2,'Delivery workflow test',now())`, [tenant, `delivery-${tenant}`]);
     await execute(`INSERT INTO workspaces (id,tenant_id,slug,name,updated_at) VALUES ($1,$2,$3,'Delivery workflow test',now())`, [workspace, tenant, `delivery-${workspace}`]);
@@ -85,36 +94,49 @@ async function main(url: string): Promise<void> {
     const commandOutbox = new PrismaCommandOutboxStoreAdapter(prisma as unknown as PrismaCommandOutboxClient);
     const firstOwner = randomUUID();
     const secondOwner = randomUUID();
+    const outboxNow = await currentDbTime();
+    const claimExpiry = new Date(outboxNow.getTime() + 60_000);
+    await assertOnlyFixtureClaimable(outboxNow, commands[0]!.id);
     const firstClaim = await commandOutbox.claimPending({
-      limit: 1, now: clock.now(), leaseOwner: firstOwner,
-      leasedUntil: new Date(clock.now().getTime() + 100),
+      limit: 1, now: outboxNow, leaseOwner: firstOwner, leasedUntil: claimExpiry,
     });
     assert.equal(firstClaim.length, 1, 'one durable command must be claimed');
     assert.equal(firstClaim[0]?.id, commands[0]?.id);
     assert.equal(await commandOutbox.renewClaims({
-      ids: [commands[0]!.id], leaseOwner: secondOwner, now: clock.now(),
-      leasedUntil: new Date(clock.now().getTime() + 200),
+      ids: [commands[0]!.id], leaseOwner: secondOwner, now: outboxNow,
+      leasedUntil: new Date(outboxNow.getTime() + 70_000),
     }), false, 'different owner cannot extend the command');
-    clock.advance(50);
     assert.equal(await commandOutbox.renewClaims({
-      ids: [commands[0]!.id], leaseOwner: firstOwner, now: clock.now(),
-      leasedUntil: new Date(clock.now().getTime() + 150),
+      ids: [commands[0]!.id], leaseOwner: firstOwner, now: outboxNow,
+      leasedUntil: new Date(outboxNow.getTime() + 70_000),
     }), true, 'current owner renews the durable command');
-    clock.advance(151);
+
+    // Move this one fixture row behind the database clock. A stale worker may
+    // still supply the earlier outboxNow; PostgreSQL must reject its renewal
+    // and settlement using clock_timestamp(), not that captured timestamp.
+    await execute(`UPDATE outbox_events SET leased_until=clock_timestamp()-interval '1 second'
+      WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, [commands[0]!.id, tenant, workspace]);
+    assert.equal(await commandOutbox.renewClaims({
+      ids: [commands[0]!.id], leaseOwner: firstOwner, now: outboxNow,
+      leasedUntil: new Date(outboxNow.getTime() + 90_000),
+    }), false, 'database clock must reject a late renewal despite stale client now');
     await assert.rejects(commandOutbox.markPublished({
-      id: commands[0]!.id, leaseOwner: firstOwner, publishedAt: clock.now(),
-    }), /ownership was lost/, 'expired owner must not acknowledge publication');
+      id: commands[0]!.id, leaseOwner: firstOwner, publishedAt: outboxNow,
+    }), /ownership was lost/, 'database clock must reject a late acknowledgment');
+
+    const recoveredNow = await currentDbTime();
+    await assertOnlyFixtureClaimable(recoveredNow, commands[0]!.id);
     const recoveredClaim = await commandOutbox.claimPending({
-      limit: 1, now: clock.now(), leaseOwner: secondOwner,
-      leasedUntil: new Date(clock.now().getTime() + 300),
+      limit: 1, now: recoveredNow, leaseOwner: secondOwner,
+      leasedUntil: new Date(recoveredNow.getTime() + 60_000),
     });
     assert.equal(recoveredClaim[0]?.id, commands[0]?.id, 'expired row must be claimable after restart');
     assert.equal(await commandOutbox.renewClaims({
-      ids: [commands[0]!.id], leaseOwner: firstOwner, now: clock.now(),
-      leasedUntil: new Date(clock.now().getTime() + 500),
+      ids: [commands[0]!.id], leaseOwner: firstOwner, now: outboxNow,
+      leasedUntil: new Date(recoveredNow.getTime() + 90_000),
     }), false, 'stale owner cannot renew the replacement');
     await commandOutbox.markPublished({
-      id: commands[0]!.id, leaseOwner: secondOwner, publishedAt: clock.now(),
+      id: commands[0]!.id, leaseOwner: secondOwner, publishedAt: recoveredNow,
     });
 
     const entered = deferredDelivery<void>();
