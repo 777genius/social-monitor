@@ -26,7 +26,9 @@ describe('GuardedOAuth2TokenHttpClient', () => {
     });
     expect(f.options[0]).toMatchObject({
       method: 'POST', agent: false, rejectUnauthorized: true,
-      maxHeaderSize: 16_384, headers: input.headers,
+      maxHeaderSize: 16_384, headers: {
+        ...input.headers, 'content-length': Buffer.byteLength(input.body, 'utf8'),
+      },
     });
     expect(f.sent).toEqual([input.body]);
   });
