@@ -136,6 +136,6 @@ const installFixture = (fixture: Fixture = {}) => {
       });
     });
     return request;
-  }) as typeof https.request);
+  }) as unknown as typeof https.request);
   return { sent, urls, options };
 };
