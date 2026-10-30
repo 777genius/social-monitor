@@ -22,13 +22,14 @@ the Nomad vertical slice, and #129 owns Flutter find-in-page.
 | P1 | Delivery execution has no atomic ownership | Concurrent workers load the same queued attempt and both send. A thrown provider call leaves `sending` outside the scheduler's recovery set. |
 | P1 | Webhook HTTP egress is not guarded at the connection boundary | Default redirect following can forward signed payloads to a different/internal destination; DNS results are not vetted and response bodies are unbounded. |
 | P1 | Draining durable scan retries deletes work before processing | Retry rows are deleted at drain time; synthetic delivery ack/nack are no-ops. Shutdown or concurrent drains can lose or duplicate work. |
+| P1 | Interest creation can commit without its domain event or receipt | A failed event append leaves the saved interest visible; retry finds its name and reports success without recreating the missing event. |
 | P2 | Scan-history pagination loses one record per page | Both repositories emit the first omitted row as cursor, then skip that row on the next request. Five rows with a limit of two return only four rows. |
 | P2 | Queue timer failures can escape the runtime boundary | Queue drain or settlement rejection escapes fire-and-forget interval callbacks. |
 | P2 | Architecture gates miss real forbidden imports | Disposable fixtures demonstrate same-context domain-to-adapter imports, adapter barrels and some alias cycles pass the current gate. |
 
-Research candidates requiring a separate decision: event-outbox recovery/leases,
-monitoring write-idempotency atomicity, and broker delivery settlement after
-reconnection. They must be reproduced and scoped before implementation.
+Event-outbox recovery/leases remain a separate research candidate. Broker
+generation ownership and interest-creation atomicity were reproduced and scoped
+below before implementation.
 
 ## Invariants and ownership
 
@@ -94,6 +95,19 @@ reconnection. They must be reproduced and scoped before implementation.
       violations in scope; explain any additional work instead of adding blanket
       exclusions.
 
+### E. Atomic interest creation
+
+- [ ] Replace the three independent interest/event/idempotency writes with one
+      required application-owned creation capability; retain current REST shapes.
+- [ ] Recheck the scoped receipt, name and workspace capacity inside the same
+      Serializable transaction as all writes. Retry the whole transaction.
+- [ ] Make the first committed idempotency result immutable, including concurrent
+      requests with the same key and different names.
+- [ ] Give in-memory repositories, outbox and receipts one shared backing state
+      and publish the creation together, without asynchronous partial visibility.
+- [ ] Prove rollback on event and receipt failures, concurrent duplicate keys and
+      names, the last capacity slot, tenant/workspace isolation, and replay.
+
 ## Review and verification
 
 Each workstream receives a focused regression test and an independent critique.
@@ -146,10 +160,38 @@ processing.
   body because delivery only needs status and a request-id header. The pure URL
   policy rejects local/non-global literal addresses and URL userinfo.
 
-The audit additionally reproduced a monitoring transaction gap: an interest can
-commit before its event append fails; retry then returns success without the
-event. This is queued for a narrow aggregate+event+idempotency transaction slice
-after the selected delivery work, rather than a generic unit-of-work framework.
+### Interest creation: additional design review before implementation
+
+The reproduced missing-event failure is included as a narrow final vertical slice.
+Introduce a required application-owned creation commit capability accepting a
+prepared domain interest/event, scoped receipt identity and explicit capacity
+bound. The use case continues to own domain construction, injected IDs and time;
+the storage adapter owns atomicity. No generic unit-of-work framework, schema
+migration, public DTO change or optional sequential fallback is needed.
+
+Prisma already stores interests, outbox events and idempotency receipts on the
+same connection. A Serializable transaction must recheck the scoped receipt,
+active/archived name and active interest count before writing. If reserving the
+unique receipt first, domain rejection must abort the transaction so an empty
+reservation never commits. Existing completed receipts are immutable first-key
+wins; an existing active name yields a receipt with `created: false`, without
+another event. Keep generated IDs/time stable across internal transaction retry.
+
+Concurrent unique-name conflicts require a narrow fresh transaction/read decision;
+do not reinterpret an arbitrary Prisma uniqueness error as success. An archived
+name remains occupied by the database unique key and returns a typed conflict,
+without resurrection. Use exact-case name matching in both adapters, matching the
+existing durable unique constraint; this deliberately corrects the in-memory
+adapter's previous case-insensitive mismatch. Capacity is counted atomically,
+without relying on paginated list limits. The process-local implementation shares
+the existing repositories' backing data and commits synchronously after validating
+all mutations, with no await between partial effects.
+
+An independent critic must review rollback, receipt reservation, concurrency and
+adapter parity. Real PostgreSQL tests must cover event/receipt-write rollback,
+same-key/different-name contention, same-name/different-key contention, capacity
+races, scope, archive/case semantics and replay after a completed commit. Historical
+missing events/receipts are not implicitly backfilled by this forward fix.
 
 ### Compatible dependency remediation
 
