@@ -119,7 +119,7 @@ implements PromotionPresentationBuilder {
     const prompt = JSON.stringify({ candidates: inputs.map((input) => ({
       candidateId: input.candidateId, title: input.title, sourceText: input.body,
     })) });
-    const catalogCandidates = this.modelBackend === mimoReaderSummaryBackend
+    const catalogCandidates = usesSourceCopyOptions(this.modelBackend)
       ? readerPostPresentationCandidates(prompt) : undefined;
     const schema = catalogCandidates === undefined ? baseSchema : mimoQualifiedHeadlineOutputSchema(catalogCandidates);
     const systemPrompt = catalogCandidates === undefined ? instructions : mimoPresentationInstructions(catalogCandidates);
@@ -236,6 +236,17 @@ export const resolveAgentRuntimePromotionPresentationV3BuilderOptions = (
     ),
   };
 };
+
+/**
+ * Codex is the only backend qualified on the canonical wire, where the model
+ * computes UTF-16 quote offsets, the qualification judgment and a display text
+ * that literally contains every qualification. MiMo and the gateway models miss
+ * those (off-by-one ends, entity-escaped quotes, paraphrased phrases) and fail
+ * the seal, so they copy machine-computed source references and the server
+ * composes the text and judgment.
+ */
+const usesSourceCopyOptions = (backend: ReaderSummaryGenerationBackend): boolean =>
+  backend === mimoReaderSummaryBackend || isGatewayReaderSummaryBackend(backend);
 
 const instructions = "Create a short reader headline for every candidate using only its exact title and sourceText. Preserve every material qualification. Return unavailable when support is insufficient. Evidence offsets are JavaScript UTF-16 offsets into title or complete sourceText, named bodyPreview. Never use outside knowledge, popularity, prior scores, or candidate order.";
 
