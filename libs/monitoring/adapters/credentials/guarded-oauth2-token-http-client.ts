@@ -74,7 +74,7 @@ export class GuardedOAuth2TokenHttpClient implements OAuth2TokenHttpClientPort {
       request.once('socket', (socket) => {
         socket.once('secureConnect', () => {
           try {
-            if (socket.authorized !== true) {
+            if (!('authorized' in socket) || socket.authorized !== true) {
               throw new OutboundHttpPolicyError('tls_unverified', 'OAuth2 token TLS peer authorization failed');
             }
             target.assertPeer(socket.remoteAddress);
