@@ -14,6 +14,20 @@ const gatewayReference = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
 const gatewayTransportKeys =
   "accountRef,attempt,executionRef,observedModel,profileId,requestRef,requestSha256,taskId";
 
+// Keep aligned with isGatewayReaderSummaryExecution in
+// libs/summary/adapters/model/active-reader-summary-generation-profile.ts.
+// Gateway-only models never reuse the CLI model names and carry the route
+// effort: "default" when no reasoning control was sent.
+const gatewayModelId = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u;
+const gatewayEfforts = new Set(
+  ["default", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
+export const isGatewayModel = (value) => typeof value === "string" &&
+  gatewayModelId.test(value) && value !== "gpt-5.6-sol" &&
+  value !== "mimo-v2.6-pro";
+export const isGatewayExecution = (runtimeEngine, model, reasoningEffort) =>
+  runtimeEngine === gatewayRuntimeEngine && isGatewayModel(model) &&
+  gatewayEfforts.has(reasoningEffort);
+
 export const observedModelMatches = (requested, observed) =>
   observed === null ||
   (typeof requested === "string" && typeof observed === "string" &&
@@ -99,8 +113,12 @@ export function validatePublicationAttestationRecord(record, allowLegacy) {
       ? expectedEffort !== "high" ||
         attestation.runtimePackageVersion !== approvedMimoRuntimeVersion ||
         attestation.launcherSha256 !== approvedLauncherSha256
-      : attestation.model !== "gpt-5.6-sol") ||
-    attestation.reasoningEffort !== expectedEffort ||
+      : isGatewayModel(attestation.model)
+        ? expectedEffort !== "high" || !isGatewayExecution(
+          attestation.runtimeEngine, attestation.model, attestation.reasoningEffort)
+        : attestation.model !== "gpt-5.6-sol") ||
+    (!isGatewayModel(attestation.model) &&
+      attestation.reasoningEffort !== expectedEffort) ||
     !isAttestedRuntimeEngine(attestation.runtimeEngine) ||
     (attestation.model === "mimo-v2.6-pro" &&
       attestation.runtimeEngine !== cliRuntimeEngine) ||
@@ -122,7 +140,7 @@ export function isPublicationRuntimeProvenance(value, allowLegacy = false) {
     value.execution === "attested" &&
     value.summaryModel === "agent-runtime" &&
     (value.physicalModel === "gpt-5.6-sol" ||
-      value.physicalModel === "mimo-v2.6-pro") &&
+      value.physicalModel === "mimo-v2.6-pro" || gatewayProvenance(value)) &&
     value.provider === "codex" &&
     isAttestedRuntimeEngine(value.runtime) &&
     (value.physicalModel !== "mimo-v2.6-pro" || value.runtime === cliRuntimeEngine) &&
@@ -131,7 +149,7 @@ export function isPublicationRuntimeProvenance(value, allowLegacy = false) {
       (value.runtimeVersion === approvedMimoRuntimeVersion &&
         value.reasoningEffort === "high" &&
         value.launcherSha256 === approvedLauncherSha256)) &&
-    (value.reasoningEffort === "high" ||
+    (value.reasoningEffort === "high" || gatewayProvenance(value) ||
       (allowLegacy && value.reasoningEffort === "xhigh")) &&
     sha256(value.launcherSha256) &&
     sha256(value.summaryContentSha256) &&
@@ -142,7 +160,16 @@ export function isPublicationRuntimeProvenance(value, allowLegacy = false) {
     validTopicIdentity(value.topicLabeler, value, allowLegacy);
 }
 
+const gatewayProvenance = (value) => isGatewayExecution(
+  value.runtime, value.physicalModel, value.reasoningEffort);
+
 function validTopicIdentity(topic, parent, allowLegacy) {
+  if (gatewayProvenance(parent)) {
+    return topic.mode === "agent-runtime" &&
+      ["physicalModel", "provider", "runtime", "runtimeVersion",
+        "reasoningEffort", "launcherSha256"]
+        .every((key) => topic[key] === parent[key]);
+  }
   return topic.mode === "agent-runtime" &&
     (topic.physicalModel === "gpt-5.6-sol" ||
       topic.physicalModel === "mimo-v2.6-pro") &&

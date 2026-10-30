@@ -95,6 +95,25 @@ describe("reader summary current serving authority", () => {
     expect(authority.storyRelationVerifier.physicalModel).toBe("mimo-v2.6-pro");
   });
 
+  it("reports the gateway route model and effort for every daily component", async () => {
+    const authority = await resolveReaderSummaryServingAuthority({
+      summaryModelMode: "agent-runtime",
+      topicLabelerMode: "agent-runtime",
+      env: {
+        AGENT_RUNTIME_READER_SUMMARY_BACKEND: "kimi-code",
+        // The Codex pins the daily runner exports stay valid and unused.
+        AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+        AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
+      },
+      agentRuntimeClient: { checkHealth: servingHealth() }, checkedAt,
+    });
+    for (const component of [authority.summaryGenerator, authority.topicLabeler,
+      authority.topicRelationVerifier, authority.storyRelationVerifier]) {
+      expect(component).toMatchObject({ provider: "codex", physicalModel: "k3-256k",
+        reasoningPolicy: "default" });
+    }
+  });
+
   it("rejects an unknown generation backend", async () => {
     await expect(resolveReaderSummaryServingAuthority({
       summaryModelMode: "agent-runtime", topicLabelerMode: "agent-runtime",

@@ -37,10 +37,12 @@ import {
   activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
   assertActiveReaderSummaryProvider,
+  assertReaderSummaryBackendModel,
   mimoReaderSummaryBackend,
-  mimoReaderSummaryModel,
-  parseActiveReaderSummaryReasoningEffort,
+  readerSummaryRouteControls,
+  resolveReaderSummaryBackendEffort,
   resolveReaderSummaryDailyTaskIdentityFromEnv,
+  resolveReaderSummaryReasoningEffortFromEnv,
   type ReaderSummaryGenerationBackend,
   verifyAndRecordMimoDailyExecution,
 } from "./active-reader-summary-generation-profile";
@@ -49,9 +51,10 @@ export type AgentRuntimeReaderSummaryTopicLabelerOptions = {
   readonly client: AgentRuntimeClientPort;
   readonly agentProvider?: typeof activeReaderSummaryProvider;
   readonly providerInstanceId?: string;
-  readonly model?: typeof activeReaderSummaryModel | typeof mimoReaderSummaryModel;
+  readonly model?: string;
   readonly modelBackend?: ReaderSummaryGenerationBackend;
-  readonly reasoningEffort?: typeof activeReaderSummaryReasoningEffort;
+  /** high for Codex and MiMo, the route effort for a gateway backend. */
+  readonly reasoningEffort?: string;
   readonly promptVersion?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
@@ -73,7 +76,7 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
   private readonly providerInstanceId?: string;
   private readonly model: string;
   private readonly modelBackend: ReaderSummaryGenerationBackend;
-  private readonly reasoningEffort: typeof activeReaderSummaryReasoningEffort;
+  private readonly reasoningEffort: string;
   private readonly promptVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
@@ -86,11 +89,9 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
     this.providerInstanceId = options.providerInstanceId;
     this.model = options.model ?? defaultModel;
     this.modelBackend = options.modelBackend ?? "openai-chatgpt";
-    if (this.modelBackend === mimoReaderSummaryBackend && this.model !== mimoReaderSummaryModel) {
-      throw new Error("MiMo reader summary model conflicts with purpose policy");
-    }
-    this.reasoningEffort =
-      options.reasoningEffort ?? activeReaderSummaryReasoningEffort;
+    assertReaderSummaryBackendModel(this.modelBackend, this.model);
+    this.reasoningEffort = resolveReaderSummaryBackendEffort(
+      this.modelBackend, options.reasoningEffort, activeReaderSummaryReasoningEffort);
     this.promptVersion = nonEmptyOrFallback(
       options.promptVersion,
       defaultPromptVersion,
@@ -153,7 +154,7 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
         ...(this.modelBackend === mimoReaderSummaryBackend
           ? { modelBackend: this.modelBackend, toolsEnabled: false, toolPolicy: "none" }
           : {}),
-        reasoningEffort: this.reasoningEffort,
+        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
@@ -234,10 +235,7 @@ export const resolveAgentRuntimeReaderSummaryTopicLabelerOptions = (
     ...resolveReaderSummaryDailyTaskIdentityFromEnv(
       env, env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL,
     ),
-    reasoningEffort: parseActiveReaderSummaryReasoningEffort(
-      env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
-        env.AGENT_RUNTIME_REASONING_EFFORT,
-    ),
+    reasoningEffort: resolveReaderSummaryReasoningEffortFromEnv(env),
   promptVersion: env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_PROMPT_VERSION,
   timeoutMs: parsePositiveInteger(
     env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS ??

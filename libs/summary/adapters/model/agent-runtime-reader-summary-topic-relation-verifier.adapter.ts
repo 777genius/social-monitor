@@ -33,8 +33,10 @@ import {
   activeReaderSummaryModel,
   activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
+  assertReaderSummaryBackendModel,
   mimoReaderSummaryBackend,
-  mimoReaderSummaryModel,
+  readerSummaryRouteControls,
+  resolveReaderSummaryBackendEffort,
   resolveReaderSummaryDailyTaskIdentityFromEnv,
   type ReaderSummaryGenerationBackend,
   verifyAndRecordMimoDailyExecution,
@@ -42,9 +44,10 @@ import {
 
 export type AgentRuntimeReaderSummaryTopicRelationVerifierOptions = Pick<
   AgentRuntimeReaderSummaryTopicLabelerOptions,
-  "client" | "agentProvider" | "providerInstanceId" | "verifiedAttestationSink"
+  "client" | "agentProvider" | "providerInstanceId" | "verifiedAttestationSink" |
+  "reasoningEffort"
 > & {
-  readonly model?: typeof activeReaderSummaryModel | typeof mimoReaderSummaryModel;
+  readonly model?: string;
   readonly modelBackend?: ReaderSummaryGenerationBackend;
   readonly promptVersion?: string;
   readonly timeoutMs?: number;
@@ -62,6 +65,7 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
   private readonly providerInstanceId?: string;
   private readonly model: string;
   private readonly modelBackend: ReaderSummaryGenerationBackend;
+  private readonly reasoningEffort: string;
   private readonly promptVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
@@ -73,9 +77,9 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
     this.providerInstanceId = options.providerInstanceId;
     this.model = options.model ?? defaultModel;
     this.modelBackend = options.modelBackend ?? "openai-chatgpt";
-    if (this.modelBackend === mimoReaderSummaryBackend && this.model !== mimoReaderSummaryModel) {
-      throw new Error("MiMo reader summary model conflicts with purpose policy");
-    }
+    assertReaderSummaryBackendModel(this.modelBackend, this.model);
+    this.reasoningEffort = resolveReaderSummaryBackendEffort(
+      this.modelBackend, options.reasoningEffort, activeReaderSummaryReasoningEffort);
     this.promptVersion = nonEmptyOrFallback(
       options.promptVersion,
       defaultPromptVersion,
@@ -129,7 +133,7 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
         ...(this.modelBackend === mimoReaderSummaryBackend
           ? { modelBackend: this.modelBackend, toolsEnabled: false, toolPolicy: "none" }
           : {}),
-        reasoningEffort: activeReaderSummaryReasoningEffort,
+        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
@@ -183,6 +187,7 @@ export const resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions = (
     client,
     agentProvider: shared.agentProvider,
     providerInstanceId: shared.providerInstanceId,
+    reasoningEffort: shared.reasoningEffort,
     ...resolveReaderSummaryDailyTaskIdentityFromEnv(
       env, env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL,
     ),

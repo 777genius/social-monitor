@@ -12,6 +12,7 @@ import {
   approvedLauncherSha256,
   approvedMimoRuntimeVersion,
   isAttestedRuntimeEngine,
+  isGatewayModel,
   isPublicationRuntimeProvenance,
   validatePublicationAttestationRecord,
 } from "./lib/reader-summary-publication-runtime-policy.mjs";
@@ -309,7 +310,8 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
         record.attestation.reasoningEffort !== "high")) ||
     summaryIdentity.launcherSha256 !== topicIdentity.launcherSha256 ||
     !(validMimoPair ||
-      (summaryIdentity.model === "gpt-5.6-sol" && sameCodexIdentity))
+      ((summaryIdentity.model === "gpt-5.6-sol" ||
+        isGatewayModel(summaryIdentity.model)) && sameCodexIdentity))
   ) {
     fail("observed executor attestations do not agree");
   }

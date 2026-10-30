@@ -11,15 +11,26 @@ import {
   approvedMimoRuntimePackageVersion,
   approvedSubscriptionRuntimePackageVersion,
 } from "../../apps/agent-runtime/src/subscription-runtime-installation";
+import {
+  isGatewayReaderSummaryExecution,
+  isGatewayReaderSummaryModel,
+} from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+
+/**
+ * Physical models: the Codex and MiMo CLI models, or one gateway-only model
+ * whose effort is the gateway route's ("default" when none is sent).
+ */
+type PhysicalModel = string;
+type ReasoningEffort = string;
 
 export type ProductionDayExecutedRuntimeProvenance = {
   readonly execution: "attested";
   readonly summaryModel: "agent-runtime";
-  readonly physicalModel: "gpt-5.6-sol" | "mimo-v2.6-pro";
+  readonly physicalModel: PhysicalModel;
   readonly provider: "codex";
   readonly runtime: AgentRuntimeEngine;
   readonly runtimeVersion: string;
-  readonly reasoningEffort: "high" | "xhigh";
+  readonly reasoningEffort: ReasoningEffort;
   readonly launcherSha256: string;
   readonly summaryContentSha256: string;
   readonly topicMapSha256: string;
@@ -27,11 +38,11 @@ export type ProductionDayExecutedRuntimeProvenance = {
   readonly completedTaskCount: number;
   readonly topicLabeler: {
     readonly mode: "agent-runtime";
-    readonly physicalModel: "gpt-5.6-sol" | "mimo-v2.6-pro";
+    readonly physicalModel: PhysicalModel;
     readonly provider: "codex";
     readonly runtime: AgentRuntimeEngine;
     readonly runtimeVersion: string;
-    readonly reasoningEffort: "high" | "xhigh";
+    readonly reasoningEffort: ReasoningEffort;
     readonly launcherSha256: string;
   };
 };
@@ -59,8 +70,8 @@ type ValidAttestationRecord = {
     readonly purpose: string;
     readonly canonicalRequestSha256: string;
     readonly provider: "codex";
-    readonly model: "gpt-5.6-sol" | "mimo-v2.6-pro";
-    readonly reasoningEffort: "high" | "xhigh";
+    readonly model: PhysicalModel;
+    readonly reasoningEffort: ReasoningEffort;
     readonly runtimeEngine: AgentRuntimeEngine;
     readonly gateway?: unknown;
     readonly runtimePackageVersion: string;
@@ -174,7 +185,8 @@ export const runtimeProvenanceFromExecutorAttestations = (
           ? topicIdentity.runtimePackageVersion !== approvedMimoRuntimePackageVersion
           : topicIdentity.model !== "gpt-5.6-sol" ||
             topicIdentity.runtimePackageVersion !== approvedSubscriptionRuntimePackageVersion)) ||
-      (summaryIdentity.model === "gpt-5.6-sol" &&
+      // Codex and gateway days run one identity for every task.
+      (summaryIdentity.model !== "mimo-v2.6-pro" &&
         [summaryIdentity.provider, summaryIdentity.model, summaryIdentity.reasoningEffort,
           summaryIdentity.runtimeEngine, summaryIdentity.runtimePackageVersion].join("\u0000") !==
         [topicIdentity.provider, topicIdentity.model, topicIdentity.reasoningEffort,
@@ -269,14 +281,16 @@ export const isProductionSubscriptionRuntimeProvenance = (
   return (
     value.execution === "attested" &&
     value.summaryModel === "agent-runtime" &&
-    (value.physicalModel === "gpt-5.6-sol" || value.physicalModel === "mimo-v2.6-pro") &&
+    (value.physicalModel === "gpt-5.6-sol" || value.physicalModel === "mimo-v2.6-pro" ||
+      isGatewayProvenance(value)) &&
     value.provider === "codex" &&
     isAgentRuntimeEngine(value.runtime) &&
     (value.physicalModel !== "mimo-v2.6-pro" || value.runtime === subscriptionRuntimeEngine) &&
     isConcreteRuntimePackageVersion(value.runtimeVersion) &&
     (value.physicalModel !== "mimo-v2.6-pro" ||
       (value.runtimeVersion === approvedMimoRuntimePackageVersion && value.reasoningEffort === "high")) &&
-    (value.reasoningEffort === "high" || value.reasoningEffort === "xhigh") &&
+    (value.reasoningEffort === "high" || value.reasoningEffort === "xhigh" ||
+      isGatewayProvenance(value)) &&
     isSha256Hex(value.launcherSha256) &&
     isSha256Hex(value.summaryContentSha256) &&
     isSha256Hex(value.topicMapSha256) &&
@@ -292,7 +306,7 @@ export const isCurrentProductionSubscriptionRuntimeProvenance = (
   value: unknown,
 ): value is ProductionDayRuntimeProvenance =>
   isProductionSubscriptionRuntimeProvenance(value) &&
-  (value.execution === "not_executed" ||
+  (value.execution === "not_executed" || isGatewayProvenance(value) ||
     (value.reasoningEffort === "high" && value.topicLabeler.reasoningEffort === "high"));
 
 export const runtimeProvenanceEqual = (
@@ -335,8 +349,12 @@ const validateRecord = (
     (attestation.model === "mimo-v2.6-pro"
       ? expectedEffort !== "high" ||
         attestation.runtimePackageVersion !== approvedMimoRuntimePackageVersion
-      : attestation.model !== "gpt-5.6-sol") ||
-    attestation.reasoningEffort !== expectedEffort ||
+      : isGatewayReaderSummaryModel(attestation.model)
+        // Gateway-only models serve current purposes with the route effort.
+        ? expectedEffort !== "high" || !isGatewayReaderSummaryExecution(attestation)
+        : attestation.model !== "gpt-5.6-sol") ||
+    (!isGatewayReaderSummaryModel(attestation.model) &&
+      attestation.reasoningEffort !== expectedEffort) ||
     // MiMo runs only through the CLI runtime; Codex may use either engine.
     (attestation.model === "mimo-v2.6-pro" && attestation.runtimeEngine !== subscriptionRuntimeEngine) ||
     !isAttestedRuntimeIdentity(attestation) ||
@@ -394,11 +412,18 @@ const activePurposeByRole = {
     "social_monitor.reader_summary.verify_related_topic_relations.v2",
 } as const;
 
+const isGatewayProvenance = (value: Record<string, unknown>): boolean =>
+  isGatewayReaderSummaryExecution({ runtimeEngine: value.runtime,
+    model: value.physicalModel, reasoningEffort: value.reasoningEffort });
+
 const validTopicIdentity = (
   value: unknown,
   parent: Record<string, unknown>,
-): boolean =>
-  isRecord(value) &&
+): boolean => isGatewayProvenance(parent)
+  ? isRecord(value) && value.mode === "agent-runtime" &&
+    (["physicalModel", "provider", "runtime", "runtimeVersion", "reasoningEffort",
+      "launcherSha256"] as const).every((key) => value[key] === parent[key])
+  : isRecord(value) &&
   value.mode === "agent-runtime" &&
   (value.physicalModel === "gpt-5.6-sol" || value.physicalModel === "mimo-v2.6-pro") &&
   value.provider === parent.provider &&

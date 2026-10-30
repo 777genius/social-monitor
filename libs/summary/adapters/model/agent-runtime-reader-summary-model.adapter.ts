@@ -49,9 +49,11 @@ import {
   type activeReaderSummaryProvider,
   activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
-  parseActiveReaderSummaryReasoningEffort,
+  resolveReaderSummaryBackendEffort,
+  readerSummaryRouteControls,
   resolveReaderSummaryGenerationIdentity,
   resolveReaderSummaryGenerationIdentityFromEnv,
+  resolveReaderSummaryReasoningEffortFromEnv,
   type ReaderSummaryGenerationBackend,
   frozenLegacyReaderSummaryRecoveryContract,
   type FrozenLegacyReaderSummaryRecoveryContract,
@@ -63,7 +65,8 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly providerInstanceId?: string;
   readonly model?: string;
   readonly modelBackend?: ReaderSummaryGenerationBackend;
-  readonly reasoningEffort?: "high" | "xhigh";
+  /** high for Codex and MiMo, xhigh for legacy recovery, the route effort for a gateway backend. */
+  readonly reasoningEffort?: string;
   readonly legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract;
   readonly evalDatasetVersion?: string;
   readonly timeoutMs?: number;
@@ -86,7 +89,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   private readonly providerInstanceId?: string;
   private readonly model: string;
   private readonly modelBackend: ReaderSummaryGenerationBackend;
-  private readonly reasoningEffort: "high" | "xhigh";
+  private readonly reasoningEffort: string;
   private readonly legacyRecovery: boolean;
   private readonly evalDatasetVersion: string;
   private readonly timeoutMs: number;
@@ -113,16 +116,11 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     ) {
       throw new Error("Reader summary legacy recovery contract is not canonical");
     }
-    this.reasoningEffort = options.reasoningEffort ??
-      (this.legacyRecovery ? "xhigh" : defaultReasoningEffort);
-    if (
-      (!this.legacyRecovery &&
-        this.reasoningEffort !== activeReaderSummaryReasoningEffort) ||
-      (this.legacyRecovery &&
-        this.reasoningEffort !== "xhigh")
-    ) {
-      throw new Error("Reader summary execution profile and effort conflict");
-    }
+    this.reasoningEffort = resolveReaderSummaryBackendEffort(
+      this.modelBackend,
+      options.reasoningEffort,
+      this.legacyRecovery ? "xhigh" : defaultReasoningEffort,
+    );
     this.evalDatasetVersion = nonEmptyOrFallback(
       options.evalDatasetVersion,
       defaultEvalDatasetVersion,
@@ -293,7 +291,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
         ...(this.modelBackend === "xiaomi-mimo-token-plan"
           ? { modelBackend: this.modelBackend }
           : {}),
-        reasoningEffort: this.reasoningEffort,
+        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
         toolsEnabled: false,
         toolPolicy: "none",
         maxOutputTokens: this.maxOutputTokens,
@@ -429,10 +427,7 @@ export const resolveAgentRuntimeReaderSummaryModelOptions = (
     providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
     model: generationIdentity.model,
     modelBackend: generationIdentity.backend,
-    reasoningEffort: parseActiveReaderSummaryReasoningEffort(
-      env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
-        env.AGENT_RUNTIME_REASONING_EFFORT,
-    ),
+    reasoningEffort: resolveReaderSummaryReasoningEffortFromEnv(env),
     evalDatasetVersion: env.READER_SUMMARY_EVAL_DATASET_VERSION,
     timeoutMs: parsePositiveInteger(
       env.AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS ??

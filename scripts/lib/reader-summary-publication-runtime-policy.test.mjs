@@ -210,3 +210,66 @@ test("gateway SDK pin matches the vendored archive and the shared identity rules
     assert.ok(contract.includes(shared) && policy.includes(shared), shared);
   }
 });
+
+const kimiRecord = () => {
+  const record = gatewayRecord();
+  Object.assign(record.attestation, { model: "k3-256k", reasoningEffort: "default" });
+  Object.assign(record.attestation.gateway, {
+    profileId: "kimi-code-global-responses-apikey-v1", observedModel: "k3-256k" });
+  return record;
+};
+
+test("gateway-only models publish only through the gateway with the route effort", () => {
+  assert.doesNotThrow(() => validatePublicationAttestationRecord(kimiRecord(), false));
+  const openRouter = kimiRecord();
+  Object.assign(openRouter.attestation, { model: "openai/gpt-oss-120b", reasoningEffort: "medium" });
+  openRouter.attestation.gateway.observedModel = null;
+  assert.doesNotThrow(() => validatePublicationAttestationRecord(openRouter, false));
+  for (const mutate of [
+    (value) => {
+      Object.assign(value.attestation, { runtimeEngine: "subscription-runtime-cli",
+        runtimePackageVersion: approvedCodexRuntimeVersion, launcherSha256: approvedLauncherSha256 });
+      delete value.attestation.gateway;
+    },
+    (value) => { value.attestation.reasoningEffort = "none"; },
+    (value) => { value.attestation.purpose = "social_monitor.reader_summary.generate"; },
+    (value) => { value.attestation.gateway.observedModel = "kimi-k2"; },
+  ]) {
+    const record = kimiRecord();
+    mutate(record);
+    assert.throws(() => validatePublicationAttestationRecord(record, true),
+      /malformed or mismatched/u);
+  }
+
+  const provenance = {
+    ...mimoProvenance(),
+    physicalModel: "k3-256k",
+    reasoningEffort: "default",
+    runtime: "gateway-llm",
+    runtimeVersion: gatewaySdkVersion,
+    launcherSha256: gatewaySdkSha256,
+    topicLabeler: { mode: "agent-runtime", physicalModel: "k3-256k", provider: "codex",
+      runtime: "gateway-llm", runtimeVersion: gatewaySdkVersion, reasoningEffort: "default",
+      launcherSha256: gatewaySdkSha256 },
+  };
+  assert.equal(isPublicationRuntimeProvenance(provenance), true);
+  assert.equal(isPublicationRuntimeProvenance({ ...provenance,
+    topicLabeler: { ...provenance.topicLabeler, physicalModel: "gpt-5.6-sol",
+      reasoningEffort: "high" } }), false);
+  assert.equal(isPublicationRuntimeProvenance({ ...provenance,
+    runtime: "subscription-runtime-cli", topicLabeler: { ...provenance.topicLabeler,
+      runtime: "subscription-runtime-cli" } }), false);
+});
+
+test("gateway model rules match the TypeScript generation profile", () => {
+  const profile = repositoryFile(
+    "libs/summary/adapters/model/active-reader-summary-generation-profile.ts").toString("utf8");
+  const policy = repositoryFile(
+    "scripts/lib/reader-summary-publication-runtime-policy.mjs").toString("utf8");
+  for (const shared of [
+    "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+    '"minimal", "low", "medium", "high", "xhigh", "max", "ultra"',
+  ]) {
+    assert.ok(profile.includes(shared) && policy.includes(shared), shared);
+  }
+});
