@@ -6,11 +6,13 @@ extension on SummaryMapper {
     Set<String> storyClusterIds,
     Map<String, ReaderSummaryStoryClusterAuthorityApiDto>
     storyClusterAuthorities,
-    Map<String, SummaryCitationApiDto> citationsById,
-  ) {
+    Map<String, SummaryCitationApiDto> citationsById, {
+    required bool rankingPolicyChanged,
+  }) {
     final readerItems = [
       ...dto.topReads,
       ...dto.selectedPosts,
+      ...dto.newsWithoutRatingPosts,
       ...dto.interestSections.expand((section) => section.items),
     ];
     final relationIds = readerItems
@@ -64,6 +66,14 @@ extension on SummaryMapper {
       storyClusterAuthorities,
       citationsById,
     );
+    final newsPostContext = _ReaderItemContext(
+      _ReaderItemKind.newsPost,
+      storyClusterIds,
+      duplicateRelationIds,
+      duplicateCanonicalRelationIds,
+      storyClusterAuthorities,
+      citationsById,
+    );
     final interestSectionContext = _ReaderItemContext(
       _ReaderItemKind.interestSection,
       storyClusterIds,
@@ -78,9 +88,20 @@ extension on SummaryMapper {
     final mappedSelectedPosts = dto.selectedPosts
         .map((item) => _readerItemToDomain(item, context: selectedPostContext))
         .toList(growable: false);
+    final mappedNewsPosts = dto.newsWithoutRatingPosts
+        .map((item) => _readerItemToDomain(item, context: newsPostContext))
+        .toList(growable: false);
+    // A day ranked under an older policy stamp is served with all boards
+    // withheld; it is outdated, not broken, and reads as "rebuild required".
+    final boardWithheldForRebuild =
+        rankingPolicyChanged &&
+        dto.topReads.isEmpty &&
+        dto.selectedPosts.isEmpty &&
+        dto.newsWithoutRatingPosts.isEmpty;
     final promotionBoardValid = _validPromotionBoard(
       mappedTopReads,
       mappedSelectedPosts,
+      mappedNewsPosts,
       authoritativeStoryClusterIds: storyClusterIds,
       hasReaderItems: readerItems.isNotEmpty,
       hasCitations: citationsById.isNotEmpty,
@@ -129,7 +150,10 @@ extension on SummaryMapper {
       sourceMix: dto.sourceMix.map(_sourceMixToDomain).toList(growable: false),
       topReads: promotionBoardValid ? mappedTopReads : const [],
       selectedPosts: promotionBoardValid ? mappedSelectedPosts : const [],
-      promotionBoardAvailability: promotionBoardValid
+      newsWithoutRatingPosts: promotionBoardValid ? mappedNewsPosts : const [],
+      promotionBoardAvailability: boardWithheldForRebuild
+          ? ReaderSummaryPromotionBoardAvailability.rebuildRequired
+          : promotionBoardValid
           ? ReaderSummaryPromotionBoardAvailability.available
           : ReaderSummaryPromotionBoardAvailability.unavailable,
       claimBoard: dto.claimBoard
@@ -156,14 +180,14 @@ extension on SummaryMapper {
 
 bool _validPromotionBoard(
   List<TopRead> topReads,
-  List<TopRead> selectedPosts, {
+  List<TopRead> selectedPosts,
+  List<TopRead> newsPosts, {
   required Set<String> authoritativeStoryClusterIds,
   required bool hasReaderItems,
   required bool hasCitations,
   required bool noSignal,
 }) {
-  if (topReads.length > 12 || selectedPosts.length > 12) return false;
-  final all = [...topReads, ...selectedPosts];
+  final all = [...topReads, ...selectedPosts, ...newsPosts];
   if (all.isEmpty) {
     return noSignal &&
         !hasReaderItems &&
@@ -189,19 +213,24 @@ bool _validPromotionBoard(
           'reader_post_promotion_attestation.v2',
           'reader_post_promotion_attestation.v3',
         }.contains(value),
-      ) ||
-      (attestations.isNotEmpty &&
-          attestations.every((value) => value.isV2) &&
-          !_validV2PromotionSlate(attestations)) ||
-      (attestations.isNotEmpty &&
-          attestations.every((value) => value.isV3) &&
-          !_validV3PromotionSlate(
-            topReads,
-            selectedPosts,
-            authoritativeStoryClusterIds,
-          ))) {
+      )) {
     return false;
   }
+  final isV3 = attestations.first.isV3;
+  final boardIsValid = isV3
+      ? _validV3PromotionBoard(
+          topReads,
+          selectedPosts,
+          newsPosts,
+          authoritativeStoryClusterIds,
+        )
+      // Legacy V1/V2 boards keep their 12 + 12 shape and have no news block.
+      : newsPosts.isEmpty &&
+            topReads.length <= 12 &&
+            selectedPosts.length <= 12 &&
+            (!attestations.every((value) => value.isV2) ||
+                _validV2PromotionSlate(attestations));
+  if (!boardIsValid) return false;
   bool laneIsExact(
     List<TopRead> items,
     ReaderSummaryCardKind cardKind,
@@ -228,49 +257,61 @@ bool _validPromotionBoard(
         ReaderSummaryCardKind.additionalNotableStory,
         ReaderPostPromotionPlacement.additional,
         'promote_additional',
+      ) &&
+      laneIsExact(
+        newsPosts,
+        ReaderSummaryCardKind.newsWithoutRating,
+        ReaderPostPromotionPlacement.news,
+        'promote_news',
       );
 }
 
-bool _validV3PromotionSlate(
+/// V3 board: the domain policy recomputes sizes, order, uniqueness and
+/// cohorts from the signed comparators; the story clusters of the artifact
+/// must list exactly the shown stories, Top then Show more then news.
+bool _validV3PromotionBoard(
   List<TopRead> topReads,
   List<TopRead> selectedPosts,
+  List<TopRead> newsPosts,
   Set<String> authoritativeStoryClusterIds,
 ) {
-  bool validLane(List<TopRead> items) {
-    final attestations = items
-        .map((item) => item.promotionAttestation!)
-        .toList();
-    if (attestations.any(
-      (value) =>
-          value.providerKey == null ||
-          value.storyId == null ||
-          value.exactPublishedAt == null ||
-          value.assessment == null ||
-          value.comparator == null ||
-          value.presentation == null,
-    )) {
-      return false;
-    }
-    for (var index = 1; index < items.length; index += 1) {
-      final previous = items[index - 1];
-      final current = items[index];
-      if (_compareV3Attestation(
-            previous.promotionAttestation!,
-            current.promotionAttestation!,
-            previous.signalScore.value,
-            current.signalScore.value,
-          ) >
-          0) {
-        return false;
+  List<ReaderPromotionBoardEntry>? lane(List<TopRead> items) {
+    final entries = <ReaderPromotionBoardEntry>[];
+    for (final item in items) {
+      final attestation = item.promotionAttestation!;
+      final comparator = attestation.comparator;
+      final storyId = attestation.storyId;
+      if (comparator == null ||
+          storyId == null ||
+          attestation.providerKey == null ||
+          attestation.exactPublishedAt == null ||
+          attestation.assessment == null ||
+          attestation.presentation == null) {
+        return null;
       }
+      entries.add(
+        ReaderPromotionBoardEntry(storyId: storyId, comparator: comparator),
+      );
     }
-    return true;
+    return entries;
   }
 
-  if (!validLane(topReads) || !validLane(selectedPosts)) return false;
-  final orderedStoryIds = [...topReads, ...selectedPosts]
-      .map((item) => item.promotionAttestation!.storyId!)
-      .toList(growable: false);
+  final top = lane(topReads);
+  final additional = lane(selectedPosts);
+  final news = lane(newsPosts);
+  if (top == null ||
+      additional == null ||
+      news == null ||
+      !readerPromotionBoardIsConsistent(
+        top: top,
+        additional: additional,
+        news: news,
+      )) {
+    return false;
+  }
+  final orderedStoryIds = [
+    for (final entry in [...top, ...additional, ...news]) entry.storyId,
+  ];
   final authoritativeOrder = authoritativeStoryClusterIds.toList(
     growable: false,
   );
@@ -279,52 +320,6 @@ bool _validV3PromotionSlate(
         orderedStoryIds.length,
         (index) => index,
       ).every((index) => orderedStoryIds[index] == authoritativeOrder[index]);
-}
-
-int _compareV3Attestation(
-  ReaderPostPromotionAttestation left,
-  ReaderPostPromotionAttestation right,
-  double leftScore,
-  double rightScore,
-) {
-  const usefulness = {
-    'important': 3,
-    'useful': 2,
-    'context': 1,
-    'noise': 0,
-    'insufficient_context': -1,
-  };
-  const relevance = {
-    'central': 3,
-    'relevant': 2,
-    'adjacent': 1,
-    'unrelated': 0,
-    'insufficient_context': -1,
-  };
-  final leftUsefulness = left.comparator?['usefulness'];
-  final rightUsefulness = right.comparator?['usefulness'];
-  final leftRelevance = left.comparator?['relevance'];
-  final rightRelevance = right.comparator?['relevance'];
-  if (!usefulness.containsKey(leftUsefulness) ||
-      !usefulness.containsKey(rightUsefulness) ||
-      !relevance.containsKey(leftRelevance) ||
-      !relevance.containsKey(rightRelevance)) {
-    return 1;
-  }
-  final semantic =
-      usefulness[rightUsefulness]! - usefulness[leftUsefulness]! != 0
-      ? usefulness[rightUsefulness]! - usefulness[leftUsefulness]!
-      : relevance[rightRelevance]! - relevance[leftRelevance]!;
-  if (semantic != 0) return semantic;
-  final engagement = rightScore.compareTo(leftScore);
-  if (engagement != 0) return engagement;
-  final leftPublishedAt = DateTime.tryParse(left.exactPublishedAt!);
-  final rightPublishedAt = DateTime.tryParse(right.exactPublishedAt!);
-  if (leftPublishedAt == null || rightPublishedAt == null) return 1;
-  final published = rightPublishedAt.compareTo(leftPublishedAt);
-  return published != 0
-      ? published
-      : left.candidateId.compareTo(right.candidateId);
 }
 
 bool _validV2PromotionSlate(List<ReaderPostPromotionAttestation> attestations) {

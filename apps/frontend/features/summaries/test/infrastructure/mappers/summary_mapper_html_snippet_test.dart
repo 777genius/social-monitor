@@ -3,6 +3,8 @@ import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.da
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 
+import '../../support/reader_promotion_comparator_fixture.dart';
+
 void main() {
   test('strips RSS HTML markup from reader-facing card copy', () {
     final summary = _summary([
@@ -30,18 +32,22 @@ void main() {
     expect(item.summary, 'OpenAI Buys Orchestra Bio Seeking Alpha');
     expect(item.summary, isNot(contains('<')));
     expect(item.summary, isNot(contains('&nbsp;')));
-    expect(item.title, 'Claude Code Review is out of preview (for Team & Enterprise)');
+    expect(
+      item.title,
+      'Claude Code Review is out of preview (for Team & Enterprise)',
+    );
     expect(item.title, isNot(contains('&amp;')));
-    expect(item.displayHeadline?.text, 'Vessla brings AI agents (Team & Enterprise)');
+    expect(
+      item.displayHeadline?.text,
+      'Vessla brings AI agents (Team & Enterprise)',
+    );
     expect(item.capturedSource?.body, 'Article URL: https://x.example/mcp');
     expect(item.capturedSource?.title, 'Team & Co');
   });
 }
 
 ReaderSummary _summary(List<TopReadApiDto> topReads) {
-  final storyClusterIds = [
-    for (final item in topReads) item.storyClusterId!,
-  ];
+  final storyClusterIds = [for (final item in topReads) item.storyClusterId!];
   return const SummaryMapper().readerSummaryToDomain(
     ReaderSummaryApiDto(
       id: 'summary-1',
@@ -126,7 +132,7 @@ TopReadApiDto _item({
     publishedAt: DateTime.parse('2026-10-19T02:00:00.000000Z'),
     promotionAttestation: ReaderPostPromotionAttestationApiDto(
       schemaVersion: 'reader_post_promotion_attestation.v3',
-      policyVersion: 'reader_post_promotion.v3',
+      policyVersion: 'reader_promotion.2026-10-30',
       candidateId: 'candidate-a',
       canonicalIdentity: 'https://example.com/candidate-a',
       placement: 'top',
@@ -142,12 +148,10 @@ TopReadApiDto _item({
           'relevance': {'choice': 'central'},
         },
       },
-      comparator: const {
-        'usefulness': 'useful',
-        'relevance': 'central',
-        'publishedAt': '2026-10-19T02:00:00.000000Z',
-        'candidateId': 'candidate-a',
-      },
+      comparator: rankedComparatorJson(
+        candidateId: 'candidate-a',
+        publishedAt: '2026-10-19T02:00:00.000000Z',
+      ),
       presentation: const {'schemaVersion': 'reader_post_presentation.v3'},
     ),
   );

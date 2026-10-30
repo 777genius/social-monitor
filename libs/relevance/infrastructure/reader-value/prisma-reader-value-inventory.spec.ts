@@ -60,7 +60,8 @@ describe('Prisma reader-value inventory JSON boundary', () => {
       metadata:{kind:'rss_item'}};
     const rows = [{...source,feed_item_id:'first',provider_metadata:providerMetadata},
       {...source,feed_item_id:'second',metadata:providerMetadata,provider_metadata:{kind:'rss_item'}},
-      {...source,feed_item_id:'third',provider_metadata:{kind:'rss_item'}}];
+      {...source,feed_item_id:'third',provider_metadata:{kind:'rss_item'},
+        engagement_observed_at:'2026-09-10 06:00:00.5+00'}];
     const inventorySql: string[] = [];
     let queryIndex = 0;
     const identities = rows.map((row) => ({feed_item_id:row.feed_item_id,
@@ -83,6 +84,12 @@ describe('Prisma reader-value inventory JSON boundary', () => {
     expect(page[0]?.cursor.publishedAt).toBe('2026-09-10T00:00:00.000001Z');
     expect(page[0]?.observedAt).toBe('2026-09-10T00:00:01.200000Z');
     expect(page[0]?.sourceUpdatedAt).toBe('2026-09-09T23:59:59.000001Z');
+    // The engagement snapshot time is read with the frozen metadata; no snapshot is unknown.
+    expect(page.map((row) => row.engagementObservedAt))
+      .toEqual([null, null, '2026-09-10T06:00:00.500000Z']);
+    expect(inventorySql[1]).toContain('LEFT JOIN source_item_engagement_snapshots e');
+    expect(inventorySql[1]).toContain(
+      'COALESCE(e.last_observed_at,f.observed_at)::text AS engagement_observed_at');
     expect(inventorySql).toHaveLength(2);
     expect(inventorySql[0]).toContain('octet_length(s.title)+octet_length(s.body)');
     expect(inventorySql[0]).not.toContain('s.title,s.body');

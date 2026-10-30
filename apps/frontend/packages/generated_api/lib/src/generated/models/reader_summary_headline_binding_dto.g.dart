@@ -20,9 +20,9 @@ ReaderSummaryHeadlineBindingDto _$ReaderSummaryHeadlineBindingDtoFromJson(
   sourceBindingId: json['sourceBindingId'] as String,
   sourceItemId: json['sourceItemId'] as String,
   tenantId: json['tenantId'] as String,
+  workspaceId: json['workspaceId'] as String,
   interestDigest: json['interestDigest'] as String?,
   trustedIntent: json['trustedIntent'] as String?,
-  workspaceId: json['workspaceId'] as String,
 );
 
 Map<String, dynamic> _$ReaderSummaryHeadlineBindingDtoToJson(
@@ -30,13 +30,13 @@ Map<String, dynamic> _$ReaderSummaryHeadlineBindingDtoToJson(
 ) => <String, dynamic>{
   'availability': instance.availability,
   'candidateId': instance.candidateId,
+  'interestDigest': instance.interestDigest,
   'interestId': instance.interestId,
   'providerKey': instance.providerKey,
   'reviewedInputDigest': instance.reviewedInputDigest,
   'sourceBindingId': instance.sourceBindingId,
   'sourceItemId': instance.sourceItemId,
   'tenantId': instance.tenantId,
-  'interestDigest': instance.interestDigest,
   'trustedIntent': instance.trustedIntent,
   'workspaceId': instance.workspaceId,
 };

@@ -49,18 +49,20 @@ export const readerSummaryWeeklyHistoricalArtifactCanonicalJsonLimits =
     maxTotalArrayElements: 5_000,
     maxNodes: 18_000,
   });
-// Mirrors reader_summary_v3_publication_canonical_json in the V3 source
-// publication migration. Only a trusted persisted job may select this profile.
+// Mirrors public.reader_summary_v3_publication_canonical_json as redefined by
+// the latest migration (20261025120000_..._board_publication_bounds: 50,000
+// nodes, 40,000 object keys for a 64-card board). The spec compares these
+// values with that SQL. Only a trusted persisted job may select this profile.
 export const readerSummaryWeeklyV3PublicationCanonicalJsonLimits =
   Object.freeze({
     maxDepth: 32,
     maxBytes: 16_777_216,
     maxObjectKeys: 128,
-    maxTotalObjectKeys: 20_000,
+    maxTotalObjectKeys: 40_000,
     maxArrayElements: 1_024,
     maxTotalArrayElements: 20_000,
     maxStringLength: 64_000,
-    maxNodes: 25_000,
+    maxNodes: 50_000,
   });
 export type ReaderSummaryWeeklyCanonicalJson = Readonly<{
   json: string;

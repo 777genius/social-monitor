@@ -19,9 +19,9 @@ class ReaderSummaryHeadlineBindingDto {
     required this.sourceBindingId,
     required this.sourceItemId,
     required this.tenantId,
+    required this.workspaceId,
     this.interestDigest,
     this.trustedIntent,
-    required this.workspaceId,
   });
 
   factory ReaderSummaryHeadlineBindingDto.fromJson(Map<String, Object?> json) =>
@@ -29,13 +29,13 @@ class ReaderSummaryHeadlineBindingDto {
 
   final ReaderSummaryHeadlineBindingDtoAvailabilityAvailability availability;
   final String candidateId;
+  final String? interestDigest;
   final String interestId;
   final String providerKey;
   final String reviewedInputDigest;
   final String sourceBindingId;
   final String sourceItemId;
   final String tenantId;
-  final String? interestDigest;
   final String? trustedIntent;
   final String workspaceId;
 

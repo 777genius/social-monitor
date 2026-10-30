@@ -29,6 +29,7 @@ extension on SummaryMapper {
       'curated_top_read' => ReaderSummaryCardKind.curatedTopRead,
       'additional_notable_story' =>
         ReaderSummaryCardKind.additionalNotableStory,
+      'news_without_rating' => ReaderSummaryCardKind.newsWithoutRating,
       'related_topic' => ReaderSummaryCardKind.relatedTopic,
       'supplemental_trend' => ReaderSummaryCardKind.unsupported,
       'unsupported' => ReaderSummaryCardKind.unsupported,
@@ -135,6 +136,12 @@ extension on SummaryMapper {
                   promotionCardIsValid
               ? ReaderSummaryCardKind.curatedTopRead
               : ReaderSummaryCardKind.unsupported,
+        ReaderSummaryCardKind.newsWithoutRating =>
+          clusterCardIsValid &&
+                  !hasUnexpectedRelationMetadata &&
+                  promotionCardIsValid
+              ? ReaderSummaryCardKind.newsWithoutRating
+              : ReaderSummaryCardKind.unsupported,
         ReaderSummaryCardKind.supplementalTrend =>
           ReaderSummaryCardKind.unsupported,
         _ => ReaderSummaryCardKind.unsupported,
@@ -219,13 +226,19 @@ extension on SummaryMapper {
     final placement = switch (dto.placement) {
       'top' => ReaderPostPromotionPlacement.top,
       'additional' => ReaderPostPromotionPlacement.additional,
+      'news' => ReaderPostPromotionPlacement.news,
       _ => null,
     };
+    final isV3 = dto.schemaVersion == 'reader_post_promotion_attestation.v3';
+    // A V3 card carries its signed comparator; it is translated once here so
+    // the board check orders typed domain values, never raw JSON.
+    final comparator = isV3
+        ? decodeReaderPromotionComparator(dto.comparator)
+        : null;
     if (placement == null ||
-        (placement == ReaderPostPromotionPlacement.top &&
-            cardKind != ReaderSummaryCardKind.curatedTopRead) ||
-        (placement == ReaderPostPromotionPlacement.additional &&
-            cardKind != ReaderSummaryCardKind.additionalNotableStory)) {
+        (isV3 && comparator == null) ||
+        (!isV3 && placement == ReaderPostPromotionPlacement.news) ||
+        cardKind != placement.cardKind) {
       return null;
     }
     final attestation = ReaderPostPromotionAttestation(
@@ -270,7 +283,7 @@ extension on SummaryMapper {
         ),
       },
       assessment: dto.assessment,
-      comparator: dto.comparator,
+      comparator: comparator,
       presentation: dto.presentation,
       providerKey: dto.providerKey,
       storyId: dto.storyId,

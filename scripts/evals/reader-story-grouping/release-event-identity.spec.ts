@@ -1,4 +1,4 @@
-import { belongsToVerifiedStoryCluster, isDeterministicCrossProviderStoryMatch,
+import { belongsToVerifiedStoryCluster, isDeterministicIndependentSourceStoryMatch,
   isVerifiedStoryRelationGuardEligible, verifiedStoryRelationPairKey } from
   "@social-monitor/summary/domain/services/story-cluster-membership";
 import { samePrimaryReleaseEvent, storyReleaseEventIdentity } from
@@ -9,6 +9,15 @@ import { loadDataset } from "./dataset";
 import { applyDecisions, pairKey, prepareBlock, together } from "./replay";
 
 const data = loadDataset();
+// Sealed keep_separate pairs that ADR 397's platform copy rule (exact
+// headline plus the same body or origin link) merges on purpose. They are all
+// same_story; every other keep_separate pair, including every semantic
+// negative, must stay apart.
+const allowedPlatformCopies: Readonly<Record<string, string>> = {
+  "RSG-006": "one author's Reddit crosspost of the release, same title and body",
+  "RSG-044": "one X author posted the same teaser twice, 11 seconds apart",
+  "RSG-050": "one author's Reddit crosspost of anybridge, same title and body",
+};
 const releaseBlock = data.blocks.find((b) => b.id === "fable-release")!;
 const positives = data.cases.filter((c) => /^RSG-00[1-5]$/.test(c.id));
 const decisionsFor = (p: Awaited<ReturnType<typeof prepareBlock>>) => p.candidates.map((c) => ({
@@ -25,7 +34,7 @@ describe("frozen real release event retrieval and isolated acceptance", () => {
     expect(storyReleaseEventIdentity(left!)).toBeDefined();
     expect(storyReleaseEventIdentity(right!)).toBeDefined();
     expect(isVerifiedStoryRelationGuardEligible(left!, right!, policy)).toBe(true);
-    expect(isDeterministicCrossProviderStoryMatch(left!, right!, policy)).toBe(false);
+    expect(isDeterministicIndependentSourceStoryMatch(left!, right!, policy)).toBe(false);
     expect(pair.candidates.some((c) => pairKey(c) === key)).toBe(true);
     expect(block.candidates.some((c) => pairKey(c) === key)).toBe(true);
     expect(together(applyDecisions(pair).relationSelection, left!.feedItemId, right!.feedItemId)).toBe(false);
@@ -44,8 +53,9 @@ describe("frozen real release event retrieval and isolated acceptance", () => {
         const key = verifiedStoryRelationPairKey(a.feedItemId, b.feedItemId);
         if (gold.productAction === "merge_if_admitted" && p.candidates.some((c) => pairKey(c) === key)) retrieved++;
         if (gold.productAction !== "keep_separate") continue;
-        expect(together(outcome.relationSelection, a.feedItemId, b.feedItemId)).toBe(false);
         expect(p.candidates.some((c) => pairKey(c) === key)).toBe(false);
+        expect(`${gold.id}:${together(outcome.relationSelection, a.feedItemId, b.feedItemId)}`)
+          .toBe(`${gold.id}:${Object.hasOwn(allowedPlatformCopies, gold.id)}`);
       }
     }
     expect(retrieved).toBe(15);
@@ -79,15 +89,25 @@ describe("frozen real release event retrieval and isolated acceptance", () => {
   it("records the exclusive-cluster obstruction across all 720 orders", async () => {
     const p = await prepareBlock(data, releaseBlock);
     const pairs = new Set(p.candidates.map(pairKey));
+    // RSG-006 is an allowed platform copy: its second Reddit post may join
+    // the first one's cluster; every other member is from another provider.
+    const copy = data.cases.find((c) => c.id === "RSG-006")!;
+    const copyIds = [copy.left, copy.right].map((ref) => data.postByRef.get(ref)!.feedItemId);
     const histogram: Record<number, number> = {};
     for (const items of permutations(p.evidence)) {
       const selected = p.clusterer.cluster({ ...p.clusterParams, items, verifiedStoryRelationPairs: pairs });
       const count = positives.filter((g) => together(selected,
         data.postByRef.get(g.left)!.feedItemId, data.postByRef.get(g.right)!.feedItemId)).length;
       histogram[count] = (histogram[count] ?? 0) + 1;
-      expect(selected.clusters.every((c) => c.providerKeys.length === c.duplicateFeedItemIds.length + 1)).toBe(true);
+      expect(selected.clusters.every((c) => {
+        const members = [c.representativeFeedItemId, ...c.duplicateFeedItemIds];
+        return c.providerKeys.length === members.length -
+          Number(copyIds.every((member) => members.includes(member)));
+      })).toBe(true);
     }
-    expect(histogram).toEqual({ 0: 120, 1: 120, 2: 360, 3: 120 });
+    // The RSG-006 copy now joins the two Reddit posts first, so no order loses
+    // every release positive any more (was { 0: 120, 1: 120, 2: 360, 3: 120 }).
+    expect(histogram).toEqual({ 1: 360, 2: 240, 3: 120 });
     expect(histogram[5]).toBeUndefined();
   });
 });

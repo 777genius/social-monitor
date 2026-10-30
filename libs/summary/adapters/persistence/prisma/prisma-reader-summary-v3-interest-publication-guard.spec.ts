@@ -25,7 +25,7 @@ const candidate = { candidateId: id(20), assessmentId: id(30),
   inputSha256: "d".repeat(64), sourceKind: "article",
   canonicalIdentity: "https://example.test/item",
   publishedAt: "2026-09-20T11:00:00.000000Z",
-  observedAt: "2026-09-20T11:01:00.000000Z" };
+  observedAt: "2026-09-20T11:01:00.000000Z", engagementObservedAt: null };
 const answer = (choice: string, labels: readonly string[]) => ({ choice,
   probabilities: Object.fromEntries(labels.map((label) =>
     [label, label === choice ? 1 : 0])), confidence: 0.9,
@@ -48,6 +48,26 @@ describe("Prisma interest V1 frozen publication guard", () => {
       fixture.command)).resolves.toEqual({ allowed: true });
     expect(fixture.sql.some((query) => query.includes("FROM reader_value_assessments a")))
       .toBe(true);
+  });
+
+  it("rejects a signed engagement that the manifest never froze", async () => {
+    const fixture = setup("promoted", "v1");
+    const [attestation] = fixture.command.artifact.toSnapshot().promotionAttestations!;
+    Object.assign((attestation as { comparator: object }).comparator, { engagement: { method: "reddit_score",
+      value: 984, observedAt: "2026-09-20T18:00:00.000000Z" } });
+    await expect(readerSummaryV3PublicationGuard(fixture.client,
+      fixture.command)).resolves.toEqual({ allowed: false, reason: "config_unavailable" });
+  });
+
+  // The cohort behind a percentile is invisible to artifact readers; the
+  // guard recomputes it from every frozen candidate before publication.
+  it("rejects signed popularity that the frozen cohort does not produce", async () => {
+    const fixture = setup("promoted", "v1");
+    const [attestation] = fixture.command.artifact.toSnapshot().promotionAttestations!;
+    Object.assign((attestation as { comparator: object }).comparator, {
+      popularity: { cohortSize: 1, below: 0, equal: 1 } });
+    await expect(readerSummaryV3PublicationGuard(fixture.client,
+      fixture.command)).resolves.toEqual({ allowed: false, reason: "config_unavailable" });
   });
 
   it("publishes V1 no signal with a frozen noise assessment from another revision", async () => {
@@ -125,7 +145,8 @@ const setup = (result: "promoted" | "no_signal", version: "v1" | "v2") => {
       endedAt: new Date("2026-09-21T00:00:00.000Z") } }) },
   artifact: { toSnapshot: () => ({ readerSummaryId: id(4),
     promotionAttestations: promotion ? [promotion.attestation] : [],
-    content: promotion ? { topReads: [promotion.card], selectedPosts: [] } : undefined,
+    content: promotion ? { topReads: [], selectedPosts: [],
+      newsWithoutRatingPosts: [promotion.card] } : undefined,
     qualityFlags: result === "no_signal" ? ["no_signal"] : [],
     period: { periodKey: "daily:test-period" },
     sourceWindow: { exactIngestionCutoff: cutoff,
@@ -166,7 +187,9 @@ const promoted = () => {
       inputSha256: candidate.inputSha256, rubricVersion: config.rubricVersion,
       rubricSha256: config.rubricSha256,
       modelConfigVersion: config.modelConfigVersion, answers: answers("useful") },
-    comparator: { usefulness: "useful", relevance: "central",
+    comparator: { block: "unranked", providerFamily: "rss",
+      usefulness: "useful", relevance: "central", engagement: null,
+      metricMature: false, popularity: null, newsPublisher: null,
       publishedAt: candidate.publishedAt, candidateId: candidate.candidateId },
     presentation: { presentationInputDigest: inputDigest, displayHeadline: seal,
       presentationIdentity: readerPostPresentationV3Identity({

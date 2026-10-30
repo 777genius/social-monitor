@@ -21,6 +21,7 @@ export class FeedReaderSummaryPreviewMediaEnricher
   }): Promise<ReaderSummaryContent> {
     const missingPreview = [
       ...command.content.topReads,
+      ...(command.content.newsWithoutRatingPosts ?? []),
       ...command.content.interestSections.flatMap((section) => section.items),
     ].some((item) => item.previewMedia === undefined);
     if (!missingPreview) {
@@ -48,6 +49,9 @@ export class FeedReaderSummaryPreviewMediaEnricher
     const topReads = await Promise.all(
       command.content.topReads.map(enrichTopRead),
     );
+    const newsWithoutRatingPosts = command.content.newsWithoutRatingPosts === undefined
+      ? undefined
+      : await Promise.all(command.content.newsWithoutRatingPosts.map(enrichTopRead));
     const interestSections = await Promise.all(
       command.content.interestSections.map(async (section) => ({
         ...section,
@@ -58,6 +62,7 @@ export class FeedReaderSummaryPreviewMediaEnricher
     return {
       ...command.content,
       topReads,
+      ...(newsWithoutRatingPosts === undefined ? {} : { newsWithoutRatingPosts }),
       interestSections,
     };
   }

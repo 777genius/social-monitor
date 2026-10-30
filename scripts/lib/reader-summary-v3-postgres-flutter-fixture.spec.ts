@@ -44,7 +44,7 @@ describe("reader summary V3 Flutter SQL fixture", () => {
     (_, mutate) => {
       const transport = JSON.parse(readFileSync(fixturePath, "utf8")) as
         Record<string, unknown>;
-      mutate(topCard(transport));
+      mutate(promotedCard(transport));
 
       expect(() => canonicalizeSqlRestTransport(transport)).toThrow(
         /disagrees with canonical payload/u,
@@ -99,9 +99,10 @@ describe("reader summary V3 Flutter SQL fixture", () => {
   });
 });
 
-const topCard = (transport: Record<string, unknown>): Record<string, unknown> => {
+// The SQL fixture source is RSS, so its only promoted card is a news card.
+const promotedCard = (transport: Record<string, unknown>): Record<string, unknown> => {
   const brief = requiredRecord(transport.readerBrief);
-  const cards = brief.topReads;
+  const cards = brief.newsWithoutRatingPosts;
   if (!Array.isArray(cards) || cards.length === 0) throw new Error("fixture");
   return requiredRecord(cards[0]);
 };

@@ -17,6 +17,8 @@ import type { ReaderSummaryPublicationTransactionGuard } from
 import { type ReaderSummaryVisibleCandidate,
   visibleCandidateBindingsMatchManifest } from
   "./prisma-reader-summary-v3-readiness";
+import { frozenEngagementMatchesAttestation, frozenPopularityMatchesAttestations } from
+  "../reader-summary-promotion-engagement-guard";
 
 type JobGuardRow = {
   readonly status: string;
@@ -300,7 +302,8 @@ ReaderSummaryPublicationTransactionGuard = async (
     const assessment = typeof candidate?.assessmentId === "string"
       ? assessmentById.get(candidate.assessmentId) : undefined;
     const card = [...(artifact.content?.topReads ?? []),
-      ...(artifact.content?.selectedPosts ?? [])].find((value) =>
+      ...(artifact.content?.selectedPosts ?? []),
+      ...(artifact.content?.newsWithoutRatingPosts ?? [])].find((value) =>
       value.promotionCandidateId === attestation.candidateId);
     if (candidate === undefined || attestation.schemaVersion !==
         "reader_post_promotion_attestation.v3" ||
@@ -316,12 +319,19 @@ ReaderSummaryPublicationTransactionGuard = async (
         (workspaceManifest ? expectedInterests.find((entry) =>
           entry.interestId === interestId)?.modelConfigVersion :
           manifest.modelConfigVersion) !== attestation.assessment.modelConfigVersion ||
+        !frozenEngagementMatchesAttestation(candidate, attestation) ||
         !assessmentMatchesAttestation({ assessment, attestation, candidate, card,
           requireSourceRevisionMatch: workspaceManifest,
           tenantId: job.tenantId, workspaceId: job.workspaceId,
           interestId })) {
       return reject(client, job, "config_unavailable");
     }
+  }
+  if (!frozenPopularityMatchesAttestations({ candidates, period: job.period,
+    attestations: artifact.promotionAttestations ?? [],
+    assessmentFor: (candidate) => typeof candidate.assessmentId === "string"
+      ? assessmentById.get(candidate.assessmentId) : undefined })) {
+    return reject(client, job, "config_unavailable");
   }
   return { allowed: true };
 };

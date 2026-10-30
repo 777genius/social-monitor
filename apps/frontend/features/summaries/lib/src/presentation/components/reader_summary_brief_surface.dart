@@ -48,6 +48,7 @@ part 'reader_summary_github_watch_appendix.dart';
 part 'reader_summary_insight_rail.dart';
 part 'reader_summary_metric_badges.dart';
 part 'reader_summary_narrative.dart';
+part 'reader_summary_news_without_rating_sliver.dart';
 part 'reader_summary_provider_coverage_rows.dart';
 part 'reader_summary_top_post_content_column.dart';
 part 'reader_summary_top_post_copy.dart';

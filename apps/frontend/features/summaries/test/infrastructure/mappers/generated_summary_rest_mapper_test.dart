@@ -278,6 +278,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
         warnings: ['Source coverage is limited and needs confirmation.'],
         isSingleSource: true,
       ),
+      newsWithoutRatingPosts: [],
       selectedPosts: [
         generated.ReaderSummaryReaderItemDto(
           title: 'calesthio/OpenMontage',

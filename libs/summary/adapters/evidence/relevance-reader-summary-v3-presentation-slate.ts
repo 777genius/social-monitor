@@ -3,51 +3,63 @@ import {
   type ReaderPostPromotionV3Candidate,
   type ReaderPostPromotionV3Selection,
 } from "../../domain/policies/reader-post-promotion-v3";
+import {
+  READER_PROMOTION_LIMITS,
+  compareRankedReaderPromotion,
+  readerPromotionOrderKey,
+} from "../../domain/policies/reader-promotion-ranking";
+
+const unresolved = (candidate: ReaderPostPromotionV3Candidate): boolean =>
+  candidate.presentation.status === "pending" ||
+  candidate.presentation.status === "budget_exhausted";
+
+const optimistically = (
+  candidates: readonly ReaderPostPromotionV3Candidate[],
+): ReaderPostPromotionV3Candidate[] => candidates.map((candidate) =>
+  unresolved(candidate) ? { ...candidate, presentation: {
+    status: "available" as const, presentationInputDigest: "0".repeat(64),
+  } } : candidate);
+
+const published = (selection: ReaderPostPromotionV3Selection) =>
+  [...selection.top, ...selection.additional, ...selection.news];
 
 /** Pending availability is a planning bound, never a publication result. */
 export const planWorkspacePresentationSlate = (
   candidates: readonly ReaderPostPromotionV3Candidate[],
-): { readonly needed: ReadonlySet<string>; readonly settled: boolean } => {
-  const unresolved = (candidate: ReaderPostPromotionV3Candidate): boolean =>
-    candidate.presentation.status === "pending" ||
-    candidate.presentation.status === "budget_exhausted";
+): {
+  readonly needed: ReadonlySet<string>;
+  readonly settled: boolean;
+  /**
+   * Attempt order assuming every pending headline succeeds: ranked posts by
+   * the Top comparator and news by the news comparator, interleaved by their
+   * relative position in each block so neither block starves the other.
+   * Candidates outside the optimistic board sort last.
+   */
+  readonly priority: (candidateId: string) => number;
+} => {
   const unresolvedIds = new Set(candidates.filter(unresolved)
     .map((candidate) => candidate.candidateId));
   const actual = selectReaderPostPromotionsV3(candidates);
-  const optimistic = selectReaderPostPromotionsV3(candidates.map((candidate) =>
-    unresolved(candidate) ? { ...candidate, presentation: {
-      status: "available" as const, presentationInputDigest: "0".repeat(64),
-    } } : candidate));
+  const optimistic = selectReaderPostPromotionsV3(optimistically(candidates));
   const orderedIds = (selection: ReaderPostPromotionV3Selection): string =>
-    JSON.stringify([selection.top.map((candidate) => candidate.candidateId),
-      selection.additional.map((candidate) => candidate.candidateId)]);
-  const representativeIds = (selection: ReaderPostPromotionV3Selection): Set<string> =>
-    new Set([...selection.top, ...selection.additional].map((candidate) =>
-      candidate.candidateId).concat(selection.excluded.filter((entry) =>
-      entry.reason === "capacity_exhausted" || entry.reason === "top_provider_cap")
-      .map((entry) => entry.candidateId)));
-  const actualRepresentatives = representativeIds(actual);
-  const availableFamilies = new Set(candidates.filter((candidate) =>
-    actualRepresentatives.has(candidate.candidateId)).map((candidate) =>
-    candidate.providerFamily));
-  const optimisticRepresentatives = representativeIds(optimistic);
-  const needed = new Set([...optimistic.top, ...optimistic.additional]
+    JSON.stringify([selection.top, selection.additional, selection.news]
+      .map((block) => block.map((candidate) => candidate.candidateId)));
+  // Without a per-network cap, only posts the optimistic board would show
+  // can change it; every other unresolved headline stays unattempted.
+  const needed = new Set(published(optimistic)
     .filter((candidate) => unresolvedIds.has(candidate.candidateId))
     .map((candidate) => candidate.candidateId));
-  // Even a low-ranked new provider can change the Top diversity cap. Establish
-  // its real availability before treating remaining lower-ranked rows as settled.
-  const requestedFamilies = new Set(availableFamilies);
-  for (const candidate of candidates) {
-    if (optimisticRepresentatives.has(candidate.candidateId) &&
-        !requestedFamilies.has(candidate.providerFamily)) {
-      requestedFamilies.add(candidate.providerFamily);
-      needed.add(candidate.candidateId);
-    }
-  }
+  const share = new Map<string, number>();
+  [...optimistic.top, ...optimistic.additional].sort((left, right) =>
+    compareRankedReaderPromotion(readerPromotionOrderKey(left), readerPromotionOrderKey(right)))
+    .forEach((candidate, index) => share.set(candidate.candidateId,
+      index / READER_PROMOTION_LIMITS.rankedTotal));
+  optimistic.news.forEach((candidate, index) => share.set(candidate.candidateId,
+    index / READER_PROMOTION_LIMITS.news));
   return {
     needed,
+    priority: (candidateId) => share.get(candidateId) ?? Number.POSITIVE_INFINITY,
     settled: actual.outcome === optimistic.outcome &&
-      orderedIds(actual) === orderedIds(optimistic) &&
-      requestedFamilies.size === availableFamilies.size,
+      orderedIds(actual) === orderedIds(optimistic),
   };
 };

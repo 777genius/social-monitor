@@ -13,8 +13,8 @@ _$ReaderSummaryPromotionV3PresentationDtoFromJson(
   displayHeadline: ReaderSummaryDisplayHeadlineSealDto.fromJson(
     json['displayHeadline'] as Map<String, dynamic>,
   ),
-  presentationInputDigest: json['presentationInputDigest'] as String,
   presentationIdentity: json['presentationIdentity'] as String,
+  presentationInputDigest: json['presentationInputDigest'] as String,
   schemaVersion:
       ReaderSummaryPromotionV3PresentationDtoSchemaVersionSchemaVersion.fromJson(
         json['schemaVersion'] as String,
@@ -25,7 +25,7 @@ Map<String, dynamic> _$ReaderSummaryPromotionV3PresentationDtoToJson(
   ReaderSummaryPromotionV3PresentationDto instance,
 ) => <String, dynamic>{
   'displayHeadline': instance.displayHeadline,
-  'presentationInputDigest': instance.presentationInputDigest,
   'presentationIdentity': instance.presentationIdentity,
+  'presentationInputDigest': instance.presentationInputDigest,
   'schemaVersion': instance.schemaVersion,
 };

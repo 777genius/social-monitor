@@ -258,6 +258,28 @@ describe("InMemoryReaderSummaryPublication", () => {
     expect(context.events.all()).toHaveLength(0);
   });
 
+  // The in-memory guard recomputes the signed popularity cohort exactly like
+  // the Prisma guard; a forged count is rejected before anything is visible.
+  it.each([false, true])("checks frozen non-zero popularity (forged: %s)", async (forged) => {
+    const fixture = workspaceV3RankedFixture(forged ? 47 : 46, forged);
+    const context = await createContext(fixture.command);
+    const source: ReaderSummaryV3PreparationSourcePort = {
+      configuration: async () => ({ ok: true, config: fixture.config }),
+      prepare: jest.fn(), coverage: async () => ({ status: "ready",
+        hasPromotableSignal: true }),
+    };
+    const publication = new InMemoryReaderSummaryPublication(context.jobs,
+      context.artifacts, context.events, source, (id) => fixture.assessments.get(id));
+
+    if (forged) {
+      await expect(publication.publish(fixture.command)).rejects.toThrow(
+        "Workspace V3 publication provenance changed");
+      expect(context.events.all()).toHaveLength(0);
+    } else {
+      await expect(publication.publish(fixture.command)).resolves.toBe("published");
+    }
+  });
+
   // Regression: a selected card must not attest to another interest's rubric
   // or model configuration while reusing a correctly pinned FeedItem digest.
   it.each(["rubric", "model"] as const)(
@@ -349,6 +371,50 @@ const workspaceV3ReadyFixture = (sequence: number, change: "rubric" | "model") =
       exactIngestionCutoff: cutoff, ingestionCutoff: new Date(cutoff) } }) }) as unknown as ReaderSummaryArtifact;
   return { ...fixture, config, command: { ...fixture.command,
     finalJob, artifact } };
+};
+
+/** Five mature Reddit posts with scores 10..50 and their signed popularity. */
+const workspaceV3RankedFixture = (sequence: number, forged: boolean) => {
+  const base = workspaceV3ReadyFixture(sequence, "rubric");
+  const interest = { ...base.config.interests[0]! };
+  const config = { ...base.config, interests: [interest] };
+  const original = base.command.finalJob.toSnapshot();
+  const cutoff = "2026-07-05T10:00:00.000000Z";
+  const uuid = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
+  const candidates = [10, 20, 30, 40, 50].map((score, index) => ({
+    candidateId: uuid(0x100 + index), interestId: interest.interestId,
+    sourceBindingId: uuid(0x200 + index), providerKey: "reddit",
+    sourceItemId: uuid(0x300 + index), sourceRevisionKey: "revision-1",
+    sourceSnapshotSha256: "d".repeat(64), assessmentId: uuid(0x400 + index),
+    inputSha256: "e".repeat(64), publishedAt: "2026-07-05T01:00:00.000000Z",
+    observedAt: "2026-07-05T01:01:00.000000Z", sourceKind: "post",
+    canonicalIdentity: `https://example.test/reddit-${index}`,
+    providerMetadata: { kind: "reddit_post", score },
+    engagementObservedAt: "2026-07-05T08:00:00.000000Z" }));
+  const manifest = { schemaVersion: "reader_summary_preparation_manifest.v2" as const,
+    cutoffAt: cutoff, periodKey: original.period.periodKey,
+    interests: config.interests, candidates };
+  const finalJob = ReaderSummaryJob.rehydrate({ ...original, preparationConfig: config,
+    preparationManifest: manifest,
+    preparationManifestSha256: readerSummaryWorkspaceManifestSha256(manifest) });
+  // Explicit expected counts, not a recomputation: score 10 has 0 below, 50 has 4.
+  const attestations = candidates.map((candidate, index) => ({
+    schemaVersion: "reader_post_promotion_attestation.v3",
+    candidateId: candidate.candidateId, exactIngestionCutoff: cutoff,
+    assessment: { assessmentId: candidate.assessmentId,
+      sourceSnapshotSha256: candidate.sourceSnapshotSha256,
+      inputSha256: candidate.inputSha256, rubricVersion: interest.rubricVersion,
+      rubricSha256: interest.rubricSha256, modelConfigVersion: interest.modelConfigVersion },
+    comparator: { engagement: { method: "reddit_score",
+      value: candidate.providerMetadata.score, observedAt: candidate.engagementObservedAt },
+    popularity: { cohortSize: 5, below: forged && index === 0 ? 1 : index, equal: 1 } } }));
+  const artifactSnapshot = base.command.artifact.toSnapshot();
+  const artifact = ({ toSnapshot: () => ({ ...artifactSnapshot,
+    promotionAttestations: attestations }) }) as unknown as ReaderSummaryArtifact;
+  const assessments = new Map(candidates.map((candidate) => [candidate.assessmentId, {
+    result: { usefulness: { choice: "useful" }, relevance: { choice: "central" } },
+    input_snapshot: { safety: "allowed" } }] as const));
+  return { config, assessments, command: { ...base.command, finalJob, artifact } };
 };
 
 const createContext = async (

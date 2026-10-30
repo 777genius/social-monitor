@@ -329,17 +329,16 @@ export class ExecuteReaderSummaryJobUseCase {
       ? admitReaderPostPromotionEvidence(selectedEvidence)
       : { ...selectedEvidence, promotionCounts: {
           top: selectedEvidence.promotionV3.top.length,
-          additional: selectedEvidence.promotionV3.additional.length } };
-    const {
-      promotionCounts,
-      ...modelEvidence
-    } = admittedSelection;
+          additional: selectedEvidence.promotionV3.additional.length,
+          news: selectedEvidence.promotionV3.news.length } };
+    const { promotionCounts, ...modelEvidence } = admittedSelection;
     const rawPrimaryEvidence = primaryReaderSummaryEvidence(selectedEvidence);
     const admittedPrimaryEvidence = primaryReaderSummaryEvidence(modelEvidence);
     this.promotionControl.metrics.record({
       candidateCount: rawPrimaryEvidence.selectedEvidence.length,
       topCount: promotionCounts.top,
       additionalCount: promotionCounts.additional,
+      newsCount: promotionCounts.news,
       admittedEvidenceCount: admittedPrimaryEvidence.selectedEvidence.length,
       omittedEvidenceCount: Math.max(
         0,

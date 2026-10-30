@@ -15,7 +15,7 @@ import { canonicalPromotionPayload, promotionPayloadDigest } from "../../libs/su
 import type { ReaderSummaryPublicationCommand, ReaderSummaryV3PreparationSourcePort } from "../../libs/summary/ports";
 import type { PrismaReaderSummaryClient } from
   "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-client";
-import { ReaderSummaryArtifact, selectReaderPostPromotionsV3,
+import { READER_PROMOTION_POLICY_STAMP, ReaderSummaryArtifact, selectReaderPostPromotionsV3,
   type ReaderPostPromotionAttestationV3, type ReaderPostPromotionV3Candidate,
   type ReaderSummaryJob,
   type SummaryEvidenceSelection } from
@@ -61,7 +61,7 @@ type Params = {
 type V3ArtifactPayload = Record<string, unknown> & {
   citationMap: Array<Record<string, string>>;
   promotionAttestations?: ReaderPostPromotionAttestationV3[];
-  content?: { topReads?: Array<Record<string, unknown>> };
+  content?: { newsWithoutRatingPosts?: Array<Record<string, unknown>> };
 };
 type V3FixturePayload = Record<string, unknown> & {
   tenantId: string;
@@ -498,7 +498,7 @@ const postgresPreparationSource = async (client: PoolClient,
       inputSha256: attestation.assessment.inputSha256,
       publishedAt: authority.published_at, observedAt: authority.observed_at,
       sourceKind: "article", canonicalIdentity: authority.canonical_url,
-      storyId: attestation.storyId }];
+      storyId: attestation.storyId, engagementObservedAt: null }];
   const manifest = { schemaVersion: "reader_summary_preparation_manifest.v1" as const,
     cutoffAt: attestation?.exactIngestionCutoff ?? payload.requestedAt,
     interestSha256: config.interestSha256,
@@ -651,7 +651,7 @@ const assertApplicationPayloadRoundTrip = async (client: PoolClient,
   const expected = payload.report.artifactPayload.promotionAttestations;
   assert(stableJson(rows.rows[0]?.artifact_payload?.promotionAttestations) ===
     stableJson(expected), "application-shaped V3 attestation did not round-trip");
-  assert(rows.rows[0]?.artifact_payload?.content?.topReads?.[0]?.exactPublishedAt ===
+  assert(rows.rows[0]?.artifact_payload?.content?.newsWithoutRatingPosts?.[0]?.exactPublishedAt ===
     "2026-06-14T09:00:00.123456Z",
   "V3 card publication timestamp lost PostgreSQL microseconds");
   const persistedAttestation = rows.rows[0]?.artifact_payload?.promotionAttestations?.[0];
@@ -673,9 +673,9 @@ const assertApplicationPayloadRoundTrip = async (client: PoolClient,
   const rest = readerSummaryArtifactViewFromReaderSummaryView(presentReaderSummaryArtifact(
     readerSummaryArtifactFromPrisma(record), { status: "fresh", checkedAt: new Date(payload.requestedAt) }));
   const transport = JSON.parse(JSON.stringify(rest)) as typeof rest;
-  assert(transport.readerBrief.topReads[0]?.promotionAttestation?.exactIngestionCutoff ===
-    "2026-06-14T10:00:00.123456Z" &&
-    transport.readerBrief.topReads[0]?.promotionAttestation?.canonicalPayload !== undefined,
+  const newsCard = transport.readerBrief.newsWithoutRatingPosts[0];
+  assert(newsCard?.promotionAttestation?.exactIngestionCutoff === "2026-06-14T10:00:00.123456Z" &&
+    newsCard.promotionAttestation.canonicalPayload !== undefined,
   "production persistence parser/REST mapper did not emit serializable V3 transport");
   assertFlutterV3FixtureFresh(transport);
 };
@@ -745,7 +745,8 @@ export const buildApplicationV3FixturePayload = async (client: PoolClient,
     rubricVersion: "reader-value.v1",
     sourceSnapshotSha256: input.sourceSnapshotSha256, inputSha256: "2".repeat(64),
     rubricSha256: "b".repeat(64), modelConfigVersion: "jev.v1",
-    answers: fixtureReaderValueAnswers(), signalScore: 0,
+    answers: fixtureReaderValueAnswers(), usefulness: "useful", relevance: "central",
+    engagement: null, title,
     presentation: {
       status: "available" as const,
       presentationInputDigest: presentation.presentationInputDigest },
@@ -802,7 +803,7 @@ export const buildApplicationV3FixturePayload = async (client: PoolClient,
     observedAt: new Date(candidate.assessedAt), score: 0, whyImportant: [],
     readerActionKind: "read_source" as const, storyKeyHint: candidate.storyId };
   const cluster = { id: candidate.storyId, storyKey: candidate.storyId,
-    rankingPolicyVersion: "reader_promotion_policy.v3",
+    rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
     representativeFeedItemId: candidateId, duplicateFeedItemIds: [],
     interestIds: [authority.interest_id], providerKeys: ["rss"], score: 0,
     observedAtRange: { startedAt: new Date(candidate.assessedAt),
@@ -811,7 +812,7 @@ export const buildApplicationV3FixturePayload = async (client: PoolClient,
     providerKey: "rss", field: "title" as const,
     canonicalUrl: authority.canonical_url };
   const evidence: SummaryEvidenceSelection = {
-    rankingPolicyVersion: "reader_promotion_policy.v3", sourceWindow,
+    rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP, sourceWindow,
     clusters: [cluster], selectedEvidence: [evidenceItem], promotionV3 };
   const draft = { headline: title, executiveSummary: sourceText,
     topStories: [{ storyClusterId: candidate.storyId, title,
@@ -827,7 +828,7 @@ export const buildApplicationV3FixturePayload = async (client: PoolClient,
       promptVersion: payload.report.promptVersion,
       rulesVersion: "reader-summary.rules.pg-gate.v1",
       evalDatasetVersion: "reader-summary.eval.pg-gate.v1",
-      rankingPolicyVersion: "reader_promotion_policy.v3" },
+      rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP },
     usage: { inputTokens: 1, outputTokens: 1, estimatedCostUsd: 0 } };
   const draftWithContent = buildReaderSummaryDraftWithPromotionContent(evidence, draft);
   const applicationArtifact = ReaderSummaryArtifact.create({
@@ -853,7 +854,7 @@ export const buildApplicationV3FixturePayload = async (client: PoolClient,
   const view = presentReaderSummaryArtifact(applicationArtifact,
     { status: "fresh", checkedAt: new Date(payload.requestedAt) });
   const rest = readerSummaryArtifactViewFromReaderSummaryView(view);
-  const card = view.content.topReads[0];
+  const card = view.content.newsWithoutRatingPosts[0]; // RSS is unranked: news block.
   const attestation = view.promotionAttestations[0];
   assert(card !== undefined && attestation !== undefined &&
     validReaderDisplayRestBinding(card, attestation, view),
@@ -861,8 +862,8 @@ export const buildApplicationV3FixturePayload = async (client: PoolClient,
   assert(attestation.ingestionCutoff === new Date(exactIngestionCutoff).toISOString() &&
     attestation.exactIngestionCutoff === exactIngestionCutoff,
   "application-shaped V3 attestation lost the exact cutoff");
-  assert(rest.readerBrief.topReads[0]?.publishedAt === candidate.publishedAt &&
-    rest.readerBrief.topReads[0]?.title === headline.text,
+  assert(rest.readerBrief.newsWithoutRatingPosts[0]?.publishedAt === candidate.publishedAt &&
+    rest.readerBrief.newsWithoutRatingPosts[0]?.title === headline.text,
   "application-built V3 artifact lost REST/client timestamp or headline parity");
   assert(!JSON.stringify({ rest, attestation }).includes(authority.trusted_intent) &&
     JSON.stringify(attestation).includes("interestDigest"),

@@ -9,7 +9,7 @@ import type {
 } from "../value-objects/summary-evidence-item";
 import {
   hasSharedStoryEventFacet,
-  isDeterministicCrossProviderStoryMatch,
+  isDeterministicIndependentSourceStoryMatch,
   isVerifiedSameAuthorStorySeriesCandidate,
   isVerifiedStoryRelationGuardEligible,
   verifiedStoryRelationPairKey,
@@ -86,7 +86,7 @@ export const buildStoryRelationCandidates = (params: {
         readerPostProviderFamily(left.providerKey) ===
           readerPostProviderFamily(right.providerKey) ||
         !isVerifiedStoryRelationGuardEligible(left, right, policy) ||
-        isDeterministicCrossProviderStoryMatch(left, right, policy)
+        isDeterministicIndependentSourceStoryMatch(left, right, policy)
       ) {
         continue;
       }

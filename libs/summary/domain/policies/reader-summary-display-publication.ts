@@ -15,7 +15,8 @@ import {
 export const readerDisplayPublicationFindings = (
   snapshot: ReaderSummaryArtifactProps, evidence: SummaryEvidenceSelection,
 ): readonly ReaderSummaryPublicationRejectionFinding[] => {
-  const cards = [...(snapshot.content?.topReads ?? []), ...(snapshot.content?.selectedPosts ?? [])]
+  const cards = [...(snapshot.content?.topReads ?? []), ...(snapshot.content?.selectedPosts ?? []),
+    ...(snapshot.content?.newsWithoutRatingPosts ?? [])]
     .filter((card) => card.promotionMarker === "reader_post_promotion");
   return cards.flatMap((card) => {
     const lead = evidence.selectedEvidence.find((item) => item.feedItemId === card.promotionCandidateId);

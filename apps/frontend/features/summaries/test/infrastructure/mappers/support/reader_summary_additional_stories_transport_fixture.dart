@@ -154,6 +154,7 @@ additionalStoriesReaderBriefTransportFixture({
       promotionSlot: 0,
     ),
   ],
+  'newsWithoutRatingPosts': <Object?>[],
   'selectedPosts': [
     _rawReaderItem(
       title: 'Cursor background agents launch',

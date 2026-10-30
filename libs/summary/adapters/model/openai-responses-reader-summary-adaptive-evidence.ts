@@ -22,6 +22,7 @@ export const buildAdaptiveReaderSummaryEvidence = (
   const verifiedV3PresentationIds = new Set([
     ...(selection.promotionV3?.top ?? []),
     ...(selection.promotionV3?.additional ?? []),
+    ...(selection.promotionV3?.news ?? []),
   ].filter((candidate) => candidate.presentation.status === "available")
     .map((candidate) => candidate.candidateId));
   const sourceHydrationLimit = selection.promotionV3 === undefined

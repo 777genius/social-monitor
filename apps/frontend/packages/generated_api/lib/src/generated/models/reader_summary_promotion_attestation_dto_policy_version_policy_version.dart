@@ -4,6 +4,7 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+/// For reader_post_promotion_attestation.v3 this is the promotion policy stamp. Another stamp never reaches clients: such days are served with empty boards and freshness.reason = ranking_policy_changed.
 @JsonEnum()
 enum ReaderSummaryPromotionAttestationDtoPolicyVersionPolicyVersion {
   /// Incorrect name has been replaced. Original name: `reader_post_promotion.v1`.
@@ -14,9 +15,9 @@ enum ReaderSummaryPromotionAttestationDtoPolicyVersionPolicyVersion {
   @JsonValue('reader_post_promotion.v2')
   undefined1('reader_post_promotion.v2'),
 
-  /// Incorrect name has been replaced. Original name: `reader_post_promotion.v3`.
-  @JsonValue('reader_post_promotion.v3')
-  undefined2('reader_post_promotion.v3'),
+  /// Incorrect name has been replaced. Original name: `reader_promotion.2026-10-30`.
+  @JsonValue('reader_promotion.2026-10-30')
+  undefined2('reader_promotion.2026-10-30'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);
