@@ -33,7 +33,9 @@ export type ReaderPostPresentationV3Result =
       readonly presentationInputDigest: string }
   | { readonly status: "unavailable"; readonly reason:
       "incomplete_source" | "input_over_budget" | "unsafe_text" |
-      "insufficient_support" | "invalid_presentation" }
+      "insufficient_support" | "invalid_presentation" |
+      /** The runtime failed the task itself; nothing is known about the story. */
+      "runtime_failure" }
   | { readonly status: "dependency_failure"; readonly reason: string };
 
 export interface PromotionPresentationBuilder {

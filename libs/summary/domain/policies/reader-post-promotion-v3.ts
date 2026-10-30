@@ -66,6 +66,8 @@ export type ReaderPostPromotionV3ExclusionReason =
 export type ReaderPostPromotionV3Selection = {
   /** Internal coverage disclosure; publication still binds only canonical sealed survivors. */
   readonly presentationCoverageLimited?: true;
+  /** Internal disclosure: some presentation tasks failed in the runtime and were skipped. */
+  readonly presentationRuntimeDegraded?: true;
   readonly policyVersion: typeof READER_PROMOTION_POLICY_V3;
   readonly outcome: "ready" | "no_signal" | "presentation_unavailable" |
     "budget_exhausted";
