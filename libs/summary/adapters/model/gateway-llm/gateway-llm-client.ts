@@ -1,4 +1,6 @@
-import { LLM_MAX_DEADLINE_MS } from "@agent-teams/account-gateway/llm";
+import {
+  LLM_MAX_DEADLINE_MS, LlmSchemaError, prepareStrictJsonSchema,
+} from "@agent-teams/account-gateway/llm";
 import type {
   LlmClient, LlmEffort, LlmFailure, LlmPolicy, LlmSuccess, LlmTask,
 } from "@agent-teams/account-gateway/llm";
@@ -10,8 +12,9 @@ import {
 
 import type {
   AgentRuntimeClientPort, AgentRuntimeFailure, AgentRuntimeHealthResult,
-  AgentRuntimeProvider, AgentRuntimeTaskCommand, AgentRuntimeTaskResult,
+  AgentRuntimeTaskCommand, AgentRuntimeTaskResult,
 } from "../../../ports";
+import { gatewayDefaultReasoningEffort } from "../active-reader-summary-generation-profile";
 import type { GatewayLlmAccountSelector } from "./gateway-llm-account-selector";
 import type { GatewayLlmAttemptIdentity, GatewayLlmAttemptSource } from "./gateway-llm-attempts";
 import {
@@ -19,33 +22,31 @@ import {
 } from "./gateway-llm-failure";
 import type { GatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 
-/** One gateway profile serving one agent-runtime provider. */
+/**
+ * The one gateway profile and model a client serves. Tasks must name exactly
+ * this backend and model; anything else is refused before any gateway call.
+ */
 export type GatewayLlmRoute = {
   readonly profileId: string;
-  readonly models: readonly string[];
+  /** Reader-summary backend a task names in controls.modelBackend. */
+  readonly modelBackend: string;
+  readonly model: string;
+  /** Effort sent with every task; undefined sends no reasoning control. */
+  readonly reasoningEffort?: LlmEffort;
   readonly accountRefs: readonly string[];
-  readonly defaultMaxOutputTokens: number;
+  /**
+   * Floor of max_output_tokens. Reasoning models spend output tokens before
+   * the answer, so the product budgets alone end as output_truncated.
+   */
+  readonly minOutputTokens: number;
 };
-
-/**
- * Turns a product JSON Schema into the provider structured-output schema and
- * maps the provider value back to the product shape. Codex strict mode needs
- * this translation; the product schemas are not strict-mode schemas.
- */
-export interface GatewayStructuredOutputPlanner {
-  plan(schema: Readonly<Record<string, unknown>>): {
-    readonly schema: Readonly<Record<string, unknown>>;
-    readonly decode: (value: unknown) => Record<string, unknown>;
-  };
-}
 
 export type GatewayLlmClientOptions = {
   readonly llm: Pick<LlmClient, "generate">;
   readonly policy: LlmPolicy;
-  readonly routes: Readonly<Partial<Record<AgentRuntimeProvider, GatewayLlmRoute>>>;
+  readonly route: GatewayLlmRoute;
   readonly attempts: GatewayLlmAttemptSource;
   readonly accounts: GatewayLlmAccountSelector;
-  readonly structuredOutput: GatewayStructuredOutputPlanner;
   readonly sdk: GatewayLlmSdkIdentity;
   readonly clock: Clock;
   readonly sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
@@ -61,9 +62,6 @@ type Prepared = {
   readonly reasoningEffort: string;
   readonly structured: boolean;
 };
-
-const efforts: ReadonlySet<string> = new Set<LlmEffort>(
-  ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
 
 /**
  * Agent-runtime port over the account-gateway `llm` SDK: one bounded model
@@ -131,18 +129,15 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
 
   private prepare(command: AgentRuntimeTaskCommand, startedAt: number):
   Prepared | { readonly failure: AgentRuntimeFailure } {
-    const route = this.options.routes[command.provider];
+    const route = this.options.route;
     const controls = command.controls;
-    const model = controls.model;
-    if (route === undefined || typeof model !== "string" || !route.models.includes(model) ||
-        (controls.modelBackend !== undefined && controls.modelBackend !== "openai-chatgpt")) {
+    if (controls.model !== route.model || controls.modelBackend !== route.modelBackend) {
       return { failure: gatewayLlmLocalFailure("unsupported_route",
-        "Gateway has no route for the requested provider and model") };
+        "Gateway has no route for the requested model") };
     }
-    const effort = controls.reasoningEffort;
-    if (effort !== undefined && (typeof effort !== "string" || !efforts.has(effort))) {
+    if (controls.reasoningEffort !== route.reasoningEffort) {
       return { failure: gatewayLlmLocalFailure("invalid_request",
-        "Gateway task reasoning effort is not supported") };
+        "Gateway task reasoning effort conflicts with the route policy") };
     }
     if (command.systemPrompt.trim().length === 0 || !(command.timeoutMs > 0)) {
       return { failure: gatewayLlmLocalFailure("invalid_request",
@@ -152,30 +147,34 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
     let output: PreparedTask["output"] = { mode: "text" };
     let decode: PreparedTask["decode"];
     if (structured) {
+      // Strict providers need every property required and objects closed;
+      // decode strips the added nulls and validates the original schema, so
+      // a provider that ignores the schema still cannot pass invalid output.
       try {
-        const plan = this.options.structuredOutput.plan(command.outputSchema);
-        output = { mode: "json_schema", schema: plan.schema, strict: true };
-        decode = plan.decode;
-      } catch {
+        const strict = prepareStrictJsonSchema(command.outputSchema);
+        output = { mode: "json_schema", schema: strict.schema, strict: true };
+        decode = (value) => objectOutput(strict.decode(value));
+      } catch (error) {
+        if (!(error instanceof LlmSchemaError)) throw error;
         return { failure: gatewayLlmLocalFailure("invalid_schema",
           "Gateway task output schema is not supported") };
       }
     }
-    const maxOutputTokens = controls.maxOutputTokens;
+    const requested = controls.maxOutputTokens;
     return {
       route,
       structured,
-      reasoningEffort: typeof effort === "string" ? effort : "default",
+      reasoningEffort: route.reasoningEffort ?? gatewayDefaultReasoningEffort,
       task: {
         profileId: route.profileId,
-        model,
+        model: route.model,
         policy: this.options.policy,
         instructions: command.systemPrompt,
         input: command.prompt,
         output,
-        ...(typeof effort === "string" ? { effort: effort as LlmEffort } : {}),
-        maxOutputTokens: Number.isSafeInteger(maxOutputTokens) && (maxOutputTokens as number) > 0
-          ? maxOutputTokens as number : route.defaultMaxOutputTokens,
+        ...(route.reasoningEffort === undefined ? {} : { effort: route.reasoningEffort }),
+        maxOutputTokens: Math.max(route.minOutputTokens,
+          Number.isSafeInteger(requested) && (requested as number) > 0 ? requested as number : 0),
         deadline: new Date(startedAt + Math.min(command.timeoutMs, LLM_MAX_DEADLINE_MS)),
         ...(decode === undefined ? {} : { decode }),
       },
@@ -250,6 +249,13 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
     this.options.accounts.observe({ accountRef, outcome, retryAfterMs, now });
   }
 }
+
+const objectOutput = (value: unknown): Record<string, unknown> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Gateway structured output is not an object");
+  }
+  return value as Record<string, unknown>;
+};
 
 const observation = (failure: LlmFailure): "busy" | "unauthorized" | "other" =>
   failure.code === "busy" ? "busy" : failure.code === "unauthorized" ? "unauthorized" : "other";
