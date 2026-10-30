@@ -58,6 +58,7 @@ import {
   resolveReaderSummaryTopicLabelerMode,
   resolveSummaryYoutubeVideoSummaryProviderMode,
 } from '../libs/summary/interfaces/rest/summary-provider-tokens';
+import { resolveReaderSummaryAgentRuntimeTransport } from '../libs/summary/interfaces/rest/summary-agent-runtime-provider-tokens';
 import { resolveUsagePersistenceMode } from '../libs/usage/interfaces/rest/usage-provider-tokens';
 
 const betaEnv = {
@@ -253,6 +254,19 @@ assertThrows(
       READER_SUMMARY_MODEL_PROVIDER: 'openai-responses',
     }),
   'READER_SUMMARY_MODEL_PROVIDER must reject openai-responses mode in beta runtime',
+);
+assert(
+  resolveReaderSummaryAgentRuntimeTransport(betaEnv) === 'agent-runtime',
+  'reader summary beta transport defaults to the agent-runtime gRPC service',
+);
+assert(
+  resolveReaderSummaryAgentRuntimeTransport({ ...betaEnv, AGENT_RUNTIME_TRANSPORT: 'gateway-llm' }) ===
+    'gateway-llm',
+  'reader summary beta transport accepts the durable account-gateway llm transport',
+);
+assertThrows(
+  () => resolveReaderSummaryAgentRuntimeTransport({ ...betaEnv, AGENT_RUNTIME_TRANSPORT: 'direct' }),
+  'AGENT_RUNTIME_TRANSPORT must reject unknown or process-local transports',
 );
 assert(
   resolveSummaryRabbitMqJobQueueOptions(rabbitMqEnv).routes?.['summary.job.execute']?.queueType === 'quorum',

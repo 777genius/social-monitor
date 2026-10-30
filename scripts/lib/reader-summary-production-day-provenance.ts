@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 
-import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import {
+  type AgentRuntimeEngine,
+  canonicalJsonSha256,
+  isAgentRuntimeEngine,
+} from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import {
   approvedMimoRuntimePackageVersion,
   approvedSubscriptionRuntimeLauncherSha256,
@@ -49,7 +53,7 @@ export type ProductionDayCaptureExecution = {
 
 export type ProductionDayRuntimeHealth = {
   readonly status: string;
-  readonly runtimeEngine: string;
+  readonly runtimeEngine: AgentRuntimeEngine;
   readonly runtimeVersion: string;
   readonly launcherSha256: string;
   readonly checkedAt: string;
@@ -606,11 +610,11 @@ function validateCaptureExecution(params: {
     "evidence.captureExecution.runtimeHealth.status",
     params.violations,
   );
-  requireNonEmptyString(
-    runtimeHealth.runtimeEngine,
-    "evidence.captureExecution.runtimeHealth.runtimeEngine",
-    params.violations,
-  );
+  if (!isAgentRuntimeEngine(runtimeHealth.runtimeEngine)) {
+    params.violations.push(
+      "evidence.captureExecution.runtimeHealth.runtimeEngine must be an attested runtime engine",
+    );
+  }
   requireNonEmptyString(
     runtimeHealth.runtimeVersion,
     "evidence.captureExecution.runtimeHealth.runtimeVersion",
@@ -655,7 +659,7 @@ function validateCaptureExecution(params: {
     execution,
     runtimeHealth: {
       status: runtimeHealth.status as string,
-      runtimeEngine: runtimeHealth.runtimeEngine as string,
+      runtimeEngine: runtimeHealth.runtimeEngine as AgentRuntimeEngine,
       runtimeVersion: runtimeHealth.runtimeVersion as string,
       launcherSha256: runtimeHealth.launcherSha256 as string,
       checkedAt: runtimeHealth.checkedAt as string,

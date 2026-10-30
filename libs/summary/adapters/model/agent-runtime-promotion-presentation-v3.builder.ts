@@ -33,7 +33,10 @@ import {
   mimoPresentationReasoningEffort,
   mimoPresentationMaxTimeoutMs,
   assertActiveReaderSummaryProvider,
-  parseActiveReaderSummaryReasoningEffort,
+  isGatewayReaderSummaryBackend,
+  readerSummaryRouteControls,
+  resolveReaderSummaryBackendEffort,
+  resolveReaderSummaryReasoningEffortFromEnv,
 } from "./active-reader-summary-generation-profile";
 import { presentationRuntimeFailureDisposition, presentationRuntimeFailureIdentity } from
   "./agent-runtime-promotion-presentation-v3-runtime-failure";
@@ -46,7 +49,8 @@ export type AgentRuntimePromotionPresentationV3BuilderOptions = {
   readonly providerInstanceId?: string;
   readonly model?: string;
   readonly modelBackend?: ReaderSummaryGenerationBackend;
-  readonly reasoningEffort?: "high" | "none";
+  /** high for Codex, none for MiMo, the route effort for a gateway backend. */
+  readonly reasoningEffort?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
 };
@@ -63,7 +67,7 @@ implements PromotionPresentationBuilder {
   private readonly providerInstanceId?: string;
   private readonly model: string;
   private readonly modelBackend: ReaderSummaryGenerationBackend;
-  private readonly reasoningEffort: "high" | "none";
+  private readonly reasoningEffort: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
 
@@ -77,12 +81,14 @@ implements PromotionPresentationBuilder {
     });
     this.model = identity.model;
     this.modelBackend = identity.backend;
-    const expectedEffort = this.modelBackend === mimoReaderSummaryBackend
+    const cliEffort = this.modelBackend === mimoReaderSummaryBackend
       ? mimoPresentationReasoningEffort : activeReaderSummaryReasoningEffort;
-    if (options.reasoningEffort !== undefined && options.reasoningEffort !== expectedEffort) {
+    if (!isGatewayReaderSummaryBackend(this.modelBackend) &&
+      options.reasoningEffort !== undefined && options.reasoningEffort !== cliEffort) {
       throw new Error("Presentation reasoning effort conflicts with purpose policy");
     }
-    this.reasoningEffort = expectedEffort;
+    this.reasoningEffort = resolveReaderSummaryBackendEffort(
+      this.modelBackend, options.reasoningEffort, cliEffort);
     const configuredTimeoutMs = positiveIntegerOrFallback(options.timeoutMs, defaultPresentationTimeoutMs);
     this.timeoutMs = this.modelBackend === mimoReaderSummaryBackend
       ? Math.min(configuredTimeoutMs, mimoPresentationMaxTimeoutMs) : configuredTimeoutMs;
@@ -123,7 +129,8 @@ implements PromotionPresentationBuilder {
       systemPrompt, prompt, outputSchema: schema,
       provider: this.provider, providerInstanceId: this.providerInstanceId ?? null,
       model: this.model, reasoningEffort: this.reasoningEffort,
-      ...(this.modelBackend === mimoReaderSummaryBackend ? { modelBackend: this.modelBackend } : {}),
+      ...(this.modelBackend === mimoReaderSummaryBackend ||
+        isGatewayReaderSummaryBackend(this.modelBackend) ? { modelBackend: this.modelBackend } : {}),
       maxOutputTokens: this.maxOutputTokens,
     }));
     const command: AgentRuntimeTaskCommand = {
@@ -149,7 +156,7 @@ implements PromotionPresentationBuilder {
         schemaVersion: "reader_post_presentation.v3",
         model: this.model,
         ...(this.modelBackend === mimoReaderSummaryBackend ? { modelBackend: this.modelBackend } : {}),
-        reasoningEffort: this.reasoningEffort,
+        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
@@ -212,8 +219,7 @@ export const resolveAgentRuntimePromotionPresentationV3BuilderOptions = (
 ): AgentRuntimePromotionPresentationV3BuilderOptions => {
   const identity = resolveReaderSummaryDailyTaskIdentityFromEnv(env,
     env.AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_MODEL);
-  const sharedEffort = parseActiveReaderSummaryReasoningEffort(
-    env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ?? env.AGENT_RUNTIME_REASONING_EFFORT);
+  const sharedEffort = resolveReaderSummaryReasoningEffortFromEnv(env);
   return {
     client,
     agentProvider: assertActiveReaderSummaryProvider(env.AGENT_RUNTIME_PROVIDER),

@@ -5,6 +5,7 @@ import {
   runtimeProvenanceFromExecutorAttestations,
 } from "./reader-summary-production-day-attestation";
 import { productionExecutionAttestations } from "./reader-summary-production-day-attestation.spec-support";
+import { approvedGatewayLlmSdkIdentity } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 
 const evidenceWith = (records: ReturnType<typeof productionExecutionAttestations>) => ({
   result: { selectedFeedItemCount: 1, status: "completed" },
@@ -102,5 +103,78 @@ describe("production day purpose-specific executor identity", () => {
     wrongRole[1]!.attestation.runtimePackageVersion = "0.1.0-main.40-sm-mimo.12";
     wrongRole[1]!.attestation.launcherSha256 = approvedSubscriptionRuntimeLauncherSha256;
     expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(wrongRole), [])).toBeNull();
+  });
+
+  it("binds a gateway-executed day to one gateway identity", () => {
+    const gatewayRecords = () => productionExecutionAttestations().map((record, index) => ({
+      ...record,
+      attestation: { ...record.attestation, runtimeEngine: "gateway-llm",
+        runtimePackageVersion: approvedGatewayLlmSdkIdentity.packageVersion,
+        launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256,
+        gateway: { profileId: "openai-codex-oauth-responses-v1", taskId: `smTask${index}`,
+          attempt: 1, executionRef: `execution-${index}`, requestRef: `smTask${index}-a1-r`,
+          accountRef: "00000000-0000-4000-8000-00000000000a", observedModel: null,
+          requestSha256: "f".repeat(64) } },
+    }));
+    const violations: string[] = [];
+    const provenance = runtimeProvenanceFromExecutorAttestations(
+      evidenceWith(gatewayRecords()), violations);
+    expect(violations).toEqual([]);
+    expect(provenance).toMatchObject({ runtime: "gateway-llm",
+      runtimeVersion: approvedGatewayLlmSdkIdentity.packageVersion,
+      topicLabeler: { runtime: "gateway-llm" } });
+    expect(isCurrentProductionSubscriptionRuntimeProvenance(provenance)).toBe(true);
+
+    const mixed = gatewayRecords();
+    mixed[1] = productionExecutionAttestations()[1]! as unknown as (typeof mixed)[number];
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(mixed), [])).toBeNull();
+    const unbound = gatewayRecords();
+    delete (unbound[0]!.attestation as { gateway?: unknown }).gateway;
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(unbound), [])).toBeNull();
+    const mimo = gatewayRecords();
+    for (const record of mimo) record.attestation.model = "mimo-v2.6-pro";
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(mimo), [])).toBeNull();
+  });
+
+  it("accepts a gateway-only Kimi day with the route effort and nothing else", () => {
+    const kimiRecords = () => productionExecutionAttestations().map((record, index) => ({
+      ...record,
+      attestation: { ...record.attestation, model: "k3-256k", reasoningEffort: "default",
+        runtimeEngine: "gateway-llm",
+        runtimePackageVersion: approvedGatewayLlmSdkIdentity.packageVersion,
+        launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256,
+        gateway: { profileId: "kimi-code-global-responses-apikey-v1", taskId: `smTask${index}`,
+          attempt: 1, executionRef: `execution-${index}`, requestRef: `smTask${index}-a1-r`,
+          accountRef: "43f64796-ec10-4a68-9256-6df3ac5183e4", observedModel: "k3-256k",
+          requestSha256: "f".repeat(64) } },
+    }));
+    const violations: string[] = [];
+    const provenance = runtimeProvenanceFromExecutorAttestations(
+      evidenceWith(kimiRecords()), violations);
+    expect(violations).toEqual([]);
+    expect(provenance).toMatchObject({ physicalModel: "k3-256k", reasoningEffort: "default",
+      runtime: "gateway-llm", topicLabeler: { physicalModel: "k3-256k", reasoningEffort: "default" } });
+    expect(isCurrentProductionSubscriptionRuntimeProvenance(provenance)).toBe(true);
+
+    // The CLI runtime never executes a gateway-only model.
+    const cli = kimiRecords();
+    for (const record of cli) {
+      Object.assign(record.attestation, { runtimeEngine: "subscription-runtime-cli",
+        runtimePackageVersion: "0.1.0-main.42-sm.3",
+        launcherSha256: approvedSubscriptionRuntimeLauncherSha256 });
+      delete (record.attestation as { gateway?: unknown }).gateway;
+    }
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(cli), [])).toBeNull();
+    // A different model or effort on one task breaks the one-identity day.
+    const mixedModel = kimiRecords();
+    mixedModel[1]!.attestation.model = "openai/gpt-oss-120b";
+    Object.assign(mixedModel[1]!.attestation.gateway, { observedModel: null });
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(mixedModel), [])).toBeNull();
+    const unknownEffort = kimiRecords();
+    for (const record of unknownEffort) record.attestation.reasoningEffort = "none";
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(unknownEffort), [])).toBeNull();
+    const legacyPurpose = kimiRecords();
+    legacyPurpose[1]!.attestation.purpose = "social_monitor.reader_summary.topic_map.label";
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(legacyPurpose), [])).toBeNull();
   });
 });

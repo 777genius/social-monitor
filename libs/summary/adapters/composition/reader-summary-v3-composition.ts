@@ -26,14 +26,13 @@ import { PresentationRuntimeGuardedPromotion } from
 import { AgentRuntimePromotionPresentationV3Builder,
   type AgentRuntimePromotionPresentationV3BuilderOptions } from
   "../model/agent-runtime-promotion-presentation-v3.builder";
-import type { GrpcAgentRuntimeClient } from "../model/grpc-agent-runtime-client";
 import { PrismaReaderSummaryJobRepository } from
   "../persistence/prisma/prisma-reader-summary-job.repository";
 import type { PrismaSummaryClient } from
   "../persistence/prisma/prisma-summary-client";
 import { PrismaReaderSummaryV3Preflight } from
   "../persistence/prisma/prisma-reader-summary-v3-preflight";
-import type { ReaderSummaryV3PreflightPort,
+import type { AgentRuntimeClientPort, ReaderSummaryV3PreflightPort,
   ReaderSummaryV3PromotionPort } from "../../ports";
 
 export const createReaderSummaryV3Preflight = (client: PrismaSummaryClient, jobs: PrismaReaderSummaryJobRepository, interests: ConfiguredInterestReaderPort, clock: Clock, ids: IdGenerator, builder: ReaderValueInputBuilder, lease?: ReaderSummaryExecutionLeasePolicy): ReaderSummaryV3PreflightPort => {
@@ -50,7 +49,7 @@ export const createReaderSummaryV3Preflight = (client: PrismaSummaryClient, jobs
     return new PrismaReaderSummaryV3Preflight(client, jobs, source, lease);
 };
 
-export const createReaderSummaryV3Promotion = (prisma: PrismaSummaryClient, options: AgentRuntimePromotionPresentationV3BuilderOptions, runtime: GrpcAgentRuntimeClient, supplementalEvidence: RelevanceReaderSummaryEvidenceSelector): ReaderSummaryV3PromotionPort => {
+export const createReaderSummaryV3Promotion = (prisma: PrismaSummaryClient, options: AgentRuntimePromotionPresentationV3BuilderOptions, runtime: AgentRuntimeClientPort, supplementalEvidence: RelevanceReaderSummaryEvidenceSelector): ReaderSummaryV3PromotionPort => {
     const client = prisma as unknown as AssessmentSqlClient;
     const assessments = new PrismaReaderValueAssessmentStore(client);
     return new PresentationRuntimeGuardedPromotion(

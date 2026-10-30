@@ -2,11 +2,29 @@ import { createHash } from "node:crypto";
 
 export const agentRuntimeExecutionAttestationSchemaVersion = 1;
 export const subscriptionRuntimeEngine = "subscription-runtime-cli";
+/** One bounded model call through the account-gateway `llm` SDK. */
+export const gatewayLlmRuntimeEngine = "gateway-llm";
+
+export type AgentRuntimeEngine =
+  | typeof subscriptionRuntimeEngine
+  | typeof gatewayLlmRuntimeEngine;
 
 export type AgentRuntimeSelectedOutputKind =
   "structured_output" | "output_text";
 
-export type AgentRuntimeExecutionAttestation = {
+/** Gateway identities of the attempt that produced the attested output. */
+export type AgentRuntimeGatewayTransport = {
+  readonly profileId: string;
+  readonly taskId: string;
+  readonly attempt: number;
+  readonly executionRef: string;
+  readonly requestRef: string;
+  readonly accountRef: string;
+  readonly observedModel: string | null;
+  readonly requestSha256: string;
+};
+
+type AgentRuntimeExecutionAttestationBase = {
   readonly schemaVersion: typeof agentRuntimeExecutionAttestationSchemaVersion;
   readonly requestId: string;
   readonly purpose: string;
@@ -14,11 +32,87 @@ export type AgentRuntimeExecutionAttestation = {
   readonly provider: "codex" | "claude";
   readonly model: string;
   readonly reasoningEffort: string;
-  readonly runtimeEngine: typeof subscriptionRuntimeEngine;
+  /**
+   * The executing artifact identity. For the CLI engine this is the runtime
+   * package version and launcher digest; for gateway-llm it is the vendored
+   * SDK identity label and the SHA-256 of the vendored SDK archive.
+   */
   readonly runtimePackageVersion: string;
   readonly launcherSha256: string;
   readonly selectedOutputKind: AgentRuntimeSelectedOutputKind;
   readonly selectedOutputSha256: string;
+};
+
+export type AgentRuntimeExecutionAttestation =
+  | (AgentRuntimeExecutionAttestationBase & {
+      readonly runtimeEngine: typeof subscriptionRuntimeEngine;
+      readonly gateway?: undefined;
+    })
+  | (AgentRuntimeExecutionAttestationBase & {
+      readonly runtimeEngine: typeof gatewayLlmRuntimeEngine;
+      readonly gateway: AgentRuntimeGatewayTransport;
+    });
+
+export const isAgentRuntimeEngine = (
+  value: unknown,
+): value is AgentRuntimeEngine =>
+  value === subscriptionRuntimeEngine || value === gatewayLlmRuntimeEngine;
+
+const gatewayReference = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
+const datedSnapshotSuffix = /^-\d{4}(?:-\d{2}-\d{2})?$/u;
+
+/**
+ * A provider may report the dated snapshot of the requested model, never a
+ * different model. A null observation means the stream did not report it.
+ */
+export const observedModelMatches = (
+  requested: unknown,
+  observed: unknown,
+): boolean =>
+  observed === null ||
+  (typeof requested === "string" && typeof observed === "string" &&
+    requested.length > 0 &&
+    (observed === requested || (observed.startsWith(requested) &&
+      datedSnapshotSuffix.test(observed.slice(requested.length)))));
+
+/**
+ * Engine-specific identity of one attestation. The CLI keeps its historical
+ * shape; gateway-llm must carry the gateway attempt that produced the output,
+ * and the provider-reported model must match the requested one.
+ */
+export const isAttestedRuntimeIdentity = (attestation: {
+  readonly runtimeEngine?: unknown;
+  readonly runtimePackageVersion?: unknown;
+  readonly launcherSha256?: unknown;
+  readonly model?: unknown;
+  readonly gateway?: unknown;
+}): boolean => {
+  if (
+    !isAgentRuntimeEngine(attestation.runtimeEngine) ||
+    !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
+    !isSha256Hex(attestation.launcherSha256)
+  ) {
+    return false;
+  }
+  if (attestation.runtimeEngine === subscriptionRuntimeEngine) {
+    return attestation.gateway === undefined;
+  }
+  const gateway = attestation.gateway;
+  if (gateway === null || typeof gateway !== "object" || Array.isArray(gateway)) {
+    return false;
+  }
+  const value = gateway as Record<string, unknown>;
+  return (
+    Object.keys(value).sort().join(",") ===
+      "accountRef,attempt,executionRef,observedModel,profileId,requestRef,requestSha256,taskId" &&
+    ["profileId", "taskId", "executionRef", "requestRef", "accountRef"]
+      .every((key) => typeof value[key] === "string" &&
+        gatewayReference.test(value[key] as string)) &&
+    Number.isSafeInteger(value.attempt) &&
+    (value.attempt as number) >= 1 &&
+    isSha256Hex(value.requestSha256) &&
+    observedModelMatches(attestation.model, value.observedModel)
+  );
 };
 
 export type AgentRuntimeOutputSelection = {

@@ -1,7 +1,7 @@
 import {
   canonicalJsonSha256,
   executionAttestationOutputMatches,
-  isConcreteRuntimePackageVersion,
+  isAttestedRuntimeIdentity,
   isSha256Hex,
   subscriptionRuntimeEngine,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
@@ -16,6 +16,9 @@ import {
   activeReaderSummaryProvider,
   activeReaderSummaryPurposes,
   frozenLegacyReaderSummaryRecoveryContract,
+  gatewayDefaultReasoningEffort,
+  isGatewayReaderSummaryBackend,
+  isGatewayReaderSummaryExecution,
   mimoReaderSummaryBackend,
   mimoReaderSummaryModel,
   type FrozenLegacyReaderSummaryRecoveryContract,
@@ -57,9 +60,15 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
     (params.command.purpose === activeReaderSummaryPurposes.generate ||
       params.command.purpose === activeReaderSummaryPurposes.repair) &&
     params.command.controls.modelBackend === mimoReaderSummaryBackend;
+  // A gateway-only backend carries its own model and effort; the command is
+  // the configured route, so the attestation must repeat it exactly.
+  const gatewayRoute = isGatewayReaderSummaryBackend(params.command.controls.modelBackend);
   const expectedModel = mimoGeneration
     ? mimoReaderSummaryModel
-    : activeReaderSummaryModel;
+    : gatewayRoute ? params.command.controls.model : activeReaderSummaryModel;
+  const expectedEffort = gatewayRoute
+    ? params.command.controls.reasoningEffort ?? gatewayDefaultReasoningEffort
+    : expectedReasoningEffort(params.legacyRecoveryContract);
   if (
     params.result.status !== "completed" ||
     attestation === undefined ||
@@ -72,20 +81,20 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
     params.command.controls.model !== expectedModel ||
     (params.command.controls.modelBackend !== undefined &&
       params.command.controls.modelBackend !== "openai-chatgpt" &&
-      !mimoGeneration) ||
-    attestation.reasoningEffort !== expectedReasoningEffort(
-      params.legacyRecoveryContract,
-    ) ||
+      !mimoGeneration && !gatewayRoute) ||
+    (gatewayRoute && (params.legacyRecoveryContract !== undefined ||
+      !isGatewayReaderSummaryExecution(attestation))) ||
+    attestation.reasoningEffort !== expectedEffort ||
     !activeReaderSummaryPurposeMatches(
       params.taskRole,
       params.attempt,
       attestation.purpose,
       params.legacyRecoveryContract,
     ) ||
-    attestation.runtimeEngine !== subscriptionRuntimeEngine ||
-    !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
+    // MiMo generation runs only through the CLI runtime.
+    (mimoGeneration && attestation.runtimeEngine !== subscriptionRuntimeEngine) ||
+    !isAttestedRuntimeIdentity(attestation) ||
     !isSha256Hex(attestation.canonicalRequestSha256) ||
-    !isSha256Hex(attestation.launcherSha256) ||
     attestation.selectedOutputKind !== "structured_output" ||
     !isSha256Hex(attestation.selectedOutputSha256) ||
     !executionAttestationOutputMatches(attestation, params.result)

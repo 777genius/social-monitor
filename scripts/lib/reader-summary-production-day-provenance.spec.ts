@@ -27,7 +27,7 @@ const capture = {
 };
 const runtimeHealth = {
   status: "serving",
-  runtimeEngine: "subscription-runtime-cli",
+  runtimeEngine: "subscription-runtime-cli" as const,
   runtimeVersion: "0.1.0-main.2",
   launcherSha256: "b".repeat(64),
   checkedAt: "2026-07-16T01:00:30.000Z",
@@ -186,7 +186,8 @@ describe("production-day evidence provenance", () => {
   it("rejects a live identity that contradicts executor attestations", () => {
     const artifact = evidence(frontendArtifact(), {
       ...runtimeHealth,
-      runtimeEngine: "generic-health-label",
+      // A malformed live identity on purpose: the type forbids unknown engines.
+      runtimeEngine: "generic-health-label" as unknown as typeof runtimeHealth.runtimeEngine,
       runtimeVersion: "unknown",
     });
 

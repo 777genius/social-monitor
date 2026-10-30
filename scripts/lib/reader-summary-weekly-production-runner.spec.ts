@@ -769,7 +769,8 @@ class FakeAgentRuntimeClient implements AgentRuntimeClientPort {
 }
 
 function productionExecutionAttestation(
-  overrides: Partial<AgentRuntimeExecutionAttestation> = {},
+  overrides: Partial<Extract<AgentRuntimeExecutionAttestation,
+    { readonly runtimeEngine: "subscription-runtime-cli" }>> = {},
 ): AgentRuntimeExecutionAttestation {
   return {
     schemaVersion: 1,

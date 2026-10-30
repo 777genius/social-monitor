@@ -1,5 +1,5 @@
 import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports";
-import { resolveReaderSummaryDailyTaskIdentityFromEnv, resolveReaderSummaryGenerationIdentityFromEnv } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+import { resolveGatewayReaderSummaryRoute, resolveReaderSummaryDailyTaskIdentityFromEnv, resolveReaderSummaryGenerationIdentityFromEnv } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 
 import { probeProductionRuntimeLiveIdentity } from "./reader-summary-runtime-live-identity";
 
@@ -77,6 +77,16 @@ const summaryAuthority = (
     if (reasoningPolicy !== "high") {
       throw new Error("Current reader summary reasoning effort is invalid");
     }
+    const gateway = resolveGatewayReaderSummaryRoute(input.env);
+    if (gateway !== undefined) {
+      // A gateway route owns its effort; the Codex effort setting does not apply.
+      return Object.freeze({
+        mode: input.summaryModelMode,
+        provider: requiredAgentProvider(agentProvider),
+        physicalModel: generation.model,
+        reasoningPolicy: gateway.reasoningEffort,
+      });
+    }
     return Object.freeze({
       mode: input.summaryModelMode,
       provider: requiredAgentProvider(agentProvider),
@@ -113,7 +123,7 @@ const topicLabelerAuthority = (
         provider: requiredAgentProvider(agentProvider),
         physicalModel: dailyPhysicalModel(input.env,
           input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL),
-        reasoningPolicy: "high",
+        reasoningPolicy: dailyReasoningPolicy(input.env),
       }
     : {
         mode: input.topicLabelerMode,
@@ -133,7 +143,7 @@ const topicRelationVerifierAuthority = (
         provider: requiredAgentProvider(agentProvider),
         physicalModel: dailyPhysicalModel(input.env,
           input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL),
-        reasoningPolicy: "high",
+        reasoningPolicy: dailyReasoningPolicy(input.env),
       }
     : {
         mode: input.topicLabelerMode,
@@ -153,7 +163,7 @@ const storyRelationVerifierAuthority = (
         provider: requiredAgentProvider(agentProvider),
         physicalModel: dailyPhysicalModel(input.env,
           input.env.AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_MODEL),
-        reasoningPolicy: "high",
+        reasoningPolicy: dailyReasoningPolicy(input.env),
       }
     : {
         mode: "deterministic",
@@ -191,6 +201,10 @@ const requiredAgentProvider = (provider: string | null): string => {
   if (provider === null) throw new Error("Agent-runtime provider is required");
   return provider;
 };
+
+const dailyReasoningPolicy = (
+  env: Readonly<Record<string, string | undefined>>,
+): string => resolveGatewayReaderSummaryRoute(env)?.reasoningEffort ?? "high";
 
 const dailyPhysicalModel = (
   env: Readonly<Record<string, string | undefined>>,

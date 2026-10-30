@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { isAgentRuntimeEngine } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+
 import type { ReaderSummaryServingAuthority } from "./reader-summary-serving-authority";
 
 export type ReaderSummaryProductionDayAttemptIdentityInput = Readonly<{
@@ -220,7 +222,7 @@ const servingAuthority = (
           value.runtime.packageVersion,
           "runtime package version",
         ),
-        launcherSha256: value.runtime.engine === "subscription-runtime-cli"
+        launcherSha256: isAgentRuntimeEngine(value.runtime.engine)
           ? requiredSha256(value.runtime.launcherSha256)
           : requiredText(value.runtime.launcherSha256, "launcher SHA-256"),
       },

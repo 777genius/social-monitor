@@ -2,8 +2,7 @@ import type { Clock, IdGenerator } from "@social-monitor/shared-kernel";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports";
 import {
-  executionAttestationOutputMatches, isConcreteRuntimePackageVersion, isSha256Hex,
-  subscriptionRuntimeEngine,
+  executionAttestationOutputMatches, isAttestedRuntimeIdentity, isSha256Hex,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import type { SourceContentQualityReviewerPort, SourceContentQualityReviewRequest } from "../../ports";
 import { SourceContentAssessmentStageError } from "../../ports";
@@ -104,9 +103,8 @@ export class AgentRuntimeSourceContentQualityReviewerAdapter implements SourceCo
         attestation.requestId !== requestId || attestation.purpose !== command.purpose ||
         attestation.provider !== command.provider || attestation.model !== command.controls.model ||
         attestation.reasoningEffort !== command.controls.reasoningEffort ||
-        attestation.runtimeEngine !== subscriptionRuntimeEngine ||
-        !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
-        !isSha256Hex(attestation.canonicalRequestSha256) || !isSha256Hex(attestation.launcherSha256) ||
+        !isAttestedRuntimeIdentity(attestation) ||
+        !isSha256Hex(attestation.canonicalRequestSha256) ||
         attestation.selectedOutputKind !== "structured_output" ||
         !executionAttestationOutputMatches(attestation, result)) {
       throw new SourceContentAssessmentStageError("runtime_status", "Invalid assessment runtime completion");

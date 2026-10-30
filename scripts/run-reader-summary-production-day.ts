@@ -11,8 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
-import { SystemClock } from "@social-monitor/shared-kernel";
+import { connectReaderSummaryRuntimeHealthClient } from "./lib/reader-summary-runtime-health-client";
 
 import {
   nextDate,
@@ -765,7 +764,7 @@ async function bindAndPromoteFreshCapture(params: {
       format: "reader-summary-runtime-live-identity-v1",
       checkedAt: runtimeHealth.checkedAt,
       status: "serving",
-      runtimeEngine: "subscription-runtime-cli",
+      runtimeEngine: runtimeHealth.runtimeEngine,
       runtimePackageVersion: runtimeHealth.runtimeVersion,
       launcherSha256: runtimeHealth.launcherSha256,
     }),
@@ -810,20 +809,9 @@ async function bindAndPromoteFreshCapture(params: {
 }
 
 async function readActualRuntimeHealth(): Promise<ProductionDayRuntimeHealth> {
-  const address = process.env.AGENT_RUNTIME_GRPC_ADDRESS?.trim();
-  if (address === undefined || address.length === 0) {
-    throw new Error("AGENT_RUNTIME_GRPC_ADDRESS is required for runtime proof");
-  }
-  const client = GrpcAgentRuntimeClient.connect({
-    address,
-    clock: new SystemClock(),
-    options: {
-      timeoutMs:
-        READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.runtimeHealthTimeoutMs,
-      serviceToken:
-        process.env.AGENT_RUNTIME_SERVICE_TOKEN?.trim() || undefined,
-    },
-  });
+  // The proof binds the transport the capture child used (gRPC CLI or gateway SDK).
+  const client = connectReaderSummaryRuntimeHealthClient(process.env,
+    READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.runtimeHealthTimeoutMs);
   const checkedAt = new Date().toISOString();
   const identity = await probeProductionRuntimeLiveIdentity({
     client,
