@@ -135,7 +135,8 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
                     citationsById: widget.citationsById,
                     dense: _denseView,
                     reservePreviewSpace: reservePreviewSpace,
-                    showSignal: activeBoard != _TopPostBoard.additionalStories,
+                    // Both ranked lanes carry the backend Signal.
+                    showSignal: true,
                     rating: widget.ratingFor?.call(item),
                     onRated: widget.onRated,
                     onOpenUrl: widget.onOpenUrl,

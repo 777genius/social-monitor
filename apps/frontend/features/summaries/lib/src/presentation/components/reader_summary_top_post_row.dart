@@ -12,7 +12,7 @@ class _TopPostRow extends StatefulWidget {
     required this.onOpenUrl,
     this.dense = false,
     this.reservePreviewSpace = false,
-    this.showSignal = true,
+    required this.showSignal,
   });
 
   final int index;
@@ -29,6 +29,9 @@ class _TopPostRow extends StatefulWidget {
   final ValueChanged<String> onOpenUrl;
   final bool dense;
   final bool reservePreviewSpace;
+
+  /// Top posts and Additional stories show the backend Signal alike; only a
+  /// board of posts without a popularity rating opts out.
   final bool showSignal;
 
   @override
