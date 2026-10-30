@@ -13,6 +13,8 @@ const config: Config = {
     '^@social-monitor/platform-events$': '<rootDir>/libs/platform/events/src/index.ts',
     '^@social-monitor/platform-events/(.*)$': '<rootDir>/libs/platform/events/src/$1',
     '^@social-monitor/platform-grpc$': '<rootDir>/libs/platform/grpc/src/index.ts',
+    '^@social-monitor/platform-http$': '<rootDir>/libs/platform/http/src/index.ts',
+    '^@social-monitor/platform-http/(.*)$': '<rootDir>/libs/platform/http/src/$1',
     '^@social-monitor/platform-logging$': '<rootDir>/libs/platform/logging/src/index.ts',
     '^@social-monitor/platform-metrics$': '<rootDir>/libs/platform/metrics/src/index.ts',
     '^@social-monitor/platform-metrics/(.*)$':

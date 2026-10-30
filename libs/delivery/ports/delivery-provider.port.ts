@@ -8,6 +8,8 @@ export type DeliveryContent = {
 export type SendDeliveryRequest = {
   readonly attempt: DeliveryAttemptProps;
   readonly content: DeliveryContent;
+  /** Abort best-effort when durable execution ownership cannot be renewed. */
+  readonly signal?: AbortSignal;
 };
 
 export type SendDeliveryResult =

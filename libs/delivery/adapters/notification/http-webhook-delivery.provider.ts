@@ -1,5 +1,8 @@
 import { WEBHOOK_EVENT_CATALOG, type WebhookEventType } from '@social-monitor/contracts/events/webhook-events';
 import { type Clock, DomainError } from '@social-monitor/shared-kernel';
+import { OutboundHttpPolicyError } from '@social-monitor/platform-http';
+
+import type { WebhookHttpClientPort } from './guarded-webhook-http-client';
 
 import type { SignWebhookPayloadUseCase } from '../../features/sign-webhook-payload/sign-webhook-payload.use-case';
 import type {
@@ -9,45 +12,11 @@ import type {
   WebhookEndpointRepositoryPort,
 } from '../../ports';
 
-export type WebhookHttpRequest = {
-  readonly url: string;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly body: string;
-  readonly timeoutMs: number;
-};
-
-export type WebhookHttpResponse = {
-  readonly status: number;
-  readonly providerMessageId?: string;
-  readonly body?: string;
-};
-
-export interface WebhookHttpClientPort {
-  post(request: WebhookHttpRequest): Promise<WebhookHttpResponse>;
-}
-
 export type HttpWebhookDeliveryProviderOptions = {
   readonly timeoutMs: number;
   readonly maxPayloadBytes: number;
   readonly userAgent: string;
 };
-
-export class FetchWebhookHttpClient implements WebhookHttpClientPort {
-  async post(request: WebhookHttpRequest): Promise<WebhookHttpResponse> {
-    const response = await fetch(request.url, {
-      method: 'POST',
-      headers: request.headers,
-      body: request.body,
-      signal: AbortSignal.timeout(request.timeoutMs),
-    });
-
-    return {
-      status: response.status,
-      providerMessageId: response.headers.get('x-request-id') ?? response.headers.get('x-correlation-id') ?? undefined,
-      body: await response.text().catch(() => undefined),
-    };
-  }
-}
 
 export class HttpWebhookDeliveryProvider implements DeliveryProviderPort {
   readonly channel = 'webhook' as const;
@@ -141,6 +110,7 @@ export class HttpWebhookDeliveryProvider implements DeliveryProviderPort {
         url: endpointSnapshot.url,
         timeoutMs: this.options.timeoutMs,
         body: signed.value.rawBody,
+        signal: request.signal,
         headers: {
           'content-type': 'application/json',
           'user-agent': this.options.userAgent,
@@ -163,8 +133,8 @@ export class HttpWebhookDeliveryProvider implements DeliveryProviderPort {
     } catch (error) {
       return {
         accepted: false,
-        retryable: true,
-        reason: error instanceof Error ? error.message : 'Webhook HTTP request failed',
+        retryable: !(error instanceof OutboundHttpPolicyError),
+        reason: error instanceof OutboundHttpPolicyError ? error.message : 'Webhook HTTP request failed',
       };
     }
   }
