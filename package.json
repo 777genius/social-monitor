@@ -43,6 +43,7 @@
     "check:dependencies": "node scripts/check-dependencies.mjs",
     "check:delivery-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-prisma-persistence.ts",
     "check:delivery-workflow-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-workflow-postgres.ts",
+    "check:interest-creation-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 90000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-interest-creation-postgres.ts",
     "check:scan-retry-claims:postgres": "node scripts/run-with-timeout.mjs --timeout-ms 90000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-scan-retry-claims-postgres.ts",
     "check:delivery-attempt-rest": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-attempt-rest-smoke.ts",
     "check:delivery-worker-command": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-worker-command-smoke.ts",

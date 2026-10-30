@@ -185,6 +185,8 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   readonly idempotencyKeys = new Map<string, PrismaIdempotencyKeyRecord>();
 
   readonly interest: PrismaMonitoringClient['interest'] = {
+    create: async () => unsupported('interest.create'),
+    count: async () => unsupported('interest.count'),
     upsert: async () => unsupported('interest.upsert'),
     updateMany: async () => unsupported('interest.updateMany'),
     findFirst: async () => unsupported('interest.findFirst'),

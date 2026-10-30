@@ -1,3 +1,5 @@
+import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
+import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
 import {
   DomainError,
   FixedClock,
@@ -88,10 +90,11 @@ async function proveUnsupportedSourceProfilesStayOutOfBindingCatalog(): Promise<
 }
 
 async function proveUnsupportedBindingsAreRejected(ids: IdGenerator): Promise<void> {
-  const topics = new InMemoryInterestRepository();
-  const outbox = new InMemoryOutboxAdapter();
-  const idempotency = new InMemoryIdempotencyAdapter();
-  const createdTopic = await new CreateInterestUseCase(topics, outbox, idempotency, ids, clock).execute({
+  const interestCreationState = new InMemoryInterestCreationState();
+  const topics = new InMemoryInterestRepository(interestCreationState);
+  const outbox = new InMemoryOutboxAdapter(interestCreationState);
+  const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
+  const createdTopic = await new CreateInterestUseCase(new InMemoryInterestCreationStore(interestCreationState), idempotency, ids, clock).execute({
     tenantId: tenant,
     workspaceId: workspace,
     name: 'Unsupported Source Demand',

@@ -430,14 +430,16 @@ jobs:
           NODE
           npx prisma db push --schema prisma/schema.prisma
 
-      - name: Prove scan retry and delivery ownership contracts
+      - name: Prove reliability transaction and ownership contracts
         env:
           SCAN_RETRY_TEST_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/architecture_reliability_test_ci
           DELIVERY_WORKFLOW_TEST_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/architecture_reliability_test_ci
+          INTEREST_CREATION_TEST_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/architecture_reliability_test_ci
         run: |
           set -euo pipefail
           npm run check:scan-retry-claims:postgres
           npm run check:delivery-workflow-postgres
+          npm run check:interest-creation-postgres
 
   reader_promotion_v2_canary_postgres18:
     name: Reader Promotion V2 canary PostgreSQL 18

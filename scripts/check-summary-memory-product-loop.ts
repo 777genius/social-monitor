@@ -1,3 +1,5 @@
+import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
+import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
 import assert from 'node:assert/strict';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -18,9 +20,7 @@ import type {
   ScanExecutionReporterPort,
   SourceFetcherPort,
 } from '@social-monitor/ingestion/ports';
-import { InMemoryOutboxAdapter } from '@social-monitor/monitoring/adapters/messaging/in-memory-outbox.adapter';
 import { InMemoryIdempotencyAdapter } from '@social-monitor/monitoring/adapters/idempotency/in-memory-idempotency.adapter';
-import { InMemoryInterestRepository } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest.repository';
 import { CreateInterestUseCase } from '@social-monitor/monitoring/features/create-interest/create-interest.use-case';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   assertProductLoopEvidenceRequirements();
   const clock = new FixedClock(now);
   const ids = new SequenceIdGenerator(runId);
-  const topics = new InMemoryInterestRepository();
+  const interestCreationState = new InMemoryInterestCreationState();
   const feedItems = new InMemoryFeedItemReadRepository();
   const summaryJobs = new InMemorySummaryJobRepository();
   const summaryQueue = new InMemorySummaryJobQueueAdapter(new InMemoryQueuePublisher(), new InMemoryMetricsRecorder());
@@ -89,9 +89,8 @@ async function main(): Promise<void> {
   const memory = createProductLoopMemory(mode, memoryBackend);
 
   const topic = unwrap(await new CreateInterestUseCase(
-    topics,
-    new InMemoryOutboxAdapter(),
-    new InMemoryIdempotencyAdapter(),
+    new InMemoryInterestCreationStore(interestCreationState),
+    new InMemoryIdempotencyAdapter(interestCreationState),
     ids,
     clock,
   ).execute({

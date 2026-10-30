@@ -1,3 +1,5 @@
+import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
+import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
 import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import {
   DomainError,
@@ -99,12 +101,13 @@ const correlation = 'mvp-core-loop-correlation';
 async function main(): Promise<void> {
   const ids = new SequenceIdGenerator('mvp-core');
   const clock = new FixedClock(fixedNow);
-  const topics = new InMemoryInterestRepository();
+  const interestCreationState = new InMemoryInterestCreationState();
+  const topics = new InMemoryInterestRepository(interestCreationState);
   const bindings = new InMemorySourceBindingRepository();
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
-  const outbox = new InMemoryOutboxAdapter();
-  const idempotency = new InMemoryIdempotencyAdapter();
+  const outbox = new InMemoryOutboxAdapter(interestCreationState);
+  const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
   const queuePublisher = new InMemoryQueuePublisher();
   const scanQueue = new InMemoryScanQueueAdapter(queuePublisher, new InMemoryMetricsRecorder());
   const feedItems = new InMemoryFeedItemReadRepository();
@@ -121,7 +124,7 @@ async function main(): Promise<void> {
   const realtimeEvents = new InMemoryRealtimeEventRepository();
 
   const topic = unwrap(
-    await new CreateInterestUseCase(topics, outbox, idempotency, ids, clock).execute({
+    await new CreateInterestUseCase(new InMemoryInterestCreationStore(interestCreationState), idempotency, ids, clock).execute({
       tenantId: tenant,
       workspaceId: workspace,
       name: 'AI Infrastructure',

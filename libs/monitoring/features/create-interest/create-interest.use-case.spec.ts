@@ -1,169 +1,80 @@
-import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { DomainError, FixedClock, ok, err, type Result, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import type { Interest } from '../../domain';
-import type { IdempotencyPort, ListInterestsQuery, ListInterestsResult, OutboxPort, InterestRepositoryPort } from '../../ports';
-import type { CreateInterestResult } from './create-interest.result';
+import type { InterestCreationCommit, InterestCreationCommitPort, InterestCreationResult } from '../../application/contracts/interest-creation-commit';
+import type { IdempotencyPort } from '../../ports';
 import { CreateInterestUseCase } from './create-interest.use-case';
 
 class SequenceIdGenerator implements IdGenerator {
   private nextId = 1;
-
   generate(): string {
-    const id = `00000000-0000-7000-8000-${this.nextId.toString().padStart(12, '0')}`;
-    this.nextId += 1;
-    return id;
+    return `00000000-0000-7000-8000-${String(this.nextId++).padStart(12, '0')}`;
   }
 }
-
-class FakeInterestRepository implements InterestRepositoryPort {
-  private readonly interests = new Map<string, Interest>();
-
-  async save(interest: Interest): Promise<void> {
-    const snapshot = interest.toSnapshot();
-    this.interests.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, interest);
-  }
-
-  async findByName(params: Parameters<InterestRepositoryPort['findByName']>[0]): Promise<Interest | null> {
-    for (const interest of this.interests.values()) {
-      const snapshot = interest.toSnapshot();
-      if (
-        snapshot.tenantId === params.tenantId &&
-        snapshot.workspaceId === params.workspaceId &&
-        snapshot.name.toLowerCase() === params.name.trim().toLowerCase()
-      ) {
-        return interest;
-      }
-    }
-
-    return null;
-  }
-
-  async findById(params: Parameters<InterestRepositoryPort['findById']>[0]): Promise<Interest | null> {
-    return this.interests.get(`${params.tenantId}:${params.workspaceId}:${params.interestId}`) ?? null;
-  }
-
-  async list(query: ListInterestsQuery): Promise<ListInterestsResult> {
-    return {
-      interests: [...this.interests.values()].filter((interest) => {
-        const snapshot = interest.toSnapshot();
-
-        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
-      }),
-      nextCursor: undefined,
-    };
-  }
-}
-
-class FakeOutbox implements OutboxPort {
-  readonly events: unknown[] = [];
-
-  async append(event: Parameters<OutboxPort['append']>[0]): Promise<void> {
-    this.events.push(event);
-  }
-}
-
-class FakeIdempotency implements IdempotencyPort {
-  private readonly records = new Map<string, CreateInterestResult>();
-
-  async get<TValue>(params: Parameters<IdempotencyPort['get']>[0]) {
-    const value = this.records.get(this.key(params));
-    return value === undefined ? null : { value: value as TValue };
-  }
-
-  async set<TValue>(params: Parameters<IdempotencyPort['set']>[0] & { value: TValue }): Promise<void> {
-    this.records.set(this.key(params), params.value as CreateInterestResult);
-  }
-
-  private key(params: { tenantId: string; workspaceId: string; scope: string; key: string }): string {
-    return `${params.tenantId}:${params.workspaceId}:${params.scope}:${params.key}`;
-  }
-}
+const command = {
+  tenantId: tenantId('tenant-1'), workspaceId: workspaceId('workspace-1'), name: ' AI Monitoring ',
+  query: ' openai monitoring ', idempotencyKey: 'request-1', correlationId: 'correlation-1',
+};
+const now = new Date('2026-06-05T00:00:00Z');
+const fixture = () => {
+  const creation: InterestCreationCommitPort = {
+    commit: jest.fn(async (params: InterestCreationCommit): Promise<Result<InterestCreationResult, Error>> =>
+      ok({ interestId: params.interest.toSnapshot().id, created: true })),
+  };
+  const idempotency: Pick<IdempotencyPort, 'get'> = { get: jest.fn(async () => null) };
+  const useCase = new CreateInterestUseCase(creation, idempotency, new SequenceIdGenerator(), new FixedClock(now));
+  return { creation, idempotency, useCase };
+};
 
 describe('CreateInterestUseCase', () => {
-  it('creates an interest and appends an outbox event', async () => {
-    const outbox = new FakeOutbox();
-    const useCase = new CreateInterestUseCase(
-      new FakeInterestRepository(),
-      outbox,
-      new FakeIdempotency(),
-      new SequenceIdGenerator(),
-      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
-    );
-
-    const result = await useCase.execute({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      name: 'AI Monitoring',
-      query: 'openai monitoring',
-      idempotencyKey: 'request-1',
-      correlationId: 'correlation-1',
+  it('prepares coherent domain/event identities and commits creation through one required capability', async () => {
+    const context = fixture();
+    const result = await context.useCase.execute(command);
+    expect(result).toEqual({ ok: true, value: { interestId: '00000000-0000-7000-8000-000000000001', created: true } });
+    expect(context.creation.commit).toHaveBeenCalledTimes(1);
+    const committed = jest.mocked(context.creation.commit).mock.calls[0]![0];
+    expect(committed.interest.toSnapshot()).toMatchObject({ name: 'AI Monitoring', query: 'openai monitoring', createdAt: now });
+    expect(committed.event).toMatchObject({
+      eventId: '00000000-0000-7000-8000-000000000002', eventType: 'monitoring.interest.created', occurredAt: now,
+      tenantId: command.tenantId, workspaceId: command.workspaceId,
+      correlationId: command.correlationId, causationId: command.idempotencyKey,
+      payload: { interestId: committed.interest.toSnapshot().id, name: 'AI Monitoring', query: 'openai monitoring' },
     });
-
-    expect(result.ok).toBe(true);
-    expect(result.ok && result.value.created).toBe(true);
-    expect(outbox.events).toHaveLength(1);
+    expect(committed.receiptId).toBe('00000000-0000-7000-8000-000000000003');
+    expect(committed.idempotencyKey).toBe(command.idempotencyKey);
   });
 
-  it('returns the same interest for duplicate idempotency key', async () => {
-    const useCase = new CreateInterestUseCase(
-      new FakeInterestRepository(),
-      new FakeOutbox(),
-      new FakeIdempotency(),
-      new SequenceIdGenerator(),
-      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
-    );
-
-    const command = {
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      name: 'AI Monitoring',
-      query: 'openai monitoring',
-      idempotencyKey: 'request-1',
-      correlationId: 'correlation-1',
-    };
-
-    const first = await useCase.execute(command);
-    const second = await useCase.execute(command);
-
-    expect(first.ok).toBe(true);
-    expect(second.ok).toBe(true);
-    expect(first.ok && second.ok && first.value.interestId).toBe(second.ok && second.value.interestId);
-    expect(second.ok && second.value.created).toBe(false);
+  it('returns the original completed receipt without constructing a second creation', async () => {
+    const context = fixture();
+    context.idempotency.get = async <TValue>() => ({ value: { interestId: 'original-interest', created: true } as TValue });
+    expect(await context.useCase.execute({ ...command, name: 'Different valid name' })).toEqual({
+      ok: true, value: { interestId: 'original-interest', created: false },
+    });
+    expect(context.creation.commit).not.toHaveBeenCalled();
   });
 
-  it('rejects new interests after workspace capacity limit is reached', async () => {
-    const useCase = new CreateInterestUseCase(
-      new FakeInterestRepository(),
-      new FakeOutbox(),
-      new FakeIdempotency(),
-      new SequenceIdGenerator(),
-      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
-      { maxInterestsPerWorkspace: 1 },
-    );
+  it('passes capacity into the atomic decision and returns its typed rejection', async () => {
+    const context = fixture();
+    const rejection = new DomainError('operation.quota_exceeded', 'Workspace interest capacity limit reached');
+    jest.mocked(context.creation.commit).mockResolvedValue(err(rejection));
+    const useCase = new CreateInterestUseCase(context.creation, context.idempotency,
+      new SequenceIdGenerator(), new FixedClock(now), { maxInterestsPerWorkspace: 1 });
+    expect(await useCase.execute(command)).toEqual({ ok: false, error: rejection });
+    expect(context.creation.commit).toHaveBeenCalledWith(expect.objectContaining({ maxInterestsPerWorkspace: 1 }));
+  });
 
-    const first = await useCase.execute({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      name: 'AI Monitoring',
-      query: 'openai monitoring',
-      idempotencyKey: 'request-1',
-      correlationId: 'correlation-1',
+  it('rejects invalid domain values before any creation write', async () => {
+    const context = fixture();
+    expect(await context.useCase.execute({ ...command, name: 'x' })).toMatchObject({
+      ok: false, error: { code: 'validation.failed' },
     });
-    const second = await useCase.execute({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      name: 'Infra Monitoring',
-      query: 'postgres rabbitmq',
-      idempotencyKey: 'request-2',
-      correlationId: 'correlation-2',
-    });
+    expect(context.creation.commit).not.toHaveBeenCalled();
+  });
 
-    expect(first.ok).toBe(true);
-    expect(second).toEqual(expect.objectContaining({
-      ok: false,
-      error: expect.objectContaining({
-        code: 'operation.quota_exceeded',
-      }),
-    }));
+  it('returns commit failure without falling back to separate repository writes', async () => {
+    const context = fixture();
+    const failure = new Error('Outbox persistence unavailable');
+    jest.mocked(context.creation.commit).mockResolvedValue(err(failure));
+    expect(await context.useCase.execute(command)).toEqual({ ok: false, error: failure });
+    expect(context.creation.commit).toHaveBeenCalledTimes(1);
   });
 });

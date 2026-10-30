@@ -1,3 +1,5 @@
+import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
+import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
 import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import { correlationId, userId } from "./lib/autonomous-monitoring-loop-scope";
 import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
@@ -86,12 +88,13 @@ async function main(): Promise<void> {
   const clock = new FixedClock(fixedNow);
   const digestClock = new FixedClock(digestSchedulerNow);
   const metrics = new InMemoryMetricsRecorder();
-  const interests = new InMemoryInterestRepository();
+  const interestCreationState = new InMemoryInterestCreationState();
+  const interests = new InMemoryInterestRepository(interestCreationState);
   const bindings = new InMemorySourceBindingRepository();
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
-  const outbox = new InMemoryOutboxAdapter();
-  const idempotency = new InMemoryIdempotencyAdapter();
+  const outbox = new InMemoryOutboxAdapter(interestCreationState);
+  const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
   const scanQueuePublisher = new InMemoryQueuePublisher();
   const scanQueue = new InMemoryScanQueueAdapter(scanQueuePublisher, metrics);
   const feedItems = new InMemoryFeedItemReadRepository();
@@ -138,8 +141,7 @@ async function main(): Promise<void> {
 
   const interest = unwrap(
     await new CreateInterestUseCase(
-      interests,
-      outbox,
+      new InMemoryInterestCreationStore(interestCreationState),
       idempotency,
       ids,
       clock,

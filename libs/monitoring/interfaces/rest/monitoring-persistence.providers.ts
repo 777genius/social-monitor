@@ -4,6 +4,10 @@ import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import { InMemoryIdempotencyAdapter } from '../../adapters/idempotency/in-memory-idempotency.adapter';
 import { PrismaIdempotencyAdapter } from '../../adapters/idempotency/prisma/prisma-idempotency.adapter';
 import { InMemoryInterestRepository } from '../../adapters/persistence/in-memory-interest.repository';
+import { InMemoryInterestCreationState } from '../../adapters/persistence/in-memory-interest-creation-state';
+import { InMemoryInterestCreationStore } from '../../adapters/persistence/in-memory-interest-creation.store';
+import { PrismaInterestCreationStore } from '../../adapters/persistence/prisma/prisma-interest-creation.store';
+import type { InterestCreationCommitPort } from '../../application/contracts/interest-creation-commit';
 import { InMemoryScanExecutionAttemptReadModel } from '../../adapters/persistence/in-memory-scan-execution-attempt-read-model';
 import { InMemoryScanJobRepository } from '../../adapters/persistence/in-memory-scan-job.repository';
 import { InMemoryScanPolicyRepository } from '../../adapters/persistence/in-memory-scan-policy.repository';
@@ -27,6 +31,7 @@ import type {
 import {
   MONITORING_IDEMPOTENCY,
   MONITORING_INTEREST_REPOSITORY,
+  MONITORING_INTEREST_CREATION_COMMIT,
   MONITORING_PERSISTENCE_MODE,
   MONITORING_PRISMA_CLIENT,
   MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
@@ -40,16 +45,26 @@ type MonitoringScanJobStorePort =
   ScanJobRepositoryPort & ScanJobHistoryReadPort & ScanJobOutcomeRepositoryPort;
 
 export const monitoringPersistenceProviders: Provider[] = [
+  InMemoryInterestCreationState,
+  {
+    provide: MONITORING_INTEREST_CREATION_COMMIT,
+    useFactory: (mode: MonitoringPersistenceMode, prisma: PrismaMonitoringClient | null,
+      state: InMemoryInterestCreationState): InterestCreationCommitPort => mode === 'prisma'
+      ? new PrismaInterestCreationStore(requirePrismaMonitoringClient(prisma))
+      : new InMemoryInterestCreationStore(state),
+    inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT, InMemoryInterestCreationState],
+  },
   {
     provide: MONITORING_INTEREST_REPOSITORY,
     useFactory: (
       mode: MonitoringPersistenceMode,
       prisma: PrismaMonitoringClient | null,
+      state: InMemoryInterestCreationState,
     ): InterestRepositoryPort =>
       mode === 'prisma'
         ? new PrismaInterestRepository(requirePrismaMonitoringClient(prisma))
-        : new InMemoryInterestRepository(),
-    inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
+        : new InMemoryInterestRepository(state),
+    inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT, InMemoryInterestCreationState],
   },
   {
     provide: MONITORING_SOURCE_BINDING_REPOSITORY,
@@ -104,14 +119,15 @@ export const monitoringPersistenceProviders: Provider[] = [
     useFactory: (
       mode: MonitoringPersistenceMode,
       prisma: PrismaMonitoringClient | null,
+      state: InMemoryInterestCreationState,
     ): IdempotencyPort =>
       mode === 'prisma'
         ? new PrismaIdempotencyAdapter(
             requirePrismaMonitoringClient(prisma),
             new CryptoIdGenerator(),
           )
-        : new InMemoryIdempotencyAdapter(),
-    inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
+        : new InMemoryIdempotencyAdapter(state),
+    inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT, InMemoryInterestCreationState],
   },
 ];
 

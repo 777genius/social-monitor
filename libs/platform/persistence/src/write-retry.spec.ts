@@ -1,6 +1,16 @@
 import { withPrismaWriteRetry } from './write-retry';
 
 describe('withPrismaWriteRetry', () => {
+  it.each(['40001', '40P01'])('retries structured pg adapter commit conflict %s', async (originalCode) => {
+    const conflict = Object.assign(new Error('TransactionWriteConflict'), {
+      name: 'DriverAdapterError', cause: { kind: 'TransactionWriteConflict', originalCode },
+    });
+    const operation = jest.fn().mockRejectedValueOnce(conflict).mockResolvedValue('committed');
+    const sleep = jest.fn().mockResolvedValue(undefined);
+    await expect(withPrismaWriteRetry(operation, { sleep })).resolves.toBe('committed');
+    expect(operation).toHaveBeenCalledTimes(2);
+  });
+
   it.each(['40001', '40P01'])('retries P2010 SQLSTATE %s at most three times', async (sqlState) => {
     for (const error of [
       { code: 'P2010', meta: { code: sqlState } },
@@ -24,6 +34,9 @@ describe('withPrismaWriteRetry', () => {
     { code: '08006' },
     { code: 'P2010', message: '40001' },
     { code: 'P2002', meta: { code: '40001' } },
+    { name: 'DriverAdapterError', cause: { kind: 'TransactionWriteConflict', originalCode: '23505' } },
+    { name: 'DriverAdapterError', cause: { kind: 'UnknownError', originalCode: '40001' } },
+    { name: 'Error', cause: { kind: 'TransactionWriteConflict', originalCode: '40001' } },
   ])('does not retry cancellation, unknown outcomes or unrelated metadata: %j', async (error) => {
     const operation = jest.fn().mockRejectedValue(error);
     await expect(withPrismaWriteRetry(operation)).rejects.toBe(error);

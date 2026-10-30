@@ -9,15 +9,15 @@ import { UpdateInterestUseCase } from '../../features/update-interest/update-int
 import type {
   IdempotencyPort,
   InterestRepositoryPort,
-  OutboxPort,
   SourceBindingRepositoryPort,
   SourceCatalogPort,
 } from '../../ports';
+import type { InterestCreationCommitPort } from '../../application/contracts/interest-creation-commit';
 import { resolveMonitoringCapacityLimits } from './monitoring-capacity-limit-provider';
 import {
   MONITORING_IDEMPOTENCY,
   MONITORING_INTEREST_REPOSITORY,
-  MONITORING_OUTBOX,
+  MONITORING_INTEREST_CREATION_COMMIT,
   MONITORING_SOURCE_BINDING_REPOSITORY,
   MONITORING_SOURCE_CATALOG,
 } from './monitoring-provider-tokens';
@@ -28,21 +28,18 @@ export const monitoringInterestProviders = (
   {
     provide: CreateInterestUseCase,
     useFactory: (
-      interests: InterestRepositoryPort,
-      outbox: OutboxPort,
+      creation: InterestCreationCommitPort,
       idempotency: IdempotencyPort,
     ) =>
       new CreateInterestUseCase(
-        interests,
-        outbox,
+        creation,
         idempotency,
         new CryptoIdGenerator(),
         new SystemClock(),
         resolveMonitoringCapacityLimits(env),
       ),
     inject: [
-      MONITORING_INTEREST_REPOSITORY,
-      MONITORING_OUTBOX,
+      MONITORING_INTEREST_CREATION_COMMIT,
       MONITORING_IDEMPOTENCY,
     ],
   },
