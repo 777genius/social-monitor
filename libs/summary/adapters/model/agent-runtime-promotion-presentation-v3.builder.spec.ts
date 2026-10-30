@@ -357,6 +357,33 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(codex.commands[0]?.systemPrompt).not.toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
   });
 
+  it.each([["kimi-code", "k3-256k"], ["openrouter", "openai/gpt-oss-120b"]] as const)(
+    "gives the %s gateway backend copy options instead of offset arithmetic", async (modelBackend, model) => {
+      const client = new PresentationRuntimeClient();
+      const original = client.runTask.bind(client);
+      jest.spyOn(client, "runTask").mockImplementation(async command => {
+        await original(command);
+        const options = JSON.parse(command.systemPrompt!.split("\nSOURCE_REFERENCE_COPY_OPTIONS=")[1]!) as
+          { candidateId: string; references: Record<string, unknown>[] }[];
+        return { status: "completed", warnings: [], structuredOutput: {
+          contractVersion: "mimo_qualified_headline.v1", presentations: options.map(option => ({
+            candidateId: option.candidateId, status: "available", kind: "claim",
+            baseHeadline: "Useful database method", support: [option.references[0]],
+            qualifications: [], confidence: 0.9 })) } };
+      });
+      const inputs = [fixtureInput(), { ...fixtureInput(), candidateId: "00000000-0000-4000-8000-000000000007" }];
+      const results = await new AgentRuntimePromotionPresentationV3Builder({ client, modelBackend, model })
+        .build(inputs);
+      expect(results).toEqual(inputs.map(() => expect.objectContaining({ status: "available",
+        seal: expect.objectContaining({ headline: expect.objectContaining({ text: "Useful database method",
+          wholeInput: expect.objectContaining({ qualificationJudgment: "none" }) }) }) })));
+      // Gateway backends keep one batched task; only MiMo isolates every story.
+      expect(client.commands).toHaveLength(1);
+      expect(client.commands[0]?.controls).toMatchObject({ modelBackend, model });
+      expect(client.commands[0]?.outputSchema).toMatchObject({ required: ["contractVersion", "presentations"] });
+      expect(client.commands[0]?.systemPrompt).not.toContain(inputs[0]!.trustedIntent);
+    });
+
   it("composes every declared material qualification before sealing the headline", async () => {
     const client = new AttestedPresentationRuntimeClient();
     const original = client.runTask.bind(client);
