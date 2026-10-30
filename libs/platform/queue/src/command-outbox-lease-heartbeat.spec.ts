@@ -17,7 +17,7 @@ describe('CommandOutboxLeaseHeartbeat', () => {
   afterEach(() => { jest.useRealTimers(); });
 
   it('renews the full queued batch and later renews only unsettled identities', async () => {
-    const renew = jest.fn(async (_params: Parameters<CommandOutboxStorePort['renewClaims']>[0]) => true);
+    const renew = jest.fn(async (params: Parameters<CommandOutboxStorePort['renewClaims']>[0]) => { void params; return true; });
     const heartbeat = make(renew);
     try {
       await jest.advanceTimersByTimeAsync(101);
