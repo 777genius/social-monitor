@@ -304,8 +304,9 @@ async function main(url: string): Promise<void> {
       }
     };
     const original = bindingInput('first-channel', 'first-binding', 1);
+    const sourceClient = prisma as unknown as PrismaSourceBindingCreationClient;
     const failedOutbox = new PrismaSourceBindingCreationStore({
-      $transaction: (work, options) => prisma.$transaction((tx) => work({
+      $transaction: (work, options) => sourceClient.$transaction((tx) => work({
         ...tx, outboxEvent: {
           ...tx.outboxEvent, create: async () => { throw new Error('Fixture binding event failure'); },
         },
