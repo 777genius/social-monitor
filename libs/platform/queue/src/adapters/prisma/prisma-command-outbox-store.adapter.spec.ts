@@ -186,4 +186,51 @@ describe('PrismaCommandOutboxStoreAdapter', () => {
       }),
     );
   });
+  it('renews an owned PostgreSQL lease batch only when all rows are pending and unexpired', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const updateMany = jest.fn().mockResolvedValue({ count: 2 });
+    const scanJobUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const adapter = new PrismaCommandOutboxStoreAdapter({
+      $transaction: async (work) => work({ outboxEvent: { findMany, updateMany }, scanJob: { updateMany: scanJobUpdateMany } }),
+      outboxEvent: { findMany, updateMany },
+      scanJob: { updateMany: scanJobUpdateMany },
+    });
+    const now = new Date('2026-10-31T00:00:00.000Z');
+    const expires = new Date(now.getTime() + 30_000);
+    const ids = [record.id, '00000000-0000-7000-8000-000000000002'];
+    await expect(adapter.renewClaims({ ids, leaseOwner: 'relay-A', now, leasedUntil: expires })).resolves.toBe(true);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ids }, messageKind: 'COMMAND', status: 'PENDING',
+        leaseOwner: 'relay-A', leasedUntil: { gt: now },
+      },
+      data: { leasedUntil: expires },
+    });
+    updateMany.mockResolvedValueOnce({ count: 1 });
+    await expect(adapter.renewClaims({ ids, leaseOwner: 'relay-A', now, leasedUntil: expires })).resolves.toBe(false);
+    await expect(adapter.renewClaims({ ids: [record.id, record.id], leaseOwner: 'relay-A', now, leasedUntil: expires })).rejects.toThrow('Invalid');
+    expect(updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires an unexpired COMMAND lease for both success and failure settlement', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const scanJobUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const adapter = new PrismaCommandOutboxStoreAdapter({
+      $transaction: async (work) => work({ outboxEvent: { findMany, updateMany }, scanJob: { updateMany: scanJobUpdateMany } }),
+      outboxEvent: { findMany, updateMany },
+      scanJob: { updateMany: scanJobUpdateMany },
+    });
+    const at = new Date('2026-10-31T00:00:00Z');
+    await adapter.markPublished({ id: record.id, leaseOwner: 'relay-A', publishedAt: at });
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ messageKind: 'COMMAND', leasedUntil: { gt: at } }),
+    }));
+    await adapter.markFailed({ id: record.id, leaseOwner: 'relay-A', commandType: 'delivery.attempt.send',
+      availableAt: at, failedAt: at, lastError: 'offline', terminal: false });
+    expect(updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ messageKind: 'COMMAND', leasedUntil: { gt: at } }),
+    }));
+  });
+
 });
