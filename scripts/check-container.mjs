@@ -26,7 +26,7 @@ if (/FROM\s+.*:latest\b/i.test(dockerfile)) {
   violations.push(`${policy.dockerfile}: base image must not use latest tag`);
 }
 
-for (const required of ['FROM node:22', 'npm ci', 'npm run prisma:generate', 'npm run build', 'ARG SERVICE=', 'USER node']) {
+for (const required of ['FROM node:26', 'npm ci', 'npm run prisma:generate', 'npm run build', 'ARG SERVICE=', 'USER node']) {
   if (!dockerfile.includes(required)) {
     violations.push(`${policy.dockerfile}: missing required container build/runtime marker "${required}"`);
   }

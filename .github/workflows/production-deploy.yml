@@ -278,7 +278,7 @@ jobs:
       - name: Set up Node.js
         if: needs.plan.outputs.backend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with: {node-version: 22, cache: npm}
+        with: {node-version: 26, cache: npm}
       - name: Prove fail-closed PostgreSQL and signal publication
         if: needs.plan.outputs.backend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
         env:
@@ -316,7 +316,7 @@ jobs:
       - name: Set up Node.js
         if: needs.plan.outputs.backend == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with: {node-version: 22, cache: npm}
+        with: {node-version: 26, cache: npm}
       - name: Prepare the same backend source and generated dependencies
         if: needs.plan.outputs.backend == 'true'
         env:
@@ -364,7 +364,7 @@ jobs:
       - name: Set up Node.js
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.recovery_transition == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with: {node-version: 22, cache: npm}
+        with: {node-version: 26, cache: npm}
       - name: Verify backend and deployment contract
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.recovery_transition == 'true'
         env:

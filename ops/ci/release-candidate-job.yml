@@ -15,7 +15,7 @@ production_candidate:
     - name: Set up Node.js
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
       with:
-        node-version: 22
+        node-version: 26
     - name: Set up the native candidate store
       uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5.5.0
       with:
@@ -74,7 +74,7 @@ production_lifecycle:
     - name: Set up Node.js
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
       with:
-        node-version: 22
+        node-version: 26
     - name: Verify production container and deploy lifecycle
       run: |
         set -euo pipefail

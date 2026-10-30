@@ -23,7 +23,7 @@ test('a restrictive build context still permits non-root npm execution', {
 }, () => {
   const fixture = mkdtempSync(join(tmpdir(), 'sm-manifest-modes-test-'));
   const image = `sm-manifest-modes-test:${randomUUID()}`;
-  const base = process.env.SOCIAL_MONITOR_TEST_NODE_IMAGE ?? 'node:22-bookworm-slim';
+  const base = process.env.SOCIAL_MONITOR_TEST_NODE_IMAGE ?? 'node:26-bookworm-slim';
   assert.match(base, /^[a-zA-Z0-9][a-zA-Z0-9./:_@-]+$/u);
   try {
     writeFileSync(join(fixture, 'package.json'), JSON.stringify({

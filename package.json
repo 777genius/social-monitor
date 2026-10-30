@@ -416,7 +416,7 @@
     "typescript-eslint": "^8.48.0"
   },
   "engines": {
-    "node": ">=22.6.0"
+    "node": ">=26.10.0 <27"
   },
   "overrides": {
     "@eslint/eslintrc": "3.3.6",
