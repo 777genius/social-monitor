@@ -1,3 +1,4 @@
+import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import {
   DomainError,
   type EventEnvelope,
@@ -443,10 +444,11 @@ async function main(): Promise<void> {
   const deliveryDispatchLoop = new DeliveryAttemptDispatchLoop(
     new SendDeliveryAttemptCommandHandler(
       new SendDeliveryAttemptUseCase(
-        deliveryAttempts,
+        deliveryAttempts.workflow,
         [deliveryProvider],
         new InMemoryNotificationPreferenceReader(),
         new FixedClock(new Date('2026-06-06T00:05:00.000Z')),
+        new CryptoIdGenerator(),
       ),
       deliveryMetrics,
       deliveryRuntime,

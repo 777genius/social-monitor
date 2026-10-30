@@ -9,12 +9,14 @@ import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/pr
 import type { PrismaReaderSummaryProjectionClient } from './prisma-reader-summary-projection-client';
 
 import type { PrismaDeliveryClient } from './prisma-delivery-client';
+import type { PrismaDeliveryWorkflowClient } from './prisma-delivery-workflow-client';
 
-type PrismaDeliveryRuntimeClient = PrismaDeliveryClient & PrismaReaderSummaryProjectionClient & {
+type PrismaDeliveryRuntimeClient = PrismaDeliveryClient & PrismaReaderSummaryProjectionClient & PrismaDeliveryWorkflowClient & {
   $disconnect(): Promise<void>;
 };
 
 export class PrismaDeliveryConnection implements PrismaDeliveryClient {
+  readonly workflow: PrismaDeliveryWorkflowClient;
   readonly deliveryAttempt: PrismaDeliveryClient['deliveryAttempt'];
   readonly digest: PrismaDeliveryClient['digest'];
   readonly digestSchedule: PrismaDeliveryClient['digestSchedule'];
@@ -47,6 +49,7 @@ export class PrismaDeliveryConnection implements PrismaDeliveryClient {
   ) {
     this.runtime = runtime;
     this.client = this.runtime.client;
+    this.workflow = this.client;
 
     this.deliveryAttempt = this.client.deliveryAttempt;
     this.digest = this.client.digest;

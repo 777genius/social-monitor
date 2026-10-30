@@ -42,6 +42,7 @@
     "check:cross-process-scheduler": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-cross-process-scheduler-smoke.ts",
     "check:dependencies": "node scripts/check-dependencies.mjs",
     "check:delivery-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-prisma-persistence.ts",
+    "check:delivery-workflow-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-workflow-postgres.ts",
     "check:delivery-attempt-rest": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-attempt-rest-smoke.ts",
     "check:delivery-worker-command": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-worker-command-smoke.ts",
     "check:delivery-attempt-dispatch-loop": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-attempt-dispatch-loop-smoke.ts",

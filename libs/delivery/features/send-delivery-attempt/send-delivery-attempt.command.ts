@@ -6,5 +6,6 @@ export type SendDeliveryAttemptCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly deliveryAttemptId: string;
+  readonly dispatchCommandId?: string;
   readonly content: DeliveryContent;
 };

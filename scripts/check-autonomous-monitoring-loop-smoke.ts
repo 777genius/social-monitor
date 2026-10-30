@@ -1,3 +1,4 @@
+import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import { correlationId, userId } from "./lib/autonomous-monitoring-loop-scope";
 import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
 import { InMemoryDeliveryProvider } from "@social-monitor/delivery/adapters/notification/in-memory-delivery.provider";
@@ -765,10 +766,11 @@ async function main(): Promise<void> {
   const dispatchLoop = new DeliveryAttemptDispatchLoop(
     new SendDeliveryAttemptCommandHandler(
       new SendDeliveryAttemptUseCase(
-        deliveryAttempts,
+        deliveryAttempts.workflow,
         [webhookProvider],
         new InMemoryNotificationPreferenceReader(),
         digestClock,
+        new CryptoIdGenerator(),
       ),
       deliveryMetrics,
       runtime,

@@ -32,6 +32,19 @@ export class SendDeliveryAttemptCommandHandler {
   async handle(
     command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>,
   ): Promise<SendDeliveryAttemptResult> {
+    return this.execute(command, command.commandId);
+  }
+
+  async handleDirect(
+    command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>,
+  ): Promise<SendDeliveryAttemptResult> {
+    return this.execute(command, undefined);
+  }
+
+  private async execute(
+    command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>,
+    dispatchCommandId: string | undefined,
+  ): Promise<SendDeliveryAttemptResult> {
     if (command.commandType !== "delivery.attempt.send") {
       throw new Error(`Unsupported command type: ${command.commandType}`);
     }
@@ -47,6 +60,7 @@ export class SendDeliveryAttemptCommandHandler {
             tenantId: tenantId(payload.tenantId),
             workspaceId: workspaceId(payload.workspaceId),
             deliveryAttemptId: payload.deliveryAttemptId,
+            dispatchCommandId,
             content: payload.content,
           }),
         );

@@ -10,7 +10,10 @@ import {
   type RabbitMqQueueChannelPort,
   type RabbitMqQueuePublisherOptions,
 } from '@social-monitor/platform-queue/adapters/rabbitmq';
-import { DeliveryAttemptDispatchQueuePublisherAdapter } from '@social-monitor/delivery/adapters/messaging/in-memory-delivery-attempt-dispatch-queue.adapter';
+import { InMemoryDeliveryAttemptRepository } from '@social-monitor/delivery/adapters/persistence/in-memory-delivery-attempt.repository';
+import { deliveryWorkflowTiming } from '@social-monitor/delivery/application/contracts/delivery-attempt-workflow';
+import { DELIVERY_ATTEMPT_WORKFLOW, type DeliveryAttemptWorkflow } from '@social-monitor/delivery/interfaces/rest/delivery-workflow.providers';
+import { CommandOutboxDispatcher } from '@social-monitor/platform-queue';
 import { ScheduleDueDigestsUseCase } from '@social-monitor/delivery/features/schedule-due-digests/schedule-due-digests.use-case';
 import { SendDeliveryAttemptUseCase } from '@social-monitor/delivery/features/send-delivery-attempt/send-delivery-attempt.use-case';
 import { EnqueueDeliveryAttemptDispatchUseCase } from '@social-monitor/delivery/features/enqueue-delivery-attempt-dispatch/enqueue-delivery-attempt-dispatch.use-case';
@@ -19,16 +22,15 @@ import { ProjectSummaryReadyEventHandler } from '@social-monitor/delivery/interf
 import { ScheduleDueDigestsCommandHandler } from '@social-monitor/delivery/interfaces/queue/schedule-due-digests-command.handler';
 import { SendDeliveryAttemptCommandHandler } from '@social-monitor/delivery/interfaces/queue/send-delivery-attempt-command.handler';
 import { DeliveryRestModule } from '@social-monitor/delivery/interfaces/rest/delivery-rest.module';
-import { DELIVERY_ATTEMPT_REPOSITORY } from '@social-monitor/delivery/interfaces/rest/delivery-provider-tokens';
+import { DELIVERY_ATTEMPT_REPOSITORY, DELIVERY_PERSISTENCE_MODE, type DeliveryPersistenceMode } from '@social-monitor/delivery/interfaces/rest/delivery-provider-tokens';
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import {
   METRICS_RECORDER,
   MetricsRuntimeModule,
 } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-worker';
-import { SystemClock } from '@social-monitor/shared-kernel';
+import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import type {
-  DeliveryAttemptDispatchQueuePort,
   DeliveryAttemptRepositoryPort,
 } from '@social-monitor/delivery/ports';
 
@@ -76,7 +78,7 @@ import {
   type SummaryReadyEventQueueReaderPort,
 } from './summary-ready-event-queue-reader';
 
-const DELIVERY_ATTEMPT_DISPATCH_QUEUE = Symbol('DELIVERY_ATTEMPT_DISPATCH_QUEUE');
+const DELIVERY_LOCAL_COMMAND_OUTBOX = Symbol('DELIVERY_LOCAL_COMMAND_OUTBOX');
 const DELIVERY_RABBITMQ_ATTEMPT_QUEUE_CHANNEL = Symbol('DELIVERY_RABBITMQ_ATTEMPT_QUEUE_CHANNEL');
 const DELIVERY_RABBITMQ_SUMMARY_READY_EVENT_QUEUE_CHANNEL =
   Symbol('DELIVERY_RABBITMQ_SUMMARY_READY_EVENT_QUEUE_CHANNEL');
@@ -144,23 +146,39 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
       inject: [DELIVERY_ATTEMPT_DISPATCH_QUEUE_MODE, DELIVERY_ATTEMPT_QUEUE_READER_MODE],
     },
     {
-      provide: DELIVERY_ATTEMPT_DISPATCH_QUEUE,
+      provide: DELIVERY_LOCAL_COMMAND_OUTBOX,
       useFactory: (
         mode: DeliveryAttemptDispatchQueueMode,
+        persistence: DeliveryPersistenceMode,
         inMemoryQueue: InMemoryQueuePublisher,
+        attempts: InMemoryDeliveryAttemptRepository,
         channel: RabbitMqDeliveryAttemptQueueChannelPort | null,
         options: RabbitMqQueuePublisherOptions,
         metrics: MetricsRecorderPort,
-      ): DeliveryAttemptDispatchQueuePort =>
-        mode === 'rabbitmq'
-          ? new DeliveryAttemptDispatchQueuePublisherAdapter(
-              new RabbitMqQueuePublisher(requireRabbitMqDeliveryAttemptQueueChannel(channel), options, new SystemClock()),
-              metrics,
-            )
-          : new DeliveryAttemptDispatchQueuePublisherAdapter(inMemoryQueue, metrics),
+      ): CommandOutboxDispatcher | null => {
+        if (persistence === 'prisma') {
+          if (mode !== 'rabbitmq') {
+            throw new Error('Durable delivery dispatch requires the RabbitMQ command outbox relay');
+          }
+          return null;
+        }
+        const publisher = mode === 'rabbitmq'
+          ? new RabbitMqQueuePublisher(requireRabbitMqDeliveryAttemptQueueChannel(channel), options, new SystemClock())
+          : inMemoryQueue;
+        return new CommandOutboxDispatcher(attempts.workflow, {
+          publish: async (command) => {
+            await publisher.publish(command);
+            metrics.incrementCounter({ name: 'queue_commands_enqueued_total', labels: {
+              command_type: command.commandType, job_type: 'delivery', status: 'enqueued',
+            } });
+          },
+        }, new CryptoIdGenerator(), new SystemClock());
+      },
       inject: [
         DELIVERY_ATTEMPT_DISPATCH_QUEUE_MODE,
+        DELIVERY_PERSISTENCE_MODE,
         InMemoryQueuePublisher,
+        InMemoryDeliveryAttemptRepository,
         DELIVERY_RABBITMQ_ATTEMPT_QUEUE_CHANNEL,
         DELIVERY_RABBITMQ_ATTEMPT_QUEUE_OPTIONS,
         METRICS_RECORDER,
@@ -216,10 +234,9 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
     {
       provide: EnqueueDeliveryAttemptDispatchUseCase,
       useFactory: (
-        attempts: DeliveryAttemptRepositoryPort,
-        queue: DeliveryAttemptDispatchQueuePort,
-      ) => new EnqueueDeliveryAttemptDispatchUseCase(attempts, queue, new SystemClock()),
-      inject: [DELIVERY_ATTEMPT_REPOSITORY, DELIVERY_ATTEMPT_DISPATCH_QUEUE],
+        workflow: DeliveryAttemptWorkflow,
+      ) => new EnqueueDeliveryAttemptDispatchUseCase(workflow, new CryptoIdGenerator(), new SystemClock(), deliveryWorkflowTiming),
+      inject: [DELIVERY_ATTEMPT_WORKFLOW],
     },
     {
       provide: ScheduleDueDigestsCommandHandler,
@@ -267,12 +284,16 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
         attempts: DeliveryAttemptRepositoryPort,
         options: ReturnType<typeof resolveDeliveryAttemptDispatchLoopOptions>,
         enqueueDispatch: EnqueueDeliveryAttemptDispatchUseCase,
-      ) => new DeliveryAttemptDispatchLoop(handler, attempts, options, enqueueDispatch),
+        relay: CommandOutboxDispatcher | null,
+      ) => new DeliveryAttemptDispatchLoop(handler, attempts, options, enqueueDispatch, undefined, {
+        clock: new SystemClock(), timing: deliveryWorkflowTiming, relay: relay ?? undefined,
+      }),
       inject: [
         SendDeliveryAttemptCommandHandler,
         DELIVERY_ATTEMPT_REPOSITORY,
         DELIVERY_ATTEMPT_DISPATCH_LOOP_OPTIONS,
         EnqueueDeliveryAttemptDispatchUseCase,
+        DELIVERY_LOCAL_COMMAND_OUTBOX,
       ],
     },
     {

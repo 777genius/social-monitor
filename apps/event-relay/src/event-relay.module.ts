@@ -8,6 +8,7 @@ import {
   type RabbitMqEventPublisherOptions,
 } from '@social-monitor/platform-events/adapters/rabbitmq';
 import { monitoringScanQueueRabbitMqOptions } from '@social-monitor/monitoring/interfaces/rest/monitoring-scan-queue.providers';
+import { deliveryCommandQueueOptions } from '@social-monitor/delivery/interfaces/rest/delivery-command-queue-options';
 import { OutboxDispatcher } from '@social-monitor/platform-events';
 import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import {
@@ -99,14 +100,18 @@ import { ScanCommandRelayLoop } from './scan-command-relay-loop';
       useFactory: (
         outbox: PrismaCommandOutboxStoreAdapter,
         publisher: RabbitMqQueuePublisher,
-      ) =>
-        new CommandOutboxDispatcher(
+        channel: RabbitMqQueueChannelPort,
+      ) => {
+        const deliveryPublisher = new RabbitMqQueuePublisher(channel, deliveryCommandQueueOptions(process.env), new SystemClock());
+        return new CommandOutboxDispatcher(
           outbox,
-          publisher,
+          { publish: (command) => command.commandType === 'delivery.attempt.send'
+              ? deliveryPublisher.publish(command) : publisher.publish(command) },
           new CryptoIdGenerator(),
           new SystemClock(),
-        ),
-      inject: [PrismaCommandOutboxStoreAdapter, RabbitMqQueuePublisher],
+        );
+      },
+      inject: [PrismaCommandOutboxStoreAdapter, RabbitMqQueuePublisher, AmqplibRabbitMqChannel],
     },
     {
       provide: OutboxDispatcher,
