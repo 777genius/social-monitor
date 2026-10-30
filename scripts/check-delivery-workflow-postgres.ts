@@ -6,6 +6,7 @@ import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/pr
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import type { PrismaDeliveryWorkflowClient } from '@social-monitor/delivery/adapters/persistence/prisma/prisma-delivery-workflow-client';
 import { PrismaDeliveryWorkflowStore } from '@social-monitor/delivery/adapters/persistence/prisma/prisma-delivery-workflow.store';
+import { PrismaCommandOutboxStoreAdapter, type PrismaCommandOutboxClient } from '@social-monitor/platform-queue/adapters/prisma';
 import type { PrismaDeliveryClient } from '@social-monitor/delivery/adapters/persistence/prisma/prisma-delivery-client';
 import { PrismaDeliveryAttemptRepository } from '@social-monitor/delivery/adapters/persistence/prisma/prisma-delivery-attempt.repository';
 import { SendDeliveryAttemptUseCase } from '@social-monitor/delivery/features/send-delivery-attempt/send-delivery-attempt.use-case';
@@ -77,6 +78,44 @@ async function main(url: string): Promise<void> {
     const commands = await commandRows(raced);
     assert.equal(commands.length, 1, 'one assembling transition must have exactly one outbox command');
     assert.equal((await read(raced)).state, 'ASSEMBLING');
+
+    // Prove actual PostgreSQL owner/expiry fencing on the COMMAND outbox row.
+    // No synthetic updateMany mocks: the same migration-backed columns are
+    // used by event-relay's production dispatcher.
+    const commandOutbox = new PrismaCommandOutboxStoreAdapter(prisma as unknown as PrismaCommandOutboxClient);
+    const firstOwner = randomUUID();
+    const secondOwner = randomUUID();
+    const firstClaim = await commandOutbox.claimPending({
+      limit: 1, now: clock.now(), leaseOwner: firstOwner,
+      leasedUntil: new Date(clock.now().getTime() + 100),
+    });
+    assert.equal(firstClaim.length, 1, 'one durable command must be claimed');
+    assert.equal(firstClaim[0]?.id, commands[0]?.id);
+    assert.equal(await commandOutbox.renewClaims({
+      ids: [commands[0]!.id], leaseOwner: secondOwner, now: clock.now(),
+      leasedUntil: new Date(clock.now().getTime() + 200),
+    }), false, 'different owner cannot extend the command');
+    clock.advance(50);
+    assert.equal(await commandOutbox.renewClaims({
+      ids: [commands[0]!.id], leaseOwner: firstOwner, now: clock.now(),
+      leasedUntil: new Date(clock.now().getTime() + 150),
+    }), true, 'current owner renews the durable command');
+    clock.advance(151);
+    await assert.rejects(commandOutbox.markPublished({
+      id: commands[0]!.id, leaseOwner: firstOwner, publishedAt: clock.now(),
+    }), /ownership was lost/, 'expired owner must not acknowledge publication');
+    const recoveredClaim = await commandOutbox.claimPending({
+      limit: 1, now: clock.now(), leaseOwner: secondOwner,
+      leasedUntil: new Date(clock.now().getTime() + 300),
+    });
+    assert.equal(recoveredClaim[0]?.id, commands[0]?.id, 'expired row must be claimable after restart');
+    assert.equal(await commandOutbox.renewClaims({
+      ids: [commands[0]!.id], leaseOwner: firstOwner, now: clock.now(),
+      leasedUntil: new Date(clock.now().getTime() + 500),
+    }), false, 'stale owner cannot renew the replacement');
+    await commandOutbox.markPublished({
+      id: commands[0]!.id, leaseOwner: secondOwner, publishedAt: clock.now(),
+    });
 
     const entered = deferredDelivery<void>();
     const release = deferredDelivery<{ accepted: true }>();
