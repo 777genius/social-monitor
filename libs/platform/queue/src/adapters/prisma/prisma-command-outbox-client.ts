@@ -33,6 +33,7 @@ export type PrismaCommandOutboxTransactionClient = {
         readonly messageKind?: 'COMMAND';
         readonly status: 'PENDING';
         readonly leaseOwner?: string;
+        readonly leasedUntil?: { readonly gt: Date };
         readonly availableAt?: { readonly lte: Date };
         readonly OR?: readonly [
           { readonly leasedUntil: null },
