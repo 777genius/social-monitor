@@ -2,8 +2,10 @@ import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-mon
 
 import { InMemoryIdempotencyAdapter } from '../../adapters/idempotency/in-memory-idempotency.adapter';
 import { InMemoryOutboxAdapter } from '../../adapters/messaging/in-memory-outbox.adapter';
+import { InMemoryInterestCreationState } from '../../adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestRepository } from '../../adapters/persistence/in-memory-interest.repository';
 import { InMemorySourceBindingRepository } from '../../adapters/persistence/in-memory-source-binding.repository';
+import { InMemorySourceBindingCreationStore } from '../../adapters/persistence/in-memory-source-binding-creation.store';
 import { AesGcmSourceBindingConfigProtector } from '../../adapters/security/aes-gcm-source-binding-config-protector';
 import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { Interest } from '../../domain';
@@ -14,13 +16,15 @@ const scope = { tenantId: tenantId('tenant-1'), workspaceId: workspaceId('worksp
 const now = new Date('2026-10-18T00:00:00.000Z');
 
 const setup = async () => {
-  const interests = new InMemoryInterestRepository();
-  const bindings = new InMemorySourceBindingRepository();
-  const outbox = new InMemoryOutboxAdapter();
+  const creationState = new InMemoryInterestCreationState();
+  const interests = new InMemoryInterestRepository(creationState);
+  const bindings = new InMemorySourceBindingRepository(creationState);
+  const outbox = new InMemoryOutboxAdapter(creationState);
   let sequence = 0;
   const ids: IdGenerator = { generate: () => `binding-identity-${++sequence}` };
   const useCase = new BindSourceUseCase(
-    interests, bindings, new FakeSourceCatalogAdapter(), outbox, new InMemoryIdempotencyAdapter(),
+    interests, new InMemorySourceBindingCreationStore(creationState), new FakeSourceCatalogAdapter(),
+    new InMemoryIdempotencyAdapter(creationState),
     new AesGcmSourceBindingConfigProtector(Buffer.alloc(32, 1), 'synthetic-test-key'), ids,
     new FixedClock(now), { maxEnabledSourcesPerInterest: 2 },
   );
