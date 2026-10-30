@@ -30,7 +30,7 @@ export const buildReaderSummaryDraftWithPromotionContent = (
   const coverageWarnings = [
     ...(evidence.promotionV3?.presentationCoverageLimited === true
       ? [presentationBudgetCoverageWarning] : []),
-    ...(evidence.promotionV3?.presentationRuntimeDegraded === true
+    ...(evidence.presentationRuntimeDegraded === true
       ? [presentationRuntimeCoverageWarning] : []),
   ];
   const coverageLimited = coverageWarnings.length > 0;

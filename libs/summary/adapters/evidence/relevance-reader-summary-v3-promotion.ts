@@ -26,8 +26,11 @@ import {
 import { STORY_RANKING_POLICY_V1 } from
   "../../domain/policies/story-ranking-policy";
 import { storyKey } from "../../domain/services/story-key-normalizer";
-import { READER_POST_PRESENTATION_V3_MAX_BODY_UTF16, READER_POST_PRESENTATION_V3_MAX_TITLE_UTF16,
-  type PromotionPresentationBuilder, type ReaderPostPresentationV3Input } from
+import type { PromotionPresentationBuilder,
+  ReaderPostPresentationV3Input } from
+  "../../domain/services/reader-post-presentation-v3";
+import { READER_POST_PRESENTATION_V3_MAX_BODY_UTF16,
+  READER_POST_PRESENTATION_V3_MAX_TITLE_UTF16 } from
   "../../domain/services/reader-post-presentation-v3";
 import type { ReaderSummaryV3PromotionPort,
   ReaderSummarySupplementalEvidenceSelectorPort,
@@ -42,8 +45,6 @@ import { clusterPromotionStoryRelations, semanticAdmission } from
   "./relevance-reader-summary-v3-story-relations";
 import { planWorkspacePresentationSlate } from
   "./relevance-reader-summary-v3-presentation-slate";
-import { PresentationRuntimeFailureGuard } from
-  "./relevance-reader-summary-v3-presentation-runtime-guard";
 
 export const maxPresentationCandidates = 64;
 const presentationBatchSize = 4;
@@ -234,7 +235,6 @@ implements ReaderSummaryV3PromotionPort {
       presentationAttemptBinding(candidate, params.manifest.schemaVersion ===
         "reader_summary_preparation_manifest.v2");
     const sealById = new Map<string, ReaderDisplayHeadlineSeal>();
-    const presentation = new PresentationRuntimeFailureGuard(this.presentation);
     const admitted = candidates.filter(semanticAdmission);
     // Charge the finite budget only when a distinct presentation binding is
     // actually attempted. Representatives skipped after their story succeeds
@@ -299,7 +299,7 @@ implements ReaderSummaryV3PromotionPort {
       const allowed = batch;
       let results: Awaited<ReturnType<PromotionPresentationBuilder["build"]>>;
       try {
-        results = await presentation.build(allowed.map((candidate) =>
+        results = await this.presentation.build(allowed.map((candidate) =>
           presentationInputById.get(candidate.candidateId)!));
       } catch (error) {
         return { kind: "dependency_failure", reason: error instanceof Error
@@ -336,7 +336,7 @@ implements ReaderSummaryV3PromotionPort {
     }
     const completed = candidates.map((candidate) => ({ ...candidate,
       presentation: statuses.get(candidate.candidateId)! }));
-    let selection = presentation.disclose(selectReaderPostPromotionsV3(completed));
+    let selection = selectReaderPostPromotionsV3(completed);
     if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
         selection.top.length + selection.additional.length < 16 &&
         completed.some((candidate) =>

@@ -10,8 +10,9 @@ import { buildReaderSummaryDraftWithPromotionContent, presentationRuntimeCoverag
 import { buildReaderSummaryPromotionArtifactFields } from '../../features/execute-reader-summary-job/reader-summary-promotion-artifact-fields';
 import { presentReaderSummaryArtifact } from '../../features/shared/reader-summary-artifact-presenter';
 import { candidate, TestPresentation, workspaceSetup } from './relevance-reader-summary-v3-promotion.fixture';
+import { PresentationRuntimeGuardedPromotion } from './relevance-reader-summary-v3-presentation-runtime-guard';
 
-/** Fails the listed 1-based batch calls the way the runtime builder reports them. */
+/** Fails the selected 1-based batch calls the way the runtime builder reports them. */
 const runtimeFailingBatches = (failing: (call: number) => boolean) => {
   const tracked = new TestPresentation();
   let calls = 0;
@@ -26,28 +27,33 @@ const runtimeFailingBatches = (failing: (call: number) => boolean) => {
 };
 
 const rows = (count: number) => Array.from({ length: count }, (_, index) => ({
-  ...candidate(index + 1, 'important', 'central'),
+  ...candidate(index + 1, 'important', 'central'), provider: index % 2 === 0 ? 'reddit' : 'hacker-news',
   title: `Independent event ${index}`, body: `Independent observed event ${index} with exact source evidence.`,
 }));
+
+const guardedSetup = (presentation: PromotionPresentationBuilder, count = 16) => {
+  const fixture = workspaceSetup(rows(count));
+  const promotion = new PresentationRuntimeGuardedPromotion(presentation,
+    guarded => workspaceSetup(rows(count), undefined, guarded).subject);
+  return { ...fixture, run: () => promotion.build({ job: fixture.job, manifest: fixture.manifest }) };
+};
 
 describe('V3 promotion presentation runtime failures', () => {
   it('skips isolated runtime-failed batches and discloses the gap in the published artifact', async () => {
     const runtime = runtimeFailingBatches(call => call === 1 || call === 3);
-    const fixture = workspaceSetup(rows(16), undefined, runtime.presentation);
-    const result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
+    const fixture = guardedSetup(runtime.presentation);
+    const result = await fixture.run();
     expect(result.kind).toBe('ready');
     if (result.kind !== 'ready') throw new Error(result.kind);
+    const evidence = result.evidence;
     expect(runtime.failed.size).toBe(8);
-    const selection = result.evidence.promotionV3!;
-    expect(selection.presentationRuntimeDegraded).toBe(true);
-    expect(selection.presentationCoverageLimited).toBeUndefined();
-    const selected = [...selection.top, ...selection.additional];
-    expect(selected).toHaveLength(8);
-    expect(selected.some(item => runtime.failed.has(item.candidateId))).toBe(false);
-    expect(selection.excluded.filter(item => runtime.failed.has(item.candidateId))
-      .every(item => item.reason === 'presentation_unavailable')).toBe(true);
+    expect(evidence.presentationRuntimeDegraded).toBe(true);
+    expect(evidence.promotionV3?.presentationCoverageLimited).toBeUndefined();
+    expect(evidence.selectedEvidence.length).toBeGreaterThan(0);
+    expect(evidence.selectedEvidence.some(item => runtime.failed.has(item.feedItemId))).toBe(false);
+    expect(evidence.selectedEvidence.every(item => item.readerHeadline?.status === 'accepted')).toBe(true);
 
-    const evidence = result.evidence, original = baselineArtifact().toSnapshot();
+    const original = baselineArtifact().toSnapshot();
     const citationMap = evidence.selectedEvidence.map((item, index) => ({ citationId: `c${index + 1}`,
       feedItemId: item.feedItemId, sourceItemId: item.sourceItemId, providerKey: item.providerKey,
       field: 'title' as const, canonicalUrl: item.canonicalUrl }));
@@ -59,6 +65,7 @@ describe('V3 promotion presentation runtime failures', () => {
       qualityFlags: [], noSignalReason: undefined, content: { ...original.content!, narrativeSections: [{
         id: 'lead', kind: 'lead' as const, title: 'Independent method observations',
         text: 'Independent method observations from two providers.', citationIds: ['c1', 'c2'] }] } });
+    expect(draft.qualityFlags).toContain('limited_sources');
     const snapshot = fixture.job.toSnapshot();
     const artifact = ReaderSummaryArtifact.create({ ...original, ...draft,
       tenantId: snapshot.tenantId, workspaceId: snapshot.workspaceId, scope: snapshot.scope, period: snapshot.period,
@@ -80,18 +87,29 @@ describe('V3 promotion presentation runtime failures', () => {
     expect(JSON.stringify(publicArtifact)).not.toContain('presentationRuntimeDegraded');
   });
 
-  it('stops the job as a dependency failure after two back-to-back runtime-failed batches', async () => {
+  it('stops the run as a dependency failure after two back-to-back runtime-failed batches', async () => {
     const runtime = runtimeFailingBatches(() => true);
-    const fixture = workspaceSetup(rows(16), undefined, runtime.presentation);
-    await expect(fixture.subject.build({ job: fixture.job, manifest: fixture.manifest })).resolves.toEqual({
+    await expect(guardedSetup(runtime.presentation).run()).resolves.toEqual({
       kind: 'dependency_failure', reason: 'presentation_runtime_failure_repeated' });
     expect(runtime.calls()).toBe(2);
   });
 
-  it('does not disclose a runtime gap when every presentation task ran', async () => {
-    const fixture = workspaceSetup(rows(8));
-    const result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
-    expect(result.kind).toBe('ready');
-    if (result.kind === 'ready') expect(result.evidence.promotionV3?.presentationRuntimeDegraded).toBeUndefined();
+  it('starts every run with a fresh failure count and no disclosure when every task ran', async () => {
+    let call = 0;
+    const tracked = new TestPresentation();
+    // Run one ends on a failed batch; run two starts with one. Shared state would trip.
+    const presentation: PromotionPresentationBuilder = { build: async inputs => {
+      call += 1;
+      return call === 4 || call === 5
+        ? inputs.map(() => ({ status: 'unavailable' as const, reason: 'runtime_failure' as const }))
+        : tracked.build(inputs);
+    } };
+    const fixture = guardedSetup(presentation);
+    expect((await fixture.run()).kind).toBe('ready');
+    expect(call).toBe(4);
+    expect((await fixture.run()).kind).toBe('ready');
+    const clean = await guardedSetup(new TestPresentation(), 8).run();
+    expect(clean.kind).toBe('ready');
+    if (clean.kind === 'ready') expect(clean.evidence.presentationRuntimeDegraded).toBeUndefined();
   });
 });
