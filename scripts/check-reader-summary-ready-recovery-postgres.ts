@@ -84,13 +84,14 @@ export async function main(): Promise<void> {
       let sends = 0, cancelled = false, envelope: Record<string, unknown>;
       const publisher = new RabbitMqEventPublisher({
         assertExchange: async () => undefined, assertQueue: async () => undefined, bindQueue: async () => undefined,
-        publish: async (_exchange, _routing, bytes, options) => {
+        publishAndConfirm: async (_exchange, _routing, bytes, options) => {
           assert(!cancelled); assert.equal(options.mandatory, true); sends += 1;
-          envelope = JSON.parse(bytes.toString()) as Record<string, unknown>; return true;
+          envelope = JSON.parse(bytes.toString()) as Record<string, unknown>;
+          // Broker outcome is synthetic; consumer inbox/projection uses the
+          // actual parser, handler and transaction on native PostgreSQL.
+          await handler.handle(envelope);
+          return true;
         },
-        // Broker outcome is synthetic; consumer inbox/projection is the actual
-        // parser, handler, use case and Prisma transaction on native PostgreSQL.
-        waitForConfirms: async () => { await handler.handle(envelope); },
       }, { exchange: 'social-monitor.events', mandatory: true });
       const run = (selected: RecoveryManifest) => {
         const bytes = Buffer.from(JSON.stringify(selected));

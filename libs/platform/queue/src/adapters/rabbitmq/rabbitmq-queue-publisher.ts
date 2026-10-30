@@ -51,13 +51,13 @@ export interface RabbitMqQueueChannelPort {
     routingKey: string,
     args?: Readonly<Record<string, RabbitMqFieldValue>>,
   ): Promise<unknown>;
-  publish(
+  /** Returns true only after this exact wire send has a broker confirmation. */
+  publishAndConfirm(
     exchange: string,
     routingKey: string,
     content: Buffer,
     options: RabbitMqPublishOptions,
-  ): boolean | Promise<boolean>;
-  waitForConfirms(exchange: string, routingKey: string, messageId: string): Promise<void>;
+  ): Promise<boolean>;
 }
 
 export type RabbitMqPublishOptions = {
@@ -99,7 +99,7 @@ export class RabbitMqQueuePublisher implements QueuePublisherPort {
       throw new Error(`Queue command payload exceeds RabbitMQ max payload size: ${content.byteLength}`);
     }
 
-    const accepted = await this.channel.publish(this.options.exchange, route.routingKey, content, {
+    const accepted = await this.channel.publishAndConfirm(this.options.exchange, route.routingKey, content, {
       contentType: this.options.contentType ?? 'application/json',
       deliveryMode: this.options.persistent === false ? 1 : 2,
       mandatory: this.options.mandatory ?? true,
@@ -119,7 +119,6 @@ export class RabbitMqQueuePublisher implements QueuePublisherPort {
       throw new Error(`RabbitMQ publish backpressure for command type: ${command.commandType}`);
     }
 
-    await this.channel.waitForConfirms(this.options.exchange, route.routingKey, command.commandId);
   }
 
   private async ensureRoute(route: RabbitMqQueueRoute): Promise<void> {

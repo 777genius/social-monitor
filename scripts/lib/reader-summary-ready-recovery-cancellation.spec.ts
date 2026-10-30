@@ -22,7 +22,8 @@ describe('recovery terminal pre-wire cancellation', () => {
     if (delay === 'window') f.manifest.window.expiresAt = new Date(f.options().clock.now().getTime() + 500).toISOString();
     const native = Object.assign(new EventEmitter(), {
       assertExchange: async () => { await wait('assert'); }, close: async () => undefined,
-      publish: jest.fn(() => true), waitForConfirms: async () => { await wait('confirm'); },
+      publish: jest.fn((_exchange: string, _routingKey: string, _content: Buffer, _options: unknown,
+        confirm: (error: Error | null) => void) => { void wait('confirm').then(() => confirm(null)); return true; }),
     });
     const connection = Object.assign(new EventEmitter(), {
       createConfirmChannel: async () => { await wait('channel'); return native as unknown as ConfirmChannel; }, close: async () => undefined,

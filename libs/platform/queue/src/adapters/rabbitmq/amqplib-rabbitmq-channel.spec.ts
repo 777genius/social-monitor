@@ -7,7 +7,10 @@ import type { RabbitMqPublishOptions } from './rabbitmq-queue-publisher';
 
 class FakeConfirmChannel extends EventEmitter {
   getCount = 0;
-  publish = jest.fn(() => true);
+  publish = jest.fn((_exchange: string, _routingKey: string, _content: Buffer,
+    _options: RabbitMqPublishOptions, callback: (error: Error | null) => void) => {
+    callback(null); return true;
+  });
   async close(): Promise<void> { this.emit('close'); }
 
   async get(): Promise<GetMessage | false> {
@@ -34,22 +37,26 @@ describe('AmqplibRabbitMqChannel', () => {
     const connection = new FakeConnection();
     const channel = new AmqplibRabbitMqChannel({ url: 'amqp://synthetic', connect: async () => connection as unknown as ChannelModel });
     await channel.get('synthetic', { noAck: false });
-    const pending = channel.publish('synthetic', 'synthetic', Buffer.from('{}'), options);
+    const pending = channel.publishAndConfirm('synthetic', 'synthetic', Buffer.from('{}'), options);
     channel.cancelPendingPublishes();
     await expect(pending).rejects.toThrow('cancelled');
     expect(connection.channels[0]!.publish).not.toHaveBeenCalled();
     await channel.close();
-    await expect(channel.publish('synthetic', 'synthetic', Buffer.from('{}'), options)).rejects.toThrow('cancelled');
+    await expect(channel.publishAndConfirm('synthetic', 'synthetic', Buffer.from('{}'), options)).rejects.toThrow('cancelled');
     expect(connection.channels).toHaveLength(1);
   });
   it('retains reusable close behavior for shared callers that never cancel', async () => {
     const connection = new FakeConnection();
-    const channel = new AmqplibRabbitMqChannel({ url: 'amqp://synthetic', connect: async () => connection as unknown as ChannelModel });
-    await channel.publish('synthetic', 'synthetic', Buffer.from('{}'), options);
+    const reopened = new FakeConnection();
+    const connections = [connection, reopened];
+    const channel = new AmqplibRabbitMqChannel({ url: 'amqp://synthetic',
+      connect: async () => connections.shift() as unknown as ChannelModel });
+    await channel.publishAndConfirm('synthetic', 'synthetic', Buffer.from('{}'), options);
     await channel.close();
-    await channel.publish('synthetic', 'synthetic', Buffer.from('{}'), options);
-    expect(connection.channels).toHaveLength(2);
-    expect(connection.channels[1]!.publish).toHaveBeenCalledTimes(1);
+    await channel.publishAndConfirm('synthetic', 'synthetic', Buffer.from('{}'), options);
+    expect(connection.channels).toHaveLength(1);
+    expect(reopened.channels).toHaveLength(1);
+    expect(reopened.channels[0]!.publish).toHaveBeenCalledTimes(1);
   });
   it('reconnects after the broker connection emits an error', async () => {
     const first = new FakeConnection();
