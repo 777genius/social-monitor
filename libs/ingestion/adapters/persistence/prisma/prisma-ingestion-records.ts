@@ -92,6 +92,8 @@ export type PrismaScanFailureQueueEntryRecord = {
   readonly nextAttemptNumber: number | null;
   readonly failureReason: string;
   readonly status: PrismaScanFailureQueueStatus;
+  readonly claimToken?: string | null;
+  readonly claimedUntil?: Date | null;
   readonly createdAt: Date;
 };
 
@@ -111,6 +113,7 @@ export type PrismaScanAttemptRecord = {
   readonly skippedDuplicates: number;
   readonly projected: number;
   readonly failureReason: string | null;
+  readonly terminalFailure?: boolean;
 };
 
 export type PrismaScanLeaseEntryRecord = {
@@ -247,6 +250,7 @@ export const scanAttemptFromPrisma = (
     skippedDuplicates: record.skippedDuplicates,
     projected: record.projected,
     failureReason: record.failureReason ?? undefined,
+    terminalFailure: record.terminalFailure ?? false,
   } satisfies ScanAttemptProps);
 
 export const scanAttemptStatusToPrisma = (

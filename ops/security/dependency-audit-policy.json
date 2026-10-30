@@ -12,24 +12,6 @@
   },
   "allowedExceptions": [
     {
-      "packageName": "body-parser",
-      "owner": "iliya",
-      "expiresAt": "2026-11-07",
-      "mitigation": "DoS via trailing bytes on compressed bodies; edge Caddy enforces request body limits and rate limiting; no RCE/data exposure; patch tracked for next dependency refresh"
-    },
-    {
-      "packageName": "multer",
-      "owner": "iliya",
-      "expiresAt": "2026-11-07",
-      "mitigation": "DoS via pending async fileFilter after teardown; upload surface is internal behind same edge limits; no RCE/data exposure; patch tracked for next dependency refresh"
-    },
-    {
-      "packageName": "@nestjs/platform-express",
-      "owner": "iliya",
-      "expiresAt": "2026-11-07",
-      "mitigation": "inherits multer advisory only; same edge mitigation; patch tracked for next dependency refresh"
-    },
-    {
       "packageName": "zod",
       "owner": "iliya",
       "expiresAt": "2026-11-07",

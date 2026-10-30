@@ -1,9 +1,12 @@
 import type { EventEnvelope } from '@social-monitor/shared-kernel';
 
 import type { OutboxPort } from '../../ports';
+import { InMemoryInterestCreationState } from '../persistence/in-memory-interest-creation-state';
 
 export class InMemoryOutboxAdapter implements OutboxPort {
-  private readonly events: EventEnvelope<Readonly<Record<string, unknown>>>[] = [];
+  constructor(private readonly state = new InMemoryInterestCreationState()) {}
+
+  private get events() { return this.state.events; }
 
   async append(event: EventEnvelope<Readonly<Record<string, unknown>>>): Promise<void> {
     this.events.push(event);

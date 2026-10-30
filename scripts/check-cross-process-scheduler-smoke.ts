@@ -185,6 +185,8 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   readonly idempotencyKeys = new Map<string, PrismaIdempotencyKeyRecord>();
 
   readonly interest: PrismaMonitoringClient['interest'] = {
+    create: async () => unsupported('interest.create'),
+    count: async () => unsupported('interest.count'),
     upsert: async () => unsupported('interest.upsert'),
     updateMany: async () => unsupported('interest.updateMany'),
     findFirst: async () => unsupported('interest.findFirst'),
@@ -277,6 +279,13 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   };
 
   readonly scanJob: PrismaMonitoringClient['scanJob'] = {
+    updateMany: async ({ where, data }) => {
+      const current = this.scanJobs.get(where.id);
+      if (current?.tenantId !== where.tenantId || current.workspaceId !== where.workspaceId ||
+          current.status !== where.status) return { count: 0 };
+      this.scanJobs.set(where.id, { ...current, ...data, completedAt: data.completedAt ?? null });
+      return { count: 1 };
+    },
     upsert: async (args) => {
       const existing = this.scanJobs.get(args.where.id);
       const record: PrismaScanJobRecord = {
@@ -440,6 +449,12 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
     this.published.push({ routingKey, content, options });
 
     return true;
+  }
+
+  async publishAndConfirm(...args: Parameters<RabbitMqQueueChannelPort['publishAndConfirm']>): Promise<boolean> {
+    const accepted = this.publish(...args);
+    if (accepted) await this.waitForConfirms();
+    return accepted;
   }
 
   async waitForConfirms(): Promise<void> {

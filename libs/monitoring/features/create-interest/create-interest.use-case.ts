@@ -6,12 +6,13 @@ import {
   DomainError,
   eventId,
   err,
-  ok,
   type Result,
 } from '@social-monitor/shared-kernel';
 
 import { Interest, type InterestCreatedEvent } from '../../domain';
-import type { IdempotencyPort, OutboxPort, InterestRepositoryPort } from '../../ports';
+import type { IdempotencyPort } from '../../ports';
+import { INTEREST_CREATION_SCOPE, type InterestCreationCommitPort } from '../../application/contracts/interest-creation-commit';
+import { replayInterestCreation } from '../../application/interest-creation-decision';
 import type { MonitoringCapacityLimits } from '../shared/monitoring-capacity-limits';
 import type { CreateInterestCommand } from './create-interest.command';
 import type { CreateInterestResult } from './create-interest.result';
@@ -20,9 +21,8 @@ type CreateInterestFailure = DomainError | Error;
 
 export class CreateInterestUseCase {
   constructor(
-    private readonly interests: InterestRepositoryPort,
-    private readonly outbox: OutboxPort,
-    private readonly idempotency: IdempotencyPort,
+    private readonly creation: InterestCreationCommitPort,
+    private readonly idempotency: Pick<IdempotencyPort, 'get'>,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
     private readonly capacityLimits: MonitoringCapacityLimits = {},
@@ -32,64 +32,35 @@ export class CreateInterestUseCase {
     const existingResult = await this.idempotency.get<CreateInterestResult>({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      scope: 'monitoring.create-interest',
+      scope: INTEREST_CREATION_SCOPE,
       key: command.idempotencyKey,
     });
 
     if (existingResult) {
-      return ok({ ...existingResult.value, created: false });
+      return replayInterestCreation(existingResult.value);
     }
-
-    const existingInterest = await this.interests.findByName({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      name: command.name.trim(),
-    });
-
-    if (existingInterest) {
-      const snapshot = existingInterest.toSnapshot();
-      const result = { interestId: snapshot.id, created: false };
-      await this.idempotency.set({
+    let interest: Interest;
+    const createdAt = this.clock.now();
+    const interestId = this.ids.generate();
+    try {
+      interest = Interest.create({
+        id: interestId,
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        scope: 'monitoring.create-interest',
-        key: command.idempotencyKey,
-        value: result,
+        name: command.name,
+        query: command.query,
+        createdAt,
       });
-      return ok(result);
+    } catch (error) {
+      return err(new DomainError('validation.failed', error instanceof Error ? error.message : 'Invalid interest'));
     }
-
-    const maxInterestsPerWorkspace = this.capacityLimits.maxInterestsPerWorkspace;
-    if (maxInterestsPerWorkspace !== undefined) {
-      const currentInterests = await this.interests.list({
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        limit: maxInterestsPerWorkspace,
-      });
-      if (currentInterests.interests.length >= maxInterestsPerWorkspace) {
-        return err(new DomainError('operation.quota_exceeded', 'Workspace interest capacity limit reached', {
-          limit: String(maxInterestsPerWorkspace),
-        }));
-      }
-    }
-
-    const interest = Interest.create({
-      id: this.ids.generate(),
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      name: command.name,
-      query: command.query,
-      createdAt: this.clock.now(),
-    });
     const snapshot = interest.toSnapshot();
-
-    await this.interests.save(interest);
 
     const event: InterestCreatedEvent = {
       eventId: eventId(this.ids.generate()),
       eventType: 'monitoring.interest.created',
       schemaVersion: 1,
-      occurredAt: this.clock.now(),
+      occurredAt: createdAt,
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       correlationId: correlationId(command.correlationId),
@@ -103,17 +74,10 @@ export class CreateInterestUseCase {
       },
     };
 
-    await this.outbox.append(event);
-
-    const result = { interestId: snapshot.id, created: true };
-    await this.idempotency.set({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      scope: 'monitoring.create-interest',
-      key: command.idempotencyKey,
-      value: result,
+    return this.creation.commit({
+      interest, event, idempotencyKey: command.idempotencyKey,
+      receiptId: this.ids.generate(),
+      maxInterestsPerWorkspace: this.capacityLimits.maxInterestsPerWorkspace,
     });
-
-    return ok(result);
   }
 }

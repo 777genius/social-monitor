@@ -1,16 +1,14 @@
-import { lookup } from 'node:dns/promises';
 import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { isIP } from 'node:net';
 import { Transform, Writable, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip, createInflate, createBrotliDecompress } from 'node:zlib';
 import { validateOutboundUrl } from '@social-monitor/shared-kernel';
+import { OutboundHttpPolicyError as ContentHttpPolicyError } from '@social-monitor/platform-http';
+import { createGuardedDnsLookup } from '@social-monitor/platform-http/adapters/guarded-dns';
 
-export class ContentHttpPolicyError extends Error {
-  readonly retryable = false;
-  constructor(readonly reasonCode: string, message: string) { super(message); }
-}
+export { OutboundHttpPolicyError as ContentHttpPolicyError } from '@social-monitor/platform-http';
+export { assertPublicAddress } from '@social-monitor/platform-http/adapters/guarded-dns';
 
 export type ContentHttpResponse = {
   readonly status: number;
@@ -34,26 +32,8 @@ export const assertContentUrl = (value: string): URL => {
   if (!validation.ok) throw new ContentHttpPolicyError('unsafe_target', validation.reason);
   const url = validation.url;
   if (url.username || url.password) throw new ContentHttpPolicyError('invalid_url', 'Content URL userinfo is not allowed');
-  const host = url.hostname.replace(/^\[|\]$/g, '');
-  if (isIP(host)) assertPublicAddress(host);
   url.hash = '';
   return url;
-};
-
-export const assertPublicAddress = (address: string): void => {
-  const family = isIP(address);
-  if (!family) throw new ContentHttpPolicyError('invalid_dns_result', 'Content target did not resolve to an IP address');
-  const validation = validateOutboundUrl(`http://${family === 6 ? `[${address}]` : address}/`, {
-    label: 'Content target', allowedProtocols: ['http:'],
-  });
-  if (!validation.ok) throw new ContentHttpPolicyError('unsafe_target', validation.reason);
-  // Permit global unicast IPv6 only. This also rejects the entire link-local
-  // /10, multicast /8, mapped/compatible IPv4 and translation ranges.
-  if (family === 6) {
-    const canonical = new URL(`http://[${address}]/`).hostname.slice(1, -1);
-    const first = Number.parseInt(canonical.split(':')[0] || '0', 16);
-    if ((first & 0xe000) !== 0x2000) throw new ContentHttpPolicyError('unsafe_target', 'Content target is not global unicast');
-  }
 };
 
 // DNS resolution is supplied to the actual socket lookup, never performed as
@@ -75,23 +55,11 @@ export const guardedContentGet = async (input: ContentHttpRequest): Promise<Cont
 
 const requestOnce = (url: URL, input: ContentHttpRequest, signal: AbortSignal): Promise<ContentHttpResponse> =>
   new Promise((resolve, reject) => {
-    const hostname = url.hostname.replace(/^\[|\]$/g, '');
-    const pinned = new Set<string>(isIP(hostname) ? [normalizedAddress(hostname)] : []);
+    const target = createGuardedDnsLookup(url, signal);
     const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
       method: 'GET', signal, agent: false,
       headers: safeRequestHeaders(input.headers),
-      lookup: (host, options, callback) => {
-        void lookup(host, { all: true, verbatim: true }).then((addresses) => {
-          signal.throwIfAborted();
-          if (addresses.length === 0) throw new Error('Content target has no addresses');
-          for (const record of addresses) {
-            assertPublicAddress(record.address);
-            pinned.add(normalizedAddress(record.address));
-          }
-          if (options.all) callback(null, addresses);
-          else callback(null, addresses[0]!.address, addresses[0]!.family);
-        }).catch((error: Error) => callback(error, '', 4));
-      },
+      lookup: target.lookup,
     }, (response) => {
       const status = response.statusCode ?? 0;
       const headers = responseHeaders(response.headers);
@@ -116,17 +84,12 @@ const requestOnce = (url: URL, input: ContentHttpRequest, signal: AbortSignal): 
         .then((body) => resolve(result(body)), reject);
     });
     request.once('socket', (socket) => socket.once('connect', () => {
-      const remote = socket.remoteAddress;
-      if (remote === undefined || !pinned.has(normalizedAddress(remote))) {
-        request.destroy(new ContentHttpPolicyError('unsafe_connection', 'Content connection did not match the guarded DNS result'));
-      }
+      try { target.assertPeer(socket.remoteAddress); }
+      catch (error) { request.destroy(error as Error); }
     }));
     request.once('error', reject);
     request.end();
   });
-
-const normalizedAddress = (address: string): string =>
-  isIP(address) === 6 ? new URL(`http://[${address}]/`).hostname : address;
 
 const safeRequestHeaders = (headers: Readonly<Record<string, string>>): Record<string, string> => {
   const allowed = new Set(['accept', 'user-agent', 'if-none-match', 'if-modified-since']);

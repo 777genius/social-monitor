@@ -1,6 +1,8 @@
 import { correlationId } from "./autonomous-monitoring-loop-scope";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { createHash } from "node:crypto";
+import { githubTrendingPageRepositoryMetadata } from "@social-monitor/ingestion/domain/value-objects/github-trending-page";
 import type { InMemoryFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
 import { ListFeedItemsUseCase } from "@social-monitor/feed/features/list-feed-items/list-feed-items.use-case";
 import type { QueueCommandEnvelope } from "@social-monitor/platform-queue";
@@ -252,7 +254,7 @@ function providerTargets(): readonly ProviderTarget[] {
     },
     {
       providerKey: "github-trending-page",
-      freshnessSeconds: 3600,
+      freshnessSeconds: 86_400,
       config: {
         window: "daily",
         language: "python",
@@ -294,7 +296,7 @@ export class DeterministicMultiProviderFetcher implements SourceFetcherPort {
   }
 }
 
-function providerSamples(
+export function providerSamples(
   providerKey: ProviderKey,
   sourceBindingId: string,
   query: string,
@@ -335,6 +337,7 @@ function providerSamples(
       {
         ...base,
         externalId: "reddit-agents-release-discussion",
+        metadata: { kind: "reddit_post", score: 180, upvoteRatio: 0.98 },
         canonicalUrl: `https://www.reddit.com/r/programming/comments/${sourceBindingId}/agents_runtime/`,
         title: "Agents runtime release improves orchestration reliability",
         body: "Operators compare the agents release against previous scan runners.",
@@ -342,31 +345,63 @@ function providerSamples(
       {
         ...base,
         externalId: "reddit-monitoring-digest",
+        metadata: { kind: "reddit_post", score: 150, upvoteRatio: 0.97 },
         canonicalUrl: `https://www.reddit.com/r/programming/comments/${sourceBindingId}/monitoring_digest/`,
-        title: "Daily monitoring digest catches provider incidents faster",
-        body: "Teams want one digest instead of checking many social and developer sources manually.",
+        title: "QueueWatch monitoring digest catches provider incidents faster",
+        body: "QueueWatch groups provider incidents into one monitoring digest so operators can inspect failed queue workers.",
       },
     ];
   }
 
   if (providerKey === "github-trending-page") {
-    return [
+    const snapshotId = "autonomous-loop-trending-fixture";
+    const repositories = [
       {
         ...base,
-        externalId: "github-trending-openmontage",
+        fullName: "calesthio/OpenMontage",
+        totalStars: 18398,
+        starsGained: 3703,
         canonicalUrl: "https://github.com/calesthio/OpenMontage",
         title: "calesthio/OpenMontage is trending with 3,703 stars today",
         body: "Agentic open-source video production system with 12 pipelines, 52 tools and 500+ agent skills.",
       },
       {
         ...base,
-        externalId: "github-trending-container",
+        fullName: "apple/container",
+        totalStars: 41719,
+        starsGained: 1746,
         canonicalUrl: "https://github.com/apple/container",
         title:
           "apple/container keeps trending for lightweight Linux containers on Mac",
         body: "Swift-based container tooling is drawing developer attention as local AI and agent workflows need isolated runtimes.",
       },
+      ...Array.from({ length: 8 }, (_, index) => {
+        const rank = index + 3;
+        const fullName = `autonomous-loop-fixture/repository-${rank}`;
+        return {
+          ...base,
+          fullName,
+          totalStars: 10_000 - rank * 100,
+          starsGained: 1_500 - rank * 50,
+          canonicalUrl: `https://github.com/${fullName}`,
+          title: `${fullName} provides developer tooling`,
+          body: `Deterministic repository fixture ${rank} in the complete daily Trending board.`,
+        };
+      }),
     ];
+    const snapshotContentHash = createHash("sha256").update(JSON.stringify(repositories)).digest("hex");
+    // Replay these same fixture observations. A real later snapshot would have
+    // a different scan identity; this smoke proves replay idempotency instead.
+    return repositories.map(({ fullName, totalStars, starsGained, ...item }, index) => ({
+      ...item,
+      externalId: `github-trending-page:daily:${snapshotId}:${fullName}`,
+      metadata: githubTrendingPageRepositoryMetadata({
+        repository: { fullName, url: item.canonicalUrl, totalStars, description: item.body },
+        trending: { rank: index + 1, starsGained, window: "daily", scanJobId: snapshotId,
+          fetchStartedAt: base.publishedAt, checkedAt: base.publishedAt,
+          snapshotContentHash, source: "fixture_github_trending_html" },
+      }),
+    }));
   }
 
   if (providerKey === "hacker-news") {
@@ -374,16 +409,18 @@ function providerSamples(
       {
         ...base,
         externalId: "hn-agent-observability",
+        metadata: { kind: "hacker_news_story", points: 140 },
         canonicalUrl: "https://news.ycombinator.com/item?id=42622001",
-        title: "Show HN: Agent observability for queue based workers",
-        body: "Discussion focuses on worker restart recovery, lag metrics and alert routing.",
+        title: "QueueWatch observability traces worker restart recovery",
+        body: "QueueWatch records worker restart recovery and queue lag metrics so operators can identify delayed scans.",
       },
       {
         ...base,
         externalId: "hn-summary-quality",
+        metadata: { kind: "hacker_news_story", points: 120 },
         canonicalUrl: "https://news.ycombinator.com/item?id=42622002",
-        title: "Summary quality gates for developer monitoring feeds",
-        body: "Readers ask for citations, source windows and stale markers in automated digests.",
+        title: "QueueWatch quality gates expose stale monitoring summaries",
+        body: "QueueWatch adds source windows and stale markers to monitoring summaries so operators can inspect delayed collection.",
       },
     ];
   }
@@ -401,11 +438,26 @@ function providerSamples(
       ...base,
       externalId: "rss-release-runbook",
       canonicalUrl: "https://example.com/release/runbook",
-      title: "Release runbook adds autonomous monitoring checklist",
-      body: "The runbook ties scheduled scans, summaries, digest delivery and audit evidence together.",
+      publishedAt: new Date("2026-06-22T11:59:30.000Z"),
+      title: "QueueWatch release runbook adds queued-scan recovery checks",
+      body: "QueueWatch operators inspect the failed scan attempt, confirm the queue backlog has drained, and verify a cited summary before marking a release ready. The runbook ties scheduled scans, summaries, digest delivery and audit evidence together.",
     },
   ];
 }
+
+export const providerFixtureCount = (providerKey: string): number =>
+  providerKey === "github-trending-page" ? 10 : 2;
+
+export const hasIntentionalCrossProviderDuplicate = (
+  items: readonly { readonly providerKey: string; readonly feedItemId: string; readonly duplicateFeedItemIds: readonly string[] }[],
+  bindings: readonly ScanBinding[],
+): boolean => {
+  const github = bindings.find((binding) => binding.providerKey === "github-issues");
+  const reddit = bindings.find((binding) => binding.providerKey === "reddit");
+  return github !== undefined && reddit !== undefined && items.some((item) =>
+    item.feedItemId === `feed:${github.sourceBindingId}:github-agents-release` &&
+    item.duplicateFeedItemIds.includes(`feed:${reddit.sourceBindingId}:reddit-agents-release-discussion`));
+};
 
 export class MonitoringScanExecutionReporter implements ScanExecutionReporterPort {
   constructor(

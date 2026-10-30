@@ -1,3 +1,5 @@
+import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
+import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
 import type { DomainError } from '@social-monitor/shared-kernel';
 import {
   FixedClock,
@@ -50,17 +52,18 @@ async function main(): Promise<void> {
 
 async function proveMonitoringWriteIdempotency(): Promise<void> {
   const ids = new SequenceIdGenerator('write-idempotency-monitoring');
-  const topics = new InMemoryInterestRepository();
+  const interestCreationState = new InMemoryInterestCreationState();
+  const topics = new InMemoryInterestRepository(interestCreationState);
   const bindings = new InMemorySourceBindingRepository();
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
-  const idempotency = new InMemoryIdempotencyAdapter();
-  const outbox = new InMemoryOutboxAdapter();
+  const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
+  const outbox = new InMemoryOutboxAdapter(interestCreationState);
   const queuePublisher = new InMemoryQueuePublisher();
   const scanQueue = new InMemoryScanQueueAdapter(queuePublisher, new InMemoryMetricsRecorder());
   const quota = new CountingScanQuota();
 
-  const createInterest = new CreateInterestUseCase(topics, outbox, idempotency, ids, clock);
+  const createInterest = new CreateInterestUseCase(new InMemoryInterestCreationStore(interestCreationState), idempotency, ids, clock);
   const firstTopic = unwrap(await createInterest.execute({
     tenantId: tenant,
     workspaceId: workspace,

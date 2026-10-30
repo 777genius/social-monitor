@@ -16,6 +16,7 @@ export type ScanAttemptProps = {
   readonly skippedDuplicates: number;
   readonly projected: number;
   readonly failureReason?: string;
+  readonly terminalFailure?: boolean;
 };
 
 export class ScanAttempt {
@@ -24,7 +25,7 @@ export class ScanAttempt {
   static start(
     props: Omit<
       ScanAttemptProps,
-      'status' | 'finishedAt' | 'fetched' | 'inserted' | 'skippedDuplicates' | 'projected' | 'failureReason'
+      'status' | 'finishedAt' | 'fetched' | 'inserted' | 'skippedDuplicates' | 'projected' | 'failureReason' | 'terminalFailure'
     >,
   ): ScanAttempt {
     return this.rehydrate({
@@ -62,15 +63,17 @@ export class ScanAttempt {
       skippedDuplicates: props.skippedDuplicates,
       projected: props.projected,
       failureReason: undefined,
+      terminalFailure: false,
     });
   }
 
-  fail(props: { readonly finishedAt: Date; readonly failureReason: string }): ScanAttempt {
+  fail(props: { readonly finishedAt: Date; readonly failureReason: string; readonly terminalFailure?: boolean }): ScanAttempt {
     return ScanAttempt.rehydrate({
       ...this.props,
       status: 'failed',
       finishedAt: props.finishedAt,
       failureReason: props.failureReason,
+      terminalFailure: props.terminalFailure ?? false,
     });
   }
 
@@ -107,6 +110,9 @@ export class ScanAttempt {
 
     if (props.status === 'failed' && (props.failureReason ?? '').trim().length === 0) {
       throw new Error('Failed scan attempt must include failure reason');
+    }
+    if (props.terminalFailure === true && props.status !== 'failed') {
+      throw new Error('Only failed scan attempts can carry terminal failure');
     }
   }
 }

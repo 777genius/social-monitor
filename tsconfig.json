@@ -26,12 +26,17 @@
       "@social-monitor/platform-events": ["libs/platform/events/src/index.ts"],
       "@social-monitor/platform-events/*": ["libs/platform/events/src/*"],
       "@social-monitor/platform-grpc": ["libs/platform/grpc/src/index.ts"],
+      "@social-monitor/platform-http": ["libs/platform/http/src/index.ts"],
+      "@social-monitor/platform-http/*": ["libs/platform/http/src/*"],
       "@social-monitor/platform-logging": ["libs/platform/logging/src/index.ts"],
       "@social-monitor/platform-metrics": ["libs/platform/metrics/src/index.ts"],
       "@social-monitor/platform-metrics/*": ["libs/platform/metrics/src/*"],
       "@social-monitor/platform-persistence": ["libs/platform/persistence/src/index.ts"],
       "@social-monitor/platform-persistence/prisma-runtime-client": [
         "libs/platform/persistence/src/prisma-runtime-client.ts"
+      ],
+      "@social-monitor/platform-persistence/prisma-conversation-client": [
+        "libs/platform/persistence/src/prisma-conversation-client.ts"
       ],
       "@social-monitor/platform-queue": ["libs/platform/queue/src/index.ts"],
       "@social-monitor/platform-queue/*": ["libs/platform/queue/src/*"],

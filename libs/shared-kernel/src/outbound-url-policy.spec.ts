@@ -64,4 +64,22 @@ describe('validateOutboundUrl', () => {
       reason: 'Feed URL must use http or https.',
     });
   });
+
+  it.each([
+    'https://localhost./callback', 'https://x.localhost./callback',
+    'https://localhost.localdomain./callback',
+    'https://[fe90::1]/callback', 'https://[febf::1]/callback',
+    'https://[ff02::1]/callback', 'https://[::127.0.0.1]/callback',
+    'https://[::ffff:8.8.8.8]/callback', 'https://[64:ff9b::7f00:1]/callback',
+    'https://[100::1]/callback', 'https://[fc00::1]/callback',
+    'https://user:password@example.test/callback',
+  ])('rejects an unsafe canonical target: %s', (url) => {
+    expect(validateOutboundUrl(url, { label: 'Outbound URL', allowedProtocols: ['https:'] }).ok).toBe(false);
+  });
+
+  it.each(['https://8.8.8.8/callback', 'https://[2606:4700:4700::1111]/callback', 'https://example.com./callback'])(
+    'preserves public destinations: %s', (url) => {
+      expect(validateOutboundUrl(url, { label: 'Outbound URL', allowedProtocols: ['https:'] }).ok).toBe(true);
+    },
+  );
 });

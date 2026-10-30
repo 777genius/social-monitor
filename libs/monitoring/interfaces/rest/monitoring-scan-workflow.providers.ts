@@ -17,6 +17,7 @@ import type {
   ScanExecutionAttemptReadPort,
   ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
+  ScanJobOutcomeRepositoryPort,
   ScanPolicyRepositoryPort,
   ScanQueuePort,
   ScanSchedulerDecisionHistoryPort,
@@ -174,7 +175,7 @@ export const monitoringScanWorkflowProviders = (
   },
   {
     provide: RecordScanExecutionUseCase,
-    useFactory: (scanJobs: ScanJobRepositoryPort) =>
+    useFactory: (scanJobs: ScanJobRepositoryPort & ScanJobOutcomeRepositoryPort) =>
       new RecordScanExecutionUseCase(scanJobs),
     inject: [MONITORING_SCAN_JOB_REPOSITORY],
   },

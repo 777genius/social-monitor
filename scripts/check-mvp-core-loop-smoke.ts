@@ -1,3 +1,6 @@
+import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
+import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
+import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import {
   DomainError,
   type EventEnvelope,
@@ -91,19 +94,20 @@ import { DeliveryAttemptDispatchLoop } from '../apps/delivery-service/src/delive
 type QueuedScanPayload = Omit<ExecuteScanCommand, 'correlationId' | 'causationId'>;
 
 const fixedNow = new Date('2026-06-06T00:00:00.000Z');
-const tenant = tenantId('tenant-mvp-core-loop-smoke');
-const workspace = workspaceId('workspace-mvp-core-loop-smoke');
+const tenant = tenantId('00000000-0000-7000-8000-000000000701');
+const workspace = workspaceId('00000000-0000-7000-8000-000000000702');
 const correlation = 'mvp-core-loop-correlation';
 
 async function main(): Promise<void> {
   const ids = new SequenceIdGenerator('mvp-core');
   const clock = new FixedClock(fixedNow);
-  const topics = new InMemoryInterestRepository();
+  const interestCreationState = new InMemoryInterestCreationState();
+  const topics = new InMemoryInterestRepository(interestCreationState);
   const bindings = new InMemorySourceBindingRepository();
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
-  const outbox = new InMemoryOutboxAdapter();
-  const idempotency = new InMemoryIdempotencyAdapter();
+  const outbox = new InMemoryOutboxAdapter(interestCreationState);
+  const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
   const queuePublisher = new InMemoryQueuePublisher();
   const scanQueue = new InMemoryScanQueueAdapter(queuePublisher, new InMemoryMetricsRecorder());
   const feedItems = new InMemoryFeedItemReadRepository();
@@ -120,7 +124,7 @@ async function main(): Promise<void> {
   const realtimeEvents = new InMemoryRealtimeEventRepository();
 
   const topic = unwrap(
-    await new CreateInterestUseCase(topics, outbox, idempotency, ids, clock).execute({
+    await new CreateInterestUseCase(new InMemoryInterestCreationStore(interestCreationState), idempotency, ids, clock).execute({
       tenantId: tenant,
       workspaceId: workspace,
       name: 'AI Infrastructure',
@@ -443,10 +447,11 @@ async function main(): Promise<void> {
   const deliveryDispatchLoop = new DeliveryAttemptDispatchLoop(
     new SendDeliveryAttemptCommandHandler(
       new SendDeliveryAttemptUseCase(
-        deliveryAttempts,
+        deliveryAttempts.workflow,
         [deliveryProvider],
         new InMemoryNotificationPreferenceReader(),
         new FixedClock(new Date('2026-06-06T00:05:00.000Z')),
+        new CryptoIdGenerator(),
       ),
       deliveryMetrics,
       deliveryRuntime,

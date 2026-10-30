@@ -54,12 +54,14 @@ export function readyRecoveryFixture(count = 1) {
   let cancelled = false;
   const cancelPendingPublishes = () => { cancelled = true; };
   const channel = { assertExchange: jest.fn(async () => undefined), assertQueue: jest.fn(), bindQueue: jest.fn(),
-    publish: jest.fn(async () => { if (cancelled) throw new Error('Publishing cancelled'); return true; }),
+    publish: jest.fn(async (...args: readonly unknown[]) => { void args; if (cancelled) throw new Error('Publishing cancelled'); return true; }),
     waitForConfirms: jest.fn(async () => { await consume(); }) };
   const persistence = recoveryPersistence(db, clock);
   const options = () => { const bytes = Buffer.from(JSON.stringify(manifest)); return { bytes, reviewedSha256: bytesSha256(bytes),
     deployedSha: manifest.deployedSourceSha, apply: true, clock, persistence,
-    publisher: new RabbitMqEventPublisher(channel, { exchange: 'social-monitor.events' }), cancelPendingPublishes, sleep: async () => undefined,
+    publisher: new RabbitMqEventPublisher({ ...channel, publishAndConfirm: async (...args: readonly unknown[]) => {
+      const accepted = await channel.publish(...args); if (accepted) await channel.waitForConfirms(); return accepted;
+    } }, { exchange: 'social-monitor.events' }), cancelPendingPublishes, sleep: async () => undefined,
     receipts: (m: RecoveryManifest, b: Buffer) => recoveryReceipts(m, b, files) }; };
   return { directory, manifest, snapshots, db, persistence, channel, consume, options,
     run: (apply = true) => runReadyRecovery({ ...options(), apply }),

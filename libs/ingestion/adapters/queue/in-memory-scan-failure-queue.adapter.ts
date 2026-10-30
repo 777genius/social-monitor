@@ -1,23 +1,34 @@
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 
-import type {
-  FailedScanCommand,
-  RetryScanCommand,
-  ScanFailureInspectionPort,
-  ScanFailureQueuePort,
-  ScanRetryQueuePort,
+import {
+  assertValidScanRetryClaim,
+  type ScanRetryDelivery,
+  type RetryScanCommand,
+  type FailedScanCommand,
+  type ScanFailureInspectionPort,
+  type ScanFailureQueuePort,
+  type ScanRetryQueuePort,
 } from '../../ports';
+
+type RetryEntry = {
+  readonly command: RetryScanCommand;
+  claimVersion?: number;
+  claimedUntil?: number;
+};
 
 export class InMemoryScanFailureQueueAdapter
   implements ScanFailureQueuePort, ScanFailureInspectionPort, ScanRetryQueuePort
 {
-  private readonly retryCommands: RetryScanCommand[] = [];
+  private readonly retryCommands: RetryEntry[] = [];
   private readonly deadLetters: FailedScanCommand[] = [];
+  private nextClaimVersion = 0;
 
   constructor(private readonly metrics: MetricsRecorderPort) {}
 
   async enqueueRetry(command: RetryScanCommand): Promise<void> {
-    this.retryCommands.push(command);
+    if (this.retryCommands.some((entry) => sameFailure(entry.command, command) &&
+        entry.command.nextAttemptNumber === command.nextAttemptNumber)) return;
+    this.retryCommands.push({ command });
     this.metrics.incrementCounter({
       name: 'scan_failure_queue_events_total',
       labels: {
@@ -35,6 +46,7 @@ export class InMemoryScanFailureQueueAdapter
   }
 
   async deadLetter(command: FailedScanCommand): Promise<void> {
+    if (this.deadLetters.some((entry) => sameFailure(entry, command))) return;
     this.deadLetters.push(command);
     this.metrics.incrementCounter({
       name: 'scan_failure_queue_events_total',
@@ -53,17 +65,45 @@ export class InMemoryScanFailureQueueAdapter
   }
 
   retries(): readonly RetryScanCommand[] {
-    return [...this.retryCommands];
+    return this.retryCommands.map((entry) => entry.command);
   }
 
-  async drainRetries(
-    params: Parameters<ScanRetryQueuePort['drainRetries']>[0],
-  ): Promise<readonly RetryScanCommand[]> {
-    if (!Number.isInteger(params.limit) || params.limit < 1) {
-      throw new Error('Scan retry drain limit must be a positive integer');
-    }
+  async claimRetries(
+    params: Parameters<ScanRetryQueuePort['claimRetries']>[0],
+  ): Promise<readonly ScanRetryDelivery[]> {
+    assertValidScanRetryClaim(params);
+    return this.retryCommands.filter((entry) =>
+      entry.claimedUntil === undefined || entry.claimedUntil <= params.now.getTime(),
+    ).slice(0, params.limit).map((entry) => {
+      const version = ++this.nextClaimVersion;
+      entry.claimVersion = version;
+      entry.claimedUntil = params.now.getTime() + params.visibilityTimeoutSeconds * 1000;
+      const owns = () => this.retryCommands.includes(entry) && entry.claimVersion === version;
+      const settle = async (requeue: boolean, deadLetter: boolean) => {
+        if (!owns()) return;
+        if (requeue) {
+          entry.claimVersion = undefined;
+          entry.claimedUntil = undefined;
+        } else {
+          this.retryCommands.splice(this.retryCommands.indexOf(entry), 1);
+          if (deadLetter) await this.deadLetter(entry.command);
+        }
+        this.recordRetryBacklog();
+      };
+      return {
+        command: entry.command,
+        renew: async (now: Date) => {
+          if (!owns() || entry.claimedUntil! <= now.getTime()) return false;
+          entry.claimedUntil = now.getTime() + params.visibilityTimeoutSeconds * 1000;
+          return true;
+        },
+        ack: () => settle(false, false),
+        nack: ({ requeue }: { readonly requeue: boolean }) => settle(requeue, !requeue),
+      };
+    });
+  }
 
-    const drained = this.retryCommands.splice(0, params.limit);
+  private recordRetryBacklog(): void {
     this.metrics.recordGauge({
       name: 'scan_failure_queue_backlog',
       value: this.retryCommands.length,
@@ -72,7 +112,6 @@ export class InMemoryScanFailureQueueAdapter
       },
     });
 
-    return drained;
   }
 
   deadLettered(): readonly FailedScanCommand[] {
@@ -87,3 +126,7 @@ export class InMemoryScanFailureQueueAdapter
       .slice(0, params.limit);
   }
 }
+
+const sameFailure = (left: FailedScanCommand, right: FailedScanCommand): boolean =>
+  left.tenantId === right.tenantId && left.workspaceId === right.workspaceId &&
+  left.scanJobId === right.scanJobId && left.attemptNumber === right.attemptNumber;

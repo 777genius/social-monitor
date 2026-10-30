@@ -66,6 +66,17 @@ async function main(): Promise<void> {
         refreshSkewMs: 60_000,
         timeoutMs: 10_000,
         tokenUrlPolicy: allowLocalTokenUrlForSmoke,
+        // Explicit fixture-only HTTP localhost transport; production uses
+        // GuardedOAuth2TokenHttpClient with TLS and public socket checks.
+        httpClient: {
+          post: async ({ url, headers, body, timeoutMs }) => {
+            const response = await fetch(url, {
+              method: 'POST', headers, body,
+              signal: AbortSignal.timeout(timeoutMs), redirect: 'error',
+            });
+            return { status: response.status, body: await response.text() };
+          },
+        },
       }),
       clock,
     );

@@ -41,21 +41,23 @@ const setup = async (options: { fetchReturns?: boolean; failReport?: boolean; ch
       if (options.changeCursor) await scanCursors.save({ ...cursorScope, cursor: movedCursor, committedAt: now });
     },
   };
-  const fetcher: SourceFetcherPort = { fetch: async () => {
+  const fetch = jest.fn(async () => {
     if (!options.fetchReturns) throw new SourceFetchError({ providerKey: 'telegram', kind: 'rate_limited', retryable: true,
       retryAfterMs: 120_000, message: 'Synthetic provider failure must not be printed' });
     return { items: [{ externalId: 'hiaimediaen/30', canonicalUrl: 'https://t.me/hiaimediaen/30',
       title: 'Synthetic post', body: 'Synthetic native content', publishedAt: now }], nextCursor: movedCursor };
-  } };
+  });
+  const fetcher: SourceFetcherPort = { fetch };
   const observed = observeTelegramCollectionOperation(fetcher, reporting);
   const project = jest.fn(async () => { throw new Error('Synthetic post-persistence failure'); });
   const executeScan = new ExecuteScanUseCase(observed.fetcher, sourceItems, { project }, scanAttempts, scanCursors, observed.reporter,
     failureQueue, new InMemoryScanLeaseAdapter(), ids, clock);
+  const execute = jest.spyOn(executeScan, 'execute');
   const runtime = { executeScan, operationalState: observed.operationalState, execution: {
     scanCursors, reporter: observed.reporter, scanJobIdForAttempt: (scope: Parameters<typeof reporter.beginAttempt>[0]) => reporter.beginAttempt(scope),
     correlationId: 'synthetic-correlation', causationId: 'synthetic-causation',
   } };
-  return { runtime, saveBatch, project, scanJobs, scanAttempts, failureQueue, cursorScope };
+  return { runtime, execute, fetch, saveBatch, project, scanJobs, scanAttempts, failureQueue, cursorScope };
 };
 
 describe('Telegram deferred provider acquisition', () => {
@@ -85,11 +87,36 @@ describe('Telegram deferred provider acquisition', () => {
     expect(fixture.runtime.operationalState()).toEqual({ fetchFailed: false, failureReported: true });
   });
 
-  it('propagates failed reporting without producing a deferred result', async () => {
-    const fixture = await setup({ failReport: true });
-    await expect(collectTelegramChannel(target, fixture.runtime)).rejects.toThrow('Synthetic report persistence failure');
+  it('rejects sanitized reporting failure and repairs the same durable attempt without deferred success', async () => {
+    const options = { failReport: true };
+    const fixture = await setup(options);
+    await expect(collectTelegramChannel(target, fixture.runtime)).rejects.toMatchObject({
+      code: 'collection_failed', message: 'collection_failed',
+    });
+    await expect(fixture.execute.mock.results[0]!.value).resolves.toMatchObject({
+      ok: false, error: { code: 'external.dependency_unavailable', details: { reason: 'scan_outcome_reporting_failed' } },
+    });
+    const command = fixture.execute.mock.calls[0]![0];
     expect(fixture.runtime.operationalState()).toEqual({ fetchFailed: true, failureReported: false });
-    expect(fixture.failureQueue.deadLettered()).toHaveLength(0);
+    expect(fixture.failureQueue.deadLettered()).toEqual([
+      expect.objectContaining({ scanJobId: command.scanJobId, attemptNumber: 1 }),
+    ]);
+    expect((await fixture.scanAttempts.findByScanJob(command))?.toSnapshot()).toMatchObject({ status: 'failed', terminalFailure: true });
+    expect(await fixture.scanJobs.findById(command)).toBeNull();
+    expect((await fixture.runtime.execution.scanCursors.findBySourceBinding(fixture.cursorScope))?.cursor).toBe(initialCursor);
+    expect(fixture.saveBatch).not.toHaveBeenCalled();
+    expect(fixture.project).not.toHaveBeenCalled();
+
+    options.failReport = false;
+    expect((await fixture.runtime.executeScan.execute(command)).ok).toBe(false);
+    expect(fixture.fetch).toHaveBeenCalledTimes(1);
+    expect(fixture.runtime.operationalState()).toEqual({ fetchFailed: true, failureReported: true });
+    expect((await fixture.scanJobs.findById(command))?.toSnapshot().status).toBe('failed');
+    expect(fixture.failureQueue.deadLettered()).toHaveLength(1);
+    expect(fixture.failureQueue.retries()).toEqual([]);
+    expect((await fixture.runtime.execution.scanCursors.findBySourceBinding(fixture.cursorScope))?.cursor).toBe(initialCursor);
+    expect(fixture.saveBatch).not.toHaveBeenCalled();
+    expect(fixture.project).not.toHaveBeenCalled();
   });
 
   it('refuses deferred success if the raw durable cursor changed', async () => {

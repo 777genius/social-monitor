@@ -1,6 +1,7 @@
+import { CommandOutboxDispatcher } from '@social-monitor/platform-queue';
+import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import { DeliveryAttempt } from '@social-monitor/delivery/domain';
 import { InMemoryDeliveryProvider } from '@social-monitor/delivery/adapters/notification/in-memory-delivery.provider';
-import { InMemoryDeliveryAttemptDispatchQueueAdapter } from '@social-monitor/delivery/adapters/messaging/in-memory-delivery-attempt-dispatch-queue.adapter';
 import { InMemoryDeliveryAttemptRepository } from '@social-monitor/delivery/adapters/persistence/in-memory-delivery-attempt.repository';
 import { InMemoryNotificationPreferenceReader } from '@social-monitor/delivery/adapters/preferences/in-memory-notification-preference.reader';
 import { EnqueueDeliveryAttemptDispatchUseCase } from '@social-monitor/delivery/features/enqueue-delivery-attempt-dispatch/enqueue-delivery-attempt-dispatch.use-case';
@@ -28,8 +29,8 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
 };
 
 async function main(): Promise<void> {
-  const tenant = tenantId('tenant-delivery-attempt-queue-drain-smoke');
-  const workspace = workspaceId('workspace-delivery-attempt-queue-drain-smoke');
+  const tenant = tenantId('00000000-0000-7000-8000-000000000811');
+  const workspace = workspaceId('00000000-0000-7000-8000-000000000812');
   const deliveryAttemptId = 'delivery-attempt-queue-drain-smoke';
   const attempts = new InMemoryDeliveryAttemptRepository();
   const queuePublisher = new InMemoryQueuePublisher();
@@ -52,8 +53,8 @@ async function main(): Promise<void> {
   }));
 
   const enqueueDispatch = new EnqueueDeliveryAttemptDispatchUseCase(
-    attempts,
-    new InMemoryDeliveryAttemptDispatchQueueAdapter(queuePublisher, metrics),
+    attempts.workflow,
+    new CryptoIdGenerator(),
     new FixedClock(new Date('2026-06-16T04:11:00.000Z')),
   );
 
@@ -67,6 +68,15 @@ async function main(): Promise<void> {
   if (!enqueued.ok) {
     throw enqueued.error;
   }
+
+  await new CommandOutboxDispatcher(attempts.workflow, {
+    publish: async (command) => {
+      await queuePublisher.publish(command);
+      metrics.incrementCounter({ name: 'queue_commands_enqueued_total', labels: {
+        command_type: command.commandType, job_type: 'delivery', status: 'enqueued',
+      } });
+    },
+  }, new CryptoIdGenerator(), new FixedClock(new Date('2026-06-16T04:11:00.000Z'))).dispatchBatch(10);
 
   assert(enqueued.value.enqueued, 'delivery dispatch enqueue use case must publish a command');
   assert(enqueued.value.state === 'assembling', 'queued dispatch attempt must move to assembling state');
@@ -84,10 +94,11 @@ async function main(): Promise<void> {
     new InMemoryDeliveryAttemptQueueReader(queuePublisher),
     new SendDeliveryAttemptCommandHandler(
       new SendDeliveryAttemptUseCase(
-        attempts,
+        attempts.workflow,
         [provider],
         new InMemoryNotificationPreferenceReader(),
         new FixedClock(new Date('2026-06-16T04:12:00.000Z')),
+        new CryptoIdGenerator(),
       ),
       metrics,
       runtime,

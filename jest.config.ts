@@ -13,6 +13,8 @@ const config: Config = {
     '^@social-monitor/platform-events$': '<rootDir>/libs/platform/events/src/index.ts',
     '^@social-monitor/platform-events/(.*)$': '<rootDir>/libs/platform/events/src/$1',
     '^@social-monitor/platform-grpc$': '<rootDir>/libs/platform/grpc/src/index.ts',
+    '^@social-monitor/platform-http$': '<rootDir>/libs/platform/http/src/index.ts',
+    '^@social-monitor/platform-http/(.*)$': '<rootDir>/libs/platform/http/src/$1',
     '^@social-monitor/platform-logging$': '<rootDir>/libs/platform/logging/src/index.ts',
     '^@social-monitor/platform-metrics$': '<rootDir>/libs/platform/metrics/src/index.ts',
     '^@social-monitor/platform-metrics/(.*)$':
@@ -20,6 +22,8 @@ const config: Config = {
     '^@social-monitor/platform-persistence$': '<rootDir>/libs/platform/persistence/src/index.ts',
     '^@social-monitor/platform-persistence/prisma-runtime-client$':
       '<rootDir>/libs/platform/persistence/src/prisma-runtime-client.ts',
+    '^@social-monitor/platform-persistence/prisma-conversation-client$':
+      '<rootDir>/libs/platform/persistence/src/prisma-conversation-client.ts',
     '^@social-monitor/platform-queue$': '<rootDir>/libs/platform/queue/src/index.ts',
     '^@social-monitor/platform-queue/(.*)$': '<rootDir>/libs/platform/queue/src/$1',
     '^@social-monitor/platform-request-context$': '<rootDir>/libs/platform/request-context/src/index.ts',

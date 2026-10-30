@@ -24,6 +24,7 @@ import {
   MONITORING_CONFIG_PROTECTOR,
   MONITORING_IDEMPOTENCY,
   MONITORING_INTEREST_REPOSITORY,
+  MONITORING_INTEREST_CREATION_COMMIT,
   MONITORING_OUTBOX,
   MONITORING_PERSISTENCE_MODE,
   MONITORING_PRISMA_CLIENT,
@@ -89,7 +90,7 @@ describe('MonitoringRestModule composition', () => {
   it('keeps critical tokens bound to the same dependencies as singleton providers', () => {
     const providers = moduleMetadata<Provider[]>(MODULE_PROVIDERS);
 
-    expect(providers).toHaveLength(46);
+    expect(providers).toHaveLength(48);
     expect(factoryProvider(MONITORING_SOURCE_BINDING_REPOSITORY).inject).toEqual(
       [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
     );
@@ -101,8 +102,7 @@ describe('MonitoringRestModule composition', () => {
       ],
     );
     expect(factoryProvider(CreateInterestUseCase).inject).toEqual([
-      MONITORING_INTEREST_REPOSITORY,
-      MONITORING_OUTBOX,
+      MONITORING_INTEREST_CREATION_COMMIT,
       MONITORING_IDEMPOTENCY,
     ]);
     expect(factoryProvider(RequestScanUseCase).inject).toEqual([

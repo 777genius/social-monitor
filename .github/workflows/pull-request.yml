@@ -407,6 +407,40 @@ jobs:
           TENANT_RLS_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_rls_ci
         run: npm run check:tenant-rls-postgres
 
+      # These current-schema contract regressions use their own disposable DB;
+      # they do not replace the historical migration or RLS proof above.
+      - name: Materialize the isolated reliability contract database
+        env:
+          ARCHITECTURE_RELIABILITY_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_rls_ci
+          DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/architecture_reliability_test_ci
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const { Client } = require('pg');
+          async function main() {
+            const client = new Client({ connectionString: process.env.ARCHITECTURE_RELIABILITY_TEST_ADMIN_DATABASE_URL });
+            await client.connect();
+            try {
+              await client.query('CREATE DATABASE architecture_reliability_test_ci');
+            } finally {
+              await client.end();
+            }
+          }
+          main().catch(() => { console.error('Disposable reliability contract database creation failed'); process.exitCode = 1; });
+          NODE
+          npx prisma db push --schema prisma/schema.prisma
+
+      - name: Prove reliability transaction and ownership contracts
+        env:
+          SCAN_RETRY_TEST_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/architecture_reliability_test_ci
+          DELIVERY_WORKFLOW_TEST_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/architecture_reliability_test_ci
+          INTEREST_CREATION_TEST_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/architecture_reliability_test_ci
+        run: |
+          set -euo pipefail
+          npm run check:scan-retry-claims:postgres
+          npm run check:delivery-workflow-postgres
+          npm run check:interest-creation-postgres
+
   reader_promotion_v2_canary_postgres18:
     name: Reader Promotion V2 canary PostgreSQL 18
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}

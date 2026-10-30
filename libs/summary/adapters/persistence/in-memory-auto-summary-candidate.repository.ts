@@ -1,7 +1,6 @@
-import type { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
-
 import type { SummaryJob } from '../../domain';
 import type { AutoSummaryCandidate, AutoSummaryCandidateRepositoryPort } from '../../ports';
+import type { AutoSummaryFeedItemInventory } from '../../ports/auto-summary-candidate-repository.port';
 import type { InMemorySummaryJobRepository } from './in-memory-summary-job.repository';
 import type { InMemorySummaryPolicyRepository } from './in-memory-summary-policy.repository';
 
@@ -9,7 +8,7 @@ export class InMemoryAutoSummaryCandidateRepository implements AutoSummaryCandid
   constructor(
     private readonly policies: InMemorySummaryPolicyRepository,
     private readonly summaryJobs: InMemorySummaryJobRepository,
-    private readonly feedItems: InMemoryFeedItemReadRepository,
+    private readonly feedItems: AutoSummaryFeedItemInventory,
   ) {}
 
   async findDueCandidates(

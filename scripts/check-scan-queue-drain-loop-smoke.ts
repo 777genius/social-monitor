@@ -95,8 +95,8 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
 };
 
 async function main(): Promise<void> {
-  const tenant = tenantId('tenant-scan-queue-drain-loop-smoke');
-  const workspace = workspaceId('workspace-scan-queue-drain-loop-smoke');
+  const tenant = tenantId('00000000-0000-7000-8000-000000000601');
+  const workspace = workspaceId('00000000-0000-7000-8000-000000000602');
   const now = new Date('2026-06-06T10:00:00.000Z');
   const bindings = new InMemorySourceBindingRepository();
   const scanPolicies = new InMemoryScanPolicyRepository();
@@ -396,8 +396,8 @@ async function verifyScanQueueDeliveryLagMetric(): Promise<void> {
       schemaVersion: 1,
       correlationId: 'scan-lag-metric-smoke',
       payload: {
-        tenantId: 'tenant-scan-lag-metric-smoke',
-        workspaceId: 'workspace-scan-lag-metric-smoke',
+        tenantId: '00000000-0000-7000-8000-000000000603',
+        workspaceId: '00000000-0000-7000-8000-000000000604',
         scanJobId: 'scan-lag-metric-smoke',
       },
     },
@@ -413,7 +413,7 @@ async function verifyScanQueueDeliveryLagMetric(): Promise<void> {
     drain: async () => [delivery],
   };
   const retryQueue: ScanRetryQueuePort = {
-    drainRetries: async () => [],
+    claimRetries: async () => [],
   };
   const handler = {
     handle: async () => undefined,

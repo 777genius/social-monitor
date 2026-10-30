@@ -1,3 +1,6 @@
+import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
+import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
+import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import { correlationId, userId } from "./lib/autonomous-monitoring-loop-scope";
 import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
 import { InMemoryDeliveryProvider } from "@social-monitor/delivery/adapters/notification/in-memory-delivery.provider";
@@ -18,7 +21,6 @@ import { QueueDeliveryAttemptUseCase } from "@social-monitor/delivery/features/q
 import { ScheduleDueDigestsUseCase } from "@social-monitor/delivery/features/schedule-due-digests/schedule-due-digests.use-case";
 import { SendDeliveryAttemptUseCase } from "@social-monitor/delivery/features/send-delivery-attempt/send-delivery-attempt.use-case";
 import { SendDeliveryAttemptCommandHandler } from "@social-monitor/delivery/interfaces/queue/send-delivery-attempt-command.handler";
-import { InMemoryFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { InMemoryQueuePublisher } from "@social-monitor/platform-queue/adapters/in-memory";
 import { WorkerRuntime } from "@social-monitor/platform-worker";
@@ -79,22 +81,26 @@ import { RecordScanExecutionUseCase } from "../libs/monitoring/features/record-s
 import { ScheduleDueScansUseCase } from "../libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case";
 import { SequenceIdGenerator, unwrap, assert, bindProviders, audit, DeterministicMultiProviderFetcher, MonitoringScanExecutionReporter, drainScanCommands, executeScanCommands, listFeed, executeReplayScans, AllowingSummaryQuota, parseSummaryPayload, assertSummaryReadyEvent, writeOrValidateEvidence } from "./lib/autonomous-monitoring-loop-support";
 import { fixedNow, digestSchedulerNow, tenant, workspace, providerKeys, digestDueAt } from "./lib/autonomous-monitoring-loop-scope";
+import { providerFixtureCount, hasIntentionalCrossProviderDuplicate } from "./lib/autonomous-monitoring-loop-support";
+import { FixturePersistedGitHubProjectionReader, hasCompleteCitedGitHubBoard } from "./lib/autonomous-monitoring-loop-github-projection";
+import { FixtureExactEvidenceReviewer, FixturePersistedPromotionFeedRepository, primaryCoverageIds } from "./lib/autonomous-monitoring-loop-promotion";
 
 async function main(): Promise<void> {
   const ids = new SequenceIdGenerator("autonomous-loop");
   const clock = new FixedClock(fixedNow);
   const digestClock = new FixedClock(digestSchedulerNow);
   const metrics = new InMemoryMetricsRecorder();
-  const interests = new InMemoryInterestRepository();
+  const interestCreationState = new InMemoryInterestCreationState();
+  const interests = new InMemoryInterestRepository(interestCreationState);
   const bindings = new InMemorySourceBindingRepository();
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
-  const outbox = new InMemoryOutboxAdapter();
-  const idempotency = new InMemoryIdempotencyAdapter();
+  const outbox = new InMemoryOutboxAdapter(interestCreationState);
+  const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
   const scanQueuePublisher = new InMemoryQueuePublisher();
   const scanQueue = new InMemoryScanQueueAdapter(scanQueuePublisher, metrics);
-  const feedItems = new InMemoryFeedItemReadRepository();
   const sourceItems = new InMemorySourceItemRepository();
+  const feedItems = new FixturePersistedPromotionFeedRepository(sourceItems);
   const scanAttempts = new InMemoryScanAttemptRepository();
   const summaryJobs = new InMemorySummaryJobRepository();
   const summaryArtifacts = new InMemorySummaryArtifactRepository();
@@ -116,11 +122,12 @@ async function main(): Promise<void> {
   );
   const relevanceProfiles = new InMemoryUserRelevanceProfileRepository();
   const relevanceFeedback = new InMemoryRelevanceFeedbackRepository();
+  const fixtureReviewer = new FixtureExactEvidenceReviewer(sourceItems, feedItems);
   const rankFeedItems = new RankFeedItemsUseCase(
     feedItems,
     relevanceProfiles,
     clock,
-    undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, fixtureReviewer, undefined,
     new MonitoringConfiguredInterestReader(interests),
   );
   const deliveryAttempts = new InMemoryDeliveryAttemptRepository();
@@ -137,8 +144,7 @@ async function main(): Promise<void> {
 
   const interest = unwrap(
     await new CreateInterestUseCase(
-      interests,
-      outbox,
+      new InMemoryInterestCreationStore(interestCreationState),
       idempotency,
       ids,
       clock,
@@ -162,7 +168,7 @@ async function main(): Promise<void> {
       language: "en",
       format: "bullet_digest",
       tone: "analytical",
-      maxKeyPoints: 8,
+      maxKeyPoints: 10,
       includeRisks: true,
       includeSourceHighlights: true,
       customInstructions:
@@ -271,9 +277,10 @@ async function main(): Promise<void> {
   assert(
     initialScanMetrics.every(
       (metric) =>
-        metric.fetched === 2 && metric.inserted === 2 && metric.projected === 2,
+        metric.fetched === providerFixtureCount(metric.providerKey) &&
+        metric.inserted === metric.fetched && metric.projected === metric.fetched,
     ),
-    "initial provider scans must fetch, insert and project two findings per provider",
+    "initial scans must persist each provider fixture, including the complete GitHub daily board",
   );
   await audit(
     recordAudit,
@@ -294,7 +301,7 @@ async function main(): Promise<void> {
   );
 
   const feedAfterInitialScans = await listFeed(feedItems, interest.interestId, clock);
-  const expectedInitialFeedFindings = providerKeys.length * 2;
+  const expectedInitialFeedFindings = providerKeys.reduce((total, key) => total + providerFixtureCount(key), 0);
   assert(
     feedAfterInitialScans.items.length === expectedInitialFeedFindings,
     `expected ${expectedInitialFeedFindings} feed findings, got ${feedAfterInitialScans.items.length}`,
@@ -308,7 +315,7 @@ async function main(): Promise<void> {
   });
   assert(
     replayMetrics.every(
-      (metric) => metric.inserted === 0 && metric.skippedDuplicates === 2,
+      (metric) => metric.inserted === 0 && metric.skippedDuplicates === providerFixtureCount(metric.providerKey),
     ),
     "replayed provider scans must deduplicate source items",
   );
@@ -341,8 +348,8 @@ async function main(): Promise<void> {
     "GitHub Issues agents reliability finding should rank first for this user profile",
   );
   assert(
-    ranked.items.some((item) => item.clusterSize > 1),
-    "ranking must cluster duplicate or near-duplicate findings",
+    hasIntentionalCrossProviderDuplicate(ranked.items, scanBindings),
+    "ranking must cluster the intentional GitHub Issues and Reddit release duplicate",
   );
   assert(
     !JSON.stringify(ranked.items)
@@ -413,6 +420,9 @@ async function main(): Promise<void> {
         ids,
         clock,
         readerSummaryPromotionControl(new ReaderSummaryPromotionMetricsRecorder(metrics)),
+        undefined, undefined, undefined, undefined,
+        new FixturePersistedGitHubProjectionReader(sourceItems, feedItems, bindings,
+          scanBindings.map((binding) => binding.sourceBindingId)),
       ),
       metrics,
       readerRuntime,
@@ -445,7 +455,7 @@ async function main(): Promise<void> {
   );
   assert(
     readerSummaryJob.status === "completed",
-    `expected completed reader summary, got ${readerSummaryJob.status}`,
+    `expected completed reader summary, got ${readerSummaryJob.status}: ${readerSummaryJob.failureReason ?? "no failure reason"}`,
   );
   assert(
     readerSummaryJob.readerSummaryId !== undefined,
@@ -457,6 +467,8 @@ async function main(): Promise<void> {
     "reader summary artifact must be persisted",
   );
   const readerSummarySnapshot = readerSummaryArtifact.toSnapshot();
+  assert(fixtureReviewer.acceptedReviewCount === 4,
+    "reader summary must authenticate exact captured evidence for all four curated primary candidates");
   const readerSummaryView = presentReaderSummaryArtifact(
     readerSummaryArtifact,
     {
@@ -487,8 +499,13 @@ async function main(): Promise<void> {
   );
   assert(
     readerSummaryRestView.coverage.selectedFeedItemCount ===
-      readerSummarySnapshot.sourceWindow.selectedFeedItemIds.length,
-    "frontend coverage must match the persisted source window",
+      primaryCoverageIds(readerSummarySnapshot).length && primaryCoverageIds(readerSummarySnapshot).every(
+        (id) => readerSummarySnapshot.sourceWindow.selectedFeedItemIds.includes(id)),
+    "frontend primary coverage must match persisted promotion identities within the source window",
+  );
+  assert(
+    hasCompleteCitedGitHubBoard(readerSummarySnapshot),
+    "the supplemental GitHub daily board must retain ten independently cited repositories",
   );
   assert(
     Date.parse(readerSummaryRestView.sourceWindow.startedAt) >=
@@ -765,10 +782,11 @@ async function main(): Promise<void> {
   const dispatchLoop = new DeliveryAttemptDispatchLoop(
     new SendDeliveryAttemptCommandHandler(
       new SendDeliveryAttemptUseCase(
-        deliveryAttempts,
+        deliveryAttempts.workflow,
         [webhookProvider],
         new InMemoryNotificationPreferenceReader(),
         digestClock,
+        new CryptoIdGenerator(),
       ),
       deliveryMetrics,
       runtime,
@@ -855,6 +873,9 @@ async function main(): Promise<void> {
       fixtureOnly: true,
       liveProviderCredentialsRequired: false,
       externalNetworkRequired: false,
+      engagementAuthority: "synthetic_first_observation_from_persisted_fixture_rows",
+      sourceQualityReviewer: "curated_exact_captured_text_with_authenticated_request_binding",
+      storyCorpus: "synthetic_queuewatch_monitoring_stories_and_provider_fixtures",
     },
     providerKeys,
     signals: [
@@ -937,6 +958,7 @@ async function main(): Promise<void> {
       rankedItems: ranked.items.length,
       readerSummaryTopReads: readerSummaryRestView.readerBrief.topReads.length,
       readerSummaryCitations: readerSummaryRestView.citations.length,
+      readerSummaryAssessedCandidates: fixtureReviewer.acceptedReviewCount,
       citationCount: summarySnapshot.citationMap.length,
       digestProvenanceItems: digestView.provenance.length,
       webhookDeliveries: webhookProvider.getSentRequests().length,

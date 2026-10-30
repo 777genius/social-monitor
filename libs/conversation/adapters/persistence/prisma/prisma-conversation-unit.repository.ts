@@ -17,7 +17,7 @@ import type {
   SaveConversationUnitsCommand,
   SaveConversationUnitsResult,
 } from '../../../ports/conversation-unit-repository.port';
-import type { PrismaConversationClient } from './prisma-conversation-client';
+import type { PrismaConversationClient } from '@social-monitor/platform-persistence/prisma-conversation-client';
 import {
   conversationSignalBaselineSampleFromPrisma,
   conversationUnitFromPrisma,

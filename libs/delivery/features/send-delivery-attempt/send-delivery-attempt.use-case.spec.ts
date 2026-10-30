@@ -1,197 +1,39 @@
-import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import type { DeliveryAttempt } from '../../domain';
-import type {
-  DeliveryAttemptRepositoryPort,
-  DeliveryProviderPort,
-  ListDeliveryAttemptsQuery,
-  ListDeliveryAttemptsResult,
-  SendDeliveryRequest,
-  SendDeliveryResult,
-  NotificationPreferenceReaderPort,
-} from '../../ports';
-import { QueueDeliveryAttemptUseCase } from '../queue-delivery-attempt/queue-delivery-attempt.use-case';
+import type { DeliveryAttemptExecutionStore } from '../../application/contracts/delivery-attempt-workflow';
+import { DeliveryAttempt } from '../../domain';
 import { SendDeliveryAttemptUseCase } from './send-delivery-attempt.use-case';
 
-class SequenceIdGenerator implements IdGenerator {
-  private nextId = 1;
+const scope = { tenantId: tenantId('tenant-test'), workspaceId: workspaceId('workspace-test'), deliveryAttemptId: 'attempt-test' };
+const clock = new FixedClock(new Date('2026-10-30T10:00:00Z'));
 
-  generate(): string {
-    const id = `delivery-attempt-${this.nextId}`;
-    this.nextId += 1;
-    return id;
-  }
-}
-
-class FakeDeliveryAttempts implements DeliveryAttemptRepositoryPort {
-  private readonly attemptsById = new Map<string, DeliveryAttempt>();
-  private readonly attemptsByIdempotencyKey = new Map<string, DeliveryAttempt>();
-
-  async save(attempt: DeliveryAttempt): Promise<void> {
-    const snapshot = attempt.toSnapshot();
-
-    this.attemptsById.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, attempt);
-    this.attemptsByIdempotencyKey.set(
-      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.idempotencyKey}`,
-      attempt,
-    );
-  }
-
-  async findById(params: Parameters<DeliveryAttemptRepositoryPort['findById']>[0]): Promise<DeliveryAttempt | null> {
-    return this.attemptsById.get(`${params.tenantId}:${params.workspaceId}:${params.deliveryAttemptId}`) ?? null;
-  }
-
-  async findByIdempotencyKey(
-    params: Parameters<DeliveryAttemptRepositoryPort['findByIdempotencyKey']>[0],
-  ): Promise<DeliveryAttempt | null> {
-    return this.attemptsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
-  }
-
-  async findQueued(): Promise<readonly DeliveryAttempt[]> {
-    return [];
-  }
-
-  async list(query: ListDeliveryAttemptsQuery): Promise<ListDeliveryAttemptsResult> {
-    return {
-      attempts: [...this.attemptsById.values()].filter((attempt) => {
-        const snapshot = attempt.toSnapshot();
-
-        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
-      }),
-      nextCursor: undefined,
-    };
-  }
-}
-
-class FakeDeliveryProvider implements DeliveryProviderPort {
-  readonly requests: SendDeliveryRequest[] = [];
-
-  constructor(
-    readonly channel: DeliveryProviderPort['channel'],
-    private readonly result: SendDeliveryResult,
-  ) {}
-
-  async send(request: SendDeliveryRequest): Promise<SendDeliveryResult> {
-    this.requests.push(request);
-
-    return this.result;
-  }
-}
-
-class AllowAllPreferences implements NotificationPreferenceReaderPort {
-  async getDeliveryPreference(): Promise<{ readonly allowed: true }> {
-    return {
-      allowed: true,
-    };
-  }
-}
-
-const queueAttempt = async (params: {
-  readonly attempts: DeliveryAttemptRepositoryPort;
-  readonly maxRetries: number;
-}) => {
-  const tenant = tenantId('tenant-1');
-  const workspace = workspaceId('workspace-1');
-  const queued = await new QueueDeliveryAttemptUseCase(
-    params.attempts,
-    new SequenceIdGenerator(),
-    new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
-  ).execute({
-    tenantId: tenant,
-    workspaceId: workspace,
-    idempotencyKey: 'email:tenant-1:user-1:digest-1',
-    channel: 'email',
-    recipientKey: 'user-1',
-    resourceType: 'digest',
-    resourceId: 'digest-1',
-    maxRetries: params.maxRetries,
-  });
-
-  if (!queued.ok) {
-    throw queued.error;
-  }
-
-  return {
-    tenant,
-    workspace,
-    deliveryAttemptId: queued.value.deliveryAttemptId,
+const fixture = () => {
+  const store: jest.Mocked<DeliveryAttemptExecutionStore> = {
+    claim: jest.fn(), startSending: jest.fn(), settle: jest.fn(), renew: jest.fn(),
   };
+  const send = jest.fn(async () => ({ accepted: true as const }));
+  const sender = new SendDeliveryAttemptUseCase(store, [{ channel: 'webhook', send }], {
+    getDeliveryPreference: async () => ({ allowed: true }),
+  }, clock, { generate: () => 'token-test' });
+  return { store, send, sender };
 };
 
 describe('SendDeliveryAttemptUseCase', () => {
-  it('marks an accepted provider send as delivered', async () => {
-    const attempts = new FakeDeliveryAttempts();
-    const queued = await queueAttempt({ attempts, maxRetries: 1 });
-    const provider = new FakeDeliveryProvider('email', {
-      accepted: true,
-      providerMessageId: 'provider-message-1',
-    });
-
-    const result = await new SendDeliveryAttemptUseCase(
-      attempts,
-      [provider],
-      new AllowAllPreferences(),
-      new FixedClock(new Date('2026-06-06T00:01:00.000Z')),
-    ).execute({
-      tenantId: queued.tenant,
-      workspaceId: queued.workspace,
-      deliveryAttemptId: queued.deliveryAttemptId,
-      content: {
-        subject: 'Digest',
-        body: 'Digest body',
-      },
-    });
-
-    expect(result).toEqual({
-      ok: true,
-      value: {
-        attempt: expect.objectContaining({
-          id: queued.deliveryAttemptId,
-          state: 'delivered',
-          sendingAt: '2026-06-06T00:01:00.000Z',
-          deliveredAt: '2026-06-06T00:01:00.000Z',
-        }),
-        providerMessageId: 'provider-message-1',
-      },
-    });
-    expect(provider.requests).toHaveLength(1);
+  it('validates input before claiming execution', async () => {
+    const f = fixture();
+    await expect(f.sender.execute({ ...scope, content: { body: '' } })).resolves.toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    expect(f.store.claim).not.toHaveBeenCalled();
   });
 
-  it('dead-letters when provider failure exhausts retry budget', async () => {
-    const attempts = new FakeDeliveryAttempts();
-    const queued = await queueAttempt({ attempts, maxRetries: 0 });
-
-    const result = await new SendDeliveryAttemptUseCase(
-      attempts,
-      [
-        new FakeDeliveryProvider('email', {
-          accepted: false,
-          retryable: true,
-          reason: 'Provider returned 429',
-        }),
-      ],
-      new AllowAllPreferences(),
-      new FixedClock(new Date('2026-06-06T00:01:00.000Z')),
-    ).execute({
-      tenantId: queued.tenant,
-      workspaceId: queued.workspace,
-      deliveryAttemptId: queued.deliveryAttemptId,
-      content: {
-        body: 'Digest body',
-      },
-    });
-
-    expect(result).toEqual({
-      ok: true,
-      value: {
-        attempt: expect.objectContaining({
-          id: queued.deliveryAttemptId,
-          state: 'dead_lettered',
-          retryCount: 1,
-          failureReason: 'Provider returned 429',
-          deadLetteredAt: '2026-06-06T00:01:00.000Z',
-        }),
-      },
-    });
+  it('returns the durable replay without another provider call', async () => {
+    const f = fixture();
+    const queued = DeliveryAttempt.queue({ id: scope.deliveryAttemptId, ...scope, idempotencyKey: 'stable',
+      channel: 'webhook', recipientKey: 'recipient-test', resourceType: 'digest', resourceId: 'digest-test',
+      queuedAt: clock.now(), maxRetries: 2 });
+    const delivered = queued.markSending({ sendingAt: clock.now() }).markDelivered({ deliveredAt: clock.now() });
+    f.store.claim.mockResolvedValue({ claimed: false, attempt: delivered });
+    await expect(f.sender.execute({ ...scope, content: { body: 'test' } })).resolves.toMatchObject({ ok: true, value: { attempt: { state: 'delivered' } } });
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.store.settle).not.toHaveBeenCalled();
   });
 });

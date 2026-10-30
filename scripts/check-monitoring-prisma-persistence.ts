@@ -443,6 +443,13 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   readonly outboxEvents = new Map<string, PrismaOutboxEventRecord>();
 
   readonly interest: PrismaMonitoringClient['interest'] = {
+    create: async ({ data }) => {
+      const record: PrismaInterestRecord = { ...data, status: 'ENABLED', deletedAt: null };
+      this.interests.set(record.id, record);
+      return record;
+    },
+    count: async ({ where }) => [...this.interests.values()].filter((record) =>
+      record.tenantId === where.tenantId && record.workspaceId === where.workspaceId && record.deletedAt == null).length,
     upsert: async (args) => {
       const existing = this.interests.get(args.where.id);
       const record: PrismaInterestRecord = {
@@ -484,7 +491,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         record.workspaceId === args.where.workspaceId &&
         (args.where.id === undefined || record.id === args.where.id) &&
         (args.where.name === undefined || record.name === args.where.name) &&
-        (record.deletedAt ?? null) === args.where.deletedAt
+        (args.where.deletedAt === undefined || (record.deletedAt ?? null) === args.where.deletedAt)
       )) ?? null,
     findMany: async (args) =>
       [...this.interests.values()]
@@ -662,6 +669,13 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   };
 
   readonly scanJob: PrismaMonitoringClient['scanJob'] = {
+    updateMany: async ({ where, data }) => {
+      const current = this.scanJobs.get(where.id);
+      if (current?.tenantId !== where.tenantId || current.workspaceId !== where.workspaceId ||
+          current.status !== where.status) return { count: 0 };
+      this.scanJobs.set(where.id, { ...current, ...data, completedAt: data.completedAt ?? null });
+      return { count: 1 };
+    },
     upsert: async (args) => {
       const existing = this.scanJobs.get(args.where.id);
       const record: PrismaScanJobRecord = {
@@ -822,9 +836,9 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         scope: existing?.scope ?? args.create.scope,
         key: existing?.key ?? args.create.key,
         requestHash: existing?.requestHash ?? args.create.requestHash,
-        responseStatus: args.update.responseStatus,
-        responsePayload: args.update.responsePayload,
-        expiresAt: args.update.expiresAt,
+        responseStatus: args.update.responseStatus === undefined ? (existing?.responseStatus ?? args.create.responseStatus) : args.update.responseStatus,
+        responsePayload: args.update.responsePayload === undefined ? (existing?.responsePayload ?? args.create.responsePayload) : args.update.responsePayload,
+        expiresAt: args.update.expiresAt === undefined ? (existing?.expiresAt ?? args.create.expiresAt) : args.update.expiresAt,
         createdAt: existing?.createdAt ?? clock.now(),
       };
       this.idempotencyKeys.set(storageKey, record);

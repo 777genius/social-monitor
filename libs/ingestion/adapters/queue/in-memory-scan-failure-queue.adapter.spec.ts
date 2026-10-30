@@ -30,7 +30,10 @@ describe('InMemoryScanFailureQueueAdapter', () => {
     await queue.deadLetter(command);
 
     expect(queue.retries()).toHaveLength(1);
-    await expect(queue.drainRetries({ limit: 1 })).resolves.toEqual([{ ...command, nextAttemptNumber: 2 }]);
+    const claimed = await queue.claimRetries({ limit: 1, now: new Date(0), visibilityTimeoutSeconds: 300 });
+    expect(claimed.map((delivery) => delivery.command)).toEqual([{ ...command, nextAttemptNumber: 2 }]);
+    expect(queue.retries()).toHaveLength(1);
+    await claimed[0]?.ack();
     expect(queue.retries()).toHaveLength(0);
     expect(queue.deadLettered()).toHaveLength(1);
     expect(metrics.counterValue('scan_failure_queue_events_total', {

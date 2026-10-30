@@ -36,7 +36,9 @@ const approvedHoistedRuntimeCodeSha256 = Object.freeze({
   "ajv-formats": "444dbf1804b17fc0d114a28ee8fd89963c7084c08b5ebbd16c408b5e089727b4",
   "zod": "4d7f8ca54064f57c6d93f09d2ce3b028f8d8884193147495f5f283a0916e124c",
   "zod-to-json-schema": "e6f0b7c6dc6c820f1cdd16b9ef9a7f415190e3ee0bf190e9605f620344f0090a",
-  "fast-uri": "b321bf34632d462aaecc40ed5082dafee2a45206680e9181bfd185bd3a3e59c3",
+  // fast-uri 3.1.9: complete regular-file inventory of the official tarball,
+  // independently verified against package-lock.json's SHA512 integrity.
+  "fast-uri": "0a7bd1192436a9755603dbfde3315911f7d287c4a639c6cc673f940d4a2f5e05",
   "fast-deep-equal": "da223f84496561579e85d5f6c0181f84a08db50f250912578c54e145e7b8b00e",
   "json-schema-traverse": "e027afb34851b07a5cc5186b3a6d76b3273214474a35b13dacce9a15b0d309db",
 });

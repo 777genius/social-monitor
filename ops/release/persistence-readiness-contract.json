@@ -82,6 +82,9 @@
       "moduleFile": "libs/delivery/interfaces/rest/delivery-rest.module.ts",
       "context": "delivery-api",
       "owner": "delivery-owner",
+      "adapterSourceFiles": [
+        "libs/delivery/interfaces/rest/delivery-workflow.providers.ts"
+      ],
       "inMemoryStateAdapters": [
         "InMemoryDeliveryAttemptRepository",
         "InMemoryDigestScheduleRepository",
@@ -113,7 +116,11 @@
       "moduleFile": "apps/delivery-service/src/delivery-service.module.ts",
       "context": "delivery-worker",
       "owner": "delivery-owner",
-      "inMemoryStateAdapters": ["InMemoryDeliveryAttemptQueueReader", "InMemoryQueuePublisher"],
+      "inMemoryStateAdapters": [
+        "InMemoryDeliveryAttemptRepository",
+        "InMemoryDeliveryAttemptQueueReader",
+        "InMemoryQueuePublisher"
+      ],
       "risk": "delivery attempt dispatch commands can use the local in-memory queue in deterministic smoke mode, so API and worker replicas do not share queued commands unless RabbitMQ mode is selected",
       "durableReplacementPlan": "Delivery service can publish delivery.attempt.send commands through RabbitMQ with DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq and consume them with DELIVERY_ATTEMPT_QUEUE_READER=rabbitmq; check:delivery-attempt-queue-drain-loop proves the queue boundary and worker drain path in deterministic mode"
     },

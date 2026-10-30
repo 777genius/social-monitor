@@ -12,6 +12,7 @@ import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
 import { queueCommandDeliveryLagSeconds } from "@social-monitor/platform-queue";
 import { EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE } from "@social-monitor/summary/ports";
 import { ExecuteReaderSummaryJobCommandHandler } from "@social-monitor/summary/interfaces/queue/execute-reader-summary-job-command.handler";
+import { classifyWorkerRuntimeFailure } from '@social-monitor/platform-worker';
 import { DomainError, type Clock } from "@social-monitor/shared-kernel";
 
 import {
@@ -105,7 +106,19 @@ export class ReaderSummaryJobQueueDrainLoop
       return;
     }
 
-    this.currentTick = this.executeTick(trigger).finally(() => {
+    this.currentTick = this.executeTick(trigger).catch((error: unknown) => {
+      // Startup remains fail-fast; a transient interval failure must not become
+      // an unhandled rejection or prevent the next scheduled recovery attempt.
+      if (trigger === 'startup') throw error;
+      const failure = classifyWorkerRuntimeFailure(error);
+      this.logger.error('queue drain loop tick failed', {
+        trigger,
+        error: failure.message,
+        errorClassification: failure.classification,
+        errorCode: failure.code,
+        worker: 'intelligence-worker',
+      });
+    }).finally(() => {
       this.currentTick = undefined;
     });
     await this.currentTick;

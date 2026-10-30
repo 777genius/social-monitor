@@ -49,6 +49,18 @@ const hasRetryableWriteConflictCode = (error: unknown, depth = 0): boolean => {
     return true;
   }
 
+  // Prisma's pg adapter can surface a commit conflict directly instead of
+  // wrapping it as P2034. Require both the adapter identity and structured
+  // conflict kind; unrelated errors carrying SQLSTATE metadata stay terminal.
+  const adapter = error as {
+    readonly name?: unknown;
+    readonly cause?: { readonly kind?: unknown; readonly originalCode?: unknown };
+  };
+  if (adapter.name === 'DriverAdapterError' && adapter.cause?.kind === 'TransactionWriteConflict' &&
+      typeof adapter.cause.originalCode === 'string' && retryablePostgresSqlStates.has(adapter.cause.originalCode)) {
+    return true;
+  }
+
   // Raw SQL conflicts are P2010, not P2034. Prisma's pg driver adapter
   // retains SQLSTATE in cause.originalCode; older clients use meta.code.
   if (code === 'P2010') {

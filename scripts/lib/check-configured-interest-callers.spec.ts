@@ -32,6 +32,7 @@ describe("six check constructor compositions without executing check flows", () 
     expect(node.arguments).toHaveLength(9);
     const configured = { readCurrent: jest.fn() };
     const reviewer = { review: jest.fn() };
+    const fixtureReviewer = { review: jest.fn() };
     const interests = {};
     const factory = jest.fn(() => configured);
     const monitoring = jest.fn(() => configured);
@@ -46,6 +47,7 @@ describe("six check constructor compositions without executing check flows", () 
       interests, MonitoringConfiguredInterestReader: monitoring,
       checkConfiguredInterestReader: factory,
       buildSourceContentQualityReviewer: () => reviewer,
+      fixtureReviewer,
       params: { feedItems: {}, clock: {}, configuredInterests: configured },
     });
     expect(construct).toHaveBeenCalledTimes(1);
@@ -54,6 +56,8 @@ describe("six check constructor compositions without executing check flows", () 
       expect(factory).toHaveBeenCalledWith(path.includes("regeneration") ? "fixture-database" : "fixture-local");
     } else if (path.includes("autonomous")) {
       expect(monitoring).toHaveBeenCalledWith(interests);
+      expect(construct.mock.calls[0]![6]).toBe(fixtureReviewer);
+      expect(construct.mock.calls[0]![7]).toBeUndefined();
     } else {
       expect(construct.mock.calls[0]![6]).toBe(reviewer);
       expect(construct.mock.calls[0]![7]).toBeUndefined();

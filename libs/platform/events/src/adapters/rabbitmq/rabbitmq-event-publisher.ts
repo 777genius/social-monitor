@@ -38,7 +38,7 @@ export class RabbitMqEventPublisher implements EventPublisherPort {
       throw new Error(`Event payload exceeds RabbitMQ max payload size: ${content.byteLength}`);
     }
 
-    const accepted = await this.channel.publish(this.options.exchange, event.eventType, content, {
+    const accepted = await this.channel.publishAndConfirm(this.options.exchange, event.eventType, content, {
       contentType: this.options.contentType ?? 'application/json',
       deliveryMode: this.options.persistent === false ? 1 : 2,
       mandatory: this.options.mandatory ?? true,
@@ -60,7 +60,6 @@ export class RabbitMqEventPublisher implements EventPublisherPort {
       throw new Error(`RabbitMQ publish backpressure for event type: ${event.eventType}`);
     }
 
-    await this.channel.waitForConfirms(this.options.exchange, event.eventType, event.eventId);
   }
 
   private async ensureExchange(): Promise<void> {

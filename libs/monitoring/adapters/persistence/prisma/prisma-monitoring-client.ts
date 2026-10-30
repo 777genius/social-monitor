@@ -37,12 +37,21 @@ export type PrismaMonitoringClient = {
     work: (
       transaction: Pick<
         PrismaMonitoringClient,
-        'scanJob' | 'outboxEvent'
+        'scanJob' | 'outboxEvent' | 'interest' | 'idempotencyKey'
       >,
     ) => Promise<TValue>,
     options: { readonly isolationLevel: 'Serializable' },
   ): Promise<TValue>;
   readonly interest: {
+    create(args: {
+      readonly data: {
+        readonly id: string; readonly tenantId: string; readonly workspaceId: string;
+        readonly name: string; readonly query: string; readonly createdAt: Date;
+      };
+    }): Promise<PrismaInterestRecord>;
+    count(args: { readonly where: {
+      readonly tenantId: string; readonly workspaceId: string; readonly deletedAt: null;
+    } }): Promise<number>;
     upsert(args: {
       readonly where: { readonly id: string };
       readonly update: {
@@ -79,7 +88,7 @@ export type PrismaMonitoringClient = {
         readonly workspaceId: string;
         readonly name?: string;
         readonly id?: string;
-        readonly deletedAt: null;
+        readonly deletedAt?: null;
       };
     }): Promise<PrismaInterestRecord | null>;
     findMany(args: {
@@ -251,6 +260,21 @@ export type PrismaMonitoringClient = {
     }): Promise<readonly PrismaScanPolicyRecord[]>;
   };
   readonly scanJob: {
+    updateMany(args: {
+      readonly where: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly status: 'ENQUEUED';
+      };
+      readonly data: {
+        readonly status: 'REQUESTED' | 'ENQUEUED' | 'SUCCEEDED' | 'FAILED';
+        readonly completedAt?: Date;
+        readonly failureReason: string | null;
+        readonly failureMetadata: Readonly<Record<string, unknown>> | null;
+        readonly executionMetadata: Readonly<Record<string, unknown>> | null;
+      };
+    }): Promise<{ readonly count: number }>;
     upsert(args: {
       readonly where: { readonly id: string };
       readonly update: {
@@ -365,6 +389,7 @@ export type PrismaMonitoringClient = {
         readonly messageKind?: 'EVENT' | 'COMMAND';
         readonly eventType: string;
         readonly schemaVersion: number;
+        readonly createdAt?: Date;
         readonly payload: Readonly<Record<string, unknown>>;
         readonly correlationId: string;
         readonly causationId?: string | null;
@@ -390,9 +415,9 @@ export type PrismaMonitoringClient = {
         };
       };
       readonly update: {
-        readonly responsePayload: unknown;
-        readonly responseStatus: number | null;
-        readonly expiresAt: Date | null;
+        readonly responsePayload?: unknown;
+        readonly responseStatus?: number | null;
+        readonly expiresAt?: Date | null;
       };
       readonly create: {
         readonly id: string;

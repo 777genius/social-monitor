@@ -163,7 +163,7 @@ describe("ExecuteScanUseCase", () => {
     expect(fetcher.calls).toHaveLength(1);
     expect(repository.all()).toHaveLength(2);
     expect(projection.commands).toHaveLength(1);
-    expect(reporter.succeeded).toHaveLength(1);
+    expect(reporter.succeeded).toHaveLength(2);
     expect(reporter.failed).toHaveLength(0);
   });
 
@@ -217,7 +217,7 @@ describe("ExecuteScanUseCase", () => {
     expect(fetcher.calls).toHaveLength(1);
     expect(reporter.succeeded).toHaveLength(1);
     expect(reporter.failed).toHaveLength(0);
-    expect(failures.retries).toHaveLength(0);
+    expect(failures.retries).toHaveLength(1);
     expect(failures.deadLetters).toHaveLength(0);
     expect(
       (
@@ -629,12 +629,7 @@ describe("ExecuteScanUseCase", () => {
     expect(failures.retries).toHaveLength(1);
     expect(failures.deadLetters).toHaveLength(0);
     expect(cursors.saved).toHaveLength(0);
-    expect(reporter.failed).toEqual([
-      expect.objectContaining({
-        scanJobId: "scan-job-failed",
-        failureReason: "Provider unavailable",
-      }),
-    ]);
+    expect(reporter.failed).toHaveLength(0);
     expect(reporter.succeeded).toHaveLength(0);
     expect(leases.released).toHaveLength(1);
   });

@@ -32,6 +32,7 @@ import { PrismaScanLeaseAdapter } from "../libs/ingestion/adapters/persistence/p
 import { resolveIngestionSupportPersistenceMode } from "../libs/ingestion/interfaces/rest/ingestion-provider-tokens";
 import { resolveIngestionWorkerPersistenceMode } from "../apps/ingestion-worker/src/ingestion-worker-provider-tokens";
 import { updateFakeSourceItem } from "./support/update-fake-source-item";
+import { createScanFailureQueueFixture } from './support/scan-failure-queue-fixture';
 import { assert, assertThrows } from
   "./support/check-ingestion-feed-prisma-persistence-assertions";
 
@@ -608,57 +609,7 @@ class FakePrismaIngestionFeedClient
   };
 
   readonly scanFailureQueueEntry: PrismaIngestionClient["scanFailureQueueEntry"] =
-    {
-      create: async (args) => {
-        const record: PrismaScanFailureQueueEntryRecord = {
-          ...args.data,
-          nextAttemptNumber: args.data.nextAttemptNumber ?? null,
-          createdAt: clock.now(),
-        };
-        this.failureEntries.push(record);
-
-        return record;
-      },
-      findMany: async (args) =>
-        this.failureEntries
-          .filter(
-            (record) =>
-              (args.where.tenantId === undefined ||
-                record.tenantId === args.where.tenantId) &&
-              (args.where.workspaceId === undefined ||
-                record.workspaceId === args.where.workspaceId) &&
-              record.status === args.where.status,
-          )
-          .sort((left, right) =>
-            args.orderBy.createdAt === "asc"
-              ? left.createdAt.getTime() - right.createdAt.getTime()
-              : right.createdAt.getTime() - left.createdAt.getTime(),
-          )
-          .slice(0, args.take),
-      deleteMany: async (args) => {
-        const ids = new Set(args.where.id.in);
-        const before = this.failureEntries.length;
-
-        for (
-          let index = this.failureEntries.length - 1;
-          index >= 0;
-          index -= 1
-        ) {
-          if (ids.has(this.failureEntries[index]?.id ?? "")) {
-            this.failureEntries.splice(index, 1);
-          }
-        }
-
-        return { count: before - this.failureEntries.length };
-      },
-      count: async (args) =>
-        this.failureEntries.filter(
-          (record) =>
-            record.tenantId === args.where.tenantId &&
-            record.workspaceId === args.where.workspaceId &&
-            record.status === args.where.status,
-        ).length,
-    };
+    createScanFailureQueueFixture(this.failureEntries, clock);
 
   readonly scanAttempt: PrismaIngestionClient["scanAttempt"] = {
     upsert: async (args) => {
@@ -678,6 +629,7 @@ class FakePrismaIngestionFeedClient
         skippedDuplicates: args.update.skippedDuplicates,
         projected: args.update.projected,
         failureReason: args.update.failureReason ?? null,
+        terminalFailure: args.update.terminalFailure ?? false,
       };
       this.attempts.set(record.scanJobId, record);
       return record;

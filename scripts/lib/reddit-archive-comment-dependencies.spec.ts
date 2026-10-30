@@ -1,5 +1,5 @@
 import type { PrismaIngestionWorkerConnection } from '../../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection';
-import type { PrismaConversationUnitRecord } from '@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-client';
+import type { PrismaConversationUnitRecord } from '@social-monitor/platform-persistence/prisma-conversation-client';
 import { createFiniteRedditArchiveCommentDependencies } from './reddit-archive-comment-dependencies';
 import { commentPlan } from '../backfill/reddit-archive-write/comment-plan.spec-support';
 

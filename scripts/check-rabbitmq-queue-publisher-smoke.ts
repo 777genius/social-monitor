@@ -52,6 +52,12 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
     return this.publishAccepted;
   }
 
+  async publishAndConfirm(...args: Parameters<RabbitMqQueueChannelPort['publishAndConfirm']>): Promise<boolean> {
+    const accepted = this.publish(...args);
+    if (accepted) await this.waitForConfirms();
+    return accepted;
+  }
+
   async waitForConfirms(): Promise<void> {
     this.confirmCount += 1;
   }

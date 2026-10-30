@@ -491,6 +491,39 @@ describe("subscription runtime installation admission", () => {
     });
   }, 45_000);
 
+  it.each(["missing", "tampered", "symlink"])("rejects %s code in the version-correct patched fast-uri import", async (change) => {
+    const command = join(await copyInstallation(), launcherName);
+    await rm(join(root!, "node_modules"));
+    const modules = join(root!, "node_modules");
+    await mkdir(join(modules, "@vioxen"), { recursive: true });
+    for (const name of await readdir(join(installationRoot, "node_modules"))) {
+      if (name === "@vioxen" || name === "fast-uri") continue;
+      await symlink(join(installationRoot, "node_modules", name), join(modules, name));
+    }
+    await symlink(join(installationRoot, "node_modules/@vioxen/subscription-runtime"),
+      join(modules, "@vioxen/subscription-runtime"));
+    await cloneInstalledPackage(join(installationRoot, "node_modules/@vioxen/subscription-runtime-mimo"),
+      join(modules, "@vioxen/subscription-runtime-mimo"));
+    const imported = join(modules, "fast-uri");
+    await cloneInstalledPackage(join(installationRoot, "node_modules/fast-uri"), imported);
+    expect(JSON.parse(await readFile(join(imported, "package.json"), "utf8")).version).toBe("3.1.9");
+    const entrypoint = join(imported, "index.js");
+    if (change === "tampered") {
+      await appendFile(entrypoint, "\n// synthetic changed dependency implementation\n");
+    } else {
+      await rm(entrypoint);
+      if (change === "symlink") {
+        const external = join(root!, "synthetic-fast-uri.js");
+        await copyFile(join(installationRoot, "node_modules/fast-uri/index.js"), external);
+        await symlink(external, entrypoint);
+      }
+    }
+    await expect(new FileSubscriptionRuntimeInstallationInspector().inspect(
+      command, "xiaomi-mimo-token-plan",
+    )).rejects.toThrow(change === "symlink" ? "non-regular entry: index.js"
+      : "Installed runtime import bytes are not approved: fast-uri");
+  }, distributionIoTimeoutMs);
+
   it("rejects a hoisted import that resolves into the admitted workspace", async () => {
     const command = join(await copyInstallation(), launcherName);
     const workspace = join(root!, "workspace");

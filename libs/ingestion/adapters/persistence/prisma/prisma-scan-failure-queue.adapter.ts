@@ -5,19 +5,23 @@ import {
 } from '@social-monitor/platform-persistence';
 import { tenantId, workspaceId, type IdGenerator, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
-import type {
-  FailedScanCommand,
-  RetryScanCommand,
-  ScanFailureInspectionPort,
-  ScanFailureQueuePort,
-  ScanRetryQueuePort,
+import {
+  assertValidScanRetryClaim,
+  type ScanRetryDelivery,
+  type FailedScanCommand,
+  type RetryScanCommand,
+  type ScanFailureInspectionPort,
+  type ScanFailureQueuePort,
+  type ScanRetryQueuePort,
 } from '../../../ports';
 import type { PrismaIngestionClient } from './prisma-ingestion-client';
 import { failedScanCommandFromPrisma } from './prisma-ingestion-records';
+import { prismaScanRetryDelivery } from './prisma-scan-retry-delivery';
+import { scanFailureEntryKey } from '../scan-failure-entry-key';
 
 export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, ScanFailureInspectionPort, ScanRetryQueuePort {
   constructor(
-    private readonly prisma: PrismaIngestionClient,
+    private readonly prisma: Pick<PrismaIngestionClient, 'scanFailureQueueEntry'>,
     private readonly metrics: MetricsRecorderPort,
     private readonly ids: IdGenerator,
   ) {}
@@ -48,48 +52,39 @@ export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, Scan
     return records.map((record) => failedScanCommandFromPrisma(record));
   }
 
-  async drainRetries(params: Parameters<ScanRetryQueuePort['drainRetries']>[0]): Promise<readonly RetryScanCommand[]> {
-    if (!Number.isInteger(params.limit) || params.limit < 1) {
-      throw new Error('Scan retry drain limit must be a positive integer');
-    }
-
-    const records = await runWithSystemDatabaseAccess(
-      'cross-tenant scan retry queue drain',
+  async claimRetries(params: Parameters<ScanRetryQueuePort['claimRetries']>[0]): Promise<readonly ScanRetryDelivery[]> {
+    assertValidScanRetryClaim(params);
+    return runWithSystemDatabaseAccess(
+      'cross-tenant scan retry queue claim',
       async () => {
+        const available = { OR: [{ claimedUntil: null }, { claimedUntil: { lte: params.now } }] } as const;
         const pending = await this.prisma.scanFailureQueueEntry.findMany({
           where: {
             status: 'RETRY_ENQUEUED',
+            ...available,
           },
           orderBy: { createdAt: 'asc' },
           take: params.limit,
         });
-        const ids = pending.map((record) => record.id);
-        if (ids.length > 0) {
-          await withPrismaWriteRetry(() =>
-            this.prisma.scanFailureQueueEntry.deleteMany({
-              where: {
-                id: { in: ids },
-              },
-            }),
-          );
+        const deliveries: ScanRetryDelivery[] = [];
+        for (const record of pending) {
+          const claimToken = this.ids.generate();
+          const claimed = await withPrismaWriteRetry(() => this.prisma.scanFailureQueueEntry.updateMany({
+            where: { id: record.id, tenantId: record.tenantId, workspaceId: record.workspaceId,
+              status: 'RETRY_ENQUEUED', ...available },
+            data: { claimToken, claimedUntil: new Date(params.now.getTime() + params.visibilityTimeoutSeconds * 1000) },
+          }));
+          if (claimed.count === 0) continue;
+          deliveries.push(prismaScanRetryDelivery({
+            prisma: this.prisma, record, claimToken,
+            visibilityTimeoutSeconds: params.visibilityTimeoutSeconds,
+            settled: () => this.recordBacklogMetric(
+              tenantId(record.tenantId), workspaceId(record.workspaceId), 'scan-retry', 'RETRY_ENQUEUED'),
+          }));
         }
-        return pending;
+        return deliveries;
       },
     );
-
-    for (const scope of uniqueScopes(records)) {
-      await this.recordBacklogMetric(
-        tenantId(scope.tenantId),
-        workspaceId(scope.workspaceId),
-        'scan-retry',
-        'RETRY_ENQUEUED',
-      );
-    }
-
-    return records.map((record) => ({
-      ...failedScanCommandFromPrisma(record),
-      nextAttemptNumber: record.nextAttemptNumber ?? record.attemptNumber + 1,
-    }));
   }
 
   private async persist(
@@ -97,28 +92,33 @@ export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, Scan
     status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED',
     nextAttemptNumber: number | null,
   ): Promise<void> {
-    const id = this.ids.generate();
+    const id = scanFailureEntryKey(command, status, nextAttemptNumber);
 
-    await withPrismaWriteRetry(() => this.prisma.scanFailureQueueEntry.create({
-      data: {
-        id,
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        scanJobId: command.scanJobId,
-        interestId: command.interestId,
-        sourceBindingId: command.sourceBindingId,
-        scanPolicyId: command.scanPolicyId,
-        providerKey: command.providerKey,
-        sourceQuery: command.sourceQuery,
-        correlationId: command.correlationId,
-        causationId: command.causationId,
-        attemptNumber: command.attemptNumber,
-        retryBudget: command.retryBudget,
-        nextAttemptNumber,
-        failureReason: command.failureReason,
-        status,
-      },
-    }));
+    try {
+      await withPrismaWriteRetry(() => this.prisma.scanFailureQueueEntry.create({
+        data: {
+          id,
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          scanJobId: command.scanJobId,
+          interestId: command.interestId,
+          sourceBindingId: command.sourceBindingId,
+          scanPolicyId: command.scanPolicyId,
+          providerKey: command.providerKey,
+          sourceQuery: command.sourceQuery,
+          correlationId: command.correlationId,
+          causationId: command.causationId,
+          attemptNumber: command.attemptNumber,
+          retryBudget: command.retryBudget,
+          nextAttemptNumber,
+          failureReason: command.failureReason,
+          status,
+        },
+      }));
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') return;
+      throw error;
+    }
 
     this.metrics.incrementCounter({
       name: 'scan_failure_queue_events_total',
@@ -153,21 +153,3 @@ export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, Scan
 
 const queueNameForStatus = (status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED'): 'scan-retry' | 'scan-dlq' =>
   status === 'DEAD_LETTERED' ? 'scan-dlq' : 'scan-retry';
-
-const uniqueScopes = (
-  records: readonly {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-  }[],
-): readonly { readonly tenantId: string; readonly workspaceId: string }[] => {
-  const scopes = new Map<string, { readonly tenantId: string; readonly workspaceId: string }>();
-
-  for (const record of records) {
-    scopes.set(`${record.tenantId}:${record.workspaceId}`, {
-      tenantId: record.tenantId,
-      workspaceId: record.workspaceId,
-    });
-  }
-
-  return [...scopes.values()];
-};

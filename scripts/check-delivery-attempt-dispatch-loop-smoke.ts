@@ -1,3 +1,4 @@
+import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import { DeliveryAttempt } from '@social-monitor/delivery/domain';
 import { InMemoryDeliveryProvider } from '@social-monitor/delivery/adapters/notification/in-memory-delivery.provider';
 import { InMemoryDeliveryAttemptRepository } from '@social-monitor/delivery/adapters/persistence/in-memory-delivery-attempt.repository';
@@ -17,8 +18,8 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
 };
 
 async function main(): Promise<void> {
-  const tenant = tenantId('tenant-delivery-dispatch-loop-smoke');
-  const workspace = workspaceId('workspace-delivery-dispatch-loop-smoke');
+  const tenant = tenantId('00000000-0000-7000-8000-000000000821');
+  const workspace = workspaceId('00000000-0000-7000-8000-000000000822');
   const deliveryAttemptId = 'delivery-attempt-dispatch-loop-smoke';
   const retryableDeliveryAttemptId = 'delivery-attempt-dispatch-loop-retryable-smoke';
   const attempts = new InMemoryDeliveryAttemptRepository();
@@ -43,10 +44,11 @@ async function main(): Promise<void> {
   const loop = new DeliveryAttemptDispatchLoop(
     new SendDeliveryAttemptCommandHandler(
       new SendDeliveryAttemptUseCase(
-        attempts,
+        attempts.workflow,
         [provider],
         new InMemoryNotificationPreferenceReader(),
         new FixedClock(new Date('2026-06-06T00:01:00.000Z')),
+        new CryptoIdGenerator(),
       ),
       metrics,
       runtime,
@@ -119,10 +121,11 @@ async function main(): Promise<void> {
   const retryLoop = new DeliveryAttemptDispatchLoop(
     new SendDeliveryAttemptCommandHandler(
       new SendDeliveryAttemptUseCase(
-        attempts,
+        attempts.workflow,
         [provider],
         new InMemoryNotificationPreferenceReader(),
         new FixedClock(new Date('2026-06-06T00:05:00.000Z')),
+        new CryptoIdGenerator(),
       ),
       metrics,
       runtime,

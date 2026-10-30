@@ -55,8 +55,8 @@ import { UpdateWorkspaceDigestPreferenceUseCase } from '../../features/update-wo
 import { UpdateWorkspaceTelemetryConsentUseCase } from '../../features/update-workspace-telemetry-consent/update-workspace-telemetry-consent.use-case';
 import type { DeliveryChannel } from '../../domain';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
+import { DELIVERY_ATTEMPT_WORKFLOW, deliveryWorkflowProviders } from './delivery-workflow.providers';
 import {
-  DELIVERY_PROVIDERS,
   createDeliveryWebhookProviders,
   deliveryWebhookExports,
 } from './delivery-webhook.providers';
@@ -89,7 +89,6 @@ import { WebhookEndpointsController } from './webhook-endpoints.controller';
 import { RealtimeEventsGateway } from '../ws/realtime-events.gateway';
 import type {
   DeliveryAttemptRepositoryPort,
-  DeliveryProviderPort,
   DigestRepositoryPort,
   DigestScheduleRepositoryPort,
   DigestSourceReaderPort,
@@ -137,6 +136,7 @@ export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
       inject: [DELIVERY_PERSISTENCE_MODE],
     },
     InMemoryDeliveryAttemptRepository,
+    ...deliveryWorkflowProviders,
     InMemoryDigestScheduleRepository,
     InMemoryDigestRepository,
     InMemoryDigestSourceReader,
@@ -373,15 +373,6 @@ export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
       inject: [DELIVERY_ATTEMPT_REPOSITORY],
     },
     {
-      provide: SendDeliveryAttemptUseCase,
-      useFactory: (
-        attempts: DeliveryAttemptRepositoryPort,
-        providers: readonly DeliveryProviderPort[],
-        preferences: NotificationPreferenceReaderPort,
-      ) => new SendDeliveryAttemptUseCase(attempts, providers, preferences, new SystemClock()),
-      inject: [DELIVERY_ATTEMPT_REPOSITORY, DELIVERY_PROVIDERS, DELIVERY_NOTIFICATION_PREFERENCE_READER],
-    },
-    {
       provide: RetryDeliveryAttemptUseCase,
       useFactory: (
         attempts: DeliveryAttemptRepositoryPort,
@@ -475,6 +466,8 @@ export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
     UpdateWorkspaceTelemetryConsentUseCase,
     ...deliveryWebhookExports,
     DELIVERY_ATTEMPT_REPOSITORY,
+    DELIVERY_ATTEMPT_WORKFLOW,
+    DELIVERY_PERSISTENCE_MODE,
     DELIVERY_DIGEST_REPOSITORY,
     DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
     DELIVERY_DIGEST_SOURCE_READER,
