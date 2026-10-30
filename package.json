@@ -357,7 +357,7 @@
     "run:telegram-channel-collection": "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=512 -- ts-node -r tsconfig-paths/register scripts/run-telegram-channel-collection.ts"
   },
   "dependencies": {
-    "@agent-teams/account-gateway": "file:vendor/account-gateway/agent-teams-account-gateway-0.1.0-llm-e22c720.tgz",
+    "@agent-teams/account-gateway": "file:vendor/account-gateway/agent-teams-account-gateway-0.1.0-llm-0f3827f.tgz",
     "@bufbuild/protobuf": "^2.12.1",
     "@google-cloud/bigquery": "^8.3.1",
     "@grpc/grpc-js": "^1.14.5",

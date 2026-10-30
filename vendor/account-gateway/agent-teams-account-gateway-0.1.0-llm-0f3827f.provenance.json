@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "kind": "private_sdk_draft_pack",
+  "package": "@agent-teams/account-gateway",
+  "packageVersion": "0.1.0",
+  "identityLabel": "0.1.0-llm.0f3827f",
+  "private": true,
+  "published": false,
+  "sourceRepository": "https://github.com/agent-teams-ai/account-gateway",
+  "sourcePullRequest": "https://github.com/agent-teams-ai/account-gateway/pull/86",
+  "sourcePullRequestState": "draft",
+  "sourceBranch": "feat/llm-entry",
+  "sourceCommit": "0f3827fe181a20333c215d7a4104827e6bf5df37",
+  "sourceTree": "e6b9a38dc4bef9201e954f580905e7ba96adf01a",
+  "sourceCommitReviewed": false,
+  "build": "pnpm install --frozen-lockfile && pnpm build && pnpm --dir packages/account-gateway pack (pnpm 11.28.2, reproducible: two packs gave the same digest)",
+  "purpose": "Experimental ./llm entry (createLlmClient, executionConnector, prepareStrictJsonSchema, task and outcome types) for the social-monitor GatewayLlmClient adapter. Draft source: replace with a reviewed commit before any production switch.",
+  "vendoredArchive": "vendor/account-gateway/agent-teams-account-gateway-0.1.0-llm-0f3827f.tgz",
+  "bytes": 51510,
+  "sha256": "5b1ec4ee7d17bfe5a6871e51598a040192dd69f539a0966eb9112e12b2c1694e",
+  "integrity": "sha512-2JQuzFXHxT2i0KWUe6XFyk/IUUnxmfuSqRVI4MIpANjCnyuCXcGUba/ijhTKPIHeOZua2oAyw6JBaihObcBgCg==",
+  "engines": ">=24.21.0 <25 || >=26.10.0 <27",
+  "dependencies": {
+    "@get-modular/assembly": "0.2.0",
+    "@get-modular/core": "0.2.0",
+    "zod": "4.6.7"
+  },
+  "providerCalls": 0,
+  "productionEffects": 0
+}
