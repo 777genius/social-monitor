@@ -1,4 +1,4 @@
-import type { PrismaConversationClient } from "@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-client";
+import type { PrismaConversationClient } from "@social-monitor/platform-persistence/prisma-conversation-client";
 
 import type {
   PrismaSummaryArtifactRecord,

@@ -13,7 +13,7 @@ import {
 import type {
   PrismaConversationSignalBaselineSampleRecord,
   PrismaConversationUnitRecord,
-} from './prisma-conversation-client';
+} from '@social-monitor/platform-persistence/prisma-conversation-client';
 
 export const conversationUnitFromPrisma = (
   record: PrismaConversationUnitRecord,

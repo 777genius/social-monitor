@@ -20,6 +20,8 @@ const config: Config = {
     '^@social-monitor/platform-persistence$': '<rootDir>/libs/platform/persistence/src/index.ts',
     '^@social-monitor/platform-persistence/prisma-runtime-client$':
       '<rootDir>/libs/platform/persistence/src/prisma-runtime-client.ts',
+    '^@social-monitor/platform-persistence/prisma-conversation-client$':
+      '<rootDir>/libs/platform/persistence/src/prisma-conversation-client.ts',
     '^@social-monitor/platform-queue$': '<rootDir>/libs/platform/queue/src/index.ts',
     '^@social-monitor/platform-queue/(.*)$': '<rootDir>/libs/platform/queue/src/$1',
     '^@social-monitor/platform-request-context$': '<rootDir>/libs/platform/request-context/src/index.ts',

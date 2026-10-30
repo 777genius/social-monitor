@@ -1,3 +1,4 @@
+/** Physical conversation-table client shapes shared by runtime connections. */
 export type PrismaConversationUnitRecord = {
   readonly id: string;
   readonly tenantId: string;

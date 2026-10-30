@@ -1,5 +1,5 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
-import { dirname, extname, join, normalize, relative, sep } from 'node:path';
+import { dirname, join, normalize, relative, sep } from 'node:path';
 
 const forbiddenInDomain = [
   '@nestjs/',
@@ -52,31 +52,14 @@ const forbiddenInPorts = [
 
 const violations = [];
 
-const platformAliases = new Map([
-  ['@social-monitor/platform-config', 'libs/platform/config/src/index.ts'],
-  ['@social-monitor/platform-events', 'libs/platform/events/src/index.ts'],
-  ['@social-monitor/platform-grpc', 'libs/platform/grpc/src/index.ts'],
-  ['@social-monitor/platform-logging', 'libs/platform/logging/src/index.ts'],
-  ['@social-monitor/platform-metrics', 'libs/platform/metrics/src/index.ts'],
-  ['@social-monitor/platform-persistence', 'libs/platform/persistence/src/index.ts'],
-  ['@social-monitor/platform-queue', 'libs/platform/queue/src/index.ts'],
-  ['@social-monitor/platform-request-context', 'libs/platform/request-context/src/index.ts'],
-  ['@social-monitor/platform-worker', 'libs/platform/worker/src/index.ts'],
-  ['@social-monitor/shared-kernel', 'libs/shared-kernel/src/index.ts'],
-]);
-
-const boundedContexts = new Set([
-  'delivery',
-  'feed',
-  'identity',
-  'ingestion',
-  'launch',
-  'monitoring',
-  'privacy',
-  'relevance',
-  'summary',
-  'usage',
-]);
+// The compiler's configured aliases are the source of truth. A new context or
+// platform package must not silently disappear from dependency-cycle checks.
+const compilerPaths = JSON.parse(readFileSync('tsconfig.json', 'utf8')).compilerOptions.paths;
+const configuredAliases = Object.entries(compilerPaths)
+  .sort(([left], [right]) => right.replace('*', '').length - left.replace('*', '').length);
+const boundedContexts = new Set(Object.values(compilerPaths).flat()
+  .map((target) => target.match(/^libs\/([^/]+)\//)?.[1])
+  .filter((context) => context && !['platform', 'shared-kernel', 'contracts'].includes(context)));
 const businessContextImportPattern =
   /^@social-monitor\/([^/]+)\/(domain|features|adapters|interfaces)(?:\/|$)/;
 const subscriptionMonitoringAdapter =
@@ -225,23 +208,17 @@ function resolveLocalImport(fromFile, specifier) {
     return resolveCandidate(join(dirname(fromFile), specifier));
   }
 
-  if (specifier.startsWith('@social-monitor/contracts/')) {
-    return resolveCandidate(specifier.replace('@social-monitor/contracts/', 'libs/contracts/'));
-  }
-
-  for (const [alias, target] of platformAliases) {
-    if (specifier === alias) {
-      return target;
+  for (const [alias, targets] of configuredAliases) {
+    const star = alias.indexOf('*');
+    if (star === -1 && specifier !== alias) continue;
+    const prefix = star === -1 ? alias : alias.slice(0, star);
+    const suffix = star === -1 ? '' : alias.slice(star + 1);
+    if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) continue;
+    const wildcard = star === -1 ? '' : specifier.slice(prefix.length, specifier.length - suffix.length);
+    for (const target of targets) {
+      const resolved = resolveCandidate(target.replace('*', wildcard));
+      if (resolved !== null) return resolved;
     }
-
-    if (specifier.startsWith(`${alias}/`)) {
-      return resolveCandidate(join(dirname(target), specifier.slice(alias.length + 1)));
-    }
-  }
-
-  const contextImport = specifier.match(/^@social-monitor\/([^/]+)\/(.+)$/);
-  if (contextImport && boundedContexts.has(contextImport[1])) {
-    return resolveCandidate(`libs/${contextImport[1]}/${contextImport[2]}`);
   }
 
   return null;
@@ -249,7 +226,9 @@ function resolveLocalImport(fromFile, specifier) {
 
 function resolveCandidate(basePath) {
   const normalized = toProjectPath(basePath);
-  const candidates = extname(normalized) ? [normalized] : [`${normalized}.ts`, `${normalized}/index.ts`];
+  // Dotted source basenames such as *.use-case and *.adapter are not file
+  // extensions. They still resolve to TypeScript files for boundary checks.
+  const candidates = [normalized, `${normalized}.ts`, `${normalized}/index.ts`];
 
   return candidates.find((candidate) => existsSync(candidate) && isProductionTsFile(candidate)) ?? null;
 }
@@ -260,8 +239,18 @@ function boundedContextOf(file) {
 }
 
 function architectureLayerOf(file) {
-  return toProjectPath(file).match(/^libs\/[^/]+\/(domain|features|ports|adapters|interfaces)(?:\/|$)/)?.[1] ?? null;
+  const path = toProjectPath(file);
+  return path.match(/^libs\/[^/]+\/(domain|features|application|ports|adapters|infrastructure|interfaces|presentation)(?:\/|$)/)?.[1]
+    ?? path.match(/^libs\/platform\/[^/]+\/src\/(adapters|infrastructure|interfaces)(?:\/|$)/)?.[1]
+    ?? null;
 }
+
+const forbiddenTargetLayers = {
+  domain: new Set(['features', 'application', 'adapters', 'infrastructure', 'interfaces', 'presentation']),
+  features: new Set(['adapters', 'infrastructure', 'interfaces', 'presentation']),
+  application: new Set(['adapters', 'infrastructure', 'interfaces', 'presentation']),
+  ports: new Set(['features', 'adapters', 'infrastructure', 'interfaces', 'presentation']),
+};
 
 function isUnder(projectPath, root) {
   return projectPath === root.replace(/\/$/, '') || projectPath.startsWith(root);
@@ -274,6 +263,12 @@ function isAppAdapterCompositionFile(file) {
     projectPath.endsWith('.provider-tokens.ts') ||
     projectPath.includes('/src/adapters/')
   );
+}
+
+function isContextCompositionFile(file) {
+  const path = toProjectPath(file);
+  return /^libs\/[^/]+\/interfaces\/.+(?:\.module|\.providers)\.ts$/.test(path)
+    || /^libs\/[^/]+\/adapters\/composition\/[^/]+\.ts$/.test(path);
 }
 
 function addRuntimeCycleViolations() {
@@ -492,18 +487,29 @@ function isPlatformRootAdapterExport(specifier) {
 }
 
 for (const file of globSync('libs/**/*.ts')) {
+  // Integration tests compose concrete fakes across contexts. The existing
+  // dependency-string gates above still cover test inner-layer imports.
+  if (!isProductionTsFile(file)) continue;
   const source = readFileSync(file, 'utf8');
   for (const specifier of importsOf(source)) {
     const resolved = resolveLocalImport(file, specifier);
     const sourceContext = boundedContextOf(file);
     const targetContext = resolved ? boundedContextOf(resolved) : null;
     const targetLayer = resolved ? architectureLayerOf(resolved) : null;
+    const sourceLayer = architectureLayerOf(file);
+
+    if (resolved && forbiddenTargetLayers[sourceLayer]?.has(targetLayer)) {
+      addViolation(file, `${sourceLayer} must not import ${targetLayer}: "${specifier}" resolves to "${resolved}"`);
+    }
+    if (resolved?.startsWith('libs/contracts/') && forbiddenTargetLayers[sourceLayer]) {
+      addViolation(file, `${sourceLayer} must not import public contracts: "${specifier}" resolves to "${resolved}"`);
+    }
 
     if (specifier.startsWith('.') && sourceContext && targetContext && sourceContext !== targetContext) {
       addViolation(file, `cross-context relative import is forbidden: "${specifier}" resolves to "${resolved}"`);
     }
 
-    if (sourceContext && targetContext && sourceContext !== targetContext && targetLayer === 'adapters') {
+    if (sourceContext && targetContext && sourceContext !== targetContext && ['adapters', 'infrastructure'].includes(targetLayer) && !isContextCompositionFile(file)) {
       addViolation(file, `cross-context adapter import is forbidden: "${specifier}" resolves to "${resolved}"`);
     }
   }
@@ -580,7 +586,7 @@ for (const file of globSync('apps/**/*.ts').map(toProjectPath).filter(isProducti
       addViolation(file, `apps must import libs through @social-monitor aliases, not deep-relative path "${specifier}"`);
     }
 
-    if (resolved && boundedContextOf(resolved) && architectureLayerOf(resolved) === 'adapters' && !isAppAdapterCompositionFile(file)) {
+    if (resolved && boundedContextOf(resolved) && ['adapters', 'infrastructure'].includes(architectureLayerOf(resolved)) && !isAppAdapterCompositionFile(file)) {
       addViolation(
         file,
         `app services/controllers/reporters must receive adapter-backed data through module providers; only composition roots may import "${specifier}"`,

@@ -17,3 +17,15 @@ export interface AutoSummaryCandidateRepositoryPort {
     readonly limit: number;
   }): Promise<readonly AutoSummaryCandidate[]>;
 }
+
+/** Minimal local inventory consumed by the deterministic candidate repository. */
+export interface AutoSummaryFeedItemInventory {
+  all(): readonly {
+    toSnapshot(): {
+      readonly tenantId: TenantId;
+      readonly workspaceId: WorkspaceId;
+      readonly interestId: string;
+      readonly observedAt: Date;
+    };
+  }[];
+}
