@@ -125,7 +125,7 @@ export class InMemoryDeliveryWorkflowStore implements DeliveryAttemptDispatchSto
   async claimPending(params: Parameters<CommandOutboxStorePort['claimPending']>[0]): Promise<readonly CommandOutboxRecord[]> {
     const pending = [...this.outbox.values()]
       .filter((row) => row.status === 'PENDING' && row.availableAt <= params.now &&
-        (row.expiresAt === null || row.expiresAt <= params.now))
+        (row.expiresAt === null || row.expiresAt.getTime() <= params.now.getTime()))
       .sort((left, right) => left.availableAt.getTime() - right.availableAt.getTime() ||
         left.command.commandId.localeCompare(right.command.commandId))
       .slice(0, Math.max(0, params.limit));
@@ -139,7 +139,7 @@ export class InMemoryDeliveryWorkflowStore implements DeliveryAttemptDispatchSto
 
   async renewClaims(params: Parameters<CommandOutboxStorePort['renewClaims']>[0]): Promise<boolean> {
     if (params.ids.length === 0) return true;
-    if (new Set(params.ids).size !== params.ids.length || params.leasedUntil <= params.now) {
+    if (new Set(params.ids).size !== params.ids.length || params.leasedUntil.getTime() <= params.now.getTime()) {
       throw new Error('Invalid command outbox lease renewal');
     }
     const rows = params.ids.map((id) => this.outbox.get(id));
@@ -184,7 +184,7 @@ export class InMemoryDeliveryWorkflowStore implements DeliveryAttemptDispatchSto
   private ownedOutbox(id: string, owner: string, at: Date): PendingDispatch {
     const row = this.outbox.get(id);
     if (row === undefined || row.status !== 'PENDING' || row.owner !== owner ||
-      row.expiresAt === null || row.expiresAt <= at) {
+      row.expiresAt === null || row.expiresAt.getTime() <= at.getTime()) {
       throw new Error('Delivery command outbox ownership was lost');
     }
     return row;
