@@ -150,3 +150,19 @@ The audit additionally reproduced a monitoring transaction gap: an interest can
 commit before its event append fails; retry then returns success without the
 event. This is queued for a narrow aggregate+event+idempotency transaction slice
 after the selected delivery work, rather than a generic unit-of-work framework.
+
+### Compatible dependency remediation
+
+The required security audit reported 14 affected package records (including
+transitive cascades). A separate source review confirmed compatible patches for
+body-parser, multer, fast-uri, qs and @hono/node-server. Update only those compatible
+ranges/overrides and their lock entries; preserve Nest 11, Jest 30 and all vendored
+runtime archives and provenance. In particular, Express JSON body parsing occurs
+before route authorization, so the body-parser security fix belongs in this batch.
+
+Root Zod is already part of PR #587. The bundled MiMo runtime pins a vulnerable
+Zod release and requires an upstream rebuild with valid provenance; rewriting its
+archive or claiming an npm override changed bundled code is not an acceptable
+fix. The development-only deepmerge advisory has no verified patched release;
+the audit's proposed Jest downgrade is rejected. Record remaining advisories
+honestly after the compatible updates.
