@@ -242,6 +242,7 @@ function architectureLayerOf(file) {
   const path = toProjectPath(file);
   return path.match(/^libs\/[^/]+\/(domain|features|application|ports|adapters|infrastructure|interfaces|presentation)(?:\/|$)/)?.[1]
     ?? path.match(/^libs\/platform\/[^/]+\/src\/(adapters|infrastructure|interfaces)(?:\/|$)/)?.[1]
+    ?? (/^libs\/platform\/persistence\/src\/prisma-/.test(path) ? 'infrastructure' : null)
     ?? null;
 }
 
