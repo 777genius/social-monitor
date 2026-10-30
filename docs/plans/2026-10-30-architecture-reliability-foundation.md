@@ -336,6 +336,10 @@ infrastructure decisions without coupling bounded-context business policy.
 - Route native delivery/interest checks through the existing runtime connection
   factory with one `min=0`, `max=2` lease. The existing pool inventory and budget
   tests remain unchanged.
+- Bind the autonomous fixture reviewer in the constructor-composition test's
+  isolated VM. Assert its exact seventh-argument identity and the empty eighth
+  slot while retaining the independent reader's ninth-argument identity. The
+  harness still evaluates only the extracted constructor, not a whole check flow.
 
 The compatible dependency refresh also required updating the repository-owned
 hoisted-import approval for `fast-uri`. The official 3.1.9 tarball was checked
@@ -393,9 +397,11 @@ specific completed batches and must not be added together as unique test counts.
 | Pool and runtime admission contracts | Unchanged pool-budget suite: 78 tests passed. Runtime installation/admission suite: 69 tests passed, including the verified fast-uri update and three tampering regressions. |
 | Runtime and targeted fixtures | Runtime-profile guards, RabbitMQ publisher, event relay, webhook provider, scan queue drain, delivery dispatch/drain/replay, source certification, write idempotency, beta scope, cross-process scheduler and fixture-only summary-memory loop passed. |
 | Final monitoring loops | MVP and autonomous loops passed. Autonomous evidence was regenerated only after all runtime assertions passed, then validated by a normal byte-for-byte rerun. Independent fixture-adapter proof: 30 checks passed. |
+| Constructor composition harness | The final reviewer-binding correction passed all 9 focused tests, changed-file ESLint and independent review. |
 | Migration and role evidence | Schema gate passed; exact SQL succeeded under a restricted explicit-SET-role login. Remote PostgreSQL 18 historical migration/RLS and scan/delivery contract steps passed at commit `f5c023b`. |
 | Dependency policy gate | Passed using the existing approved Zod/runtime exceptions; three resolved exceptions were removed. |
 | Raw `npm audit --audit-level=moderate` | Still exits 1: 8 affected package records (2 high, 0 moderate, 6 low), down from 14 (5 high, 3 moderate, 6 low). |
+| Additional baseline gate | `check:e2e-traceability` fails on two stale source-binding text markers. Its manifest, referenced test and validator are unchanged from the audit baseline. |
 
 Remote checkpoint evidence:
 [workflow 41095172652](https://github.com/777genius/social-monitor/actions/runs/41095172652).
@@ -405,6 +411,14 @@ qualification. Its two failing unit shards identified the pool/admission/recover
 fixture issues described above; those were fixed and verified separately. The
 latest PR check status remains the source of truth for the final commit; this
 historical checkpoint is not a claim that every later commit already has green CI.
+
+The subsequent full [workflow 41101166945](https://github.com/777genius/social-monitor/actions/runs/41101166945)
+at `6ae9546` passed PostgreSQL 18, backend E2E, static quality, builds,
+security/public contracts, Flutter, production lifecycle fixtures and five unit
+shards. Its remaining unit shard found one missing VM fixture binding
+(`fixtureReviewer is not defined`); the resulting aggregate failure did not
+indicate another production defect. The narrow harness correction above fixes
+that reproduced failure. The final commit's CI status remains authoritative.
 
 ## Remaining limits and follow-up
 
@@ -429,3 +443,9 @@ historical checkpoint is not a claim that every later commit already has green C
   impose their own contracts. No blanket retry/lease rewrite was introduced.
 - No production-size index-build timing or historical data repair is claimed.
   Follow the coordinated rollout and rollback constraints above.
+- The existing E2E acceptance traceability manifest expects deferred-provider
+  wording in `test/e2e/source-bindings.create.e2e-spec.ts`; that test now covers
+  private Telegram preview scopes. Both `ops/release/e2e-acceptance-traceability.json`
+  and `scripts/check-e2e-traceability.mjs`, together with the referenced test,
+  are unchanged from `d25dfaf3`. Repair the acceptance mapping against its actual
+  intended negative behavior separately; no text check was weakened here.
