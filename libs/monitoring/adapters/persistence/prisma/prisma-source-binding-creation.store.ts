@@ -15,7 +15,7 @@ import type { BindSourceResult } from '../../../features/bind-source/bind-source
 import type { PrismaMonitoringClient } from './prisma-monitoring-client';
 import { sourceBindingStatusToPrisma } from './prisma-monitoring-records';
 
-type SourceBindingCreationTx = Pick<
+export type SourceBindingCreationTx = Pick<
   PrismaMonitoringClient,
   'interest' | 'sourceCatalogEntry' | 'sourceBinding' | 'outboxEvent' | 'idempotencyKey'
 >;
