@@ -4,7 +4,7 @@ import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import { queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
 import { classifyWorkerRuntimeFailure } from '@social-monitor/platform-worker';
 import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
-import type { RetryScanCommand, ScanRetryQueuePort } from '@social-monitor/ingestion/ports';
+import type { ScanRetryQueuePort } from '@social-monitor/ingestion/ports';
 import { DomainError, type Clock } from '@social-monitor/shared-kernel';
 
 import {
@@ -17,6 +17,7 @@ import {
   type QueueCommandDelivery,
   type ScanCommandQueueReaderPort,
 } from './scan-command-queue-reader';
+import { ScanRetryDeliveryBatch, SCAN_RETRY_VISIBILITY_SECONDS } from './scan-retry-delivery-batch';
 
 @Injectable()
 export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
@@ -91,67 +92,97 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    this.currentTick = this.executeTick(trigger).finally(() => {
+    this.currentTick = this.executeTick(trigger).catch((error: unknown) => {
+      // Startup remains fail-fast; a transient interval failure must not become
+      // an unhandled rejection or prevent the next scheduled recovery attempt.
+      if (trigger === 'startup') throw error;
+      const failure = classifyWorkerRuntimeFailure(error);
+      this.logger.error('queue drain loop tick failed', {
+        trigger,
+        error: failure.message,
+        errorClassification: failure.classification,
+        errorCode: failure.code,
+        worker: 'ingestion-worker',
+      });
+    }).finally(() => {
       this.currentTick = undefined;
     });
     await this.currentTick;
   }
 
   private async executeTick(trigger: 'startup' | 'interval'): Promise<void> {
-    const { deliveries, primaryCount, retryCount } = await this.drainExecutableCommands();
+    const { deliveries, primaryCount, retryCount, retryBatch } = await this.drainExecutableCommands();
     let completed = 0;
     let failed = 0;
     let requeued = 0;
+    const unsettledPrimary = new Set(deliveries.filter((delivery) => !retryBatch.deliveries.includes(delivery)));
 
-    for (const delivery of deliveries) {
-      const { command } = delivery;
-      if (this.shuttingDown) {
-        await delivery.nack({ requeue: true });
-        requeued += 1;
-        continue;
-      }
-      this.recordDeliveryLag(delivery);
-      try {
-        await this.handler.handle(command);
-        await delivery.ack();
-        completed += 1;
-      } catch (error) {
-        const failure = classifyWorkerRuntimeFailure(error);
-        const requeue =
-          this.shuttingDown ||
-          (error instanceof DomainError &&
-            error.code === 'operation.backpressure');
-        await delivery.nack({ requeue });
-        if (requeue) {
+    try {
+      for (const delivery of deliveries) {
+        const { command } = delivery;
+        if (this.shuttingDown || !retryBatch.owns(delivery)) {
+          await delivery.nack({ requeue: true });
+          unsettledPrimary.delete(delivery);
           requeued += 1;
           continue;
         }
-        failed += 1;
-        this.logger.error('scan queue drain loop item failed', {
-          commandId: command.commandId,
-          trigger,
-          error: failure.message,
-          errorClassification: failure.classification,
-          errorCode: failure.code,
-          redelivered: delivery.diagnostics.redelivered,
-          deadLetterCount: delivery.diagnostics.deadLetterCount,
-          deadLetterReason: delivery.diagnostics.deadLetterReason,
-          deadLetterQueue: delivery.diagnostics.deadLetterQueue,
-          worker: 'ingestion-worker',
-        });
+        this.recordDeliveryLag(delivery);
+        try {
+          await this.handler.handle(command);
+          await delivery.ack();
+          unsettledPrimary.delete(delivery);
+          completed += 1;
+        } catch (error) {
+          const failure = classifyWorkerRuntimeFailure(error);
+          if (error instanceof DomainError && error.details.reason === 'scan_failure_recorded') {
+            await delivery.ack();
+            unsettledPrimary.delete(delivery);
+            failed += 1;
+            continue;
+          }
+          const requeue =
+            this.shuttingDown ||
+            (error instanceof DomainError &&
+              (error.code === 'operation.backpressure' ||
+                error.details.reason === 'scan_lease_held' ||
+                error.details.reason === 'scan_lease_release_failed' ||
+                error.details.reason === 'scan_failure_recording_failed' ||
+                error.details.reason === 'scan_outcome_reporting_failed'));
+          await delivery.nack({ requeue });
+          unsettledPrimary.delete(delivery);
+          if (requeue) {
+            requeued += 1;
+            continue;
+          }
+          failed += 1;
+          this.logger.error('scan queue drain loop item failed', {
+            commandId: command.commandId,
+            trigger,
+            error: failure.message,
+            errorClassification: failure.classification,
+            errorCode: failure.code,
+            redelivered: delivery.diagnostics.redelivered,
+            deadLetterCount: delivery.diagnostics.deadLetterCount,
+            deadLetterReason: delivery.diagnostics.deadLetterReason,
+            deadLetterQueue: delivery.diagnostics.deadLetterQueue,
+            worker: 'ingestion-worker',
+          });
+        }
       }
-    }
 
-    this.logger.info('scan queue drain loop tick completed', {
-      trigger,
-      evaluated: deliveries.length,
-      primary: primaryCount,
-      retry: retryCount,
-      completed,
-      failed,
-      requeued,
-      worker: 'ingestion-worker',
-    });
+      this.logger.info('scan queue drain loop tick completed', {
+        trigger,
+        evaluated: deliveries.length,
+        primary: primaryCount,
+        retry: retryCount,
+        completed,
+        failed,
+        requeued,
+        worker: 'ingestion-worker',
+      });
+    } finally {
+      await this.releaseOnAbort([...unsettledPrimary], retryBatch);
+    }
   }
 
   private recordDeliveryLag(delivery: QueueCommandDelivery): void {
@@ -176,62 +207,57 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
     readonly deliveries: readonly QueueCommandDelivery[];
     readonly primaryCount: number;
     readonly retryCount: number;
+    readonly retryBatch: ScanRetryDeliveryBatch;
   }> {
     const primaryLimit = Math.max(1, Math.ceil(this.options.limit / 2));
     const primary = await this.queue.drain({
       commandType: 'ingestion.scan.execute',
       limit: primaryLimit,
     });
-    const retryLimit = this.options.limit - primary.length;
-    const retries = retryLimit > 0
-      ? await this.retryQueue.drainRetries({ limit: retryLimit })
-      : [];
-    const spareLimit = this.options.limit - primary.length - retries.length;
-    const extraPrimary = spareLimit > 0
-      ? await this.queue.drain({
-          commandType: 'ingestion.scan.execute',
-          limit: spareLimit,
-        })
-      : [];
+    let retryBatch: ScanRetryDeliveryBatch | undefined;
+    try {
+      const retryLimit = this.options.limit - primary.length;
+      const retries = retryLimit > 0
+        ? await this.retryQueue.claimRetries({ limit: retryLimit, now: this.clock.now(),
+            visibilityTimeoutSeconds: SCAN_RETRY_VISIBILITY_SECONDS })
+        : [];
+      retryBatch = new ScanRetryDeliveryBatch(retries, this.clock, this.logger);
+      const spareLimit = this.options.limit - primary.length - retries.length;
+      const extraPrimary = spareLimit > 0
+        ? await this.queue.drain({
+            commandType: 'ingestion.scan.execute',
+            limit: spareLimit,
+          })
+        : [];
 
-    return {
-      deliveries: [
-        ...primary,
-        ...retries.map(retryToDelivery),
-        ...extraPrimary,
-      ],
-      primaryCount: primary.length + extraPrimary.length,
-      retryCount: retries.length,
-    };
+      return {
+        deliveries: [
+          ...primary,
+          ...retryBatch.deliveries,
+          ...extraPrimary,
+        ],
+        primaryCount: primary.length + extraPrimary.length,
+        retryCount: retries.length,
+        retryBatch,
+      };
+    } catch (error) {
+      await this.releaseOnAbort(primary, retryBatch);
+      throw error;
+    }
+  }
+
+  private async releaseOnAbort(primary: readonly QueueCommandDelivery[], retryBatch?: ScanRetryDeliveryBatch): Promise<void> {
+    const outcomes = await Promise.allSettled([
+      ...primary.map((delivery) => delivery.nack({ requeue: true })),
+      ...(retryBatch === undefined ? [] : [retryBatch.releaseUnsettled()]),
+    ]);
+    for (const outcome of outcomes) {
+      if (outcome.status !== 'rejected') continue;
+      const failure = classifyWorkerRuntimeFailure(outcome.reason);
+      this.logger.error('scan delivery release failed; broker redelivery or claim expiry must recover it', {
+        error: failure.message, errorClassification: failure.classification,
+        errorCode: failure.code, worker: 'ingestion-worker',
+      });
+    }
   }
 }
-
-const retryToDelivery = (
-  command: RetryScanCommand,
-): QueueCommandDelivery => ({
-  command: {
-    commandId: `${command.scanJobId}:retry:${command.nextAttemptNumber}`,
-    commandType: 'ingestion.scan.execute',
-    schemaVersion: 1,
-    correlationId: command.correlationId,
-    causationId: command.causationId,
-    payload: {
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      scanJobId: command.scanJobId,
-      interestId: command.interestId,
-      sourceBindingId: command.sourceBindingId,
-      scanPolicyId: command.scanPolicyId,
-      providerKey: command.providerKey,
-      sourceQuery: command.sourceQuery,
-      attemptNumber: command.nextAttemptNumber,
-      retryBudget: command.retryBudget,
-    },
-  },
-  diagnostics: {
-    redelivered: false,
-    deadLetterCount: 0,
-  },
-  ack: async () => undefined,
-  nack: async () => undefined,
-});

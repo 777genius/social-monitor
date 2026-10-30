@@ -251,6 +251,21 @@ export type PrismaMonitoringClient = {
     }): Promise<readonly PrismaScanPolicyRecord[]>;
   };
   readonly scanJob: {
+    updateMany(args: {
+      readonly where: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly status: 'ENQUEUED';
+      };
+      readonly data: {
+        readonly status: 'REQUESTED' | 'ENQUEUED' | 'SUCCEEDED' | 'FAILED';
+        readonly completedAt?: Date;
+        readonly failureReason: string | null;
+        readonly failureMetadata: Readonly<Record<string, unknown>> | null;
+        readonly executionMetadata: Readonly<Record<string, unknown>> | null;
+      };
+    }): Promise<{ readonly count: number }>;
     upsert(args: {
       readonly where: { readonly id: string };
       readonly update: {

@@ -277,6 +277,13 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   };
 
   readonly scanJob: PrismaMonitoringClient['scanJob'] = {
+    updateMany: async ({ where, data }) => {
+      const current = this.scanJobs.get(where.id);
+      if (current?.tenantId !== where.tenantId || current.workspaceId !== where.workspaceId ||
+          current.status !== where.status) return { count: 0 };
+      this.scanJobs.set(where.id, { ...current, ...data, completedAt: data.completedAt ?? null });
+      return { count: 1 };
+    },
     upsert: async (args) => {
       const existing = this.scanJobs.get(args.where.id);
       const record: PrismaScanJobRecord = {

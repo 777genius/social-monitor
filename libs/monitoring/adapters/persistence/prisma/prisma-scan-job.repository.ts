@@ -7,6 +7,7 @@ import type {
   ListScanJobsBySourceBindingWindowResult,
   ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
+  ScanJobOutcomeRepositoryPort,
 } from '../../../ports';
 import type { PrismaMonitoringClient } from './prisma-monitoring-client';
 import {
@@ -17,7 +18,7 @@ import {
 const ACTIVE_SCAN_JOB_STATUSES = ['REQUESTED', 'ENQUEUED'] as const;
 
 export class PrismaScanJobRepository
-  implements ScanJobRepositoryPort, ScanJobHistoryReadPort
+  implements ScanJobRepositoryPort, ScanJobHistoryReadPort, ScanJobOutcomeRepositoryPort
 {
   constructor(
     private readonly prisma: Pick<PrismaMonitoringClient, 'scanJob'>,
@@ -73,6 +74,22 @@ export class PrismaScanJobRepository
     });
 
     return record === null ? null : scanJobFromPrisma(record);
+  }
+
+  async saveTerminalOutcome(job: ScanJob): Promise<boolean> {
+    const snapshot = job.toSnapshot();
+    if (snapshot.status !== 'succeeded' && snapshot.status !== 'failed') {
+      throw new Error('Only terminal scan outcomes can be recorded');
+    }
+    const updated = await withPrismaWriteRetry(() => this.prisma.scanJob.updateMany({
+      where: { id: snapshot.id, tenantId: snapshot.tenantId, workspaceId: snapshot.workspaceId, status: 'ENQUEUED' },
+      data: {
+        status: scanJobStatusToPrisma(snapshot.status), completedAt: snapshot.completedAt,
+        failureReason: snapshot.failureReason ?? null, failureMetadata: snapshot.failureMetadata ?? null,
+        executionMetadata: snapshot.executionMetadata ?? null,
+      },
+    }));
+    return updated.count === 1;
   }
 
   async findActiveBySourceBinding(params: {

@@ -646,10 +646,13 @@ model ScanFailureQueueEntry {
   nextAttemptNumber Int?                   @map("next_attempt_number")
   failureReason     String                 @map("failure_reason")
   status            ScanFailureQueueStatus @default(RETRY_ENQUEUED)
+  claimToken        String?                @map("claim_token") @db.Uuid
+  claimedUntil      DateTime?              @map("claimed_until") @db.Timestamptz(6)
   createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([tenantId, workspaceId, status, createdAt])
   @@index([tenantId, scanJobId])
+  @@index([status, claimedUntil, createdAt], map: "scan_retry_claim_expiry_idx")
   @@map("scan_failure_queue_entries")
 }
 
@@ -667,6 +670,7 @@ model ScanAttempt {
   skippedDuplicates Int               @default(0) @map("skipped_duplicates")
   projected         Int               @default(0)
   failureReason     String?           @map("failure_reason")
+  terminalFailure   Boolean           @default(false) @map("terminal_failure")
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([tenantId, workspaceId, status, startedAt])

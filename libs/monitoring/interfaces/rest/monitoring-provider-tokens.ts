@@ -6,6 +6,7 @@ import type {
   OutboxPort,
   ScanExecutionAttemptReadPort,
   ScanJobRepositoryPort,
+  ScanJobOutcomeRepositoryPort,
   ScanDispatchPort,
   ScanPolicyRepositoryPort,
   ScanSchedulerDecisionHistoryPort,
@@ -52,7 +53,7 @@ export type MonitoringProviderTokenMap = {
   readonly [MONITORING_INTEREST_REPOSITORY]: InterestRepositoryPort;
   readonly [MONITORING_SOURCE_BINDING_REPOSITORY]: SourceBindingRepositoryPort;
   readonly [MONITORING_SCAN_POLICY_REPOSITORY]: ScanPolicyRepositoryPort;
-  readonly [MONITORING_SCAN_JOB_REPOSITORY]: ScanJobRepositoryPort;
+  readonly [MONITORING_SCAN_JOB_REPOSITORY]: ScanJobRepositoryPort & ScanJobOutcomeRepositoryPort;
   readonly [MONITORING_SCAN_DISPATCH]: ScanDispatchPort;
   readonly [MONITORING_SCAN_SCHEDULER_DECISION_HISTORY]: ScanSchedulerDecisionHistoryPort;
   readonly [MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL]: ScanExecutionAttemptReadPort;

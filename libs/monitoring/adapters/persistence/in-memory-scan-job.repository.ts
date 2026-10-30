@@ -6,9 +6,10 @@ import type {
   ListScanJobsBySourceBindingWindowResult,
   ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
+  ScanJobOutcomeRepositoryPort,
 } from '../../ports';
 
-export class InMemoryScanJobRepository implements ScanJobRepositoryPort, ScanJobHistoryReadPort {
+export class InMemoryScanJobRepository implements ScanJobRepositoryPort, ScanJobHistoryReadPort, ScanJobOutcomeRepositoryPort {
   private readonly jobsByIdempotencyKey = new Map<string, ScanJob>();
   private readonly jobsById = new Map<string, ScanJob>();
 
@@ -19,6 +20,18 @@ export class InMemoryScanJobRepository implements ScanJobRepositoryPort, ScanJob
       this.key(snapshot.tenantId, snapshot.workspaceId, snapshot.idempotencyKey),
       job,
     );
+  }
+
+  async saveTerminalOutcome(job: ScanJob): Promise<boolean> {
+    const snapshot = job.toSnapshot();
+    if (snapshot.status !== 'succeeded' && snapshot.status !== 'failed') {
+      throw new Error('Only terminal scan outcomes can be recorded');
+    }
+    const current = this.jobsById.get(this.idKey(snapshot.tenantId, snapshot.workspaceId, snapshot.id));
+    if (current?.toSnapshot().status !== 'enqueued') return false;
+    // Map mutation occurs synchronously before yielding, matching durable compare-and-set.
+    await this.save(job);
+    return true;
   }
 
   async restoreScanJob(params: {

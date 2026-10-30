@@ -28,10 +28,36 @@ export interface ScanFailureQueuePort {
 }
 
 export interface ScanRetryQueuePort {
-  drainRetries(params: {
+  claimRetries(params: {
     readonly limit: number;
-  }): Promise<readonly RetryScanCommand[]>;
+    readonly now: Date;
+    readonly visibilityTimeoutSeconds: number;
+  }): Promise<readonly ScanRetryDelivery[]>;
 }
+
+export type ScanRetryDelivery = {
+  readonly command: RetryScanCommand;
+  /** False means ownership expired or another consumer owns this entry. */
+  renew(now: Date): Promise<boolean>;
+  ack(): Promise<void>;
+  nack(params: { readonly requeue: boolean }): Promise<void>;
+};
+
+export const assertValidScanRetryClaim = (params: {
+  readonly limit: number;
+  readonly now: Date;
+  readonly visibilityTimeoutSeconds: number;
+}): void => {
+  if (!Number.isInteger(params.limit) || params.limit < 1) {
+    throw new Error('Scan retry claim limit must be a positive integer');
+  }
+  if (!Number.isFinite(params.now.getTime())) {
+    throw new Error('Scan retry claim time must be valid');
+  }
+  if (!Number.isInteger(params.visibilityTimeoutSeconds) || params.visibilityTimeoutSeconds < 1) {
+    throw new Error('Scan retry visibility timeout must be a positive integer');
+  }
+};
 
 export interface ScanFailureInspectionPort {
   listDeadLetters(params: {

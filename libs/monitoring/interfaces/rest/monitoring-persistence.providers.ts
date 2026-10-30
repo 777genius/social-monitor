@@ -20,6 +20,7 @@ import type {
   ScanExecutionAttemptReadPort,
   ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
+  ScanJobOutcomeRepositoryPort,
   ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
 } from '../../ports';
@@ -36,7 +37,7 @@ import {
 } from './monitoring-provider-tokens';
 
 type MonitoringScanJobStorePort =
-  ScanJobRepositoryPort & ScanJobHistoryReadPort;
+  ScanJobRepositoryPort & ScanJobHistoryReadPort & ScanJobOutcomeRepositoryPort;
 
 export const monitoringPersistenceProviders: Provider[] = [
   {

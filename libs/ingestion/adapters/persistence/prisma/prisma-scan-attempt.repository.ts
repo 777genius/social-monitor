@@ -23,6 +23,7 @@ export class PrismaScanAttemptRepository implements ScanAttemptRepositoryPort {
         skippedDuplicates: snapshot.skippedDuplicates,
         projected: snapshot.projected,
         failureReason: snapshot.failureReason ?? null,
+        terminalFailure: snapshot.terminalFailure ?? false,
       },
       create: {
         scanJobId: snapshot.scanJobId,
@@ -38,6 +39,7 @@ export class PrismaScanAttemptRepository implements ScanAttemptRepositoryPort {
         skippedDuplicates: snapshot.skippedDuplicates,
         projected: snapshot.projected,
         failureReason: snapshot.failureReason ?? null,
+        terminalFailure: snapshot.terminalFailure ?? false,
       },
     }));
   }

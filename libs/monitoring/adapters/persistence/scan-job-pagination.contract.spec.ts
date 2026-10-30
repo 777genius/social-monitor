@@ -33,7 +33,7 @@ const fixtures = () => [
 const prismaRecord = (entity: ScanJob): PrismaScanJobRecord => {
   const snapshot = entity.toSnapshot();
   return {
-    ...snapshot, status: scanJobStatusToPrisma(snapshot.status),
+    ...snapshot, status: scanJobStatusToPrisma(snapshot.status), createdAt: snapshot.requestedAt,
     enqueuedAt: snapshot.enqueuedAt ?? null, completedAt: snapshot.completedAt ?? null,
     failureReason: snapshot.failureReason ?? null,
     failureMetadata: snapshot.failureMetadata ?? null,
@@ -51,6 +51,7 @@ const factories: Record<string, () => Promise<ScanJobHistoryReadPort>> = {
     const records = fixtures().map(prismaRecord);
     const client: Pick<PrismaMonitoringClient, 'scanJob'> = {
       scanJob: {
+        updateMany: async () => { throw new Error('Read-only contract fixture'); },
         upsert: async () => { throw new Error('Read-only contract fixture'); },
         findFirst: async () => null,
         findMany: async (query) => {
