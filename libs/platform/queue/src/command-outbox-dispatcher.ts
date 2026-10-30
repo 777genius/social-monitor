@@ -102,15 +102,17 @@ export class CommandOutboxDispatcher {
         // confirmations. Never start a new send after renewal becomes uncertain.
         await heartbeat.assertOwned();
         let publishError: unknown;
+        let failedPublish = false;
         try {
           await this.publisher.publish(record.command);
         } catch (error) {
+          failedPublish = true;
           publishError = error;
         }
         await heartbeat.assertOwned();
         heartbeat.completed(record.id);
 
-        if (publishError !== undefined) {
+        if (failedPublish) {
           const terminal = record.publishAttempt >= this.maxAttempts;
           const failedAt = this.clock.now();
           await this.outbox.markFailed({
