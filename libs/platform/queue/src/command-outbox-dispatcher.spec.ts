@@ -191,7 +191,7 @@ describe('CommandOutboxDispatcher', () => {
       ]);
       let release!: () => void;
       const pending = new Promise<void>((resolve) => { release = resolve; });
-      const publish = jest.fn(async (value: typeof command) => {
+      const publish = jest.fn(async (value: QueueCommandEnvelope<Readonly<Record<string, unknown>>>) => {
         if (value.commandId === command.commandId) await pending;
       });
       const dispatcher = new CommandOutboxDispatcher(
