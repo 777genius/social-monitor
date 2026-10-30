@@ -8,6 +8,7 @@ import type { PrismaMonitoringClient } from '@social-monitor/monitoring/adapters
 import { PrismaMonitoringOutboxAdapter } from '@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-outbox.adapter';
 import { PrismaScanPolicyRepository } from '@social-monitor/monitoring/adapters/persistence/prisma/prisma-scan-policy.repository';
 import { PrismaSourceBindingRepository } from '@social-monitor/monitoring/adapters/persistence/prisma/prisma-source-binding.repository';
+import { PrismaSourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/prisma/prisma-source-binding-creation.store';
 import { FakeSourceCatalogAdapter } from '@social-monitor/monitoring/adapters/source-catalog/fake-source-catalog.adapter';
 import { BindSourceUseCase } from '@social-monitor/monitoring/features/bind-source/bind-source.use-case';
 import { SetScanPolicyUseCase } from '@social-monitor/monitoring/features/set-scan-policy/set-scan-policy.use-case';
@@ -47,8 +48,10 @@ export const telegramCollectionMonitoring = (
     interests, bindings, policies,
     catalog: { inspect: () => inspectCatalog(client), ensure: () => ensureCatalog(client) },
     ...(protector === undefined ? {} : { bootstrap: {
-      bindSource: new BindSourceUseCase(interests, bindings, new FakeSourceCatalogAdapter({ includeFixtureProviders: false }),
-        outbox, idempotency, protector, ids, clock),
+      bindSource: new BindSourceUseCase(interests,
+        new PrismaSourceBindingCreationStore(monitoring),
+        new FakeSourceCatalogAdapter({ includeFixtureProviders: false }),
+        idempotency, protector, ids, clock),
       setPolicy: new SetScanPolicyUseCase(bindings, policies, outbox, idempotency, ids, clock),
     } }),
   };
