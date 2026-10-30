@@ -253,3 +253,21 @@ separate disposable database. Its `prisma db push` establishes the current schem
 it does not run migration SQL or install migration-only checks such as
 `scan_retry_claim_pair`. The preceding existing historical-migration/RLS proof
 remains unchanged. Report native local checks and remote CI results separately.
+
+The first remote historical replay exposed a missing owner-role switch in the
+three new migrations (`42501: must be owner of table scan_attempts`). The new
+migrations now follow the existing Serializable `BEGIN` / `SET LOCAL ROLE
+social_monitor_public_schema_owner` / `COMMIT` convention; no historical SQL,
+grants or RLS controls changed. A separate baseline-schema fixture proved all
+three corrected SQL files under a non-superuser, `NOINHERIT`, non-BYPASSRLS login
+with only the existing explicit SET-role capability. Unauthorized direct ALTER
+failed before and after; session role reset after every commit; both indexes and
+the claim-pair constraint were installed. Production still requires the existing
+role bootstrap. As with the established explicit-transaction migration pattern,
+failure recovery must account for an aborted transaction before interpreting
+Prisma's migration-log state.
+
+Remote static checks also caught an omitted readiness declaration for the
+delivery worker's newly injected in-memory attempt repository. The declaration
+now includes that adapter and the delivery workflow provider source; the gate
+itself is unchanged.
