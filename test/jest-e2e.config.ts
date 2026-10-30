@@ -30,6 +30,8 @@ const config: Config = {
     '^@social-monitor/social-research/(.*)$': '<rootDir>/libs/social-research/$1',
     '^@social-monitor/([^/]+)/(.*)$': '<rootDir>/libs/$1/$2',
   },
+  // The account-gateway SDK ships ESM only; ts-jest transpiles that package.
+  transformIgnorePatterns: ['/node_modules/(?!@agent-teams/account-gateway/)'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/prisma/generated/'],
   testEnvironment: 'node',
   setupFiles: ['<rootDir>/test/e2e/support/deterministic-runtime-env.ts'],
