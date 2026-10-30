@@ -118,3 +118,35 @@ Implementation decisions, exact commands/results and review corrections will be
 recorded here as each slice completes. A green unit suite is not evidence of live
 provider readiness, production migration safety or system-wide exactly-once
 processing.
+
+### Design review before implementation
+
+- **Scan retry ownership:** extend the existing retry row with nullable claim
+  token/expiry fields. Claim by scoped compare-and-set; acknowledge, release or
+  dead-letter only with the matching token. Expired ownership becomes eligible
+  again. Keep the same contract in memory. Review claim duration against scan
+  execution deadlines and the existing execution lease so slow work is not lost.
+- **Delivery dispatch:** an application-owned operation atomically moves a
+  dispatchable attempt to `assembling` and appends the existing command-outbox
+  envelope in one Serializable transaction. Broker publication is the relay's
+  responsibility; it cannot be followed by a stale aggregate save.
+- **Delivery execution:** claim and finish using a tenant/workspace-scoped token
+  and expiry. External calls stay outside transactions. Expired claims are
+  recoverable, completed delivery replays are harmless, and stale completion is
+  rejected. Lease duration must account for provider deadlines. Stable outbound
+  idempotency keys mitigate unavoidable at-least-once recovery.
+- **RabbitMQ generation ownership:** confirmation and delivery settlement must
+  stay attached to the channel that performed the operation. A new channel must
+  never confirm or acknowledge an older channel's work. The implementation must
+  prove concurrent publishers cannot consume each other's confirmation result.
+- **Webhook transport:** signed POSTs never follow redirects. Reuse a platform
+  infrastructure DNS/address guard for socket lookup and peer verification, and
+  keep webhook policy separate from content GET policy. Requests share one total
+  deadline, use no pooled socket that bypasses lookup, and consume no response
+  body because delivery only needs status and a request-id header. The pure URL
+  policy rejects local/non-global literal addresses and URL userinfo.
+
+The audit additionally reproduced a monitoring transaction gap: an interest can
+commit before its event append fails; retry then returns success without the
+event. This is queued for a narrow aggregate+event+idempotency transaction slice
+after the selected delivery work, rather than a generic unit-of-work framework.
