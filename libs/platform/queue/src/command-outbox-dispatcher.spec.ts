@@ -22,6 +22,7 @@ class SequenceIdGenerator implements IdGenerator {
 
 class FakeCommandOutbox implements CommandOutboxStorePort {
   readonly claims: Array<Parameters<CommandOutboxStorePort['claimPending']>[0]> = [];
+  readonly renewals: Array<Parameters<CommandOutboxStorePort['renewClaims']>[0]> = [];
   readonly published: Array<Parameters<CommandOutboxStorePort['markPublished']>[0]> = [];
   readonly failures: Array<Parameters<CommandOutboxStorePort['markFailed']>[0]> = [];
 
@@ -32,6 +33,11 @@ class FakeCommandOutbox implements CommandOutboxStorePort {
   ): Promise<readonly CommandOutboxRecord[]> {
     this.claims.push(params);
     return this.records;
+  }
+
+  async renewClaims(params: Parameters<CommandOutboxStorePort['renewClaims']>[0]): Promise<boolean> {
+    this.renewals.push(params);
+    return true;
   }
 
   async markPublished(
