@@ -401,7 +401,7 @@ specific completed batches and must not be added together as unique test counts.
 | Migration and role evidence | Schema gate passed; exact SQL succeeded under a restricted explicit-SET-role login. Remote PostgreSQL 18 historical migration/RLS and scan/delivery contract steps passed at commit `f5c023b`. |
 | Dependency policy gate | Passed using the existing approved Zod/runtime exceptions; three resolved exceptions were removed. |
 | Raw `npm audit --audit-level=moderate` | Still exits 1: 8 affected package records (2 high, 0 moderate, 6 low), down from 14 (5 high, 3 moderate, 6 low). |
-| Additional baseline gate | `check:e2e-traceability` fails on two stale source-binding text markers. Its manifest, referenced test and validator are unchanged from the audit baseline. |
+| Additional baseline gate | Corrected independently in [merged PR #589](https://github.com/777genius/social-monitor/pull/589): all 19 scenarios/21 evidence files and declared commands were cross-checked; its final PR workflow passed. |
 
 Remote checkpoint evidence:
 [workflow 41095172652](https://github.com/777genius/social-monitor/actions/runs/41095172652).
@@ -443,9 +443,26 @@ that reproduced failure. The final commit's CI status remains authoritative.
   impose their own contracts. No blanket retry/lease rewrite was introduced.
 - No production-size index-build timing or historical data repair is claimed.
   Follow the coordinated rollout and rollback constraints above.
-- The existing E2E acceptance traceability manifest expects deferred-provider
-  wording in `test/e2e/source-bindings.create.e2e-spec.ts`; that test now covers
-  private Telegram preview scopes. Both `ops/release/e2e-acceptance-traceability.json`
-  and `scripts/check-e2e-traceability.mjs`, together with the referenced test,
-  are unchanged from `d25dfaf3`. Repair the acceptance mapping against its actual
-  intended negative behavior separately; no text check was weakened here.
+- The old E2E acceptance traceability markers for Telegram were fixed in
+  [merged PR #589](https://github.com/777genius/social-monitor/pull/589).
+  The negative case still explicitly rejects private Telegram invitation
+  scopes; no validator or mandatory scenario was removed.
+
+## Post-implementation security review (October 30)
+
+A second pass over the signed-webhook socket boundary found that verifying
+only its DNS-pinned remote address after `secureConnect` was insufficient:
+Node can emit that event with `socket.authorized === false` if TLS certificate
+validation was globally disabled. Before sending any signature-bearing bytes,
+the client now explicitly sets `rejectUnauthorized: true` on `https.request`,
+requires `socket.authorized === true`, and rejects unauthorized peers with a
+non-retryable `tls_unverified` policy error. A negative regression fixture
+asserts zero signed bytes are sent; the successful fixture asserts explicit
+TLS enforcement. See commits `2a48baa` and `0383f47`.
+
+The post-review code requires a new complete GitHub Actions run; the earlier
+green workflow on `53f80fa` does not validate the TLS review correction.
+External CodeRabbit review was unavailable for this PR due to its 100-file
+limit; any external ReviewRouter or Strix result must be assessed separately,
+not inferred from the successful unit/E2E checks. The coordinated production
+worker drain and migration sequencing remain merge/rollout gates.
