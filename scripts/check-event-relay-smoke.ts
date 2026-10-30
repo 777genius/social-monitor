@@ -158,6 +158,10 @@ class FakeCommandOutbox implements CommandOutboxStorePort {
     }];
   }
 
+  async renewClaims(): Promise<boolean> {
+    return true;
+  }
+
   async markPublished(): Promise<void> {
     this.published = true;
   }

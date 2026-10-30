@@ -125,7 +125,7 @@ export class InMemoryDeliveryWorkflowStore implements DeliveryAttemptDispatchSto
   async claimPending(params: Parameters<CommandOutboxStorePort['claimPending']>[0]): Promise<readonly CommandOutboxRecord[]> {
     const pending = [...this.outbox.values()]
       .filter((row) => row.status === 'PENDING' && row.availableAt <= params.now &&
-        (row.expiresAt === null || row.expiresAt <= params.now))
+        (row.expiresAt === null || row.expiresAt.getTime() <= params.now.getTime()))
       .sort((left, right) => left.availableAt.getTime() - right.availableAt.getTime() ||
         left.command.commandId.localeCompare(right.command.commandId))
       .slice(0, Math.max(0, params.limit));
@@ -137,15 +137,31 @@ export class InMemoryDeliveryWorkflowStore implements DeliveryAttemptDispatchSto
     });
   }
 
+  async renewClaims(params: Parameters<CommandOutboxStorePort['renewClaims']>[0]): Promise<boolean> {
+    if (params.ids.length === 0) return true;
+    if (new Set(params.ids).size !== params.ids.length || params.leasedUntil.getTime() <= params.now.getTime()) {
+      throw new Error('Invalid command outbox lease renewal');
+    }
+    const rows = params.ids.map((id) => this.outbox.get(id));
+    if (rows.some((row) => row === undefined || row.status !== 'PENDING' ||
+      row.owner !== params.leaseOwner || row.expiresAt === null || row.expiresAt <= params.now)) {
+      return false;
+    }
+    for (const row of rows) {
+      if (row !== undefined) row.expiresAt = params.leasedUntil;
+    }
+    return true;
+  }
+
   async markPublished(params: Parameters<CommandOutboxStorePort['markPublished']>[0]): Promise<void> {
-    const row = this.ownedOutbox(params.id, params.leaseOwner);
+    const row = this.ownedOutbox(params.id, params.leaseOwner, params.publishedAt);
     row.status = 'PUBLISHED';
     row.owner = null;
     row.expiresAt = null;
   }
 
   async markFailed(params: Parameters<CommandOutboxStorePort['markFailed']>[0]): Promise<void> {
-    const row = this.ownedOutbox(params.id, params.leaseOwner);
+    const row = this.ownedOutbox(params.id, params.leaseOwner, params.failedAt);
     row.status = params.terminal ? 'FAILED' : 'PENDING';
     row.availableAt = params.availableAt;
     row.owner = null;
@@ -165,9 +181,10 @@ export class InMemoryDeliveryWorkflowStore implements DeliveryAttemptDispatchSto
     return startedAt !== undefined && startedAt <= recoverBefore;
   }
 
-  private ownedOutbox(id: string, owner: string): PendingDispatch {
+  private ownedOutbox(id: string, owner: string, at: Date): PendingDispatch {
     const row = this.outbox.get(id);
-    if (row === undefined || row.status !== 'PENDING' || row.owner !== owner) {
+    if (row === undefined || row.status !== 'PENDING' || row.owner !== owner ||
+      row.expiresAt === null || row.expiresAt.getTime() <= at.getTime()) {
       throw new Error('Delivery command outbox ownership was lost');
     }
     return row;

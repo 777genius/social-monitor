@@ -6,6 +6,7 @@ import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/pr
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import type { PrismaDeliveryWorkflowClient } from '@social-monitor/delivery/adapters/persistence/prisma/prisma-delivery-workflow-client';
 import { PrismaDeliveryWorkflowStore } from '@social-monitor/delivery/adapters/persistence/prisma/prisma-delivery-workflow.store';
+import { PrismaCommandOutboxStoreAdapter, type PrismaCommandOutboxClient } from '@social-monitor/platform-queue/adapters/prisma';
 import type { PrismaDeliveryClient } from '@social-monitor/delivery/adapters/persistence/prisma/prisma-delivery-client';
 import { PrismaDeliveryAttemptRepository } from '@social-monitor/delivery/adapters/persistence/prisma/prisma-delivery-attempt.repository';
 import { SendDeliveryAttemptUseCase } from '@social-monitor/delivery/features/send-delivery-attempt/send-delivery-attempt.use-case';
@@ -67,6 +68,15 @@ async function main(url: string): Promise<void> {
   const commandRows = async (id: string) => query<{ id: string }>(`SELECT id FROM outbox_events
     WHERE tenant_id=$1 AND workspace_id=$2 AND message_kind='COMMAND' AND event_type='delivery.attempt.send'
       AND payload->>'deliveryAttemptId'=$3`, [tenant, workspace, id]);
+  const currentDbTime = async (): Promise<Date> =>
+    (await query<{ now: Date }>('SELECT clock_timestamp() AS now'))[0]!.now;
+  const assertOnlyFixtureClaimable = async (at: Date, ownedId: string): Promise<void> => {
+    const unrelated = await query<{ id: string }>(`SELECT id FROM outbox_events
+      WHERE message_kind='COMMAND' AND status='PENDING' AND available_at <= $1
+        AND (leased_until IS NULL OR leased_until <= $1)
+        AND id <> $2::uuid LIMIT 1`, [at, ownedId]);
+    assert.equal(unrelated.length, 0, 'Native command outbox fixture requires isolated claimable COMMAND rows');
+  };
   try {
     await execute(`INSERT INTO tenants (id,slug,name,updated_at) VALUES ($1,$2,'Delivery workflow test',now())`, [tenant, `delivery-${tenant}`]);
     await execute(`INSERT INTO workspaces (id,tenant_id,slug,name,updated_at) VALUES ($1,$2,$3,'Delivery workflow test',now())`, [workspace, tenant, `delivery-${workspace}`]);
@@ -77,6 +87,57 @@ async function main(url: string): Promise<void> {
     const commands = await commandRows(raced);
     assert.equal(commands.length, 1, 'one assembling transition must have exactly one outbox command');
     assert.equal((await read(raced)).state, 'ASSEMBLING');
+
+    // Prove actual PostgreSQL owner/expiry fencing on the COMMAND outbox row.
+    // No synthetic updateMany mocks: the same migration-backed columns are
+    // used by event-relay's production dispatcher.
+    const commandOutbox = new PrismaCommandOutboxStoreAdapter(prisma as unknown as PrismaCommandOutboxClient);
+    const firstOwner = randomUUID();
+    const secondOwner = randomUUID();
+    const outboxNow = await currentDbTime();
+    const claimExpiry = new Date(outboxNow.getTime() + 60_000);
+    await assertOnlyFixtureClaimable(outboxNow, commands[0]!.id);
+    const firstClaim = await commandOutbox.claimPending({
+      limit: 1, now: outboxNow, leaseOwner: firstOwner, leasedUntil: claimExpiry,
+    });
+    assert.equal(firstClaim.length, 1, 'one durable command must be claimed');
+    assert.equal(firstClaim[0]?.id, commands[0]?.id);
+    assert.equal(await commandOutbox.renewClaims({
+      ids: [commands[0]!.id], leaseOwner: secondOwner, now: outboxNow,
+      leasedUntil: new Date(outboxNow.getTime() + 70_000),
+    }), false, 'different owner cannot extend the command');
+    assert.equal(await commandOutbox.renewClaims({
+      ids: [commands[0]!.id], leaseOwner: firstOwner, now: outboxNow,
+      leasedUntil: new Date(outboxNow.getTime() + 70_000),
+    }), true, 'current owner renews the durable command');
+
+    // Move this one fixture row behind the database clock. A stale worker may
+    // still supply the earlier outboxNow; PostgreSQL must reject its renewal
+    // and settlement using clock_timestamp(), not that captured timestamp.
+    await execute(`UPDATE outbox_events SET leased_until=clock_timestamp()-interval '1 second'
+      WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, [commands[0]!.id, tenant, workspace]);
+    assert.equal(await commandOutbox.renewClaims({
+      ids: [commands[0]!.id], leaseOwner: firstOwner, now: outboxNow,
+      leasedUntil: new Date(outboxNow.getTime() + 90_000),
+    }), false, 'database clock must reject a late renewal despite stale client now');
+    await assert.rejects(commandOutbox.markPublished({
+      id: commands[0]!.id, leaseOwner: firstOwner, publishedAt: outboxNow,
+    }), /ownership was lost/, 'database clock must reject a late acknowledgment');
+
+    const recoveredNow = await currentDbTime();
+    await assertOnlyFixtureClaimable(recoveredNow, commands[0]!.id);
+    const recoveredClaim = await commandOutbox.claimPending({
+      limit: 1, now: recoveredNow, leaseOwner: secondOwner,
+      leasedUntil: new Date(recoveredNow.getTime() + 60_000),
+    });
+    assert.equal(recoveredClaim[0]?.id, commands[0]?.id, 'expired row must be claimable after restart');
+    assert.equal(await commandOutbox.renewClaims({
+      ids: [commands[0]!.id], leaseOwner: firstOwner, now: outboxNow,
+      leasedUntil: new Date(recoveredNow.getTime() + 90_000),
+    }), false, 'stale owner cannot renew the replacement');
+    await commandOutbox.markPublished({
+      id: commands[0]!.id, leaseOwner: secondOwner, publishedAt: recoveredNow,
+    });
 
     const entered = deferredDelivery<void>();
     const release = deferredDelivery<{ accepted: true }>();

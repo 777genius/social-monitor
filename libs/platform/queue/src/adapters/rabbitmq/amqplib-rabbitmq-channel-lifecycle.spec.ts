@@ -212,6 +212,7 @@ describe('RabbitMQ channel generation ownership', () => {
       claimPending: async () => [{ id: 'synthetic-row', publishAttempt: 1,
         command: { commandId: 'outbox-command', commandType: 'synthetic',
           schemaVersion: 1, correlationId: 'synthetic', payload: {} } }],
+      renewClaims: async () => true,
       markPublished, markFailed,
     }, publisher, { generate: () => 'synthetic-owner' }, new FixedClock(new Date(0)));
     const pending = dispatcher.dispatchBatch(1);

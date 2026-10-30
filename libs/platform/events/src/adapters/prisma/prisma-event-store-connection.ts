@@ -49,6 +49,10 @@ export class PrismaEventStoreConnection
     this.inboxRecord = this.client.inboxRecord;
   }
 
+  $executeRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<number> {
+    return this.client.$executeRaw(query, ...values);
+  }
+
   $transaction<TValue>(
     work: Parameters<PrismaCommandOutboxClient['$transaction']>[0],
     options: Parameters<PrismaCommandOutboxClient['$transaction']>[1],

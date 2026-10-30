@@ -4,6 +4,8 @@ import {
   type IdGenerator,
 } from '@social-monitor/shared-kernel';
 
+import { CommandOutboxLeaseHeartbeat } from './command-outbox-lease-heartbeat';
+
 import type {
   QueueCommandEnvelope,
   QueuePublisherPort,
@@ -22,6 +24,13 @@ export interface CommandOutboxStorePort {
     readonly leaseOwner: string;
     readonly leasedUntil: Date;
   }): Promise<readonly CommandOutboxRecord[]>;
+  /** Renew the whole still-pending batch only while every row remains owned and unexpired. */
+  renewClaims(params: {
+    readonly ids: readonly string[];
+    readonly leaseOwner: string;
+    readonly now: Date;
+    readonly leasedUntil: Date;
+  }): Promise<boolean>;
   markPublished(params: {
     readonly id: string;
     readonly leaseOwner: string;
@@ -73,48 +82,62 @@ export class CommandOutboxDispatcher {
   async dispatchBatch(limit: number): Promise<CommandOutboxDispatchResult> {
     const now = this.clock.now();
     const leaseOwner = this.ids.generate();
+    const leasedUntil = new Date(now.getTime() + this.leaseMs);
     const records = await this.outbox.claimPending({
-      limit: Math.max(0, limit),
-      now,
-      leaseOwner,
-      leasedUntil: new Date(now.getTime() + this.leaseMs),
+      limit: Math.max(0, limit), now, leaseOwner, leasedUntil,
     });
+    if (records.length === 0) return { published: 0, retrying: 0, failed: 0 };
+
+    const heartbeat = new CommandOutboxLeaseHeartbeat(
+      this.outbox, records.map((record) => record.id),
+      leaseOwner, this.clock, this.leaseMs, leasedUntil,
+    );
     let published = 0;
     let retrying = 0;
     let failed = 0;
 
-    for (const record of records) {
-      try {
-        await this.publisher.publish(record.command);
-      } catch (error) {
-        const terminal = record.publishAttempt >= this.maxAttempts;
-        await this.outbox.markFailed({
-          id: record.id,
-          leaseOwner,
-          commandType: record.command.commandType,
-          availableAt: new Date(
-            now.getTime() + this.retryDelayMs(record.publishAttempt),
-          ),
-          failedAt: this.clock.now(),
-          lastError: safeOutboxError(error),
-          terminal,
-        });
-        if (terminal) {
-          failed += 1;
-        } else {
-          retrying += 1;
+    try {
+      for (const record of records) {
+        // Claimed later rows must remain owned during earlier slow RabbitMQ
+        // confirmations. Never start a new send after renewal becomes uncertain.
+        await heartbeat.assertOwned();
+        let publishError: unknown;
+        let failedPublish = false;
+        try {
+          await this.publisher.publish(record.command);
+        } catch (error) {
+          failedPublish = true;
+          publishError = error;
         }
-        continue;
+        await heartbeat.assertOwned();
+        heartbeat.completed(record.id);
+
+        if (failedPublish) {
+          const terminal = record.publishAttempt >= this.maxAttempts;
+          const failedAt = this.clock.now();
+          await this.outbox.markFailed({
+            id: record.id,
+            leaseOwner,
+            commandType: record.command.commandType,
+            availableAt: new Date(failedAt.getTime() + this.retryDelayMs(record.publishAttempt)),
+            failedAt,
+            lastError: safeOutboxError(publishError),
+            terminal,
+          });
+          if (terminal) failed += 1;
+          else retrying += 1;
+          continue;
+        }
+
+        await this.outbox.markPublished({
+          id: record.id, leaseOwner, publishedAt: this.clock.now(),
+        });
+        published += 1;
       }
-
-      await this.outbox.markPublished({
-        id: record.id,
-        leaseOwner,
-        publishedAt: this.clock.now(),
-      });
-      published += 1;
+    } finally {
+      // Unsettled rows remain leased until expiry; no cross-owner release.
+      await heartbeat.stop();
     }
-
     return { published, retrying, failed };
   }
 

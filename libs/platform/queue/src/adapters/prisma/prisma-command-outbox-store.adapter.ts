@@ -82,6 +82,36 @@ export class PrismaCommandOutboxStoreAdapter
     );
   }
 
+  async renewClaims(params: {
+    readonly ids: readonly string[];
+    readonly leaseOwner: string;
+    readonly now: Date;
+    readonly leasedUntil: Date;
+  }): Promise<boolean> {
+    if (params.ids.length === 0) return true;
+    if (new Set(params.ids).size !== params.ids.length ||
+      params.ids.some((id) => id.trim().length === 0) ||
+      params.leasedUntil.getTime() <= params.now.getTime()) {
+      throw new Error('Invalid command outbox lease renewal');
+    }
+    const changed = await runWithSystemDatabaseAccess(
+      'command outbox batch lease renewal',
+      () => withPrismaWriteRetry(() => this.prisma.$executeRaw`
+        UPDATE public."outbox_events"
+        SET "leased_until" = ${params.leasedUntil}
+        WHERE "id" = ANY(${params.ids}::uuid[])
+          AND "message_kind" = 'COMMAND'
+          AND "status" = 'PENDING'
+          AND "lease_owner" = ${params.leaseOwner}
+          AND "leased_until" > clock_timestamp()
+      `),
+    );
+    // A partial renewal is never permission to publish the remaining batch.
+    // The lease predicate is evaluated by PostgreSQL at update time, not by
+    // a timestamp captured before the request waited for a DB connection.
+    return changed === params.ids.length;
+  }
+
   async markPublished(params: {
     readonly id: string;
     readonly leaseOwner: string;
@@ -89,22 +119,21 @@ export class PrismaCommandOutboxStoreAdapter
   }): Promise<void> {
     const updated = await runWithSystemDatabaseAccess(
       'command outbox publish acknowledgement',
-      () => withPrismaWriteRetry(() => this.prisma.outboxEvent.updateMany({
-        where: {
-          id: params.id,
-          status: 'PENDING',
-          leaseOwner: params.leaseOwner,
-        },
-        data: {
-          status: 'PUBLISHED',
-          publishedAt: params.publishedAt,
-          leaseOwner: null,
-          leasedUntil: null,
-          lastError: null,
-        },
-      })),
+      () => withPrismaWriteRetry(() => this.prisma.$executeRaw`
+        UPDATE public."outbox_events"
+        SET "status" = 'PUBLISHED',
+            "published_at" = ${params.publishedAt},
+            "lease_owner" = NULL,
+            "leased_until" = NULL,
+            "last_error" = NULL
+        WHERE "id" = ${params.id}::uuid
+          AND "message_kind" = 'COMMAND'
+          AND "status" = 'PENDING'
+          AND "lease_owner" = ${params.leaseOwner}
+          AND "leased_until" > clock_timestamp()
+      `),
     );
-    assertSingleLeaseUpdate(updated.count);
+    assertSingleLeaseUpdate(updated);
   }
 
   async markFailed(params: {
@@ -122,22 +151,21 @@ export class PrismaCommandOutboxStoreAdapter
         withPrismaWriteRetry(() =>
           this.prisma.$transaction(
             async (transaction) => {
-              const updated = await transaction.outboxEvent.updateMany({
-                where: {
-                  id: params.id,
-                  status: 'PENDING',
-                  leaseOwner: params.leaseOwner,
-                },
-                data: {
-                  status: params.terminal ? 'FAILED' : 'PENDING',
-                  availableAt: params.availableAt,
-                  lastError: params.lastError,
-                  leaseOwner: null,
-                  leasedUntil: null,
-                  publishedAt: null,
-                },
-              });
-              assertSingleLeaseUpdate(updated.count);
+              const updated = await transaction.$executeRaw`
+                UPDATE public."outbox_events"
+                SET "status" = (CASE WHEN ${params.terminal} THEN 'FAILED' ELSE 'PENDING' END)::"OutboxStatus",
+                    "available_at" = ${params.availableAt},
+                    "last_error" = ${params.lastError},
+                    "lease_owner" = NULL,
+                    "leased_until" = NULL,
+                    "published_at" = NULL
+                WHERE "id" = ${params.id}::uuid
+                  AND "message_kind" = 'COMMAND'
+                  AND "status" = 'PENDING'
+                  AND "lease_owner" = ${params.leaseOwner}
+                  AND "leased_until" > clock_timestamp()
+              `;
+              assertSingleLeaseUpdate(updated);
 
               if (
                 params.terminal &&
