@@ -40,7 +40,7 @@ export class CommandOutboxLeaseHeartbeat {
 
   async assertOwned(): Promise<void> {
     await this.renewal;
-    if (this.ownershipLost || this.clock.now() >= this.validUntil) {
+    if (this.ownershipLost || this.clock.now().getTime() >= this.validUntil.getTime()) {
       this.ownershipLost = true;
       throw new Error('Command outbox lease ownership was lost');
     }
@@ -60,7 +60,7 @@ export class CommandOutboxLeaseHeartbeat {
     const ids = [...this.pending];
     if (ids.length === 0) return;
     const now = this.clock.now();
-    if (now >= this.validUntil) {
+    if (now.getTime() >= this.validUntil.getTime()) {
       this.ownershipLost = true;
       return;
     }
