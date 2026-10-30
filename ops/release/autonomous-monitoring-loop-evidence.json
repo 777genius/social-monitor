@@ -9,7 +9,10 @@
     "runner": "scripts/check-autonomous-monitoring-loop-smoke.ts",
     "fixtureOnly": true,
     "liveProviderCredentialsRequired": false,
-    "externalNetworkRequired": false
+    "externalNetworkRequired": false,
+    "engagementAuthority": "synthetic_first_observation_from_persisted_fixture_rows",
+    "sourceQualityReviewer": "curated_exact_captured_text_with_authenticated_request_binding",
+    "storyCorpus": "synthetic_queuewatch_monitoring_stories_and_provider_fixtures"
   },
   "providerKeys": [
     "reddit",
@@ -28,36 +31,36 @@
         "scanBindings": [
           {
             "providerKey": "reddit",
-            "sourceBindingId": "autonomous-loop-4",
-            "scanPolicyId": "autonomous-loop-6",
+            "sourceBindingId": "autonomous-loop-5",
+            "scanPolicyId": "autonomous-loop-7",
             "intervalSeconds": 900,
             "freshnessSeconds": 900
           },
           {
             "providerKey": "github-issues",
-            "sourceBindingId": "autonomous-loop-8",
-            "scanPolicyId": "autonomous-loop-10",
+            "sourceBindingId": "autonomous-loop-9",
+            "scanPolicyId": "autonomous-loop-11",
             "intervalSeconds": 300,
             "freshnessSeconds": 900
           },
           {
             "providerKey": "github-trending-page",
-            "sourceBindingId": "autonomous-loop-12",
-            "scanPolicyId": "autonomous-loop-14",
-            "intervalSeconds": 3600,
-            "freshnessSeconds": 3600
+            "sourceBindingId": "autonomous-loop-13",
+            "scanPolicyId": "autonomous-loop-15",
+            "intervalSeconds": 86400,
+            "freshnessSeconds": 86400
           },
           {
             "providerKey": "rss",
-            "sourceBindingId": "autonomous-loop-16",
-            "scanPolicyId": "autonomous-loop-18",
+            "sourceBindingId": "autonomous-loop-17",
+            "scanPolicyId": "autonomous-loop-19",
             "intervalSeconds": 300,
             "freshnessSeconds": 900
           },
           {
             "providerKey": "hacker-news",
-            "sourceBindingId": "autonomous-loop-20",
-            "scanPolicyId": "autonomous-loop-22",
+            "sourceBindingId": "autonomous-loop-21",
+            "scanPolicyId": "autonomous-loop-23",
             "intervalSeconds": 300,
             "freshnessSeconds": 900
           }
@@ -68,14 +71,14 @@
       "signalId": "findings-dedup-and-ranking",
       "status": "passed",
       "evidence": {
-        "initialFeedItemCount": 10,
-        "feedItemCountAfterReplay": 10,
-        "replaySkippedDuplicates": 10,
-        "rankedCount": 8,
+        "initialFeedItemCount": 18,
+        "feedItemCountAfterReplay": 18,
+        "replaySkippedDuplicates": 18,
+        "rankedCount": 10,
         "topProviderKey": "github-issues",
         "clusteredFeedItemIds": [
-          "feed:autonomous-loop-8:github-agents-release",
-          "feed:autonomous-loop-20:hn-summary-quality"
+          "feed:autonomous-loop-9:github-agents-release",
+          "feed:autonomous-loop-13:github-trending-page:daily:autonomous-loop-trending-fixture:autonomous-loop-fixture/repository-3"
         ]
       }
     },
@@ -83,20 +86,18 @@
       "signalId": "reader-summary-frontend-rest-view",
       "status": "passed",
       "evidence": {
-        "readerSummaryJobId": "autonomous-loop-57",
-        "readerSummaryId": "autonomous-loop-58",
+        "readerSummaryJobId": "autonomous-loop-74",
+        "readerSummaryId": "autonomous-loop-75",
         "citedProviders": [
-          "github-issues",
           "github-trending-page",
           "hacker-news",
-          "reddit",
-          "rss"
+          "reddit"
         ],
-        "selectedFeedItemCount": 10,
-        "topReadCount": 10,
-        "citationCount": 10,
-        "sourceWindowStartedAt": "2026-06-22T12:00:00.000Z",
-        "sourceWindowEndedAt": "2026-06-22T12:00:00.001Z",
+        "selectedFeedItemCount": 4,
+        "topReadCount": 4,
+        "citationCount": 14,
+        "sourceWindowStartedAt": "2026-06-22T11:45:00.000Z",
+        "sourceWindowEndedAt": "2026-06-22T11:50:00.000Z",
         "frontendReadyFields": [
           "readerBrief",
           "sourceWindow",
@@ -109,8 +110,8 @@
       "signalId": "auto-summary-with-provider-citations",
       "status": "passed",
       "evidence": {
-        "summaryJobId": "autonomous-loop-61",
-        "summaryId": "autonomous-loop-62",
+        "summaryJobId": "autonomous-loop-78",
+        "summaryId": "autonomous-loop-79",
         "citedProviders": [
           "github-issues",
           "github-trending-page",
@@ -118,7 +119,7 @@
           "reddit",
           "rss"
         ],
-        "selectedFeedItemCount": 8,
+        "selectedFeedItemCount": 10,
         "qualityFlags": []
       }
     },
@@ -126,11 +127,11 @@
       "signalId": "digest-webhook-realtime-audit",
       "status": "passed",
       "evidence": {
-        "digestScheduleId": "autonomous-loop-66",
-        "digestId": "autonomous-loop-67",
-        "deliveryAttemptId": "autonomous-loop-68",
+        "digestScheduleId": "autonomous-loop-82",
+        "digestId": "autonomous-loop-83",
+        "deliveryAttemptId": "autonomous-loop-84",
         "deliveryState": "delivered",
-        "realtimeEventId": "autonomous-loop-65",
+        "realtimeEventId": "580ba86c-590c-8d73-888a-0e89284951a0",
         "auditActions": [
           "autonomous.digest.delivered",
           "autonomous.findings.ranked",
@@ -153,10 +154,10 @@
       },
       {
         "providerKey": "github-trending-page",
-        "fetched": 2,
-        "inserted": 2,
+        "fetched": 10,
+        "inserted": 10,
         "skippedDuplicates": 0,
-        "projected": 2
+        "projected": 10
       },
       {
         "providerKey": "hacker-news",
@@ -190,10 +191,10 @@
       },
       {
         "providerKey": "github-trending-page",
-        "fetched": 2,
+        "fetched": 10,
         "inserted": 0,
-        "skippedDuplicates": 2,
-        "projected": 2
+        "skippedDuplicates": 10,
+        "projected": 10
       },
       {
         "providerKey": "hacker-news",
@@ -217,12 +218,13 @@
         "projected": 2
       }
     ],
-    "feedItems": 10,
-    "rankedItems": 8,
-    "readerSummaryTopReads": 10,
-    "readerSummaryCitations": 10,
-    "citationCount": 8,
-    "digestProvenanceItems": 11,
+    "feedItems": 18,
+    "rankedItems": 10,
+    "readerSummaryTopReads": 4,
+    "readerSummaryCitations": 14,
+    "readerSummaryAssessedCandidates": 4,
+    "citationCount": 10,
+    "digestProvenanceItems": 19,
     "webhookDeliveries": 1,
     "realtimeEvents": 1,
     "auditEvents": 6

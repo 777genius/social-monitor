@@ -94,8 +94,8 @@ import { DeliveryAttemptDispatchLoop } from '../apps/delivery-service/src/delive
 type QueuedScanPayload = Omit<ExecuteScanCommand, 'correlationId' | 'causationId'>;
 
 const fixedNow = new Date('2026-06-06T00:00:00.000Z');
-const tenant = tenantId('tenant-mvp-core-loop-smoke');
-const workspace = workspaceId('workspace-mvp-core-loop-smoke');
+const tenant = tenantId('00000000-0000-7000-8000-000000000701');
+const workspace = workspaceId('00000000-0000-7000-8000-000000000702');
 const correlation = 'mvp-core-loop-correlation';
 
 async function main(): Promise<void> {

@@ -44,9 +44,9 @@ export const digestDueAt = new Date("2026-06-22T12:00:01.000Z");
 
 export const digestSchedulerNow = new Date("2026-06-22T12:00:02.000Z");
 
-export const tenant = tenantId("tenant-autonomous-monitoring-loop-smoke");
+export const tenant = tenantId("00000000-0000-7000-8000-000000000703");
 
-export const workspace = workspaceId("workspace-autonomous-monitoring-loop-smoke");
+export const workspace = workspaceId("00000000-0000-7000-8000-000000000704");
 
 export const userId = "user-autonomous-monitoring-loop-smoke";
 

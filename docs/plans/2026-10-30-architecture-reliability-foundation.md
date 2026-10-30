@@ -116,15 +116,15 @@ and absent promotion metric-authority/reviewer capabilities. The unchanged
 production quality gates correctly reject this input.
 
 - [x] Use stable UUID tenant/workspace fixtures in the MVP loop and verify it.
-- [ ] Build the complete canonical GitHub board before ingestion, and derive its
+- [x] Build the complete canonical GitHub board before ingestion, and derive its
       publication projection from the actual persisted fixture source/feed rows.
-- [ ] Supply canonical native metrics before ingestion. Derive fixture promotion
+- [x] Supply canonical native metrics before ingestion. Derive fixture promotion
       authority through the existing domain helper, scoped persisted joins,
       exact metric hashes and observation cutoffs; never force admission.
-- [ ] Bind a deterministic fixture reviewer through the existing wire/evidence
+- [x] Bind a deterministic fixture reviewer through the existing wire/evidence
       contract. Unknown or mismatched input must remain unavailable. Do not use
       attested-binding bypasses or change production defaults/quality gates.
-- [ ] Preserve completed-summary, top-read and replay assertions. Independently
+- [x] Preserve completed-summary, top-read and replay assertions. Independently
       review the fixture adapters, rerun both loops, and update evidence only
       after every assertion passes. State that fixture authority/review proves
       orchestration, not real engagement durability or model quality.
@@ -345,6 +345,35 @@ The approved inventory is
 Version-correct packages with missing, modified or symlinked code remain rejected.
 Vendored archive bytes and provenance files were not modified.
 
+### Deterministic smoke-fixture correction
+
+Both loops now use valid queue scope identities. The autonomous loop ingests a
+complete ten-repository canonical GitHub board and eighteen source observations
+overall. Its fixture projection readers join the actual saved source/feed rows;
+promotion authority uses the existing domain helper after checking scope,
+identity, canonical native metrics and observation time. Four curated HN/Reddit
+reviews must actually run through the existing request-binding/evidence/headline
+contracts. Unknown or mismatched inputs stay unavailable; an omitted optional
+request URL follows the production request shape, while a supplied mismatch is
+rejected and the persisted source/feed URL join remains mandatory.
+
+Synthetic QueueWatch stories provide coherent supported topic groups. The safe
+RSS runbook remains separate from the unchanged injection specimen, and the
+fixture's ordinary-summary policy allows ten key points to retain five-provider
+citation coverage alongside the expanded board. The intentional GitHub/Reddit
+duplicate pair is now asserted by exact member identity. Frontend coverage is
+checked against persisted primary promotion identities, while the supplemental
+GitHub board independently requires ten unique repositories with matching saved
+citations. Completed publication, redaction, replay, delivery and audit assertions
+remain active; no production quality gates or defaults changed.
+
+An independent executable proof passed thirty positive/negative checks covering
+the real ranker and binder, unknown/mutated reviewer inputs, scoped identity and
+metric/time mismatches, cutoff exclusion and bounded GitHub reads. The refreshed
+evidence explicitly declares synthetic first-observation authority, curated
+review and fixture story provenance. This proves deterministic orchestration,
+not live-provider readiness, historical engagement durability or model accuracy.
+
 ## Validation record
 
 Local checks use deterministic fixtures and isolated databases, without live
@@ -355,7 +384,7 @@ specific completed batches and must not be added together as unique test counts.
 | --- | --- |
 | Whole-project TypeScript (`tsc --noEmit --incremental false`) | Passed, including the atomic-interest changes and subsequent reviewed integration fixes. |
 | Production compilation and alias rewrite | Both build stages passed with a temporary output directory; remote backend build and immutable-candidate qualification also passed at the migration-fix checkpoint. |
-| Changed TS/MJS ESLint | Passed across 151 changed files; later fixture edits receive targeted verification. |
+| Changed TS/MJS ESLint | Passed across 151 changed files and the final six smoke-fixture TypeScript files. |
 | Consolidated affected unit/integration batch | 81 suites / 405 tests passed. The last null-receipt parity correction was independently rerun in 2 suites / 17 tests. |
 | Entire backend E2E | 76 suites / 149 tests passed. OpenAPI snapshot and generated mobile contract (91 operations) also passed. |
 | Architecture | Repository scan and 28 positive/negative fixture tests passed. |
@@ -363,6 +392,7 @@ specific completed batches and must not be added together as unique test counts.
 | Native PostgreSQL | Scan retry/terminal-outcome, delivery workflow and interest creation checks passed. Delivery/interest were rerun through the two-connection shared factory. |
 | Pool and runtime admission contracts | Unchanged pool-budget suite: 78 tests passed. Runtime installation/admission suite: 69 tests passed, including the verified fast-uri update and three tampering regressions. |
 | Runtime and targeted fixtures | Runtime-profile guards, RabbitMQ publisher, event relay, webhook provider, scan queue drain, delivery dispatch/drain/replay, source certification, write idempotency, beta scope, cross-process scheduler and fixture-only summary-memory loop passed. |
+| Final monitoring loops | MVP and autonomous loops passed. Autonomous evidence was regenerated only after all runtime assertions passed, then validated by a normal byte-for-byte rerun. Independent fixture-adapter proof: 30 checks passed. |
 | Migration and role evidence | Schema gate passed; exact SQL succeeded under a restricted explicit-SET-role login. Remote PostgreSQL 18 historical migration/RLS and scan/delivery contract steps passed at commit `f5c023b`. |
 | Dependency policy gate | Passed using the existing approved Zod/runtime exceptions; three resolved exceptions were removed. |
 | Raw `npm audit --audit-level=moderate` | Still exits 1: 8 affected package records (2 high, 0 moderate, 6 low), down from 14 (5 high, 3 moderate, 6 low). |
