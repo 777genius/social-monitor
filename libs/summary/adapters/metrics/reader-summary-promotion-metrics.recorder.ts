@@ -22,6 +22,7 @@ ReaderSummaryPromotionMetrics {
       candidates: value.candidateCount,
       top: value.topCount,
       additional: value.additionalCount,
+      news: value.newsCount,
       admitted_evidence: value.admittedEvidenceCount,
       omitted_evidence: value.omittedEvidenceCount,
     })) {

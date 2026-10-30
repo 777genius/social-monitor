@@ -1,4 +1,5 @@
 import { canonicalReaderSummaryPreparationTimestamp,
+  READER_PROMOTION_POLICY_STAMP,
   type selectReaderPostPromotionsV3, type ReaderPostPromotionV3Candidate,
   type StoryCluster, type SummaryEvidenceItem,
   type SummaryEvidenceSelection } from "../../domain";
@@ -20,7 +21,7 @@ export const v3EvidenceSelection = (params: {
     ...params.supplementalEvidence.filter((item) => !primaryIds.has(item.feedItemId))];
   const exactCutoff = canonicalReaderSummaryPreparationTimestamp(params.cutoffAt);
   return {
-    rankingPolicyVersion: "reader_promotion_policy.v3",
+    rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
     sourceWindow: {
       windowId: `reader-summary-v3:${params.jobId}`,
       startedAt: params.period.startedAt, endedAt: params.period.endedAt,
@@ -38,7 +39,8 @@ export const clustersForSelection = (
   selection: ReturnType<typeof selectReaderPostPromotionsV3>,
   evidence: readonly SummaryEvidenceItem[],
   candidates: readonly ReaderPostPromotionV3Candidate[],
-): readonly StoryCluster[] => [...selection.top, ...selection.additional].map((candidate) => {
+): readonly StoryCluster[] => [...selection.top, ...selection.additional,
+  ...selection.news].map((candidate) => {
   const item = evidence.find((value) => value.feedItemId === candidate.candidateId)!;
   const members = candidates.filter((value) =>
     value.storyId === candidate.storyId || value.sourceItemId === candidate.sourceItemId);
@@ -47,7 +49,7 @@ export const clustersForSelection = (
     (value.storyId === candidate.storyId || value.sourceItemId === candidate.sourceItemId))
     .map((value) => value.candidateId);
   return { id: candidate.storyId, storyKey: candidate.storyId,
-    rankingPolicyVersion: "reader_promotion_policy.v3",
+    rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
     representativeFeedItemId: candidate.candidateId, duplicateFeedItemIds,
     interestIds: [...new Set(members.map((member) => member.interestId ??
       item.interestId))].sort(compareUtf8Bytes), providerKeys: [...new Set(

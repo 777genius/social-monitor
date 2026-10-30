@@ -6,6 +6,12 @@ import { READER_PROMOTION_PROVIDER_ALIASES } from
   "@social-monitor/shared-kernel";
 import type { ReaderSummaryEditorialScoreComponents } from
   "../value-objects/reader-summary-editorial-slate";
+import type {
+  ReaderPostPromotionEngagement,
+  ReaderPostPromotionPopularity,
+} from "./reader-post-promotion-engagement";
+import type { ReaderPromotionEngagementClass } from "./reader-promotion-source-registry";
+import type { READER_PROMOTION_POLICY_STAMP } from "./reader-promotion-ranking";
 
 export const READER_POST_PROMOTION_POLICY_VERSION =
   "reader_post_promotion.v1" as const;
@@ -19,10 +25,12 @@ export const READER_POST_PROMOTION_DIGEST_V1 =
   "reader_post_promotion_digest.sha256.v1" as const;
 export const READER_POST_PROMOTION_DIGEST_VERSION =
   "reader_post_promotion_digest.sha256.v2" as const;
+/**
+ * Schema of the Jev promotion attestation. Its meaning is carried by
+ * `policyVersion`, which always equals READER_PROMOTION_POLICY_STAMP.
+ */
 export const READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3 =
   "reader_post_promotion_attestation.v3" as const;
-export const READER_POST_PROMOTION_POLICY_V3 =
-  "reader_post_promotion.v3" as const;
 export const READER_POST_PROMOTION_DIGEST_V3 =
   "reader_post_promotion_digest.sha256.v3" as const;
 
@@ -245,9 +253,38 @@ export type ReaderPostPromotionAttestationV2 = Omit<
   readonly displaySummary?: string;
 };
 
+export type ReaderPostPromotionPlacement = "top" | "additional" | "news";
+
+/**
+ * Signed ordering material. A verifier recomputes block, maturity, order and
+ * card signal from these values and the source registry alone; no card field
+ * is trusted for ordering. The ranked hybrid score is rebuilt exactly from
+ * `usefulness` and the `popularity` counts (see `readerPromotionScore`);
+ * there is deliberately no float score field.
+ */
+export type ReaderPostPromotionComparator = {
+  readonly block: ReaderPromotionEngagementClass;
+  readonly providerFamily: string;
+  readonly usefulness: ReaderValueAnswers["usefulness"]["choice"];
+  /** Gate only (relevant or central); not an order key. */
+  readonly relevance: ReaderValueAnswers["relevance"]["choice"];
+  /** Frozen metric of a ranked source, `null` when unknown. */
+  readonly engagement: ReaderPostPromotionEngagement | null;
+  readonly metricMature: boolean;
+  /**
+   * Cohort counts inside providerFamily; present only when metricMature and
+   * cohortSize >= READER_PROMOTION_MIN_POPULARITY_COHORT, otherwise null.
+   */
+  readonly popularity: ReaderPostPromotionPopularity | null;
+  /** Real publisher of a news.google.com item in the news block. */
+  readonly newsPublisher: string | null;
+  readonly publishedAt: string;
+  readonly candidateId: string;
+};
+
 export type ReaderPostPromotionAttestationV3 = {
   readonly schemaVersion: typeof READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3;
-  readonly policyVersion: typeof READER_POST_PROMOTION_POLICY_V3;
+  readonly policyVersion: typeof READER_PROMOTION_POLICY_STAMP;
   readonly digestVersion: typeof READER_POST_PROMOTION_DIGEST_V3;
   readonly digest: string;
   readonly canonicalPayload: string;
@@ -257,7 +294,7 @@ export type ReaderPostPromotionAttestationV3 = {
   readonly periodEndedAt: Date;
   readonly ingestionCutoff: Date;
   readonly exactIngestionCutoff: string;
-  readonly placement: "top" | "additional";
+  readonly placement: ReaderPostPromotionPlacement;
   readonly slot: number;
   readonly candidateId: string;
   /** Exact persisted provider key, preserved through publication. */
@@ -266,7 +303,7 @@ export type ReaderPostPromotionAttestationV3 = {
   readonly storyId: string;
   readonly publishedAt: string;
   readonly citationIds: readonly string[];
-  readonly decision: "promote_top" | "promote_additional";
+  readonly decision: "promote_top" | "promote_additional" | "promote_news";
   readonly assessment: {
     readonly schemaVersion: "reader_value.v1";
     readonly assessmentId: string;
@@ -278,12 +315,7 @@ export type ReaderPostPromotionAttestationV3 = {
     readonly modelConfigVersion: string;
     readonly answers: ReaderValueAnswers;
   };
-  readonly comparator: {
-    readonly usefulness: ReaderValueAnswers["usefulness"]["choice"];
-    readonly relevance: ReaderValueAnswers["relevance"]["choice"];
-    readonly publishedAt: string;
-    readonly candidateId: string;
-  };
+  readonly comparator: ReaderPostPromotionComparator;
   readonly presentation: {
     readonly schemaVersion: "reader_post_presentation.v3";
     readonly presentationInputDigest: string;

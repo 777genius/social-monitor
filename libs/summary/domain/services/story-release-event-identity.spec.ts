@@ -2,7 +2,7 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { STORY_RANKING_POLICY_V1 as policy } from "../policies/story-ranking-policy";
 import { StoryClusteringService } from "./story-clustering.service";
 import { samePrimaryReleaseEvent, storyReleaseEventIdentity } from "./story-release-event-identity";
-import { belongsToVerifiedStoryCluster, isDeterministicCrossProviderStoryMatch,
+import { belongsToVerifiedStoryCluster, isDeterministicIndependentSourceStoryMatch,
   isVerifiedStoryRelationGuardEligible, verifiedStoryRelationPairKey } from "./story-cluster-membership";
 import { buildStoryRelationCandidates } from "./story-relation-candidates";
 import { strictStoryRelationTitleEvidence } from "./story-relation-title-evidence";
@@ -44,7 +44,7 @@ describe("verification-only primary release identity", () => {
     expect(samePrimaryReleaseEvent(a, b)).toBe(true);
     expect(candidatesFor(a, b)).toHaveLength(1);
     expect(belongsToVerifiedStoryCluster(a, [b], policy, approved)).toBe(true);
-    expect(isDeterministicCrossProviderStoryMatch(a, b, policy)).toBe(false);
+    expect(isDeterministicIndependentSourceStoryMatch(a, b, policy)).toBe(false);
   });
 
   it("accepts an attributed result summary of one model in a joint release", () => {
@@ -121,7 +121,7 @@ describe("verification-only primary release identity", () => {
 
   it("requires approval and keeps the 0.92 boundary and deterministic behavior", () => {
     const candidates = candidatesFor();
-    expect(isDeterministicCrossProviderStoryMatch(left, right, policy)).toBe(false);
+    expect(isDeterministicIndependentSourceStoryMatch(left, right, policy)).toBe(false);
     expect(clusterer.cluster({ identity, items: [left, right], limit: 10 }).clusters).toHaveLength(2);
     for (const [sameStory, confidenceScore, accepted] of [[true, 0.919999, false], [false, 1, false], [true, 0.92, true]] as const) {
       const pairs = approvedStoryRelationPairs({ candidates,
@@ -136,7 +136,7 @@ describe("verification-only primary release identity", () => {
     const a = releaseEvidence("OpenAI releases GPT-9.1 for agentic coding\nOpenAI releases GPT-9.1 on September 1. Lower cost for coding workloads.");
     const b = releaseEvidence("OpenAI released GPT-9.1 for agentic coding\nOpenAI releases GPT-9.1 on September 1. Better coding workloads vs its predecessor.", "right", "x-twitter");
     expect(strictStoryRelationTitleEvidence(a.title, b.title)).toBeDefined();
-    expect(isDeterministicCrossProviderStoryMatch(a, b, policy)).toBe(false);
+    expect(isDeterministicIndependentSourceStoryMatch(a, b, policy)).toBe(false);
     expect(belongsToVerifiedStoryCluster(a, [b], policy, new Set(), approved)).toBe(true);
     const otherDate = { ...b, bodyPreview: b.bodyPreview!.replace("September", "August"),
       sourceText: b.sourceText!.replace("September", "August") };
@@ -149,7 +149,7 @@ describe("verification-only primary release identity", () => {
     const verbose = releaseEvidence(`OpenAI launches GPT-9.1\nOpenAI releases GPT-9.1. ${uniqueContext} vs distributed infrastructure.`, "right", "x-twitter");
     expect(samePrimaryReleaseEvent(left, verbose)).toBe(true);
     expect(candidatesFor(left, verbose)).toHaveLength(0);
-    expect(isDeterministicCrossProviderStoryMatch(left, verbose, policy)).toBe(false);
+    expect(isDeterministicIndependentSourceStoryMatch(left, verbose, policy)).toBe(false);
   });
 
   it("does not turn an approved chain into every-member approval", () => {

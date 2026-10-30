@@ -268,6 +268,7 @@ Map<String, Object?> _readerBriefJson(
         const [],
       ),
   ],
+  'newsWithoutRatingPosts': <Object?>[],
   'selectedPosts': [
     _readerItem(
       'Cursor background agents launch',

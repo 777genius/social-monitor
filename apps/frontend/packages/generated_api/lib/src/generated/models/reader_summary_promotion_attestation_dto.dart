@@ -80,6 +80,8 @@ class ReaderSummaryPromotionAttestationDto {
   final DateTime? periodEndedAt;
   final DateTime? periodStartedAt;
   final ReaderSummaryPromotionAttestationDtoPlacementPlacement placement;
+
+  /// For reader_post_promotion_attestation.v3 this is the promotion policy stamp. Another stamp never reaches clients: such days are served with empty boards and freshness.reason = ranking_policy_changed.
   final ReaderSummaryPromotionAttestationDtoPolicyVersionPolicyVersion
   policyVersion;
   final ReaderSummaryPromotionV3PresentationDto? presentation;

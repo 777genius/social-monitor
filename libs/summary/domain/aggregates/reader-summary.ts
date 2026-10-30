@@ -108,7 +108,8 @@ export class ReaderSummary {
     });
     if (
       promotion.topReads.length === 0 &&
-      promotion.additionalPosts.length === 0
+      promotion.additionalPosts.length === 0 &&
+      promotion.newsPosts.length === 0
     ) {
       return ReaderSummary.create(buildNoSignalReaderSummary(input));
     }
@@ -123,6 +124,9 @@ export class ReaderSummary {
       promotion.topClusterIds.has(story.storyClusterId),
     );
     const topReads = promotion.topReads;
+    // A workspace that follows only unranked sources has no Top. Its news
+    // cards then ground the headline, bullets and actions instead.
+    const leadReads = topReads.length > 0 ? topReads : promotion.newsPosts;
     const readerInput = {
       ...primaryInput,
       topStories: readerTopStories,
@@ -197,7 +201,7 @@ export class ReaderSummary {
       publishedLeadSection.storyClusterId !== undefined &&
       publishedLeadSection.storyClusterId ===
         readerTopStories[0]?.storyClusterId &&
-      publishedLeadSection.storyClusterId !== topReads[0]?.storyClusterId
+      publishedLeadSection.storyClusterId !== leadReads[0]?.storyClusterId
         ? publishedLeadSection.title
         : undefined;
     return ReaderSummary.create({
@@ -206,11 +210,11 @@ export class ReaderSummary {
         sourceTitles: (input.selectedEvidence ?? []).filter((item) =>
           input.citationMap.some((citation) =>
             citation.feedItemId === item.feedItemId &&
-            topReads.some((read) => read.citationIds.includes(citation.citationId)),
+            leadReads.some((read) => read.citationIds.includes(citation.citationId)),
           ),
         ).map((item) => item.title),
         sourceMix,
-        topReads,
+        topReads: leadReads,
         narrativeLeadTitle,
         ...(narrativeSections.some(
           (section) =>
@@ -228,7 +232,7 @@ export class ReaderSummary {
       }),
       oneLineTakeaway: buildGroundedOneLineTakeaway({
         executiveSummary: input.executiveSummary,
-        topReads,
+        topReads: leadReads,
         sourceMix,
       }),
       bullets: buildReaderSummaryBullets(
@@ -238,13 +242,13 @@ export class ReaderSummary {
           repeatedSignals: admittedRepeatedSignals,
           risksAndUnknowns: admittedRisks,
         },
-        topReads,
+        leadReads,
       ),
       narrativeSections: publishedNarrativeSections,
       mainTopics: buildReaderSummaryMainTopics({
         headline,
         executiveSummary: input.executiveSummary,
-        topReads,
+        topReads: leadReads,
         topStories: readerTopStories,
         interestHighlights: admittedInterestHighlights,
         repeatedSignals: admittedRepeatedSignals,
@@ -259,8 +263,11 @@ export class ReaderSummary {
       sourceMix,
       topReads,
       selectedPosts,
+      ...(input.promotionV3 === undefined ? {} : {
+        newsWithoutRatingPosts: promotion.newsPosts,
+      }),
       claimBoard: buildReaderSummaryClaimBoard({
-        topReads,
+        topReads: leadReads,
         narrativeSections: publishedNarrativeSections,
         risksAndUnknowns: admittedRisks,
         citationMap: primaryCitationMap,
@@ -271,19 +278,19 @@ export class ReaderSummary {
       ),
       trendDelta: buildReaderSummaryTrendDelta({
         ...readerInput,
-        topReads,
+        topReads: leadReads,
         sourceMix,
       }),
       openQuestions: buildOpenQuestions(
         input.qualityFlags,
         sourceMix,
-        topReads,
+        leadReads,
       ),
       risks: admittedRisks
         .map((risk) => risk.description)
         .filter((risk) => risk.trim().length > 0),
       nextActions: buildReaderActions({
-        topReads,
+        topReads: leadReads,
         interestHighlights: admittedInterestHighlights,
         qualityState,
       }),
@@ -301,6 +308,9 @@ export class ReaderSummary {
       sourceMix: [...this.snapshot.sourceMix],
       topReads: [...this.snapshot.topReads],
       selectedPosts: [...(this.snapshot.selectedPosts ?? [])],
+      ...(this.snapshot.newsWithoutRatingPosts === undefined ? {} : {
+        newsWithoutRatingPosts: [...this.snapshot.newsWithoutRatingPosts],
+      }),
       claimBoard: [...this.snapshot.claimBoard],
       reliabilityReport: {
         ...this.snapshot.reliabilityReport,
@@ -423,7 +433,8 @@ const assertReaderSummaryValid = (snapshot: ReaderSummarySnapshot): void => {
   if (snapshot.oneLineTakeaway.trim().length === 0) {
     throw new Error("Reader summary takeaway must be non-empty");
   }
-  for (const topRead of snapshot.topReads) {
+  for (const topRead of [...snapshot.topReads,
+    ...(snapshot.newsWithoutRatingPosts ?? [])]) {
     if (topRead.title.trim().length === 0) {
       throw new Error("Reader summary top read title must be non-empty");
     }

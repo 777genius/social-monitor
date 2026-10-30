@@ -40,6 +40,7 @@ export const assertUniqueReaderSummaryItems = (
 export const assertUniqueReaderSummaryContentItems = (
   content: {
     readonly topReads: readonly TopRead[];
+    readonly newsWithoutRatingPosts?: readonly TopRead[];
     readonly interestSections: readonly {
       readonly items: readonly TopRead[];
     }[];
@@ -57,8 +58,14 @@ export const assertUniqueReaderSummaryContentItems = (
     citationById,
   );
   assertUniqueReaderSummaryItems(
+    content.newsWithoutRatingPosts ?? [],
+    "Reader summary news without rating",
+    citationById,
+  );
+  assertUniqueReaderSummaryItems(
     [
       ...content.topReads,
+      ...(content.newsWithoutRatingPosts ?? []),
       ...content.interestSections.flatMap((section) => section.items),
     ],
     "Reader summary content",

@@ -98,7 +98,13 @@ export type ReaderSummaryArtifactProps = {
   readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
   readonly promotionAttestations?: readonly ReaderPostPromotionAttestationAny[];
   readonly promotionEvidenceFacts?: readonly ReaderPostPromotionInput[];
-  readonly promotionBoardState?: "legacy_unavailable";
+  /**
+   * `legacy_unavailable`: persisted before promotion boards existed.
+   * `rebuild_required`: the board was ranked under another
+   * READER_PROMOTION_POLICY_STAMP; its promoted cards are withheld until the
+   * day is rebuilt.
+   */
+  readonly promotionBoardState?: "legacy_unavailable" | "rebuild_required";
   readonly contextArtifacts: readonly ReaderSummaryContextArtifact[];
   readonly personalization?: SummaryEvidencePersonalization;
   readonly headline: string;

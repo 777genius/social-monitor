@@ -233,6 +233,11 @@ const failClosedRelatedTopicPayload = (
             selectedPosts: payload.content.selectedPosts === undefined
               ? undefined
               : withoutRelatedTopicCards(payload.content.selectedPosts),
+            ...(payload.content.newsWithoutRatingPosts === undefined ? {} : {
+              newsWithoutRatingPosts: withoutRelatedTopicCards(
+                payload.content.newsWithoutRatingPosts,
+              ),
+            }),
             interestSections: payload.content.interestSections.map((section) => ({
               ...section,
               items: withoutRelatedTopicCards(section.items),
@@ -409,6 +414,11 @@ const normalizeReaderSummaryContent = (
     selectedPosts: normalizeReaderSummarySelectedPosts(
       content.selectedPosts,
     ),
+    ...(content.newsWithoutRatingPosts === undefined ? {} : {
+      newsWithoutRatingPosts: content.newsWithoutRatingPosts.map(
+        normalizeReaderSummaryItem,
+      ),
+    }),
     claimBoard: normalizeReaderSummaryClaimBoard(content.claimBoard),
     reliabilityReport:
       content.reliabilityReport ?? emptyReaderSummaryReliabilityReport(),

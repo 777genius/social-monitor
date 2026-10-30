@@ -9,7 +9,7 @@ import {
   READER_POST_PROMOTION_DIGEST_VERSION,
   READER_POST_PROMOTION_POLICY_VERSION,
   READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3,
-  READER_POST_PROMOTION_POLICY_V3,
+  READER_PROMOTION_POLICY_STAMP,
   READER_POST_PROMOTION_DIGEST_V3,
 } from "../../domain";
 
@@ -84,11 +84,53 @@ export class ReaderSummaryPromotionV3AssessmentDto {
   @ApiProperty({ type: Object }) declare readonly answers: Readonly<Record<string, unknown>>;
 }
 
+export class ReaderSummaryPromotionEngagementDto {
+  @ApiProperty({ enum: ["likes_plus_two_reposts", "reddit_score",
+    "hacker_news_points", "max_stars_or_half_forks"] })
+  declare readonly method: string;
+  @ApiProperty({ minimum: 0, description: "Provider signal; integer except GitHub " +
+    "half forks (x.5)." })
+  declare readonly value: number;
+  @ApiProperty({ pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$" })
+  declare readonly observedAt: string;
+}
+
+export class ReaderSummaryPromotionPopularityDto {
+  @ApiProperty({ minimum: 1 }) declare readonly cohortSize: number;
+  @ApiProperty({ minimum: 0 }) declare readonly below: number;
+  @ApiProperty({ minimum: 0 }) declare readonly equal: number;
+}
+
 export class ReaderSummaryPromotionV3ComparatorDto {
+  @ApiProperty({ enum: ["ranked", "unranked"],
+    description: "Source registry class; unranked posts are only in the news block." })
+  declare readonly block: "ranked" | "unranked";
+  @ApiProperty({ description: "Source registry family, e.g. x, reddit, hacker_news, " +
+    "github_radar, rss." })
+  declare readonly providerFamily: string;
   @ApiProperty({ enum: ["noise", "context", "useful", "important", "insufficient_context"] })
   declare readonly usefulness: string;
-  @ApiProperty({ enum: ["unrelated", "adjacent", "relevant", "central", "insufficient_context"] })
+  @ApiProperty({ enum: ["unrelated", "adjacent", "relevant", "central", "insufficient_context"],
+    description: "Admission gate only; not an order key." })
   declare readonly relevance: string;
+  // Always serialized (null when unknown). Declared optional only because the
+  // Flutter generator drops `nullable` on a single-ref allOf and would emit a
+  // non-null field that fails to decode every unknown metric; the signed
+  // canonical comparator still carries the key.
+  @ApiPropertyOptional({ type: () => ReaderSummaryPromotionEngagementDto, nullable: true,
+    description: "Frozen metric of a ranked source; null means unknown. Always " +
+      "present in responses." })
+  declare readonly engagement: ReaderSummaryPromotionEngagementDto | null;
+  @ApiProperty({ description: "engagement.observedAt - publishedAt >= 6 hours." })
+  declare readonly metricMature: boolean;
+  @ApiPropertyOptional({ type: () => ReaderSummaryPromotionPopularityDto, nullable: true,
+    description: "Mid-rank inside providerFamily: (below + equal / 2) / cohortSize. " +
+      "Present only when metricMature and the family has at least 5 mature " +
+      "gate-passed posts (cohortSize >= 5), otherwise null. Always present in responses." })
+  declare readonly popularity: ReaderSummaryPromotionPopularityDto | null;
+  @ApiProperty({ type: String, nullable: true,
+    description: "Real publisher of a news.google.com item (title suffix), else null." })
+  declare readonly newsPublisher: string | null;
   @ApiProperty({ pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$" })
   declare readonly publishedAt: string;
   @ApiProperty() declare readonly candidateId: string;
@@ -128,13 +170,16 @@ export class ReaderSummaryPromotionAttestationDto {
     enum: [
       READER_POST_PROMOTION_POLICY_VERSION,
       READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
-      READER_POST_PROMOTION_POLICY_V3,
+      READER_PROMOTION_POLICY_STAMP,
     ],
+    description: "For reader_post_promotion_attestation.v3 this is the promotion " +
+      "policy stamp. Another stamp never reaches clients: such days are served " +
+      "with empty boards and freshness.reason = ranking_policy_changed.",
   })
   declare readonly policyVersion:
     | typeof READER_POST_PROMOTION_POLICY_VERSION
     | typeof READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION
-    | typeof READER_POST_PROMOTION_POLICY_V3;
+    | typeof READER_PROMOTION_POLICY_STAMP;
 
   @ApiProperty({
     enum: [READER_POST_PROMOTION_DIGEST_V1, READER_POST_PROMOTION_DIGEST_VERSION,
@@ -166,11 +211,11 @@ export class ReaderSummaryPromotionAttestationDto {
   @ApiProperty()
   declare readonly canonicalIdentity: string;
 
-  @ApiProperty({ enum: ["top", "additional"] })
-  declare readonly placement: "top" | "additional";
+  @ApiProperty({ enum: ["top", "additional", "news"] })
+  declare readonly placement: "top" | "additional" | "news";
 
-  @ApiProperty({ enum: ["promote_top", "promote_additional"] })
-  declare readonly decision: "promote_top" | "promote_additional";
+  @ApiProperty({ enum: ["promote_top", "promote_additional", "promote_news"] })
+  declare readonly decision: "promote_top" | "promote_additional" | "promote_news";
 
   @ApiProperty({ type: String, isArray: true })
   declare readonly citationIds: readonly string[];

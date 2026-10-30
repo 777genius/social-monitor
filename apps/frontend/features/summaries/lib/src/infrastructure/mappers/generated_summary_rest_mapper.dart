@@ -86,6 +86,7 @@ final class GeneratedSummaryRestMapper {
         ingestionCutoff: dto.sourceWindow.ingestionCutoff,
       ),
       freshnessLabel: _readerSummaryFreshnessLabel(dto.freshness),
+      freshnessReason: dto.freshness.reason?.json,
       isDegraded: dto.qualityFlags.any(_isDegradedReaderSummaryFlag),
       coverage: _readerSummaryCoverage(coverage),
     );

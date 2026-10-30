@@ -75,7 +75,7 @@ export const assertV3LongSourcePostgresContract = async (params: {
     "long V3 captured source must replay exactly");
   const published = (await params.client.query<{
     readonly body: string; readonly timezone: string }>(
-    `SELECT a.artifact_payload #>> '{content,topReads,0,capturedSource,body}' AS body,
+    `SELECT a.artifact_payload #>> '{content,newsWithoutRatingPosts,0,capturedSource,body}' AS body,
         p.period_timezone AS timezone
       FROM reader_summary_publications p JOIN reader_summary_artifacts a
         ON a.id=p.reader_summary_artifact_id
@@ -85,8 +85,9 @@ export const assertV3LongSourcePostgresContract = async (params: {
     "long-source regression must publish outside UTC daily");
   const tampered = JSON.parse(JSON.stringify(fixture.payload)) as Payload;
   const card = (tampered.report.artifactPayload as Record<string, unknown>)
-    .content as { topReads: Array<{ capturedSource: { body: string } }> };
-  card.topReads[0]!.capturedSource.body += " tampered";
+    .content as { newsWithoutRatingPosts: Array<{ capturedSource: { body: string } }> };
+  // The fixture source is RSS, so its card lives in the news block.
+  card.newsWithoutRatingPosts[0]!.capturedSource.body += " tampered";
   await assertRejects(() => params.publish(fixture, tampered),
     "changed source after publication must reject");
   await assertRejectsContaining(() => params.client.query(
@@ -210,7 +211,7 @@ const assertUtcDailyV3LargeReport = async (
     "UTC-daily V3 report above 4 MiB must replay through evidence");
   const stored = (await params.client.query<{ readonly body: string;
     readonly report_sha256: string }>(
-    `SELECT a.artifact_payload #>> '{content,topReads,0,capturedSource,body}' AS body,
+    `SELECT a.artifact_payload #>> '{content,newsWithoutRatingPosts,0,capturedSource,body}' AS body,
       p.report_sha256 FROM reader_summary_publications p
       JOIN reader_summary_artifacts a ON a.id=p.reader_summary_artifact_id
       WHERE p.reader_summary_job_id=$1::uuid`, [fixture.jobId])).rows[0];

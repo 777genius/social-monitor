@@ -6,6 +6,7 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
   buildReaderSummaryCoveragePlan,
+  READER_PROMOTION_POLICY_STAMP,
   selectReaderPostPromotionsV3,
   type ReaderPostPromotionV3Candidate,
   type SummaryEvidenceSelection,
@@ -57,7 +58,7 @@ describe("OpenAI reader summary publication normalization", () => {
       topReads: [
         expect.objectContaining({
           promotionCandidateId: candidateId,
-          promotionPolicyVersion: "reader_post_promotion.v3",
+          promotionPolicyVersion: READER_PROMOTION_POLICY_STAMP,
           matchedRules: [
             "reader-value:usefulness:useful",
             "reader-value:relevance:central",
@@ -200,7 +201,10 @@ const v3EvidenceSelection = (): SummaryEvidenceSelection => {
     rubricSha256: "c".repeat(64),
     modelConfigVersion: "jev.v1",
     answers: admittedAnswers(),
-    signalScore: 0,
+    usefulness: admittedAnswers().usefulness.choice,
+    relevance: admittedAnswers().relevance.choice,
+    engagement: null,
+    title: evidence.title,
     presentation: {
       status: "available",
       presentationInputDigest: "d".repeat(64),
@@ -214,7 +218,7 @@ const v3EvidenceSelection = (): SummaryEvidenceSelection => {
   };
 
   return {
-    rankingPolicyVersion: "reader_promotion_policy.v3",
+    rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
     sourceWindow: {
       ...legacy.sourceWindow,
       selectedFeedItemIds: [candidateId],
@@ -225,7 +229,7 @@ const v3EvidenceSelection = (): SummaryEvidenceSelection => {
       id: storyId,
       storyKey: storyId,
       representativeFeedItemId: candidateId,
-      rankingPolicyVersion: "reader_promotion_policy.v3",
+      rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
     }],
     selectedEvidence: [evidence],
     promotionV3: selectReaderPostPromotionsV3([candidate]),

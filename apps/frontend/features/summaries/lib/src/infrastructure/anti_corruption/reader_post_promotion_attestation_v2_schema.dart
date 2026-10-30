@@ -220,3 +220,71 @@ String? _editorialProvider(Object? provider) {
   final family = _providerFamily(provider);
   return family == 'github_radar' ? 'github' : family;
 }
+
+bool _validV2OuterBinding(
+  Map<String, Object?> body, {
+  required String? storyClusterId,
+  required ReaderPostPromotionScoreComponentsApiDto? scoreComponents,
+  required List<String>? reasonCodes,
+  required String? candidateDigestInput,
+  required String? slateEntryDigestInput,
+  required String? slateDigestInput,
+  required String? slateDigest,
+  required ReaderPostPromotionEvidenceLineageApiDto? evidenceLineage,
+}) {
+  if (storyClusterId == null ||
+      scoreComponents == null ||
+      reasonCodes == null ||
+      candidateDigestInput == null ||
+      slateEntryDigestInput == null ||
+      slateDigestInput == null ||
+      slateDigest == null ||
+      evidenceLineage == null) {
+    return false;
+  }
+  final score = body['scoreComponents'];
+  final lineage = body['evidenceLineage'];
+  if (score is! Map<String, Object?> || lineage is! Map<String, Object?>) {
+    return false;
+  }
+  return body['storyClusterId'] == storyClusterId &&
+      body['candidateDigestInput'] == candidateDigestInput &&
+      body['slateEntryDigestInput'] == slateEntryDigestInput &&
+      body['slateDigestInput'] == slateDigestInput &&
+      body['slateDigest'] == slateDigest &&
+      _sameOrderedStrings(
+        _stringList(body['reasonCodes']) ?? const [],
+        reasonCodes,
+      ) &&
+      _scoreComponentsMatchApi(score, scoreComponents) &&
+      lineage['leadCandidateId'] == evidenceLineage.leadCandidateId &&
+      lineage['leadCitationId'] == evidenceLineage.leadCitationId &&
+      _sameOrderedStrings(
+        _stringList(lineage['supportCandidateIds']) ?? const [],
+        evidenceLineage.supportCandidateIds,
+      ) &&
+      _sameOrderedStrings(
+        _stringList(lineage['supportCitationIds']) ?? const [],
+        evidenceLineage.supportCitationIds,
+      ) &&
+      _sameOrderedStrings(
+        _stringList(lineage['citationIds']) ?? const [],
+        evidenceLineage.citationIds,
+      );
+}
+
+bool _scoreComponentsMatchApi(
+  Map<String, Object?> score,
+  ReaderPostPromotionScoreComponentsApiDto value,
+) =>
+    score['engagementSalience'] == value.engagementSalience &&
+    score['relevance'] == value.relevance &&
+    score['evidenceQuality'] == value.evidenceQuality &&
+    score['integrity'] == value.integrity &&
+    score['freshness'] == value.freshness &&
+    score['weightedEngagement'] == value.weightedEngagement &&
+    score['weightedRelevance'] == value.weightedRelevance &&
+    score['weightedEvidenceQuality'] == value.weightedEvidenceQuality &&
+    score['weightedIntegrity'] == value.weightedIntegrity &&
+    score['weightedFreshness'] == value.weightedFreshness &&
+    score['total'] == value.total;

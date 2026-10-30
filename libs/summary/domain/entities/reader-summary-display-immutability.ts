@@ -10,6 +10,9 @@ export const immutableReaderDisplayContent = (
   ...(content.selectedPosts === undefined ? {} : {
     selectedPosts: Object.freeze(content.selectedPosts.map(immutableCard)),
   }),
+  ...(content.newsWithoutRatingPosts === undefined ? {} : {
+    newsWithoutRatingPosts: Object.freeze(content.newsWithoutRatingPosts.map(immutableCard)),
+  }),
   interestSections: Object.freeze(content.interestSections.map((section) => Object.freeze({
     ...section, items: Object.freeze(section.items.map(immutableCard)),
   }))),

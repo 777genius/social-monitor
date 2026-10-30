@@ -46,6 +46,7 @@ describe("summaryReaderSummaryProviders promotion metrics wiring", () => {
       candidateCount: 1,
       topCount: 1,
       additionalCount: 0,
+      newsCount: 0,
       admittedEvidenceCount: 1,
       omittedEvidenceCount: 0,
       lifecycle: "delivered",

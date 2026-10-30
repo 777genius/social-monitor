@@ -57,6 +57,7 @@ export const readerSummaryArtifactViewFromReaderSummaryView = (
       narrativeSections: content.narrativeSections ?? [],
       topReads: promotionBoard.topReads,
       selectedPosts: promotionBoard.selectedPosts,
+      newsWithoutRatingPosts: promotionBoard.newsWithoutRatingPosts,
       interestSections: content.interestSections.map((section) => ({
         ...section,
         items: [],

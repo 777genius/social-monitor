@@ -1,19 +1,40 @@
 import '../../domain/aggregates/reader_summary.dart';
 
+/// Display projection of the reader promotion board.
+///
+/// - [curatedPosts] ("Top posts") and [additionalNotableStories] ("Show
+///   more") are one ranked sequence; [items] is that sequence.
+/// - [newsWithoutRatingPosts] is the separate block for sources without a
+///   popularity rating.
+///
+/// The backend order is preserved; a single unauthorized card hides the
+/// whole board, never just that card.
 final class ReaderSummaryTopPostsProjection {
   ReaderSummaryTopPostsProjection._({
     required this.curatedPosts,
     required this.additionalNotableStories,
+    required this.newsWithoutRatingPosts,
     required this.items,
+    required this.availability,
     required List<String> datasetOrder,
   }) : _datasetOrder = datasetOrder;
 
   final List<TopRead> curatedPosts;
   final List<TopRead> additionalNotableStories;
+  final List<TopRead> newsWithoutRatingPosts;
   final List<TopRead> items;
+  final ReaderSummaryPromotionBoardAvailability availability;
   final List<String> _datasetOrder;
 
-  bool get isEmpty => items.isEmpty;
+  bool get hasRankedPosts => items.isNotEmpty;
+  bool get hasNewsWithoutRating => newsWithoutRatingPosts.isNotEmpty;
+
+  /// Nothing to show in either block.
+  bool get isEmpty => !hasRankedPosts && !hasNewsWithoutRating;
+
+  /// The day was ranked under an earlier policy and waits for a rebuild.
+  bool get requiresRebuild =>
+      availability == ReaderSummaryPromotionBoardAvailability.rebuildRequired;
 
   bool hasSameDatasetAs(ReaderSummaryTopPostsProjection other) {
     if (_datasetOrder.length != other._datasetOrder.length) {
@@ -31,23 +52,29 @@ final class ReaderSummaryTopPostsProjection {
 ReaderSummaryTopPostsProjection readerSummaryTopPostsProjection(
   ReaderSummary summary,
 ) {
-  if (summary.content.promotionBoardAvailability ==
-      ReaderSummaryPromotionBoardAvailability.unavailable) {
-    return _unavailablePromotionProjection();
+  final availability = summary.content.promotionBoardAvailability;
+  if (availability != ReaderSummaryPromotionBoardAvailability.available) {
+    return _withheldPromotionProjection(availability);
   }
   final curatedPosts = _authorizedPromotions(
     summary.content.topReads,
     placement: ReaderPostPromotionPlacement.top,
   );
-  final additionalNotableStories = List<TopRead>.unmodifiable(
-    _authorizedPromotions(
-      summary.content.selectedPosts,
-      placement: ReaderPostPromotionPlacement.additional,
-    ),
+  final additionalNotableStories = _authorizedPromotions(
+    summary.content.selectedPosts,
+    placement: ReaderPostPromotionPlacement.additional,
+  );
+  final newsWithoutRatingPosts = _authorizedPromotions(
+    summary.content.newsWithoutRatingPosts,
+    placement: ReaderPostPromotionPlacement.news,
   );
   if (curatedPosts.length != summary.content.topReads.length ||
-      additionalNotableStories.length != summary.content.selectedPosts.length) {
-    return _unavailablePromotionProjection();
+      additionalNotableStories.length != summary.content.selectedPosts.length ||
+      newsWithoutRatingPosts.length !=
+          summary.content.newsWithoutRatingPosts.length) {
+    return _withheldPromotionProjection(
+      ReaderSummaryPromotionBoardAvailability.unavailable,
+    );
   }
   final items = List<TopRead>.unmodifiable([
     ...curatedPosts,
@@ -55,26 +82,33 @@ ReaderSummaryTopPostsProjection readerSummaryTopPostsProjection(
   ]);
 
   return ReaderSummaryTopPostsProjection._(
-    curatedPosts: List<TopRead>.unmodifiable(curatedPosts),
+    curatedPosts: curatedPosts,
     additionalNotableStories: additionalNotableStories,
+    newsWithoutRatingPosts: newsWithoutRatingPosts,
     items: items,
+    availability: availability,
     datasetOrder: List<String>.unmodifiable([
       'curated:${curatedPosts.length}',
       for (final item in curatedPosts)
         'curated-post:${readerSummaryTopPostIdentity(item)}',
       for (final item in additionalNotableStories)
         'additional-story:${readerSummaryTopPostIdentity(item)}',
+      for (final item in newsWithoutRatingPosts)
+        'news-post:${readerSummaryTopPostIdentity(item)}',
     ]),
   );
 }
 
-ReaderSummaryTopPostsProjection _unavailablePromotionProjection() =>
-    ReaderSummaryTopPostsProjection._(
-      curatedPosts: const [],
-      additionalNotableStories: const [],
-      items: const [],
-      datasetOrder: const ['promotion-board:unavailable'],
-    );
+ReaderSummaryTopPostsProjection _withheldPromotionProjection(
+  ReaderSummaryPromotionBoardAvailability availability,
+) => ReaderSummaryTopPostsProjection._(
+  curatedPosts: const [],
+  additionalNotableStories: const [],
+  newsWithoutRatingPosts: const [],
+  items: const [],
+  availability: availability,
+  datasetOrder: ['promotion-board:${availability.name}'],
+);
 
 List<TopRead> _authorizedPromotions(
   Iterable<TopRead> items, {
@@ -86,10 +120,7 @@ List<TopRead> _authorizedPromotions(
     if (attestation == null ||
         attestation.placement != placement ||
         !_hasAuthorizedStoryMarker(item) ||
-        (placement == ReaderPostPromotionPlacement.top &&
-            item.cardKind != ReaderSummaryCardKind.curatedTopRead) ||
-        (placement == ReaderPostPromotionPlacement.additional &&
-            item.cardKind != ReaderSummaryCardKind.additionalNotableStory)) {
+        item.cardKind != placement.cardKind) {
       return const [];
     }
     authorized.add(item);

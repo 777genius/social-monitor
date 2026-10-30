@@ -4301,7 +4301,8 @@
           "decision": {
             "enum": [
               "promote_top",
-              "promote_additional"
+              "promote_additional",
+              "promote_news"
             ],
             "type": "string"
           },
@@ -4347,15 +4348,17 @@
           "placement": {
             "enum": [
               "top",
-              "additional"
+              "additional",
+              "news"
             ],
             "type": "string"
           },
           "policyVersion": {
+            "description": "For reader_post_promotion_attestation.v3 this is the promotion policy stamp. Another stamp never reaches clients: such days are served with empty boards and freshness.reason = ranking_policy_changed.",
             "enum": [
               "reader_post_promotion.v1",
               "reader_post_promotion.v2",
-              "reader_post_promotion.v3"
+              "reader_promotion.2026-10-30"
             ],
             "type": "string"
           },
@@ -4428,6 +4431,34 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryPromotionEngagementDto": {
+        "properties": {
+          "method": {
+            "enum": [
+              "likes_plus_two_reposts",
+              "reddit_score",
+              "hacker_news_points",
+              "max_stars_or_half_forks"
+            ],
+            "type": "string"
+          },
+          "observedAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+            "type": "string"
+          },
+          "value": {
+            "description": "Provider signal; integer except GitHub half forks (x.5).",
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "method",
+          "value",
+          "observedAt"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryPromotionEvidenceLineageDto": {
         "properties": {
           "citationIds": {
@@ -4461,6 +4492,28 @@
           "supportCandidateIds",
           "supportCitationIds",
           "citationIds"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryPromotionPopularityDto": {
+        "properties": {
+          "below": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "cohortSize": {
+            "minimum": 1,
+            "type": "number"
+          },
+          "equal": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "cohortSize",
+          "below",
+          "equal"
         ],
         "type": "object"
       },
@@ -4583,7 +4636,48 @@
       },
       "ReaderSummaryPromotionV3ComparatorDto": {
         "properties": {
+          "block": {
+            "description": "Source registry class; unranked posts are only in the news block.",
+            "enum": [
+              "ranked",
+              "unranked"
+            ],
+            "type": "string"
+          },
           "candidateId": {
+            "type": "string"
+          },
+          "engagement": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReaderSummaryPromotionEngagementDto"
+              }
+            ],
+            "description": "Frozen metric of a ranked source; null means unknown. Always present in responses.",
+            "nullable": true,
+            "type": "object"
+          },
+          "metricMature": {
+            "description": "engagement.observedAt - publishedAt >= 6 hours.",
+            "type": "boolean"
+          },
+          "newsPublisher": {
+            "description": "Real publisher of a news.google.com item (title suffix), else null.",
+            "nullable": true,
+            "type": "string"
+          },
+          "popularity": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReaderSummaryPromotionPopularityDto"
+              }
+            ],
+            "description": "Mid-rank inside providerFamily: (below + equal / 2) / cohortSize. Present only when metricMature and the family has at least 5 mature gate-passed posts (cohortSize >= 5), otherwise null. Always present in responses.",
+            "nullable": true,
+            "type": "object"
+          },
+          "providerFamily": {
+            "description": "Source registry family, e.g. x, reddit, hacker_news, github_radar, rss.",
             "type": "string"
           },
           "publishedAt": {
@@ -4591,6 +4685,7 @@
             "type": "string"
           },
           "relevance": {
+            "description": "Admission gate only; not an order key.",
             "enum": [
               "unrelated",
               "adjacent",
@@ -4612,8 +4707,12 @@
           }
         },
         "required": [
+          "block",
+          "providerFamily",
           "usefulness",
           "relevance",
+          "metricMature",
+          "newsPublisher",
           "publishedAt",
           "candidateId"
         ],
@@ -5047,6 +5146,14 @@
             },
             "type": "array"
           },
+          "newsWithoutRatingPosts": {
+            "description": "News without rating: posts from sources without a popularity rating (for example RSS). Never part of topReads or selectedPosts; one post per story, ordered by usefulness then publishedAt descending. Each item carries promotionAttestation.placement = \"news\" and signalScore = 0.",
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryReaderItemDto"
+            },
+            "maxItems": 16,
+            "type": "array"
+          },
           "nextActions": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryNextActionDto"
@@ -5075,6 +5182,7 @@
             "type": "array"
           },
           "selectedPosts": {
+            "description": "\"Show more\" for Top: ranked posts after the first 12, same order, followed by supplemental GitHub Trending rows.",
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryReaderItemDto"
             },
@@ -5090,9 +5198,11 @@
             "$ref": "#/components/schemas/ReaderSummaryTopicMapDto"
           },
           "topReads": {
+            "description": "Top posts: ranked sources only, ordered by the hybrid score 0.4 * model (important 1.0, useful 0.5) + 0.6 * popularity percentile inside the source network (0 when the metric is unknown), then publishedAt descending.",
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryReaderItemDto"
             },
+            "maxItems": 12,
             "type": "array"
           },
           "trendDelta": {
@@ -5111,6 +5221,7 @@
           "sourceMix",
           "topReads",
           "selectedPosts",
+          "newsWithoutRatingPosts",
           "claimBoard",
           "reliabilityReport",
           "trendDelta",

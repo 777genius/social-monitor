@@ -1,13 +1,14 @@
 import type { ReaderDisplayHeadlineSeal } from
   "../value-objects/summary-reader-headline";
-import type { ReaderPostPromotionV3Candidate } from
+import type { ReaderPostPromotionV3RankedCandidate } from
   "../policies/reader-post-promotion-v3";
 import {
   READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3,
   READER_POST_PROMOTION_DIGEST_V3,
-  READER_POST_PROMOTION_POLICY_V3,
   type ReaderPostPromotionAttestationV3,
+  type ReaderPostPromotionPlacement,
 } from "../policies/reader-post-promotion-policy-contract";
+import { READER_PROMOTION_POLICY_STAMP } from "../policies/reader-promotion-ranking";
 import { canonicalPromotionPayload, promotionPayloadDigest } from
   "./reader-post-promotion-attestation";
 import { readerPostPresentationV3Identity } from "./reader-post-presentation-v3";
@@ -26,19 +27,20 @@ export type ReaderPostPromotionV3AttestationBinding = {
 };
 
 export const buildReaderPostPromotionAttestationV3 = (params: {
-  readonly candidate: ReaderPostPromotionV3Candidate;
+  readonly candidate: ReaderPostPromotionV3RankedCandidate;
   readonly binding: ReaderPostPromotionV3AttestationBinding;
-  readonly placement: "top" | "additional";
+  readonly placement: ReaderPostPromotionPlacement;
   readonly slot: number;
 }): ReaderPostPromotionAttestationV3 => {
   const presentation = params.candidate.presentation;
   if (presentation.status !== "available" || params.slot < 1 ||
-      params.binding.citationIds.length === 0) {
-    throw new Error("V3 attestation requires selected display-ready evidence");
+      params.binding.citationIds.length === 0 ||
+      (params.placement === "news") !== (params.candidate.ranking.block === "unranked")) {
+    throw new Error("Promotion attestation requires selected display-ready evidence");
   }
   const body = {
     schemaVersion: READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3,
-    policyVersion: READER_POST_PROMOTION_POLICY_V3,
+    policyVersion: READER_PROMOTION_POLICY_STAMP,
     digestVersion: READER_POST_PROMOTION_DIGEST_V3,
     artifactId: params.binding.artifactId,
     sourceWindowId: params.binding.sourceWindowId,
@@ -54,9 +56,7 @@ export const buildReaderPostPromotionAttestationV3 = (params: {
     storyId: params.candidate.storyId,
     publishedAt: params.candidate.publishedAt,
     citationIds: params.binding.citationIds,
-    decision: params.placement === "top"
-      ? "promote_top" as const
-      : "promote_additional" as const,
+    decision: placementDecision[params.placement],
     assessment: {
       schemaVersion: "reader_value.v1" as const,
       assessmentId: params.candidate.assessmentId,
@@ -69,8 +69,14 @@ export const buildReaderPostPromotionAttestationV3 = (params: {
       answers: params.candidate.answers,
     },
     comparator: {
+      block: params.candidate.ranking.block,
+      providerFamily: params.candidate.providerFamily,
       usefulness: params.candidate.answers.usefulness.choice,
       relevance: params.candidate.answers.relevance.choice,
+      engagement: params.candidate.engagement,
+      metricMature: params.candidate.ranking.metricMature,
+      popularity: params.candidate.ranking.popularity,
+      newsPublisher: params.candidate.ranking.newsPublisher,
       publishedAt: params.candidate.publishedAt,
       candidateId: params.candidate.candidateId,
     },
@@ -92,3 +98,10 @@ export const buildReaderPostPromotionAttestationV3 = (params: {
     digest: promotionPayloadDigest(canonicalPayload),
   });
 };
+
+const placementDecision = Object.freeze({
+  top: "promote_top",
+  additional: "promote_additional",
+  news: "promote_news",
+} as const satisfies Record<ReaderPostPromotionPlacement,
+  ReaderPostPromotionAttestationV3["decision"]>);

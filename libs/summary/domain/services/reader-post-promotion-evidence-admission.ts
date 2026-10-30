@@ -19,7 +19,9 @@ type AdmittedPromotionEvidence = Omit<
   SummaryEvidenceSelection,
   "promotionAttestations" | "promotionCounts"
 > & {
-  readonly promotionCounts: { readonly top: number; readonly additional: number };
+  /** Cards per block; `news` is the V3 "News without rating" block, 0 elsewhere. */
+  readonly promotionCounts: {
+    readonly top: number; readonly additional: number; readonly news: number };
 };
 
 export const admitReaderPostPromotionEvidence = (
@@ -113,6 +115,7 @@ export const admitReaderPostPromotionEvidence = (
     promotionCounts: {
       top: projection.topReads.length,
       additional: projection.additionalPosts.length,
+      news: 0,
     },
   };
 };
@@ -169,6 +172,7 @@ const admittedEditorialSlateSelection = (
     promotionCounts: {
       top: editorialSlate.top.length,
       additional: editorialSlate.additional.length,
+      news: 0,
     },
   };
 };

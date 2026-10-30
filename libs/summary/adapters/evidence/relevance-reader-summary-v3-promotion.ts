@@ -8,24 +8,17 @@ import { canonicalReaderValueTimestamp } from
 import { validateReaderValueAnswers } from
   "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
 
-import { engagementOrContentStrengthSignalScore } from
-  "../../domain/value-objects/signal-score";
 import {
-  compareReaderPostPromotionV3,
+  READER_PROMOTION_PRESENTATION_BUDGET,
+  readerPromotionSourceForProviderKey,
   selectGitHubTrendingSupplementalEvidence,
   selectReaderPostPromotionsV3,
   type ReaderPostPromotionV3Candidate,
   type ReaderPostPromotionV3Presentation,
-  type ReaderPostPromotionV3Provider,
-  type ReaderSummaryPreparationCandidate,
   type ReaderDisplayHeadlineSeal,
-  type StoryCluster,
   type SummaryEvidenceItem,
   compareReaderSummaryPreparationTimestamps,
 } from "../../domain";
-import { STORY_RANKING_POLICY_V1 } from
-  "../../domain/policies/story-ranking-policy";
-import { storyKey } from "../../domain/services/story-key-normalizer";
 import type { PromotionPresentationBuilder,
   ReaderPostPresentationV3Input } from
   "../../domain/services/reader-post-presentation-v3";
@@ -41,12 +34,16 @@ import { clustersForSelection, v3EvidenceSelection } from
   "./relevance-reader-summary-v3-evidence";
 import { clusteringEvidenceItem, evidenceItem } from
   "./relevance-reader-summary-v3-source-evidence";
-import { clusterPromotionStoryRelations, semanticAdmission } from
+import { clusterPromotionStoryRelations, deterministicPromotionStoryId,
+  normalizeDuplicateStoryIds, semanticAdmission } from
   "./relevance-reader-summary-v3-story-relations";
 import { planWorkspacePresentationSlate } from
   "./relevance-reader-summary-v3-presentation-slate";
+import { readerPostPromotionEngagementFact } from
+  "./reader-post-promotion-engagement-facts";
 
-export const maxPresentationCandidates = 64;
+/** Headline verification budget; sized with READER_PROMOTION_LIMITS. */
+export const maxPresentationCandidates = READER_PROMOTION_PRESENTATION_BUDGET;
 const presentationBatchSize = 4;
 
 export class RelevanceReaderSummaryV3Promotion
@@ -70,6 +67,12 @@ implements ReaderSummaryV3PromotionPort {
         (params.manifest.periodKey !== job.period.periodKey ||
           params.manifest.cutoffAt !== job.preparationCutoffAt)) {
       return { kind: "dependency_failure", reason: "config_unavailable" };
+    }
+    // A manifest frozen before engagement observation times existed cannot
+    // be ranked honestly; fail it closed so the day is rebuilt.
+    if (params.manifest.candidates.some((candidate) =>
+      !Object.hasOwn(candidate, "engagementObservedAt"))) {
+      return { kind: "manifest_outdated" };
     }
     const interestByCandidate = new Map(params.manifest.candidates.map((candidate) =>
       [candidate.candidateId, params.manifest.schemaVersion ===
@@ -165,10 +168,14 @@ implements ReaderSummaryV3PromotionPort {
           assessment.assessedAt === null) {
         throw new Error("Frozen V3 assessment disappeared after readiness");
       }
-      const providerFamily = promotionProviderFamily(frozen.providerKey);
+      const providerFamily = readerPromotionSourceForProviderKey(frozen.providerKey)?.family;
+      if (providerFamily === undefined) {
+        throw new Error(`Unsupported promotion provider: ${frozen.providerKey}`);
+      }
       const snapshot = assessment.input.snapshot;
       const interestId = interestByCandidate.get(frozen.candidateId)!;
-      const derivedStoryId = deterministicStoryId(frozen, snapshot.title, snapshot.body);
+      const derivedStoryId = deterministicPromotionStoryId(frozen, snapshot.title,
+        snapshot.body);
       deterministicStoryIds.set(frozen.candidateId, derivedStoryId);
       const presentationInput: ReaderPostPresentationV3Input = {
         tenantId: job.tenantId, workspaceId: job.workspaceId,
@@ -199,11 +206,14 @@ implements ReaderSummaryV3PromotionPort {
         rubricSha256: assessment.input.rubricSha256,
         modelConfigVersion: assessment.input.modelConfigVersion,
         answers: assessment.answers,
-        engagementStrength: lead.providerMetricStrength ?? 0,
-        signalScore: engagementOrContentStrengthSignalScore({
-          engagementStrength: lead.providerMetricStrength,
-          contentQuality: lead.contentQuality,
+        usefulness: assessment.answers.usefulness.choice,
+        relevance: assessment.answers.relevance.choice,
+        engagement: readerPostPromotionEngagementFact({
+          providerKey: frozen.providerKey,
+          providerMetadata: frozen.providerMetadata,
+          engagementObservedAt: frozen.engagementObservedAt ?? null,
         }),
+        title: snapshot.title,
         presentation: { status: "pending" as const },
         appendixOnly: frozen.sourceKind === "trending_repository",
         scopeValid: true, sourceIdentityValid: frozen.canonicalIdentity.trim().length > 0,
@@ -226,8 +236,7 @@ implements ReaderSummaryV3PromotionPort {
       return { kind: "budget_exhausted" };
     }
     const candidates = normalizeDuplicateStoryIds(rawCandidates,
-      explicitStoryIds, deterministicStoryIds, clustered.clusters)
-      .sort(compareReaderPostPromotionV3);
+      explicitStoryIds, deterministicStoryIds, clustered.clusters);
 
     const statuses = new Map<string, ReaderPostPromotionV3Presentation>(candidates.map((candidate) =>
       [candidate.candidateId, candidate.presentation] as const));
@@ -242,14 +251,24 @@ implements ReaderSummaryV3PromotionPort {
     const chargedBindings = new Set<string>();
     const attempted = new Set<string>();
     const outcomeByBinding = new Map<string, ReaderPostPromotionV3Presentation>();
-    const readyStories = new Set<string>();
     while (true) {
-      const slate = params.manifest.schemaVersion ===
-        "reader_summary_preparation_manifest.v2"
-        ? planWorkspacePresentationSlate(candidates.map((candidate) => ({
-          ...candidate, presentation: statuses.get(candidate.candidateId)!,
-        }))) : undefined;
-      if (slate?.settled) break;
+      // Both blocks compete for one budget; plan only headlines that can
+      // still change the published board, in the order the board shows them.
+      // The slate already holds one representative per story, so a story
+      // with a verified headline is never skipped here: a news.google.com
+      // publisher freed by a failed headline can make another post of the
+      // same story its representative.
+      const slate = planWorkspacePresentationSlate(candidates.map((candidate) => ({
+        ...candidate, presentation: statuses.get(candidate.candidateId)!,
+      })));
+      if (slate.settled) break;
+      const queue = admitted.filter((candidate) => slate.needed.has(candidate.candidateId))
+        .sort((left, right) => {
+          const leftRank = slate.priority(left.candidateId);
+          const rightRank = slate.priority(right.candidateId);
+          return leftRank === rightRank ? 0 : leftRank < rightRank ? -1 : 1;
+        });
+      let reusedOutcome = false;
       const batch: ReaderPostPromotionV3Candidate[] = [];
       const batchStories = new Set<string>();
       const batchBindings = new Set<string>();
@@ -257,10 +276,9 @@ implements ReaderSummaryV3PromotionPort {
       // oversize first representative lets four lower-ranked remote calls run
       // before the same-story fallback gets a chance to compete.
       let logicalBatchSize = 0;
-      for (const candidate of admitted) {
-        if (slate !== undefined && !slate.needed.has(candidate.candidateId)) continue;
+      for (const candidate of queue) {
         if (logicalBatchSize >= presentationBatchSize) break;
-        if (attempted.has(candidate.candidateId) || readyStories.has(candidate.storyId) ||
+        if (attempted.has(candidate.candidateId) ||
             batchStories.has(candidate.storyId)) continue;
         const input = presentationInputById.get(candidate.candidateId)!;
         const binding = bindingFor(candidate);
@@ -268,6 +286,7 @@ implements ReaderSummaryV3PromotionPort {
         if (priorOutcome !== undefined) {
           attempted.add(candidate.candidateId);
           statuses.set(candidate.candidateId, priorOutcome);
+          reusedOutcome = true;
           continue;
         }
         if (chargedBindings.size + batchBindings.size >= maxPresentationCandidates) {
@@ -292,8 +311,9 @@ implements ReaderSummaryV3PromotionPort {
       }
       // Local outcomes have consumed this logical batch. Reselect before
       // considering another lower-ranked remote candidate.
+      // A reused outcome also changes the slate, so plan again.
       if (batch.length === 0) {
-        if (logicalBatchSize > 0) continue;
+        if (logicalBatchSize > 0 || reusedOutcome) continue;
         break;
       }
       const allowed = batch;
@@ -319,7 +339,6 @@ implements ReaderSummaryV3PromotionPort {
             presentationInputDigest: result.presentationInputDigest };
           statuses.set(candidate.candidateId, outcome);
           outcomeByBinding.set(bindingFor(candidate), outcome);
-          readyStories.add(candidate.storyId);
           sealById.set(candidate.candidateId, result.seal);
         } else {
           const outcome = { status: "unavailable" as const,
@@ -337,8 +356,10 @@ implements ReaderSummaryV3PromotionPort {
     const completed = candidates.map((candidate) => ({ ...candidate,
       presentation: statuses.get(candidate.candidateId)! }));
     let selection = selectReaderPostPromotionsV3(completed);
+    const publishedCount = selection.top.length + selection.additional.length +
+      selection.news.length;
     if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
-        selection.top.length + selection.additional.length < 16 &&
+        publishedCount < 16 &&
         completed.some((candidate) =>
           (candidate.answers.usefulness.choice === "useful" ||
             candidate.answers.usefulness.choice === "important") &&
@@ -347,8 +368,8 @@ implements ReaderSummaryV3PromotionPort {
           !candidate.appendixOnly && candidate.scopeValid &&
           candidate.freshnessValid && candidate.safetyValid && !candidate.blocked &&
           !candidate.sourceIdentityValid &&
-          ![...selection.top, ...selection.additional].some((selected) =>
-            selected.storyId === candidate.storyId))) {
+          ![...selection.top, ...selection.additional, ...selection.news]
+            .some((selected) => selected.storyId === candidate.storyId))) {
       return { kind: "presentation_unavailable" };
     }
     if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
@@ -356,7 +377,7 @@ implements ReaderSummaryV3PromotionPort {
           entry.reason === "presentation_budget_exhausted") &&
         !planWorkspacePresentationSlate(completed).settled) {
       if (chargedBindings.size < maxPresentationCandidates || selection.outcome !== "ready" ||
-          selection.top.length + selection.additional.length < 8) {
+          publishedCount < 8) {
         return { kind: "budget_exhausted" };
       }
       // The optimistic slate is still unresolved. Freeze only the independently
@@ -372,8 +393,8 @@ implements ReaderSummaryV3PromotionPort {
         clusters: [], primaryEvidence: [], supplementalEvidence, selection,
       }) };
     }
-    const selectedIds = new Set([...selection.top, ...selection.additional]
-      .map((candidate) => candidate.candidateId));
+    const published = [...selection.top, ...selection.additional, ...selection.news];
+    const selectedIds = new Set(published.map((candidate) => candidate.candidateId));
     const evidence = params.manifest.candidates.filter((candidate) =>
       selectedIds.has(candidate.candidateId)).map((frozen): SummaryEvidenceItem => {
         const input = presentationInputById.get(frozen.candidateId)!;
@@ -386,7 +407,7 @@ implements ReaderSummaryV3PromotionPort {
           sealById.get(frozen.candidateId)!);
       });
     const clusters = clustersForSelection(selection, evidence, completed);
-    const selectedOrdered = [...selection.top, ...selection.additional].map((candidate) =>
+    const selectedOrdered = published.map((candidate) =>
       evidence.find((item) => item.feedItemId === candidate.candidateId)!);
     const value = v3EvidenceSelection({ jobId: job.id, period: job.period,
       cutoffAt: params.manifest.cutoffAt, clusters,
@@ -394,21 +415,6 @@ implements ReaderSummaryV3PromotionPort {
     return { kind: "ready", evidence: value };
   }
 }
-
-const promotionProviderFamily = (providerKey: string): ReaderPostPromotionV3Provider => {
-  const key = providerKey.trim().toLowerCase();
-  if (key === "x" || key === "twitter" || key === "x-twitter") return "x";
-  if (key === "reddit") return "reddit";
-  if (key === "hn" || key === "hacker_news" || key === "hacker-news") {
-    return "hacker_news";
-  }
-  if (key === "rss") return "rss";
-  if (key === "github" || key === "github_radar" ||
-      key === "github-repo-radar" || key === "github-trending-page") {
-    return "github_radar";
-  }
-  throw new Error(`Unsupported V3 presentation provider: ${providerKey}`);
-};
 
 const presentationAttemptBinding = (
   candidate: ReaderPostPromotionV3Candidate,
@@ -419,79 +425,7 @@ const presentationAttemptBinding = (
   candidate.sourceItemId}\u0000${
   candidate.sourceSnapshotSha256}\u0000${candidate.inputSha256}`;
 
-const deterministicStoryId = (candidate: ReaderSummaryPreparationCandidate,
-  title: string, body: string): string => `story:${storyKey({
-  feedItemId: candidate.candidateId, sourceItemId: candidate.sourceItemId,
-  sourceBindingId: candidate.sourceBindingId, interestId: "frozen-v3",
-  providerKey: candidate.providerKey, canonicalUrl: candidate.canonicalIdentity,
-  title, bodyPreview: body, publishedAt: new Date(candidate.publishedAt),
-  observedAt: new Date(candidate.observedAt), score: 0, whyImportant: [],
-}, STORY_RANKING_POLICY_V1)}`;
-
-const normalizeDuplicateStoryIds = (
-  candidates: readonly ReaderPostPromotionV3Candidate[],
-  explicitStoryIds: ReadonlyMap<string, string | undefined>,
-  deterministicStoryIds: ReadonlyMap<string, string>,
-  storyClusters: readonly StoryCluster[],
-): ReaderPostPromotionV3Candidate[] => {
-  const parent = new Map(candidates.map((candidate) =>
-    [candidate.candidateId, candidate.candidateId] as const));
-  const find = (id: string): string => {
-    const next = parent.get(id)!;
-    if (next === id) return id;
-    const root = find(next);
-    parent.set(id, root);
-    return root;
-  };
-  const union = (left: string, right: string): void => {
-    const roots = [find(left), find(right)].sort(compareUtf8Bytes);
-    if (roots[0] !== roots[1]) parent.set(roots[1]!, roots[0]!);
-  };
-  const bySource = new Map<string, string>();
-  const byStory = new Map<string, string>();
-  const byDeterministicStory = new Map<string, string>();
-  for (const candidate of candidates) {
-    for (const [key, map] of [[candidate.sourceItemId, bySource],
-      [candidate.storyId, byStory],
-      [deterministicStoryIds.get(candidate.candidateId)!, byDeterministicStory]] as const) {
-      const previous = map.get(key);
-      if (previous === undefined) map.set(key, candidate.candidateId);
-      else union(previous, candidate.candidateId);
-    }
-  }
-  for (const cluster of storyClusters) {
-    const memberIds = [cluster.representativeFeedItemId,
-      ...cluster.duplicateFeedItemIds];
-    const first = memberIds[0];
-    if (first === undefined || !parent.has(first)) continue;
-    for (const memberId of memberIds.slice(1)) {
-      if (parent.has(memberId)) union(first, memberId);
-    }
-  }
-  const groups = new Map<string, ReaderPostPromotionV3Candidate[]>();
-  for (const candidate of candidates) {
-    const root = find(candidate.candidateId);
-    const group = groups.get(root);
-    if (group === undefined) groups.set(root, [candidate]);
-    else group.push(candidate);
-  }
-  const storyByCandidate = new Map<string, string>();
-  for (const group of groups.values()) {
-    const explicit = group.flatMap((candidate) => {
-      const value = explicitStoryIds.get(candidate.candidateId);
-      return value === undefined ? [] : [value];
-    }).sort(compareUtf8Bytes);
-    const storyId = explicit[0] ?? group.map((candidate) => candidate.storyId)
-      .sort(compareUtf8Bytes)[0]!;
-    for (const candidate of group) storyByCandidate.set(candidate.candidateId, storyId);
-  }
-  return candidates.map((candidate) => ({ ...candidate,
-    storyId: storyByCandidate.get(candidate.candidateId)! }));
-};
-
 const canonicalTimestamp = canonicalReaderValueTimestamp;
-const compareUtf8Bytes = (left: string, right: string): number =>
-  Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
 
 const inFrozenWindow = (value: string, start: Date, end: Date): boolean => {
   const time = Date.parse(value);

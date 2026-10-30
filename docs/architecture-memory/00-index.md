@@ -403,6 +403,7 @@ This directory stores architecture decisions for the social monitoring platform.
 - `394-interest-ubiquitous-language.md` - Interest as the user-owned monitoring entity and valid external topic exceptions.
 - `395-subscription-runtime-rate-limit-capacity.md` - App Server rate-limit cache, push updates, capacity-store and failover invariants.
 - `396-subscription-runtime-exact-turn-usage.md` - Exact per-turn Codex usage billing, fail-closed usage poisoning and the no-replay rule for started turns.
+- `397-reader-promotion-two-blocks-percentile-maturity.md` - Reader promotion Top/news blocks via the source registry, per-network percentile, 6h metric maturity and the policy stamp.
 
 ## Core Definition
 

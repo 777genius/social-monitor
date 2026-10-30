@@ -52,8 +52,14 @@ class _ReaderSummaryTopPostsSectionSliverState
 
   @override
   Widget build(BuildContext context) {
-    if (_projection.isEmpty) {
-      if (!_hasSummaryEvidence(widget.summary)) {
+    final projection = _projection;
+    if (projection.isEmpty) {
+      final notice = projection.requiresRebuild
+          ? const _RebuildRequiredTopPostsNotice()
+          : _hasSummaryEvidence(widget.summary)
+          ? const _UnavailableTopPostsNotice()
+          : null;
+      if (notice == null) {
         return const SliverToBoxAdapter(child: SizedBox.shrink());
       }
       return SliverMainAxisGroup(
@@ -61,31 +67,45 @@ class _ReaderSummaryTopPostsSectionSliverState
           const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
           SliverPadding(
             padding: widget.contentPadding,
-            sliver: const SliverToBoxAdapter(
-              child: _UnavailableTopPostsNotice(),
-            ),
+            sliver: SliverToBoxAdapter(child: notice),
           ),
         ],
       );
     }
+    final citationsById = {
+      for (final citation in widget.summary.citations) citation.id: citation,
+    };
     return SliverMainAxisGroup(
       slivers: [
-        const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
-        SliverPadding(
-          padding: widget.contentPadding,
-          sliver: ReaderSummaryTopPostsSliver(
-            projection: _projection,
-            selectedPostCount: _selectedPostCount(widget.summary),
-            period: widget.summary.period,
-            citationsById: {
-              for (final citation in widget.summary.citations)
-                citation.id: citation,
-            },
-            ratingFor: widget.ratingFor,
-            onRated: widget.onRated,
-            onOpenUrl: widget.onOpenUrl,
+        if (projection.hasRankedPosts) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
+          SliverPadding(
+            padding: widget.contentPadding,
+            sliver: ReaderSummaryTopPostsSliver(
+              projection: projection,
+              selectedPostCount: _selectedPostCount(widget.summary),
+              period: widget.summary.period,
+              citationsById: citationsById,
+              ratingFor: widget.ratingFor,
+              onRated: widget.onRated,
+              onOpenUrl: widget.onOpenUrl,
+            ),
           ),
-        ),
+        ],
+        if (projection.hasNewsWithoutRating) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
+          SliverPadding(
+            padding: widget.contentPadding,
+            sliver: ReaderSummaryNewsWithoutRatingSliver(
+              posts: projection.newsWithoutRatingPosts,
+              period: widget.summary.period,
+              citationsById: citationsById,
+              ratingFor: widget.ratingFor,
+              onRated: widget.onRated,
+              onOpenUrl: widget.onOpenUrl,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -116,6 +136,35 @@ class _UnavailableTopPostsNotice extends StatelessWidget {
         message:
             'This summary still has its narrative and citations, but no posts '
             'have the verification required for the Top posts board.',
+      ),
+    ],
+  );
+}
+
+/// A day ranked under an earlier policy is outdated, not broken: the
+/// narrative and citations stay, the boards come back after a rebuild.
+class _RebuildRequiredTopPostsNotice extends StatelessWidget {
+  const _RebuildRequiredTopPostsNotice();
+
+  @override
+  Widget build(BuildContext context) => Column(
+    key: const ValueKey('reader-summary-top-posts-rebuild-required'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        'Top posts',
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0,
+        ),
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      const AppInlineProblem(
+        title: 'Top posts are waiting for a rebuild',
+        message:
+            'This day was ranked under an earlier ranking policy. Its '
+            'narrative and citations are unchanged; Top posts and News '
+            'without rating appear again after the day is rebuilt.',
       ),
     ],
   );

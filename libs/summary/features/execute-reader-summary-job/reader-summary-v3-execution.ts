@@ -1,7 +1,8 @@
 import { DomainError, type Clock } from "@social-monitor/shared-kernel";
 import type { ReaderSummaryJob, ReaderSummaryPreparationManifest,
   SummaryEvidenceSelection } from "../../domain";
-import { canonicalReaderSummaryPreparationTimestamp } from "../../domain";
+import { canonicalReaderSummaryPreparationTimestamp,
+  READER_PROMOTION_POLICY_STAMP } from "../../domain";
 import type { ReaderSummaryJobRepositoryPort, ReaderSummaryV3PreflightPort,
   ReaderSummaryV3PromotionPort } from "../../ports";
 import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job.result";
@@ -60,7 +61,9 @@ export const buildReaderSummaryV3Evidence = async (params: {
     evidence: emptyV3Evidence(params.job, params.manifest) };
   const code = promotion.kind === "dependency_failure"
     ? "presentation_dependency_unavailable" as const
-    : "presentation_unavailable" as const;
+    : promotion.kind === "manifest_outdated"
+      ? "preparation_manifest_outdated" as const
+      : "presentation_unavailable" as const;
   const failed = params.job.failTerminal({ failedAt: params.clock.now(),
     failureReason: promotion.kind === "dependency_failure"
       ? promotion.reason : promotion.kind, terminalFailureCode: code });
@@ -77,7 +80,7 @@ const emptyV3Evidence = (job: ReaderSummaryJob,
   manifest: ReaderSummaryPreparationManifest): SummaryEvidenceSelection => {
   const snapshot = job.toSnapshot();
   const exactCutoff = canonicalReaderSummaryPreparationTimestamp(manifest.cutoffAt);
-  return { rankingPolicyVersion: "reader_promotion_policy.v3",
+  return { rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
     sourceWindow: { windowId: `reader-summary-v3:${snapshot.id}`,
       startedAt: snapshot.period.startedAt, endedAt: snapshot.period.endedAt,
       selectedFeedItemIds: [], storyClusterIds: [],
@@ -86,6 +89,6 @@ const emptyV3Evidence = (job: ReaderSummaryJob,
       ingestionCutoff: new Date(exactCutoff),
       exactIngestionCutoff: exactCutoff },
     clusters: [], selectedEvidence: [], promotionV3: {
-      policyVersion: "reader_promotion_policy.v3", outcome: "no_signal",
-      top: [], additional: [], excluded: [] } };
+      policyVersion: READER_PROMOTION_POLICY_STAMP, outcome: "no_signal",
+      top: [], additional: [], news: [], excluded: [] } };
 };

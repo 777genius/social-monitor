@@ -445,7 +445,9 @@ const topReadReferences = (
   readonly title: string;
   readonly citationIds: readonly string[];
 }[] => {
-  const topReads = snapshot.content?.topReads;
+  // Without ranked posts the news block is the reader's lead board.
+  const topReads = (snapshot.content?.topReads.length ?? 0) > 0
+    ? snapshot.content?.topReads : snapshot.content?.newsWithoutRatingPosts;
   if (topReads !== undefined && topReads.length > 0) {
     return topReads.map((item) => ({
       title: item.title,

@@ -164,6 +164,23 @@ export const assertReaderSummaryContent = (
     "Reader summary selected posts",
     citationById,
   );
+  for (const item of content.newsWithoutRatingPosts ?? []) {
+    assertReaderItem(
+      item,
+      knownCitationIds,
+      citationById,
+      knownProviderKeys,
+      "Reader summary news post",
+    );
+    if (item.cardKind !== "news_without_rating" || item.storyClusterId === undefined ||
+        !storyClusterIds.has(item.storyClusterId)) {
+      throw new Error(
+        "Reader summary news post must be an authorized news_without_rating card",
+      );
+    }
+    assertClusterCardEvidenceAuthority(item, storyClusters, citationById,
+      "Reader summary news post");
+  }
   for (const claim of content.claimBoard) {
     assertReaderSummaryClaim(claim, knownCitationIds, knownProviderKeys);
   }
@@ -189,6 +206,9 @@ const assertReaderSummarySelectedPostCardAuthority = (
   storyClusters: readonly StoryCluster[],
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
 ): void => {
+  if (item.cardKind === "news_without_rating") {
+    throw new Error("Reader summary news cards belong to newsWithoutRatingPosts");
+  }
   if (
     (item.cardKind === "curated_top_read" ||
       item.cardKind === "additional_notable_story" ||

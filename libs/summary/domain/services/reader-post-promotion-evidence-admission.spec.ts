@@ -11,7 +11,7 @@ describe("admitReaderPostPromotionEvidence supplemental appendix", () => {
     const selection = fixtureSelection();
     const admitted = admitReaderPostPromotionEvidence(selection);
 
-    expect(admitted.promotionCounts).toEqual({ top: 1, additional: 0 });
+    expect(admitted.promotionCounts).toEqual({ top: 1, additional: 0, news: 0 });
     expect(admitted.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "hn:top",
       "github:trending",

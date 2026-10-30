@@ -1,3 +1,6 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   assertReaderSummaryWeeklyExactObject,
   canonicalizeReaderSummaryWeeklyHistoricalArtifactJson,
@@ -13,17 +16,37 @@ import {
 } from "./reader-summary-weekly-canonical-json";
 
 describe("reader summary weekly canonical JSON", () => {
+  it("mirrors the bounds of the latest SQL V3 publication canonical function", () => {
+    const root = join(__dirname, "../../../../prisma/migrations");
+    const latest = readdirSync(root).sort().reverse()
+      .filter((name) => existsSync(join(root, name, "migration.sql")))
+      .map((name) => readFileSync(join(root, name, "migration.sql"), "utf8"))
+      .find((sql) => sql.includes("FUNCTION public.reader_summary_v3_publication_canonical_json"))!;
+    // The final bound check, not the legacy 16,384 string profile above it.
+    const check = /IF v_depth > [\s\S]*?THEN/u.exec(latest)![0];
+    const bound = (name: string): number => Number(name === "v_bytes"
+      ? /IF v_bytes > (\d+)/u.exec(latest)![1]
+      : new RegExp(`${name} > (\\d+)`, "u").exec(check)![1]);
+    const limits = readerSummaryWeeklyV3PublicationCanonicalJsonLimits;
+
+    expect([bound("v_depth"), bound("v_nodes"), bound("v_object_keys"), bound("v_max_keys"),
+      bound("v_array_elements"), bound("v_max_array"), bound("v_max_string"),
+      bound("v_bytes")]).toEqual([limits.maxDepth, limits.maxNodes, limits.maxTotalObjectKeys,
+      limits.maxObjectKeys, limits.maxTotalArrayElements, limits.maxArrayElements,
+      limits.maxStringLength, limits.maxBytes]);
+  });
+
   it("uses the finite SQL V3 profile without changing legacy bytes or bounds", () => {
     const longSource = "s".repeat(27_000);
     expect(readerSummaryWeeklyV3PublicationCanonicalJsonLimits).toMatchObject({
       maxDepth: 32,
       maxBytes: 16_777_216,
       maxObjectKeys: 128,
-      maxTotalObjectKeys: 20_000,
+      maxTotalObjectKeys: 40_000,
       maxArrayElements: 1_024,
       maxTotalArrayElements: 20_000,
       maxStringLength: 64_000,
-      maxNodes: 25_000,
+      maxNodes: 50_000,
     });
     expect(canonicalizeReaderSummaryWeeklyV3PublicationJson({ body: longSource }).sha256)
       .toMatch(/^[0-9a-f]{64}$/u);

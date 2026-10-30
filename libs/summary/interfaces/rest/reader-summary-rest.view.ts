@@ -23,13 +23,15 @@ export type ReaderSummaryContextArtifactView =
 
 type ReaderSummaryBriefView = Omit<
   CanonicalReaderSummaryArtifactView["content"],
-  "narrativeSections" | "topReads" | "selectedPosts" | "interestSections"
+  | "narrativeSections" | "topReads" | "selectedPosts" | "newsWithoutRatingPosts"
+  | "interestSections"
 > & {
   readonly narrativeSections: NonNullable<
     CanonicalReaderSummaryArtifactView["content"]["narrativeSections"]
   >;
   readonly topReads: readonly ReaderSummaryReaderItemDto[];
   readonly selectedPosts: readonly ReaderSummaryReaderItemDto[];
+  readonly newsWithoutRatingPosts: readonly ReaderSummaryReaderItemDto[];
   readonly interestSections: readonly (Omit<
     CanonicalReaderSummaryArtifactView["content"]["interestSections"][number],
     "items"

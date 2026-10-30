@@ -1,5 +1,7 @@
 import { validReaderDisplayRestBinding } from "./reader-summary-display-rest-binding";
 import { readerPostPromotionCardFields } from "../../domain/entities/top-read";
+import { READER_PROMOTION_LIMITS, READER_PROMOTION_POLICY_STAMP } from
+  "../../domain/policies/reader-promotion-ranking";
 import { canonicalPromotionPayload } from
   "../../domain/services/reader-post-promotion-attestation";
 import { readerSummaryIndependentProviderFamily } from
@@ -23,27 +25,31 @@ import { isGitHubReaderItem } from
 export type ReaderSummaryPromotionBoardRestView = Readonly<{
   topReads: readonly ReaderSummaryReaderItemDto[];
   selectedPosts: readonly ReaderSummaryReaderItemDto[];
+  newsWithoutRatingPosts: readonly ReaderSummaryReaderItemDto[];
 }>;
+
+type Placement = "top" | "additional" | "news";
+
+const emptyBoard: ReaderSummaryPromotionBoardRestView = Object.freeze({
+  topReads: [], selectedPosts: [], newsWithoutRatingPosts: [],
+});
 
 export const readerSummaryPromotionBoardRestView = (
   view: ReaderSummaryArtifactView,
 ): ReaderSummaryPromotionBoardRestView => {
-  const hasLegacyPromotionBoardState =
-    view.promotionBoardState === "legacy_unavailable";
-  const legacyPromotionBoardUnavailable =
-    isLegacyPromotionBoardUnavailable(view);
-  if (hasLegacyPromotionBoardState && !legacyPromotionBoardUnavailable) {
+  // Pre-promotion boards and boards ranked under an older promotion stamp
+  // are withheld: no card is served without a current attestation.
+  const hasWithheldBoardState = view.promotionBoardState !== undefined;
+  const withheldBoardUnavailable = isWithheldPromotionBoardUnavailable(view);
+  if (hasWithheldBoardState && !withheldBoardUnavailable) {
     throw new ReaderSummaryPromotionBoardMappingError();
   }
-  if (legacyPromotionBoardUnavailable) {
-    return { topReads: [], selectedPosts: [] };
-  }
+  if (withheldBoardUnavailable) return emptyBoard;
   const additionalCards = promotionAdditionalCards(view);
+  const newsCards = view.content.newsWithoutRatingPosts;
   if (view.content.topReads.length === 0 && additionalCards.length === 0 &&
-      view.promotionAttestations.length === 0) {
-    if (isReadableNoSignalBoard(view)) {
-      return { topReads: [], selectedPosts: [] };
-    }
+      newsCards.length === 0 && view.promotionAttestations.length === 0) {
+    if (isReadableNoSignalBoard(view)) return emptyBoard;
     throw new ReaderSummaryPromotionBoardMappingError();
   }
   const authority = buildReaderCardRestAuthority(view, additionalCards);
@@ -51,16 +57,9 @@ export const readerSummaryPromotionBoardRestView = (
     throw new ReaderSummaryPromotionBoardMappingError();
   }
   return {
-    topReads: readerSummaryReaderItemsView(
-      view.content.topReads,
-      authority,
-      "top",
-    ),
-    selectedPosts: readerSummaryReaderItemsView(
-      additionalCards,
-      authority,
-      "additional",
-    ),
+    topReads: readerSummaryReaderItemsView(view.content.topReads, authority, "top"),
+    selectedPosts: readerSummaryReaderItemsView(additionalCards, authority, "additional"),
+    newsWithoutRatingPosts: readerSummaryReaderItemsView(newsCards, authority, "news"),
   };
 };
 
@@ -87,11 +86,11 @@ const promotionAdditionalCards = (
   return additional;
 };
 
-const isLegacyPromotionBoardUnavailable = (
+const isWithheldPromotionBoardUnavailable = (
   view: ReaderSummaryArtifactView,
 ): boolean => {
   if (
-    view.promotionBoardState !== "legacy_unavailable" ||
+    view.promotionBoardState === undefined ||
     view.promotionAttestations.length > 0
   ) {
     return false;
@@ -99,6 +98,7 @@ const isLegacyPromotionBoardUnavailable = (
   const cards = [
     ...view.content.topReads,
     ...(view.content.selectedPosts ?? []),
+    ...view.content.newsWithoutRatingPosts,
     ...view.content.interestSections.flatMap((section) => section.items),
   ];
   return cards.every((card) => readerPostPromotionCardFields.every(
@@ -116,7 +116,7 @@ export class ReaderSummaryPromotionBoardMappingError extends Error {
 const readerSummaryReaderItemsView = (
   items: readonly ReaderSummaryArtifactView["content"]["topReads"][number][],
   authority: ReaderCardRestAuthority,
-  placement: "top" | "additional",
+  placement: Placement,
 ): readonly ReaderSummaryReaderItemDto[] => {
   const mapped = items.map((item, slot) =>
     readerSummaryReaderItemView(item, authority, placement, slot));
@@ -129,18 +129,17 @@ const readerSummaryReaderItemsView = (
 const readerSummaryReaderItemView = (
   item: ReaderSummaryArtifactView["content"]["topReads"][number],
   authority: ReaderCardRestAuthority,
-  placement: "top" | "additional",
+  placement: Placement,
   slot: number,
 ): ReaderSummaryReaderItemDto | undefined => {
   const storyClusterId = item.storyClusterId?.trim();
   const explicitCardKind =
     item.cardKind === "curated_top_read" ||
-    item.cardKind === "additional_notable_story"
+    item.cardKind === "additional_notable_story" ||
+    item.cardKind === "news_without_rating"
       ? item.cardKind
       : undefined;
-  const expectedCardKind = placement === "top"
-    ? "curated_top_read"
-    : "additional_notable_story";
+  const expectedCardKind = placementCardKind[placement];
   const clusterCardIsAuthorized =
     explicitCardKind === expectedCardKind &&
     isAuthorizedClusterRestItem(item, authority);
@@ -235,8 +234,11 @@ const buildReaderCardRestAuthority = (
       (attestation) => [attestation.candidateId, attestation] as const,
     ));
     const topCards = view.content.topReads;
-    if (topCards.length > 12 || additionalCards.length > 12) return undefined;
-    const promotionCards = [...topCards, ...additionalCards];
+    const newsCards = view.content.newsWithoutRatingPosts;
+    if (topCards.length > READER_PROMOTION_LIMITS.top ||
+        topCards.length + additionalCards.length > READER_PROMOTION_LIMITS.rankedTotal ||
+        newsCards.length > READER_PROMOTION_LIMITS.news) return undefined;
+    const promotionCards = [...topCards, ...additionalCards, ...newsCards];
     const promotionCandidateIds = promotionCards.map((item) =>
       item.promotionCandidateId?.trim() ?? "",
     );
@@ -259,6 +261,7 @@ const buildReaderCardRestAuthority = (
         slot,
         placement: "additional" as const,
       })),
+      ...newsCards.map((item, slot) => ({ item, slot, placement: "news" as const })),
     ];
     if (lanes.some(({ item, slot, placement }) => {
       const candidateId = item.promotionCandidateId?.trim() ?? "";
@@ -288,14 +291,10 @@ const buildReaderCardRestAuthority = (
 const promotionAttestationView = (
   item: ReaderSummaryArtifactView["content"]["topReads"][number],
   authority: ReaderCardRestAuthority,
-  placement: "top" | "additional",
+  placement: Placement,
   slot: number,
 ): ReaderSummaryPromotionAttestationDto | undefined => {
-  const decision = placement === "top"
-    ? "promote_top" as const
-    : placement === "additional"
-      ? "promote_additional" as const
-      : undefined;
+  const decision = placementDecision[placement];
   const candidateId = item.promotionCandidateId?.trim();
   const canonicalIdentity = item.promotionCanonicalIdentity?.trim();
   if (decision === undefined ||
@@ -306,7 +305,7 @@ const promotionAttestationView = (
   const attestation = authority.promotionAttestations.get(candidateId);
   const isV3 = attestation?.schemaVersion ===
     "reader_post_promotion_attestation.v3";
-  if (attestation === undefined ||
+  if (attestation === undefined || (placement === "news" && !isV3) ||
       item.promotionPolicyVersion !== attestation.policyVersion ||
       attestation.candidateId !== candidateId ||
       attestation.canonicalIdentity !== canonicalIdentity ||
@@ -328,7 +327,8 @@ const promotionAttestationView = (
     READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION
     ? attestation
     : undefined;
-  if (v2 !== undefined && !validV2RestCardBinding(v2, item, placement, slot)) {
+  if (v2 !== undefined && (placement === "news" ||
+      !validV2RestCardBinding(v2, item, placement, slot))) {
     return undefined;
   }
   if (isV3 && (attestation.storyId !== item.storyClusterId ||
@@ -388,7 +388,7 @@ const validRestPromotionVersion = (
   ? attestation.policyVersion === "reader_post_promotion.v1" &&
     attestation.digestVersion === "reader_post_promotion_digest.sha256.v1"
   : attestation.schemaVersion === "reader_post_promotion_attestation.v3"
-    ? attestation.policyVersion === "reader_post_promotion.v3" &&
+    ? attestation.policyVersion === READER_PROMOTION_POLICY_STAMP &&
       attestation.digestVersion === "reader_post_promotion_digest.sha256.v3"
     : attestation.schemaVersion ===
       READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION &&
@@ -479,3 +479,15 @@ const isReservedReaderMarker = (rule: string): boolean => {
     "reader-related-topic-target:",
   ].some((prefix) => normalized.startsWith(prefix));
 };
+
+const placementCardKind = Object.freeze({
+  top: "curated_top_read",
+  additional: "additional_notable_story",
+  news: "news_without_rating",
+} as const satisfies Record<Placement, string>);
+
+const placementDecision = Object.freeze({
+  top: "promote_top",
+  additional: "promote_additional",
+  news: "promote_news",
+} as const satisfies Record<Placement, string>);

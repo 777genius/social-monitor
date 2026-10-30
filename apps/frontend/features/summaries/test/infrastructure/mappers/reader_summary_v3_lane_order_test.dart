@@ -3,48 +3,41 @@ import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.da
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 
-void main() {
-  test('accepts V3 lanes ordered by the engagement tie-break', () {
-    final summary = _summary([
-      _item(
-        storyClusterId: 'story:one',
-        candidateId: 'candidate-a',
-        slot: 1,
-        signalScore: 5,
-        publishedAt: '2026-10-19T02:00:00.000000Z',
-      ),
-      _item(
-        storyClusterId: 'story:two',
-        candidateId: 'candidate-b',
-        slot: 2,
-        signalScore: 3,
-        publishedAt: '2026-10-19T04:00:00.000000Z',
-      ),
-    ]);
-    expect(
-      summary.content.promotionBoardAvailability,
-      ReaderSummaryPromotionBoardAvailability.available,
-    );
-    expect(summary.content.topReads, hasLength(2));
-  });
+import '../../support/reader_promotion_comparator_fixture.dart';
 
-  test('rejects V3 lanes that violate the engagement tie-break', () {
-    final summary = _summary([
-      _item(
-        storyClusterId: 'story:one',
-        candidateId: 'candidate-a',
-        slot: 1,
-        signalScore: 3,
-        publishedAt: '2026-10-19T02:00:00.000000Z',
-      ),
-      _item(
-        storyClusterId: 'story:two',
-        candidateId: 'candidate-b',
-        slot: 2,
-        signalScore: 5,
-        publishedAt: '2026-10-19T04:00:00.000000Z',
-      ),
-    ]);
+void main() {
+  test(
+    'accepts the hybrid order: a strong useful post over a weak important one',
+    () {
+      final summary = _summary(
+        top: [
+          _item(1, popularity: const ReaderPromotionCountsFixture(10, 9, 1)),
+          _item(
+            2,
+            usefulness: 'important',
+            popularity: const ReaderPromotionCountsFixture(10, 0, 1),
+            engagementValue: 0,
+          ),
+          _item(3, usefulness: 'important'),
+        ],
+      );
+
+      expect(
+        summary.content.promotionBoardAvailability,
+        ReaderSummaryPromotionBoardAvailability.available,
+      );
+      expect(summary.content.topReads, hasLength(3));
+    },
+  );
+
+  test('rejects a ranked lane whose order was forged', () {
+    final summary = _summary(
+      top: [
+        _item(1, usefulness: 'important'),
+        _item(2, popularity: const ReaderPromotionCountsFixture(10, 9, 1)),
+      ],
+    );
+
     expect(
       summary.content.promotionBoardAvailability,
       ReaderSummaryPromotionBoardAvailability.unavailable,
@@ -52,70 +45,78 @@ void main() {
     expect(summary.content.topReads, isEmpty);
   });
 
-  test('breaks equal-score lanes by recency, newest first', () {
-    final summary = _summary([
-      _item(
-        storyClusterId: 'story:one',
-        candidateId: 'candidate-a',
-        slot: 1,
-        signalScore: 3,
-        publishedAt: '2026-10-19T04:00:00.000000Z',
-      ),
-      _item(
-        storyClusterId: 'story:two',
-        candidateId: 'candidate-b',
-        slot: 2,
-        signalScore: 3,
-        publishedAt: '2026-10-19T02:00:00.000000Z',
-      ),
-    ]);
+  test('breaks equal scores by recency, newest first', () {
+    ReaderSummary board(List<int> hours) => _summary(
+      top: [
+        for (final (index, hour) in hours.indexed)
+          _item(index + 1, publishedHour: hour),
+      ],
+    );
+
     expect(
-      summary.content.promotionBoardAvailability,
+      board([4, 2]).content.promotionBoardAvailability,
       ReaderSummaryPromotionBoardAvailability.available,
     );
+    expect(
+      board([2, 4]).content.promotionBoardAvailability,
+      ReaderSummaryPromotionBoardAvailability.unavailable,
+    );
   });
-  test('accepts the full 12+12 promotion budget per lane', () {
-    final summary = _summary([
-      for (var slot = 1; slot <= 12; slot += 1)
+
+  test('accepts 12 Top and 36 Show more posts from one network', () {
+    final ranked = [
+      for (var index = 1; index <= 48; index += 1)
         _item(
-          storyClusterId: 'story:$slot',
-          candidateId: 'candidate-$slot',
-          slot: slot,
-          signalScore: (13 - slot).toDouble(),
-          publishedAt: '2026-10-19T0${slot % 10}:00:00.000000Z',
+          index,
+          popularity: ReaderPromotionCountsFixture(48, 48 - index, 1),
+          engagementValue: 49 - index,
         ),
-    ]);
+    ];
+    final summary = _summary(
+      top: ranked.sublist(0, 12),
+      additional: [
+        for (final (index, item) in ranked.sublist(12).indexed)
+          _asAdditional(item, slot: index + 1),
+      ],
+    );
+
     expect(
       summary.content.promotionBoardAvailability,
       ReaderSummaryPromotionBoardAvailability.available,
     );
     expect(summary.content.topReads, hasLength(12));
+    expect(summary.content.selectedPosts, hasLength(36));
   });
 
-  test('rejects a promotion lane over the 12-card budget', () {
-    final summary = _summary([
-      for (var slot = 1; slot <= 13; slot += 1)
+  test('rejects Top over 12 and Show more behind an incomplete Top', () {
+    final ranked = [
+      for (var index = 1; index <= 13; index += 1)
         _item(
-          storyClusterId: 'story:$slot',
-          candidateId: 'candidate-$slot',
-          slot: slot,
-          signalScore: (14 - slot).toDouble(),
-          publishedAt: '2026-10-19T0${slot % 10}:00:00.000000Z',
+          index,
+          popularity: ReaderPromotionCountsFixture(13, 13 - index, 1),
+          engagementValue: 14 - index,
         ),
-    ]);
+    ];
+
     expect(
-      summary.content.promotionBoardAvailability,
+      _summary(top: ranked).content.promotionBoardAvailability,
       ReaderSummaryPromotionBoardAvailability.unavailable,
     );
-    expect(summary.content.topReads, isEmpty);
+    expect(
+      _summary(
+        top: ranked.sublist(0, 11),
+        additional: [_asAdditional(ranked[11], slot: 1)],
+      ).content.promotionBoardAvailability,
+      ReaderSummaryPromotionBoardAvailability.unavailable,
+    );
   });
-
 }
 
-ReaderSummary _summary(List<TopReadApiDto> topReads) {
-  final storyClusterIds = [
-    for (final item in topReads) item.storyClusterId!,
-  ];
+ReaderSummary _summary({
+  required List<TopReadApiDto> top,
+  List<TopReadApiDto> additional = const [],
+}) {
+  final cards = [...top, ...additional];
   return const SummaryMapper().readerSummaryToDomain(
     ReaderSummaryApiDto(
       id: 'summary-1',
@@ -128,7 +129,8 @@ ReaderSummary _summary(List<TopReadApiDto> topReads) {
         bullets: const [],
         interestSections: const [],
         sourceMix: const [],
-        topReads: topReads,
+        topReads: top,
+        selectedPosts: additional,
         trendDelta: const ReaderTrendDeltaApiDto(
           newSignals: [],
           growingSignals: [],
@@ -140,24 +142,24 @@ ReaderSummary _summary(List<TopReadApiDto> topReads) {
         nextActions: const [],
       ),
       topStories: const [],
-      storyClusterIds: storyClusterIds,
+      storyClusterIds: [for (final item in cards) item.storyClusterId!],
       storyClusterAuthorities: [
-        for (var index = 0; index < topReads.length; index += 1)
+        for (final item in cards)
           ReaderSummaryStoryClusterAuthorityApiDto(
-            id: storyClusterIds[index],
-            feedItemIds: ['feed-$index'],
+            id: item.storyClusterId!,
+            feedItemIds: ['feed-${item.storyClusterId}'],
             providerKeys: const ['reddit'],
           ),
       ],
       repeatedSignals: const [],
       citations: [
-        for (var index = 0; index < topReads.length; index += 1)
+        for (final item in cards)
           SummaryCitationApiDto(
-            id: 'citation-$index',
-            sourceLabel: 'Source $index',
-            rawSnippet: 'Snippet $index',
-            feedItemId: 'feed-$index',
-            sourceItemId: 'source-item-$index',
+            id: item.citationIds.single,
+            sourceLabel: 'Source',
+            rawSnippet: 'Snippet',
+            feedItemId: 'feed-${item.storyClusterId}',
+            sourceItemId: 'source-${item.storyClusterId}',
             providerKey: 'reddit',
           ),
       ],
@@ -182,49 +184,84 @@ ReaderSummary _summary(List<TopReadApiDto> topReads) {
 final _periodStart = DateTime.utc(2026, 10, 19);
 final _periodEnd = DateTime.utc(2026, 10, 20);
 
-TopReadApiDto _item({
-  required String storyClusterId,
-  required String candidateId,
-  required int slot,
-  required double signalScore,
-  required String publishedAt,
+TopReadApiDto _item(
+  int slot, {
+  String usefulness = 'useful',
+  ReaderPromotionCountsFixture? popularity,
+  num engagementValue = 10,
+  int publishedHour = 2,
 }) {
-  final index = slot - 1;
+  final candidateId = 'candidate-${slot.toString().padLeft(2, '0')}';
+  final publishedAt =
+      '2026-10-19T${publishedHour.toString().padLeft(2, '0')}:00:00.000000Z';
   return TopReadApiDto(
     title: 'Story $slot',
     providerKey: 'reddit',
     reason: '',
-    citationIds: ['citation-$index'],
+    citationIds: ['citation-$slot'],
     cardKind: 'curated_top_read',
-    storyClusterId: storyClusterId,
-    signalScore: signalScore,
+    storyClusterId: 'story:$slot',
     confirmedProviderKeys: const ['reddit'],
     publishedAt: DateTime.parse(publishedAt),
-    promotionAttestation: ReaderPostPromotionAttestationApiDto(
-      schemaVersion: 'reader_post_promotion_attestation.v3',
-      policyVersion: 'reader_post_promotion.v3',
+    promotionAttestation: _attestation(
       candidateId: candidateId,
-      canonicalIdentity: 'https://example.com/$candidateId',
-      placement: 'top',
       slot: slot,
-      decision: 'promote_top',
-      citationIds: ['citation-$index'],
-      providerKey: 'reddit',
-      storyId: storyClusterId,
-      exactPublishedAt: publishedAt,
-      assessment: const {
-        'answers': {
-          'usefulness': {'choice': 'useful'},
-          'relevance': {'choice': 'central'},
-        },
-      },
-      comparator: {
-        'usefulness': 'useful',
-        'relevance': 'central',
-        'publishedAt': publishedAt,
-        'candidateId': candidateId,
-      },
-      presentation: const {'schemaVersion': 'reader_post_presentation.v3'},
+      placement: 'top',
+      publishedAt: publishedAt,
+      comparator: rankedComparatorJson(
+        candidateId: candidateId,
+        publishedAt: publishedAt,
+        usefulness: usefulness,
+        popularity: popularity,
+        engagementValue: engagementValue,
+      ),
+      storyId: 'story:$slot',
     ),
   );
 }
+
+TopReadApiDto _asAdditional(TopReadApiDto item, {required int slot}) {
+  final attestation = item.promotionAttestation!;
+  return TopReadApiDto(
+    title: item.title,
+    providerKey: item.providerKey,
+    reason: item.reason,
+    citationIds: item.citationIds,
+    cardKind: 'additional_notable_story',
+    storyClusterId: item.storyClusterId,
+    confirmedProviderKeys: item.confirmedProviderKeys,
+    publishedAt: item.publishedAt,
+    promotionAttestation: _attestation(
+      candidateId: attestation.candidateId,
+      slot: slot,
+      placement: 'additional',
+      publishedAt: attestation.exactPublishedAt!,
+      comparator: attestation.comparator!,
+      storyId: attestation.storyId!,
+    ),
+  );
+}
+
+ReaderPostPromotionAttestationApiDto _attestation({
+  required String candidateId,
+  required int slot,
+  required String placement,
+  required String publishedAt,
+  required Map<String, Object?> comparator,
+  required String storyId,
+}) => ReaderPostPromotionAttestationApiDto(
+  schemaVersion: 'reader_post_promotion_attestation.v3',
+  policyVersion: 'reader_promotion.2026-10-30',
+  candidateId: candidateId,
+  canonicalIdentity: 'https://example.com/$candidateId',
+  placement: placement,
+  slot: slot,
+  decision: 'promote_$placement',
+  citationIds: ['citation-${storyId.split(':').last}'],
+  providerKey: 'reddit',
+  storyId: storyId,
+  exactPublishedAt: publishedAt,
+  assessment: const {'schemaVersion': 'reader_value.v1'},
+  comparator: comparator,
+  presentation: const {'schemaVersion': 'reader_post_presentation.v3'},
+);
