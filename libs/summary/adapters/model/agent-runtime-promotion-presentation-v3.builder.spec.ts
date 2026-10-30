@@ -16,7 +16,8 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     });
     await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
       modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).resolves.toEqual([
-      { status: "unavailable", reason: "runtime_failure" }]);
+      { status: "unavailable", reason: "runtime_failure",
+        runtimeFailure: { code: "provider_output_invalid", causeCategory: "schema" } }]);
     expect(client.runTask).toHaveBeenCalledTimes(2);
   });
 
@@ -29,9 +30,10 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
           reconnectRequired: false, causeCategory: "agent_runtime",
           details: { reason: "user_abort", exitCode: "1" } } });
       const inputs = [fixtureInput(), { ...fixtureInput(), candidateId: "other-candidate" }];
+      const skipped = { status: "unavailable", reason: "runtime_failure",
+        runtimeFailure: { code, causeCategory: "agent_runtime" } };
       await expect(new AgentRuntimePromotionPresentationV3Builder({ client }).build(inputs))
-        .resolves.toEqual([{ status: "unavailable", reason: "runtime_failure" },
-          { status: "unavailable", reason: "runtime_failure" }]);
+        .resolves.toEqual([skipped, skipped]);
       expect(client.runTask).toHaveBeenCalledTimes(attempts);
     });
 
@@ -45,33 +47,67 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(client.runTask).toHaveBeenCalledTimes(2);
   });
 
-  it.each<[string, string, Record<string, string>, boolean]>([
-    ["quota_limited", "Quota unavailable", {}, false],
-    ["backend_unavailable", "Capacity unavailable", {}, false],
-    ["provider_session_invalid", "Account unavailable", {}, false],
-    ["needs_reconnect", "Reconnect the account", {}, true],
-    ["agent_runtime.execution_attestation_invalid", "Attestation could not be verified", {}, false],
-    ["agent_runtime.mimo_key_unavailable", "Credential is unavailable", {}, false],
-    ["agent_runtime.unclassified_new_code", "Failed", {}, false],
-    ["unknown_runtime_failure", "Failed", { capacityReason: "rate_limit_threshold" }, false],
-    ["unknown_runtime_failure", "Failed", { safeExecutorStatus: "waiting_capacity" }, false],
-    ["unknown_runtime_failure", "Rate limit reached for this account", {}, false],
-    ["unknown_runtime_failure", "Failed", { reason: "quota_limited" }, false],
-    ["unknown_runtime_failure", "Failed", { reason: "model_unavailable" }, false],
-    ["unknown_runtime_failure", "Failed", { reason: "permission_required" }, false],
-    ["task_cancelled", "Failed", { reason: "budget_exceeded" }, false],
-    ["task_timeout", "Task timed out", {}, true],
-  ])("keeps run-wide %s (%s) fatal on both backends without retrying", async (code, safeMessage, details, reconnectRequired) => {
-    for (const modelBackend of [undefined, "xiaomi-mimo-token-plan"] as const) {
-      const client = new PresentationRuntimeClient();
-      jest.spyOn(client, "runTask").mockResolvedValue({ status: "failed", warnings: [],
-        failure: { code, safeMessage, retryable: true, reconnectRequired,
-          causeCategory: "agent_runtime", details } });
-      await expect(new AgentRuntimePromotionPresentationV3Builder({ client, modelBackend })
-        .build([fixtureInput()])).rejects.toBeDefined();
-      expect(client.runTask).toHaveBeenCalledTimes(1);
-    }
+  type FailureShape = readonly [code: string, safeMessage: string,
+    details: Record<string, string>, reconnectRequired: boolean, causeCategory: string];
+  const expectFatalWithoutRetry = async (modelBackend: "xiaomi-mimo-token-plan" | undefined,
+    [code, safeMessage, details, reconnectRequired, causeCategory]: FailureShape) => {
+    const client = new PresentationRuntimeClient();
+    jest.spyOn(client, "runTask").mockResolvedValue({ status: "failed", warnings: [],
+      failure: { code, safeMessage, retryable: true, reconnectRequired, causeCategory, details } });
+    await expect(new AgentRuntimePromotionPresentationV3Builder({ client, modelBackend })
+      .build([fixtureInput()])).rejects.toBeDefined();
+    expect(client.runTask).toHaveBeenCalledTimes(1);
+  };
+
+  // Shapes the Codex subscription runtime delivers after agent-runtime promotes
+  // the classified reason and keeps only safe detail keys.
+  it.each<FailureShape>([
+    ["quota_limited", "Subscription quota is limited",
+      { reason: "quota_limited", capacityReason: "quota_limited", availability: "quota_exhausted" }, false, "agent_runtime"],
+    ["backend_unavailable", "No subscription account is available",
+      { reason: "capacity_unavailable", safeExecutorStatus: "waiting_capacity" }, false, "agent_runtime"],
+    ["provider_session_invalid", "Subscription account is unavailable", { reason: "account_unavailable" }, false, "agent_runtime"],
+    ["needs_reconnect", "Reconnect the subscription account", { reason: "reconnect_required" }, true, "agent_runtime"],
+    ["unknown_runtime_failure", "Subscription worker task failed", { reason: "permission_required" }, false, "agent_runtime"],
+    ["unknown_runtime_failure", "Subscription worker task failed", { reason: "model_unavailable" }, false, "agent_runtime"],
+    ["task_cancelled", "Subscription worker task failed", { reason: "budget_exceeded" }, false, "agent_runtime"],
+    ["unknown_runtime_failure", "Subscription worker task failed", { capacityReason: "rate_limit_threshold" }, false, "agent_runtime"],
+    ["unknown_runtime_failure", "Subscription worker task failed", { availability: "cooldown" }, false, "agent_runtime"],
+    ["unknown_runtime_failure", "Subscription worker task failed", { availability: "disabled" }, false, "agent_runtime"],
+    ["unknown_runtime_failure", "Subscription worker task failed", { availability: "quota_exhausted" }, false, "agent_runtime"],
+    ["unknown_runtime_failure", "Subscription worker task failed", { cooldownUntil: "2026-10-30T18:00:00.000Z" }, false, "agent_runtime"],
+    ["unknown_runtime_failure", "Rate limit reached for this account", {}, false, "agent_runtime"],
+    ["task_timeout", "Task timed out", {}, true, "agent_runtime"],
+    ["agent_runtime.execution_attestation_invalid", "Agent runtime execution attestation could not be verified", {}, false, "runtime_attestation"],
+    ["agent_runtime.unclassified_new_code", "Failed", {}, false, "agent_runtime"],
+  ])("keeps the Codex run-wide shape %s (%s, %j) fatal without retrying", async (...shape) => {
+    await expectFatalWithoutRetry(undefined, shape);
   });
+
+  // MiMo reports configuration and attestation failures from agent-runtime itself.
+  it.each<FailureShape>([
+    ["agent_runtime.mimo_key_unavailable", "MiMo Token Plan credential is unavailable", {}, false, "credential_configuration"],
+    ["agent_runtime.execution_attestation_invalid", "Agent runtime execution attestation could not be verified", {}, false, "runtime_attestation"],
+    ["agent_runtime.unclassified_new_code", "Failed", {}, false, "agent_runtime"],
+  ])("keeps the MiMo run-wide shape %s fatal without retrying", async (...shape) => {
+    await expectFatalWithoutRetry("xiaomi-mimo-token-plan", shape);
+  });
+
+  it("skips the generic MiMo failure even when it hides quota (known limitation, the run guard stops repeats)", async () => {
+    // The MiMo launcher rethrows every failure, quota and capacity included,
+    // as one generic error without a reason.
+    const client = new PresentationRuntimeClient();
+    jest.spyOn(client, "runTask").mockResolvedValue({ status: "failed", warnings: [],
+      failure: { code: "unknown_runtime_failure", safeMessage: "MiMo reader summary did not complete",
+        retryable: false, reconnectRequired: false, causeCategory: "agent_runtime",
+        details: { subscriptionWorkerCode: "subscription_worker_run_failed" } } });
+    await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).resolves.toEqual([
+      { status: "unavailable", reason: "runtime_failure",
+        runtimeFailure: { code: "unknown_runtime_failure", causeCategory: "agent_runtime" } }]);
+    expect(client.runTask).toHaveBeenCalledTimes(2);
+  });
+
   it.each(["unknown_runtime_failure", "provider_output_invalid"] as const)(
     "discards a schema-rejected batch with %s without trusting its output", async (code) => {
       const client = new PresentationRuntimeClient();
@@ -188,7 +224,8 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
         retryable: false, reconnectRequired: false, causeCategory: "agent_runtime", details: {} } });
     await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
       modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).resolves.toEqual([
-      { status: "unavailable", reason: "runtime_failure" }]);
+      { status: "unavailable", reason: "runtime_failure",
+        runtimeFailure: { code: "unknown_runtime_failure", causeCategory: "agent_runtime" } }]);
     expect(client.runTask).toHaveBeenCalledTimes(2);
   });
 
@@ -212,7 +249,8 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
           subscriptionWorkerCode: "subscription_worker_run_failed" } } });
     await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
       modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).resolves.toEqual([
-      { status: "unavailable", reason: "runtime_failure" }]);
+      { status: "unavailable", reason: "runtime_failure",
+        runtimeFailure: { code: "task_cancelled", causeCategory: "agent_runtime" } }]);
     expect(client.runTask).toHaveBeenCalledTimes(2);
   });
 

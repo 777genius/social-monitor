@@ -13,6 +13,7 @@ import { PrismaReaderValueWorkspaceInterests } from
   "@social-monitor/relevance/infrastructure/reader-value/prisma-reader-value-workspace-interests";
 import { type ConfiguredInterestReaderPort } from
   "@social-monitor/relevance/ports";
+import { NestStructuredLogger } from "@social-monitor/platform-logging";
 import type { Clock, IdGenerator } from "@social-monitor/shared-kernel";
 import { RelevanceReaderSummaryV3PreparationSource } from
   "../evidence/relevance-reader-summary-v3-preparation-source";
@@ -55,5 +56,6 @@ export const createReaderSummaryV3Promotion = (prisma: PrismaSummaryClient, opti
     return new PresentationRuntimeGuardedPromotion(
       new AgentRuntimePromotionPresentationV3Builder({ ...options, client: runtime }),
       (presentation) => new RelevanceReaderSummaryV3Promotion(
-        assessments, presentation, supplementalEvidence));
+        assessments, presentation, supplementalEvidence),
+      new NestStructuredLogger("ReaderSummaryV3Presentation"));
 };

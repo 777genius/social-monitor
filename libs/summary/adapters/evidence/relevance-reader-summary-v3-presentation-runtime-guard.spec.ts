@@ -11,6 +11,18 @@ import { buildReaderSummaryPromotionArtifactFields } from '../../features/execut
 import { presentReaderSummaryArtifact } from '../../features/shared/reader-summary-artifact-presenter';
 import { candidate, TestPresentation, workspaceSetup } from './relevance-reader-summary-v3-promotion.fixture';
 import { PresentationRuntimeGuardedPromotion } from './relevance-reader-summary-v3-presentation-runtime-guard';
+import { AgentRuntimePromotionPresentationV3Builder } from '../model/agent-runtime-promotion-presentation-v3.builder';
+import type { AgentRuntimeClientPort, AgentRuntimeTaskResult } from '../../ports';
+
+const skippedTask = { status: 'unavailable' as const, reason: 'runtime_failure' as const,
+  runtimeFailure: { code: 'agent_runtime.cli_exit', causeCategory: 'subscription_runtime_cli' } };
+
+class RecordingLogger {
+  readonly entries: { level: string; message: string; fields: Record<string, unknown> }[] = [];
+  info(message: string, fields: Record<string, unknown> = {}) { this.entries.push({ level: 'info', message, fields }); }
+  warn(message: string, fields: Record<string, unknown> = {}) { this.entries.push({ level: 'warn', message, fields }); }
+  error(message: string, fields: Record<string, unknown> = {}) { this.entries.push({ level: 'error', message, fields }); }
+}
 
 /** Fails the selected 1-based batch calls the way the runtime builder reports them. */
 const runtimeFailingBatches = (failing: (call: number) => boolean) => {
@@ -21,7 +33,7 @@ const runtimeFailingBatches = (failing: (call: number) => boolean) => {
     calls += 1;
     if (!failing(calls)) return tracked.build(inputs);
     inputs.forEach(input => failed.add(input.candidateId));
-    return inputs.map(() => ({ status: 'unavailable' as const, reason: 'runtime_failure' as const }));
+    return inputs.map(() => skippedTask);
   } };
   return { presentation, failed, calls: () => calls };
 };
@@ -33,9 +45,10 @@ const rows = (count: number) => Array.from({ length: count }, (_, index) => ({
 
 const guardedSetup = (presentation: PromotionPresentationBuilder, count = 16) => {
   const fixture = workspaceSetup(rows(count));
+  const logger = new RecordingLogger();
   const promotion = new PresentationRuntimeGuardedPromotion(presentation,
-    guarded => workspaceSetup(rows(count), undefined, guarded).subject);
-  return { ...fixture, run: () => promotion.build({ job: fixture.job, manifest: fixture.manifest }) };
+    guarded => workspaceSetup(rows(count), undefined, guarded).subject, logger);
+  return { ...fixture, logger, run: () => promotion.build({ job: fixture.job, manifest: fixture.manifest }) };
 };
 
 describe('V3 promotion presentation runtime failures', () => {
@@ -92,16 +105,44 @@ describe('V3 promotion presentation runtime failures', () => {
     ['a failed share above max(4, 25%) of attempts', (call: number) => call === 1 || call === 3, 3],
   ] as const)('stops the run as a dependency failure after %s', async (_name, failing, calls) => {
     const runtime = runtimeFailingBatches(failing);
-    await expect(guardedSetup(runtime.presentation).run()).resolves.toEqual({
-      kind: 'dependency_failure', reason: 'presentation_runtime_failure_repeated' });
+    const fixture = guardedSetup(runtime.presentation);
+    await expect(fixture.run()).resolves.toEqual({
+      kind: 'dependency_failure', reason: 'presentation_runtime_failure_repeated:agent_runtime.cli_exit' });
     expect(runtime.calls()).toBe(calls);
+    expect(fixture.logger.entries.at(-1)).toEqual({ level: 'error',
+      message: 'reader summary presentation stopped after repeated runtime failures',
+      fields: expect.objectContaining({ attempted: calls * 4, failed: 8,
+        lastCode: 'agent_runtime.cli_exit', lastCauseCategory: 'subscription_runtime_cli' }) });
+  });
+
+  it('stops a MiMo run whose launcher hides quota behind the generic failure', async () => {
+    let calls = 0;
+    const client: AgentRuntimeClientPort = {
+      runTask: async (): Promise<AgentRuntimeTaskResult> => {
+        calls += 1;
+        return { status: 'failed', warnings: [], failure: { code: 'unknown_runtime_failure',
+          safeMessage: 'MiMo reader summary did not complete', retryable: false, reconnectRequired: false,
+          causeCategory: 'agent_runtime', details: { subscriptionWorkerCode: 'subscription_worker_run_failed' } } };
+      },
+      checkHealth: async () => ({ status: 'serving', runtimeEngine: 'test', runtimeVersion: 'test', warnings: [] }),
+    };
+    const builder = new AgentRuntimePromotionPresentationV3Builder({ client, modelBackend: 'xiaomi-mimo-token-plan' });
+    await expect(guardedSetup(builder).run()).resolves.toEqual({
+      kind: 'dependency_failure', reason: 'presentation_runtime_failure_repeated:unknown_runtime_failure' });
+    // Two four-story batches, each story sent twice, before the run guard stops it.
+    expect(calls).toBe(16);
   });
 
   it('reports the runtime, not the content, when skips leave nothing publishable', async () => {
     const runtime = runtimeFailingBatches(() => true);
-    await expect(guardedSetup(runtime.presentation, 4).run()).resolves.toEqual({
-      kind: 'dependency_failure', reason: 'presentation_runtime_failure' });
+    const fixture = guardedSetup(runtime.presentation, 4);
+    await expect(fixture.run()).resolves.toEqual({
+      kind: 'dependency_failure', reason: 'presentation_runtime_failure:agent_runtime.cli_exit' });
     expect(runtime.calls()).toBe(1);
+    expect(fixture.logger.entries).toEqual([{ level: 'warn',
+      message: 'reader summary presentation skipped a runtime-failed batch',
+      fields: { attempted: 4, failed: 4, batchFailed: 4, consecutiveFailedBatches: 1,
+        lastCode: 'agent_runtime.cli_exit', lastCauseCategory: 'subscription_runtime_cli' } }]);
   });
 
   it('starts every run with a fresh failure count and no disclosure when every task ran', async () => {
@@ -111,7 +152,7 @@ describe('V3 promotion presentation runtime failures', () => {
     const presentation: PromotionPresentationBuilder = { build: async inputs => {
       call += 1;
       return call === 4 || call === 5
-        ? inputs.map(() => ({ status: 'unavailable' as const, reason: 'runtime_failure' as const }))
+        ? inputs.map(() => skippedTask)
         : tracked.build(inputs);
     } };
     const fixture = guardedSetup(presentation);

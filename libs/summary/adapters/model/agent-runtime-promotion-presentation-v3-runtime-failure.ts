@@ -1,3 +1,5 @@
+import type { ReaderPostPresentationRuntimeFailure } from
+  "../../domain/services/reader-post-presentation-v3";
 import type { AgentRuntimeTaskResult } from "../../ports";
 
 // Per-task runtime outcomes that say nothing about the presented stories.
@@ -22,6 +24,9 @@ const transientPresentationRuntimeReasons = new Set([
   "user_abort", "runtime_interrupted", "unknown_error", "provider_output_invalid",
   "task_timeout",
 ]);
+// An account the runtime reports as cooling down, exhausted or disabled stays
+// that way for every later batch.
+const runWideAccountAvailabilities = new Set(["cooldown", "quota_exhausted", "disabled"]);
 const runWideFailureMarker =
   /quota|rate[\s_-]?limit|too[\s_-]many[\s_-]requests|\b429\b|attestation|credential|reconnect/u;
 
@@ -43,11 +48,23 @@ export const presentationRuntimeFailureDisposition = (
   const timedOut = timeoutPresentationRuntimeCodes.has(failure.code);
   if (!timedOut && !transientPresentationRuntimeCodes.has(failure.code)) return undefined;
   const details = failure.details ?? {};
-  if (Object.keys(details).some((key) => key === "capacityReason" ||
+  if (Object.keys(details).some((key) => key === "capacityReason" || key === "cooldownUntil" ||
       validationEvidencePrefixes.some((prefix) => key.startsWith(prefix)))) return undefined;
   if ((details.reason !== undefined && !transientPresentationRuntimeReasons.has(details.reason)) ||
-      details.safeExecutorStatus === "waiting_capacity") return undefined;
+      details.safeExecutorStatus === "waiting_capacity" ||
+      runWideAccountAvailabilities.has(details.availability ?? "")) return undefined;
   if (runWideFailureMarker.test(
     `${failure.code} ${failure.causeCategory} ${failure.safeMessage}`.toLowerCase())) return undefined;
   return timedOut ? "skip" : "retry";
 };
+
+/** Operator-safe identifiers of a skipped task: codes only, never messages or details. */
+export const presentationRuntimeFailureIdentity = (
+  result: AgentRuntimeTaskResult,
+): ReaderPostPresentationRuntimeFailure => ({
+  code: runtimeIdentifier(result.failure?.code),
+  causeCategory: runtimeIdentifier(result.failure?.causeCategory),
+});
+
+const runtimeIdentifier = (value: string | undefined): string =>
+  value !== undefined && /^[a-z][a-z0-9_.-]{0,63}$/u.test(value) ? value : "unclassified";

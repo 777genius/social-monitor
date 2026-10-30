@@ -35,7 +35,7 @@ import {
   assertActiveReaderSummaryProvider,
   parseActiveReaderSummaryReasoningEffort,
 } from "./active-reader-summary-generation-profile";
-import { presentationRuntimeFailureDisposition } from
+import { presentationRuntimeFailureDisposition, presentationRuntimeFailureIdentity } from
   "./agent-runtime-promotion-presentation-v3-runtime-failure";
 
 export const defaultPresentationTimeoutMs = 90_000;
@@ -166,7 +166,8 @@ implements PromotionPresentationBuilder {
       result = await this.client.runTask(command);
     }
     if (presentationRuntimeFailureDisposition(result) !== undefined) {
-      return inputs.map(() => ({ status: "unavailable", reason: "runtime_failure" }));
+      const runtimeFailure = presentationRuntimeFailureIdentity(result);
+      return inputs.map(() => ({ status: "unavailable", reason: "runtime_failure", runtimeFailure }));
     }
     const failure = result.status === "failed" ? result.failure : undefined;
     if (failure && (failure.code === "unknown_runtime_failure" ||
