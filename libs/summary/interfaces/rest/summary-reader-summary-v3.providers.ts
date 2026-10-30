@@ -11,19 +11,18 @@ import { RelevanceReaderSummaryEvidenceSelector } from
   "../../adapters/evidence/relevance-reader-summary-evidence.selector";
 import { type AgentRuntimePromotionPresentationV3BuilderOptions } from
   "../../adapters/model/agent-runtime-promotion-presentation-v3.builder";
-import { GrpcAgentRuntimeClient } from "../../adapters/model/grpc-agent-runtime-client";
 import { PrismaReaderSummaryJobRepository } from
   "../../adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import type { PrismaSummaryClient } from
   "../../adapters/persistence/prisma/prisma-summary-client";
-import type { ReaderSummaryJobRepositoryPort, ReaderSummaryV3PreflightPort,
-  ReaderSummaryV3PromotionPort } from "../../ports";
+import type { AgentRuntimeClientPort, ReaderSummaryJobRepositoryPort,
+  ReaderSummaryV3PreflightPort, ReaderSummaryV3PromotionPort } from "../../ports";
 import { READER_SUMMARY_JOB_REPOSITORY,
   READER_SUMMARY_V3_PREFLIGHT, READER_SUMMARY_V3_PROMOTION,
   SUMMARY_PERSISTENCE_MODE, SUMMARY_PRISMA_CLIENT,
   type SummaryPersistenceMode } from "./summary-provider-tokens";
-import { SUMMARY_AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_OPTIONS } from
-  "./summary-agent-runtime-provider-tokens";
+import { SUMMARY_AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_OPTIONS,
+  SUMMARY_READER_SUMMARY_AGENT_RUNTIME_CLIENT } from "./summary-agent-runtime-provider-tokens";
 
 export const readerSummaryV3Providers: readonly Provider[] = [{
   provide: READER_SUMMARY_V3_PREFLIGHT,
@@ -43,14 +42,14 @@ export const readerSummaryV3Providers: readonly Provider[] = [{
   provide: READER_SUMMARY_V3_PROMOTION,
   useFactory: (mode: SummaryPersistenceMode, prisma: PrismaSummaryClient | null,
     options: AgentRuntimePromotionPresentationV3BuilderOptions,
-    runtime: GrpcAgentRuntimeClient,
+    runtime: AgentRuntimeClientPort,
     supplementalEvidence: RelevanceReaderSummaryEvidenceSelector):
   ReaderSummaryV3PromotionPort | undefined => {
     if (mode !== "prisma") return undefined;
     return createReaderSummaryV3Promotion(requirePrismaSummaryClient(prisma), options, runtime, supplementalEvidence);
   }, inject: [SUMMARY_PERSISTENCE_MODE, SUMMARY_PRISMA_CLIENT,
     SUMMARY_AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_OPTIONS,
-    GrpcAgentRuntimeClient, RelevanceReaderSummaryEvidenceSelector],
+    SUMMARY_READER_SUMMARY_AGENT_RUNTIME_CLIENT, RelevanceReaderSummaryEvidenceSelector],
 }, readerValueScoringProvider];
 
 const requirePrismaSummaryClient = (client: PrismaSummaryClient | null) => {

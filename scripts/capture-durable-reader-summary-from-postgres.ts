@@ -37,6 +37,8 @@ import {
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { ReaderSummaryPromotionMetricsRecorder } from "@social-monitor/summary/adapters/metrics/reader-summary-promotion-metrics.recorder";
 import { GrpcAgentRuntimeClient, validateAgentRuntimeDefaultCwd } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
+import { createReaderSummaryAgentRuntimeClient } from "@social-monitor/summary/adapters/composition/reader-summary-agent-runtime-transport";
+import { resolveReaderSummaryAgentRuntimeTransport } from "@social-monitor/summary/interfaces/rest/summary-agent-runtime-provider-tokens";
 import {
   OpenAiResponsesReaderSummaryModelAdapter,
   resolveOpenAiResponsesReaderSummaryModelOptions,
@@ -51,6 +53,7 @@ import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/featu
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import type {
+  AgentRuntimeClientPort,
   ReaderSummaryEvidenceSelectorPort,
   ReaderSummaryTimestampPolicy,
   ReaderSummaryModelPort,
@@ -727,7 +730,7 @@ async function main(): Promise<void> {
 
 const buildReaderSummaryModel = (
   mode: DurableReaderSummaryModelMode,
-  agentRuntimeClient: GrpcAgentRuntimeClient | null,
+  agentRuntimeClient: AgentRuntimeClientPort | null,
   executionAttestations: DurableReaderSummaryExecutionAttestationCapture,
 ): ReaderSummaryModelPort => {
   if (mode === "deterministic") {
@@ -753,7 +756,7 @@ const buildReaderSummaryModel = (
 
 const buildTopicMapBuilder = (
   mode: DurableReaderSummaryTopicLabelerMode,
-  agentRuntimeClient: GrpcAgentRuntimeClient | null,
+  agentRuntimeClient: AgentRuntimeClientPort | null,
   executionAttestations: DurableReaderSummaryExecutionAttestationCapture,
 ): BuildReaderSummaryTopicMapUseCase => {
   const publicationAudit = buildTopicMapPublicationAudit();
@@ -821,27 +824,26 @@ class FileTopicMapPublicationAudit implements ReaderSummaryTopicMapPublicationAu
   }
 }
 
-const buildAgentRuntimeClient = (): GrpcAgentRuntimeClient =>
-  GrpcAgentRuntimeClient.connect({
+// Reader-summary tasks run on the transport AGENT_RUNTIME_TRANSPORT selects.
+const buildAgentRuntimeClient = (): AgentRuntimeClientPort => createReaderSummaryAgentRuntimeClient({
+  transport: resolveReaderSummaryAgentRuntimeTransport(process.env), env: process.env,
+  clock: new SystemClock(), runId: new CryptoIdGenerator().generate(),
+  agentRuntime: () => GrpcAgentRuntimeClient.connect({
     address: requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
     clock: new SystemClock(),
     options: {
-      timeoutMs: readIntegerEnv(
-        "AGENT_RUNTIME_GRPC_TIMEOUT_MS",
-        5_000,
-        1,
-        600_000,
-      ),
+      timeoutMs: readIntegerEnv("AGENT_RUNTIME_GRPC_TIMEOUT_MS", 5_000, 1, 600_000),
       serviceToken: readEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
       defaultCwd: process.env.AGENT_RUNTIME_TASK_CWD === undefined
         ? undefined
         : validateAgentRuntimeDefaultCwd(process.env.AGENT_RUNTIME_TASK_CWD),
     },
-  });
+  }),
+});
 
 const requireAgentRuntimeClient = (
-  client: GrpcAgentRuntimeClient | null,
-): GrpcAgentRuntimeClient => {
+  client: AgentRuntimeClientPort | null,
+): AgentRuntimeClientPort => {
   if (client === null) {
     throw new Error("AGENT_RUNTIME_GRPC_ADDRESS is required for agent-runtime");
   }

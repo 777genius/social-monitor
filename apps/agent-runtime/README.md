@@ -184,6 +184,17 @@ the bundle and the exact vendored archive. The archived package reports
 `0.1.0-main.40-sm-mimo.7`; the runtime attestation uses this version for MiMo
 and the original package version for other purposes.
 
+Daily reader-summary tasks (generate, repair, topic label, topic and story
+relations, V3 presentation) can bypass this service and run through
+account-gateway with `AGENT_RUNTIME_TRANSPORT=gateway-llm`. That transport
+serves only the gateway backends `AGENT_RUNTIME_READER_SUMMARY_BACKEND=kimi-code`
+(model `k3-256k`, no reasoning control) and `openrouter`
+(`AGENT_RUNTIME_GATEWAY_LLM_MODEL`, default `openai/gpt-oss-120b`), and those
+backends never run here. MiMo stays on this service. Weekly, canonical
+recovery, generic summary and relevance tasks keep the gRPC client. The
+gateway settings (`AGENT_RUNTIME_GATEWAY_LLM_*`) are listed in
+`libs/summary/adapters/composition/reader-summary-agent-runtime-transport.ts`.
+
 Pass the existing root-only key file to the agent-runtime service using a
 systemd credential. An operator-owned unit drop-in can use these settings,
 with the actual root-only source path substituted during deployment:

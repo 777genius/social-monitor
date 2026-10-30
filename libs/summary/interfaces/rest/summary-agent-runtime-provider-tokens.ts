@@ -1,5 +1,11 @@
 import type { Provider } from "@nestjs/common";
+import { assertRuntimeProfileAllowsMode } from "@social-monitor/platform-config";
+import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
 
+import {
+  createReaderSummaryAgentRuntimeClient,
+  type ReaderSummaryAgentRuntimeTransport,
+} from "../../adapters/composition/reader-summary-agent-runtime-transport";
 import {
   resolveAgentRuntimePromotionPresentationV3BuilderOptions,
   type AgentRuntimePromotionPresentationV3BuilderOptions,
@@ -25,6 +31,7 @@ import {
   type AgentRuntimeSummaryModelAdapterOptions,
 } from "../../adapters/model/agent-runtime-summary-model.adapter";
 import { GrpcAgentRuntimeClient, validateAgentRuntimeDefaultCwd } from "../../adapters/model/grpc-agent-runtime-client";
+import type { AgentRuntimeClientPort } from "../../ports";
 import {
   READER_SUMMARY_MODEL_PROVIDER_MODE,
   READER_SUMMARY_TOPIC_LABELER_MODE,
@@ -36,6 +43,10 @@ import {
 
 export const SUMMARY_AGENT_RUNTIME_CLIENT_OPTIONS = Symbol(
   "SUMMARY_AGENT_RUNTIME_CLIENT_OPTIONS",
+);
+/** Agent-runtime port of every reader-summary model task, on the selected transport. */
+export const SUMMARY_READER_SUMMARY_AGENT_RUNTIME_CLIENT = Symbol(
+  "SUMMARY_READER_SUMMARY_AGENT_RUNTIME_CLIENT",
 );
 export const SUMMARY_AGENT_RUNTIME_SUMMARY_MODEL_OPTIONS = Symbol(
   "SUMMARY_AGENT_RUNTIME_SUMMARY_MODEL_OPTIONS",
@@ -72,12 +83,14 @@ export const summaryAgentRuntimeClientOptionsProvider: Provider<SummaryAgentRunt
       topicLabelerMode: ReaderSummaryTopicLabelerMode,
     ) =>
       resolveSummaryAgentRuntimeClientOptions(process.env, {
+        // Reader-summary tasks need the gRPC runtime only on its own transport.
         requireAddress:
           summaryMode === "agent-runtime" ||
-          readerSummaryMode === "agent-runtime" ||
-          topicLabelerMode === "agent-runtime" ||
-          (process.env.READER_VALUE_MODE ??
-            (process.env.NODE_ENV === "test" ? "legacy_v2" : "jev_primary_v3")) === "jev_primary_v3",
+          (resolveReaderSummaryAgentRuntimeTransport(process.env) === "agent-runtime" && (
+            readerSummaryMode === "agent-runtime" ||
+            topicLabelerMode === "agent-runtime" ||
+            (process.env.READER_VALUE_MODE ??
+              (process.env.NODE_ENV === "test" ? "legacy_v2" : "jev_primary_v3")) === "jev_primary_v3")),
       }),
     inject: [
       SUMMARY_MODEL_PROVIDER_MODE,
@@ -85,6 +98,19 @@ export const summaryAgentRuntimeClientOptionsProvider: Provider<SummaryAgentRunt
       READER_SUMMARY_TOPIC_LABELER_MODE,
     ],
   };
+
+export const summaryReaderSummaryAgentRuntimeClientProvider: Provider<AgentRuntimeClientPort> = {
+  provide: SUMMARY_READER_SUMMARY_AGENT_RUNTIME_CLIENT,
+  useFactory: (grpc: GrpcAgentRuntimeClient): AgentRuntimeClientPort =>
+    createReaderSummaryAgentRuntimeClient({
+      transport: resolveReaderSummaryAgentRuntimeTransport(process.env),
+      env: process.env,
+      clock: new SystemClock(),
+      runId: new CryptoIdGenerator().generate(),
+      agentRuntime: () => grpc,
+    }),
+  inject: [GrpcAgentRuntimeClient],
+};
 
 export const summaryAgentRuntimeSummaryModelOptionsProvider: Provider<AgentRuntimeSummaryModelAdapterOptions> =
   {
@@ -97,50 +123,70 @@ export const summaryAgentRuntimeSummaryModelOptionsProvider: Provider<AgentRunti
 export const summaryAgentRuntimeReaderSummaryModelOptionsProvider: Provider<AgentRuntimeReaderSummaryModelAdapterOptions> =
   {
     provide: SUMMARY_AGENT_RUNTIME_READER_SUMMARY_MODEL_OPTIONS,
-    useFactory: (client: GrpcAgentRuntimeClient) =>
+    useFactory: (client: AgentRuntimeClientPort) =>
       resolveAgentRuntimeReaderSummaryModelOptions(process.env, client),
-    inject: [GrpcAgentRuntimeClient],
+    inject: [SUMMARY_READER_SUMMARY_AGENT_RUNTIME_CLIENT],
   };
 
 export const summaryAgentRuntimeReaderSummaryTopicLabelerOptionsProvider: Provider<AgentRuntimeReaderSummaryTopicLabelerOptions> =
   {
     provide: SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS,
-    useFactory: (client: GrpcAgentRuntimeClient) =>
+    useFactory: (client: AgentRuntimeClientPort) =>
       resolveAgentRuntimeReaderSummaryTopicLabelerOptions(process.env, client),
-    inject: [GrpcAgentRuntimeClient],
+    inject: [SUMMARY_READER_SUMMARY_AGENT_RUNTIME_CLIENT],
   };
 
 export const summaryAgentRuntimeReaderSummaryPresentationOptionsProvider: Provider<AgentRuntimePromotionPresentationV3BuilderOptions> =
   {
     provide: SUMMARY_AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_OPTIONS,
-    useFactory: (client: GrpcAgentRuntimeClient) =>
+    useFactory: (client: AgentRuntimeClientPort) =>
       resolveAgentRuntimePromotionPresentationV3BuilderOptions(process.env, client),
-    inject: [GrpcAgentRuntimeClient],
+    inject: [SUMMARY_READER_SUMMARY_AGENT_RUNTIME_CLIENT],
   };
 
 export const summaryAgentRuntimeReaderSummaryTopicRelationVerifierOptionsProvider: Provider<AgentRuntimeReaderSummaryTopicRelationVerifierOptions> =
   {
     provide:
       SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_OPTIONS,
-    useFactory: (client: GrpcAgentRuntimeClient) =>
+    useFactory: (client: AgentRuntimeClientPort) =>
       resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(
         process.env,
         client,
       ),
-    inject: [GrpcAgentRuntimeClient],
+    inject: [SUMMARY_READER_SUMMARY_AGENT_RUNTIME_CLIENT],
   };
 
 export const summaryAgentRuntimeReaderSummaryStoryRelationVerifierOptionsProvider: Provider<AgentRuntimeReaderSummaryStoryRelationVerifierOptions> =
   {
     provide:
       SUMMARY_AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_OPTIONS,
-    useFactory: (client: GrpcAgentRuntimeClient) =>
+    useFactory: (client: AgentRuntimeClientPort) =>
       resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(
         process.env,
         client,
       ),
-    inject: [GrpcAgentRuntimeClient],
+    inject: [SUMMARY_READER_SUMMARY_AGENT_RUNTIME_CLIENT],
   };
+
+/**
+ * Transport of reader-summary model tasks. Both are durable: the CLI runtime
+ * behind gRPC (default) and the account-gateway llm entry.
+ */
+export const resolveReaderSummaryAgentRuntimeTransport = (
+  env: NodeJS.ProcessEnv,
+): ReaderSummaryAgentRuntimeTransport => {
+  const value = env.AGENT_RUNTIME_TRANSPORT?.trim() || "agent-runtime";
+  if (value !== "agent-runtime" && value !== "gateway-llm") {
+    throw new Error('AGENT_RUNTIME_TRANSPORT must be "agent-runtime" or "gateway-llm"');
+  }
+  assertRuntimeProfileAllowsMode({
+    env,
+    settingName: "AGENT_RUNTIME_TRANSPORT",
+    selectedMode: value,
+    durableModes: ["agent-runtime", "gateway-llm"],
+  });
+  return value;
+};
 
 export const resolveSummaryAgentRuntimeClientOptions = (
   env: NodeJS.ProcessEnv,

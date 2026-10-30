@@ -101,6 +101,7 @@ import {
   summaryAgentRuntimeReaderSummaryPresentationOptionsProvider,
   summaryAgentRuntimeReaderSummaryTopicRelationVerifierOptionsProvider,
   summaryAgentRuntimeSummaryModelOptionsProvider,
+  summaryReaderSummaryAgentRuntimeClientProvider,
 } from "./summary-agent-runtime-provider-tokens";
 import { summaryAgentRuntimeProviders } from "./summary-agent-runtime.providers";
 import {
@@ -140,6 +141,7 @@ import { SummaryController } from "./summary.controller";
     readerSummaryTopicLabelerModeProvider,
     readerSummaryOpenAiResponsesModelOptionsProvider,
     summaryAgentRuntimeClientOptionsProvider,
+    summaryReaderSummaryAgentRuntimeClientProvider,
     summaryAgentRuntimeSummaryModelOptionsProvider,
     summaryAgentRuntimeReaderSummaryModelOptionsProvider,
     summaryAgentRuntimeReaderSummaryStoryRelationVerifierOptionsProvider,
