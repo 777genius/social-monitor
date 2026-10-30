@@ -1,4 +1,4 @@
-import { err, ok } from '@social-monitor/shared-kernel';
+import { DomainError, err, ok } from '@social-monitor/shared-kernel';
 
 import {
   BIND_SOURCE_CREATION_SCOPE,
@@ -25,8 +25,8 @@ export class InMemorySourceBindingCreationStore implements SourceBindingCreation
 
     const interest = this.state.interests.get(monitoringInterestKey(
       snapshot.tenantId, snapshot.workspaceId, snapshot.interestId));
-    if (interest === undefined || interest.toSnapshot().status === 'archived') {
-      return err(new Error('Interest not found'));
+    if (interest === undefined) {
+      return err(new DomainError('resource.not_found', 'Interest not found', { interestId: snapshot.interestId }));
     }
     const existingReceiptId = [...this.state.receiptIds].find(([, key]) => key === receiptKey)?.[0];
     const receiptId = existingReceiptId ?? params.receiptId;
