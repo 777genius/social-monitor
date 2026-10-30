@@ -1,5 +1,6 @@
 import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
+import { InMemorySourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-creation.store';
 import {
   DomainError,
   FixedClock,
@@ -106,9 +107,8 @@ async function proveUnsupportedBindingsAreRejected(ids: IdGenerator): Promise<vo
 
   const bindSource = new BindSourceUseCase(
     topics,
-    new InMemorySourceBindingRepository(),
+    new InMemorySourceBindingCreationStore(interestCreationState),
     new FakeSourceCatalogAdapter(betaSourceCatalogOptions),
-    outbox,
     idempotency,
     new PassThroughConfigProtector(),
     ids,
