@@ -1,7 +1,11 @@
 import {
+  type AgentRuntimeEngine,
   canonicalJsonSha256,
+  isAgentRuntimeEngine,
+  isAttestedRuntimeIdentity,
   isConcreteRuntimePackageVersion,
   isSha256Hex,
+  subscriptionRuntimeEngine,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import {
   approvedMimoRuntimePackageVersion,
@@ -13,7 +17,7 @@ export type ProductionDayExecutedRuntimeProvenance = {
   readonly summaryModel: "agent-runtime";
   readonly physicalModel: "gpt-5.6-sol" | "mimo-v2.6-pro";
   readonly provider: "codex";
-  readonly runtime: "subscription-runtime-cli";
+  readonly runtime: AgentRuntimeEngine;
   readonly runtimeVersion: string;
   readonly reasoningEffort: "high" | "xhigh";
   readonly launcherSha256: string;
@@ -25,7 +29,7 @@ export type ProductionDayExecutedRuntimeProvenance = {
     readonly mode: "agent-runtime";
     readonly physicalModel: "gpt-5.6-sol" | "mimo-v2.6-pro";
     readonly provider: "codex";
-    readonly runtime: "subscription-runtime-cli";
+    readonly runtime: AgentRuntimeEngine;
     readonly runtimeVersion: string;
     readonly reasoningEffort: "high" | "xhigh";
     readonly launcherSha256: string;
@@ -57,7 +61,8 @@ type ValidAttestationRecord = {
     readonly provider: "codex";
     readonly model: "gpt-5.6-sol" | "mimo-v2.6-pro";
     readonly reasoningEffort: "high" | "xhigh";
-    readonly runtimeEngine: "subscription-runtime-cli";
+    readonly runtimeEngine: AgentRuntimeEngine;
+    readonly gateway?: unknown;
     readonly runtimePackageVersion: string;
     readonly launcherSha256: string;
     readonly selectedOutputKind: "structured_output";
@@ -202,7 +207,7 @@ export const runtimeProvenanceFromExecutorAttestations = (
     summaryModel: "agent-runtime",
     physicalModel: identity.model,
     provider: "codex",
-    runtime: "subscription-runtime-cli",
+    runtime: identity.runtimeEngine,
     runtimeVersion: identity.runtimePackageVersion,
     reasoningEffort: identity.reasoningEffort,
     launcherSha256: identity.launcherSha256,
@@ -214,7 +219,7 @@ export const runtimeProvenanceFromExecutorAttestations = (
       mode: "agent-runtime",
       physicalModel: labelIdentity.model,
       provider: "codex",
-      runtime: "subscription-runtime-cli",
+      runtime: labelIdentity.runtimeEngine,
       runtimeVersion: labelIdentity.runtimePackageVersion,
       reasoningEffort: labelIdentity.reasoningEffort,
       launcherSha256: labelIdentity.launcherSha256,
@@ -266,7 +271,8 @@ export const isProductionSubscriptionRuntimeProvenance = (
     value.summaryModel === "agent-runtime" &&
     (value.physicalModel === "gpt-5.6-sol" || value.physicalModel === "mimo-v2.6-pro") &&
     value.provider === "codex" &&
-    value.runtime === "subscription-runtime-cli" &&
+    isAgentRuntimeEngine(value.runtime) &&
+    (value.physicalModel !== "mimo-v2.6-pro" || value.runtime === subscriptionRuntimeEngine) &&
     isConcreteRuntimePackageVersion(value.runtimeVersion) &&
     (value.physicalModel !== "mimo-v2.6-pro" ||
       (value.runtimeVersion === approvedMimoRuntimePackageVersion && value.reasoningEffort === "high")) &&
@@ -331,9 +337,9 @@ const validateRecord = (
         attestation.runtimePackageVersion !== approvedMimoRuntimePackageVersion
       : attestation.model !== "gpt-5.6-sol") ||
     attestation.reasoningEffort !== expectedEffort ||
-    attestation.runtimeEngine !== "subscription-runtime-cli" ||
-    !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
-    !isSha256Hex(attestation.launcherSha256) ||
+    // MiMo runs only through the CLI runtime; Codex may use either engine.
+    (attestation.model === "mimo-v2.6-pro" && attestation.runtimeEngine !== subscriptionRuntimeEngine) ||
+    !isAttestedRuntimeIdentity(attestation) ||
     attestation.selectedOutputKind !== "structured_output" ||
     !isSha256Hex(attestation.selectedOutputSha256) ||
     expectedEffort === null

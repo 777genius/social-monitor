@@ -43,7 +43,19 @@ export type AgentRuntimeFailure = {
   readonly details: Readonly<Record<string, string>>;
 };
 
-export type AgentRuntimeExecutionAttestation = {
+/** Gateway identities of the attempt that produced the attested output. */
+export type AgentRuntimeGatewayTransport = {
+  readonly profileId: string;
+  readonly taskId: string;
+  readonly attempt: number;
+  readonly executionRef: string;
+  readonly requestRef: string;
+  readonly accountRef: string;
+  readonly observedModel: string | null;
+  readonly requestSha256: string;
+};
+
+type AgentRuntimeExecutionAttestationBase = {
   readonly schemaVersion: 1;
   readonly requestId: string;
   readonly purpose: string;
@@ -51,12 +63,25 @@ export type AgentRuntimeExecutionAttestation = {
   readonly provider: AgentRuntimeProvider;
   readonly model: string;
   readonly reasoningEffort: string;
-  readonly runtimeEngine: "subscription-runtime-cli";
+  /**
+   * Executing artifact identity: CLI runtime version and launcher digest, or
+   * the vendored gateway SDK identity label and archive digest.
+   */
   readonly runtimePackageVersion: string;
   readonly launcherSha256: string;
   readonly selectedOutputKind: "structured_output" | "output_text";
   readonly selectedOutputSha256: string;
 };
+
+export type AgentRuntimeExecutionAttestation =
+  | (AgentRuntimeExecutionAttestationBase & {
+      readonly runtimeEngine: "subscription-runtime-cli";
+      readonly gateway?: undefined;
+    })
+  | (AgentRuntimeExecutionAttestationBase & {
+      readonly runtimeEngine: "gateway-llm";
+      readonly gateway: AgentRuntimeGatewayTransport;
+    });
 
 export type AgentRuntimeTaskResult = {
   readonly status: AgentRuntimeTaskStatus;

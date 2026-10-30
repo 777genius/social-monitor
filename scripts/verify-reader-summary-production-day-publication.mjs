@@ -11,6 +11,7 @@ import {
   approvedCodexRuntimeVersion,
   approvedLauncherSha256,
   approvedMimoRuntimeVersion,
+  isAttestedRuntimeEngine,
   isPublicationRuntimeProvenance,
   validatePublicationAttestationRecord,
 } from "./lib/reader-summary-publication-runtime-policy.mjs";
@@ -328,7 +329,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
     summaryModel: "agent-runtime",
     physicalModel: identity.model,
     provider: "codex",
-    runtime: "subscription-runtime-cli",
+    runtime: identity.runtimeEngine,
     runtimeVersion: identity.runtimePackageVersion,
     reasoningEffort: identity.reasoningEffort,
     launcherSha256: identity.launcherSha256,
@@ -340,7 +341,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
       mode: "agent-runtime",
       physicalModel: topicIdentity.model,
       provider: "codex",
-      runtime: "subscription-runtime-cli",
+      runtime: topicIdentity.runtimeEngine,
       runtimeVersion: topicIdentity.runtimePackageVersion,
       reasoningEffort: topicIdentity.reasoningEffort,
       launcherSha256: topicIdentity.launcherSha256,
@@ -514,7 +515,9 @@ function validateEvidence(
     !periodsEqual(frontend.readerSummaryArtifact.period, expectedPeriod) ||
     capture.schemaVersion !== 1 ||
     runtimeHealth.status !== "serving" ||
-    runtimeHealth.runtimeEngine !== "subscription-runtime-cli" ||
+    !isAttestedRuntimeEngine(runtimeHealth.runtimeEngine) ||
+    (runtimeProvenance.execution === "attested" &&
+      runtimeHealth.runtimeEngine !== runtimeProvenance.runtime) ||
     !isConcreteVersion(runtimeHealth.runtimeVersion) ||
     !isSha256(runtimeHealth.launcherSha256) ||
     (runtimeProvenance.execution === "attested" &&

@@ -659,7 +659,9 @@ function isProductionEvidenceProvenance(provenance) {
     isNonemptyString(summary.physicalModel) &&
     isNonemptyString(summary.reasoningPolicy) &&
     isRecord(runtime) &&
-    runtime.engine === "subscription-runtime-cli" &&
+    // Attestations below must repeat this engine, version and executor digest.
+    (runtime.engine === "subscription-runtime-cli" ||
+      runtime.engine === "gateway-llm") &&
     isNonemptyString(runtime.packageVersion) &&
     isSha256(runtime.launcherSha256) &&
     isRecord(attempt) &&

@@ -765,7 +765,7 @@ async function bindAndPromoteFreshCapture(params: {
       format: "reader-summary-runtime-live-identity-v1",
       checkedAt: runtimeHealth.checkedAt,
       status: "serving",
-      runtimeEngine: "subscription-runtime-cli",
+      runtimeEngine: runtimeHealth.runtimeEngine,
       runtimePackageVersion: runtimeHealth.runtimeVersion,
       launcherSha256: runtimeHealth.launcherSha256,
     }),
