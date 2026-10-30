@@ -91,7 +91,7 @@ export class PrismaCommandOutboxStoreAdapter
     if (params.ids.length === 0) return true;
     if (new Set(params.ids).size !== params.ids.length ||
       params.ids.some((id) => id.trim().length === 0) ||
-      params.leasedUntil <= params.now) {
+      params.leasedUntil.getTime() <= params.now.getTime()) {
       throw new Error('Invalid command outbox lease renewal');
     }
     const changed = await runWithSystemDatabaseAccess(
