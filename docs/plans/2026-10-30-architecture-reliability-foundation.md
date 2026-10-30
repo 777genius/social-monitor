@@ -52,61 +52,82 @@ below before implementation.
 
 ### A. Scan lifecycle and retry handoff
 
-- [ ] Correct transient versus terminal outcome reporting.
-- [ ] Make terminal outcome reporting safe on redelivery.
-- [ ] Preserve successful ingestion state when downstream reporting fails.
-- [ ] Replace destructive retry drain with an explicit acknowledged/leased
+- [x] Correct transient versus terminal outcome reporting.
+- [x] Make terminal outcome reporting safe on redelivery.
+- [x] Preserve successful ingestion state when downstream reporting fails.
+- [x] Replace destructive retry drain with an explicit acknowledged/leased
       delivery or atomic handoff, after reviewing the smallest compatible design.
-- [ ] Fix cursor semantics in both scan-job repositories.
-- [ ] Add integrated failure→retry→success, redelivery, page traversal,
+- [x] Fix cursor semantics in both scan-job repositories.
+- [x] Add integrated failure→retry→success, redelivery, page traversal,
       concurrent drain and shutdown regression tests.
 
 ### B. Delivery concurrency and recovery
 
-- [ ] Document and implement the narrow atomic repository operations needed for
+- [x] Document and implement the narrow atomic repository operations needed for
       dispatch and send ownership; do not widen the existing generic save method.
-- [ ] Ensure dispatch cannot publish work and subsequently overwrite newer state.
-- [ ] Fence concurrent senders and stale completion.
-- [ ] Recover provider exceptions and expired ownership with explicit
+- [x] Ensure dispatch cannot publish work and subsequently overwrite newer state.
+- [x] Fence concurrent senders and stale completion.
+- [x] Recover provider exceptions and expired ownership with explicit
       at-least-once semantics. Do not promise exactly-once external delivery.
-- [ ] Keep in-memory and Prisma contracts equivalent, including tenant/workspace
+- [x] Keep in-memory and Prisma contracts equivalent, including tenant/workspace
       scope; review additive migrations if required.
-- [ ] Prove immediate-consumer, simultaneous-sender, thrown-provider, stale-owner
+- [x] Prove immediate-consumer, simultaneous-sender, thrown-provider, stale-owner
       and replay behavior.
 
 ### C. Egress and runtime safety
 
-- [ ] Close shared URL-policy gaps with focused address-range tests.
-- [ ] Guard webhook connection targets, redirects, total deadline and response
+- [x] Close shared URL-policy gaps with focused address-range tests.
+- [x] Guard webhook connection targets, redirects, total deadline and response
       size through a reusable infrastructure boundary.
-- [ ] Preserve injected transport testability and webhook signing behavior.
-- [ ] Contain queue-drain/settlement failures at runtime tick boundaries, retaining
+- [x] Preserve injected transport testability and webhook signing behavior.
+- [x] Contain queue-drain/settlement failures at runtime tick boundaries, retaining
       useful diagnostics and future ticks.
-- [ ] Validate channel-generation settlement if the suspected reconnect issue is
+- [x] Validate channel-generation settlement if the suspected reconnect issue is
       confirmed.
 
 ### D. Executable architectural boundaries
 
-- [ ] Resolve import targets before applying domain/application/adapter rules.
-- [ ] Cover all configured bounded-context aliases in dependency-cycle checks.
-- [ ] Add negative fixture tests for the demonstrated bypasses without weakening
+- [x] Resolve import targets before applying domain/application/adapter rules.
+- [x] Cover all configured bounded-context aliases in dependency-cycle checks.
+- [x] Add negative fixture tests for the demonstrated bypasses without weakening
       existing checks.
-- [ ] Run the strengthened gate against the whole repository and fix genuine
+- [x] Run the strengthened gate against the whole repository and fix genuine
       violations in scope; explain any additional work instead of adding blanket
       exclusions.
 
 ### E. Atomic interest creation
 
-- [ ] Replace the three independent interest/event/idempotency writes with one
+- [x] Replace the three independent interest/event/idempotency writes with one
       required application-owned creation capability; retain current REST shapes.
-- [ ] Recheck the scoped receipt, name and workspace capacity inside the same
+- [x] Recheck the scoped receipt, name and workspace capacity inside the same
       Serializable transaction as all writes. Retry the whole transaction.
-- [ ] Make the first committed idempotency result immutable, including concurrent
+- [x] Make the first committed idempotency result immutable, including concurrent
       requests with the same key and different names.
-- [ ] Give in-memory repositories, outbox and receipts one shared backing state
+- [x] Give in-memory repositories, outbox and receipts one shared backing state
       and publish the creation together, without asynchronous partial visibility.
-- [ ] Prove rollback on event and receipt failures, concurrent duplicate keys and
+- [x] Prove rollback on event and receipt failures, concurrent duplicate keys and
       names, the last capacity slot, tenant/workspace isolation, and replay.
+
+### F. Restore deterministic smoke-fixture composition
+
+Final verification exposed pre-existing fixture drift: non-UUID queue scopes,
+hourly freshness for a daily-only provider, an incomplete GitHub daily board,
+and absent promotion metric-authority/reviewer capabilities. The unchanged
+production quality gates correctly reject this input.
+
+- [x] Use stable UUID tenant/workspace fixtures in the MVP loop and verify it.
+- [ ] Build the complete canonical GitHub board before ingestion, and derive its
+      publication projection from the actual persisted fixture source/feed rows.
+- [ ] Supply canonical native metrics before ingestion. Derive fixture promotion
+      authority through the existing domain helper, scoped persisted joins,
+      exact metric hashes and observation cutoffs; never force admission.
+- [ ] Bind a deterministic fixture reviewer through the existing wire/evidence
+      contract. Unknown or mismatched input must remain unavailable. Do not use
+      attested-binding bypasses or change production defaults/quality gates.
+- [ ] Preserve completed-summary, top-read and replay assertions. Independently
+      review the fixture adapters, rerun both loops, and update evidence only
+      after every assertion passes. State that fixture authority/review proves
+      orchestration, not real engagement durability or model quality.
 
 ## Review and verification
 
@@ -128,8 +149,8 @@ pushes; it does not request merging or deployment.
 
 ## Decisions, evidence and remaining risks
 
-Implementation decisions, exact commands/results and review corrections will be
-recorded here as each slice completes. A green unit suite is not evidence of live
+Implementation decisions, validation results and independent review corrections
+are recorded below as each slice completes. A green unit suite is not evidence of live
 provider readiness, production migration safety or system-wide exactly-once
 processing.
 
@@ -158,7 +179,7 @@ processing.
   keep webhook policy separate from content GET policy. Requests share one total
   deadline, use no pooled socket that bypasses lookup, and consume no response
   body because delivery only needs status and a request-id header. The pure URL
-  policy rejects local/non-global literal addresses and URL userinfo.
+  policy rejects local/private literal addresses, non-unicast IPv6 and URL userinfo.
 
 ### Interest creation: additional design review before implementation
 
@@ -222,7 +243,9 @@ The three additive migrations require a coordinated worker transition:
 3. Deploy the compatible workers and regenerated Prisma client. Upgrade the event
    relay before resuming durable delivery dispatch: it now routes delivery
    commands using delivery's exchange/queue/dead-letter settings.
-4. Resume dispatch and recovery after old consumers have exited. Old retry
+4. Drain old create-interest API writers before asserting first-key-wins across
+   replicas; the former writer can still overwrite receipts outside the new
+   transaction. Resume dispatch and recovery after old consumers have exited. Old retry
    drainers delete work without honoring claims; old delivery workers ignore
    execution tokens and command generations. Mixed generations are unsupported.
 
@@ -241,8 +264,8 @@ and receipt inconsistencies require a separate evidence-backed reconciliation.
 ### Database evidence boundaries
 
 Local native verification uses an isolated PostgreSQL 17 database materialized
-from the original baseline Prisma schema, followed by the exact three new SQL
-migrations. Actual Prisma tests exercise transactions, contention, expiry,
+from the original baseline Prisma schema, followed by the same three additive
+DDL changes. Actual Prisma tests exercise transactions, contention, expiry,
 renewal and stale-token rejection. This is not a full historical migration replay
 or production RLS proof. The full local historical replay was blocked by an
 absent protected role required by existing reader-publication migrations; those
@@ -271,3 +294,108 @@ Remote static checks also caught an omitted readiness declaration for the
 delivery worker's newly injected in-memory attempt repository. The declaration
 now includes that adapter and the delivery workflow provider source; the gate
 itself is unchanged.
+
+
+## Implemented outcomes
+
+| Boundary | Completed behavior |
+| --- | --- |
+| Scan execution → monitoring | Attempts and jobs have separate lifecycles. Only terminal failure ends the job; scoped compare-and-set accepts same-outcome replay and rejects conflicting terminal writes. Successful persisted ingestion survives reporting failure, and redelivery repairs reporting without refetching. |
+| Durable scan retries | Claim token and expiry replace destructive draining. Acknowledge, release, renew and dead-letter require current ownership. Waiting batch entries renew too; shutdown and partial-drain failures release acquired primary/retry work. |
+| Delivery dispatch | `DeliveryAttemptDispatchStore` atomically commits `assembling` and the existing command-outbox envelope. The relay selects delivery's queue configuration, and the in-memory path uses the same outbox-dispatch contract. |
+| Delivery execution | A separate execution capability owns claim, renewal, start and settlement. Recovery handles expired ownership and thrown providers; command generation prevents a delayed message from spending another retry. Provider calls remain outside transactions. |
+| RabbitMQ | Required `publishAndConfirm` keeps publication, mandatory returns and confirms on the originating channel. Settlement retains the message's original channel. Reconnect, cancellation and backpressure cannot silently confirm or acknowledge a different operation. |
+| HTTP egress | Pure URL policy and a shared socket DNS/peer guard cover literal and resolved targets. Signed webhook requests require HTTPS, reject redirects, wait for TLS/peer validation, share a bounded deadline and discard the response at headers. Content GET retains its own redirect/decompression policy. |
+| Interest creation | A required application capability commits interest, creation event and immutable scoped receipt together. Serializable name/capacity checks, explicit conflict semantics and synchronous memory publication preserve adapter parity. |
+| Architectural enforcement | Resolved paths, actual tsconfig aliases, dotted filenames, dynamic imports/re-exports and all context cycles are checked. Narrow summary/feed contracts and platform-owned physical database client types remove concrete boundary leaks. |
+
+These changes implement capability-specific application contracts rather than
+adding a generic transaction or repository framework. Domain invariants remain
+inward, composition owns adapter selection, and clocks/IDs stay explicit. Shared
+DNS policy, write-conflict retry and bounded PostgreSQL factories remove repeated
+infrastructure decisions without coupling bounded-context business policy.
+
+### Corrections from independent review and full CI
+
+- Preserve acquired RabbitMQ deliveries when retry claiming or a later drain
+  fails, and preserve recoverable scan outcomes when execution-lease cleanup fails.
+- Fence terminal monitoring updates atomically instead of relying on read/check/save.
+- Retain dispatch generation through explicit direct retry; an older queued
+  command cannot trigger another send after that retry fails.
+- Retain publication correlation until the original callback even when the
+  broker write reports backpressure.
+- Abort interest transactions on expected rejection rather than committing an
+  empty receipt; distinguish scoped uniqueness races from identity collisions;
+  preserve prepared event time and legacy receipt identity.
+- Recognize the observed bare Prisma `DriverAdapterError` transaction-conflict
+  envelope for SQLSTATE `40001`/`40P01`, while leaving ambiguous outcomes,
+  cancellation, arbitrary metadata and unrelated uniqueness failures terminal.
+- Align API, historical conversation and Telegram reporting regressions with
+  retry-pending versus terminal failure. Telegram reporting repair proves one
+  fetch and one durable dead letter across replay, without deferred false success.
+- Route native delivery/interest checks through the existing runtime connection
+  factory with one `min=0`, `max=2` lease. The existing pool inventory and budget
+  tests remain unchanged.
+
+The compatible dependency refresh also required updating the repository-owned
+hoisted-import approval for `fast-uri`. The official 3.1.9 tarball was checked
+against the lockfile SHA512; all 47 regular files matched the installed inventory.
+The approved inventory is
+`0a7bd1192436a9755603dbfde3315911f7d287c4a639c6cc673f940d4a2f5e05`.
+Version-correct packages with missing, modified or symlinked code remain rejected.
+Vendored archive bytes and provenance files were not modified.
+
+## Validation record
+
+Local checks use deterministic fixtures and isolated databases, without live
+providers or real user-project agent/runtime flows. Test totals below describe
+specific completed batches and must not be added together as unique test counts.
+
+| Check | Result |
+| --- | --- |
+| Whole-project TypeScript (`tsc --noEmit --incremental false`) | Passed, including the atomic-interest changes and subsequent reviewed integration fixes. |
+| Production compilation and alias rewrite | Both build stages passed with a temporary output directory; remote backend build and immutable-candidate qualification also passed at the migration-fix checkpoint. |
+| Changed TS/MJS ESLint | Passed across 151 changed files; later fixture edits receive targeted verification. |
+| Consolidated affected unit/integration batch | 81 suites / 405 tests passed. The last null-receipt parity correction was independently rerun in 2 suites / 17 tests. |
+| Entire backend E2E | 76 suites / 149 tests passed. OpenAPI snapshot and generated mobile contract (91 operations) also passed. |
+| Architecture | Repository scan and 28 positive/negative fixture tests passed. |
+| Common gates | Full code quality, source line cap, review CI, persistence readiness, tenant database guards and secret checks passed. |
+| Native PostgreSQL | Scan retry/terminal-outcome, delivery workflow and interest creation checks passed. Delivery/interest were rerun through the two-connection shared factory. |
+| Pool and runtime admission contracts | Unchanged pool-budget suite: 78 tests passed. Runtime installation/admission suite: 69 tests passed, including the verified fast-uri update and three tampering regressions. |
+| Runtime and targeted fixtures | Runtime-profile guards, RabbitMQ publisher, event relay, webhook provider, scan queue drain, delivery dispatch/drain/replay, source certification, write idempotency, beta scope, cross-process scheduler and fixture-only summary-memory loop passed. |
+| Migration and role evidence | Schema gate passed; exact SQL succeeded under a restricted explicit-SET-role login. Remote PostgreSQL 18 historical migration/RLS and scan/delivery contract steps passed at commit `f5c023b`. |
+| Dependency policy gate | Passed using the existing approved Zod/runtime exceptions; three resolved exceptions were removed. |
+| Raw `npm audit --audit-level=moderate` | Still exits 1: 8 affected package records (2 high, 0 moderate, 6 low), down from 14 (5 high, 3 moderate, 6 low). |
+
+Remote checkpoint evidence:
+[workflow 41095172652](https://github.com/777genius/social-monitor/actions/runs/41095172652).
+It confirmed the corrected PostgreSQL 18 ownership path, full backend E2E,
+security/public contracts, static quality, build, Flutter and immutable-candidate
+qualification. Its two failing unit shards identified the pool/admission/recovery
+fixture issues described above; those were fixed and verified separately. The
+latest PR check status remains the source of truth for the final commit; this
+historical checkpoint is not a claim that every later commit already has green CI.
+
+## Remaining limits and follow-up
+
+- External notification delivery remains at least once. Stable provider
+  idempotency keys mitigate acceptance followed by process/acknowledgment loss;
+  database fencing cannot make a remote provider and PostgreSQL one transaction.
+- A saved scan outcome does not contain all original warning/collection/failure
+  metadata. Replay restores outcome and counts; exact telemetry reconstruction
+  needs its own persistence contract. Execution lease loss also does not promise
+  exactly-once provider work.
+- The atomic creation guarantee applies to create-interest, not every monitoring
+  write workflow. Existing-name reuse does not invent historical missing events.
+  Review other aggregate/event/idempotency boundaries individually before adding
+  another narrow capability.
+- Root Zod remediation is coordinated with existing PR #587 and must preserve the
+  hoisted-import approval. MiMo's bundled Zod needs a valid upstream runtime
+  rebuild. The remaining low-severity deepmerge cascade belongs to Jest tooling;
+  no unsupported major downgrade or invented patched release was used. Existing
+  Zod/runtime exceptions expire on 2026-11-07.
+- Broader event-outbox lease/recovery semantics remain a separately scoped design
+  question, especially where publication authority and reader recovery already
+  impose their own contracts. No blanket retry/lease rewrite was introduced.
+- No production-size index-build timing or historical data repair is claimed.
+  Follow the coordinated rollout and rollback constraints above.
