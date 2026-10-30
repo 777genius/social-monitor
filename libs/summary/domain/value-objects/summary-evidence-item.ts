@@ -216,6 +216,11 @@ export type SummaryEvidenceSelection = {
   readonly editorialSlate?: ReaderSummaryEditorialSlate;
   /** Frozen V3 authority. When present, legacy promotion scoring is bypassed. */
   readonly promotionV3?: ReaderPostPromotionV3Selection;
+  /**
+   * Internal V3 disclosure: some headline checks failed in the model runtime
+   * and their stories were skipped. Publication still binds only sealed cards.
+   */
+  readonly presentationRuntimeDegraded?: true;
 };
 
 export type ApprovedSameStoryRelation = {

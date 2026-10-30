@@ -34,7 +34,16 @@ export type ReaderPostPresentationV3Result =
   | { readonly status: "unavailable"; readonly reason:
       "incomplete_source" | "input_over_budget" | "unsafe_text" |
       "insufficient_support" | "invalid_presentation" }
+  /** The runtime failed or rejected the task before any presentation was validated. */
+  | { readonly status: "unavailable"; readonly reason: "runtime_failure";
+      readonly runtimeFailure: ReaderPostPresentationRuntimeFailure }
   | { readonly status: "dependency_failure"; readonly reason: string };
+
+/** Sanitized runtime identifiers for operators; never messages or provider data. */
+export type ReaderPostPresentationRuntimeFailure = {
+  readonly code: string;
+  readonly causeCategory: string;
+};
 
 export interface PromotionPresentationBuilder {
   build(

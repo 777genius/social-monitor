@@ -35,6 +35,8 @@ import {
   assertActiveReaderSummaryProvider,
   parseActiveReaderSummaryReasoningEffort,
 } from "./active-reader-summary-generation-profile";
+import { presentationRuntimeFailureDisposition, presentationRuntimeFailureIdentity } from
+  "./agent-runtime-promotion-presentation-v3-runtime-failure";
 
 export const defaultPresentationTimeoutMs = 90_000;
 
@@ -154,23 +156,18 @@ implements PromotionPresentationBuilder {
       metadata: { adapter: "agent-runtime-promotion-presentation-v3" },
     };
     let result = await this.client.runTask(command);
-    // A cancellation (promoted to task_cancelled by the runtime client, with only
-    // sanitized reason details) carries no validation evidence and says nothing
-    // about the story: retry once, then degrade the candidates instead of letting
-    // one harness abort kill the whole day.
-    const cancelledWithoutEvidence = (): boolean => {
-      if (result.status !== "failed" ||
-          result.failure?.code !== "task_cancelled") return false;
-      return !Object.keys(result.failure.details ?? {}).some((key) =>
-        key.startsWith("outputValidation") ||
-        key.startsWith("presentationValidation") ||
-        key.startsWith("presentationRejected"));
-    };
-    if (this.modelBackend === mimoReaderSummaryBackend && cancelledWithoutEvidence()) {
+    // A transient runtime failure (cancellation, crashed run, empty failure,
+    // timeout) says nothing about the stories on either backend: resend the same
+    // request once unless it already used its deadline (a runtime that has
+    // exhausted this request answers at once), then skip only this batch under
+    // its own runtime_failure reason. The promotion run discloses the gap and
+    // stops when runtime failures repeat.
+    if (presentationRuntimeFailureDisposition(result) === "retry") {
       result = await this.client.runTask(command);
-      if (cancelledWithoutEvidence()) {
-        return inputs.map(() => ({ status: "unavailable", reason: "invalid_presentation" }));
-      }
+    }
+    if (presentationRuntimeFailureDisposition(result) !== undefined) {
+      const runtimeFailure = presentationRuntimeFailureIdentity(result);
+      return inputs.map(() => ({ status: "unavailable", reason: "runtime_failure", runtimeFailure }));
     }
     const failure = result.status === "failed" ? result.failure : undefined;
     if (failure && (failure.code === "unknown_runtime_failure" ||

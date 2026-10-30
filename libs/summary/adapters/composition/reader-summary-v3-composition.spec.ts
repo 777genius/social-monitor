@@ -7,7 +7,7 @@ import type { PrismaSummaryClient } from '../persistence/prisma/prisma-summary-c
 import type { GrpcAgentRuntimeClient } from '../model/grpc-agent-runtime-client';
 import type { RelevanceReaderSummaryEvidenceSelector } from '../evidence/relevance-reader-summary-evidence.selector';
 import { PrismaReaderSummaryV3Preflight } from '../persistence/prisma/prisma-reader-summary-v3-preflight';
-import { RelevanceReaderSummaryV3Promotion } from '../evidence/relevance-reader-summary-v3-promotion';
+import { PresentationRuntimeGuardedPromotion } from '../evidence/relevance-reader-summary-v3-presentation-runtime-guard';
 
 describe('Shared normal and native V3 composition', () => {
   it.each(['openrouter-systemone', 'openai-decisions'] as const)('constructs real %s preparation without credentials, DB or model work', (provider) => {
@@ -20,7 +20,7 @@ describe('Shared normal and native V3 composition', () => {
       new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy(), provider)))
       .toBeInstanceOf(PrismaReaderSummaryV3Preflight);
     expect(createReaderSummaryV3Promotion(client,{client:runtime,model:'mimo-v2.6-pro',modelBackend:'xiaomi-mimo-token-plan'},runtime,supplemental))
-      .toBeInstanceOf(RelevanceReaderSummaryV3Promotion);
+      .toBeInstanceOf(PresentationRuntimeGuardedPromotion);
     expect(transaction).not.toHaveBeenCalled();expect(interests.readCurrent).not.toHaveBeenCalled();
     expect(runtime.runTask).not.toHaveBeenCalled();expect(supplemental.selectSupplemental).not.toHaveBeenCalled();
   });

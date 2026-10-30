@@ -9,6 +9,13 @@ import type { ProviderReaderSummaryAttempt } from "../../ports";
 
 type ReaderSummaryDraft = ProviderReaderSummaryAttempt["draft"];
 
+const presentationBudgetCoverageWarning =
+  "Coverage is limited because the headline verification budget was reached; some story headlines were not checked.";
+// Kept apart from rejected headlines: these stories were skipped because the
+// verification runtime failed, not because their source failed a check.
+export const presentationRuntimeCoverageWarning =
+  "Coverage is limited because headline verification failed to run for some stories; those stories were skipped.";
+
 export type ReaderSummaryDraftWithContent = Omit<
   ReaderSummaryDraft,
   "content"
@@ -20,13 +27,19 @@ export const buildReaderSummaryDraftWithPromotionContent = (
   evidence: SummaryEvidenceSelection,
   draft: ReaderSummaryDraft,
 ): ReaderSummaryDraftWithContent => {
-  const coverageLimited = evidence.promotionV3?.presentationCoverageLimited === true;
+  const coverageWarnings = [
+    ...(evidence.promotionV3?.presentationCoverageLimited === true
+      ? [presentationBudgetCoverageWarning] : []),
+    ...(evidence.presentationRuntimeDegraded === true
+      ? [presentationRuntimeCoverageWarning] : []),
+  ];
+  const coverageLimited = coverageWarnings.length > 0;
   const qualityFlags = coverageLimited
     ? [...new Set([...draft.qualityFlags, "limited_sources" as const])] : draft.qualityFlags;
   const finalize = (content: ReaderSummaryDraftWithContent["content"]): ReaderSummaryDraftWithContent => ({
     ...draft, qualityFlags, content: coverageLimited ? { ...content, qualityState: {
       ...content.qualityState, warnings: [...new Set([...content.qualityState.warnings,
-        "Coverage is limited because the headline verification budget was reached; some story headlines were not checked."])],
+        ...coverageWarnings])],
     } } : content,
   });
   const buildContent = (

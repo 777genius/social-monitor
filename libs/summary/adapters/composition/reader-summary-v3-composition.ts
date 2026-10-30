@@ -13,6 +13,7 @@ import { PrismaReaderValueWorkspaceInterests } from
   "@social-monitor/relevance/infrastructure/reader-value/prisma-reader-value-workspace-interests";
 import { type ConfiguredInterestReaderPort } from
   "@social-monitor/relevance/ports";
+import { NestStructuredLogger } from "@social-monitor/platform-logging";
 import type { Clock, IdGenerator } from "@social-monitor/shared-kernel";
 import { RelevanceReaderSummaryV3PreparationSource } from
   "../evidence/relevance-reader-summary-v3-preparation-source";
@@ -20,6 +21,8 @@ import type { RelevanceReaderSummaryEvidenceSelector } from
   "../evidence/relevance-reader-summary-evidence.selector";
 import { RelevanceReaderSummaryV3Promotion } from
   "../evidence/relevance-reader-summary-v3-promotion";
+import { PresentationRuntimeGuardedPromotion } from
+  "../evidence/relevance-reader-summary-v3-presentation-runtime-guard";
 import { AgentRuntimePromotionPresentationV3Builder,
   type AgentRuntimePromotionPresentationV3BuilderOptions } from
   "../model/agent-runtime-promotion-presentation-v3.builder";
@@ -49,8 +52,10 @@ export const createReaderSummaryV3Preflight = (client: PrismaSummaryClient, jobs
 
 export const createReaderSummaryV3Promotion = (prisma: PrismaSummaryClient, options: AgentRuntimePromotionPresentationV3BuilderOptions, runtime: GrpcAgentRuntimeClient, supplementalEvidence: RelevanceReaderSummaryEvidenceSelector): ReaderSummaryV3PromotionPort => {
     const client = prisma as unknown as AssessmentSqlClient;
-    return new RelevanceReaderSummaryV3Promotion(
-      new PrismaReaderValueAssessmentStore(client),
+    const assessments = new PrismaReaderValueAssessmentStore(client);
+    return new PresentationRuntimeGuardedPromotion(
       new AgentRuntimePromotionPresentationV3Builder({ ...options, client: runtime }),
-      supplementalEvidence);
+      (presentation) => new RelevanceReaderSummaryV3Promotion(
+        assessments, presentation, supplementalEvidence),
+      new NestStructuredLogger("ReaderSummaryV3Presentation"));
 };
