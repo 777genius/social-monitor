@@ -60,7 +60,7 @@ export class GuardedWebhookHttpClient implements WebhookHttpClientPort {
           try {
             // secureConnect can fire without an authorized peer when TLS
             // validation has been disabled elsewhere in the process.
-            if (socket.authorized !== true) {
+            if (!('authorized' in socket) || socket.authorized !== true) {
               throw new OutboundHttpPolicyError('tls_unverified', 'Webhook TLS peer authorization failed');
             }
             target.assertPeer(socket.remoteAddress);
