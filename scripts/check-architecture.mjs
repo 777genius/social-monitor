@@ -12,6 +12,7 @@ const forbiddenInDomain = [
   'kafkajs',
   'amqplib',
   '@grpc/',
+  '@agent-teams/',
   'class-validator',
   'class-transformer',
   '@nestjs/swagger',
@@ -27,6 +28,7 @@ const forbiddenInFeatures = [
   'kafkajs',
   'amqplib',
   '@grpc/',
+  '@agent-teams/',
   '@nestjs/swagger',
   'class-validator',
   'class-transformer',
@@ -45,6 +47,7 @@ const forbiddenInPorts = [
   'kafkajs',
   'amqplib',
   '@grpc/',
+  '@agent-teams/',
   '@nestjs/swagger',
   'class-validator',
   'class-transformer',
@@ -103,6 +106,7 @@ const socialResearchTransportInterfaceRoots = [
 
 const forbiddenInSocialResearchApplication = [
   '@grpc/',
+  '@agent-teams/',
   '@modelcontextprotocol/',
   '@nestjs/',
   '@prisma/',
