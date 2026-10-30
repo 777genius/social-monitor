@@ -208,3 +208,48 @@ archive or claiming an npm override changed bundled code is not an acceptable
 fix. The development-only deepmerge advisory has no verified patched release;
 the audit's proposed Jest downgrade is rejected. Record remaining advisories
 honestly after the compatible updates.
+
+### Deployment and rollback constraints
+
+The three additive migrations require a coordinated worker transition:
+
+1. Pause new scan/delivery dispatch and drain or stop old ingestion retry
+   consumers, delivery dispatch/send workers and command-outbox publication.
+   Preserve queued messages and pending outbox rows.
+2. Apply `20261030155900_scan_attempt_terminal_failure`,
+   `20261030160000_scan_retry_delivery_claims`, then
+   `20261030160100_delivery_dispatch_execution_claims`.
+3. Deploy the compatible workers and regenerated Prisma client. Upgrade the event
+   relay before resuming durable delivery dispatch: it now routes delivery
+   commands using delivery's exchange/queue/dead-letter settings.
+4. Resume dispatch and recovery after old consumers have exited. Old retry
+   drainers delete work without honoring claims; old delivery workers ignore
+   execution tokens and command generations. Mixed generations are unsupported.
+
+There is no automatic downgrade reconciliation. Leave the additive schema in
+place if reverting application code. Stop new claim owners and command relay,
+then reconcile outstanding delivery commands and `assembling`/`sending` attempts
+before resuming older binaries. The migrations use ordinary `ALTER TABLE` and
+`CREATE INDEX`; local verification does not establish lock duration or index-build
+cost on production-sized tables, so this is not a zero-downtime deployment claim.
+
+Existing monitoring jobs incorrectly marked failed by the old transient-failure
+path are not automatically repaired, and deleted retry rows cannot be recovered
+by adding claim columns. Historical terminal outcomes, missing interest events
+and receipt inconsistencies require a separate evidence-backed reconciliation.
+
+### Database evidence boundaries
+
+Local native verification uses an isolated PostgreSQL 17 database materialized
+from the original baseline Prisma schema, followed by the exact three new SQL
+migrations. Actual Prisma tests exercise transactions, contention, expiry,
+renewal and stale-token rejection. This is not a full historical migration replay
+or production RLS proof. The full local historical replay was blocked by an
+absent protected role required by existing reader-publication migrations; those
+migrations and role controls were not weakened.
+
+CI adds reliability contract checks to the existing PostgreSQL 18 job in a
+separate disposable database. Its `prisma db push` establishes the current schema;
+it does not run migration SQL or install migration-only checks such as
+`scan_retry_claim_pair`. The preceding existing historical-migration/RLS proof
+remains unchanged. Report native local checks and remote CI results separately.

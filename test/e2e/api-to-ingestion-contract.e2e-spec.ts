@@ -13,6 +13,7 @@ import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { IngestionWorkerModule } from '../../apps/ingestion-worker/src/ingestion-worker.module';
 import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemorySourceItemRepository } from '../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
+import { InMemoryScanFailureQueueAdapter } from '../../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
 import { NoopScanExecutionReporterAdapter } from '../../libs/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
 import { RegistrySourceFetcherAdapter } from '../../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
 import { FixtureHackerNewsClient } from '../../libs/ingestion/adapters/source/hacker-news/fixture-hacker-news-client';
@@ -666,9 +667,12 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     await workerModuleRef.close();
   });
 
-  it('records failed scan status when ingestion worker execution fails', async () => {
-    const tenant = deterministicTestUuid('tenant-contract-failure-e2e');
-    const workspace = deterministicTestUuid('workspace-contract-failure-e2e');
+  it.each([
+    { retryBudget: 0, expectedStatus: 'failed' },
+    { retryBudget: 3, expectedStatus: 'enqueued' },
+  ])('reports the first provider failure as $expectedStatus with retry budget $retryBudget', async ({ retryBudget, expectedStatus }) => {
+    const tenant = deterministicTestUuid(`tenant-contract-failure-e2e-${retryBudget}`);
+    const workspace = deterministicTestUuid(`workspace-contract-failure-e2e-${retryBudget}`);
     const queue = api.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
     const initialQueueLength = queue.all().length;
 
@@ -708,7 +712,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .send({
         intervalSeconds: 300,
         freshnessSeconds: 900,
-        retryBudget: 3,
+        retryBudget,
       })
       .expect(201);
 
@@ -738,7 +742,19 @@ describe('API to ingestion worker queue contract (e2e)', () => {
 
     const handler = workerModuleRef.get(ExecuteScanCommandHandler);
     const metrics = workerModuleRef.select(IngestionWorkerModule).get(InMemoryMetricsRecorder, { strict: true });
+    const failures = workerModuleRef.get(InMemoryScanFailureQueueAdapter);
     await expect(handler.handle(command)).rejects.toThrow('Provider unavailable');
+    if (retryBudget === 0) {
+      expect(failures.retries()).toHaveLength(0);
+      expect(failures.deadLettered()).toEqual([
+        expect.objectContaining({ scanJobId: scan.body.scanJobId, attemptNumber: 1 }),
+      ]);
+    } else {
+      expect(failures.retries()).toEqual([
+        expect.objectContaining({ scanJobId: scan.body.scanJobId, nextAttemptNumber: 2 }),
+      ]);
+      expect(failures.deadLettered()).toHaveLength(0);
+    }
     expect(
       metrics.counterValue('scan_jobs_total', {
         job_type: 'scan',
@@ -762,10 +778,16 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .expect((response) => {
         expect(response.body).toMatchObject({
           scanJobId: scan.body.scanJobId,
-          status: 'failed',
-          completedAt: expect.any(String),
-          failureReason: 'Provider unavailable',
+          status: expectedStatus,
         });
+        if (retryBudget === 0) {
+          expect(response.body).toMatchObject({
+            completedAt: expect.any(String), failureReason: 'Provider unavailable',
+          });
+        } else {
+          expect(response.body).not.toHaveProperty('completedAt');
+          expect(response.body).not.toHaveProperty('failureReason');
+        }
       });
 
     await workerModuleRef.close();
