@@ -1,6 +1,6 @@
 # Command outbox lease reliability: six-pass refactor
 
-Status: implementation and independent review in progress. Base: `2794a49380d5709705996524593cd45d15b0bd51`.
+Status: six implementation/review passes completed; final CI on the latest head remains the merge gate. Base: `2794a49380d5709705996524593cd45d15b0bd51`.
 
 ## Why this boundary
 
@@ -62,3 +62,58 @@ before merging. Do not claim a production deployment without actual evidence.
 Keep real unit/E2E smoke and native PostgreSQL checks. Verify the exact final
 head after the last fix, not historical passing checks. Keep progress/limitations
 in this plan, never replace tests with static checkmarks.
+
+## Review record (six passes)
+
+1. **Invariants / diagnosis.** The old batch lease began before sequential
+   broker confirmations and had no heartbeat. Verified duplicate-risk window:
+   later records could be reclaimed before their send even began. Rejected
+   widening the delivery domain or inventing a generic workflow runtime.
+2. **Persistence boundary.** Introduced `renewClaims` with one update for an
+   entire bounded owner batch. The original implementation compared expiration
+   with caller-captured time, which reviewers correctly flagged as a TOCTOU
+   bug. Renewal and both settlement paths now use parameterized
+   `UPDATE ... leased_until > clock_timestamp()` on PostgreSQL. The owning
+   transaction retains the terminal scan-job write and its rollback behavior.
+3. **Orchestration / ambiguous sends.** A single non-overlapping heartbeat
+   renews waiting and in-flight work; failure or lost ownership prevents later
+   sends. The success/failure path tracks the rejection flag independently
+   of the thrown value, so even `Promise.reject(undefined)` cannot be treated
+   as a successful publish. A broker-confirm/database-ack split remains
+   at-least-once; no false exactly-once claim is introduced.
+4. **Adapter parity / lifecycle.** Development in-memory outbox uses the same
+   owner, status and expiry predicates. Claimed rows are removed from the
+   heartbeat before settlement; stale owner acknowledgments fail. Interval
+   timers are cleared and awaited on shutdown/failure; pending rows recover
+   after their lease rather than being forcibly settled by an ex-owner.
+5. **Adversarial unit / native contracts.** Added slow sequential publishing,
+   denied renewal, transient SQL failure, expiration, duplicate IDs, stale
+   ownership, all-or-none renewal and real PostgreSQL recovery tests. A review
+   found the shared fixture's global command claim could consume an unrelated
+   command: both claims now fail closed if other runnable COMMAND rows exist.
+   Native tests use database time and backdate **only their own fixture row**
+   to reproduce an expired lease despite an earlier client timestamp.
+6. **Independent critics and corrective loop.** CodeRabbit identified four
+   actionable points: DB-time renewal, DB-time success/failure settlement,
+   unused test-spy argument and native-fixture claim isolation. The four
+   have targeted changes and regression assertions. Strix completed its first
+   security review without open findings, while explicitly documenting
+   unavoidable at-least-once ambiguity. A fresh CI run and any subsequent
+   incremental review are required before resolving the threads or merging.
+
+## Verification and rollout decision
+
+The old CI run `41139475313` confirmed backend E2E, PostgreSQL 18,
+production candidate and security contracts but rejected one unused mock
+argument; the correction was pushed separately. Subsequent commits also
+changed SQL lease predicates and native evidence. **That old passing subset is
+not a green validation of the final head.** Inspect the latest PR head and its
+complete GitHub Actions run, including all unit shards, native PostgreSQL,
+production candidate, static architecture and deployment lifecycle, then
+review unresolved comments before merge.
+
+There is no production deployment in this PR. The existing production
+transition authority may reject a normal main push; do not bypass that guard.
+For application rollout, stop old relays before the new generation processes
+queued COMMAND rows. The persisted command IDs, status and message schema stay
+compatible; external effects remain at-least-once.
