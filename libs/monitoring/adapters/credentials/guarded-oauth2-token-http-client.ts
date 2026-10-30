@@ -37,7 +37,8 @@ export class GuardedOAuth2TokenHttpClient implements OAuth2TokenHttpClientPort {
     return new Promise((resolve, reject) => {
       const request = httpsRequest(validated.url, {
         method: 'POST',
-        headers: input.headers,
+        // OAuth token servers may reject chunked form POSTs (HTTP 411).
+        headers: { ...input.headers, 'content-length': Buffer.byteLength(input.body, 'utf8') },
         signal,
         agent: false,
         rejectUnauthorized: true,
