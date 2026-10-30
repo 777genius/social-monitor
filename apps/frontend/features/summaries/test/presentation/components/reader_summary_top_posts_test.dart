@@ -14,6 +14,7 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_view.dart';
 
 import '../../support/summaries_test_fixtures.dart';
+import '../../support/top_posts_sliver_test_fixtures.dart';
 
 part 'reader_summary_top_posts_test_trust.dart';
 part 'reader_summary_top_posts_test_app.dart';
@@ -126,6 +127,42 @@ void main() {
         tester.getTopLeft(providerLogoFinder).dx -
         tester.getTopLeft(rowFinder).dx;
     expect(leftInset, greaterThanOrEqualTo(AppSpacing.sm));
+  });
+
+  testWidgets('shows the backend Signal on Additional stories as on Top', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1100, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        storyClusterIds: ['story:lazy-0', 'story:lazy-1', 'story:lazy-2'],
+        content: readerSummaryContentApiDto(
+          topReads: lazyTopReadApiDtos(1),
+          selectedPosts: lazyAdditionalStoryApiDtos(2, startIndex: 1),
+        ),
+        citations: lazyCitationApiDtos(3),
+      ),
+    );
+
+    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpAndSettle();
+    expect(find.text('Signal 1.00'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey('reader-summary-top-posts-board-additional-stories'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Lazy top post 1'), findsOneWidget);
+    expect(find.text('Signal 2.00'), findsOneWidget);
+    expect(find.text('Signal 1.00'), findsOneWidget);
   });
 
   testWidgets('keeps backend editorial order for editorial sorting', (

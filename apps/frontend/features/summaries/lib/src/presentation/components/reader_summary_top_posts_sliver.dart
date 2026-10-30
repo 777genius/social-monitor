@@ -121,7 +121,8 @@ class _ReaderSummaryTopPostsSliverState
                 citationsById: widget.citationsById,
                 dense: _denseView,
                 reservePreviewSpace: _reservePreviewSpace,
-                showSignal: activeBoard != _TopPostBoard.additionalStories,
+                // Both ranked lanes carry the backend Signal.
+                showSignal: true,
                 rating: widget.ratingFor?.call(item),
                 onRated: widget.onRated,
                 onOpenUrl: widget.onOpenUrl,

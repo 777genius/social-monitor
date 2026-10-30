@@ -185,6 +185,7 @@ void main() {
     expect(find.text('Backend editorial winner'), findsOneWidget);
     expect(find.text('Higher engagement runner-up'), findsOneWidget);
     expect(find.text('Long-tail selected evidence'), findsNothing);
+    expect(find.text('Signal 2.20'), findsOneWidget);
 
     await tester.tap(
       find.byKey(
@@ -198,6 +199,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Long-tail selected evidence'), findsOneWidget);
+    // The Additional lane carries the same backend Signal as Top.
+    expect(find.text('Signal 1.40'), findsOneWidget);
     expect(find.text('Sorted by usefulness'), findsNothing);
   });
 }
