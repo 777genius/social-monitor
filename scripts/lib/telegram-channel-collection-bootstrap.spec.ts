@@ -2,8 +2,10 @@ import { FixedClock, type IdGenerator } from '@social-monitor/shared-kernel';
 import { Interest, SourceBinding } from '@social-monitor/monitoring/domain';
 import { InMemoryIdempotencyAdapter } from '@social-monitor/monitoring/adapters/idempotency/in-memory-idempotency.adapter';
 import { InMemoryOutboxAdapter } from '@social-monitor/monitoring/adapters/messaging/in-memory-outbox.adapter';
+import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestRepository } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest.repository';
 import { InMemorySourceBindingRepository } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding.repository';
+import { InMemorySourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-creation.store';
 import { InMemoryScanPolicyRepository } from '@social-monitor/monitoring/adapters/persistence/in-memory-scan-policy.repository';
 import { AesGcmSourceBindingConfigProtector } from '@social-monitor/monitoring/adapters/security/aes-gcm-source-binding-config-protector';
 import { FakeSourceCatalogAdapter } from '@social-monitor/monitoring/adapters/source-catalog/fake-source-catalog.adapter';
@@ -16,14 +18,15 @@ import {
 
 const now = new Date('2026-10-18T12:00:00Z');
 const setup = async (withInterest = true) => {
-  const interests = new InMemoryInterestRepository();
+  const creationState = new InMemoryInterestCreationState();
+  const interests = new InMemoryInterestRepository(creationState);
   if (withInterest) await interests.save(Interest.create({
     ...telegramCollectionScope, id: telegramCollectionScope.interestId, name: 'Synthetic interest', query: 'synthetic query', createdAt: now,
   }));
-  const bindings = new InMemorySourceBindingRepository();
+  const bindings = new InMemorySourceBindingRepository(creationState);
   const policies = new InMemoryScanPolicyRepository();
-  const outbox = new InMemoryOutboxAdapter();
-  const idempotency = new InMemoryIdempotencyAdapter();
+  const outbox = new InMemoryOutboxAdapter(creationState);
+  const idempotency = new InMemoryIdempotencyAdapter(creationState);
   let counter = 0;
   const ids: IdGenerator = { generate: () => `synthetic-${++counter}` };
   const clock = new FixedClock(now);
@@ -33,8 +36,9 @@ const setup = async (withInterest = true) => {
   return {
     interests, bindings, policies, outbox, catalog,
     bootstrap: {
-      bindSource: new BindSourceUseCase(interests, bindings, new FakeSourceCatalogAdapter({ includeFixtureProviders: false }),
-        outbox, idempotency, protector, ids, clock),
+      bindSource: new BindSourceUseCase(interests, new InMemorySourceBindingCreationStore(creationState),
+        new FakeSourceCatalogAdapter({ includeFixtureProviders: false }),
+        idempotency, protector, ids, clock),
       setPolicy: new SetScanPolicyUseCase(bindings, policies, outbox, idempotency, ids, clock),
     },
   };
