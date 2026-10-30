@@ -23,6 +23,7 @@ class SequenceIdGenerator implements IdGenerator {
 class FakeCommandOutbox implements CommandOutboxStorePort {
   readonly claims: Array<Parameters<CommandOutboxStorePort['claimPending']>[0]> = [];
   readonly renewals: Array<Parameters<CommandOutboxStorePort['renewClaims']>[0]> = [];
+  allowRenewal = true;
   readonly published: Array<Parameters<CommandOutboxStorePort['markPublished']>[0]> = [];
   readonly failures: Array<Parameters<CommandOutboxStorePort['markFailed']>[0]> = [];
 
@@ -37,7 +38,7 @@ class FakeCommandOutbox implements CommandOutboxStorePort {
 
   async renewClaims(params: Parameters<CommandOutboxStorePort['renewClaims']>[0]): Promise<boolean> {
     this.renewals.push(params);
-    return true;
+    return this.allowRenewal;
   }
 
   async markPublished(
@@ -179,4 +180,75 @@ describe('CommandOutboxDispatcher', () => {
       failedAt: now,
     });
   });
+  it('keeps later commands leased during a slow first publish', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+    try {
+      const second = { ...command, commandId: '00000000-0000-7000-8000-000000000002' };
+      const outbox = new FakeCommandOutbox([
+        { id: command.commandId, command, publishAttempt: 1 },
+        { id: second.commandId, command: second, publishAttempt: 1 },
+      ]);
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => { release = resolve; });
+      const publish = jest.fn(async (value: typeof command) => {
+        if (value.commandId === command.commandId) await pending;
+      });
+      const dispatcher = new CommandOutboxDispatcher(
+        outbox, { publish }, new SequenceIdGenerator(),
+        { now: () => new Date() }, { leaseMs: 300 },
+      );
+      const dispatched = dispatcher.dispatchBatch(2);
+      await jest.advanceTimersByTimeAsync(401);
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(outbox.renewals.length).toBeGreaterThanOrEqual(3);
+      expect(outbox.renewals.every((item) => item.ids.length === 2)).toBe(true);
+      release();
+      await expect(dispatched).resolves.toEqual({ published: 2, retrying: 0, failed: 0 });
+      expect(publish).toHaveBeenCalledTimes(2);
+      expect(outbox.published.map((item) => item.id)).toEqual([command.commandId, second.commandId]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not publish the next command or acknowledge a send after lease ownership is lost', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+    try {
+      const second = { ...command, commandId: '00000000-0000-7000-8000-000000000002' };
+      const outbox = new FakeCommandOutbox([
+        { id: command.commandId, command, publishAttempt: 1 },
+        { id: second.commandId, command: second, publishAttempt: 1 },
+      ]);
+      outbox.allowRenewal = false;
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => { release = resolve; });
+      const publish = jest.fn(async () => pending);
+      const dispatched = new CommandOutboxDispatcher(
+        outbox, { publish }, new SequenceIdGenerator(),
+        { now: () => new Date() }, { leaseMs: 300 },
+      ).dispatchBatch(2);
+      await jest.advanceTimersByTimeAsync(101);
+      expect(outbox.renewals).toHaveLength(1);
+      release();
+      await expect(dispatched).rejects.toThrow('ownership was lost');
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(outbox.published).toHaveLength(0);
+      expect(outbox.failures).toHaveLength(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('treats even an undefined rejection as a failed publication', async () => {
+    const outbox = new FakeCommandOutbox([{ id: command.commandId, command, publishAttempt: 1 }]);
+    const dispatcher = new CommandOutboxDispatcher(outbox, {
+      publish: async () => Promise.reject(undefined),
+    }, new SequenceIdGenerator(), clock);
+    await expect(dispatcher.dispatchBatch(1)).resolves.toMatchObject({ published: 0, retrying: 1 });
+    expect(outbox.published).toHaveLength(0);
+    expect(outbox.failures).toHaveLength(1);
+  });
+
 });
