@@ -17,7 +17,6 @@ import {
 } from '../libs/monitoring/adapters/source-catalog/fake-source-catalog.adapter';
 import { InMemoryIdempotencyAdapter } from '../libs/monitoring/adapters/idempotency/in-memory-idempotency.adapter';
 import { InMemoryOutboxAdapter } from '../libs/monitoring/adapters/messaging/in-memory-outbox.adapter';
-import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
 import { InMemoryInterestRepository } from '../libs/monitoring/adapters/persistence/in-memory-interest.repository';
 import { BindSourceUseCase } from '../libs/monitoring/features/bind-source/bind-source.use-case';
 import { CreateInterestUseCase } from '../libs/monitoring/features/create-interest/create-interest.use-case';
