@@ -35,6 +35,8 @@ export class GuardedWebhookHttpClient implements WebhookHttpClientPort {
     return new Promise((resolve, reject) => {
       const request = httpsRequest(validation.url, {
         method: 'POST', headers: input.headers, signal, agent: false,
+        // Never inherit NODE_TLS_REJECT_UNAUTHORIZED=0 into signed webhook egress.
+        rejectUnauthorized: true,
         lookup: target.lookup,
         maxHeaderSize: 16_384,
       }, (response) => {
@@ -56,6 +58,11 @@ export class GuardedWebhookHttpClient implements WebhookHttpClientPort {
         // one of the actual socket lookup's validated public addresses.
         socket.once('secureConnect', () => {
           try {
+            // secureConnect can fire without an authorized peer when TLS
+            // validation has been disabled elsewhere in the process.
+            if (socket.authorized !== true) {
+              throw new OutboundHttpPolicyError('tls_unverified', 'Webhook TLS peer authorization failed');
+            }
             target.assertPeer(socket.remoteAddress);
             request.end(input.body);
           } catch (error) {
