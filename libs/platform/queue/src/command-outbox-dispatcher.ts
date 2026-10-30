@@ -22,6 +22,13 @@ export interface CommandOutboxStorePort {
     readonly leaseOwner: string;
     readonly leasedUntil: Date;
   }): Promise<readonly CommandOutboxRecord[]>;
+  /** Renew the whole still-pending batch only while every row remains owned and unexpired. */
+  renewClaims(params: {
+    readonly ids: readonly string[];
+    readonly leaseOwner: string;
+    readonly now: Date;
+    readonly leasedUntil: Date;
+  }): Promise<boolean>;
   markPublished(params: {
     readonly id: string;
     readonly leaseOwner: string;
