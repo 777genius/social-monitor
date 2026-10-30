@@ -37,6 +37,7 @@ type PreparedCandidate = {
     readonly publishedAt: string; readonly sourceKind: string;
     readonly canonicalIdentity: string; readonly storyId?: string;
     readonly providerMetadata?: JsonObject;
+    readonly engagementObservedAt: string | null;
   };
 };
 type PersistedCandidate = ReaderValueSummaryPreparationManifest["candidates"][number];
@@ -199,6 +200,7 @@ implements ReaderValueSummaryPreparation {
                 sourceKind: sourceKind.kind,
                 canonicalIdentity: item.source.canonicalUrl,
                 providerMetadata: item.metadata,
+                engagementObservedAt: item.engagementObservedAt ?? null,
                 ...(storyId === undefined ? {} : { storyId }),
               } });
               candidateCount += 1;

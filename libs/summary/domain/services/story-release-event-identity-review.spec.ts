@@ -1,7 +1,7 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { STORY_RANKING_POLICY_V1 as policy } from "../policies/story-ranking-policy";
 import { StoryClusteringService } from "./story-clustering.service";
-import { belongsToVerifiedStoryCluster, isDeterministicCrossProviderStoryMatch,
+import { belongsToVerifiedStoryCluster, isDeterministicIndependentSourceStoryMatch,
   isVerifiedStoryRelationGuardEligible, verifiedStoryRelationPairKey } from "./story-cluster-membership";
 import { buildStoryRelationCandidates } from "./story-relation-candidates";
 import { samePrimaryReleaseEvent, storyReleaseEventIdentity } from "./story-release-event-identity";
@@ -19,7 +19,7 @@ describe("independently reproduced release identity defects", () => {
     }));
     const items = [left!, right!];
     const approved = new Set([verifiedStoryRelationPairKey(left!.feedItemId, right!.feedItemId)]);
-    expect(isDeterministicCrossProviderStoryMatch(left!, right!, policy)).toBe(false);
+    expect(isDeterministicIndependentSourceStoryMatch(left!, right!, policy)).toBe(false);
     expect(samePrimaryReleaseEvent(left!, right!)).toBe(false);
     for (const [a, b] of [[left!, right!], [right!, left!]]) {
       expect(isVerifiedStoryRelationGuardEligible(a!, b!, policy)).toBe(false);

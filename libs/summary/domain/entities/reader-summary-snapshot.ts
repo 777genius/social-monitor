@@ -23,6 +23,8 @@ export type ReaderSummarySnapshot = {
   readonly sourceMix: readonly SourceMixEntry[];
   readonly topReads: readonly TopRead[];
   readonly selectedPosts?: readonly TopRead[];
+  /** "News without rating": posts from sources without a popularity rating. */
+  readonly newsWithoutRatingPosts?: readonly TopRead[];
   readonly claimBoard: readonly ReaderSummaryClaim[];
   readonly reliabilityReport: ReaderSummaryReliabilityReport;
   readonly trendDelta: ReaderTrendDelta;

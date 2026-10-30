@@ -1,21 +1,12 @@
 import type { ReaderValueAssessment } from
   "@social-monitor/relevance/application/contracts/reader-value-assessment-store";
-import type { ReaderValueAnswers, ReaderValueCriterion } from
-  "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
 
 import { acceptedFixtureReaderHeadline } from "../../test-fixtures/accepted-reader-headline";
-import type {
-  ReaderSummaryPreparationCandidate, SummaryEvidenceItem,
-} from "../../domain";
-import { engagementOrContentStrengthSignalScore } from
-  "../../domain/value-objects/signal-score";
-import type { ReaderPostPromotionV3Candidate } from
-  "../../domain/policies/reader-post-promotion-v3";
-import { buildReaderPostPromotionProjection } from
-  "../../domain/services/reader-post-promotion-projection";
+import type { ReaderSummaryPreparationCandidate } from "../../domain";
 import type { ReaderPostPresentationV3Input } from
   "../../domain/services/reader-post-presentation-v3";
 import { providerMetricFacts } from "./reader-summary-provider-evidence";
+import { readerPostPromotionEngagementFact } from "./reader-post-promotion-engagement-facts";
 import { clusteringEvidenceItem, evidenceItem } from
   "./relevance-reader-summary-v3-source-evidence";
 
@@ -25,7 +16,7 @@ const xMetadata = { kind: "x_post", contentKind: "original_post",
 const expectedLabels = [{ label: "Likes", value: "37" },
   { label: "Reposts", value: "2" }];
 
-describe("V3 engagement metric substitution", () => {
+describe("Promotion engagement facts", () => {
   it("derives display labels and engagement strength from provider metadata", () => {
     const facts = providerMetricFacts({ providerKey: "x-twitter",
       providerMetadata: { ...xMetadata } });
@@ -45,76 +36,27 @@ describe("V3 engagement metric substitution", () => {
     expect(sealed.readerHeadline?.status).toBe("accepted");
   });
 
-  it("projects provider metrics and a nonzero signal score into top-read cards", () => {
-    const lead = clusteringEvidenceItem(frozen(), presentationInput(), assessment());
-    const display = acceptedFixtureReaderHeadline(lead, scope);
-    const sealed: SummaryEvidenceItem = evidenceItem(frozen(), presentationInput(),
-      assessment(), { headline: display.readerHeadline! });
-    const candidate = promotionCandidate(sealed);
-    const projection = buildReaderPostPromotionProjection({
-      evidence: [sealed], clusters: [], citations: [{
-        citationId: "citation-metrics", feedItemId: sealed.feedItemId,
-        sourceItemId: sealed.sourceItemId, providerKey: sealed.providerKey,
-        field: "canonicalUrl", canonicalUrl: sealed.canonicalUrl,
-      }],
-      sourceWindow: { windowId: "window-metrics",
-        startedAt: new Date("2026-07-05T08:00:00Z"),
-        endedAt: new Date("2026-07-05T09:00:00Z"),
-        selectedFeedItemIds: [sealed.feedItemId],
-        storyClusterIds: [candidate.storyId] },
-      promotionV3: { policyVersion: "reader_promotion_policy.v3", outcome: "ready",
-        top: [candidate], additional: [], excluded: [] },
-    });
-    const card = projection.topReads[0]!;
-    expect(card.providerMetrics).toEqual(expectedLabels);
-    expect(card.signalScore).toBeGreaterThan(0);
+  it("freezes the ranked signal value with its snapshot time and nothing else", () => {
+    const observedAt = "2026-07-05T15:00:00.123456Z";
+    expect(readerPostPromotionEngagementFact({ providerKey: "x-twitter",
+      providerMetadata: { ...xMetadata }, engagementObservedAt: observedAt }))
+      .toEqual({ method: "likes_plus_two_reposts", value: 41, observedAt });
+    expect(readerPostPromotionEngagementFact({ providerKey: "reddit",
+      providerMetadata: { kind: "reddit_post", score: 984 },
+      engagementObservedAt: "2026-07-05 15:00:00.5+00" }))
+      .toEqual({ method: "reddit_score", value: 984,
+        observedAt: "2026-07-05T15:00:00.500000Z" });
   });
 
-  it("projects a content-strength signal score for no-engagement top-read cards", () => {
-    const rssFrozen: ReaderSummaryPreparationCandidate = {
-      ...frozen(),
-      candidateId: "00000000-0000-4000-8000-000000000006",
-      sourceItemId: "source-quality",
-      sourceBindingId: "binding-quality",
-      assessmentId: "assessment-quality",
-      providerKey: "rss",
-      providerMetadata: undefined,
-      canonicalIdentity: "https://example.test/post/quality",
-    };
-    const input: ReaderPostPresentationV3Input = {
-      ...presentationInput(),
-      candidateId: "00000000-0000-4000-8000-000000000006",
-      sourceItemId: "source-quality",
-      sourceBindingId: "binding-quality",
-      providerKey: "rss",
-      title: "Content quality headline",
-      body: "Content quality body",
-    };
-    const lead = clusteringEvidenceItem(rssFrozen, input, assessment());
-    expect(lead.providerMetricStrength).toBeUndefined();
-    const display = acceptedFixtureReaderHeadline(lead, scope);
-    const sealed: SummaryEvidenceItem = evidenceItem(rssFrozen, input,
-      assessment(), { headline: display.readerHeadline! });
-    const candidate: ReaderPostPromotionV3Candidate = {
-      ...promotionCandidate(sealed),
-      providerFamily: "rss",
-    };
-    const projection = buildReaderPostPromotionProjection({
-      evidence: [sealed], clusters: [], citations: [{
-        citationId: "citation-quality", feedItemId: sealed.feedItemId,
-        sourceItemId: sealed.sourceItemId, providerKey: sealed.providerKey,
-        field: "canonicalUrl", canonicalUrl: sealed.canonicalUrl,
-      }],
-      sourceWindow: { windowId: "window-quality",
-        startedAt: new Date("2026-07-05T08:00:00Z"),
-        endedAt: new Date("2026-07-05T09:00:00Z"),
-        selectedFeedItemIds: [sealed.feedItemId],
-        storyClusterIds: [candidate.storyId] },
-      promotionV3: { policyVersion: "reader_promotion_policy.v3", outcome: "ready",
-        top: [candidate], additional: [], excluded: [] },
-    });
-    const card = projection.topReads[0]!;
-    expect(card.signalScore).toBeGreaterThan(0);
+  it.each([
+    ["never observed", "x-twitter", { ...xMetadata }, null],
+    ["malformed metric", "x-twitter", { ...xMetadata, likes: -1 }, "2026-07-05T15:00:00.000000Z"],
+    ["missing metadata", "hacker-news", undefined, "2026-07-05T15:00:00.000000Z"],
+    ["unranked source", "rss", { kind: "rss_item", score: 50 }, "2026-07-05T15:00:00.000000Z"],
+  ] as const)("keeps the metric unknown when %s", (_label, providerKey, metadata, observedAt) => {
+    expect(readerPostPromotionEngagementFact({ providerKey,
+      ...(metadata === undefined ? {} : { providerMetadata: metadata }),
+      engagementObservedAt: observedAt })).toBeNull();
   });
 });
 
@@ -148,51 +90,3 @@ const presentationInput = (): ReaderPostPresentationV3Input => ({
 const assessment = (): ReaderValueAssessment => ({
   input: { interestId: "interest-metrics" },
 } as unknown as ReaderValueAssessment);
-
-const promotionCandidate = (lead: SummaryEvidenceItem):
-ReaderPostPromotionV3Candidate => ({
-  candidateId: lead.feedItemId,
-  providerKey: lead.providerKey,
-  providerFamily: "x",
-  sourceItemId: lead.sourceItemId,
-  canonicalIdentity: lead.canonicalUrl,
-  storyId: "story-metrics",
-  publishedAt: "2026-07-05T08:30:00.000000Z",
-  assessmentId: "assessment-metrics",
-  assessedAt: "2026-07-05T08:40:00.000000Z",
-  rubricVersion: "reader-value.v1",
-  sourceSnapshotSha256: "1".repeat(64),
-  inputSha256: "2".repeat(64),
-  rubricSha256: "3".repeat(64),
-  modelConfigVersion: "model.v1",
-  answers: answers("important"),
-  signalScore: engagementOrContentStrengthSignalScore({
-    engagementStrength: lead.providerMetricStrength,
-    contentQuality: lead.contentQuality,
-  }),
-  presentation: { status: "available", presentationInputDigest: "4".repeat(64) },
-  scopeValid: true, sourceIdentityValid: true, freshnessValid: true,
-  safetyValid: true, citationValid: true, blocked: false,
-});
-
-const answers = (usefulness: ReaderValueAnswers["usefulness"]["choice"]):
-ReaderValueAnswers => ({
-  usefulness: answer("usefulness", usefulness,
-    ["noise", "context", "useful", "important", "insufficient_context"]),
-  relevance: answer("relevance", "central",
-    ["unrelated", "adjacent", "relevant", "central", "insufficient_context"]),
-  context_sufficiency: answer("context_sufficiency", "sufficient",
-    ["insufficient", "partial", "sufficient"]),
-  evidence_basis: answer("evidence_basis", "observation",
-    ["observation", "described_data", "linked_claim", "unsupported_claim",
-      "no_claim", "insufficient_context"]),
-});
-
-const answer = <K extends ReaderValueCriterion>(criterion: K,
-  choice: ReaderValueAnswers[K]["choice"],
-  choices: readonly string[]): ReaderValueAnswers[K] => ({
-    choice,
-    probabilities: Object.fromEntries(choices.map((value) =>
-      [value, value === choice ? 1 : 0])),
-    confidence: 0.9, choiceDiffersFromArgmax: false, probabilityTie: false,
-  }) as ReaderValueAnswers[K];

@@ -12,6 +12,14 @@ import type { InMemorySummaryEventPublisher } from "../messaging/in-memory-summa
 import type { InMemoryReaderSummaryArtifactRepository } from "./in-memory-reader-summary-artifact.repository";
 import type { InMemoryReaderSummaryJobRepository } from "./in-memory-reader-summary-job.repository";
 import { buildReaderSummaryPublicationPayload } from "./reader-summary-publication-proof";
+import { frozenEngagementMatchesAttestation, frozenPopularityMatchesAttestations } from
+  "./reader-summary-promotion-engagement-guard";
+
+/** Locked assessment row as the Prisma guard reads it (result + input snapshot). */
+export type InMemoryFrozenAssessment = {
+  readonly result: unknown;
+  readonly input_snapshot: unknown;
+};
 
 type CurrentPublication = Readonly<{
   requestedAt: Date;
@@ -33,6 +41,9 @@ export class InMemoryReaderSummaryPublication
     private readonly artifacts: InMemoryReaderSummaryArtifactRepository,
     private readonly events: InMemorySummaryEventPublisher | SummaryEventPublisherPort,
     private readonly v3Source?: ReaderSummaryV3PreparationSourcePort,
+    /** Needed to recompute signed popularity; without it a ranked board fails closed. */
+    private readonly frozenAssessment?: (assessmentId: string) =>
+      InMemoryFrozenAssessment | undefined,
   ) {}
 
   async publish(
@@ -118,8 +129,16 @@ export class InMemoryReaderSummaryPublication
           attestation.assessment.rubricVersion !== interest.rubricVersion ||
           attestation.assessment.rubricSha256 !== interest.rubricSha256 ||
           attestation.assessment.modelConfigVersion !== interest.modelConfigVersion ||
+          !frozenEngagementMatchesAttestation(candidate, attestation) ||
           attestation.exactIngestionCutoff !== durable.preparationManifest!.cutoffAt;
       })) {
+        throw new Error("Workspace V3 publication provenance changed");
+      }
+      // Same cohort recomputation as the Prisma guard.
+      if (!frozenPopularityMatchesAttestations({
+        candidates: durable.preparationManifest.candidates, period: durable.period,
+        attestations, assessmentFor: (candidate) => typeof candidate.assessmentId === "string"
+          ? this.frozenAssessment?.(candidate.assessmentId) : undefined })) {
         throw new Error("Workspace V3 publication provenance changed");
       }
     }

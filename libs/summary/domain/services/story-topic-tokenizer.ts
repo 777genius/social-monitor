@@ -1,12 +1,13 @@
 import type { StoryRankingPolicy } from "../policies/story-ranking-policy";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import { isConcreteStoryIdentitySubjectToken } from "./story-identity-token-classification";
+import { storySourceTitle } from "./story-source-identity";
 
 export const storyTopicTokens = (
   item: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
 ): readonly string[] => {
-  const text = `${stripTopicSourceEnvelope(item.title)} ${
+  const text = `${storySourceTitle(item)} ${
     item.bodyPreview ?? ""
   }`;
   const aliases = topicAliasTokens(text);
@@ -27,7 +28,7 @@ export const storyIdentityTokens = (
   item: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
 ): readonly string[] => {
-  const text = `${stripTopicSourceEnvelope(item.title)} ${
+  const text = `${storySourceTitle(item)} ${
     item.bodyPreview ?? ""
   }`.normalize("NFKC");
   const aliases = storyIdentityAliasTokens(text);
@@ -44,13 +45,8 @@ export const storyIdentityTokens = (
   );
 };
 
-const stripTopicSourceEnvelope = (value: string): string =>
-  value
-    .replace(/^x\s+post\s+by\s+@[^:]+:\s*/iu, "")
-    .replace(/^(?:ask|show)\s+hn:\s*/iu, "");
-
 export const storyTitleIdentity = (item: SummaryEvidenceItem): string =>
-  stripTopicSourceEnvelope(item.title)
+  storySourceTitle(item)
     .normalize("NFKC")
     .toLocaleLowerCase("en-US")
     .replace(/[^\p{Letter}\p{Number}+#.]+/gu, " ")
@@ -137,7 +133,7 @@ export const storyTopicEventTokens = (
 export const storyClaimFacetTokens = (
   item: SummaryEvidenceItem,
 ): readonly string[] => {
-  const text = `${stripTopicSourceEnvelope(item.title)} ${
+  const text = `${storySourceTitle(item)} ${
     item.bodyPreview ?? ""
   }`;
 
@@ -162,7 +158,7 @@ export type StoryPrimaryClaimFacet =
 export const storyPrimaryClaimFacet = (
   item: SummaryEvidenceItem,
 ): StoryPrimaryClaimFacet | undefined => {
-  const text = `${stripTopicSourceEnvelope(item.title)} ${
+  const text = `${storySourceTitle(item)} ${
     item.bodyPreview ?? ""
   }`;
 

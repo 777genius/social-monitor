@@ -56,9 +56,24 @@ final class TopRead {
   final PreviewMedia? previewMedia;
 }
 
+/// Card kind every promoted card of a lane must carry.
+extension ReaderPostPromotionPlacementCardKind on ReaderPostPromotionPlacement {
+  ReaderSummaryCardKind get cardKind => switch (this) {
+    ReaderPostPromotionPlacement.top => ReaderSummaryCardKind.curatedTopRead,
+    ReaderPostPromotionPlacement.additional =>
+      ReaderSummaryCardKind.additionalNotableStory,
+    ReaderPostPromotionPlacement.news =>
+      ReaderSummaryCardKind.newsWithoutRating,
+  };
+}
+
 enum ReaderSummaryCardKind {
   curatedTopRead,
   additionalNotableStory,
+
+  /// A post from a source without a popularity rating ("News without
+  /// rating"). It never carries a Signal.
+  newsWithoutRating,
   relatedTopic,
   supplementalTrend,
   unsupported,

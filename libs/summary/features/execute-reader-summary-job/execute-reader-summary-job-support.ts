@@ -186,5 +186,6 @@ const topicMapEvidenceAdmission = (
         admittedCandidateIds: [
           ...(evidence.promotionV3?.top ?? []),
           ...(evidence.promotionV3?.additional ?? []),
+          ...(evidence.promotionV3?.news ?? []),
         ].map((candidate) => candidate.candidateId) }
     : { selectionStrategy: selectionStrategy ?? "legacy_v2" };

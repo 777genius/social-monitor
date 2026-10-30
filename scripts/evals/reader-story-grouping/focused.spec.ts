@@ -122,10 +122,12 @@ describe("sealed public real-post grouping replay", () => {
     const selection = p.clusterer.cluster({ ...p.clusterParams, items: [a, b, c], verifiedStoryRelationPairs: edges });
     expect(together(selection, a.feedItemId, c.feedItemId)).toBe(false);
   });
-  it("preserves same-provider duplicate controls as separate product posts", () => {
+  // ADR 397: one author's crosspost with the same title and body is one story
+  // (RSG-050); the verifier still never sees a same-provider pair.
+  it("merges the same-provider crosspost copy without asking the verifier", () => {
     const p = prepared.find((b) => b.block.id === "anybridge")!;
     expect(p.candidates).toHaveLength(0);
-    expect(applyDecisions(p).relationSelection.clusters).toHaveLength(2);
+    expect(applyDecisions(p).relationSelection.clusters).toHaveLength(1);
   });
   it("validates receipt schema and full request, fixture and output identity", () => {
     const validator = new Ajv().compile(readJson<object>("scripts/evals/reader-story-grouping/receipt.schema.json"));

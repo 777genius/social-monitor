@@ -50,6 +50,15 @@ export type ReaderSummaryPreparationCandidate = {
   readonly storyId?: string;
   /** Frozen provider metadata; the only carrier of observed engagement. */
   readonly providerMetadata?: JsonObject;
+  /**
+   * Frozen observation time of the metrics in `providerMetadata`:
+   * `source_item_engagement_snapshots.last_observed_at`, or the feed item
+   * observation time when no snapshot exists (a lower bound of the metric
+   * age, so maturity can only be underestimated). Manifests frozen before
+   * this field existed omit it and cannot be ranked; promotion fails them
+   * closed.
+   */
+  readonly engagementObservedAt?: string | null;
 };
 
 export type ReaderSummaryInterestPreparationManifest = {
@@ -149,6 +158,8 @@ export type ReaderSummaryPreparationFailureCode =
   | "operator_cancelled"
   | "presentation_unavailable"
   | "presentation_dependency_unavailable"
+  /** Manifest frozen before a field the promotion policy needs; rebuild the day. */
+  | "preparation_manifest_outdated"
   | "provider_execution_failed";
 
 export function assertReaderSummarySelectionStrategy(
@@ -197,6 +208,7 @@ export const assertReaderSummaryPreparationManifest = (
           candidate.providerKey.trim().length === 0 ||
           !validTimestamp(candidate.publishedAt) ||
           !validTimestamp(candidate.observedAt) ||
+          !validEngagementObservedAt(candidate.engagementObservedAt) ||
           !sha256(candidate.sourceSnapshotSha256) ||
           !sha256(candidate.inputSha256) ||
           candidate.assessmentId.trim().length === 0) {
@@ -220,7 +232,9 @@ export const assertReaderSummaryPreparationManifest = (
   for (const candidate of manifest.candidates) {
     if (ids.has(candidate.candidateId) || candidate.sourceBindingId.trim().length === 0 ||
         candidate.providerKey.trim().length === 0 || !validTimestamp(candidate.publishedAt) ||
-        !validTimestamp(candidate.observedAt) || !sha256(candidate.sourceSnapshotSha256) ||
+        !validTimestamp(candidate.observedAt) ||
+        !validEngagementObservedAt(candidate.engagementObservedAt) ||
+        !sha256(candidate.sourceSnapshotSha256) ||
         !sha256(candidate.inputSha256) || candidate.assessmentId.trim().length === 0) {
       throw new Error("Reader summary preparation manifest candidate is invalid");
     }
@@ -229,6 +243,8 @@ export const assertReaderSummaryPreparationManifest = (
 };
 
 const sha256 = (value: string): boolean => /^[0-9a-f]{64}$/u.test(value);
+const validEngagementObservedAt = (value: string | null | undefined): boolean =>
+  value === undefined || value === null || validTimestamp(value);
 const validTimestamp = (value: string): boolean =>
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3,6}(?:\+00|Z)$/u.test(value) &&
   Number.isFinite(Date.parse(value));

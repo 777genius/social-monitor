@@ -14,12 +14,13 @@ export const assertReaderSummaryArtifactValid = (
 ): void => {
   if (
     props.promotionBoardState !== undefined &&
-    props.promotionBoardState !== "legacy_unavailable"
+    props.promotionBoardState !== "legacy_unavailable" &&
+    props.promotionBoardState !== "rebuild_required"
   ) {
     throw new Error("Reader summary promotion board state is invalid");
   }
   if (
-    props.promotionBoardState === "legacy_unavailable" &&
+    props.promotionBoardState !== undefined &&
     ((props.promotionAttestations?.length ?? 0) > 0 ||
       (props.promotionEvidenceFacts?.length ?? 0) > 0 ||
       hasPromotionOnlyCardFields(props))
@@ -184,6 +185,7 @@ export const assertReaderSummaryArtifactValid = (
       [
         ...props.content.topReads,
         ...(props.content.selectedPosts ?? []),
+        ...(props.content.newsWithoutRatingPosts ?? []),
         ...props.content.interestSections.flatMap((section) => section.items),
       ],
       relatedRelations,
@@ -265,6 +267,7 @@ const hasPromotionOnlyCardFields = (
   const cards = [
     ...content.topReads,
     ...(content.selectedPosts ?? []),
+    ...(content.newsWithoutRatingPosts ?? []),
     ...content.interestSections.flatMap((section) => section.items),
   ];
   return cards.some((card) => readerPostPromotionCardFields.some(

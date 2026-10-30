@@ -98,6 +98,7 @@ final class ReaderSummaryContent {
     required this.sourceMix,
     required this.topReads,
     this.selectedPosts = const [],
+    this.newsWithoutRatingPosts = const [],
     this.claimBoard = const [],
     this.reliabilityReport = emptySummaryReliabilityReport,
     required this.trendDelta,
@@ -117,8 +118,16 @@ final class ReaderSummaryContent {
   final ReaderSummaryQualityState qualityState;
   final List<ReaderInterestSection> interestSections;
   final List<SourceMixEntry> sourceMix;
+
+  /// "Top posts": the first ranked posts of the promotion board.
   final List<TopRead> topReads;
+
+  /// "Show more": the ranked sequence continued after [topReads].
   final List<TopRead> selectedPosts;
+
+  /// "News without rating": posts from sources without a popularity rating,
+  /// never part of the ranked sequence.
+  final List<TopRead> newsWithoutRatingPosts;
   final List<SummaryClaim> claimBoard;
   final SummaryReliabilityReport reliabilityReport;
   final ReaderTrendDelta trendDelta;
@@ -128,4 +137,11 @@ final class ReaderSummaryContent {
   final ReaderSummaryPromotionBoardAvailability promotionBoardAvailability;
 }
 
-enum ReaderSummaryPromotionBoardAvailability { available, unavailable }
+enum ReaderSummaryPromotionBoardAvailability {
+  available,
+  unavailable,
+
+  /// The day was ranked under an earlier promotion policy. Its narrative and
+  /// citations stay readable, while the boards are withheld until a rebuild.
+  rebuildRequired,
+}

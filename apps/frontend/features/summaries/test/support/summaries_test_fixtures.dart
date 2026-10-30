@@ -51,6 +51,7 @@ ReaderSummaryApiDto readerSummaryApiDto({
   DateTime? generatedAt,
   SummaryWindowApiDto? sourceWindow,
   String freshnessLabel = 'Fresh',
+  String? freshnessReason,
   bool isDegraded = false,
   ReaderSummaryCoverageApiDto? coverage,
   bool bindPromotionAttestations = true,
@@ -90,6 +91,7 @@ ReaderSummaryApiDto readerSummaryApiDto({
     generatedAt: generatedAt ?? DateTime.utc(2026, 6, 27, 0, 15),
     sourceWindow: sourceWindow ?? summaryWindowApiDto(),
     freshnessLabel: freshnessLabel,
+    freshnessReason: freshnessReason,
     isDegraded: isDegraded,
     coverage: coverage,
   );
@@ -324,6 +326,7 @@ ReaderSummary readerSummaryWithoutTopicMap(ReaderSummary summary) {
       sourceMix: content.sourceMix,
       topReads: content.topReads,
       selectedPosts: content.selectedPosts,
+      newsWithoutRatingPosts: content.newsWithoutRatingPosts,
       claimBoard: content.claimBoard,
       reliabilityReport: content.reliabilityReport,
       trendDelta: content.trendDelta,
@@ -392,6 +395,7 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
     ),
   ],
   List<TopReadApiDto>? selectedPosts,
+  List<TopReadApiDto> newsWithoutRatingPosts = const [],
 }) {
   final primaryRead = topReads.isNotEmpty ? topReads.first : null;
   final primaryTitle = primaryRead?.title ?? 'source';
@@ -443,6 +447,7 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
         ],
     topReads: topReads,
     selectedPosts: selectedPosts ?? const [],
+    newsWithoutRatingPosts: newsWithoutRatingPosts,
     claimBoard: claimBoard,
     reliabilityReport: reliabilityReport,
     trendDelta: ReaderTrendDeltaApiDto(

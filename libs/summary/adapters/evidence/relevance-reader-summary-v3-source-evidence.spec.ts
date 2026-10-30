@@ -8,8 +8,6 @@ import type { ReaderPostPresentationV3Input } from
   "../../domain/services/reader-post-presentation-v3";
 import { clusteringEvidenceItem, evidenceItem } from
   "./relevance-reader-summary-v3-source-evidence";
-import { engagementOrContentStrengthSignalScore } from
-  "../../domain/value-objects/signal-score";
 
 const scope = { tenantId: "tenant-citation-url", workspaceId: "workspace-citation-url" };
 
@@ -31,22 +29,6 @@ describe("V3 evidence citation URL authority", () => {
       { headline: acceptedHeadline(lead) });
     expect(sealed.canonicalUrl).toBe(expected);
     expect(sealed.canonicalUrl).toBe(lead.canonicalUrl);
-  });
-
-  it("feeds the content-strength signal score from the evidence quality verdict", () => {
-    const lead = clusteringEvidenceItem(frozen("https://example.test/post/quality"),
-      presentationInput(), assessment());
-    expect(lead.providerMetricStrength).toBeUndefined();
-    expect(lead.contentQuality).toEqual(
-      expect.objectContaining({ eligibleForSummary: true }),
-    );
-    expect(lead.contentQuality!.qualityScore).toBeGreaterThan(0);
-    const sealed = evidenceItem(frozen("https://example.test/post/quality"),
-      presentationInput(), assessment(), { headline: acceptedHeadline(lead) });
-    expect(engagementOrContentStrengthSignalScore({
-      engagementStrength: sealed.providerMetricStrength,
-      contentQuality: sealed.contentQuality,
-    })).toBeGreaterThan(0);
   });
 });
 

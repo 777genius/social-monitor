@@ -1,6 +1,7 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
+  READER_PROMOTION_POLICY_STAMP,
   buildReaderSummaryCoveragePlan,
   type ReaderSummaryCoveragePlan,
   type SummaryEvidenceItem,
@@ -134,10 +135,10 @@ describe("adaptive reader summary evidence", () => {
       ...evidenceSelection(), selectedEvidence: [item],
       sourceWindow: { ...evidenceSelection().sourceWindow,
         selectedFeedItemIds: [item.feedItemId] },
-      promotionV3: { policyVersion: "reader_promotion_policy.v3", outcome: "ready",
+      promotionV3: { policyVersion: READER_PROMOTION_POLICY_STAMP, outcome: "ready",
         top: [{ candidateId: item.feedItemId,
           presentation: { status: "available", presentationInputDigest: "b".repeat(64) } } as never],
-        additional: [], excluded: [] },
+        additional: [], news: [], excluded: [] },
     };
     const plan: ReaderSummaryCoveragePlan = { ...coveragePlan(),
       lead: { ...coveragePlan().lead!, feedItemIds: [item.feedItemId] } };

@@ -13,7 +13,9 @@ const distinct = (count: number) => Array.from({ length: count }, (_, index) => 
 }));
 
 describe("bounded workspace presentation slate", () => {
-  it("selects 76 admitted stories including later HN and Reddit within 64 attempts", async () => {
+  // Without a per-network cap, 69 important X posts outrank the useful HN and
+  // Reddit posts, so the board is X only and the useful posts are not planned.
+  it("fills Top and Show more strictly in order within 64 attempts", async () => {
     const presentation = new TestPresentation();
     const fixture = workspaceSetup(distinct(76), undefined, presentation);
     const result = await fixture.subject.build({ job: fixture.job,
@@ -23,11 +25,12 @@ describe("bounded workspace presentation slate", () => {
     expect(presentation.attempted).toBeLessThanOrEqual(64);
     if (result.kind !== "ready") return;
     expect(result.evidence.promotionV3?.top.map((value) => value.candidateId))
-      .toEqual([1, 2, 3, 4, 70, 71, 72, 73, 76].map(id));
+      .toEqual(Array.from({ length: 12 }, (_, index) => id(index + 1)));
     expect(result.evidence.promotionV3?.additional.map((value) => value.candidateId))
-      .toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map(id));
-    expect(presentation.batches.flat()).toContain(id(76));
-    expect(result.evidence.selectedEvidence).toHaveLength(21);
+      .toEqual(Array.from({ length: 36 }, (_, index) => id(index + 13)));
+    expect(presentation.batches.flat()).not.toContain(id(76));
+    expect(presentation.attempted).toBe(48);
+    expect(result.evidence.selectedEvidence).toHaveLength(48);
     expect(result.evidence.selectedEvidence.every((item) =>
       item.readerHeadline?.status === "accepted")).toBe(true);
   });
@@ -40,7 +43,7 @@ describe("bounded workspace presentation slate", () => {
     return { tracked, presentation };
   };
 
-  it("continues past rejected batches to twenty-one sealed stories without repeating bindings", async () => {
+  it("continues past rejected batches to forty-eight sealed stories without repeating bindings", async () => {
     const { tracked, presentation } = withRejectedPresentations(new Set([1, 2, 3, 4].map(id)));
     const fixture = workspaceSetup(distinct(76), undefined, presentation);
     const result = await fixture.subject.build({ job: fixture.job, manifest: fixture.manifest });
@@ -48,7 +51,7 @@ describe("bounded workspace presentation slate", () => {
     expect(tracked.attempted).toBeLessThanOrEqual(64);
     expect(new Set(tracked.batches.flat()).size).toBe(tracked.attempted);
     if (result.kind !== "ready") return;
-    expect(result.evidence.selectedEvidence).toHaveLength(21);
+    expect(result.evidence.selectedEvidence).toHaveLength(48);
     expect(result.evidence.selectedEvidence.every((item) => item.readerHeadline?.status === "accepted"))
       .toBe(true);
     for (const rejectedId of [id(1), id(2), id(3), id(4)]) {

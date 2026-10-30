@@ -309,6 +309,7 @@ final class ReaderSummaryApiDto {
     this.generatedAt,
     required this.sourceWindow,
     required this.freshnessLabel,
+    this.freshnessReason,
     required this.isDegraded,
     this.coverage,
   });
@@ -327,6 +328,9 @@ final class ReaderSummaryApiDto {
   final DateTime? generatedAt;
   final SummaryWindowApiDto sourceWindow;
   final String freshnessLabel;
+
+  /// Wire reason of a stale summary, e.g. `ranking_policy_changed`.
+  final String? freshnessReason;
   final bool isDegraded;
   final ReaderSummaryCoverageApiDto? coverage;
 }

@@ -21,6 +21,8 @@ export type ReaderValueSummaryPreparationManifest = {
     readonly canonicalIdentity: string; readonly storyId?: string;
     /** Frozen provider metadata; the only carrier of observed engagement. */
     readonly providerMetadata?: JsonObject;
+    /** Frozen engagement snapshot time; `null` when never observed. */
+    readonly engagementObservedAt: string | null;
   }[];
 };
 

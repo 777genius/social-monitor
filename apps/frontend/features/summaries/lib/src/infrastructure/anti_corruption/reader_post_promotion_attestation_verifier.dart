@@ -2,14 +2,21 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import '../../domain/policies/reader_promotion_news_publisher_policy.dart';
+import '../../domain/policies/reader_promotion_ranking_policy.dart';
+import '../../domain/policies/reader_promotion_source_registry.dart';
+import '../../domain/value_objects/reader_promotion_comparator.dart';
 import '../api/summary_api_dto.dart';
 import 'reader_display_headline_verifier.dart';
+import 'reader_promotion_canonical_json.dart';
+import 'reader_promotion_comparator_schema.dart';
 
 part 'reader_post_promotion_attestation_schema.dart';
 part 'reader_post_promotion_attestation_semantics.dart';
 part 'reader_post_promotion_attestation_v2_schema.dart';
 part 'reader_post_promotion_attestation_v3_schema.dart';
 part 'reader_post_promotion_attestation_v3_assessment.dart';
+part 'reader_post_promotion_attestation_v3_comparator.dart';
 
 const readerPostPromotionAttestationSchemaV1 =
     'reader_post_promotion_attestation.v1';
@@ -23,7 +30,12 @@ const readerPostPromotionDigestVersion =
     'reader_post_promotion_digest.sha256.v2';
 const readerPostPromotionAttestationSchemaV3 =
     'reader_post_promotion_attestation.v3';
-const readerPostPromotionPolicyV3 = 'reader_post_promotion.v3';
+
+/// Meaning of the V3 promotion order (`READER_PROMOTION_POLICY_STAMP`). A V3
+/// attestation with any other stamp is rejected: the backend serves days
+/// ranked under an older stamp with empty boards and
+/// `freshness.reason = ranking_policy_changed` instead.
+const readerPromotionPolicyStamp = 'reader_promotion.2026-10-30';
 const readerPostPromotionDigestV3 = 'reader_post_promotion_digest.sha256.v3';
 
 ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
@@ -68,6 +80,7 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
   String? cardStoryClusterId,
   DateTime? cardPublishedAt,
   List<String>? cardCitationIds,
+  num? cardSignalScore,
   Object? outerProvider,
   Object? outerStoryId,
   Object? outerPublishedAt,
@@ -94,13 +107,14 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
       digestVersion == readerPostPromotionDigestVersion;
   final isV3Transport =
       schemaVersion == readerPostPromotionAttestationSchemaV3 &&
-      policyVersion == readerPostPromotionPolicyV3 &&
+      policyVersion == readerPromotionPolicyStamp &&
       digestVersion == readerPostPromotionDigestV3;
   if ((!isV1 && !isV2 && !isV3Transport) ||
       normalizedCandidateId.isEmpty ||
       normalizedCanonicalIdentity.isEmpty ||
       slot < (isV1 ? 0 : 1) ||
-      (placement != 'top' && placement != 'additional')) {
+      // "News without rating" exists only under the V3 policy stamp.
+      !{'top', 'additional', if (isV3Transport) 'news'}.contains(placement)) {
     return null;
   }
   final expectedDigest = sha256
@@ -151,6 +165,7 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
       cardStoryClusterId: cardStoryClusterId,
       cardPublishedAt: cardPublishedAt,
       cardCitationIds: cardCitationIds,
+      cardSignalScore: cardSignalScore,
       outerProvider: outerProvider,
       outerStoryId: outerStoryId,
       outerPublishedAt: outerPublishedAt,
@@ -266,74 +281,6 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
     evidenceLineage: evidenceLineage,
   );
 }
-
-bool _validV2OuterBinding(
-  Map<String, Object?> body, {
-  required String? storyClusterId,
-  required ReaderPostPromotionScoreComponentsApiDto? scoreComponents,
-  required List<String>? reasonCodes,
-  required String? candidateDigestInput,
-  required String? slateEntryDigestInput,
-  required String? slateDigestInput,
-  required String? slateDigest,
-  required ReaderPostPromotionEvidenceLineageApiDto? evidenceLineage,
-}) {
-  if (storyClusterId == null ||
-      scoreComponents == null ||
-      reasonCodes == null ||
-      candidateDigestInput == null ||
-      slateEntryDigestInput == null ||
-      slateDigestInput == null ||
-      slateDigest == null ||
-      evidenceLineage == null) {
-    return false;
-  }
-  final score = body['scoreComponents'];
-  final lineage = body['evidenceLineage'];
-  if (score is! Map<String, Object?> || lineage is! Map<String, Object?>) {
-    return false;
-  }
-  return body['storyClusterId'] == storyClusterId &&
-      body['candidateDigestInput'] == candidateDigestInput &&
-      body['slateEntryDigestInput'] == slateEntryDigestInput &&
-      body['slateDigestInput'] == slateDigestInput &&
-      body['slateDigest'] == slateDigest &&
-      _sameOrderedStrings(
-        _stringList(body['reasonCodes']) ?? const [],
-        reasonCodes,
-      ) &&
-      _scoreComponentsMatchApi(score, scoreComponents) &&
-      lineage['leadCandidateId'] == evidenceLineage.leadCandidateId &&
-      lineage['leadCitationId'] == evidenceLineage.leadCitationId &&
-      _sameOrderedStrings(
-        _stringList(lineage['supportCandidateIds']) ?? const [],
-        evidenceLineage.supportCandidateIds,
-      ) &&
-      _sameOrderedStrings(
-        _stringList(lineage['supportCitationIds']) ?? const [],
-        evidenceLineage.supportCitationIds,
-      ) &&
-      _sameOrderedStrings(
-        _stringList(lineage['citationIds']) ?? const [],
-        evidenceLineage.citationIds,
-      );
-}
-
-bool _scoreComponentsMatchApi(
-  Map<String, Object?> score,
-  ReaderPostPromotionScoreComponentsApiDto value,
-) =>
-    score['engagementSalience'] == value.engagementSalience &&
-    score['relevance'] == value.relevance &&
-    score['evidenceQuality'] == value.evidenceQuality &&
-    score['integrity'] == value.integrity &&
-    score['freshness'] == value.freshness &&
-    score['weightedEngagement'] == value.weightedEngagement &&
-    score['weightedRelevance'] == value.weightedRelevance &&
-    score['weightedEvidenceQuality'] == value.weightedEvidenceQuality &&
-    score['weightedIntegrity'] == value.weightedIntegrity &&
-    score['weightedFreshness'] == value.weightedFreshness &&
-    score['total'] == value.total;
 
 const _bodyRequiredKeys = <String>{
   'schemaVersion',

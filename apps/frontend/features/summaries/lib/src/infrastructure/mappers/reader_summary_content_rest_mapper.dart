@@ -1,10 +1,9 @@
-import 'dart:convert';
-
 import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 
 import '../api/summary_api_dto.dart';
 import 'reader_post_promotion_attestation_rest_mapper.dart';
+import 'reader_promotion_citation_binding.dart';
 import 'reader_summary_artifact_binding.dart';
 import 'reader_summary_reserved_marker.dart';
 import 'reader_summary_topic_map_rest_mapper.dart';
@@ -51,6 +50,9 @@ final class ReaderSummaryContentRestMapper {
           .map((item) => _readerItem(item, binding))
           .toList(growable: false),
       selectedPosts: dto.selectedPosts
+          .map((item) => _readerItem(item, binding))
+          .toList(growable: false),
+      newsWithoutRatingPosts: dto.newsWithoutRatingPosts
           .map((item) => _readerItem(item, binding))
           .toList(growable: false),
       claimBoard: dto.claimBoard.map(_claim).toList(growable: false),
@@ -138,7 +140,7 @@ final class ReaderSummaryContentRestMapper {
     generated.ReaderSummaryReaderItemDto dto,
     ReaderSummaryArtifactBinding binding,
   ) {
-    final attestationBinding = _promotionCitationBinding(
+    final attestationBinding = readerPromotionCitationBinding(
       dto.promotionAttestation,
       binding,
     );
@@ -197,6 +199,7 @@ final class ReaderSummaryContentRestMapper {
         cardStoryClusterId: storyClusterMarker.value,
         cardPublishedAt: dto.publishedAt,
         cardCitationIds: dto.citationIds,
+        cardSignalScore: dto.signalScore,
         enclosingArtifactId: binding.artifactId,
         enclosingSourceWindowId: binding.sourceWindowId,
         enclosingPeriodStart: binding.periodStart,
@@ -239,55 +242,6 @@ final class ReaderSummaryContentRestMapper {
       previewMedia: _previewMedia(dto.previewMedia),
       citationIds: dto.citationIds,
     );
-  }
-
-  _PromotionCitationBinding? _promotionCitationBinding(
-    generated.ReaderSummaryPromotionAttestationDto? attestation,
-    ReaderSummaryArtifactBinding binding,
-  ) {
-    if (attestation == null) return null;
-    final canonicalPayload = _canonicalAttestationPayload(
-      attestation.canonicalPayload,
-    );
-    final isV3 =
-        attestation.schemaVersion.json ==
-            'reader_post_promotion_attestation.v3' ||
-        canonicalPayload?['schemaVersion'] ==
-            'reader_post_promotion_attestation.v3';
-    if (!isV3) {
-      final citationId = attestation.evidenceLineage?.leadCitationId;
-      if (citationId == null) return null;
-      final candidateId = binding.feedItemIdsByCitation[citationId];
-      final sourceItemId = binding.sourceItemIdsByCitation[citationId];
-      return candidateId == null || sourceItemId == null
-          ? null
-          : _PromotionCitationBinding(candidateId, sourceItemId);
-    }
-    final provider = canonicalPayload?['provider'];
-    final matches = attestation.citationIds
-        .where(
-          (citationId) =>
-              binding.feedItemIdsByCitation[citationId] ==
-                  attestation.candidateId &&
-              binding.sourceItemIdsByCitation[citationId] != null &&
-              provider is String &&
-              binding.providerKeysByCitation[citationId] == provider,
-        )
-        .toList();
-    if (matches.length != 1) return null;
-    return _PromotionCitationBinding(
-      binding.feedItemIdsByCitation[matches.single]!,
-      binding.sourceItemIdsByCitation[matches.single]!,
-    );
-  }
-
-  Map<String, Object?>? _canonicalAttestationPayload(String value) {
-    try {
-      final decoded = jsonDecode(value);
-      return decoded is Map<String, Object?> ? decoded : null;
-    } on FormatException {
-      return null;
-    }
   }
 
   ReaderSummaryReservedMarker _reservedMarker(
@@ -374,8 +328,7 @@ final class ReaderSummaryContentRestMapper {
     );
   }
 
-  int _safeCount(num value) =>
-      !value.isFinite || value < 0 ? 0 : value.round();
+  int _safeCount(num value) => !value.isFinite || value < 0 ? 0 : value.round();
 
   double _safeScore(num value) =>
       !value.isFinite || value < 0 ? 0 : value.toDouble();
@@ -386,15 +339,11 @@ final class ReaderSummaryContentRestMapper {
       ? 1
       : value.toDouble();
 }
-final class _PromotionCitationBinding {
-  const _PromotionCitationBinding(this.candidateId, this.sourceItemId);
-  final String candidateId;
-  final String sourceItemId;
-}
 
 const _canonicalReaderCardKinds = {
   'curated_top_read',
   'additional_notable_story',
+  'news_without_rating',
   'related_topic',
   'supplemental_trend',
 };

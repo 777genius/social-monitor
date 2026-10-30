@@ -4,6 +4,7 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+/// Admission gate only; not an order key.
 @JsonEnum()
 enum ReaderSummaryPromotionV3ComparatorDtoRelevanceRelevance {
   @JsonValue('unrelated')

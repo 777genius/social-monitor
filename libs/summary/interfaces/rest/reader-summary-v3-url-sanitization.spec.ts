@@ -9,7 +9,7 @@ import { presentReaderSummaryArtifact } from
   "../../features/shared/reader-summary-artifact-presenter";
 import { readerSummaryArtifactViewFromReaderSummaryView } from
   "./reader-summary-rest.mapper";
-import type { ReaderPostPromotionV3Candidate } from
+import { selectReaderPostPromotionsV3, type ReaderPostPromotionV3Candidate } from
   "../../domain/policies/reader-post-promotion-v3";
 import { promotionPayloadDigest } from
   "../../domain/services/reader-post-promotion-attestation";
@@ -94,7 +94,10 @@ describe("Promotion V3 public canonical identity", () => {
       rubricSha256: "3".repeat(64),
       modelConfigVersion: "model.v1",
       answers: answers(),
-      signalScore: 0,
+      usefulness: answers().usefulness.choice,
+      relevance: answers().relevance.choice,
+      engagement: null,
+      title: lead.title,
       presentation: { status: "available", presentationInputDigest: "4".repeat(64) },
       scopeValid: true, sourceIdentityValid: true, freshnessValid: true,
       safetyValid: true, citationValid: true, blocked: false,
@@ -114,8 +117,7 @@ describe("Promotion V3 public canonical identity", () => {
       citations: [{ citationId: "citation-test", feedItemId: lead.feedItemId,
         sourceItemId: lead.sourceItemId, providerKey: lead.providerKey,
         field: "canonicalUrl", canonicalUrl: publicIdentity }],
-      promotionV3: { policyVersion: "reader_promotion_policy.v3", outcome: "ready",
-        top: [candidate], additional: [], excluded: [] },
+      promotionV3: selectReaderPostPromotionsV3([candidate]),
       attestationBinding: { artifactId: base.readerSummaryId, sourceWindow },
     });
     const card = projection.topReads[0]!;

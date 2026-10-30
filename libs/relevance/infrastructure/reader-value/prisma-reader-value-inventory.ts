@@ -19,6 +19,7 @@ type InventoryRow = {
   readonly source_updated_at: string;
   readonly title: string; readonly body: string; readonly query: string; readonly content_hash: string;
   readonly metadata: unknown; readonly provider_metadata: unknown;
+  readonly engagement_observed_at: string | null;
 };
 type InventoryIdentityRow = {
   readonly feed_item_id: string; readonly source_item_id: string;
@@ -125,11 +126,18 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
         f.source_binding_id::text AS source_binding_id,f.published_at::text AS published_at,
         f.observed_at::text AS observed_at,f.interest_id::text,s.id::text AS source_item_id,
         s.provider_key,s.canonical_url,s.title,s.body,s.content_updated_at::text AS source_updated_at,
-        i.query,s.content_hash,s.metadata,f.provider_metadata
+        i.query,s.content_hash,s.metadata,f.provider_metadata,
+        COALESCE(e.last_observed_at,f.observed_at)::text AS engagement_observed_at
         FROM requested r JOIN feed_items f ON f.id=r.feed_item_id
         JOIN source_items s ON s.tenant_id=f.tenant_id AND s.workspace_id=f.workspace_id AND s.id=f.source_item_id
           AND s.provider_key=f.provider_key AND s.id=r.source_item_id
           AND s.content_updated_at=r.source_updated_at AND s.content_hash=r.content_hash
+        -- One current snapshot per source item, read in the same statement as
+        -- provider_metadata. Without a snapshot, the feed observation time is a
+        -- lower bound: the frozen metrics were captured no earlier than it.
+        LEFT JOIN source_item_engagement_snapshots e ON e.tenant_id=s.tenant_id
+          AND e.workspace_id=s.workspace_id AND e.source_item_id=s.id
+          AND e.provider_key=s.provider_key
         JOIN interests i ON i.tenant_id=f.tenant_id AND i.workspace_id=f.workspace_id AND i.id=f.interest_id
         JOIN source_bindings b ON b.tenant_id=f.tenant_id AND b.workspace_id=f.workspace_id AND b.id=f.source_binding_id
           AND b.interest_id=f.interest_id AND b.status='ENABLED' AND b.deleted_at IS NULL
@@ -161,6 +169,8 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
           sourceUpdatedAt: canonicalPostgresTimestamp(row.source_updated_at),
           sourceRevisionKey: row.content_hash,
           metadata: metadata.kind === providerMetadata.kind ? providerMetadata : {},
+          engagementObservedAt: typeof row.engagement_observed_at === "string"
+            ? canonicalPostgresTimestamp(row.engagement_observed_at) : null,
           source: { ...scope, interestId: row.interest_id, sourceItemId: row.source_item_id,
             providerKey: row.provider_key, canonicalUrl: row.canonical_url, title: row.title, body: row.body,
             interest: row.query, ...readReaderValueCapture(metadata, row.provider_key, row.title, row.body,

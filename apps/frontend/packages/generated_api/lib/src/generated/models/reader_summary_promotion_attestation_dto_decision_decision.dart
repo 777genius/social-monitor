@@ -10,6 +10,8 @@ enum ReaderSummaryPromotionAttestationDtoDecisionDecision {
   promoteTop('promote_top'),
   @JsonValue('promote_additional')
   promoteAdditional('promote_additional'),
+  @JsonValue('promote_news')
+  promoteNews('promote_news'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);
