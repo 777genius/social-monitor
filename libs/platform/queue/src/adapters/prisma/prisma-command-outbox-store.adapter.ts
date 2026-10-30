@@ -82,6 +82,35 @@ export class PrismaCommandOutboxStoreAdapter
     );
   }
 
+  async renewClaims(params: {
+    readonly ids: readonly string[];
+    readonly leaseOwner: string;
+    readonly now: Date;
+    readonly leasedUntil: Date;
+  }): Promise<boolean> {
+    if (params.ids.length === 0) return true;
+    if (new Set(params.ids).size !== params.ids.length ||
+      params.ids.some((id) => id.trim().length === 0) ||
+      params.leasedUntil <= params.now) {
+      throw new Error('Invalid command outbox lease renewal');
+    }
+    const changed = await runWithSystemDatabaseAccess(
+      'command outbox batch lease renewal',
+      () => withPrismaWriteRetry(() => this.prisma.outboxEvent.updateMany({
+        where: {
+          id: { in: params.ids },
+          messageKind: 'COMMAND',
+          status: 'PENDING',
+          leaseOwner: params.leaseOwner,
+          leasedUntil: { gt: params.now },
+        },
+        data: { leasedUntil: params.leasedUntil },
+      })),
+    );
+    // A partial renewal is never permission to publish the remaining batch.
+    return changed.count === params.ids.length;
+  }
+
   async markPublished(params: {
     readonly id: string;
     readonly leaseOwner: string;
@@ -92,8 +121,10 @@ export class PrismaCommandOutboxStoreAdapter
       () => withPrismaWriteRetry(() => this.prisma.outboxEvent.updateMany({
         where: {
           id: params.id,
+          messageKind: 'COMMAND',
           status: 'PENDING',
           leaseOwner: params.leaseOwner,
+          leasedUntil: { gt: params.publishedAt },
         },
         data: {
           status: 'PUBLISHED',
@@ -125,8 +156,10 @@ export class PrismaCommandOutboxStoreAdapter
               const updated = await transaction.outboxEvent.updateMany({
                 where: {
                   id: params.id,
+                  messageKind: 'COMMAND',
                   status: 'PENDING',
                   leaseOwner: params.leaseOwner,
+                  leasedUntil: { gt: params.failedAt },
                 },
                 data: {
                   status: params.terminal ? 'FAILED' : 'PENDING',
