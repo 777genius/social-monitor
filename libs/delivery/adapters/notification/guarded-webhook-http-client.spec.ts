@@ -23,7 +23,7 @@ describe('GuardedWebhookHttpClient', () => {
     const fixture = installFixture({ status: 202, headers: { 'x-request-id': 'accepted-id' } });
     await expect(new GuardedWebhookHttpClient().post(input)).resolves.toEqual({ status: 202, providerMessageId: 'accepted-id' });
     expect(fixture.sent).toEqual([input.body]);
-    expect(fixture.options[0]).toMatchObject({ method: 'POST', agent: false, headers: input.headers, maxHeaderSize: 16_384 });
+    expect(fixture.options[0]).toMatchObject({ method: 'POST', agent: false, rejectUnauthorized: true, headers: input.headers, maxHeaderSize: 16_384 });
     expect(fixture.response.destroyed).toBe(true);
     expect(fixture.response.readableLength).toBe(0);
   });
@@ -53,6 +53,15 @@ describe('GuardedWebhookHttpClient', () => {
     const fixture = installFixture();
     jest.mocked(dns.lookup).mockResolvedValue(addresses as never);
     await expect(new GuardedWebhookHttpClient().post(input)).rejects.toMatchObject({ reasonCode: 'unsafe_target' });
+    expect(fixture.sent).toEqual([]);
+  });
+
+  it('refuses signed bytes when the TLS connection is not authorized', async () => {
+    const fixture = installFixture({ authorized: false });
+    await expect(new GuardedWebhookHttpClient().post(input)).rejects.toMatchObject({
+      reasonCode: 'tls_unverified', retryable: false,
+    });
+    expect(fixture.options[0]).toMatchObject({ rejectUnauthorized: true });
     expect(fixture.sent).toEqual([]);
   });
 
@@ -96,7 +105,7 @@ describe('GuardedWebhookHttpClient', () => {
   });
 });
 
-type Fixture = { status?: number; headers?: Record<string, string>; remoteAddress?: string };
+type Fixture = { status?: number; headers?: Record<string, string>; remoteAddress?: string; authorized?: boolean };
 const installFixture = (fixture: Fixture = {}) => {
   jest.mocked(dns.lookup).mockReset().mockResolvedValue([{ address: '8.8.8.8', family: 4 }] as never);
   const sent: string[] = [];
@@ -124,7 +133,9 @@ const installFixture = (fixture: Fixture = {}) => {
       const connect = (error: Error | null) => {
         if (error) { request.destroy(error); return; }
         if (destroyed) return;
-        const socket = Object.assign(new EventEmitter(), { remoteAddress: fixture.remoteAddress ?? '8.8.8.8' });
+        const socket = Object.assign(new EventEmitter(), {
+          remoteAddress: fixture.remoteAddress ?? '8.8.8.8', authorized: fixture.authorized ?? true,
+        });
         request.emit('socket', socket);
         socket.emit('connect');
         socket.emit('secureConnect');
