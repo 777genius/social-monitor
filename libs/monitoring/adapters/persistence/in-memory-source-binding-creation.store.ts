@@ -9,7 +9,7 @@ import {
   replaySourceBindingReceipt,
   validateSourceBindingCreationCommit,
 } from '../../application/source-binding-creation-decision';
-import { InMemoryInterestCreationState, monitoringInterestKey, monitoringReceiptKey } from './in-memory-interest-creation-state';
+import { monitoringInterestKey, monitoringReceiptKey, type InMemoryInterestCreationState } from './in-memory-interest-creation-state';
 
 export class InMemorySourceBindingCreationStore implements SourceBindingCreationCommitPort {
   constructor(private readonly state: InMemoryInterestCreationState) {}
