@@ -130,11 +130,31 @@ async function main(): Promise<void> {
       assert.equal(row.publish_attempts, 1);
       assert.match(row.last_error, /NO_ROUTE access_token=\[REDACTED\]/);
       assert(!row.last_error.includes('fixture-token') && row.last_error.length <= 500);
+      // Ordinary relays never mutate FAILED outcomes. This standalone SQL
+      // fixture explicitly models reviewed one-shot recovery; the real recovery
+      // CLI additionally requires its manifest, xmin lock and durable receipts.
+      await assert.rejects(outbox.recordAttempt(outboxId), /no longer pending/);
+      const recovery = new PrismaOutboxStoreAdapter(events.client, new FixedClock(base.occurredAt), 'FAILED');
       // Counter describes recorded starts, never historical total sends.
-      await outbox.recordAttempt(outboxId);
+      await recovery.recordAttempt(outboxId);
       assert.equal((await database.query('SELECT publish_attempts FROM outbox_events WHERE id=$1', [outboxId])).rows[0].publish_attempts, 2);
-      await outbox.markPublished(outboxId);
+      await recovery.markPublished(outboxId);
       assert.equal((await database.query('SELECT last_error FROM outbox_events WHERE id=$1', [outboxId])).rows[0].last_error, null);
+      await assert.rejects(recovery.markFailed(outboxId, 'stale replay'), /no longer pending/);
+      // A COMMAND sharing the same table must remain untouched by every
+      // EVENT relay mutation, including attempt accounting.
+      const commandId = randomUUID();
+      await database.query(`INSERT INTO outbox_events
+        (id, tenant_id, workspace_id, event_type, schema_version, payload, correlation_id, message_kind)
+        VALUES ($1, $2, $3, 'fixture.command', 1, $4, 'fixture', 'COMMAND')`,
+        [commandId, base.tenantId, base.workspaceId, JSON.stringify({ synthetic: true })]);
+      await assert.rejects(outbox.recordAttempt(commandId), /no longer pending/);
+      await assert.rejects(outbox.markPublished(commandId), /no longer pending/);
+      await assert.rejects(outbox.markFailed(commandId, 'wrong kind'), /no longer pending/);
+      const command = (await database.query(
+        'SELECT message_kind, status, publish_attempts, last_error FROM outbox_events WHERE id=$1', [commandId],
+      )).rows[0];
+      assert.deepEqual(command, { message_kind: 'COMMAND', status: 'PENDING', publish_attempts: 0, last_error: null });
       console.log('Reader summary delivery PostgreSQL fixture OK: atomic rollback, concurrent dedupe, restart replay, RLS isolation, diagnostics');
     } finally {
       await runtime.onApplicationShutdown('fixture complete');

@@ -129,6 +129,19 @@ class FakePrismaEventStoreClient implements PrismaEventStoreClient {
           left.id.localeCompare(right.id)
         ))
         .slice(0, args.take),
+    updateMany: async ({ where, data }) => {
+      const existing = this.outboxEvents.get(where.id);
+      if (existing === undefined || existing.messageKind !== where.messageKind ||
+        existing.status !== where.status) return { count: 0 };
+      this.outboxEvents.set(existing.id, {
+        ...existing,
+        status: data.status ?? existing.status,
+        publishAttempts: existing.publishAttempts + (data.publishAttempts?.increment ?? 0),
+        lastError: data.lastError === undefined ? existing.lastError : data.lastError,
+        publishedAt: data.publishedAt === undefined ? existing.publishedAt : data.publishedAt,
+      });
+      return { count: 1 };
+    },
     update: async (args) => {
       const existing = this.outboxEvents.get(args.where.id);
       if (!existing) {

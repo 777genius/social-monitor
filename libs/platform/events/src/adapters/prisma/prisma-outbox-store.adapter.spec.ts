@@ -15,9 +15,23 @@ function fixture() {
       publishAttempts: row.publishAttempts + (data.publishAttempts?.increment ?? 0) };
     return row;
   });
-  const client: PrismaEventStoreClient = { outboxEvent: { update, findMany: async () => [row] },
-    inboxRecord: { findUnique: async () => null, create: jest.fn() } };
-  return { row: () => row, update, store: new PrismaOutboxStoreAdapter(client, new FixedClock(row.createdAt)) };
+  const updateMany = jest.fn(async ({ where, data }: Parameters<PrismaEventStoreClient['outboxEvent']['updateMany']>[0]) => {
+    if (where.id !== row.id || row.messageKind !== where.messageKind || row.status !== where.status) {
+      return { count: 0 };
+    }
+    row = { ...row, status: data.status ?? row.status,
+      publishedAt: data.publishedAt === undefined ? row.publishedAt : data.publishedAt,
+      lastError: data.lastError === undefined ? row.lastError : data.lastError,
+      publishAttempts: row.publishAttempts + (data.publishAttempts?.increment ?? 0) };
+    return { count: 1 };
+  });
+  const client: PrismaEventStoreClient = { outboxEvent: {
+    update, updateMany, findMany: async () => row.status === 'PENDING' ? [row] : [],
+  }, inboxRecord: { findUnique: async () => null, create: jest.fn() } };
+  return { row: () => row,
+    setKind: (kind: PrismaEventOutboxRecord['messageKind']) => { row = { ...row, messageKind: kind }; },
+    updateMany, client,
+    store: new PrismaOutboxStoreAdapter(client, new FixedClock(row.createdAt)) };
 }
 
 describe('event outbox diagnostics and recorded dispatch starts', () => {
@@ -43,13 +57,66 @@ describe('event outbox diagnostics and recorded dispatch starts', () => {
 
   it('does not send when attempt persistence fails, and leaves an interrupted start explicitly uncertain', async () => {
     const f = fixture();
-    f.update.mockRejectedValueOnce(new Error('fixture persistence failure'));
+    f.updateMany.mockRejectedValueOnce(new Error('fixture persistence failure'));
     const publish = jest.fn();
     await expect(new OutboxDispatcher(f.store, { publish }).dispatchBatch(1)).rejects.toThrow();
     expect(publish).not.toHaveBeenCalled();
     await f.store.recordAttempt('fixture-event');
     expect(f.row()).toMatchObject({ publishAttempts: 1, status: 'PENDING' });
     expect(f.row().lastError).toContain('Earlier uninstrumented attempts unknown');
+  });
+
+  it('refuses to turn an event already published by another relay into FAILED', async () => {
+    const f = fixture();
+    await f.store.recordAttempt('fixture-event');
+    await f.store.markPublished('fixture-event');
+    await expect(f.store.markFailed('fixture-event', 'stale broker failure'))
+      .rejects.toThrow('no longer pending');
+    expect(f.row()).toMatchObject({ status: 'PUBLISHED', lastError: null, publishAttempts: 1 });
+    expect(f.updateMany).toHaveBeenLastCalledWith({
+      where: { id: 'fixture-event', messageKind: 'EVENT', status: 'PENDING' },
+      data: expect.objectContaining({ status: 'FAILED' }),
+    });
+  });
+
+  it('rejects stale publish confirmations, attempts and wrong message kinds', async () => {
+    const f = fixture();
+    await f.store.markFailed('fixture-event', 'broker returned');
+    await expect(f.store.markPublished('fixture-event')).rejects.toThrow('no longer pending');
+    await expect(f.store.recordAttempt('fixture-event')).rejects.toThrow('no longer pending');
+    expect(f.row()).toMatchObject({ status: 'FAILED', publishAttempts: 0 });
+
+    const g = fixture();
+    await expect(g.store.markPublished('some-other-id')).rejects.toThrow('no longer pending');
+    expect(g.row()).toMatchObject({ status: 'PENDING', publishAttempts: 0 });
+  });
+
+  it('never mutates a COMMAND row in the shared outbox table', async () => {
+    const f = fixture();
+    f.setKind('COMMAND');
+    await expect(f.store.recordAttempt('fixture-event')).rejects.toThrow('no longer pending');
+    await expect(f.store.markPublished('fixture-event')).rejects.toThrow('no longer pending');
+    await expect(f.store.markFailed('fixture-event', 'spurious event error'))
+      .rejects.toThrow('no longer pending');
+    expect(f.row()).toMatchObject({
+      messageKind: 'COMMAND', status: 'PENDING', publishAttempts: 0, lastError: null,
+    });
+  });
+
+  it('keeps manifest-authorized FAILED recovery explicit and separate from normal relay writes', async () => {
+    const f = fixture();
+    await f.store.recordAttempt('fixture-event');
+    await f.store.markFailed('fixture-event', 'synthetic broker rejected');
+    await expect(f.store.markPublished('fixture-event')).rejects.toThrow('no longer pending');
+    const recovery = new PrismaOutboxStoreAdapter(f.client, new FixedClock(f.row().createdAt), 'FAILED');
+    await recovery.recordAttempt('fixture-event');
+    await recovery.markPublished('fixture-event');
+    expect(f.row()).toMatchObject({ status: 'PUBLISHED', publishAttempts: 2, lastError: null });
+    expect(f.updateMany).toHaveBeenLastCalledWith({
+      where: { id: 'fixture-event', messageKind: 'EVENT', status: 'FAILED' },
+      data: expect.objectContaining({ status: 'PUBLISHED' }),
+    });
+    await expect(recovery.markFailed('fixture-event', 'late recovery')).rejects.toThrow('no longer pending');
   });
 
   it('does not double count when broker confirmation succeeded but acknowledgement storage failed', async () => {
