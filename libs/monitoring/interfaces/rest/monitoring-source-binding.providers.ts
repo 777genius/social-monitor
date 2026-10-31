@@ -8,6 +8,7 @@ import {
 } from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { ApplyAcceptedTopicRecommendationUseCase } from '../../features/apply-accepted-topic-recommendation/apply-accepted-topic-recommendation.use-case';
 import type { SourceBindingCreationCommitPort } from '../../application/contracts/source-binding-creation-commit';
+import type { SourceBindingStatusChangeCommitPort } from '../../application/contracts/source-binding-status-change-commit';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
 import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
@@ -36,6 +37,7 @@ import {
   MONITORING_SCAN_POLICY_REPOSITORY,
   MONITORING_SOURCE_BINDING_REPOSITORY,
   MONITORING_SOURCE_BINDING_CREATION_COMMIT,
+  MONITORING_SOURCE_BINDING_STATUS_CHANGE_COMMIT,
   MONITORING_SOURCE_CATALOG,
 } from './monitoring-provider-tokens';
 
@@ -155,22 +157,13 @@ export const monitoringSourceBindingProviders = (
   },
   {
     provide: ChangeSourceBindingStatusUseCase,
-    useFactory: (
-      bindings: SourceBindingRepositoryPort,
-      outbox: OutboxPort,
-      idempotency: IdempotencyPort,
-    ) =>
+    useFactory: (commit: SourceBindingStatusChangeCommitPort) =>
       new ChangeSourceBindingStatusUseCase(
-        bindings,
-        outbox,
-        idempotency,
+        commit,
         new CryptoIdGenerator(),
         new SystemClock(),
+        resolveMonitoringCapacityLimits(env),
       ),
-    inject: [
-      MONITORING_SOURCE_BINDING_REPOSITORY,
-      MONITORING_OUTBOX,
-      MONITORING_IDEMPOTENCY,
-    ],
+    inject: [MONITORING_SOURCE_BINDING_STATUS_CHANGE_COMMIT],
   },
 ];
