@@ -13,6 +13,8 @@ import type {
 } from "./reader-summary-execution-attestation";
 
 export const activeReaderSummaryProvider = "codex" as const;
+/** Codex subscription backend; tasks that name no modelBackend run on it. */
+export const codexReaderSummaryBackend = "openai-chatgpt" as const;
 export const activeReaderSummaryModel = "gpt-5.6-sol" as const;
 export const activeReaderSummaryReasoningEffort = "high" as const;
 export const mimoReaderSummaryBackend = "xiaomi-mimo-token-plan" as const;
@@ -40,7 +42,7 @@ export type GatewayReaderSummaryBackend =
   | typeof openRouterReaderSummaryBackend;
 
 export type ReaderSummaryGenerationBackend =
-  | "openai-chatgpt"
+  | typeof codexReaderSummaryBackend
   | typeof mimoReaderSummaryBackend
   | GatewayReaderSummaryBackend;
 

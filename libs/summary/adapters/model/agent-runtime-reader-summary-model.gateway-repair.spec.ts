@@ -65,13 +65,29 @@ describe("AgentRuntimeReaderSummaryModelAdapter on a gateway backend", () => {
     expect(client.commands).toHaveLength(2);
   });
 
-  it("leaves the CLI runtime path without hard limits or a schema repair", async () => {
-    const client = new CapturingAgentRuntimeClient(rejected(["$.headline:maxLength=160"]));
+  it("repairs Codex through the gateway the same way, without the Kimi hard limits", async () => {
+    const client = new CapturingAgentRuntimeClient([rejected(["$.headline:maxLength=160"]), completed()],
+      withTestGatewayExecutionAttestation);
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
+    const input = readerSummaryInput();
+
+    await adapter.generate(input, adapter.route(input, policy, budget));
+    expect(client.commands).toHaveLength(2);
+    expect(client.commands[1]?.systemPrompt).toContain("rejected by the output schema at: $.headline:maxLength=160.");
+    expect(client.commands.map((command) => command.systemPrompt.includes("Hard limits."))).toEqual([false, false]);
+  });
+
+  it("leaves a CLI runtime schema failure without a repair", async () => {
+    // The CLI runtime enforces the schema itself and reports no violation list.
+    const client = new CapturingAgentRuntimeClient({ status: "failed", warnings: [], failure: {
+      code: "provider_output_invalid", safeMessage: "Structured output schema rejected", retryable: false,
+      reconnectRequired: false, causeCategory: "output_schema", details: {
+        outputValidationStage: "schema_normalization", outputValidationCode: "schema_normalization_failed" } } });
     const adapter = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
     const input = readerSummaryInput();
 
     await expect(adapter.generate(input, adapter.route(input, policy, budget))).rejects.toThrow(
-      "Provider output failed structured output validation");
+      "Structured output schema rejected");
     expect(client.commands).toHaveLength(1);
     expect(client.commands[0]?.systemPrompt).not.toContain("Hard limits.");
   });

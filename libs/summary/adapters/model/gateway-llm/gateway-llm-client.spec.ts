@@ -214,6 +214,37 @@ describe("GatewayLlmClient", () => {
       .resolves.toBeUndefined();
   });
 
+  it("runs a Codex task through the gateway at effort high with an attestation the verifiers accept", async () => {
+    const codexRoute: GatewayLlmRoute = { profileId: "openai-codex-oauth-responses-v1",
+      modelBackend: "openai-chatgpt", model: "gpt-5.6-sol", reasoningEffort: "high",
+      accountRefs: [accountA, accountB], minOutputTokens: 16_384 };
+    const fake = harness({ request: async () => completedStream('{"label":"x","note":null}', "gpt-5.6-sol") },
+      "run-1", codexRoute);
+    // Exactly what the Codex adapters send: no modelBackend, the CLI effort.
+    const task = command({ purpose: activeReaderSummaryPurposes.generate,
+      controls: { model: "gpt-5.6-sol", reasoningEffort: "high", maxOutputTokens: 16_000 } });
+    const result = await fake.client.runTask(task);
+
+    expect(fake.prepares[0]).toMatchObject({ profileId: "openai-codex-oauth-responses-v1",
+      accountRefs: expect.arrayContaining([accountA, accountB]), limits: { tokens: 16_384 } });
+    expect(fake.bodies[0]).toMatchObject({ model: "gpt-5.6-sol", reasoning: { effort: "high" },
+      max_output_tokens: 16_384, text: { format: { type: "json_schema", strict: true } } });
+    expect(result.executionAttestation).toMatchObject({ provider: "codex", model: "gpt-5.6-sol",
+      reasoningEffort: "high", runtimeEngine: "gateway-llm",
+      runtimePackageVersion: approvedGatewayLlmSdkIdentity.packageVersion,
+      gateway: { profileId: "openai-codex-oauth-responses-v1", observedModel: "gpt-5.6-sol" } });
+    await expect(verifyAndRecordReaderSummaryExecution({ command: task, result, taskRole: "summary",
+      attempt: "primary", normalizedOutput: result.structuredOutput })).resolves.toBeUndefined();
+    // Gateway-only and MiMo tasks never run on the Codex route.
+    for (const controls of [{ model: "k3-256k", modelBackend: "kimi-code" },
+      { model: "gpt-5.6-sol", modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high" },
+      { model: "gpt-5.6-sol", reasoningEffort: "medium" }]) {
+      expect((await fake.client.runTask(command({ controls }))).failure)
+        .toMatchObject({ retryable: false, details: { gatewayEffect: "not_dispatched" } });
+    }
+    expect(fake.requests()).toBe(1);
+  });
+
   it("refuses tasks outside the route before any gateway call", async () => {
     const fake = harness();
     const codex = await fake.client.runTask(command({ controls: { model: "gpt-5.6-sol",

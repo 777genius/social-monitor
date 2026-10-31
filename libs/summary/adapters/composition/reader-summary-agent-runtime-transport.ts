@@ -7,10 +7,16 @@ import type { Clock } from "@social-monitor/shared-kernel";
 
 import type { AgentRuntimeClientPort } from "../../ports";
 import {
+  activeReaderSummaryModel,
+  activeReaderSummaryReasoningEffort,
+  codexReaderSummaryBackend,
   gatewayDefaultReasoningEffort,
   isGatewayReaderSummaryBackend,
   resolveGatewayReaderSummaryRoute,
+  resolveReaderSummaryGenerationIdentityFromEnv,
+  resolveReaderSummaryReasoningEffortFromEnv,
   type GatewayReaderSummaryBackend,
+  type GatewayReaderSummaryRoute,
 } from "../model/active-reader-summary-generation-profile";
 import { CooldownRotatingAccountSelector, gatewayLlmMaxAccountRefs } from
   "../model/gateway-llm/gateway-llm-account-selector";
@@ -21,15 +27,34 @@ import { approvedGatewayLlmSdkIdentity } from "../model/gateway-llm/gateway-llm-
 /** How reader-summary model tasks are executed: the CLI runtime over gRPC, or account-gateway. */
 export type ReaderSummaryAgentRuntimeTransport = "agent-runtime" | "gateway-llm";
 
-export const gatewayLlmProfileByBackend: Readonly<Record<GatewayReaderSummaryBackend, string>> =
+/**
+ * Backends the gateway serves: the gateway-only ones, and Codex, which also
+ * keeps running on the CLI runtime under AGENT_RUNTIME_TRANSPORT=agent-runtime.
+ */
+export type GatewayLlmServedBackend = GatewayReaderSummaryBackend | typeof codexReaderSummaryBackend;
+
+export const gatewayLlmProfileByBackend: Readonly<Record<GatewayLlmServedBackend, string>> =
   Object.freeze({
     "kimi-code": "kimi-code-global-responses-apikey-v1",
     openrouter: "openrouter-openai-responses-apikey-v1",
+    [codexReaderSummaryBackend]: "openai-codex-oauth-responses-v1",
   });
 /** max_output_tokens ceiling of the deployed gateway profiles. */
 export const gatewayLlmProfileMaxOutputTokens = 65_536;
 /** Room for always-on reasoning before the answer; 256 ended incomplete in the Kimi smoke. */
 export const defaultGatewayLlmMinOutputTokens = 32_768;
+/**
+ * Codex reasons at high effort before the answer too, but the product
+ * budgets (2 400 for a presentation batch) would truncate it; the CLI
+ * runtime never applied them.
+ */
+export const defaultCodexGatewayLlmMinOutputTokens = 16_384;
+const defaultMinOutputTokensByBackend: Readonly<Record<GatewayLlmServedBackend, number>> =
+  Object.freeze({
+    "kimi-code": defaultGatewayLlmMinOutputTokens,
+    openrouter: defaultGatewayLlmMinOutputTokens,
+    [codexReaderSummaryBackend]: defaultCodexGatewayLlmMinOutputTokens,
+  });
 const accountBusyCooldownMs = 60_000;
 const accountUnauthorizedCooldownMs = 15 * 60_000;
 const healthProbeTimeoutMs = 10_000;
@@ -51,9 +76,9 @@ export type GatewayLlmTransportConfig = {
 export const resolveGatewayLlmTransportConfig = (
   env: NodeJS.ProcessEnv,
 ): GatewayLlmTransportConfig => {
-  const route = resolveGatewayReaderSummaryRoute(env);
+  const route = resolveGatewayServedRoute(env);
   if (route === undefined) {
-    throw new Error("AGENT_RUNTIME_TRANSPORT=gateway-llm requires AGENT_RUNTIME_READER_SUMMARY_BACKEND=kimi-code or openrouter");
+    throw new Error(gatewayBackendMessage);
   }
   const accountRefs = [...new Set((env.AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS ?? "")
     .split(/[\s,]+/u).filter((value) => value.length > 0))];
@@ -88,27 +113,59 @@ export const resolveGatewayLlmTransportConfig = (
         : { reasoningEffort: route.reasoningEffort as LlmEffort }),
       accountRefs,
       minOutputTokens: boundedInteger(env, "AGENT_RUNTIME_GATEWAY_LLM_MAX_OUTPUT_TOKENS",
-        defaultGatewayLlmMinOutputTokens, gatewayLlmProfileMaxOutputTokens),
+        defaultMinOutputTokensByBackend[route.backend], gatewayLlmProfileMaxOutputTokens),
     },
   };
 };
 
 /**
- * Gateway-only backends never reach the CLI, and the CLI backends (Codex
- * subscription, MiMo) never reach the gateway, so a half-switched
- * configuration fails at startup instead of on the first paid task.
+ * Gateway-only backends never reach the CLI and MiMo never reaches the
+ * gateway. Codex runs on either transport, but the gateway takes it only
+ * when the backend is named explicitly, so a half-switched configuration
+ * fails at startup instead of on the first paid task.
  */
 export const assertReaderSummaryTransportBackend = (
   transport: ReaderSummaryAgentRuntimeTransport,
   env: NodeJS.ProcessEnv,
 ): void => {
-  const gatewayBackend = isGatewayReaderSummaryBackend(
-    env.AGENT_RUNTIME_READER_SUMMARY_BACKEND?.trim());
-  if (gatewayBackend !== (transport === "gateway-llm")) {
-    throw new Error(gatewayBackend
-      ? "Gateway reader summary backends require AGENT_RUNTIME_TRANSPORT=gateway-llm"
-      : "AGENT_RUNTIME_TRANSPORT=gateway-llm serves only the kimi-code and openrouter backends");
+  const backend = env.AGENT_RUNTIME_READER_SUMMARY_BACKEND?.trim();
+  const gatewayOnly = isGatewayReaderSummaryBackend(backend);
+  if (transport === "agent-runtime" && gatewayOnly) {
+    throw new Error("Gateway reader summary backends require AGENT_RUNTIME_TRANSPORT=gateway-llm");
   }
+  if (transport === "gateway-llm" && !gatewayOnly && backend !== codexReaderSummaryBackend) {
+    throw new Error(gatewayBackendMessage);
+  }
+};
+
+const gatewayBackendMessage =
+  "AGENT_RUNTIME_TRANSPORT=gateway-llm serves only AGENT_RUNTIME_READER_SUMMARY_BACKEND=kimi-code, openrouter or openai-chatgpt";
+
+type GatewayServedRoute = Omit<GatewayReaderSummaryRoute, "backend"> & {
+  readonly backend: GatewayLlmServedBackend;
+};
+
+/**
+ * The gateway route of the configured backend. Codex keeps the identity
+ * every adapter and verifier already pins for it (gpt-5.6-sol, effort
+ * high); the gateway settings may only repeat it.
+ */
+const resolveGatewayServedRoute = (env: NodeJS.ProcessEnv): GatewayServedRoute | undefined => {
+  const gatewayOnly = resolveGatewayReaderSummaryRoute(env);
+  if (gatewayOnly !== undefined) return gatewayOnly;
+  if (env.AGENT_RUNTIME_READER_SUMMARY_BACKEND?.trim() !== codexReaderSummaryBackend) return undefined;
+  const identity = resolveReaderSummaryGenerationIdentityFromEnv(env);
+  const effort = resolveReaderSummaryReasoningEffortFromEnv(env) ?? activeReaderSummaryReasoningEffort;
+  const gatewayModel = optional(env, "AGENT_RUNTIME_GATEWAY_LLM_MODEL");
+  const gatewayEffort = optional(env, "AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT");
+  if (identity.model !== activeReaderSummaryModel ||
+      (gatewayModel !== undefined && gatewayModel !== identity.model)) {
+    throw new Error(`AGENT_RUNTIME_GATEWAY_LLM_MODEL must be unset or ${activeReaderSummaryModel} for openai-chatgpt`);
+  }
+  if (gatewayEffort !== undefined && gatewayEffort !== effort) {
+    throw new Error(`AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT must be unset or ${effort} for openai-chatgpt`);
+  }
+  return { backend: codexReaderSummaryBackend, model: identity.model, reasoningEffort: effort };
 };
 
 export const createGatewayLlmAgentRuntimeClient = (
