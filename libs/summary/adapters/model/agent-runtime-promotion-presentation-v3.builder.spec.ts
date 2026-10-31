@@ -212,6 +212,29 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()])).rejects.toBeDefined();
   });
 
+  it("rejects only the candidates whose canonical proposal slips the contract", async () => {
+    const ids = [4, 5, 6, 7].map((n) => `00000000-0000-4000-8000-00000000001${n}`);
+    const inputs = ids.map((candidateId) => ({ ...fixtureInput(), candidateId }));
+    const proposal = (candidateId: string, text = "Useful database method") => ({ candidateId, status: "available",
+      kind: "claim", text, support: [{ field: "bodyPreview", start: 0, end: 7, quote: "Useful " }],
+      qualifications: [], confidence: 0.9, qualificationJudgment: "none" });
+    const client = new PresentationRuntimeClient();
+    jest.spyOn(client, "runTask").mockResolvedValueOnce({ status: "completed", warnings: [], structuredOutput: {
+      presentations: [
+        proposal(ids[0]!),
+        proposal(ids[1]!), proposal(ids[1]!),
+        // 119 code points pass the strict schema, but this is 120 UTF-16 units.
+        proposal(ids[2]!, `${"a".repeat(118)}😀`),
+        proposal("00000000-0000-4000-8000-000000000099"),
+      ] } }).mockResolvedValueOnce({ status: "completed", warnings: [], structuredOutput: { presentations: "none" } });
+    const builder = new AgentRuntimePromotionPresentationV3Builder({ client });
+
+    await expect(builder.build(inputs)).resolves.toEqual([expect.objectContaining({ status: "available" }),
+      ...ids.slice(1).map(() => ({ status: "unavailable", reason: "invalid_presentation" }))]);
+    await expect(builder.build(inputs.slice(0, 2))).resolves.toEqual(
+      [0, 1].map(() => ({ status: "unavailable", reason: "invalid_presentation" })));
+  });
+
   it("does not mask transport exceptions as invalid presentations", async () => {
     const client = new PresentationRuntimeClient();
     const failure = new Error("Transport unavailable");
