@@ -47,6 +47,13 @@ const walk = (ctx: Context, node: SchemaNode, path: string): void => {
   if (typesOf(node).includes("string") && count(node.maxLength) && !copiedValue.test(name)) {
     ctx.lines.add(`- ${path}: at most ${Math.floor(node.maxLength * promptLengthShare)} characters`);
   }
+  // Kimi never enforces number ranges, so they are spelled out exactly.
+  if (typesOf(node).some((type) => type === "number" || type === "integer") &&
+      (finite(node.minimum) || finite(node.maximum))) {
+    ctx.lines.add(`- ${path}: ${finite(node.minimum) && finite(node.maximum)
+      ? `a number from ${node.minimum} to ${node.maximum}`
+      : finite(node.minimum) ? `a number of at least ${node.minimum}` : `a number of at most ${node.maximum}`}`);
+  }
   if (typesOf(node).includes("array")) {
     if (node.maxItems === 0) {
       ctx.empty.add(path);
@@ -80,3 +87,4 @@ const typesOf = (node: SchemaNode): readonly unknown[] =>
 const isNode = (value: unknown): value is SchemaNode =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const count = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);

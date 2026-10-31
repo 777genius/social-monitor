@@ -40,6 +40,8 @@ describe("AgentRuntimeReaderSummaryModelAdapter on a gateway backend", () => {
     expect(client.commands).toHaveLength(2);
     expect(client.commands[0]?.systemPrompt).toContain("Hard limits.");
     expect(client.commands[0]?.systemPrompt).toContain("- $.topStories[].summary: at most 255 characters");
+    expect(client.commands[0]?.systemPrompt).toContain("- $.confidence.score: a number from 0 to 1");
+    expect(client.commands[0]?.systemPrompt).not.toMatch(/\$\.citationMap\[\]\.feedItemId:/u);
     expect(client.commands[1]).toMatchObject({ purpose: "social_monitor.reader_summary.repair.v2",
       metadata: expect.objectContaining({ attempt: "repair" }) });
     expect(client.commands[1]?.systemPrompt).toContain(
