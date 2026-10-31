@@ -195,10 +195,13 @@ const mapAgentRuntimeFailure = (
     failure.causeCategory,
     failure.safeMessage,
   ].join(" ").toLowerCase();
+  // The rejected schema path names the broken field in the job failure reason;
+  // it stays out of the marker so a field name cannot change the failure kind.
+  const violationPath = failure.details?.outputValidationPath;
   const message =
-    failure.safeMessage.trim().length > 0
+    (failure.safeMessage.trim().length > 0
       ? failure.safeMessage
-      : fallbackMessage;
+      : fallbackMessage) + (violationPath === undefined ? "" : ` at ${violationPath}`);
 
   if (marker.includes("rate") || marker.includes("quota")) {
     return {

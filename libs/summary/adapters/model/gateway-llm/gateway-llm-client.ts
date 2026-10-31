@@ -20,7 +20,7 @@ import type { GatewayLlmAttemptIdentity, GatewayLlmAttemptSource } from "./gatew
 import {
   gatewayLlmFailure, gatewayLlmLocalFailure, gatewayLlmModelMismatch,
 } from "./gateway-llm-failure";
-import { withExplicitValueTypes } from "./gateway-llm-output-schema";
+import { toGatewayOutputSchema } from "./gateway-llm-output-schema";
 import type { GatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 
 /**
@@ -62,6 +62,8 @@ type Prepared = {
   readonly route: GatewayLlmRoute;
   readonly reasoningEffort: string;
   readonly structured: boolean;
+  /** Where the last decoded output broke the schema, as a safe path:keyword. */
+  readonly outputViolation: () => string | undefined;
 };
 
 /**
@@ -102,7 +104,8 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
         (retry.kind === "new_attempt" && !retry.mayDuplicateCost);
       if (!replay || retries >= this.maxRetries || options?.signal?.aborted === true ||
           remainingMs <= afterMs) {
-        return failed(gatewayLlmFailure(result, identity), now.getTime() - startedAt);
+        return failed(gatewayLlmFailure(result, identity, prepared.outputViolation()),
+          now.getTime() - startedAt);
       }
       await this.options.sleep(afterMs, options?.signal);
       if (retry.kind === "new_attempt") {
@@ -147,14 +150,23 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
     const structured = Object.keys(command.outputSchema).length > 0;
     let output: PreparedTask["output"] = { mode: "text" };
     let decode: PreparedTask["decode"];
+    let violation: string | undefined;
     if (structured) {
       // Strict providers need every property required and objects closed;
       // decode strips the added nulls and validates the original schema, so
       // a provider that ignores the schema still cannot pass invalid output.
       try {
-        const strict = prepareStrictJsonSchema(withExplicitValueTypes(command.outputSchema));
+        const strict = prepareStrictJsonSchema(toGatewayOutputSchema(command.outputSchema));
         output = { mode: "json_schema", schema: strict.schema, strict: true };
-        decode = (value) => objectOutput(strict.decode(value));
+        decode = (value) => {
+          violation = undefined;
+          try {
+            return objectOutput(strict.decode(value));
+          } catch (error) {
+            violation = error instanceof LlmSchemaError ? error.detail : "not_an_object";
+            throw error;
+          }
+        };
       } catch (error) {
         if (!(error instanceof LlmSchemaError)) throw error;
         return { failure: gatewayLlmLocalFailure("invalid_schema",
@@ -165,6 +177,7 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
     return {
       route,
       structured,
+      outputViolation: () => violation,
       reasoningEffort: route.reasoningEffort ?? gatewayDefaultReasoningEffort,
       task: {
         profileId: route.profileId,
