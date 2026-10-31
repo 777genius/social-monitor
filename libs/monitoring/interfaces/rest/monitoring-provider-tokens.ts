@@ -2,6 +2,7 @@ import type { Provider } from '@nestjs/common';
 import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
 import type { InterestCreationCommitPort } from '../../application/contracts/interest-creation-commit';
 import type { SourceBindingCreationCommitPort } from '../../application/contracts/source-binding-creation-commit';
+import type { SourceBindingStatusChangeCommitPort } from '../../application/contracts/source-binding-status-change-commit';
 
 import type {
   IdempotencyPort,
@@ -33,6 +34,7 @@ export const MONITORING_INTEREST_REPOSITORY = Symbol('MONITORING_INTEREST_REPOSI
 export const MONITORING_INTEREST_CREATION_COMMIT = Symbol('MONITORING_INTEREST_CREATION_COMMIT');
 export const MONITORING_SOURCE_BINDING_REPOSITORY = Symbol('MONITORING_SOURCE_BINDING_REPOSITORY');
 export const MONITORING_SOURCE_BINDING_CREATION_COMMIT = Symbol('MONITORING_SOURCE_BINDING_CREATION_COMMIT');
+export const MONITORING_SOURCE_BINDING_STATUS_CHANGE_COMMIT = Symbol('MONITORING_SOURCE_BINDING_STATUS_CHANGE_COMMIT');
 export const MONITORING_SCAN_POLICY_REPOSITORY = Symbol('MONITORING_SCAN_POLICY_REPOSITORY');
 export const MONITORING_SCAN_JOB_REPOSITORY = Symbol('MONITORING_SCAN_JOB_REPOSITORY');
 export const MONITORING_SCAN_DISPATCH = Symbol('MONITORING_SCAN_DISPATCH');
@@ -58,6 +60,7 @@ export type MonitoringProviderTokenMap = {
   readonly [MONITORING_INTEREST_CREATION_COMMIT]: InterestCreationCommitPort;
   readonly [MONITORING_SOURCE_BINDING_REPOSITORY]: SourceBindingRepositoryPort;
   readonly [MONITORING_SOURCE_BINDING_CREATION_COMMIT]: SourceBindingCreationCommitPort;
+  readonly [MONITORING_SOURCE_BINDING_STATUS_CHANGE_COMMIT]: SourceBindingStatusChangeCommitPort;
   readonly [MONITORING_SCAN_POLICY_REPOSITORY]: ScanPolicyRepositoryPort;
   readonly [MONITORING_SCAN_JOB_REPOSITORY]: ScanJobRepositoryPort & ScanJobOutcomeRepositoryPort;
   readonly [MONITORING_SCAN_DISPATCH]: ScanDispatchPort;
