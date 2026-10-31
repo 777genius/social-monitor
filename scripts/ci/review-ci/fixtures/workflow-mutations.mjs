@@ -1,5 +1,10 @@
 // Each label states the CI regression the mutated workflow must reject.
 export const unitMutations = [
+  // Regression: drafts run only the light lane; ready_for_review must still start the heavy jobs.
+  ['heavy shards run on draft pull requests', (w) => delete w.jobs.backend_unit_shards.if],
+  ['heavy build runs on draft pull requests', (w) => delete w.jobs.backend_build_contracts.if],
+  ['aggregate ignores the draft gate', (w) => w.jobs.backend_unit.if = 'always() && !cancelled()'],
+  ['ready_for_review does not trigger CI', (w) => w.on.pull_request = null],
   // Regression: optimization flags must not suppress lifecycle scripts or
   // weaken the standalone audit; concurrency stays a shard2-only experiment.
   ['unit install drops offline preference', (w) => replaceRun(w, 'backend_unit_shards', ' --prefer-offline', '')],
@@ -84,6 +89,8 @@ function replaceRun(workflow, id, before, after) {
 }
 
 export const coverageMutations = [
+  ['draft coverage scope omitted', (w) => delete w.jobs.coverage_scope],
+  ['preflight ignores the draft scope', (w) => w.jobs.coverage_artifacts.if = "github.event.workflow_run.conclusion == 'success'"],
   ['metadata preflight omitted', (w) => delete w.jobs.coverage_artifacts],
   ['metadata preflight bypassed', (w) => delete w.jobs.backend_unit_coverage.needs],
   ['failed-run metadata accepted', (w) => delete w.jobs.coverage_artifacts.if],

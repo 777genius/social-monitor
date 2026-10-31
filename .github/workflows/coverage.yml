@@ -12,9 +12,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  coverage_scope:
+    name: Coverage scope
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      ready: ${{ steps.scope.outputs.ready }}
+    steps:
+      - name: Skip coverage when the tested run skipped every unit shard
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          # Draft pull requests skip the heavy unit shards; their runs have no coverage to upload.
+          conclusions="$(gh api --paginate "/repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" --jq '.jobs[] | select(.name | startswith("Backend unit shard")) | .conclusion')"
+          ready=true
+          if [ -n "$conclusions" ] && [ -z "$(printf '%s\n' "$conclusions" | grep -v '^skipped$' || true)" ]; then
+            ready=false
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+
   coverage_artifacts:
     name: Coverage artifact completeness
-    if: github.event.workflow_run.conclusion == 'success'
+    needs: coverage_scope
+    if: github.event.workflow_run.conclusion == 'success' && needs.coverage_scope.outputs.ready == 'true'
     runs-on: ubuntu-slim
     timeout-minutes: 5
     permissions:

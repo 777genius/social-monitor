@@ -1,6 +1,7 @@
 # Canonical independent candidate/lifecycle graph and required fail-closed aggregate.
 production_candidate:
   name: Production immutable candidate
+  if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
   runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
   timeout-minutes: 45
   permissions:
@@ -60,6 +61,7 @@ production_candidate:
 
 production_lifecycle:
   name: Production deploy lifecycle fixtures
+  if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
   runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
   timeout-minutes: 45
   permissions:
@@ -86,7 +88,7 @@ production_lifecycle:
 production_runtime:
   name: Production container and deploy lifecycle
   needs: [production_candidate, production_lifecycle]
-  if: always() && !cancelled()
+  if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
   runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
   timeout-minutes: 5
   permissions:
