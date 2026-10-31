@@ -20,6 +20,7 @@ import type { GatewayLlmAttemptIdentity, GatewayLlmAttemptSource } from "./gatew
 import {
   gatewayLlmFailure, gatewayLlmLocalFailure, gatewayLlmModelMismatch,
 } from "./gateway-llm-failure";
+import { withExplicitValueTypes } from "./gateway-llm-output-schema";
 import type { GatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 
 /**
@@ -151,7 +152,7 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
       // decode strips the added nulls and validates the original schema, so
       // a provider that ignores the schema still cannot pass invalid output.
       try {
-        const strict = prepareStrictJsonSchema(command.outputSchema);
+        const strict = prepareStrictJsonSchema(withExplicitValueTypes(command.outputSchema));
         output = { mode: "json_schema", schema: strict.schema, strict: true };
         decode = (value) => objectOutput(strict.decode(value));
       } catch (error) {
