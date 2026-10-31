@@ -8,6 +8,7 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import type { AgentRuntimeTaskCommand, ReaderSummaryTopicLabelerInput } from "../../../ports";
 import { activeReaderSummaryPurposes } from "../active-reader-summary-generation-profile";
+import { readAgentRuntimeObjectOutput } from "../agent-runtime-model-support";
 import {
   AgentRuntimeReaderSummaryTopicLabeler,
   resolveAgentRuntimeReaderSummaryTopicLabelerOptions,
@@ -254,14 +255,18 @@ describe("GatewayLlmClient", () => {
   });
 
   it("degrades output outside the product schema like a CLI schema normalization failure", async () => {
-    for (const text of ["not json", '{"label":7,"note":null}']) {
+    for (const [text, path] of [["not json", "json_parse_or_empty"], ['{"label":7,"note":null}', "$.label:type"],
+      ['{"label":"x","note":null,"invented key":1}', "unclassified"]] as const) {
       const fake = harness({ request: async () => completedStream(text) });
       const result = await fake.client.runTask(command());
 
       expect(result.failure).toMatchObject({ code: "provider_output_invalid", details: {
         outputValidationStage: "schema_normalization",
-        outputValidationCode: "schema_normalization_failed" } });
+        outputValidationCode: "schema_normalization_failed", outputValidationPath: path } });
       expect(fake.requests()).toBe(1);
+      // The job failure reason names the broken field, never the output.
+      expect(() => readAgentRuntimeObjectOutput(result, JSON.parse, "Reader summary"))
+        .toThrow(`Provider output failed structured output validation at ${path}`);
     }
   });
 

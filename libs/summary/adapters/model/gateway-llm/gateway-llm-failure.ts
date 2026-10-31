@@ -52,6 +52,8 @@ const failureShapes: Readonly<Record<LlmFailureCode, FailureShape>> = {
 export const gatewayLlmFailure = (
   failure: LlmFailure,
   identity: GatewayLlmAttemptIdentity,
+  /** Strict-decode path:keyword of rejected output; undefined if decode never ran. */
+  outputViolation?: string,
 ): AgentRuntimeFailure => {
   const shape = failureShapes[failure.code];
   const retry = failure.retry;
@@ -63,6 +65,8 @@ export const gatewayLlmFailure = (
     causeCategory: shape.causeCategory,
     details: {
       ...shape.details,
+      ...(failure.code === "output_invalid"
+        ? { outputValidationPath: safeOutputViolation(outputViolation) } : {}),
       gatewayCode: failure.code,
       gatewayEffect: failure.effect,
       gatewayRetry: retry.kind,
@@ -81,6 +85,15 @@ export const gatewayLlmFailure = (
     },
   };
 };
+
+/**
+ * A schema path and keyword only, never output text. Keys the model invented
+ * can appear in the path, so anything outside a plain path shape is dropped.
+ * Without a decode the text was empty or not JSON.
+ */
+const safeOutputViolation = (violation: string | undefined): string =>
+  violation === undefined ? "json_parse_or_empty"
+    : /^\$[A-Za-z0-9_.[\]]{0,160}:[A-Za-z_]{1,32}$/u.test(violation) ? violation : "unclassified";
 
 /**
  * The paid output is discarded: an attestation must never bind a model the
