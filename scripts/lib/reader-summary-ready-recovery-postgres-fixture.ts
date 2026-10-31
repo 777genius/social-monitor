@@ -6,6 +6,8 @@ import type { RecoverySnapshot } from './reader-summary-ready-recovery-evidence'
 const baseline = () => readFileSync('prisma/migrations/20260618143000_baseline/migration.sql', 'utf8');
 const publication = () => readFileSync('prisma/migrations/20260716170000_reader_summary_fail_closed_publication/migration.sql', 'utf8');
 const evidence = () => readFileSync('prisma/migrations/20260724020000_reader_summary_weekly_publication_evidence/migration.sql', 'utf8');
+const assessment = () => readFileSync('prisma/migrations/20260920120000_reader_value_assessments/migration.sql', 'utf8');
+const preparation = () => readFileSync('prisma/migrations/20260921120000_reader_summary_jev_v3_preparation/migration.sql', 'utf8');
 const required = (sql: string, pattern: RegExp): string => {
   const value = sql.match(pattern)?.[0];
   if (!value) throw new Error(`Recovery fixture migration definition missing: ${pattern.source}`);
@@ -20,7 +22,13 @@ export function recoveryFixtureSchema(): readonly string[] {
   return [required(baseline(), /CREATE TYPE "SummaryStatus"[^;]+;/), ...tables.flatMap(([sql, table]) => [
     required(sql!, new RegExp(`CREATE TABLE "${table}" \\([\\s\\S]*?\\n\\);`)),
     ...Array.from(sql!.matchAll(new RegExp(`CREATE (?:UNIQUE )?INDEX [^;]+\\sON\\s+"${table}"[^;]+;`, 'g')), match => match[0]),
-  ])];
+  ]),
+    // The native recovery fixture intentionally starts with baseline tables.
+    // Import the exact later column DDL used by the current Prisma relation
+    // reader rather than silently omitting production job fields.
+    required(assessment(), /ALTER TABLE "reader_summary_jobs" ADD COLUMN "terminal_failure_code" TEXT;/),
+    required(preparation(), /ALTER TABLE "reader_summary_jobs"\s+ADD COLUMN "selection_strategy"[\s\S]*?;/),
+  ];
 }
 export async function seedRecoveryPostgres(database: Pool, snapshots: readonly RecoverySnapshot[]): Promise<void> {
   for (const sql of recoveryFixtureSchema()) await database.query(sql);
