@@ -441,6 +441,22 @@ jobs:
           npm run check:delivery-workflow-postgres
           npm run check:interest-creation-postgres
 
+      # Dedicated native fixture coverage for EVENT PENDING-only settlement and
+      # the manifest/xmin-protected FAILED reader_summary.ready recovery path.
+      # No live broker, deployment or persistent database is involved.
+      - name: Prove EVENT outbox fencing and one-shot recovery on native PostgreSQL
+        env:
+          READER_DELIVERY_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_rls_ci
+          NODE_ENV: test
+          TS_NODE_TRANSPILE_ONLY: 'true'
+          TS_NODE_COMPILER_OPTIONS: '{"rootDir":"."}'
+        run: |
+          set -euo pipefail
+          mkdir -p .cache/event-recovery-ci/native-tmp
+          chmod 700 .cache/event-recovery-ci/native-tmp
+          npm run check:reader-summary-ready-delivery-postgres
+          TMPDIR="$PWD/.cache/event-recovery-ci/native-tmp" npm run check:reader-summary-ready-recovery-postgres
+
   reader_promotion_v2_canary_postgres18:
     name: Reader Promotion V2 canary PostgreSQL 18
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
