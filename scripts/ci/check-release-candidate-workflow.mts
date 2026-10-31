@@ -11,6 +11,7 @@ const { CORE_SCHEMA, load } = require('js-yaml') as {
   load(source: string, options: { schema: object; json: false }): unknown;
 };
 const CI_VM_RUNNER = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}";
+const READY_GATE = "github.event_name != 'pull_request' || github.event.pull_request.draft == false";
 const WORKFLOW = '.github/workflows/pull-request.yml';
 const FRAGMENT = 'ops/ci/release-candidate-job.yml';
 const CHECKOUT = 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10';
@@ -75,7 +76,8 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
     const expected = reviewed;
     if (!mapping(job) || !isDeepStrictEqual(job, expected) ||
         !onlyKeys(job, ['name', 'runs-on', 'timeout-minutes', 'permissions', 'steps',
-          ...(id === 'production_runtime' ? ['needs', 'if'] : [])]) ||
+          'if', ...(id === 'production_runtime' ? ['needs'] : [])]) ||
+        job.if !== (id === 'production_runtime' ? `always() && !cancelled() && (${READY_GATE})` : READY_GATE) ||
         job['runs-on'] !== CI_VM_RUNNER ||
         job['timeout-minutes'] !== (id === 'production_runtime' ? 5 : 45) ||
         !isDeepStrictEqual(job.permissions, { contents: 'read' }) ||
@@ -94,7 +96,7 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
       !run(lifecycleSteps[2], ['set -euo pipefail', ...GATES].join('\n')) ||
       aggregate.name !== 'Production container and deploy lifecycle' ||
       !isDeepStrictEqual(aggregate.needs, ['production_candidate', 'production_lifecycle']) ||
-      aggregate.if !== 'always() && !cancelled()' || aggregateSteps.length !== 1 ||
+      aggregateSteps.length !== 1 ||
       !run(aggregateSteps[0], ['set -euo pipefail',
         'test "${{ needs.production_candidate.result }}" = "success"',
         'test "${{ needs.production_lifecycle.result }}" = "success"'].join('\n'))) return fail;

@@ -51,7 +51,8 @@ function jobChecks(job, id, expectedName, expectedSteps, errors, extra = [], req
   }
   job.steps.forEach((step, index) => {
     const expected = expectedSteps[index];
-    if (!keys(step, ['name', ...(expected.run ? ['run'] : ['uses', 'with']), ...(expected.env ? ['env'] : [])])) {
+    if (!keys(step, ['name', ...(expected.id ? ['id'] : []), ...(expected.run ? ['run'] : ['uses', 'with']), ...(expected.env ? ['env'] : [])]) ||
+        step.id !== expected.id) {
       reject(`step ${index + 1}: conditional, masking or unknown step key`);
     } else if (!equal(step.env, expected.env)) {
       reject(`step ${index + 1}: scoped trusted workflow inputs required`);
@@ -133,6 +134,17 @@ const coverageMetadataProof = [
   "        .workflow_run.id == $run_id and .workflow_run.head_sha == $head_sha)))",
   "' artifact-pages.json",
 ].join('\n');
+const coverageScopeProof = [
+  'set -euo pipefail',
+  'ready=true',
+  'if [ "$RUN_EVENT" = pull_request ] && [ -n "$PR_NUMBER" ]; then',
+  '  draft="$(gh api "/repos/$GH_REPO/pulls/$PR_NUMBER" --jq \'.draft\')"',
+  '  if [ "$draft" = true ]; then',
+  '    ready=false',
+  '  fi',
+  'fi',
+  'echo "ready=$ready" >> "$GITHUB_OUTPUT"',
+].join('\n');
 const coverageProof = [
   'set -euo pipefail',
   'shopt -s nullglob dotglob',
@@ -150,6 +162,9 @@ const coverageProof = [
   'test -s "$directory/lcov.info"',
 ].join('\n');
 const matrix = { 'fail-fast': false, matrix: { shard: [1, 2, 3, 4, 5, 6] } };
+// Draft pull requests run only the light lane; heavy jobs wait for ready_for_review.
+export const readyGate = "github.event_name != 'pull_request' || github.event.pull_request.draft == false";
+export const prTypes = ['opened', 'synchronize', 'reopened', 'ready_for_review'];
 
 export function backendUnitShardingViolations(source) {
   let workflow;
@@ -157,7 +172,7 @@ export function backendUnitShardingViolations(source) {
   const errors = [];
   if (!record(workflow)) return ['pull-request.yml: workflow must be a mapping'];
   if (workflow.name !== 'Pull request checks' || !equal(workflow.on, {
-    push: { branches: ['main'] }, pull_request: null, merge_group: null, workflow_dispatch: null,
+    push: { branches: ['main'] }, pull_request: { types: prTypes }, merge_group: null, workflow_dispatch: null,
   })) errors.push('pull-request.yml: full push-main, PR, merge-group and dispatch triggers required');
   if (!equal(workflow.concurrency, {
     group: "pull-request-checks-${{ github.event_name }}-${{ (github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group') && (github.event.pull_request.number || github.ref) || github.run_id }}",
@@ -186,19 +201,21 @@ export function backendUnitShardingViolations(source) {
     { run: `set -euo pipefail\n${ignore}\n# Provisional shard2 pilot; keep all other executions serial.\nunit_workers=(--runInBand)\nif [ "${shard}" = 2 ]; then\n  unit_workers=(--maxWorkers=2)\nfi\n${jest} "\${unit_workers[@]}" --shard=${shard}/6 ${selector} --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json` },
     { uses: upload, with: { name: `backend-unit-report-${shard}`, path: 'reports/*.json', 'if-no-files-found': 'error', 'retention-days': 1 } },
     { uses: upload, with: { name: `backend-unit-coverage-${shard}`, path: 'coverage/lcov.info', 'if-no-files-found': 'error', 'retention-days': 1 } },
-  ], errors, ['strategy'], 60);
+  ], errors, ['strategy', 'if'], 60);
+  if (jobs.backend_unit_shards?.if !== readyGate) errors.push('backend_unit_shards: heavy shards must be skipped for draft pull requests');
   if (!equal(jobs.backend_unit_shards?.strategy, matrix)) errors.push('backend_unit_shards: all six shards with one consistent denominator required');
   jobChecks(jobs.backend_build_contracts, 'backend_build_contracts', 'Backend build and sandbox contracts', [
     ...setup(true),
     { run: 'npm run check:reader-paired-experiment' }, { run: 'npm run build' },
     { run: 'npm run check:subscription-runtime-auth-pool-e2e' },
     { run: 'npm run check:subscription-runtime-usage-contract' }, { run: canary },
-  ], errors);
+  ], errors, ['if']);
+  if (jobs.backend_build_contracts?.if !== readyGate) errors.push('backend_build_contracts: heavy build must be skipped for draft pull requests');
   // The manifest assigns the selected canary Jest contract to this build job;
   // it is excluded from both unit discovery and execution, and runs once.
   const needs = ['backend_unit_shards', 'backend_build_contracts'];
   const aggregate = jobs.backend_unit;
-  if (!equal(aggregate?.needs, needs) || !['always() && !cancelled()', '${{ always() && !cancelled() }}'].includes(aggregate?.if)) {
+  if (!equal(aggregate?.needs, needs) || aggregate?.if !== `always() && !cancelled() && (${readyGate})`) {
     errors.push('backend_unit: failure aggregate must depend on every backend command and stop after cancellation');
   }
   jobChecks(aggregate, 'backend_unit', 'Backend build and unit tests', [
@@ -236,16 +253,25 @@ export function coverageWorkflowViolations(source) {
         workflow_run: { workflows: ['Pull request checks'], types: ['completed'] },
       }) || !equal(workflow.permissions, {}) || !equal(workflow.concurrency, {
         group: '${{ github.workflow }}-${{ github.event.workflow_run.id }}', 'cancel-in-progress': false,
-      }) || !equal(Object.keys(workflow.jobs ?? {}), ['coverage_artifacts', 'backend_unit_coverage'])) {
+      }) || !equal(Object.keys(workflow.jobs ?? {}), ['coverage_scope', 'coverage_artifacts', 'backend_unit_coverage'])) {
     errors.push('coverage.yml: workflow_run data-only uploader with no global write authority required');
   }
+  const scope = workflow?.jobs?.coverage_scope;
+  if (scope?.if !== "github.event.workflow_run.conclusion == 'success'" ||
+      !equal(scope?.permissions, { 'pull-requests': 'read' }) ||
+      !equal(scope?.outputs, { ready: '${{ steps.scope.outputs.ready }}' })) errors.push('coverage.yml: read-only draft scope gate required');
+  jobChecks(scope, 'coverage_scope', 'Coverage scope', [
+    { id: 'scope', run: coverageScopeProof, env: { GH_TOKEN: '${{ github.token }}', GH_REPO: '${{ github.repository }}',
+      RUN_EVENT: '${{ github.event.workflow_run.event }}', PR_NUMBER: '${{ github.event.workflow_run.pull_requests[0].number }}' } },
+  ], errors, ['if', 'permissions', 'outputs'], 5, 'ubuntu-slim');
   const preflight = workflow?.jobs?.coverage_artifacts;
-  if (preflight?.if !== "github.event.workflow_run.conclusion == 'success'" ||
+  if (preflight?.if !== "github.event.workflow_run.conclusion == 'success' && needs.coverage_scope.outputs.ready == 'true'" ||
+      preflight?.needs !== 'coverage_scope' ||
       !equal(preflight?.permissions, { actions: 'read' })) errors.push('coverage.yml: success-only read-only metadata preflight required');
   jobChecks(preflight, 'coverage_artifacts', 'Coverage artifact completeness', [
     { run: coverageMetadataProof, env: { GH_TOKEN: '${{ github.token }}', GH_REPO: '${{ github.repository }}',
       RUN_ID: '${{ github.event.workflow_run.id }}', HEAD_SHA: '${{ github.event.workflow_run.head_sha }}' } },
-  ], errors, ['if', 'permissions'], 5, 'ubuntu-slim');
+  ], errors, ['if', 'needs', 'permissions'], 5, 'ubuntu-slim');
   const job = workflow?.jobs?.backend_unit_coverage;
   if (job?.if !== "github.event.workflow_run.conclusion == 'success'" ||
       !equal(job?.permissions, { actions: 'read', contents: 'read', 'id-token': 'write' }) ||
