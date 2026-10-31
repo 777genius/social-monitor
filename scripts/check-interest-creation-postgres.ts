@@ -321,8 +321,8 @@ async function main(url: string): Promise<void> {
     const rows = await bindingRows();
     assert.deepEqual(rows[0]!.config.secret, { encrypted: true, ciphertext: 'fixture-ciphertext' });
     const originalReceipts = await bindingReceipts();
-    const replay = await bindingStore.commit(bindingInput('wrong-channel', 'first-binding', 1));
-    assert(replay.ok && !replay.value.created && replay.value.sourceBindingId === first.value.sourceBindingId);
+    const bindingReplay = await bindingStore.commit(bindingInput('wrong-channel', 'first-binding', 1));
+    assert(bindingReplay.ok && !bindingReplay.value.created && bindingReplay.value.sourceBindingId === first.value.sourceBindingId);
     assert.deepEqual(await bindingReceipts(), originalReceipts, 'First-key binding receipt must be immutable');
 
     const canonicalDuplicate = await bindingStore.commit(bindingInput('first-channel', 'other-key', 1));
