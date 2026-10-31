@@ -19,23 +19,22 @@ export class InMemoryOutboxStore implements OutboxStorePort {
 
   async recordAttempt(id: string): Promise<void> {
     const record = this.records.get(id);
-    if (!record) throw new Error('Outbox record is missing');
+    if (record?.status !== 'pending') throw new Error('Event outbox record is no longer pending');
     this.records.set(id, { ...record, publishAttempts: record.publishAttempts + 1,
       lastError: 'Dispatch started; outcome unknown. Earlier uninstrumented attempts unknown.' });
   }
 
   async markPublished(id: string): Promise<void> {
     const record = this.records.get(id);
-    if (record) {
-      this.records.set(id, { ...record, status: 'published', lastError: null });
-    }
+    if (record?.status !== 'pending') throw new Error('Event outbox record is no longer pending');
+    this.records.set(id, { ...record, status: 'published', lastError: null });
   }
 
   async markFailed(id: string, reason: string): Promise<void> {
     const record = this.records.get(id);
-    if (record) {
-      this.records.set(id, { ...record, status: 'failed', lastError: redactSensitiveResponseText(reason).replace(/[\r\n\t]/g, ' ') });
-    }
+    if (record?.status !== 'pending') throw new Error('Event outbox record is no longer pending');
+    this.records.set(id, { ...record, status: 'failed',
+      lastError: redactSensitiveResponseText(reason).replace(/[\r\n\t]/g, ' ').slice(0, 500) });
   }
 }
 
