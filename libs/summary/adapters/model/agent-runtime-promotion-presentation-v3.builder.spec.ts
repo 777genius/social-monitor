@@ -1,3 +1,6 @@
+import type { LlmEffect, LlmFailureCode } from "@agent-teams/account-gateway/llm";
+
+import { gatewayLlmFailure } from "./gateway-llm/gateway-llm-failure";
 import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../ports";
 import {
@@ -383,6 +386,49 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       expect(client.commands[0]?.outputSchema).toMatchObject({ required: ["contractVersion", "presentations"] });
       expect(client.commands[0]?.systemPrompt).not.toContain(inputs[0]!.trustedIntent);
     });
+
+  // Exactly what GatewayLlmClient returns for these gateway outcomes.
+  const gatewayFailure = (code: LlmFailureCode, effect: LlmEffect): AgentRuntimeTaskResult => ({
+    status: "failed", warnings: [], durationMs: 18_000, failure: gatewayLlmFailure({ ok: false, code, effect,
+      retry: code === "busy" ? { kind: "new_attempt", afterMs: 60_000, mayDuplicateCost: false }
+        : { kind: "new_attempt", afterMs: 0, mayDuplicateCost: true },
+      execution: null, usage: null, cleanup: "closed" }, { taskId: "sm-task", attempt: 1 }) });
+  const gatewayPresentation = (command: AgentRuntimeTaskCommand): AgentRuntimeTaskResult => {
+    const options = JSON.parse(command.systemPrompt.split("\nSOURCE_REFERENCE_COPY_OPTIONS=")[1]!) as
+      { candidateId: string; references: Record<string, unknown>[] }[];
+    return { status: "completed", warnings: [], structuredOutput: { contractVersion: "mimo_qualified_headline.v1",
+      presentations: options.map(option => ({ candidateId: option.candidateId, status: "available", kind: "claim",
+        baseHeadline: "Useful database method", support: [option.references[0]], qualifications: [],
+        confidence: 0.9 })) } };
+  };
+
+  it.each([["effect_unknown", "effect_unknown"], ["provider_failed", "response_started"],
+    ["output_lost", "effect_unknown"]] as const)(
+    "retries a Kimi batch once after a gateway %s and skips it only if that repeats", async (code, effect) => {
+      const kimi = { modelBackend: "kimi-code", model: "k3-256k" } as const;
+      const recovering = new PresentationRuntimeClient();
+      jest.spyOn(recovering, "runTask").mockResolvedValueOnce(gatewayFailure(code, effect))
+        .mockImplementationOnce(async command => gatewayPresentation(command));
+      await expect(new AgentRuntimePromotionPresentationV3Builder({ client: recovering, ...kimi })
+        .build([fixtureInput()])).resolves.toEqual([expect.objectContaining({ status: "available" })]);
+      expect(recovering.runTask).toHaveBeenCalledTimes(2);
+
+      const failing = new PresentationRuntimeClient();
+      const failure = gatewayFailure(code, effect);
+      jest.spyOn(failing, "runTask").mockResolvedValue(failure);
+      await expect(new AgentRuntimePromotionPresentationV3Builder({ client: failing, ...kimi })
+        .build([fixtureInput()])).resolves.toEqual([{ status: "unavailable", reason: "runtime_failure",
+        runtimeFailure: { code: failure.failure!.code, causeCategory: failure.failure!.causeCategory } }]);
+      expect(failing.runTask).toHaveBeenCalledTimes(2);
+    });
+
+  it("keeps a busy Kimi account fatal for the run without retrying", async () => {
+    const client = new PresentationRuntimeClient();
+    jest.spyOn(client, "runTask").mockResolvedValue(gatewayFailure("busy", "not_dispatched"));
+    await expect(new AgentRuntimePromotionPresentationV3Builder({ client, modelBackend: "kimi-code",
+      model: "k3-256k" }).build([fixtureInput()])).rejects.toBeDefined();
+    expect(client.runTask).toHaveBeenCalledTimes(1);
+  });
 
   it("composes every declared material qualification before sealing the headline", async () => {
     const client = new AttestedPresentationRuntimeClient();
