@@ -232,6 +232,27 @@ describe("GatewayLlmClient", () => {
     expect(fake.prepares).toHaveLength(0);
   });
 
+  it("sends every enum typed, because Kimi rejects an untyped schema node", async () => {
+    // The reader summary schema has bare enums; Kimi answered them with HTTP 400
+    // "type is not defined" and the gateway reported effect_unknown.
+    const enumSchema = { type: "object", additionalProperties: false, required: ["level", "flags"],
+      properties: { level: { $ref: "#/$defs/level" },
+        flags: { type: "array", items: { enum: ["stale", "weak"] } } },
+      $defs: { level: { enum: ["low", "high"] } } };
+    const fake = harness({ request: async () => completedStream('{"level":"low","flags":["stale"]}') });
+    const result = await fake.client.runTask(command({ outputSchema: enumSchema }));
+
+    expect(result).toMatchObject({ status: "completed",
+      structuredOutput: { level: "low", flags: ["stale"] } });
+    expect(fake.bodies[0]).toMatchObject({ text: { format: { schema: {
+      $defs: { level: { type: "string", enum: ["low", "high"] } },
+      properties: { flags: { items: { type: "string", enum: ["stale", "weak"] } } } } } } });
+    // The added type accepts nothing the enum did not already accept.
+    const outside = harness({ request: async () => completedStream('{"level":"mid","flags":[]}') });
+    expect((await outside.client.runTask(command({ outputSchema: enumSchema }))).failure)
+      .toMatchObject({ code: "provider_output_invalid" });
+  });
+
   it("degrades output outside the product schema like a CLI schema normalization failure", async () => {
     for (const text of ["not json", '{"label":7,"note":null}']) {
       const fake = harness({ request: async () => completedStream(text) });
