@@ -11,7 +11,7 @@ import {
   validateSourceBindingStatusChange,
 } from '../../application/source-binding-status-change-decision';
 import {
-  InMemoryInterestCreationState, monitoringReceiptKey, monitoringSourceBindingIdKey,
+  type InMemoryInterestCreationState, monitoringReceiptKey, monitoringSourceBindingIdKey,
 } from './in-memory-interest-creation-state';
 
 export class InMemorySourceBindingStatusChangeStore implements SourceBindingStatusChangeCommitPort {
