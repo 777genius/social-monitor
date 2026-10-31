@@ -1,6 +1,6 @@
 # Source binding atomic creation: architecture and recovery plan
 
-Status: draft, implementation and validation in progress. Independent of command-outbox PR #591.
+Status: implementation and focused corrections committed; final CI/review on current head remain merge gates. Independent of merged command-outbox PR #591.
 Base: `2794a49380d5709705996524593cd45d15b0bd51`.
 
 ## Reproduced architectural risks
@@ -62,3 +62,42 @@ are unchanged; no deployment or historical recovery is claimed by this work.
 Record concrete test counts, CI run SHA, reviewer findings and unresolved
 risks here when verification completes. Synthetic fixtures are not a live
 production scan or external provider readiness proof.
+
+## Six-pass implementation / critique record (2026-10-31)
+
+1. **Architecture/invariants:** confirmed three separately committed writes in
+   `BindSourceUseCase` could persist an aggregate without its event or receipt;
+   rejected a generic transaction service and kept a narrow monitoring port.
+2. **Serializable persistence:** now rechecks scoped interest/catalog, canonical
+   source identity and the full enabled count inside a single transaction;
+   binding/event/receipt either commit together or all roll back.
+3. **In-memory and composition parity:** the same interest-creation state now
+   backs source bindings, receipt readers and local event readers. REST DI and
+   Telegram, API and autonomous fixture compositions use the atomic port.
+4. **Adversarial persistence cases:** focused tests check fault injection after
+   binding insert, no orphan event/receipt, immutable replay, canonical
+   duplicates, out-of-capacity rejection and two contenders for the last slot.
+5. **CI corrections:** first full PR workflow `41143167884` failed on
+   unused/type-only imports, a duplicate local name in native PostgreSQL
+   checks and two legacy fake Prisma objects missing the new create/count
+   delegates. Fixed these without weakening static gates. A second native
+   test now forces two Serializable transactions to read the same canonical
+   identity as absent before they attempt to create it; expected result is
+   one binding/event and two scoped receipts.
+6. **Independent review / final gate:** initial Strix review found no open
+   security issue on the earlier head but noted that source-binding resume
+   capacity enforcement is an *untouched* separate issue; CodeRabbit was
+   rate-limited then. Both have been explicitly requested again on the
+   latest code. Reviewers and complete GitHub Actions on the **final head**
+   (including PostgreSQL 18, E2E, static quality, unit shards, deployment
+   lifecycle) remain mandatory before a merge claim.
+
+## Deliberate limitations
+
+- No new database constraint or migration for arbitrary JSON identity fields:
+  SERIALIZABLE prevents concurrent phantom duplicates only among cooperating
+  new writers. A deployment must drain old non-transactional binding creators.
+- The change does not backfill historical missing events, repair orphan bindings
+  from old failures, or change the separate binding resume policy.
+- Production provider behavior and deployment cannot be proven from the
+  deterministic tests; `main` merge is not a production rollout.
