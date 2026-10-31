@@ -57,10 +57,17 @@ const runPublication = async (
 };
 
 describe("reviewer full publication inputs through actual use case and adapters", () => {
-  it.each(["conflict", "low-confidence"] as const)("rejects %s at 3/8 on both attempts instead of resurrecting the excluded assignment", async (kind) => {
+  // Coverage below .5 still costs both attempts, but a structurally sound 3/8 map is now
+  // published with a warning instead of failing the day; the exclusion must survive it.
+  it.each(["conflict", "low-confidence"] as const)("publishes %s at 3/8 after both attempts without resurrecting the excluded assignment", async (kind) => {
     const fixture = reviewPublicationFixture(kind);
     const { result, plans, rejections } = await runPublication(fixture);
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value.nodes[kind === "conflict" ? 2 : 3]!.groupId).toBe("group:ungrouped");
+    expect(evaluateReaderSummaryTopicMapStructure(result.value).metrics.groupedCoverage).toBe(0.375);
+    expect(result.value.warnings).toContain(
+      "Grouped coverage stayed at 0.375 after the retry; topics without a shared family are shown ungrouped");
     expect(plans).toHaveLength(2);
     expect(rejections).toHaveLength(2);
     const excluded = kind === "conflict" ? 2 : 3;
@@ -88,9 +95,9 @@ describe("reviewer full publication inputs through actual use case and adapters"
     fixture.raw.nodeLabels[2]!.subject = "Orion Beacon";
     const pair = [fixture.raw.nodeLabels[0]!.nodeId, fixture.raw.nodeLabels[2]!.nodeId];
     const { result, rejections } = await runPublication(fixture, (source, target) => pair.includes(source) && pair.includes(target));
-    expect(result.ok).toBe(false);
     expect(rejections).toHaveLength(2);
-    for (const { topicMap } of rejections) {
+    if (!result.ok) throw result.error;
+    for (const topicMap of [...rejections.map((rejection) => rejection.topicMap), result.value]) {
       expect(topicMap.nodes).toHaveLength(7);
       expect(topicMap.nodes.find((node) => node.storyClusterIds.includes("story:review-2"))).toMatchObject({
         groupId: "group:ungrouped", storyClusterIds: ["story:review-0", "story:review-2"],
@@ -102,8 +109,9 @@ describe("reviewer full publication inputs through actual use case and adapters"
     const fixture = reviewPublicationFixture("conflict");
     Object.assign(fixture.raw.nodeLabels[2]!, { originalGroupId: "group:orion" });
     const { result, plans } = await runPublication(fixture);
-    expect(result.ok).toBe(false);
     expect(plans[0]!.nodeLabels[2]!.originalGroupId).toBe("group:quartz");
+    if (!result.ok) throw result.error;
+    expect(result.value.nodes[2]!.groupId).toBe("group:ungrouped");
   });
 
   it.each(["xAI", undefined, "Orion", "RSS", "", " \t "])("publishes recovered xAI with accepted grounded group display (proposed: %s)", async (proposed) => {

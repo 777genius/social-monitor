@@ -339,6 +339,31 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
     ]);
   });
 
+  it("publishes the best grounded map when coverage stays below 0.5 after the retry", async () => {
+    // A diverse day: one real family of two stories, three unrelated stories.
+    const labeler = new CoverageSequenceTopicLabeler(["low", "partial"]);
+    const verifier = new CapturingCoverageTopicRelationVerifier();
+    const publicationAudit = new RecordingTopicMapPublicationAudit();
+    const result = await new BuildReaderSummaryTopicMapUseCase({
+      mode: "agent-runtime",
+      labeler,
+      relationVerifier: verifier,
+      publicationAudit,
+    }).execute(multiTopicCommand(5, 2));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw result.error;
+    }
+    expect(result.value.generatedBy).toBe("agent-runtime");
+    expect(result.value.nodes.filter((node) => node.groupId === "group:kernel")).toHaveLength(2);
+    expect(result.value.warnings).toContain(
+      "Grouped coverage stayed at 0.4 after the retry; topics without a shared family are shown ungrouped");
+    expect(labeler.attempts).toHaveLength(2);
+    // Both attempts are still audited as rejected candidates.
+    expect(publicationAudit.rejections.map((rejection) => rejection.willRetry)).toEqual([true, false]);
+  });
+
   it("applies only focused relation-verifier decisions to topic aggregation", async () => {
     const verifier = new AcceptingTopicRelationVerifier();
     const result = await new BuildReaderSummaryTopicMapUseCase({
@@ -525,7 +550,7 @@ class UnsupportedGroupTopicLabeler implements ReaderSummaryTopicLabelerPort {
 class CoverageSequenceTopicLabeler implements ReaderSummaryTopicLabelerPort {
   readonly attempts: ReaderSummaryTopicMapAttemptContext[] = [];
 
-  constructor(private readonly outcomes: readonly ("low" | "good")[]) {}
+  constructor(private readonly outcomes: readonly ("low" | "partial" | "good")[]) {}
 
   async label(
     input: ReaderSummaryTopicLabelerInput,
@@ -544,12 +569,13 @@ class CoverageSequenceTopicLabeler implements ReaderSummaryTopicLabelerPort {
         label: candidate.fallbackLabel,
         semantic: {
           subject: candidate.fallbackLabel,
-          parentSubject: "Runtime",
+          parentSubject: outcome === "partial" && index < 2 ? "Kernel" : "Runtime",
           claimType: "other",
           confidenceScore: 0.9,
         },
         groupId:
-          outcome === "good" ? "group:runtime-ecosystem" : "group:ungrouped",
+          outcome === "good" ? "group:runtime-ecosystem"
+            : outcome === "partial" && index < 2 ? "group:kernel" : "group:ungrouped",
       })),
       groups:
         outcome === "good"
@@ -560,7 +586,9 @@ class CoverageSequenceTopicLabeler implements ReaderSummaryTopicLabelerPort {
                 semanticAnchors: ["Runtime"],
               },
             ]
-          : [],
+          : outcome === "partial"
+            ? [{ id: "group:kernel", label: "Kernel", semanticAnchors: ["Kernel"] }]
+            : [],
     };
   }
 }
@@ -780,20 +808,21 @@ const command = () => ({
   ],
 });
 
-const multiTopicCommand = (): ReturnType<typeof command> => {
+/** familySize leading stories also share the word Kernel, a family the others lack. */
+const multiTopicCommand = (count = 4, familySize = 0): ReturnType<typeof command> => {
   const base = command();
-  const names = ["Alpha", "Beta", "Gamma", "Delta"] as const;
-  const clusters = Array.from({ length: 4 }, (_, index) => ({
+  const names = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"] as const;
+  const clusters = Array.from({ length: count }, (_, index) => ({
     ...base.clusters[0]!,
     id: `story:runtime-${index}`,
     storyKey: `runtime-${index}`,
     representativeFeedItemId: `feed-runtime-${index}`,
   }));
-  const selectedEvidence = Array.from({ length: 4 }, (_, index) => ({
+  const selectedEvidence = Array.from({ length: count }, (_, index) => ({
     ...base.selectedEvidence[0]!,
     feedItemId: `feed-runtime-${index}`,
     sourceItemId: `source-runtime-${index}`,
-    title: `${names[index]} runtime signal`,
+    title: index < familySize ? `${names[index]} Kernel runtime signal` : `${names[index]} runtime signal`,
   }));
 
   return {

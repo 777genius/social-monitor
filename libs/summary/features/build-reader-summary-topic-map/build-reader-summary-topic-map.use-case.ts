@@ -91,6 +91,7 @@ export class BuildReaderSummaryTopicMapUseCase {
     }
 
     let retryFeedback: ReaderSummaryTopicMapAttemptContext["retryFeedback"];
+    let bestGroundedLowCoverage: GroundedLowCoverageMap | undefined;
     for (
       let attemptNumber = 1;
       attemptNumber <= agentRuntimeTotalAttempts;
@@ -131,8 +132,18 @@ export class BuildReaderSummaryTopicMapUseCase {
         this.publicationAudit,
         attemptContext,
       );
-      if (publication.result.ok || !publication.willRetry) {
+      if (publication.groundedLowCoverage !== undefined &&
+          (bestGroundedLowCoverage === undefined ||
+            publication.groundedLowCoverage.groupedCoverage > bestGroundedLowCoverage.groupedCoverage)) {
+        bestGroundedLowCoverage = publication.groundedLowCoverage;
+      }
+      if (publication.result.ok) {
         return publication.result;
+      }
+      if (!publication.willRetry) {
+        return bestGroundedLowCoverage === undefined
+          ? publication.result
+          : ok(withLowCoverageWarning(bestGroundedLowCoverage));
       }
       retryFeedback = publication.retryFeedback;
     }
@@ -333,6 +344,8 @@ const publishableTopicMap = async (
   readonly retryFeedback?: NonNullable<
     ReaderSummaryTopicMapAttemptContext["retryFeedback"]
   >;
+  /** A structurally sound map rejected only for its grouped coverage. */
+  readonly groundedLowCoverage?: GroundedLowCoverageMap;
 }> => {
   const structure = evaluateReaderSummaryTopicMapStructure(topicMap);
   const minimumGroupedCoverage =
@@ -366,6 +379,9 @@ const publishableTopicMap = async (
   });
 
   return {
+    ...(structure.passed && retryReason !== null
+      ? { groundedLowCoverage: { topicMap, groupedCoverage: structure.metrics.groupedCoverage } }
+      : {}),
     result: err(
       topicMapFailure(
         `Reader summary topic map failed publication quality: ${[
@@ -388,6 +404,25 @@ const publishableTopicMap = async (
       : {}),
   };
 };
+
+type GroundedLowCoverageMap = {
+  readonly topicMap: ReaderSummaryTopicMap;
+  readonly groupedCoverage: number;
+};
+
+/**
+ * Grouped coverage below 0.5 first buys a retry with feedback. When the
+ * retries end there, a map that passed every structure check (at least one
+ * evidence-anchored group, no incoherent or invalid groups) is published as
+ * the honest picture of a day whose stories mostly do not share a family,
+ * instead of failing the whole summary. A map with no supported group, or
+ * any other structure issue, still fails.
+ */
+const withLowCoverageWarning = ({ topicMap, groupedCoverage }: GroundedLowCoverageMap): ReaderSummaryTopicMap => ({
+  ...topicMap,
+  warnings: [...topicMap.warnings,
+    `Grouped coverage stayed at ${groupedCoverage} after the retry; topics without a shared family are shown ungrouped`],
+});
 
 const coverageRelatedStructureIssues = new Set([
   "map has no supported semantic groups",
