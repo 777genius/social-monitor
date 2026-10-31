@@ -70,7 +70,10 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly providerInstanceId?: string;
   readonly model?: string;
   readonly modelBackend?: ReaderSummaryGenerationBackend;
-  /** high for Codex and MiMo, xhigh for legacy recovery, the route effort for a gateway backend. */
+  /**
+   * high for gpt-5.6-sol and MiMo, xhigh for legacy recovery, the route effort
+   * for a gateway backend or gateway-only Codex model.
+   */
   readonly reasoningEffort?: string;
   readonly legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract;
   readonly evalDatasetVersion?: string;
@@ -125,6 +128,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       this.modelBackend,
       options.reasoningEffort,
       this.legacyRecovery ? "xhigh" : defaultReasoningEffort,
+      this.model,
     );
     this.evalDatasetVersion = nonEmptyOrFallback(
       options.evalDatasetVersion,

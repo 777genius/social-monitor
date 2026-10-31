@@ -66,29 +66,51 @@ describe("reader summary agent-runtime transport", () => {
         model: "openai/gpt-oss-120b" });
   });
 
-  it("resolves Codex through the gateway with the identity the CLI path pins", () => {
+  it("resolves Codex through the gateway at gpt-6.1-sol/low by default", () => {
     const codexAccount = "8d2f6a51-3c6e-4f0b-9d7a-2b1c4e5f6a7b";
     const env = gatewayEnv({ AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
       AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS: `${codexAccount},${kimiAccount}` });
     expect(resolveGatewayLlmTransportConfig(env).route).toEqual({
-      profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt", model: "gpt-5.6-sol",
-      reasoningEffort: "high", accountRefs: [codexAccount, kimiAccount], minOutputTokens: 16_384 });
-    // Adapters keep the Codex identity, so verifiers check gpt-5.6-sol at effort high.
+      profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt", model: "gpt-6.1-sol",
+      reasoningEffort: "low", accountRefs: [codexAccount, kimiAccount], minOutputTokens: 16_384 });
+    // Adapters take the same pair, so verifiers check gpt-6.1-sol at effort low.
     expect(resolveReaderSummaryGenerationIdentityFromEnv(env)).toEqual({
-      provider: "codex", model: "gpt-5.6-sol", backend: "openai-chatgpt" });
+      provider: "codex", model: "gpt-6.1-sol", backend: "openai-chatgpt" });
     expect(resolveReaderSummaryDailyTaskIdentityFromEnv(env, undefined)).toEqual({
+      model: "gpt-6.1-sol", modelBackend: "openai-chatgpt" });
+    expect(resolveReaderSummaryReasoningEffortFromEnv(env)).toBe("low");
+    // The CLI transport keeps the pinned Codex identity from the same settings.
+    const cliEnv = { ...env, AGENT_RUNTIME_TRANSPORT: "agent-runtime" };
+    expect(resolveReaderSummaryGenerationIdentityFromEnv(cliEnv)).toEqual({
+      provider: "codex", model: "gpt-5.6-sol", backend: "openai-chatgpt" });
+    expect(resolveReaderSummaryDailyTaskIdentityFromEnv(cliEnv, undefined)).toEqual({
       model: "gpt-5.6-sol", modelBackend: "openai-chatgpt" });
-    expect(resolveReaderSummaryReasoningEffortFromEnv(env)).toBe("high");
-    expect(resolveGatewayLlmTransportConfig(gatewayEnv({ AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
-      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol", AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high",
-      AGENT_RUNTIME_GATEWAY_LLM_MAX_OUTPUT_TOKENS: "24000" })).route)
-      .toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "high", minOutputTokens: 24_000 });
+    expect(resolveReaderSummaryReasoningEffortFromEnv(cliEnv)).toBe("high");
+  });
+
+  it.each([
+    [{ AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol" }, "gpt-6.1-sol", "low"],
+    [{ AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" }, "gpt-6.1-sol", "low"],
+    [{ AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol" }, "gpt-5.6-sol", "high"],
+    [{ AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol", AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high",
+      AGENT_RUNTIME_GATEWAY_LLM_MAX_OUTPUT_TOKENS: "24000" }, "gpt-5.6-sol", "high"],
+  ])("selects an allowed Codex pair from %o", (extra, model, reasoningEffort) => {
+    const env = gatewayEnv({ AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt", ...extra });
+    expect(resolveGatewayLlmTransportConfig(env).route).toMatchObject({ model, reasoningEffort });
+    expect(resolveReaderSummaryDailyTaskIdentityFromEnv(env, undefined).model).toBe(model);
+    expect(resolveReaderSummaryReasoningEffortFromEnv(env)).toBe(reasoningEffort);
   });
 
   it.each([
     ["another Codex gateway model", { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-mini" }],
-    ["another Codex gateway effort", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "medium" }],
+    ["gpt-6.1-sol at another effort", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" }],
+    ["gpt-6.1-sol without reasoning", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "minimal" }],
+    ["gpt-5.6-sol at another effort", { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol",
+      AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" }],
     ["an effort the Codex purposes do not admit", { AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh" }],
+    ["a CLI model the Codex purposes do not admit", { AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-6.1-sol" }],
+    ["a generation model outside the route", { AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "gpt-5.6-sol" }],
+    ["the gateway settings off the gateway transport", { AGENT_RUNTIME_TRANSPORT: "agent-runtime" }],
   ])("rejects %s for openai-chatgpt", (_name, extra) => {
     expect(() => resolveGatewayLlmTransportConfig(gatewayEnv({
       AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt", ...extra }))).toThrow();
@@ -99,6 +121,8 @@ describe("reader summary agent-runtime transport", () => {
     ["Kimi reasoning", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" }],
     ["a CLI model on OpenRouter", { AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openrouter",
       AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol" }],
+    ["a Codex gateway model on OpenRouter", { AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openrouter",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol", AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" }],
     ["missing account refs", { AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS: " " }],
     ["a malformed account ref", { AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS: "account:1" }],
     ["a missing token file", { AGENT_RUNTIME_GATEWAY_LLM_CONTROL_TOKEN_FILE: "" }],

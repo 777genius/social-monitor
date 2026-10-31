@@ -11,12 +11,28 @@ import type {
   ReaderSummaryAttestedTaskRole,
   VerifiedReaderSummaryExecutionAttestationSink,
 } from "./reader-summary-execution-attestation";
+import {
+  activeReaderSummaryModel,
+  activeReaderSummaryReasoningEffort,
+  codexGatewayReaderSummaryReasoningEffort,
+  codexReaderSummaryBackend,
+  isCodexGatewayOnlyReaderSummaryModel,
+  isCodexGatewayReaderSummaryRoute,
+  resolveCodexGatewayReaderSummaryRoute,
+} from "./codex-reader-summary-route";
 
 export const activeReaderSummaryProvider = "codex" as const;
-/** Codex subscription backend; tasks that name no modelBackend run on it. */
-export const codexReaderSummaryBackend = "openai-chatgpt" as const;
-export const activeReaderSummaryModel = "gpt-5.6-sol" as const;
-export const activeReaderSummaryReasoningEffort = "high" as const;
+// Codex identities and gateway pairs live in their own module; re-exported here
+// so every adapter and verifier keeps one profile entry point.
+export {
+  activeReaderSummaryModel,
+  activeReaderSummaryReasoningEffort,
+  codexReaderSummaryBackend,
+  isCodexGatewayOnlyReaderSummaryModel,
+  readerSummaryCliRuntimeEnv,
+  readerSummaryGatewayTransport,
+  resolveCodexGatewayReaderSummaryRoute,
+} from "./codex-reader-summary-route";
 export const mimoReaderSummaryBackend = "xiaomi-mimo-token-plan" as const;
 export const mimoReaderSummaryModel = "mimo-v2.6-pro" as const;
 export const mimoPresentationReasoningEffort = "none" as const;
@@ -63,7 +79,10 @@ export const isGatewayReaderSummaryBackend = (
 ): value is GatewayReaderSummaryBackend =>
   value === kimiCodeReaderSummaryBackend || value === openRouterReaderSummaryBackend;
 
-/** A gateway model never reuses the CLI model names, which keep their own effort policy. */
+/**
+ * A model only the gateway runs. It never reuses the CLI model names, which
+ * keep their own effort policy; gateway-only Codex models are included.
+ */
 export const isGatewayReaderSummaryModel = (value: unknown): value is string =>
   typeof value === "string" && gatewayModelId.test(value) &&
   value !== activeReaderSummaryModel && value !== mimoReaderSummaryModel;
@@ -73,8 +92,10 @@ export const isGatewayReaderSummaryReasoningEffort = (value: unknown): value is 
   (typeof value === "string" && gatewayEfforts.has(value));
 
 /**
- * Engine, model and effort of an attested gateway-only execution. Agreement
- * across the tasks of one day is checked by the publication verifiers.
+ * Engine, model and effort of an attested execution whose model only the
+ * gateway runs. A gateway-only Codex model keeps its allowed Codex effort.
+ * Agreement across the tasks of one day is checked by the publication
+ * verifiers.
  */
 export const isGatewayReaderSummaryExecution = (attestation: {
   readonly runtimeEngine?: unknown;
@@ -83,7 +104,9 @@ export const isGatewayReaderSummaryExecution = (attestation: {
 }): boolean =>
   attestation.runtimeEngine === gatewayLlmRuntimeEngine &&
   isGatewayReaderSummaryModel(attestation.model) &&
-  isGatewayReaderSummaryReasoningEffort(attestation.reasoningEffort);
+  isGatewayReaderSummaryReasoningEffort(attestation.reasoningEffort) &&
+  (!isCodexGatewayOnlyReaderSummaryModel(attestation.model) ||
+    isCodexGatewayReaderSummaryRoute(attestation.model, attestation.reasoningEffort));
 
 /**
  * The gateway route selected by AGENT_RUNTIME_READER_SUMMARY_BACKEND, or
@@ -108,7 +131,8 @@ export const resolveGatewayReaderSummaryRoute = (
       reasoningEffort: gatewayDefaultReasoningEffort };
   }
   const selected = model ?? defaultOpenRouterReaderSummaryModel;
-  if (!isGatewayReaderSummaryModel(selected)) {
+  // Codex model names keep the Codex profile and their allowed efforts.
+  if (!isGatewayReaderSummaryModel(selected) || isCodexGatewayOnlyReaderSummaryModel(selected)) {
     throw new Error("AGENT_RUNTIME_GATEWAY_LLM_MODEL is not a gateway model id");
   }
   if (effort !== undefined && !gatewayEfforts.has(effort)) {
@@ -120,7 +144,7 @@ export const resolveGatewayReaderSummaryRoute = (
 
 /** Purpose-specific model overrides must name the gateway model or stay unset. */
 const gatewayRouteModel = (
-  route: GatewayReaderSummaryRoute,
+  route: { readonly model: string },
   purposeModel: string | undefined,
 ): string => {
   if (purposeModel !== undefined && purposeModel.trim() !== "" &&
@@ -130,12 +154,19 @@ const gatewayRouteModel = (
   return route.model;
 };
 
-/** Shared effort of daily tasks: the gateway route owns it, CLI backends use the purpose effort. */
+/**
+ * Shared effort of daily tasks: a gateway route owns it, CLI backends use the
+ * purpose effort. The Codex settings stay validated under a Codex gateway route.
+ */
 export const resolveReaderSummaryReasoningEffortFromEnv = (
   env: NodeJS.ProcessEnv,
-): string | undefined => resolveGatewayReaderSummaryRoute(env)?.reasoningEffort ??
-  parseActiveReaderSummaryReasoningEffort(
+): string | undefined => {
+  const gateway = resolveGatewayReaderSummaryRoute(env);
+  if (gateway !== undefined) return gateway.reasoningEffort;
+  const shared = parseActiveReaderSummaryReasoningEffort(
     env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ?? env.AGENT_RUNTIME_REASONING_EFFORT);
+  return resolveCodexGatewayReaderSummaryRoute(env)?.reasoningEffort ?? shared;
+};
 
 /** A gateway task names its backend; the default effort sends no reasoning control. */
 export const readerSummaryRouteControls = (
@@ -148,19 +179,25 @@ export const readerSummaryRouteControls = (
 
 /**
  * Effort of one adapter: a gateway backend defaults to sending none and
- * accepts only gateway efforts; every CLI backend keeps its fixed effort.
+ * accepts only gateway efforts, a gateway-only Codex model takes one of its
+ * allowed efforts, and every other CLI model keeps its fixed effort.
  */
 export const resolveReaderSummaryBackendEffort = (
   backend: ReaderSummaryGenerationBackend,
   requested: string | undefined,
   cliEffort: string,
+  model: string,
 ): string => {
-  const gateway = isGatewayReaderSummaryBackend(backend);
-  const effort = requested ?? (gateway ? gatewayDefaultReasoningEffort : cliEffort);
-  if (gateway ? !isGatewayReaderSummaryReasoningEffort(effort) : effort !== cliEffort) {
-    throw new Error("Reader summary execution profile and effort conflict");
+  if (isGatewayReaderSummaryBackend(backend)) {
+    const effort = requested ?? gatewayDefaultReasoningEffort;
+    if (isGatewayReaderSummaryReasoningEffort(effort)) return effort;
+  } else if (backend === codexReaderSummaryBackend && isCodexGatewayOnlyReaderSummaryModel(model)) {
+    const effort = requested ?? codexGatewayReaderSummaryReasoningEffort(model);
+    if (isCodexGatewayReaderSummaryRoute(model, effort)) return effort;
+  } else if ((requested ?? cliEffort) === cliEffort) {
+    return cliEffort;
   }
-  return effort;
+  throw new Error("Reader summary execution profile and effort conflict");
 };
 
 /** Daily task adapters: MiMo and gateway backends pin the model they were configured with. */
@@ -194,11 +231,19 @@ export const resolveReaderSummaryGenerationIdentity = (input: {
   }
   if (isGatewayReaderSummaryBackend(input.backend)) {
     if (input.legacyRecovery || !isGatewayReaderSummaryModel(input.model) ||
+      isCodexGatewayOnlyReaderSummaryModel(input.model) ||
       (input.backend === kimiCodeReaderSummaryBackend &&
         input.model !== kimiCodeReaderSummaryModel)) {
       throw new Error("Gateway reader summary model conflicts with purpose policy");
     }
     return { provider, model: input.model, backend: input.backend };
+  }
+  // A gateway-only Codex model never serves the frozen legacy recovery.
+  if (isCodexGatewayOnlyReaderSummaryModel(input.model)) {
+    if (input.legacyRecovery) {
+      throw new Error("Codex gateway reader summary model conflicts with legacy recovery");
+    }
+    return { provider, model: input.model, backend: codexReaderSummaryBackend };
   }
   return {
     provider,
@@ -220,6 +265,13 @@ export const resolveReaderSummaryGenerationIdentityFromEnv = (
   const generationModel =
     env.AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL?.trim() || undefined;
   const backend = env.AGENT_RUNTIME_READER_SUMMARY_BACKEND?.trim();
+  const codexGateway = resolveCodexGatewayReaderSummaryRoute(env);
+  if (codexGateway !== undefined) {
+    return resolveReaderSummaryGenerationIdentity({
+      provider: env.AGENT_RUNTIME_PROVIDER,
+      model: gatewayRouteModel(codexGateway, generationModel),
+    });
+  }
   if (backend === undefined || backend === "" || backend === "openai-chatgpt") {
     return resolveReaderSummaryGenerationIdentity({
       provider: env.AGENT_RUNTIME_PROVIDER,
@@ -251,6 +303,10 @@ export const resolveReaderSummaryDailyTaskIdentityFromEnv = (
   purposeModel: string | undefined,
 ): { readonly model: string; readonly modelBackend: ReaderSummaryGenerationBackend } => {
   const backend = env.AGENT_RUNTIME_READER_SUMMARY_BACKEND?.trim();
+  const codexGateway = resolveCodexGatewayReaderSummaryRoute(env);
+  if (codexGateway !== undefined) {
+    return { model: gatewayRouteModel(codexGateway, purposeModel), modelBackend: codexReaderSummaryBackend };
+  }
   if (backend === undefined || backend === "" || backend === "openai-chatgpt") {
     return {
       model: parseActiveReaderSummaryModel(

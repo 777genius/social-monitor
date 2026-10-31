@@ -17,6 +17,7 @@ import {
   activeReaderSummaryPurposes,
   frozenLegacyReaderSummaryRecoveryContract,
   gatewayDefaultReasoningEffort,
+  isCodexGatewayOnlyReaderSummaryModel,
   isGatewayReaderSummaryBackend,
   isGatewayReaderSummaryExecution,
   mimoReaderSummaryBackend,
@@ -60,9 +61,11 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
     (params.command.purpose === activeReaderSummaryPurposes.generate ||
       params.command.purpose === activeReaderSummaryPurposes.repair) &&
     params.command.controls.modelBackend === mimoReaderSummaryBackend;
-  // A gateway-only backend carries its own model and effort; the command is
-  // the configured route, so the attestation must repeat it exactly.
-  const gatewayRoute = isGatewayReaderSummaryBackend(params.command.controls.modelBackend);
+  // A gateway-only backend or Codex model carries its own model and effort;
+  // the command is the configured route, so the attestation must repeat it
+  // exactly and come from the gateway engine.
+  const gatewayRoute = isGatewayReaderSummaryBackend(params.command.controls.modelBackend) ||
+    (!mimoGeneration && isCodexGatewayOnlyReaderSummaryModel(params.command.controls.model));
   const expectedModel = mimoGeneration
     ? mimoReaderSummaryModel
     : gatewayRoute ? params.command.controls.model : activeReaderSummaryModel;

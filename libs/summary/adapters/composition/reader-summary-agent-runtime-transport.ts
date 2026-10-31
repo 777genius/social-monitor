@@ -7,11 +7,11 @@ import type { Clock } from "@social-monitor/shared-kernel";
 
 import type { AgentRuntimeClientPort } from "../../ports";
 import {
-  activeReaderSummaryModel,
-  activeReaderSummaryReasoningEffort,
   codexReaderSummaryBackend,
   gatewayDefaultReasoningEffort,
   isGatewayReaderSummaryBackend,
+  readerSummaryGatewayTransport,
+  resolveCodexGatewayReaderSummaryRoute,
   resolveGatewayReaderSummaryRoute,
   resolveReaderSummaryGenerationIdentityFromEnv,
   resolveReaderSummaryReasoningEffortFromEnv,
@@ -25,7 +25,7 @@ import { GatewayLlmClient, type GatewayLlmRoute } from "../model/gateway-llm/gat
 import { approvedGatewayLlmSdkIdentity } from "../model/gateway-llm/gateway-llm-sdk-identity";
 
 /** How reader-summary model tasks are executed: the CLI runtime over gRPC, or account-gateway. */
-export type ReaderSummaryAgentRuntimeTransport = "agent-runtime" | "gateway-llm";
+export type ReaderSummaryAgentRuntimeTransport = "agent-runtime" | typeof readerSummaryGatewayTransport;
 
 /**
  * Backends the gateway serves: the gateway-only ones, and Codex, which also
@@ -44,9 +44,9 @@ export const gatewayLlmProfileMaxOutputTokens = 65_536;
 /** Room for always-on reasoning before the answer; 256 ended incomplete in the Kimi smoke. */
 export const defaultGatewayLlmMinOutputTokens = 32_768;
 /**
- * Codex reasons at high effort before the answer too, but the product
- * budgets (2 400 for a presentation batch) would truncate it; the CLI
- * runtime never applied them.
+ * Codex reasons before the answer too (at high effort on gpt-5.6-sol), but
+ * the product budgets (2 400 for a presentation batch) would truncate it;
+ * the CLI runtime never applied them.
  */
 export const defaultCodexGatewayLlmMinOutputTokens = 16_384;
 const defaultMinOutputTokensByBackend: Readonly<Record<GatewayLlmServedBackend, number>> =
@@ -146,26 +146,26 @@ type GatewayServedRoute = Omit<GatewayReaderSummaryRoute, "backend"> & {
 };
 
 /**
- * The gateway route of the configured backend. Codex keeps the identity
- * every adapter and verifier already pins for it (gpt-5.6-sol, effort
- * high); the gateway settings may only repeat it.
+ * The gateway route of the configured backend. Codex runs one allowed
+ * model/effort pair (default gpt-6.1-sol/low); the adapters resolve the
+ * same pair from these settings, so the attested identity matches it.
  */
 const resolveGatewayServedRoute = (env: NodeJS.ProcessEnv): GatewayServedRoute | undefined => {
   const gatewayOnly = resolveGatewayReaderSummaryRoute(env);
   if (gatewayOnly !== undefined) return gatewayOnly;
   if (env.AGENT_RUNTIME_READER_SUMMARY_BACKEND?.trim() !== codexReaderSummaryBackend) return undefined;
+  const route = resolveCodexGatewayReaderSummaryRoute(env);
+  if (route === undefined) {
+    throw new Error(`${codexReaderSummaryBackend} reaches the gateway only with AGENT_RUNTIME_TRANSPORT=${readerSummaryGatewayTransport}`);
+  }
+  // The adapters resolve this identity from the same settings, which also
+  // rejects a conflicting purpose model or Codex CLI setting before any task.
   const identity = resolveReaderSummaryGenerationIdentityFromEnv(env);
-  const effort = resolveReaderSummaryReasoningEffortFromEnv(env) ?? activeReaderSummaryReasoningEffort;
-  const gatewayModel = optional(env, "AGENT_RUNTIME_GATEWAY_LLM_MODEL");
-  const gatewayEffort = optional(env, "AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT");
-  if (identity.model !== activeReaderSummaryModel ||
-      (gatewayModel !== undefined && gatewayModel !== identity.model)) {
-    throw new Error(`AGENT_RUNTIME_GATEWAY_LLM_MODEL must be unset or ${activeReaderSummaryModel} for openai-chatgpt`);
+  if (identity.model !== route.model ||
+      resolveReaderSummaryReasoningEffortFromEnv(env) !== route.reasoningEffort) {
+    throw new Error("Codex gateway reader summary route conflicts with purpose policy");
   }
-  if (gatewayEffort !== undefined && gatewayEffort !== effort) {
-    throw new Error(`AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT must be unset or ${effort} for openai-chatgpt`);
-  }
-  return { backend: codexReaderSummaryBackend, model: identity.model, reasoningEffort: effort };
+  return { backend: codexReaderSummaryBackend, ...route };
 };
 
 export const createGatewayLlmAgentRuntimeClient = (

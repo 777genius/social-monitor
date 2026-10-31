@@ -78,6 +78,7 @@ import {
   resolveReaderSummaryServingAuthority,
   type ReaderSummaryServingAuthority,
 } from "./lib/reader-summary-serving-authority";
+import { readerSummaryCliRuntimeEnv } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import {
   printDailyScanTerminalRepairPreimage,
   runDailyScanTerminalRepair,
@@ -152,7 +153,8 @@ async function main(): Promise<void> {
         resolveServingAuthority: () => resolveReaderSummaryServingAuthority({
           summaryModelMode: "agent-runtime",
           topicLabelerMode: "deterministic",
-          env: process.env,
+          // Canonical recovery runs only on the gRPC CLI runtime.
+          env: readerSummaryCliRuntimeEnv(process.env),
           agentRuntimeClient: runtimeClient,
           checkedAt: new Date().toISOString(),
         }),

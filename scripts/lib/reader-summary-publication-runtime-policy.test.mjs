@@ -261,15 +261,57 @@ test("gateway-only models publish only through the gateway with the route effort
       runtime: "subscription-runtime-cli" } }), false);
 });
 
+test("gateway-only Codex models publish only through the gateway at an allowed effort", () => {
+  const codexRecord = () => {
+    const record = gatewayRecord();
+    Object.assign(record.attestation, { model: "gpt-6.1-sol", reasoningEffort: "low" });
+    record.attestation.gateway.observedModel = "gpt-6.1-sol";
+    return record;
+  };
+  assert.doesNotThrow(() => validatePublicationAttestationRecord(codexRecord(), false));
+  for (const mutate of [
+    (value) => { value.attestation.reasoningEffort = "high"; },
+    (value) => { value.attestation.reasoningEffort = "default"; },
+    (value) => {
+      Object.assign(value.attestation, { runtimeEngine: "subscription-runtime-cli",
+        runtimePackageVersion: approvedCodexRuntimeVersion, launcherSha256: approvedLauncherSha256 });
+      delete value.attestation.gateway;
+    },
+  ]) {
+    const record = codexRecord();
+    mutate(record);
+    assert.throws(() => validatePublicationAttestationRecord(record, true),
+      /malformed or mismatched/u);
+  }
+  const provenance = {
+    ...mimoProvenance(),
+    physicalModel: "gpt-6.1-sol",
+    reasoningEffort: "low",
+    runtime: "gateway-llm",
+    runtimeVersion: gatewaySdkVersion,
+    launcherSha256: gatewaySdkSha256,
+    topicLabeler: { mode: "agent-runtime", physicalModel: "gpt-6.1-sol", provider: "codex",
+      runtime: "gateway-llm", runtimeVersion: gatewaySdkVersion, reasoningEffort: "low",
+      launcherSha256: gatewaySdkSha256 },
+  };
+  assert.equal(isPublicationRuntimeProvenance(provenance), true);
+  assert.equal(isPublicationRuntimeProvenance({ ...provenance, reasoningEffort: "high",
+    topicLabeler: { ...provenance.topicLabeler, reasoningEffort: "high" } }), false);
+});
+
 test("gateway model rules match the TypeScript generation profile", () => {
   const profile = repositoryFile(
     "libs/summary/adapters/model/active-reader-summary-generation-profile.ts").toString("utf8");
+  const codexRoute = repositoryFile(
+    "libs/summary/adapters/model/codex-reader-summary-route.ts").toString("utf8");
   const policy = repositoryFile(
     "scripts/lib/reader-summary-publication-runtime-policy.mjs").toString("utf8");
-  for (const shared of [
-    "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
-    '"minimal", "low", "medium", "high", "xhigh", "max", "ultra"',
+  for (const [source, shared] of [
+    [profile, "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"],
+    [profile, '"minimal", "low", "medium", "high", "xhigh", "max", "ultra"'],
+    // The gateway-only Codex pair; gpt-5.6-sol/high is the CLI identity.
+    [codexRoute, '{ model: "gpt-6.1-sol", reasoningEffort: "low" }'],
   ]) {
-    assert.ok(profile.includes(shared) && policy.includes(shared), shared);
+    assert.ok(source.includes(shared) && policy.includes(shared), shared);
   }
 });

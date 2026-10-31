@@ -114,6 +114,35 @@ describe("reader summary current serving authority", () => {
     }
   });
 
+  it("reports the Codex gateway pair only on the gateway transport", async () => {
+    const env = {
+      AGENT_RUNTIME_TRANSPORT: "gateway-llm",
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
+    };
+    const resolve = (extra: Record<string, string>) => resolveReaderSummaryServingAuthority({
+      summaryModelMode: "agent-runtime", topicLabelerMode: "agent-runtime",
+      env: { ...env, ...extra }, agentRuntimeClient: { checkHealth: servingHealth() }, checkedAt,
+    });
+    const components = (authority: Awaited<ReturnType<typeof resolve>>) => [
+      authority.summaryGenerator, authority.topicLabeler,
+      authority.topicRelationVerifier, authority.storyRelationVerifier];
+    for (const component of components(await resolve({}))) {
+      expect(component).toMatchObject({ provider: "codex", physicalModel: "gpt-6.1-sol",
+        reasoningPolicy: "low" });
+    }
+    for (const component of components(await resolve({
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol" }))) {
+      expect(component).toMatchObject({ physicalModel: "gpt-5.6-sol", reasoningPolicy: "high" });
+    }
+    for (const component of components(await resolve({ AGENT_RUNTIME_TRANSPORT: "agent-runtime" }))) {
+      expect(component).toMatchObject({ physicalModel: "gpt-5.6-sol", reasoningPolicy: "high" });
+    }
+    await expect(resolve({ AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" }))
+      .rejects.toThrow(/gpt-6\.1-sol\/low, gpt-5\.6-sol\/high/u);
+  });
+
   it("rejects an unknown generation backend", async () => {
     await expect(resolveReaderSummaryServingAuthority({
       summaryModelMode: "agent-runtime", topicLabelerMode: "agent-runtime",

@@ -177,4 +177,43 @@ describe("production day purpose-specific executor identity", () => {
     legacyPurpose[1]!.attestation.purpose = "social_monitor.reader_summary.topic_map.label";
     expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(legacyPurpose), [])).toBeNull();
   });
+
+  it("accepts a Codex gateway day at gpt-6.1-sol/low and no other effort or engine", () => {
+    const codexRecords = () => productionExecutionAttestations().map((record, index) => ({
+      ...record,
+      attestation: { ...record.attestation, model: "gpt-6.1-sol", reasoningEffort: "low",
+        runtimeEngine: "gateway-llm",
+        runtimePackageVersion: approvedGatewayLlmSdkIdentity.packageVersion,
+        launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256,
+        gateway: { profileId: "openai-codex-oauth-responses-v1", taskId: `smTask${index}`,
+          attempt: 1, executionRef: `execution-${index}`, requestRef: `smTask${index}-a1-r`,
+          accountRef: "00000000-0000-4000-8000-00000000000a", observedModel: "gpt-6.1-sol",
+          requestSha256: "f".repeat(64) } },
+    }));
+    const violations: string[] = [];
+    const provenance = runtimeProvenanceFromExecutorAttestations(
+      evidenceWith(codexRecords()), violations);
+    expect(violations).toEqual([]);
+    expect(provenance).toMatchObject({ physicalModel: "gpt-6.1-sol", reasoningEffort: "low",
+      runtime: "gateway-llm", topicLabeler: { physicalModel: "gpt-6.1-sol", reasoningEffort: "low" } });
+    expect(isCurrentProductionSubscriptionRuntimeProvenance(provenance)).toBe(true);
+
+    // gpt-6.1-sol runs only at an allowed Codex effort and only through the gateway.
+    for (const reasoningEffort of ["high", "default", "minimal"]) {
+      const records = codexRecords();
+      for (const record of records) record.attestation.reasoningEffort = reasoningEffort;
+      expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [])).toBeNull();
+    }
+    const cli = codexRecords();
+    for (const record of cli) {
+      Object.assign(record.attestation, { runtimeEngine: "subscription-runtime-cli",
+        runtimePackageVersion: "0.1.0-main.42-sm.3",
+        launcherSha256: approvedSubscriptionRuntimeLauncherSha256 });
+      delete (record.attestation as { gateway?: unknown }).gateway;
+    }
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(cli), [])).toBeNull();
+    expect(isCurrentProductionSubscriptionRuntimeProvenance({ ...provenance!,
+      reasoningEffort: "high", topicLabeler: { ...(provenance as { topicLabeler: object }).topicLabeler,
+        reasoningEffort: "high" } })).toBe(false);
+  });
 });
