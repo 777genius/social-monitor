@@ -111,6 +111,17 @@ export type PrismaMonitoringClient = {
     }): Promise<PrismaSourceCatalogEntryRecord | null>;
   };
   readonly sourceBinding: {
+    updateMany(args: {
+      readonly where: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly interestId: string;
+        readonly status: 'ENABLED' | 'PAUSED' | 'DRAFT' | 'FAILED';
+        readonly deletedAt: null;
+      };
+      readonly data: { readonly status: 'ENABLED' | 'PAUSED' };
+    }): Promise<{ readonly count: number }>;
     create(args: {
       readonly data: {
         readonly id: string;

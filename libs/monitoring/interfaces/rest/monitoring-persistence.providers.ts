@@ -12,6 +12,9 @@ import { InMemoryScanExecutionAttemptReadModel } from '../../adapters/persistenc
 import { InMemoryScanJobRepository } from '../../adapters/persistence/in-memory-scan-job.repository';
 import { InMemoryScanPolicyRepository } from '../../adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingCreationStore } from '../../adapters/persistence/in-memory-source-binding-creation.store';
+import { InMemorySourceBindingStatusChangeStore } from '../../adapters/persistence/in-memory-source-binding-status-change.store';
+import { PrismaSourceBindingStatusChangeStore } from '../../adapters/persistence/prisma/prisma-source-binding-status-change.store';
+import type { SourceBindingStatusChangeCommitPort } from '../../application/contracts/source-binding-status-change-commit';
 import { PrismaSourceBindingCreationStore } from '../../adapters/persistence/prisma/prisma-source-binding-creation.store';
 import type { SourceBindingCreationCommitPort } from '../../application/contracts/source-binding-creation-commit';
 import { InMemorySourceBindingRepository } from '../../adapters/persistence/in-memory-source-binding.repository';
@@ -42,6 +45,7 @@ import {
   MONITORING_SCAN_POLICY_REPOSITORY,
   MONITORING_SOURCE_BINDING_REPOSITORY,
   MONITORING_SOURCE_BINDING_CREATION_COMMIT,
+  MONITORING_SOURCE_BINDING_STATUS_CHANGE_COMMIT,
   type MonitoringPersistenceMode,
 } from './monitoring-provider-tokens';
 
@@ -79,6 +83,14 @@ export const monitoringPersistenceProviders: Provider[] = [
     ): SourceBindingCreationCommitPort => mode === 'prisma'
       ? new PrismaSourceBindingCreationStore(requirePrismaMonitoringClient(prisma))
       : new InMemorySourceBindingCreationStore(state),
+    inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT, InMemoryInterestCreationState],
+  },
+  {
+    provide: MONITORING_SOURCE_BINDING_STATUS_CHANGE_COMMIT,
+    useFactory: (mode: MonitoringPersistenceMode, prisma: PrismaMonitoringClient | null,
+      state: InMemoryInterestCreationState): SourceBindingStatusChangeCommitPort => mode === 'prisma'
+      ? new PrismaSourceBindingStatusChangeStore(requirePrismaMonitoringClient(prisma))
+      : new InMemorySourceBindingStatusChangeStore(state),
     inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT, InMemoryInterestCreationState],
   },
   {
