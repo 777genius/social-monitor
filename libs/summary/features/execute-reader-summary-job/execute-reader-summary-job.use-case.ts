@@ -31,6 +31,7 @@ import { BuildReaderSummaryTopicMapUseCase } from "../build-reader-summary-topic
 import { withReaderSummaryContextUnavailable } from "./reader-summary-context-unavailable";
 import { evaluateReaderSummaryPrepublication } from "./reader-summary-prepublication-gate";
 import type { ReaderSummaryHistoricalGitHubOmission } from "./reader-summary-prepublication-gate";
+import { readerSummaryGitHubOmission } from "./reader-summary-missing-github-projection";
 import { withReaderSummaryHistoricalOmissionQuality } from "./reader-summary-historical-omission-quality";
 import type { ExecuteReaderSummaryJobCommand } from "./execute-reader-summary-job.command";
 import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job.result";
@@ -170,13 +171,14 @@ export class ExecuteReaderSummaryJobUseCase {
         if (prepared.kind === "result") return ok(prepared.value);
         v3Evidence = prepared.evidence;
       }
-      const result = await this.runModelPipeline(
-        runningJob,
+      const githubOmission = await readerSummaryGitHubOmission({ configured: this.historicalGitHubOmission,
+        recoveryProvenanceActive: this.recoveryProvenance !== undefined, tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId, period: snapshot.period, githubProjectionReader: this.githubProjectionReader,
+        observedThrough: observedThroughTime === undefined ? this.clock.now() : new Date(observedThroughTime) });
+      const result = await this.runModelPipeline(runningJob,
         command.maxEvidenceItems ?? defaultReaderSummaryMaxEvidenceItems,
         observedThroughTime === undefined ? undefined : new Date(observedThroughTime),
-        v3Evidence,
-        firstPublicationBoundary,
-      );
+        v3Evidence, firstPublicationBoundary, githubOmission);
       if (!result.ok) {
         const failedJob = failReaderSummaryProviderExecution({ job: runningJob,
           failedAt: this.clock.now(), failureReason: result.error.message,
@@ -207,7 +209,7 @@ export class ExecuteReaderSummaryJobUseCase {
         githubProjectionReader: this.githubProjectionReader,
         observedThrough: observedThroughTime === undefined
           ? this.clock.now() : new Date(observedThroughTime),
-        historicalGitHubOmission: this.historicalGitHubOmission,
+        historicalGitHubOmission: githubOmission,
         recoveryProvenance: this.recoveryProvenance,
       });
       await this.readerSummaryArtifacts.save(result.value.artifact, {
@@ -307,6 +309,7 @@ export class ExecuteReaderSummaryJobUseCase {
     observedThrough?: Date,
     frozenV3Evidence?: SummaryEvidenceSelection,
     firstPublicationBoundary?: FirstPublicationExecutionBoundary,
+    githubOmission?: ReaderSummaryHistoricalGitHubOmission,
   ): Promise<ReaderSummaryModelPipelineResult> {
     const snapshot = job.toSnapshot();
     const generatedAt = this.clock.now();
@@ -427,10 +430,7 @@ export class ExecuteReaderSummaryJobUseCase {
       ? withReaderSummaryContextUnavailable(attempt.draft)
       : attempt.draft;
     const inventoryDraft = withFirstPublicationInventoryQuality(draftWithContext, firstPublicationBoundary);
-    const qualityDraft = withReaderSummaryHistoricalOmissionQuality(
-      inventoryDraft,
-      this.historicalGitHubOmission,
-    );
+    const qualityDraft = withReaderSummaryHistoricalOmissionQuality(inventoryDraft, githubOmission);
     const draftWithContent = buildReaderSummaryDraftWithPromotionContent(
       modelEvidence,
       qualityDraft,
