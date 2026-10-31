@@ -28,6 +28,19 @@ export type PrismaInboxRecord = {
 
 export type PrismaEventStoreClient = {
   readonly outboxEvent: {
+    updateMany(args: {
+      readonly where: {
+        readonly id: string;
+        readonly messageKind: 'EVENT';
+        readonly status: 'PENDING';
+      };
+      readonly data: {
+        readonly status?: PrismaEventOutboxStatus;
+        readonly publishAttempts?: { readonly increment: number };
+        readonly lastError?: string | null;
+        readonly publishedAt?: Date | null;
+      };
+    }): Promise<{ readonly count: number }>;
     findMany(args: {
       readonly where: {
         readonly messageKind: 'EVENT';
