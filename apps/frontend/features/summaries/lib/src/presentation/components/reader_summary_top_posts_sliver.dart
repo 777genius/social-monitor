@@ -10,6 +10,8 @@ class ReaderSummaryTopPostsSliver extends StatefulWidget {
     required this.ratingFor,
     required this.onRated,
     required this.onOpenUrl,
+    this.sortOrder = TopPostsSortOrder.modelRank,
+    this.onSortOrderChanged,
   });
 
   final ReaderSummaryTopPostsProjection projection;
@@ -25,6 +27,13 @@ class ReaderSummaryTopPostsSliver extends StatefulWidget {
   onRated;
   final ValueChanged<String> onOpenUrl;
 
+  /// Reader-chosen order inside the active lane; it never moves a card to
+  /// another lane.
+  final TopPostsSortOrder sortOrder;
+
+  /// `null` hides the order control.
+  final ValueChanged<TopPostsSortOrder>? onSortOrderChanged;
+
   @override
   State<ReaderSummaryTopPostsSliver> createState() =>
       _ReaderSummaryTopPostsSliverState();
@@ -33,8 +42,9 @@ class ReaderSummaryTopPostsSliver extends StatefulWidget {
 class _ReaderSummaryTopPostsSliverState
     extends State<ReaderSummaryTopPostsSliver> {
   late _TopPostBoard _board;
-  late List<TopRead> _boardItems;
   late List<TopRead> _filteredItems;
+  late List<ValueKey<String>> _rowKeys;
+  late Map<Key, int> _rowIndexByKey;
   late List<String> _providerKeys;
   late bool _reservePreviewSpace;
   final Set<String> _hiddenProviders = {};
@@ -54,8 +64,11 @@ class _ReaderSummaryTopPostsSliverState
       oldWidget.projection,
     );
     final periodChanged = widget.period != oldWidget.period;
-    if (!datasetChanged && !periodChanged) return;
-    _board = _availableTopPostBoard(widget.projection, preferred: _board);
+    final sortChanged = widget.sortOrder != oldWidget.sortOrder;
+    if (!datasetChanged && !periodChanged && !sortChanged) return;
+    if (datasetChanged || periodChanged) {
+      _board = _availableTopPostBoard(widget.projection, preferred: _board);
+    }
     _refreshBoardItems();
   }
 
@@ -79,9 +92,11 @@ class _ReaderSummaryTopPostsSliverState
             providerKeys: _providerKeys,
             hiddenProviders: _hiddenProviders,
             denseView: _denseView,
+            sortOrder: widget.sortOrder,
             onBoardChanged: _setBoard,
             onProviderToggled: _toggleProvider,
             onDenseViewChanged: _setDenseView,
+            onSortOrderChanged: widget.onSortOrderChanged,
           ),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.sm)),
@@ -103,6 +118,11 @@ class _ReaderSummaryTopPostsSliverState
         else
           SliverList.builder(
             itemCount: sliverItemCount,
+            // Rows follow their card when the order or filters move it.
+            findChildIndexCallback: (key) => switch (_rowIndexByKey[key]) {
+              final itemIndex? => itemIndex * 2,
+              null => null,
+            },
             itemBuilder: (context, index) {
               if (index.isOdd) {
                 return Divider(height: 1, color: colorScheme.outlineVariant);
@@ -111,10 +131,7 @@ class _ReaderSummaryTopPostsSliverState
               final itemIndex = index ~/ 2;
               final item = filtered[itemIndex];
               return _TopPostRow(
-                key: ValueKey(
-                  'reader-summary-top-post-'
-                  '${readerSummaryTopPostIdentity(item)}',
-                ),
+                key: _rowKeys[itemIndex],
                 index: itemIndex,
                 item: item,
                 dateLabel: _topPostDateLabel(item, widget.period),
@@ -162,17 +179,20 @@ class _ReaderSummaryTopPostsSliverState
   }
 
   void _refreshBoardItems() {
-    _boardItems = switch (_board) {
+    final lane = switch (_board) {
       _TopPostBoard.topPosts => widget.projection.curatedPosts,
       _TopPostBoard.additionalStories =>
         widget.projection.additionalNotableStories,
     };
+    // Filter options keep the model order whatever the display order is.
     _providerKeys = {
-      for (final item in _boardItems) item.providerKey,
+      for (final item in lane) item.providerKey,
     }.toList(growable: false);
-    _filteredItems = _boardItems
+    _filteredItems = readerSummaryTopPostsInOrder(lane, widget.sortOrder)
         .where((item) => !_hiddenProviders.contains(item.providerKey))
         .toList(growable: false);
+    _rowKeys = [for (final item in _filteredItems) _topPostRowKey(item)];
+    _rowIndexByKey = {for (final (index, key) in _rowKeys.indexed) key: index};
     _reservePreviewSpace = _filteredItems.any(
       (item) => item.previewMedia != null,
     );

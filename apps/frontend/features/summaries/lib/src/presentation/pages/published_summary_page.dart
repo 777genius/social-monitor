@@ -9,11 +9,17 @@ import '../components/reader_summary_top_posts_section_sliver.dart';
 import '../components/reader_summary_view.dart';
 import '../components/workspace_summary_period_shell.dart';
 import '../stores/published_summary_store.dart';
+import '../stores/top_posts_sort_store.dart';
 
 class PublishedSummaryPage extends StatefulWidget {
-  const PublishedSummaryPage({super.key, required this.store});
+  const PublishedSummaryPage({
+    super.key,
+    required this.store,
+    this.topPostsSortStore,
+  });
 
   final PublishedSummaryStore store;
+  final TopPostsSortStore? topPostsSortStore;
 
   @override
   State<PublishedSummaryPage> createState() => _PublishedSummaryPageState();
@@ -41,6 +47,7 @@ class _PublishedSummaryPageState extends State<PublishedSummaryPage> {
         if (summary != null) {
           return _PublishedSummaryArticle(
             store: widget.store,
+            topPostsSortStore: widget.topPostsSortStore,
             summary: summary,
             isRefreshing: state is LoadingViewState<ReaderSummary>,
             onOpenUrl: (url) => unawaited(widget.store.openUrl(url)),
@@ -89,12 +96,14 @@ class _PublishedSummaryPageState extends State<PublishedSummaryPage> {
 class _PublishedSummaryArticle extends StatelessWidget {
   const _PublishedSummaryArticle({
     required this.store,
+    required this.topPostsSortStore,
     required this.summary,
     required this.isRefreshing,
     required this.onOpenUrl,
   });
 
   final PublishedSummaryStore store;
+  final TopPostsSortStore? topPostsSortStore;
   final ReaderSummary summary;
   final bool isRefreshing;
   final ValueChanged<String> onOpenUrl;
@@ -148,6 +157,7 @@ class _PublishedSummaryArticle extends StatelessWidget {
         ReaderSummaryTopPostsSectionSliver(
           summary: summary,
           contentPadding: topPostsPadding,
+          sortStore: topPostsSortStore,
           onOpenUrl: onOpenUrl,
         ),
       ],

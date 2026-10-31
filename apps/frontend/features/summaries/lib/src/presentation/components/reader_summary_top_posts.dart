@@ -2,7 +2,8 @@ part of 'reader_summary_brief_surface.dart';
 
 enum _TopPostBoard { topPosts, additionalStories }
 
-/// "Top posts" board: filterable picks in the backend-attested order.
+/// "Top posts" board: filterable picks in the backend-attested order, or in
+/// the reader-chosen [sortOrder] within each lane.
 class ReaderSummaryTopPosts extends StatefulWidget {
   const ReaderSummaryTopPosts({
     super.key,
@@ -13,6 +14,8 @@ class ReaderSummaryTopPosts extends StatefulWidget {
     required this.ratingFor,
     required this.onRated,
     required this.onOpenUrl,
+    this.sortOrder = TopPostsSortOrder.modelRank,
+    this.onSortOrderChanged,
   });
 
   final ReaderSummaryTopPostsProjection projection;
@@ -27,6 +30,10 @@ class ReaderSummaryTopPosts extends StatefulWidget {
   )?
   onRated;
   final ValueChanged<String> onOpenUrl;
+  final TopPostsSortOrder sortOrder;
+
+  /// `null` hides the order control.
+  final ValueChanged<TopPostsSortOrder>? onSortOrderChanged;
 
   @override
   State<ReaderSummaryTopPosts> createState() => _ReaderSummaryTopPostsState();
@@ -68,9 +75,13 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
       _TopPostBoard.topPosts => topPostItems,
       _TopPostBoard.additionalStories => additionalStories,
     };
-    final filtered = boardItems
+    final filtered = readerSummaryTopPostsInOrder(boardItems, widget.sortOrder)
         .where((item) => !_hiddenProviders.contains(item.providerKey))
         .toList(growable: false);
+    final rowKeys = [for (final item in filtered) _topPostRowKey(item)];
+    final rowIndexByKey = {
+      for (final (index, key) in rowKeys.indexed) key: index,
+    };
     final reservePreviewSpace = filtered.any(
       (item) => item.previewMedia != null,
     );
@@ -90,9 +101,13 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
           }.toList(growable: false),
           hiddenProviders: _hiddenProviders,
           denseView: _denseView,
+          sortOrder: widget.sortOrder,
           onBoardChanged: _setBoard,
           onProviderToggled: _toggleProvider,
           onDenseViewChanged: _setDenseView,
+          onSortOrderChanged: widget.onSortOrderChanged == null
+              ? null
+              : _setSortOrder,
         ),
         const SizedBox(height: AppSpacing.sm),
         if (filtered.isEmpty)
@@ -120,15 +135,13 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 itemCount: filtered.length,
+                findItemIndexCallback: (key) => rowIndexByKey[key],
                 separatorBuilder: (context, index) =>
                     Divider(height: 1, color: colorScheme.outlineVariant),
                 itemBuilder: (context, index) {
                   final item = filtered[index];
                   return _TopPostRow(
-                    key: ValueKey(
-                      'reader-summary-top-post-'
-                      '${readerSummaryTopPostIdentity(item)}',
-                    ),
+                    key: rowKeys[index],
                     index: index,
                     item: item,
                     dateLabel: _topPostDateLabel(item, widget.period),
@@ -170,6 +183,11 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
     _resetPostsScroll();
   }
 
+  void _setSortOrder(TopPostsSortOrder order) {
+    widget.onSortOrderChanged?.call(order);
+    _resetPostsScroll();
+  }
+
   void _resetPostsScroll() {
     if (!_postsScrollController.hasClients) {
       return;
@@ -184,106 +202,6 @@ double _topPostsListViewportHeight(BuildContext context) {
     return 620;
   }
   return (windowHeight * 0.68).clamp(360.0, 760.0).toDouble();
-}
-
-class _TopPostsHeader extends StatelessWidget {
-  const _TopPostsHeader({
-    required this.board,
-    required this.topPostCount,
-    required this.additionalStoryCount,
-    required this.curatedTopPostCount,
-    required this.selectedPostCount,
-    required this.providerKeys,
-    required this.hiddenProviders,
-    required this.denseView,
-    required this.onBoardChanged,
-    required this.onProviderToggled,
-    required this.onDenseViewChanged,
-  });
-
-  final _TopPostBoard board;
-  final int topPostCount;
-  final int additionalStoryCount;
-  final int curatedTopPostCount;
-  final int selectedPostCount;
-  final List<String> providerKeys;
-  final Set<String> hiddenProviders;
-  final bool denseView;
-  final ValueChanged<_TopPostBoard> onBoardChanged;
-  final ValueChanged<String> onProviderToggled;
-  final ValueChanged<bool> onDenseViewChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-    final subtitle = Text(
-      _topPostBoardSubtitle(
-        board,
-        curatedTopPostCount: curatedTopPostCount,
-        selectedPostCount: selectedPostCount,
-      ),
-      style: textTheme.labelSmall?.copyWith(
-        color: colorScheme.onSurfaceVariant,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0,
-      ),
-    );
-    final controls = Wrap(
-      spacing: AppSpacing.sm + 4,
-      runSpacing: AppSpacing.sm,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        if (providerKeys.isNotEmpty)
-          _TopPostFilterMenu(
-            providerKeys: providerKeys,
-            hiddenProviders: hiddenProviders,
-            onProviderToggled: onProviderToggled,
-          ),
-        _TopPostViewToggle(
-          denseView: denseView,
-          onDenseViewChanged: onDenseViewChanged,
-        ),
-      ],
-    );
-    final hasBoardItems = providerKeys.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _TopPostBoardToggle(
-          board: board,
-          topPostCount: topPostCount,
-          additionalStoryCount: additionalStoryCount,
-          onChanged: onBoardChanged,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            if (constraints.maxWidth < 640) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  subtitle,
-                  if (hasBoardItems) ...[
-                    const SizedBox(height: AppSpacing.sm),
-                    controls,
-                  ],
-                ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(child: subtitle),
-                if (hasBoardItems) controls,
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
 }
 
 _TopPostBoard _availableTopPostBoard(
@@ -315,20 +233,4 @@ String _topPostDateLabel(TopRead item, SummaryPeriod fallbackPeriod) {
   }
 
   return summaryPublishedDayLabel(publishedAt);
-}
-
-String _topPostBoardSubtitle(
-  _TopPostBoard board, {
-  required int curatedTopPostCount,
-  required int selectedPostCount,
-}) {
-  return switch (board) {
-    _TopPostBoard.topPosts =>
-      curatedTopPostCount == 1
-          ? '1 editorial pick from $selectedPostCount selected'
-          : '$curatedTopPostCount editorial picks from '
-                '$selectedPostCount selected',
-    _TopPostBoard.additionalStories =>
-      'Additional selected stories and explicitly related topics',
-  };
 }

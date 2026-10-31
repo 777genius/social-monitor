@@ -25,6 +25,24 @@ void main() {
     );
     expect(sharedSection, contains('ReaderSummaryTopPostsSliver('));
   });
+
+  test('guest and admin pages share the remembered Top posts order', () {
+    for (final page in [
+      'lib/src/presentation/pages/published_summary_page.dart',
+      'lib/src/presentation/pages/summaries_feature_page.dart',
+    ]) {
+      expect(_readSummariesSource(page), contains('sortStore: '));
+    }
+    for (final host in [
+      'lib/src/presentation/composition/'
+          'published_summaries_feature_module_host.dart',
+      'lib/src/presentation/composition/summaries_feature_module_host.dart',
+    ]) {
+      final source = _readSummariesSource(host);
+      expect(source, contains('createTopPostsSortStore()'));
+      expect(source, contains('_topPostsSortStore.dispose()'));
+    }
+  });
 }
 
 String _readSummariesSource(String packagePath) {

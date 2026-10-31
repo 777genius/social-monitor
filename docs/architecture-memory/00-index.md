@@ -404,6 +404,7 @@ This directory stores architecture decisions for the social monitoring platform.
 - `395-subscription-runtime-rate-limit-capacity.md` - App Server rate-limit cache, push updates, capacity-store and failover invariants.
 - `396-subscription-runtime-exact-turn-usage.md` - Exact per-turn Codex usage billing, fail-closed usage poisoning and the no-replay rule for started turns.
 - `397-reader-promotion-two-blocks-percentile-maturity.md` - Reader promotion Top/news blocks via the source registry, per-network percentile, 6h metric maturity and the policy stamp.
+- `398-frontend-ui-preference-browser-storage.md` - The single approved frontend browser storage exception: the remembered Top posts sort order, its narrow port and the architecture-test allowlist.
 
 ## Core Definition
 

@@ -98,7 +98,7 @@ void main() {
     },
   );
 
-  testWidgets('keeps backend-attested order without offering local reranking', (
+  testWidgets('keeps backend-attested order when no reader order is wired', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1100, 700);

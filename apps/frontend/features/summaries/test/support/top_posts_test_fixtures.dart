@@ -96,6 +96,7 @@ TopRead topPostFixture({
 ReaderSummary topPostsSummaryFixture({
   required List<TopRead> topReads,
   List<TopRead> selectedPosts = const [],
+  List<TopRead> newsWithoutRatingPosts = const [],
   List<SummaryStory>? topStories,
   List<SummaryCitation>? citations,
   SummaryPeriod? period,
@@ -121,6 +122,7 @@ ReaderSummary topPostsSummaryFixture({
       sourceMix: content.sourceMix,
       topReads: topReads,
       selectedPosts: selectedPosts,
+      newsWithoutRatingPosts: newsWithoutRatingPosts,
       claimBoard: content.claimBoard,
       reliabilityReport: content.reliabilityReport,
       trendDelta: content.trendDelta,
