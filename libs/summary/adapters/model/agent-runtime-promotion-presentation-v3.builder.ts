@@ -202,9 +202,10 @@ implements PromotionPresentationBuilder {
     const decoded = catalogCandidates === undefined ? undefined : decodeMimoQualifiedHeadlines(rawOutput, catalogCandidates);
     if (decoded?.failure) return inputs.map(() => ({ status: "unavailable", reason: "invalid_presentation" }));
     const output = decoded?.output ?? rawOutput;
-    const proposals = validateBatch(output.presentations, inputs);
+    const proposals = contractProposals(output.presentations, inputs);
     return inputs.map((input) => {
-      const proposal = proposals.get(input.candidateId)!;
+      const proposal = proposals.get(input.candidateId);
+      if (proposal === undefined) return { status: "unavailable", reason: "invalid_presentation" };
       if (proposal.status === "unavailable") {
         return { status: "unavailable", reason: "insufficient_support" };
       }
@@ -285,23 +286,32 @@ const parseObject = (value: string): Record<string, unknown> => {
   return parsed as Record<string, unknown>;
 };
 
-const validateBatch = (value: unknown, inputs: readonly ReaderPostPresentationV3Input[]) => {
-  if (!Array.isArray(value) || value.length !== inputs.length) {
-    throw new Error("Reader promotion presentation returned an invalid batch");
-  }
+/**
+ * The proposals that keep the canonical contract, by candidate. A completed
+ * task already passed the strict schema, so what is left here are slips the
+ * schema cannot rule out: an unknown or repeated candidateId (ids are plain
+ * strings), or a text over 119 UTF-16 units that the schema counted as at
+ * most 119 code points. Such a slip used to throw and fail the whole day as
+ * a dependency outage; now only the affected candidates are
+ * invalid_presentation, like any other rejected headline, and every other
+ * proposal still has to pass the seal.
+ */
+const contractProposals = (value: unknown, inputs: readonly ReaderPostPresentationV3Input[]) => {
   const requested = new Set(inputs.map((input) => input.candidateId));
   const result = new Map<string, Record<string, unknown>>();
-  for (const item of value) {
-    if (item === null || typeof item !== "object" || Array.isArray(item)) {
-      throw new Error("Reader promotion presentation item is invalid");
-    }
+  const answered = new Set<string>();
+  for (const item of Array.isArray(value) ? value : []) {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) continue;
     const proposal = item as Record<string, unknown>;
     const id = proposal.candidateId;
-    if (typeof id !== "string" || !requested.has(id) || result.has(id) ||
-        !validProposal(proposal)) {
-      throw new Error("Reader promotion presentation response violates its contract");
+    if (typeof id !== "string" || !requested.has(id)) continue;
+    // A candidate answered twice has no trustworthy proposal.
+    if (answered.has(id)) {
+      result.delete(id);
+      continue;
     }
-    result.set(id, proposal);
+    answered.add(id);
+    if (validProposal(proposal)) result.set(id, proposal);
   }
   return result;
 };
