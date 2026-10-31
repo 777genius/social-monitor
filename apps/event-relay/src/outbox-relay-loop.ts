@@ -1,6 +1,7 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import { OutboxDispatcher } from '@social-monitor/platform-events';
+import { redactSensitiveText } from '@social-monitor/shared-kernel';
 
 import {
   EVENT_RELAY_LOOP_OPTIONS,
@@ -85,7 +86,7 @@ export class OutboxRelayLoop implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.error('outbox relay loop tick failed', {
         trigger,
-        error: error instanceof Error ? error.message : String(error),
+        error: redactSensitiveText(error instanceof Error ? error.message : String(error)).slice(0, 240),
         worker: 'event-relay',
       });
     }
