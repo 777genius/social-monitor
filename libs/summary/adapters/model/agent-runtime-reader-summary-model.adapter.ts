@@ -258,15 +258,17 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   }
 
   /**
-   * Gateway models are not held to the schema while they write, so output
-   * the strict decode rejects gets one repair that names every broken path
-   * and limit, never the rejected text. The CLI runtime enforces the schema
-   * itself and keeps failing such output.
+   * Output the gateway strict decode rejects gets one repair that names every
+   * broken path and limit, never the rejected text, on every backend the
+   * gateway serves (Codex included). Only the gateway client reports
+   * outputValidationViolations; the CLI runtime enforces the schema itself
+   * and keeps failing such output.
    */
   private gatewaySchemaViolations(result: AgentRuntimeTaskResult): readonly string[] | undefined {
     const failure = result.status === "failed" ? result.failure : undefined;
-    if (!isGatewayReaderSummaryBackend(this.modelBackend) || failure?.code !== "provider_output_invalid" ||
-        failure.details?.outputValidationStage !== "schema_normalization") return undefined;
+    if (failure?.code !== "provider_output_invalid" ||
+        failure.details?.outputValidationStage !== "schema_normalization" ||
+        failure.details.outputValidationViolations === undefined) return undefined;
     const reported = (failure.details.outputValidationViolations ?? "").split(" ")
       .filter((entry) => safeOutputViolationPattern.test(entry));
     const first = failure.details.outputValidationPath;

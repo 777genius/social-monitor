@@ -6,6 +6,7 @@ import {
 } from "../model/active-reader-summary-generation-profile";
 import { GatewayLlmClient } from "../model/gateway-llm/gateway-llm-client";
 import {
+  assertReaderSummaryTransportBackend,
   createGatewayLlmAgentRuntimeClient,
   createReaderSummaryAgentRuntimeClient,
   resolveGatewayLlmTransportConfig,
@@ -65,6 +66,34 @@ describe("reader summary agent-runtime transport", () => {
         model: "openai/gpt-oss-120b" });
   });
 
+  it("resolves Codex through the gateway with the identity the CLI path pins", () => {
+    const codexAccount = "8d2f6a51-3c6e-4f0b-9d7a-2b1c4e5f6a7b";
+    const env = gatewayEnv({ AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS: `${codexAccount},${kimiAccount}` });
+    expect(resolveGatewayLlmTransportConfig(env).route).toEqual({
+      profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt", model: "gpt-5.6-sol",
+      reasoningEffort: "high", accountRefs: [codexAccount, kimiAccount], minOutputTokens: 16_384 });
+    // Adapters keep the Codex identity, so verifiers check gpt-5.6-sol at effort high.
+    expect(resolveReaderSummaryGenerationIdentityFromEnv(env)).toEqual({
+      provider: "codex", model: "gpt-5.6-sol", backend: "openai-chatgpt" });
+    expect(resolveReaderSummaryDailyTaskIdentityFromEnv(env, undefined)).toEqual({
+      model: "gpt-5.6-sol", modelBackend: "openai-chatgpt" });
+    expect(resolveReaderSummaryReasoningEffortFromEnv(env)).toBe("high");
+    expect(resolveGatewayLlmTransportConfig(gatewayEnv({ AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol", AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high",
+      AGENT_RUNTIME_GATEWAY_LLM_MAX_OUTPUT_TOKENS: "24000" })).route)
+      .toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "high", minOutputTokens: 24_000 });
+  });
+
+  it.each([
+    ["another Codex gateway model", { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-mini" }],
+    ["another Codex gateway effort", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "medium" }],
+    ["an effort the Codex purposes do not admit", { AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh" }],
+  ])("rejects %s for openai-chatgpt", (_name, extra) => {
+    expect(() => resolveGatewayLlmTransportConfig(gatewayEnv({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt", ...extra }))).toThrow();
+  });
+
   it.each([
     ["a Kimi model override", { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "kimi-k2" }],
     ["Kimi reasoning", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" }],
@@ -75,7 +104,8 @@ describe("reader summary agent-runtime transport", () => {
     ["a missing token file", { AGENT_RUNTIME_GATEWAY_LLM_CONTROL_TOKEN_FILE: "" }],
     ["a negative revision", { AGENT_RUNTIME_GATEWAY_LLM_POLICY_REVISION: "-1" }],
     ["tokens above the profile cap", { AGENT_RUNTIME_GATEWAY_LLM_MAX_OUTPUT_TOKENS: "65537" }],
-    ["a CLI backend", { AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt" }],
+    ["the MiMo CLI backend", { AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan" }],
+    ["no explicit backend", { AGENT_RUNTIME_READER_SUMMARY_BACKEND: "" }],
   ])("rejects %s", (_name, extra) => {
     expect(() => resolveGatewayLlmTransportConfig(gatewayEnv(extra))).toThrow();
   });
@@ -99,6 +129,19 @@ describe("reader summary agent-runtime transport", () => {
     expect(createReaderSummaryAgentRuntimeClient({ ...params, transport: "agent-runtime",
       env: {} })).toBe(agentRuntime.mock.results[0]!.value);
     expect(agentRuntime).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["gateway-llm", "openai-chatgpt", true], ["gateway-llm", "kimi-code", true], ["gateway-llm", "openrouter", true],
+    ["gateway-llm", undefined, false], ["gateway-llm", "xiaomi-mimo-token-plan", false],
+    ["agent-runtime", "openai-chatgpt", true], ["agent-runtime", undefined, true],
+    ["agent-runtime", "xiaomi-mimo-token-plan", true],
+    ["agent-runtime", "kimi-code", false], ["agent-runtime", "openrouter", false],
+  ] as const)("pairs transport %s with backend %s: %s", (transport, backend, allowed) => {
+    const check = () => assertReaderSummaryTransportBackend(transport,
+      backend === undefined ? {} : { AGENT_RUNTIME_READER_SUMMARY_BACKEND: backend });
+    if (allowed) expect(check).not.toThrow();
+    else expect(check).toThrow(/AGENT_RUNTIME_TRANSPORT=gateway-llm/u);
   });
 
   it("builds the gateway client from the token file and refuses an empty token", () => {

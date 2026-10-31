@@ -187,10 +187,13 @@ and the original package version for other purposes.
 Daily reader-summary tasks (generate, repair, topic label, topic and story
 relations, V3 presentation) can bypass this service and run through
 account-gateway with `AGENT_RUNTIME_TRANSPORT=gateway-llm`. That transport
-serves only the gateway backends `AGENT_RUNTIME_READER_SUMMARY_BACKEND=kimi-code`
-(model `k3-256k`, no reasoning control) and `openrouter`
-(`AGENT_RUNTIME_GATEWAY_LLM_MODEL`, default `openai/gpt-oss-120b`), and those
-backends never run here. MiMo stays on this service. Weekly, canonical
+serves `AGENT_RUNTIME_READER_SUMMARY_BACKEND=kimi-code` (model `k3-256k`, no
+reasoning control), `openrouter` (`AGENT_RUNTIME_GATEWAY_LLM_MODEL`, default
+`openai/gpt-oss-120b`) and `openai-chatgpt` (Codex accounts connected to the
+gateway, profile `openai-codex-oauth-responses-v1`, model `gpt-5.6-sol` at
+effort `high`). Kimi and OpenRouter never run here; Codex runs here or on the
+gateway depending on the transport, and the gateway needs the backend named
+explicitly. MiMo stays on this service. Weekly, canonical
 recovery, generic summary and relevance tasks keep the gRPC client. The
 gateway settings (`AGENT_RUNTIME_GATEWAY_LLM_*`) are listed in
 `libs/summary/adapters/composition/reader-summary-agent-runtime-transport.ts`.

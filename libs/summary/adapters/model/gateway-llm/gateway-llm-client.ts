@@ -14,7 +14,7 @@ import type {
   AgentRuntimeClientPort, AgentRuntimeFailure, AgentRuntimeHealthResult,
   AgentRuntimeTaskCommand, AgentRuntimeTaskResult,
 } from "../../../ports";
-import { gatewayDefaultReasoningEffort } from "../active-reader-summary-generation-profile";
+import { codexReaderSummaryBackend, gatewayDefaultReasoningEffort } from "../active-reader-summary-generation-profile";
 import type { GatewayLlmAccountSelector } from "./gateway-llm-account-selector";
 import type { GatewayLlmAttemptIdentity, GatewayLlmAttemptSource } from "./gateway-llm-attempts";
 import {
@@ -137,7 +137,9 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
   Prepared | { readonly failure: AgentRuntimeFailure } {
     const route = this.options.route;
     const controls = command.controls;
-    if (controls.model !== route.model || controls.modelBackend !== route.modelBackend) {
+    // Codex tasks name no modelBackend; every other backend names itself.
+    if (controls.model !== route.model ||
+        (controls.modelBackend ?? codexReaderSummaryBackend) !== route.modelBackend) {
       return { failure: gatewayLlmLocalFailure("unsupported_route",
         "Gateway has no route for the requested model") };
     }
