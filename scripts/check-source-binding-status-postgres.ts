@@ -6,7 +6,7 @@ import {
   type PrismaPgRuntimeClientConstructor,
 } from '@social-monitor/platform-persistence';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
-import { redactSensitiveText, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { DomainError, redactSensitiveText, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import {
   PrismaSourceBindingStatusChangeStore,
   type PrismaSourceBindingStatusChangeClient,
@@ -104,7 +104,8 @@ async function run(targetUrl: string): Promise<void> {
     const old = await addBinding(firstInterest, 'PAUSED');
     await addBinding(firstInterest, 'ENABLED');
     const overCapacity = await store.change(command(firstInterest, old, 'enabled', 'old-resume-over-capacity'));
-    assert(!overCapacity.ok && overCapacity.error.code === 'operation.quota_exceeded',
+    assert(!overCapacity.ok && overCapacity.error instanceof DomainError &&
+      overCapacity.error.code === 'operation.quota_exceeded',
       'A resumed binding must respect the full enabled count');
     assert.equal(await statusOf(old), 'PAUSED');
     assert.equal(await eventCount(firstInterest), 0);
@@ -148,7 +149,7 @@ async function run(targetUrl: string): Promise<void> {
     assert.equal(contenders.filter((result) => result.ok).length, 1,
       'Serializable predicate locking must accept only one of two competing resumes');
     assert(contenders.some((result) => !result.ok &&
-      result.error.code === 'operation.quota_exceeded'));
+      result.error instanceof DomainError && result.error.code === 'operation.quota_exceeded'));
     const enabled = await query<{ count: bigint }>(`SELECT COUNT(*)::bigint AS count FROM source_bindings
       WHERE tenant_id=$1 AND workspace_id=$2 AND interest_id=$3 AND status='ENABLED'`,
       [tenant, workspace, raceInterest]);
