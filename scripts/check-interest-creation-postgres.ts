@@ -337,17 +337,18 @@ async function main(url: string): Promise<void> {
     // Distinct identities race for the last slot on a separate workspace.
     const capacityScope = await createScope();
     const quotaInterest = successful(await store.commit(input(capacityScope, 'Binding capacity topic', 'capacity-topic')));
-    const capacityInput = (channel: string, key: string) => {
+    const capacityInput = (channel: string, key: string,
+      targetScope: Scope = capacityScope, targetInterestId: string = quotaInterest.interestId) => {
       const id = randomUUID();
-      const binding = SourceBinding.create({ ...capacityScope, id,
-        interestId: quotaInterest.interestId, providerKey,
+      const binding = SourceBinding.create({ ...targetScope, id,
+        interestId: targetInterestId, providerKey,
         capabilityProfileVersion: 1, config: { channel }, createdAt: now });
       return { binding, idempotencyKey: key, receiptId: randomUUID(), maxEnabledSourcesPerInterest: 1,
         configIdentity: { field: 'channel', value: channel },
         event: { eventId: eventId(randomUUID()), eventType: 'monitoring.source-binding.enabled',
-          schemaVersion: 1, occurredAt: now, ...capacityScope,
+          schemaVersion: 1, occurredAt: now, ...targetScope,
           correlationId: correlationId(randomUUID()), causationId: causationId(key),
-          payload: { ...capacityScope, sourceBindingId: id, interestId: quotaInterest.interestId,
+          payload: { ...targetScope, sourceBindingId: id, interestId: targetInterestId,
             providerKey, capabilityProfileVersion: 1 } },
       } as Parameters<PrismaSourceBindingCreationStore['commit']>[0];
     };
@@ -361,8 +362,51 @@ async function main(url: string): Promise<void> {
       WHERE tenant_id=$1 AND workspace_id=$2 AND status='ENABLED'`,
       [capacityScope.tenantId,capacityScope.workspaceId]))[0]!.count,1n);
 
+    // Two new receipts competing for the SAME canonical identity are different
+    // from a quota race. Force both Serializable transactions to observe an
+    // absent row before either can write, then prove exactly one aggregate/event.
+    const sameScope = await createScope();
+    const sameInterest = successful(await store.commit(input(sameScope, 'Same binding identity topic', 'same-binding-topic')));
+    const sameIdentityGate = twoPartyGate();
+    const sameIdentityStore = new PrismaSourceBindingCreationStore({
+      $transaction: (work, options) => sourceClient.$transaction((tx) => work({
+        ...tx,
+        sourceBinding: {
+          ...tx.sourceBinding,
+          findFirst: async (args) => {
+            const existing = await tx.sourceBinding.findFirst(args);
+            if (args.where.interestId === sameInterest.interestId && args.where.config !== undefined) {
+              await sameIdentityGate();
+            }
+            return existing;
+          },
+        },
+      }), options),
+    });
+    const sameInputs = [
+      capacityInput('same-canonical-channel', 'identity-one', sameScope, sameInterest.interestId),
+      capacityInput('same-canonical-channel', 'identity-two', sameScope, sameInterest.interestId),
+    ];
+    const sameResults = await Promise.all(sameInputs.map((request) => sameIdentityStore.commit(request)));
+    assert(sameResults.every((result) => result.ok), 'Both same-identity requests must resolve to one durable binding');
+    const sameCreated = sameResults.filter((result) => result.ok && result.value.created);
+    assert.equal(sameCreated.length, 1, 'Only one contender may create a canonical binding');
+    const sameIds = sameResults.map((result) => result.ok ? result.value.sourceBindingId : null);
+    assert.equal(new Set(sameIds).size, 1, 'Both different receipts must reference the same source binding');
+    const sameBindings = await query<{ id: string }>(`SELECT id FROM source_bindings
+      WHERE tenant_id=$1 AND workspace_id=$2 AND interest_id=$3`,
+      [sameScope.tenantId, sameScope.workspaceId, sameInterest.interestId]);
+    const sameEvents = await query<{ id: string }>(`SELECT id FROM outbox_events
+      WHERE tenant_id=$1 AND workspace_id=$2 AND event_type='monitoring.source-binding.enabled'`,
+      [sameScope.tenantId, sameScope.workspaceId]);
+    const sameReceipts = await query<{ key: string }>(`SELECT key FROM idempotency_keys
+      WHERE tenant_id=$1 AND workspace_id=$2 AND scope='monitoring.bind-source'`,
+      [sameScope.tenantId, sameScope.workspaceId]);
+    assert.deepEqual([sameBindings.length, sameEvents.length, sameReceipts.length], [1, 1, 2],
+      'Concurrent canonical duplicates may produce two receipts, but only one aggregate and event');
 
-    console.log('Interest creation PostgreSQL checks OK: event/receipt rollback, same-key and same-name contention, last-slot capacity, immutable replay, tenant/workspace, archive and exact-case semantics');
+
+    console.log('Interest/source binding PostgreSQL checks OK: atomic event/receipt rollback, same-key and same-canonical-identity contention, full quota, immutable replay, tenant/workspace and archive semantics');
   } finally {
     try {
       for (const scope of scopes) {
