@@ -1,5 +1,6 @@
 import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
+import { InMemorySourceBindingStatusChangeStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-status-change.store';
 import { InMemorySourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-creation.store';
 import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import {
@@ -177,7 +178,7 @@ async function main(): Promise<void> {
   );
   assert(scanPolicy.created, 'scan policy should be created on first command');
 
-  const changeSourceBindingStatus = new ChangeSourceBindingStatusUseCase(bindings, outbox, idempotency, ids, clock);
+  const changeSourceBindingStatus = new ChangeSourceBindingStatusUseCase(new InMemorySourceBindingStatusChangeStore(interestCreationState), ids, clock);
   const requestScan = new RequestScanUseCase(
     bindings,
     scanPolicies,
