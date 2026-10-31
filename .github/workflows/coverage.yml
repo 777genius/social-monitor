@@ -18,25 +18,23 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 5
     permissions:
-      pull-requests: read
+      actions: read
     outputs:
       ready: ${{ steps.scope.outputs.ready }}
     steps:
-      - name: Skip coverage while the tested pull request is still a draft
+      - name: Skip coverage when the tested run skipped every unit shard
         id: scope
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RUN_EVENT: ${{ github.event.workflow_run.event }}
-          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
+          # Draft pull requests skip the heavy unit shards; their runs have no coverage to upload.
+          conclusions="$(gh api --paginate "/repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" --jq '.jobs[] | select(.name | startswith("Backend unit shard")) | .conclusion')"
           ready=true
-          if [ "$RUN_EVENT" = pull_request ] && [ -n "$PR_NUMBER" ]; then
-            draft="$(gh api "/repos/$GH_REPO/pulls/$PR_NUMBER" --jq '.draft')"
-            if [ "$draft" = true ]; then
-              ready=false
-            fi
+          if [ -n "$conclusions" ] && [ -z "$(printf '%s\n' "$conclusions" | grep -v '^skipped$' || true)" ]; then
+            ready=false
           fi
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
 

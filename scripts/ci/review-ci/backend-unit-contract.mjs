@@ -136,12 +136,11 @@ const coverageMetadataProof = [
 ].join('\n');
 const coverageScopeProof = [
   'set -euo pipefail',
+  '# Draft pull requests skip the heavy unit shards; their runs have no coverage to upload.',
+  'conclusions="$(gh api --paginate "/repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" --jq \'.jobs[] | select(.name | startswith("Backend unit shard")) | .conclusion\')"',
   'ready=true',
-  'if [ "$RUN_EVENT" = pull_request ] && [ -n "$PR_NUMBER" ]; then',
-  '  draft="$(gh api "/repos/$GH_REPO/pulls/$PR_NUMBER" --jq \'.draft\')"',
-  '  if [ "$draft" = true ]; then',
-  '    ready=false',
-  '  fi',
+  'if [ -n "$conclusions" ] && [ -z "$(printf \'%s\\n\' "$conclusions" | grep -v \'^skipped$\' || true)" ]; then',
+  '  ready=false',
   'fi',
   'echo "ready=$ready" >> "$GITHUB_OUTPUT"',
 ].join('\n');
@@ -258,11 +257,11 @@ export function coverageWorkflowViolations(source) {
   }
   const scope = workflow?.jobs?.coverage_scope;
   if (scope?.if !== "github.event.workflow_run.conclusion == 'success'" ||
-      !equal(scope?.permissions, { 'pull-requests': 'read' }) ||
-      !equal(scope?.outputs, { ready: '${{ steps.scope.outputs.ready }}' })) errors.push('coverage.yml: read-only draft scope gate required');
+      !equal(scope?.permissions, { actions: 'read' }) ||
+      !equal(scope?.outputs, { ready: '${{ steps.scope.outputs.ready }}' })) errors.push('coverage.yml: read-only skipped-shard scope gate required');
   jobChecks(scope, 'coverage_scope', 'Coverage scope', [
     { id: 'scope', run: coverageScopeProof, env: { GH_TOKEN: '${{ github.token }}', GH_REPO: '${{ github.repository }}',
-      RUN_EVENT: '${{ github.event.workflow_run.event }}', PR_NUMBER: '${{ github.event.workflow_run.pull_requests[0].number }}' } },
+      RUN_ID: '${{ github.event.workflow_run.id }}' } },
   ], errors, ['if', 'permissions', 'outputs'], 5, 'ubuntu-slim');
   const preflight = workflow?.jobs?.coverage_artifacts;
   if (preflight?.if !== "github.event.workflow_run.conclusion == 'success' && needs.coverage_scope.outputs.ready == 'true'" ||
