@@ -130,11 +130,17 @@ async function main(): Promise<void> {
       assert.equal(row.publish_attempts, 1);
       assert.match(row.last_error, /NO_ROUTE access_token=\[REDACTED\]/);
       assert(!row.last_error.includes('fixture-token') && row.last_error.length <= 500);
+      // Ordinary relays never mutate FAILED outcomes. This standalone SQL
+      // fixture explicitly models reviewed one-shot recovery; the real recovery
+      // CLI additionally requires its manifest, xmin lock and durable receipts.
+      await assert.rejects(outbox.recordAttempt(outboxId), /no longer pending/);
+      const recovery = new PrismaOutboxStoreAdapter(events.client, new FixedClock(base.occurredAt), 'FAILED');
       // Counter describes recorded starts, never historical total sends.
-      await outbox.recordAttempt(outboxId);
+      await recovery.recordAttempt(outboxId);
       assert.equal((await database.query('SELECT publish_attempts FROM outbox_events WHERE id=$1', [outboxId])).rows[0].publish_attempts, 2);
-      await outbox.markPublished(outboxId);
+      await recovery.markPublished(outboxId);
       assert.equal((await database.query('SELECT last_error FROM outbox_events WHERE id=$1', [outboxId])).rows[0].last_error, null);
+      await assert.rejects(recovery.markFailed(outboxId, 'stale replay'), /no longer pending/);
       console.log('Reader summary delivery PostgreSQL fixture OK: atomic rollback, concurrent dedupe, restart replay, RLS isolation, diagnostics');
     } finally {
       await runtime.onApplicationShutdown('fixture complete');
