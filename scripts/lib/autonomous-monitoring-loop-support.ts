@@ -20,6 +20,7 @@ import type { InMemoryIdempotencyAdapter } from "../../libs/monitoring/adapters/
 import type { InMemoryOutboxAdapter } from "../../libs/monitoring/adapters/messaging/in-memory-outbox.adapter";
 import type { InMemoryScanJobRepository } from "../../libs/monitoring/adapters/persistence/in-memory-scan-job.repository";
 import type { InMemoryScanPolicyRepository } from "../../libs/monitoring/adapters/persistence/in-memory-scan-policy.repository";
+import type { InMemorySourceBindingCreationStore } from "../../libs/monitoring/adapters/persistence/in-memory-source-binding-creation.store";
 import type { InMemorySourceBindingRepository } from "../../libs/monitoring/adapters/persistence/in-memory-source-binding.repository";
 import type { InMemoryInterestRepository } from "../../libs/monitoring/adapters/persistence/in-memory-interest.repository";
 import { FakeSourceCatalogAdapter } from "../../libs/monitoring/adapters/source-catalog/fake-source-catalog.adapter";
@@ -35,6 +36,7 @@ export async function bindProviders(params: {
   readonly interests: InMemoryInterestRepository;
   readonly interestId: string;
   readonly bindings: InMemorySourceBindingRepository;
+  readonly bindingCreation: InMemorySourceBindingCreationStore;
   readonly scanPolicies: InMemoryScanPolicyRepository;
   readonly outbox: InMemoryOutboxAdapter;
   readonly idempotency: InMemoryIdempotencyAdapter;
@@ -43,9 +45,8 @@ export async function bindProviders(params: {
 }): Promise<readonly ScanBinding[]> {
   const bindSource = new BindSourceUseCase(
     params.interests,
-    params.bindings,
+    params.bindingCreation,
     new FakeSourceCatalogAdapter({ includeFixtureProviders: false }),
-    params.outbox,
     params.idempotency,
     new PassThroughConfigProtector(),
     params.ids,

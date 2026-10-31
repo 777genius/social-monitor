@@ -37,7 +37,7 @@ export type PrismaMonitoringClient = {
     work: (
       transaction: Pick<
         PrismaMonitoringClient,
-        'scanJob' | 'outboxEvent' | 'interest' | 'idempotencyKey'
+        'scanJob' | 'outboxEvent' | 'interest' | 'idempotencyKey' | 'sourceBinding' | 'sourceCatalogEntry'
       >,
     ) => Promise<TValue>,
     options: { readonly isolationLevel: 'Serializable' },
@@ -111,6 +111,27 @@ export type PrismaMonitoringClient = {
     }): Promise<PrismaSourceCatalogEntryRecord | null>;
   };
   readonly sourceBinding: {
+    create(args: {
+      readonly data: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly interestId: string;
+        readonly sourceCatalogEntryId: string;
+        readonly capabilityProfileVersion: number;
+        readonly status: 'ENABLED' | 'PAUSED';
+        readonly config: Readonly<Record<string, unknown>>;
+      };
+    }): Promise<PrismaSourceBindingRecord>;
+    count(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly interestId: string;
+        readonly deletedAt: null;
+        readonly status: 'ENABLED';
+      };
+    }): Promise<number>;
     upsert(args: {
       readonly where: { readonly id: string };
       readonly update: {

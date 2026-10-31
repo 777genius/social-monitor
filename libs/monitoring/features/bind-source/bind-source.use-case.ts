@@ -6,16 +6,18 @@ import {
   correlationId,
   eventId,
   err,
-  ok,
   type Result,
 } from '@social-monitor/shared-kernel';
 
 import { SourceBinding, type SourceBindingEnabledEvent } from '../../domain';
+import {
+  BIND_SOURCE_CREATION_SCOPE,
+  type SourceBindingCreationCommitPort,
+} from '../../application/contracts/source-binding-creation-commit';
+import { replaySourceBindingReceipt } from '../../application/source-binding-creation-decision';
 import type {
   IdempotencyPort,
-  OutboxPort,
   SourceBindingConfigProtectorPort,
-  SourceBindingRepositoryPort,
   SourceCatalogPort,
   InterestRepositoryPort,
 } from '../../ports';
@@ -28,10 +30,9 @@ type BindSourceFailure = DomainError | Error;
 export class BindSourceUseCase {
   constructor(
     private readonly interests: InterestRepositoryPort,
-    private readonly bindings: SourceBindingRepositoryPort,
+    private readonly creation: SourceBindingCreationCommitPort,
     private readonly sourceCatalog: SourceCatalogPort,
-    private readonly outbox: OutboxPort,
-    private readonly idempotency: IdempotencyPort,
+    private readonly idempotency: Pick<IdempotencyPort, 'get'>,
     private readonly configProtector: SourceBindingConfigProtectorPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
@@ -42,13 +43,13 @@ export class BindSourceUseCase {
     const cached = await this.idempotency.get<BindSourceResult>({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      scope: 'monitoring.bind-source',
+      scope: BIND_SOURCE_CREATION_SCOPE,
       key: command.idempotencyKey,
     });
-    if (cached) {
-      return ok({ ...cached.value, created: false });
-    }
+    if (cached) return replaySourceBindingReceipt(cached.value);
 
+    // Fast user-facing validation; the durable commit rechecks existence,
+    // canonical identity and full enabled capacity inside one transaction.
     const interest = await this.interests.findById({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
@@ -60,80 +61,39 @@ export class BindSourceUseCase {
 
     const capability = await this.sourceCatalog.getCapability(command.providerKey);
     if (!capability || !capability.productionSafe) {
-      return err(
-        new DomainError('validation.failed', 'Source provider is not available for production-safe MVP scans', {
+      return err(new DomainError('validation.failed',
+        'Source provider is not available for production-safe MVP scans', {
           providerKey: command.providerKey,
-        }),
-      );
+        }));
     }
 
     const configValidation = await this.sourceCatalog.validateBindingConfig(command.providerKey, command.config);
     if (!configValidation.ok) {
-      return err(
-        new DomainError('validation.failed', 'Source binding config is invalid for provider', {
-          providerKey: command.providerKey,
-          reason: configValidation.reason,
-        }),
-      );
+      return err(new DomainError('validation.failed', 'Source binding config is invalid for provider', {
+        providerKey: command.providerKey,
+        reason: configValidation.reason,
+      }));
     }
 
-    const existing = await this.bindings.findByInterestAndProvider({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      interestId: command.interestId,
-      providerKey: command.providerKey,
-      configIdentity: configValidation.configIdentity,
-    });
-    if (existing) {
-      const snapshot = existing.toSnapshot();
-      const result = { sourceBindingId: snapshot.id, created: false };
-      await this.idempotency.set({
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        scope: 'monitoring.bind-source',
-        key: command.idempotencyKey,
-        value: result,
-      });
-      return ok(result);
-    }
-
-    const maxEnabledSourcesPerInterest = this.capacityLimits.maxEnabledSourcesPerInterest;
-    if (maxEnabledSourcesPerInterest !== undefined) {
-      const currentBindings = await this.bindings.listByInterest({
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        interestId: command.interestId,
-        limit: 100,
-      });
-      const enabledCount = currentBindings.sourceBindings.filter((binding) =>
-        binding.toSnapshot().status === 'enabled').length;
-      if (enabledCount >= maxEnabledSourcesPerInterest) {
-        return err(new DomainError('operation.quota_exceeded', 'Interest source binding capacity limit reached', {
-          limit: String(maxEnabledSourcesPerInterest),
-        }));
-      }
-    }
-
+    const now = this.clock.now();
     const protectedConfig = await this.configProtector.protect(configValidation.normalizedConfig ?? command.config);
     const binding = SourceBinding.create({
       id: this.ids.generate(),
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       interestId: command.interestId,
+      // Never use a caller alias as the persisted/duplicate provider identity.
       providerKey: capability.providerKey,
       capabilityProfileVersion: capability.version,
       config: protectedConfig,
-      createdAt: this.clock.now(),
+      createdAt: now,
     });
     const snapshot = binding.toSnapshot();
-
-    await this.bindings.save(binding);
-
     const event: SourceBindingEnabledEvent = {
       eventId: eventId(this.ids.generate()),
       eventType: 'monitoring.source-binding.enabled',
       schemaVersion: 1,
-      occurredAt: this.clock.now(),
+      occurredAt: now,
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       correlationId: correlationId(command.correlationId),
@@ -147,17 +107,13 @@ export class BindSourceUseCase {
         capabilityProfileVersion: snapshot.capabilityProfileVersion,
       },
     };
-    await this.outbox.append(event);
-
-    const result = { sourceBindingId: snapshot.id, created: true };
-    await this.idempotency.set({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      scope: 'monitoring.bind-source',
-      key: command.idempotencyKey,
-      value: result,
+    return this.creation.commit({
+      binding, event, idempotencyKey: command.idempotencyKey,
+      receiptId: this.ids.generate(),
+      ...(configValidation.configIdentity === undefined ? {} : {
+        configIdentity: configValidation.configIdentity,
+      }),
+      maxEnabledSourcesPerInterest: this.capacityLimits.maxEnabledSourcesPerInterest,
     });
-
-    return ok(result);
   }
 }

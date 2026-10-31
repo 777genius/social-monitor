@@ -520,6 +520,19 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   };
 
   readonly sourceBinding: PrismaMonitoringClient['sourceBinding'] = {
+    create: async ({ data }) => {
+      if (this.sourceBindings.has(data.id)) throw new Error('Duplicate source binding in test store');
+      const record: PrismaSourceBindingRecord = { ...data, createdAt: clock.now() };
+      this.sourceBindings.set(record.id, record);
+      return record;
+    },
+    count: async ({ where }) =>
+      [...this.sourceBindings.values()].filter((row) =>
+        row.tenantId === where.tenantId &&
+        row.workspaceId === where.workspaceId &&
+        row.interestId === where.interestId &&
+        row.status === where.status
+      ).length,
     upsert: async (args) => {
       const existing = this.sourceBindings.get(args.where.id);
       const record: PrismaSourceBindingRecord = {

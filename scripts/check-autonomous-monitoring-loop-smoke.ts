@@ -1,5 +1,6 @@
 import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
+import { InMemorySourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-creation.store';
 import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import { correlationId, userId } from "./lib/autonomous-monitoring-loop-scope";
 import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
@@ -92,7 +93,7 @@ async function main(): Promise<void> {
   const metrics = new InMemoryMetricsRecorder();
   const interestCreationState = new InMemoryInterestCreationState();
   const interests = new InMemoryInterestRepository(interestCreationState);
-  const bindings = new InMemorySourceBindingRepository();
+  const bindings = new InMemorySourceBindingRepository(interestCreationState);
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
   const outbox = new InMemoryOutboxAdapter(interestCreationState);
@@ -211,6 +212,7 @@ async function main(): Promise<void> {
     interests,
     interestId: interest.interestId,
     bindings,
+    bindingCreation: new InMemorySourceBindingCreationStore(interestCreationState),
     scanPolicies,
     outbox,
     idempotency,

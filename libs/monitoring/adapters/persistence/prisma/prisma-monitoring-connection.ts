@@ -64,7 +64,7 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
     work: (
       transaction: Pick<
         PrismaMonitoringClient,
-        'scanJob' | 'outboxEvent' | 'interest' | 'idempotencyKey'
+        'scanJob' | 'outboxEvent' | 'interest' | 'idempotencyKey' | 'sourceBinding' | 'sourceCatalogEntry'
       >,
     ) => Promise<TValue>,
     options: { readonly isolationLevel: 'Serializable' },

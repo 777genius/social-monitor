@@ -1,5 +1,6 @@
 import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
+import { InMemorySourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-creation.store';
 import type { DomainError } from '@social-monitor/shared-kernel';
 import {
   FixedClock,
@@ -54,7 +55,7 @@ async function proveMonitoringWriteIdempotency(): Promise<void> {
   const ids = new SequenceIdGenerator('write-idempotency-monitoring');
   const interestCreationState = new InMemoryInterestCreationState();
   const topics = new InMemoryInterestRepository(interestCreationState);
-  const bindings = new InMemorySourceBindingRepository();
+  const bindings = new InMemorySourceBindingRepository(interestCreationState);
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
   const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
@@ -87,9 +88,8 @@ async function proveMonitoringWriteIdempotency(): Promise<void> {
 
   const bindSource = new BindSourceUseCase(
     topics,
-    bindings,
+    new InMemorySourceBindingCreationStore(interestCreationState),
     new FakeSourceCatalogAdapter(),
-    outbox,
     idempotency,
     new PassThroughConfigProtector(),
     ids,

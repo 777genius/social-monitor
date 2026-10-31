@@ -7,6 +7,7 @@ import {
   sourceCatalogOptionsForRuntime,
 } from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { ApplyAcceptedTopicRecommendationUseCase } from '../../features/apply-accepted-topic-recommendation/apply-accepted-topic-recommendation.use-case';
+import type { SourceBindingCreationCommitPort } from '../../application/contracts/source-binding-creation-commit';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
 import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
@@ -34,6 +35,7 @@ import {
   MONITORING_SCAN_JOB_REPOSITORY,
   MONITORING_SCAN_POLICY_REPOSITORY,
   MONITORING_SOURCE_BINDING_REPOSITORY,
+  MONITORING_SOURCE_BINDING_CREATION_COMMIT,
   MONITORING_SOURCE_CATALOG,
 } from './monitoring-provider-tokens';
 
@@ -57,17 +59,15 @@ export const monitoringSourceBindingProviders = (
     provide: BindSourceUseCase,
     useFactory: (
       interests: InterestRepositoryPort,
-      bindings: SourceBindingRepositoryPort,
+      creation: SourceBindingCreationCommitPort,
       sourceCatalog: SourceCatalogPort,
-      outbox: OutboxPort,
       idempotency: IdempotencyPort,
       configProtector: SourceBindingConfigProtectorPort,
     ) =>
       new BindSourceUseCase(
         interests,
-        bindings,
+        creation,
         sourceCatalog,
-        outbox,
         idempotency,
         configProtector,
         new CryptoIdGenerator(),
@@ -76,9 +76,8 @@ export const monitoringSourceBindingProviders = (
       ),
     inject: [
       MONITORING_INTEREST_REPOSITORY,
-      MONITORING_SOURCE_BINDING_REPOSITORY,
+      MONITORING_SOURCE_BINDING_CREATION_COMMIT,
       MONITORING_SOURCE_CATALOG,
-      MONITORING_OUTBOX,
       MONITORING_IDEMPOTENCY,
       MONITORING_CONFIG_PROTECTOR,
     ],

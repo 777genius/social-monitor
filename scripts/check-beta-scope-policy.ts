@@ -1,5 +1,6 @@
 import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
+import { InMemorySourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-creation.store';
 import {
   DomainError,
   FixedClock,
@@ -15,8 +16,6 @@ import {
   sourceCatalogOptionsForRuntime,
 } from '../libs/monitoring/adapters/source-catalog/fake-source-catalog.adapter';
 import { InMemoryIdempotencyAdapter } from '../libs/monitoring/adapters/idempotency/in-memory-idempotency.adapter';
-import { InMemoryOutboxAdapter } from '../libs/monitoring/adapters/messaging/in-memory-outbox.adapter';
-import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
 import { InMemoryInterestRepository } from '../libs/monitoring/adapters/persistence/in-memory-interest.repository';
 import { BindSourceUseCase } from '../libs/monitoring/features/bind-source/bind-source.use-case';
 import { CreateInterestUseCase } from '../libs/monitoring/features/create-interest/create-interest.use-case';
@@ -92,7 +91,6 @@ async function proveUnsupportedSourceProfilesStayOutOfBindingCatalog(): Promise<
 async function proveUnsupportedBindingsAreRejected(ids: IdGenerator): Promise<void> {
   const interestCreationState = new InMemoryInterestCreationState();
   const topics = new InMemoryInterestRepository(interestCreationState);
-  const outbox = new InMemoryOutboxAdapter(interestCreationState);
   const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
   const createdTopic = await new CreateInterestUseCase(new InMemoryInterestCreationStore(interestCreationState), idempotency, ids, clock).execute({
     tenantId: tenant,
@@ -106,9 +104,8 @@ async function proveUnsupportedBindingsAreRejected(ids: IdGenerator): Promise<vo
 
   const bindSource = new BindSourceUseCase(
     topics,
-    new InMemorySourceBindingRepository(),
+    new InMemorySourceBindingCreationStore(interestCreationState),
     new FakeSourceCatalogAdapter(betaSourceCatalogOptions),
-    outbox,
     idempotency,
     new PassThroughConfigProtector(),
     ids,
