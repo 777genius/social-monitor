@@ -11,6 +11,13 @@ const transientPresentationRuntimeCodes = new Set([
   "agent_runtime.failed",
   "agent_runtime.cli_exit",
   "agent_runtime.invalid_cli_result",
+  // Gateway attempts that broke after dispatch: a provider failure inside the
+  // stream, lost output or an unknown effect. A Kimi stream failed this way
+  // about 18 s in, and the same request completed later. The retry may be
+  // paid twice; the run guard caps how many batches can spend it.
+  "provider_effect_unknown",
+  "provider_failed",
+  "provider_output_lost",
 ]);
 // A timeout already spent the whole per-task deadline the native V3 budget
 // reserves for this call, so it is skipped without a second attempt.
