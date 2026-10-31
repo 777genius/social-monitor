@@ -54,18 +54,29 @@ export function recoveryPersistence(db: RecoveryDatabase, clock: Clock): Recover
       // The standard adapter owns diagnostics and start/ack/failure semantics.
       // Compare PostgreSQL tuple versions under an exact row lock. Comparing
       // Date values in Prisma WHERE loses PostgreSQL sub-millisecond precision.
+      requireRecovery(row.messageKind === 'EVENT' && row.status === 'FAILED',
+        'recovery_requires_failed_event');
       const guarded: PrismaEventStoreClient = {
-        outboxEvent: { findMany: unavailable, update: async args => {
-          requireRecovery(args.where.id === row.id, 'transition_id_mismatch');
-          updated = await db.$transaction(async tx => {
-            requireRecovery(await readVersion(tx, row.id, true) === row.rowVersion, 'outbox_concurrent_mutation');
-            const next = await tx.outboxEvent.update(args);
-            return { ...next, rowVersion: await readVersion(tx, row.id) };
-          }, { isolationLevel: 'Serializable' });
-          return updated;
-        } }, inboxRecord: { findUnique: unavailable, create: unavailable },
+        outboxEvent: {
+          findMany: unavailable,
+          update: unavailable,
+          updateMany: async ({ where, data }) => {
+            requireRecovery(where.id === row.id && where.messageKind === 'EVENT' &&
+              where.status === 'FAILED', 'transition_id_mismatch');
+            updated = await db.$transaction(async tx => {
+              requireRecovery(await readVersion(tx, row.id, true) === row.rowVersion,
+                'outbox_concurrent_mutation');
+              // Only this reviewed one-shot recovery can transition a FAILED
+              // event; ordinary event relays require status=PENDING.
+              const next = await tx.outboxEvent.update({ where: { id: where.id }, data });
+              return { ...next, rowVersion: await readVersion(tx, row.id) };
+            }, { isolationLevel: 'Serializable' });
+            return { count: 1 };
+          },
+        },
+        inboxRecord: { findUnique: unavailable, create: unavailable },
       };
-      const outbox = new PrismaOutboxStoreAdapter(guarded, clock);
+      const outbox = new PrismaOutboxStoreAdapter(guarded, clock, 'FAILED');
       if (action === 'start') await outbox.recordAttempt(row.id);
       else if (action === 'published') await outbox.markPublished(row.id);
       else await outbox.markFailed(row.id, 'Reader ready recovery publish uncertain; inspect durable operation receipts.');
