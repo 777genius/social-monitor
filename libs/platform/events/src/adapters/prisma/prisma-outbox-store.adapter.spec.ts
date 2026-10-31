@@ -28,7 +28,9 @@ function fixture() {
   const client: PrismaEventStoreClient = { outboxEvent: {
     update, updateMany, findMany: async () => row.status === 'PENDING' ? [row] : [],
   }, inboxRecord: { findUnique: async () => null, create: jest.fn() } };
-  return { row: () => row, updateMany, client,
+  return { row: () => row,
+    setKind: (kind: PrismaEventOutboxRecord['messageKind']) => { row = { ...row, messageKind: kind }; },
+    updateMany, client,
     store: new PrismaOutboxStoreAdapter(client, new FixedClock(row.createdAt)) };
 }
 
@@ -87,6 +89,18 @@ describe('event outbox diagnostics and recorded dispatch starts', () => {
     const g = fixture();
     await expect(g.store.markPublished('some-other-id')).rejects.toThrow('no longer pending');
     expect(g.row()).toMatchObject({ status: 'PENDING', publishAttempts: 0 });
+  });
+
+  it('never mutates a COMMAND row in the shared outbox table', async () => {
+    const f = fixture();
+    f.setKind('COMMAND');
+    await expect(f.store.recordAttempt('fixture-event')).rejects.toThrow('no longer pending');
+    await expect(f.store.markPublished('fixture-event')).rejects.toThrow('no longer pending');
+    await expect(f.store.markFailed('fixture-event', 'spurious event error'))
+      .rejects.toThrow('no longer pending');
+    expect(f.row()).toMatchObject({
+      messageKind: 'COMMAND', status: 'PENDING', publishAttempts: 0, lastError: null,
+    });
   });
 
   it('keeps manifest-authorized FAILED recovery explicit and separate from normal relay writes', async () => {
