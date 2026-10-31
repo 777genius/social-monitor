@@ -32,7 +32,7 @@ export type PrismaEventStoreClient = {
       readonly where: {
         readonly id: string;
         readonly messageKind: 'EVENT';
-        readonly status: 'PENDING';
+        readonly status: 'PENDING' | 'FAILED';
       };
       readonly data: {
         readonly status?: PrismaEventOutboxStatus;
