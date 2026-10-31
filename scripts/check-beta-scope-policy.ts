@@ -92,7 +92,6 @@ async function proveUnsupportedSourceProfilesStayOutOfBindingCatalog(): Promise<
 async function proveUnsupportedBindingsAreRejected(ids: IdGenerator): Promise<void> {
   const interestCreationState = new InMemoryInterestCreationState();
   const topics = new InMemoryInterestRepository(interestCreationState);
-  const outbox = new InMemoryOutboxAdapter(interestCreationState);
   const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
   const createdTopic = await new CreateInterestUseCase(new InMemoryInterestCreationStore(interestCreationState), idempotency, ids, clock).execute({
     tenantId: tenant,
