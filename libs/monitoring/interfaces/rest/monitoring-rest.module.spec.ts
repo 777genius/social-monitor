@@ -8,6 +8,7 @@ import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-res
 import { ApplyAcceptedTopicRecommendationUseCase } from '../../features/apply-accepted-topic-recommendation/apply-accepted-topic-recommendation.use-case';
 import { UsageScanRequestQuotaAdapter } from '../../adapters/quota/usage-scan-request-quota.adapter';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
+import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
 import { InMemoryInterestCreationState } from '../../adapters/persistence/in-memory-interest-creation-state';
 import { CreateInterestUseCase } from '../../features/create-interest/create-interest.use-case';
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
@@ -36,6 +37,7 @@ import {
   MONITORING_SCAN_SCHEDULER_DECISION_HISTORY,
   MONITORING_SOURCE_BINDING_REPOSITORY,
   MONITORING_SOURCE_BINDING_CREATION_COMMIT,
+  MONITORING_SOURCE_BINDING_STATUS_CHANGE_COMMIT,
   MONITORING_SOURCE_CREDENTIAL_REFRESHER,
   MONITORING_SOURCE_CREDENTIAL_REPOSITORY,
   MONITORING_SOURCE_CREDENTIAL_RESOLVER,
@@ -92,12 +94,18 @@ describe('MonitoringRestModule composition', () => {
   it('keeps critical tokens bound to the same dependencies as singleton providers', () => {
     const providers = moduleMetadata<Provider[]>(MODULE_PROVIDERS);
 
-    expect(providers).toHaveLength(49);
+    expect(providers).toHaveLength(50);
     expect(factoryProvider(MONITORING_SOURCE_BINDING_REPOSITORY).inject).toEqual([
       MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT, InMemoryInterestCreationState,
     ]);
     expect(factoryProvider(MONITORING_SOURCE_BINDING_CREATION_COMMIT).inject).toEqual([
       MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT, InMemoryInterestCreationState,
+    ]);
+    expect(factoryProvider(MONITORING_SOURCE_BINDING_STATUS_CHANGE_COMMIT).inject).toEqual([
+      MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT, InMemoryInterestCreationState,
+    ]);
+    expect(factoryProvider(ChangeSourceBindingStatusUseCase).inject).toEqual([
+      MONITORING_SOURCE_BINDING_STATUS_CHANGE_COMMIT,
     ]);
     expect(factoryProvider(BindSourceUseCase).inject).toEqual([
       MONITORING_INTEREST_REPOSITORY,
