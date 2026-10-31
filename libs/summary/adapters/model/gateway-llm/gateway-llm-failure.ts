@@ -2,6 +2,7 @@ import type { LlmFailure, LlmFailureCode } from "@agent-teams/account-gateway/ll
 
 import type { AgentRuntimeFailure } from "../../../ports";
 import type { GatewayLlmAttemptIdentity } from "./gateway-llm-attempts";
+import { safeOutputViolationPattern } from "./gateway-llm-output-violations";
 
 type FailureShape = {
   readonly code: string;
@@ -49,11 +50,18 @@ const failureShapes: Readonly<Record<LlmFailureCode, FailureShape>> = {
     safeMessage: "Gateway task reached its deadline" },
 };
 
+/** Strict-decode verdict on rejected output; absent when decode never ran. */
+export type GatewayLlmOutputViolations = {
+  /** The decode's own first path:keyword. */
+  readonly first: string;
+  /** Every violation found, path:keyword or path:keyword=limit. */
+  readonly all: readonly string[];
+};
+
 export const gatewayLlmFailure = (
   failure: LlmFailure,
   identity: GatewayLlmAttemptIdentity,
-  /** Strict-decode path:keyword of rejected output; undefined if decode never ran. */
-  outputViolation?: string,
+  outputViolations?: GatewayLlmOutputViolations,
 ): AgentRuntimeFailure => {
   const shape = failureShapes[failure.code];
   const retry = failure.retry;
@@ -65,8 +73,11 @@ export const gatewayLlmFailure = (
     causeCategory: shape.causeCategory,
     details: {
       ...shape.details,
-      ...(failure.code === "output_invalid"
-        ? { outputValidationPath: safeOutputViolation(outputViolation) } : {}),
+      ...(failure.code === "output_invalid" ? {
+        outputValidationPath: safeOutputViolation(outputViolations?.first),
+        outputValidationViolations: (outputViolations?.all ?? [])
+          .filter((entry) => safeOutputViolationPattern.test(entry)).join(" "),
+      } : {}),
       gatewayCode: failure.code,
       gatewayEffect: failure.effect,
       gatewayRetry: retry.kind,

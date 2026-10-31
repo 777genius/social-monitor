@@ -255,14 +255,15 @@ describe("GatewayLlmClient", () => {
   });
 
   it("degrades output outside the product schema like a CLI schema normalization failure", async () => {
-    for (const [text, path] of [["not json", "json_parse_or_empty"], ['{"label":7,"note":null}', "$.label:type"],
-      ['{"label":"x","note":null,"invented key":1}', "unclassified"]] as const) {
+    for (const [text, path, all] of [["not json", "json_parse_or_empty", ""],
+      ['{"label":7,"note":null}', "$.label:type", "$.label:type"],
+      ['{"label":"x","note":null,"invented key":1}', "unclassified", "$:additionalProperties"]] as const) {
       const fake = harness({ request: async () => completedStream(text) });
       const result = await fake.client.runTask(command());
 
       expect(result.failure).toMatchObject({ code: "provider_output_invalid", details: {
-        outputValidationStage: "schema_normalization",
-        outputValidationCode: "schema_normalization_failed", outputValidationPath: path } });
+        outputValidationStage: "schema_normalization", outputValidationCode: "schema_normalization_failed",
+        outputValidationPath: path, outputValidationViolations: all } });
       expect(fake.requests()).toBe(1);
       // The job failure reason names the broken field, never the output.
       expect(() => readAgentRuntimeObjectOutput(result, JSON.parse, "Reader summary"))

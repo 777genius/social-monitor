@@ -7,6 +7,7 @@ import type {
   AgentRuntimeClientPort,
   AgentRuntimeProvider,
   AgentRuntimeTaskCommand,
+  AgentRuntimeTaskResult,
   ProviderReaderSummaryAttempt,
   ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
@@ -49,6 +50,7 @@ import {
   type activeReaderSummaryProvider,
   activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
+  isGatewayReaderSummaryBackend,
   resolveReaderSummaryBackendEffort,
   readerSummaryRouteControls,
   resolveReaderSummaryGenerationIdentity,
@@ -58,6 +60,9 @@ import {
   frozenLegacyReaderSummaryRecoveryContract,
   type FrozenLegacyReaderSummaryRecoveryContract,
 } from "./active-reader-summary-generation-profile";
+import { maxReportedOutputViolations, safeOutputViolationPattern } from
+  "./gateway-llm/gateway-llm-output-violations";
+import { gatewayOutputHardLimits } from "./gateway-llm/gateway-llm-schema-limits";
 
 export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly client: AgentRuntimeClientPort;
@@ -201,14 +206,20 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     }
 
     let logicalRunUsage: ReaderSummaryModelEstimate | undefined;
+    let schemaViolations: readonly string[] | undefined;
+    // Two attempts at most: the repair runs once, for either cause.
     for (const attempt of readerSummaryNarrativeAttempts) {
-      const command = this.buildTaskCommand(input, selectedRoute, attempt);
+      const command = this.buildTaskCommand(input, selectedRoute, attempt, schemaViolations);
       const result = await this.client.runTask(command);
       const attemptUsage = usageFromAgentRuntime(
         result.usage,
         this.estimate(input, selectedRoute),
       );
       logicalRunUsage = sumReaderSummaryUsage(logicalRunUsage, attemptUsage);
+      if (attempt === "primary") {
+        schemaViolations = this.gatewaySchemaViolations(result);
+        if (schemaViolations !== undefined) continue;
+      }
       try {
         const rawDraft = readAgentRuntimeObjectOutput(
           result,
@@ -246,12 +257,34 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     throw new Error("Reader summary repair attempt did not return a result");
   }
 
+  /**
+   * Gateway models are not held to the schema while they write, so output
+   * the strict decode rejects gets one repair that names every broken path
+   * and limit, never the rejected text. The CLI runtime enforces the schema
+   * itself and keeps failing such output.
+   */
+  private gatewaySchemaViolations(result: AgentRuntimeTaskResult): readonly string[] | undefined {
+    const failure = result.status === "failed" ? result.failure : undefined;
+    if (!isGatewayReaderSummaryBackend(this.modelBackend) || failure?.code !== "provider_output_invalid" ||
+        failure.details?.outputValidationStage !== "schema_normalization") return undefined;
+    const reported = (failure.details.outputValidationViolations ?? "").split(" ")
+      .filter((entry) => safeOutputViolationPattern.test(entry));
+    const first = failure.details.outputValidationPath;
+    return (reported.length > 0 ? reported : [first ?? "json_parse_or_empty"])
+      .slice(0, maxReportedOutputViolations);
+  }
+
   private buildTaskCommand(
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
     attempt: "primary" | "repair",
+    schemaViolations?: readonly string[],
   ): AgentRuntimeTaskCommand {
     const isRepair = attempt === "repair";
+    const hardLimits = isGatewayReaderSummaryBackend(this.modelBackend)
+      ? `\n${readerSummaryGatewayHardLimits}` : "";
+    const repairInstruction = !isRepair ? ""
+      : `\n${schemaViolations === undefined ? narrativeRepairInstruction : schemaRepairInstruction(schemaViolations)}`;
     return {
       requestId: buildAgentRuntimeRequestId(
         isRepair ? "reader-summary-repair" : "reader-summary",
@@ -278,9 +311,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
         : this.legacyRecovery
           ? frozenLegacyReaderSummaryRecoveryContract.purposes.generate
           : activeReaderSummaryPurposes.generate,
-      systemPrompt: isRepair
-        ? `${buildOpenAiReaderSummaryInstructions(input)}\n${narrativeRepairInstruction}`
-        : buildOpenAiReaderSummaryInstructions(input),
+      systemPrompt: `${buildOpenAiReaderSummaryInstructions(input)}${hardLimits}${repairInstruction}`,
       prompt: buildOpenAiReaderSummaryPromptPayload(input),
       outputSchema: openAiReaderSummaryJsonSchema,
       controls: {
@@ -406,6 +437,11 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 
 const narrativeRepairInstruction =
   "Repair the complete JSON response. Every narrativeSections item must use the non-empty string fields title and text, never summary, body or description. If coveragePlan.lead is null, return empty topStories and narrativeSections plus a concrete noSignalReason. For single_story, narrativeSections[0] must have kind lead and cite coveragePlan.lead. For daily_synthesis, it must have kind lead, set storyClusterId to null, and cite both coveragePlan.lead and at least one coveragePlan.secondary cluster. Return exactly one secondary_signal for every coveragePlan.secondary entry. Omit any watch that is not self-contained and backed by high engagement, first-party authority or cross-provider support. Do not change facts or invent citations.";
+
+const readerSummaryGatewayHardLimits = gatewayOutputHardLimits(openAiReaderSummaryJsonSchema);
+
+const schemaRepairInstruction = (violations: readonly string[]): string =>
+  `Your previous response was rejected by the output schema at: ${violations.join("; ")}. Each entry is path:rule, with the limit after = (maxLength in characters, maxItems in items). Regenerate the complete JSON response from the same evidence. Rewrite every listed field as complete, shorter text inside its limit; never cut a sentence or word, and keep every other field inside the hard limits. Do not change facts or invent citations.`;
 
 const isRepairableNarrativeError = (error: unknown): boolean =>
   error instanceof Error &&

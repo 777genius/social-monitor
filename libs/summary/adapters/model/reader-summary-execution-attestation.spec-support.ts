@@ -36,3 +36,28 @@ export const withTestExecutionAttestation = (
     },
   };
 };
+
+/** The attestation GatewayLlmClient returns for a completed Kimi Code task. */
+export const withTestGatewayExecutionAttestation = (
+  command: AgentRuntimeTaskCommand,
+  result: AgentRuntimeTaskResult,
+): AgentRuntimeTaskResult => {
+  const attested = withTestExecutionAttestation(command, result);
+  if (attested.executionAttestation === undefined) return attested;
+  const model = typeof command.controls.model === "string" ? command.controls.model : "k3-256k";
+  return {
+    ...attested,
+    executionAttestation: {
+      ...attested.executionAttestation,
+      model,
+      reasoningEffort: typeof command.controls.reasoningEffort === "string"
+        ? command.controls.reasoningEffort : "default",
+      runtimeEngine: "gateway-llm",
+      runtimePackageVersion: "0.1.0-llm.0f3827f",
+      launcherSha256: "c".repeat(64),
+      gateway: { profileId: "kimi-code-global-responses-apikey-v1", taskId: "sm-task", attempt: 1,
+        executionRef: "execution-1", requestRef: "request-1", accountRef: "account-1",
+        observedModel: model, requestSha256: "d".repeat(64) },
+    },
+  };
+};
