@@ -86,7 +86,8 @@ export class OutboxRelayLoop implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.error('outbox relay loop tick failed', {
         trigger,
-        error: redactSensitiveText(error instanceof Error ? error.message : String(error)).slice(0, 240),
+        error: redactSensitiveText(error instanceof Error ? error.message : String(error))
+          .replace(/[\r\n\t]/g, ' ').slice(0, 240),
         worker: 'event-relay',
       });
     }
