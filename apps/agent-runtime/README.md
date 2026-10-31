@@ -190,8 +190,12 @@ account-gateway with `AGENT_RUNTIME_TRANSPORT=gateway-llm`. That transport
 serves `AGENT_RUNTIME_READER_SUMMARY_BACKEND=kimi-code` (model `k3-256k`, no
 reasoning control), `openrouter` (`AGENT_RUNTIME_GATEWAY_LLM_MODEL`, default
 `openai/gpt-oss-120b`) and `openai-chatgpt` (Codex accounts connected to the
-gateway, profile `openai-codex-oauth-responses-v1`, model `gpt-5.6-sol` at
-effort `high`). Kimi and OpenRouter never run here; Codex runs here or on the
+gateway, profile `openai-codex-oauth-responses-v1`). On the gateway, Codex runs
+one allowed pair from `AGENT_RUNTIME_GATEWAY_LLM_MODEL` and
+`AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT`: `gpt-6.1-sol`/`low` (default)
+or `gpt-5.6-sol`/`high`; any other pair fails at startup. `gpt-6.1-sol` runs
+only through the gateway, and this service keeps `gpt-5.6-sol`/`high`.
+Kimi and OpenRouter never run here; Codex runs here or on the
 gateway depending on the transport, and the gateway needs the backend named
 explicitly. MiMo stays on this service. Weekly, canonical
 recovery, generic summary and relevance tasks keep the gRPC client. The

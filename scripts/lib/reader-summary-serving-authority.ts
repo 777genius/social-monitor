@@ -1,5 +1,10 @@
 import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports";
-import { resolveGatewayReaderSummaryRoute, resolveReaderSummaryDailyTaskIdentityFromEnv, resolveReaderSummaryGenerationIdentityFromEnv } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+import {
+  resolveCodexGatewayReaderSummaryRoute,
+  resolveGatewayReaderSummaryRoute,
+  resolveReaderSummaryDailyTaskIdentityFromEnv,
+  resolveReaderSummaryGenerationIdentityFromEnv,
+} from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 
 import { probeProductionRuntimeLiveIdentity } from "./reader-summary-runtime-live-identity";
 
@@ -77,21 +82,11 @@ const summaryAuthority = (
     if (reasoningPolicy !== "high") {
       throw new Error("Current reader summary reasoning effort is invalid");
     }
-    const gateway = resolveGatewayReaderSummaryRoute(input.env);
-    if (gateway !== undefined) {
-      // A gateway route owns its effort; the Codex effort setting does not apply.
-      return Object.freeze({
-        mode: input.summaryModelMode,
-        provider: requiredAgentProvider(agentProvider),
-        physicalModel: generation.model,
-        reasoningPolicy: gateway.reasoningEffort,
-      });
-    }
     return Object.freeze({
       mode: input.summaryModelMode,
       provider: requiredAgentProvider(agentProvider),
       physicalModel: generation.model,
-      reasoningPolicy,
+      reasoningPolicy: gatewayRouteEffort(input.env) ?? reasoningPolicy,
     });
   }
   if (input.summaryModelMode === "openai-responses") {
@@ -202,9 +197,18 @@ const requiredAgentProvider = (provider: string | null): string => {
   return provider;
 };
 
+/**
+ * A gateway route owns its effort, for a gateway-only backend or Codex on the
+ * gateway transport; the Codex CLI effort setting does not apply there.
+ */
+const gatewayRouteEffort = (
+  env: Readonly<Record<string, string | undefined>>,
+): string | undefined => (resolveGatewayReaderSummaryRoute(env) ??
+  resolveCodexGatewayReaderSummaryRoute(env))?.reasoningEffort;
+
 const dailyReasoningPolicy = (
   env: Readonly<Record<string, string | undefined>>,
-): string => resolveGatewayReaderSummaryRoute(env)?.reasoningEffort ?? "high";
+): string => gatewayRouteEffort(env) ?? "high";
 
 const dailyPhysicalModel = (
   env: Readonly<Record<string, string | undefined>>,

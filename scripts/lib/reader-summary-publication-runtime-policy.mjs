@@ -17,16 +17,26 @@ const gatewayTransportKeys =
 // Keep aligned with isGatewayReaderSummaryExecution in
 // libs/summary/adapters/model/active-reader-summary-generation-profile.ts.
 // Gateway-only models never reuse the CLI model names and carry the route
-// effort: "default" when no reasoning control was sent.
+// effort: "default" when no reasoning control was sent. A gateway-only Codex
+// model keeps one of its allowed Codex efforts from
+// libs/summary/adapters/model/codex-reader-summary-route.ts.
 const gatewayModelId = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u;
 const gatewayEfforts = new Set(
   ["default", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
+const codexGatewayOnlyRoutes = Object.freeze([
+  { model: "gpt-6.1-sol", reasoningEffort: "low" },
+]);
 export const isGatewayModel = (value) => typeof value === "string" &&
   gatewayModelId.test(value) && value !== "gpt-5.6-sol" &&
   value !== "mimo-v2.6-pro";
+const codexGatewayEffortMatches = (model, reasoningEffort) =>
+  !codexGatewayOnlyRoutes.some((route) => route.model === model) ||
+  codexGatewayOnlyRoutes.some((route) =>
+    route.model === model && route.reasoningEffort === reasoningEffort);
 export const isGatewayExecution = (runtimeEngine, model, reasoningEffort) =>
   runtimeEngine === gatewayRuntimeEngine && isGatewayModel(model) &&
-  gatewayEfforts.has(reasoningEffort);
+  gatewayEfforts.has(reasoningEffort) &&
+  codexGatewayEffortMatches(model, reasoningEffort);
 
 export const observedModelMatches = (requested, observed) =>
   observed === null ||

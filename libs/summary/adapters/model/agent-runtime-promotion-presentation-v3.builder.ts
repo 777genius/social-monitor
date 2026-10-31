@@ -33,6 +33,7 @@ import {
   mimoPresentationReasoningEffort,
   mimoPresentationMaxTimeoutMs,
   assertActiveReaderSummaryProvider,
+  isCodexGatewayOnlyReaderSummaryModel,
   isGatewayReaderSummaryBackend,
   readerSummaryRouteControls,
   resolveReaderSummaryBackendEffort,
@@ -49,7 +50,7 @@ export type AgentRuntimePromotionPresentationV3BuilderOptions = {
   readonly providerInstanceId?: string;
   readonly model?: string;
   readonly modelBackend?: ReaderSummaryGenerationBackend;
-  /** high for Codex, none for MiMo, the route effort for a gateway backend. */
+  /** high for gpt-5.6-sol, none for MiMo, the route effort for a gateway route. */
   readonly reasoningEffort?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
@@ -83,12 +84,14 @@ implements PromotionPresentationBuilder {
     this.modelBackend = identity.backend;
     const cliEffort = this.modelBackend === mimoReaderSummaryBackend
       ? mimoPresentationReasoningEffort : activeReaderSummaryReasoningEffort;
+    // A gateway route, including a gateway-only Codex model, owns its effort.
     if (!isGatewayReaderSummaryBackend(this.modelBackend) &&
+      !isCodexGatewayOnlyReaderSummaryModel(this.model) &&
       options.reasoningEffort !== undefined && options.reasoningEffort !== cliEffort) {
       throw new Error("Presentation reasoning effort conflicts with purpose policy");
     }
     this.reasoningEffort = resolveReaderSummaryBackendEffort(
-      this.modelBackend, options.reasoningEffort, cliEffort);
+      this.modelBackend, options.reasoningEffort, cliEffort, this.model);
     const configuredTimeoutMs = positiveIntegerOrFallback(options.timeoutMs, defaultPresentationTimeoutMs);
     this.timeoutMs = this.modelBackend === mimoReaderSummaryBackend
       ? Math.min(configuredTimeoutMs, mimoPresentationMaxTimeoutMs) : configuredTimeoutMs;
@@ -241,10 +244,12 @@ export const resolveAgentRuntimePromotionPresentationV3BuilderOptions = (
 /**
  * Codex is the only backend qualified on the canonical wire, where the model
  * computes UTF-16 quote offsets, the qualification judgment and a display text
- * that literally contains every qualification. MiMo and the gateway models miss
- * those (off-by-one ends, entity-escaped quotes, paraphrased phrases) and fail
- * the seal, so they copy machine-computed source references and the server
- * composes the text and judgment.
+ * that literally contains every qualification. Every Codex model keeps it,
+ * gateway-only ones included, so the Codex backend sends one schema. MiMo and
+ * the gateway-only backends miss those (off-by-one ends, entity-escaped
+ * quotes, paraphrased phrases) and fail the seal, so they copy
+ * machine-computed source references and the server composes the text and
+ * judgment.
  */
 const usesSourceCopyOptions = (backend: ReaderSummaryGenerationBackend): boolean =>
   backend === mimoReaderSummaryBackend || isGatewayReaderSummaryBackend(backend);

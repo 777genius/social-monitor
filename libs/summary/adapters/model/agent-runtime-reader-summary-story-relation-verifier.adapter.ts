@@ -91,7 +91,7 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
     this.modelBackend = options.modelBackend ?? "openai-chatgpt";
     assertReaderSummaryBackendModel(this.modelBackend, this.model);
     this.reasoningEffort = resolveReaderSummaryBackendEffort(
-      this.modelBackend, options.reasoningEffort, activeReaderSummaryReasoningEffort);
+      this.modelBackend, options.reasoningEffort, activeReaderSummaryReasoningEffort, this.model);
     this.promptVersion = nonEmptyOrFallback(
       options.promptVersion,
       defaultPromptVersion,

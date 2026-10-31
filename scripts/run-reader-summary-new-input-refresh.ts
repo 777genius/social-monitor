@@ -21,6 +21,7 @@ import { refreshGenerationSha256 } from "./lib/reader-summary-new-input-refresh-
 import { assertRefreshEqual, refreshLiveJobs } from "./lib/reader-summary-new-input-refresh-guard";
 import { executeNewInputRefresh } from "./lib/reader-summary-new-input-refresh-execution";
 import { resolveReaderSummaryServingAuthority } from "./lib/reader-summary-serving-authority";
+import { readerSummaryCliRuntimeEnv } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { assertRefreshSuccessorCurrent } from "./lib/reader-summary-new-input-refresh-successor";
 
 import { RefreshRuntimeAssertionFailure, singleFlightRefreshRuntimeAssertion } from "./lib/reader-summary-new-input-refresh-runtime-assertion";
@@ -47,11 +48,13 @@ async function main(): Promise<void> {
   const command = parseRefreshCommand(process.argv.slice(2));
   if (command.mode === "source") { console.log(refreshSourceSha256()); return; }
   const clock = new SystemClock();
+  // The refresh runs only on the gRPC CLI runtime, so it keeps the CLI Codex identity.
+  const runtimeEnv = readerSummaryCliRuntimeEnv(process.env);
   const sourceSha256 = refreshSourceSha256();
   const deployedSourceSha256 = required("READER_SUMMARY_REFRESH_DEPLOYED_SOURCE_SHA256");
   if (sourceSha256 !== deployedSourceSha256) throw new Error("Refresh source differs from reviewed deployed source");
   const runtimeAuthority = JSON.parse(required("READER_SUMMARY_REFRESH_RUNTIME_AUTHORITY_JSON")) as RefreshManifest["runtime"];
-  const generationSha256 = refreshGenerationSha256(process.env);
+  const generationSha256 = refreshGenerationSha256(runtimeEnv);
   const fencePaths = {
     globalLock: required("READER_SUMMARY_REFRESH_GLOBAL_LOCK"),
     dateDirectory: required("READER_SUMMARY_REFRESH_DATE_LOCK_DIR"),
@@ -129,7 +132,7 @@ async function main(): Promise<void> {
       const assertSource = () => {
         assertRefreshEqual(refreshSourceSha256(), manifest.sourceSha256, "source");
         assertRefreshEqual(deployedSourceSha256, manifest.deployedSourceSha256, "deployment");
-        assertRefreshEqual(refreshGenerationSha256(process.env), manifest.generationSha256, "model configuration");
+        assertRefreshEqual(refreshGenerationSha256(runtimeEnv), manifest.generationSha256, "model configuration");
       };
       const assertFences = () => assertRefreshFences(manifest.date, fencePaths,
         process.env.READER_SUMMARY_DATE_FENCE_TOKEN, manifest.fenceAuthority);
@@ -143,11 +146,11 @@ async function main(): Promise<void> {
         finally { closeSync(fd); }
       };
       try {
-        const receipt = await executeNewInputRefresh({ configuredInterests, manifest, summary, feed, clock, env: process.env,
+        const receipt = await executeNewInputRefresh({ configuredInterests, manifest, summary, feed, clock, env: runtimeEnv,
           runtime, assertFences, assertSource, record, capturePath: command.capturePath,
           assertRuntime: singleFlightRefreshRuntimeAssertion(async () => {
             const serving = await resolveReaderSummaryServingAuthority({ summaryModelMode: "agent-runtime",
-              topicLabelerMode: "agent-runtime", env: process.env,
+              topicLabelerMode: "agent-runtime", env: runtimeEnv,
               agentRuntimeClient: { checkHealth: async (service) => {
                 try {
                   const health = await runtime.checkHealth(service);

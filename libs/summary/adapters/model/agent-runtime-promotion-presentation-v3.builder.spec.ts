@@ -315,6 +315,24 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(client.commands[0]?.prompt).not.toContain(input.trustedIntent);
   });
 
+  it("keeps the canonical Codex wire for gpt-6.1-sol/low on the gateway transport", async () => {
+    const client = new PresentationRuntimeClient();
+    const builder = new AgentRuntimePromotionPresentationV3Builder(
+      resolveAgentRuntimePromotionPresentationV3BuilderOptions({
+        AGENT_RUNTIME_TRANSPORT: "gateway-llm",
+        AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+        AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+        AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
+      }, client));
+    expect((await builder.build([fixtureInput()]))[0]).toMatchObject({ status: "available" });
+    expect(client.commands[0]?.controls).toEqual(expect.objectContaining({
+      model: "gpt-6.1-sol", reasoningEffort: "low" }));
+    expect(client.commands[0]?.controls).not.toHaveProperty("modelBackend");
+    expect(client.commands[0]?.systemPrompt).not.toContain("SOURCE_REFERENCE_COPY_OPTIONS");
+    expect(() => new AgentRuntimePromotionPresentationV3Builder({ client,
+      model: "gpt-6.1-sol", reasoningEffort: "high" })).toThrow("effort conflict");
+  });
+
   it("uses MiMo for V3 presentation when the daily backend is MiMo", async () => {
     const client = new AttestedPresentationRuntimeClient();
     const builder = new AgentRuntimePromotionPresentationV3Builder(

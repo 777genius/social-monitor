@@ -245,6 +245,58 @@ describe("GatewayLlmClient", () => {
     expect(fake.requests()).toBe(1);
   });
 
+  it("serves a Codex topic label configured from env at gpt-6.1-sol/low end to end", async () => {
+    const env: NodeJS.ProcessEnv = { AGENT_RUNTIME_TRANSPORT: "gateway-llm",
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high" };
+    const output = { nodeLabels: [{ nodeId: "topic:story:codex", topicId: null,
+      subject: "Codex", parentSubject: "OpenAI", claimType: "other", qualifier: null,
+      confidenceScore: 0.92, groupId: "group:agent-tools", keywords: ["codex"],
+      rationale: null }], groups: [{ id: "group:agent-tools", label: "Agent tools",
+      semanticAnchors: ["Codex"], nodeIds: ["topic:story:codex"], confidenceScore: 0.92,
+      rationale: null }], warnings: null };
+    const fake = harness({ request: async () => completedStream(JSON.stringify(output), "gpt-6.1-sol") },
+      "run-1", { profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt",
+        model: "gpt-6.1-sol", reasoningEffort: "low", accountRefs: [accountA], minOutputTokens: 16_384 });
+    const recorded: unknown[] = [];
+    const labeler = new AgentRuntimeReaderSummaryTopicLabeler({
+      ...resolveAgentRuntimeReaderSummaryTopicLabelerOptions(env, fake.client),
+      verifiedAttestationSink: { record: (value) => { recorded.push(value); } },
+    });
+
+    await expect(labeler.label(labelInput)).resolves.toMatchObject({
+      nodeLabels: [expect.objectContaining({ nodeId: "topic:story:codex" })] });
+    // The wire body the SDK sent carries the route model and its low effort.
+    expect(fake.bodies[0]).toMatchObject({ model: "gpt-6.1-sol", reasoning: { effort: "low" },
+      max_output_tokens: 16_384, text: { format: { type: "json_schema", strict: true } } });
+    expect(fake.prepares[0]).toMatchObject({ profileId: "openai-codex-oauth-responses-v1" });
+    expect(recorded).toEqual([expect.objectContaining({ taskRole: "topic_label",
+      attestation: expect.objectContaining({ provider: "codex", model: "gpt-6.1-sol",
+        reasoningEffort: "low", runtimeEngine: "gateway-llm",
+        gateway: expect.objectContaining({ profileId: "openai-codex-oauth-responses-v1" }) }) })]);
+  });
+
+  it("verifies gpt-6.1-sol only from the gateway engine at its allowed effort", async () => {
+    const fake = harness({ request: async () => completedStream('{"label":"x","note":null}', "gpt-6.1-sol") },
+      "run-1", { profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt",
+        model: "gpt-6.1-sol", reasoningEffort: "low", accountRefs: [accountA], minOutputTokens: 16_384 });
+    const task = command({ purpose: activeReaderSummaryPurposes.generate,
+      controls: { model: "gpt-6.1-sol", reasoningEffort: "low", maxOutputTokens: 16_000 } });
+    const result = await fake.client.runTask(task);
+    const verify = (patch: Record<string, unknown>, controls = task.controls) =>
+      verifyAndRecordReaderSummaryExecution({ command: { ...task, controls },
+        result: { ...result, executionAttestation: { ...result.executionAttestation!, ...patch } as never },
+        taskRole: "summary", attempt: "primary", normalizedOutput: result.structuredOutput });
+
+    await expect(verify({})).resolves.toBeUndefined();
+    await expect(verify({ reasoningEffort: "high" }, { ...task.controls, reasoningEffort: "high" }))
+      .rejects.toThrow("attestation is invalid");
+    await expect(verify({ runtimeEngine: "subscription-runtime-cli", gateway: undefined }))
+      .rejects.toThrow("attestation is invalid");
+    await expect(verify({ model: "gpt-5.6-sol" })).rejects.toThrow("attestation is invalid");
+  });
+
   it("refuses tasks outside the route before any gateway call", async () => {
     const fake = harness();
     const codex = await fake.client.runTask(command({ controls: { model: "gpt-5.6-sol",
