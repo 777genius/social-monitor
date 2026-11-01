@@ -62,9 +62,6 @@
       });
     }());
   </script>
-  <link rel="modulepreload" href="main.dart.mjs">
-  <link rel="preload" href="main.dart.wasm" as="fetch" type="application/wasm" crossorigin="use-credentials">
-  <link rel="preload" href="canvaskit/skwasm.wasm" as="fetch" type="application/wasm" crossorigin="use-credentials">
   <style>
     html,
     body {
@@ -502,6 +499,6 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async></script>
+  <script src="flutter_bootstrap.js?v={{SOCIAL_MONITOR_RELEASE_ID}}" async></script>
 </body>
 </html>

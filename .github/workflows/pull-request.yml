@@ -766,6 +766,9 @@ jobs:
         run: |
           set -euo pipefail
           flutter build web --release --wasm --no-web-resources-cdn \
-            --dart-define=SOCIAL_MONITOR_API_BASE_URL=https://social-monitor.app
+            --dart-define=SOCIAL_MONITOR_API_BASE_URL=https://social-monitor.app \
+            --web-define=SOCIAL_MONITOR_RELEASE_ID="$GITHUB_SHA"
+          grep -F "flutter_bootstrap.js?v=$GITHUB_SHA" build/web/index.html >/dev/null
+          grep -F "const configuredRelease = '$GITHUB_SHA'" build/web/flutter_bootstrap.js >/dev/null
           test -s build/web/main.dart.wasm
           test -s build/web/main.dart.js
