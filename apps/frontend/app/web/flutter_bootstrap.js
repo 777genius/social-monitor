@@ -1,4 +1,8 @@
+/* global _flutter, URL, document */
+// Flutter expands each placeholder into executable JavaScript before delivery.
+// eslint-disable-next-line @typescript-eslint/no-unused-expressions, no-undef
 {{flutter_js}}
+// eslint-disable-next-line @typescript-eslint/no-unused-expressions, no-undef
 {{flutter_build_config}}
 
 (function () {
