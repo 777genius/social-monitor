@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../tokens/app_spacing.dart';
 import 'app_button.dart';
+import 'tooltip/app_tooltip.dart';
 
 class AppCommandBar extends StatelessWidget {
   const AppCommandBar({super.key, required this.actions});
@@ -15,7 +16,7 @@ class AppCommandBar extends StatelessWidget {
       runSpacing: AppSpacing.sm,
       children: [
         for (final action in actions)
-          Tooltip(
+          AppTooltip(
             message: action.reason ?? action.label,
             child: AppButton(
               label: action.label,

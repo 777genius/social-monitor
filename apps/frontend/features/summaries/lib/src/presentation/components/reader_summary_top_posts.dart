@@ -1,9 +1,7 @@
 part of 'reader_summary_brief_surface.dart';
 
-enum _TopPostBoard { topPosts, additionalStories }
-
 /// "Top posts" board: filterable picks in the backend-attested order, or in
-/// the reader-chosen [sortOrder] within each lane.
+/// the reader-chosen [sortOrder] across the visible ranked sequence.
 class ReaderSummaryTopPosts extends StatefulWidget {
   const ReaderSummaryTopPosts({
     super.key,
@@ -40,22 +38,18 @@ class ReaderSummaryTopPosts extends StatefulWidget {
 }
 
 class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
-  late _TopPostBoard _board;
+  bool _expanded = false;
   final Set<String> _hiddenProviders = {};
   final ScrollController _postsScrollController = ScrollController();
   bool _denseView = false;
 
   @override
-  void initState() {
-    super.initState();
-    _board = _availableTopPostBoard(widget.projection);
-  }
-
-  @override
   void didUpdateWidget(covariant ReaderSummaryTopPosts oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!widget.projection.hasSameDatasetAs(oldWidget.projection)) {
-      _board = _availableTopPostBoard(widget.projection, preferred: _board);
+    if (!widget.projection.hasSameDatasetAs(oldWidget.projection) ||
+        widget.period != oldWidget.period) {
+      _expanded = false;
+      _resetPostsScroll();
     }
   }
 
@@ -68,16 +62,13 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final topPostItems = widget.projection.curatedPosts;
-    final additionalStories = widget.projection.additionalNotableStories;
-    final activeBoard = _board;
-    final boardItems = switch (activeBoard) {
-      _TopPostBoard.topPosts => topPostItems,
-      _TopPostBoard.additionalStories => additionalStories,
-    };
-    final filtered = readerSummaryTopPostsInOrder(boardItems, widget.sortOrder)
-        .where((item) => !_hiddenProviders.contains(item.providerKey))
-        .toList(growable: false);
+    final display = ReaderSummaryRankedPostsDisplay(
+      projection: widget.projection,
+      expanded: _expanded,
+      sortOrder: widget.sortOrder,
+      hiddenProviders: _hiddenProviders,
+    );
+    final filtered = display.items;
     final rowKeys = [for (final item in filtered) _topPostRowKey(item)];
     final rowIndexByKey = {
       for (final (index, key) in rowKeys.indexed) key: index,
@@ -91,18 +82,12 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _TopPostsHeader(
-          board: activeBoard,
-          topPostCount: topPostItems.length,
-          additionalStoryCount: additionalStories.length,
-          curatedTopPostCount: widget.projection.curatedPosts.length,
-          selectedPostCount: widget.selectedPostCount,
-          providerKeys: {
-            for (final item in boardItems) item.providerKey,
-          }.toList(growable: false),
+          visibleCount: filtered.length,
+          availableCount: display.availableCount,
+          providerKeys: display.providerKeys,
           hiddenProviders: _hiddenProviders,
           denseView: _denseView,
           sortOrder: widget.sortOrder,
-          onBoardChanged: _setBoard,
           onProviderToggled: _toggleProvider,
           onDenseViewChanged: _setDenseView,
           onSortOrderChanged: widget.onSortOrderChanged == null
@@ -114,8 +99,8 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
             child: Text(
-              activeBoard == _TopPostBoard.additionalStories
-                  ? 'No additional stories qualified in this summary window.'
+              display.remainingCount > 0
+                  ? 'No top posts match these source filters. Use Show more to view the remaining ranked posts.'
                   : 'No posts match the current source filters.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -158,15 +143,19 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
               ),
             ),
           ),
+        if (display.showRevealControl)
+          _TopPostsShowMore(
+            expanded: _expanded,
+            remainingCount: display.remainingCount,
+            onPressed: _toggleExpanded,
+          ),
       ],
     );
   }
 
-  void _setBoard(_TopPostBoard board) {
-    setState(() {
-      _board = board;
-    });
-    _resetPostsScroll();
+  void _toggleExpanded() {
+    setState(() => _expanded = !_expanded);
+    if (!_expanded) _resetPostsScroll();
   }
 
   void _toggleProvider(String providerKey) {
@@ -202,28 +191,6 @@ double _topPostsListViewportHeight(BuildContext context) {
     return 620;
   }
   return (windowHeight * 0.68).clamp(360.0, 760.0).toDouble();
-}
-
-_TopPostBoard _availableTopPostBoard(
-  ReaderSummaryTopPostsProjection projection, {
-  _TopPostBoard? preferred,
-}) {
-  final hasTopPosts = projection.curatedPosts.isNotEmpty;
-  final hasAdditionalStories = projection.additionalNotableStories.isNotEmpty;
-
-  if (preferred == _TopPostBoard.topPosts && hasTopPosts) {
-    return _TopPostBoard.topPosts;
-  }
-  if (preferred == _TopPostBoard.additionalStories && hasAdditionalStories) {
-    return _TopPostBoard.additionalStories;
-  }
-  if (hasTopPosts) {
-    return _TopPostBoard.topPosts;
-  }
-  if (hasAdditionalStories) {
-    return _TopPostBoard.additionalStories;
-  }
-  return preferred ?? _TopPostBoard.topPosts;
 }
 
 String _topPostDateLabel(TopRead item, SummaryPeriod fallbackPeriod) {

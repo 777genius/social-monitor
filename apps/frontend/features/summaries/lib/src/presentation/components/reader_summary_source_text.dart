@@ -58,7 +58,7 @@ class _SourceTextState extends State<ReaderSummarySourceText> {
   Widget build(BuildContext context) {
     if (!widget.disclosureEnabled ||
         !readerSummaryNeedsSourceDisclosure(widget.text)) {
-      return Tooltip(
+      return AppTooltip(
         message: widget.text,
         // Hover still reveals the complete short heading; touch long-press
         // belongs to the surrounding SelectionArea, not the tooltip.

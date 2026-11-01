@@ -70,7 +70,7 @@ class _DensePrimaryMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    return Tooltip(
+    return AppTooltip(
       message: metric.label,
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -110,7 +110,7 @@ class _DenseRelevanceChip extends StatelessWidget {
     final badge = item.cardKind == ReaderSummaryCardKind.relatedTopic
         ? _relatedTopicBadge(context)
         : _topPostSupportStyle(context, supportSignal);
-    return Tooltip(
+    return AppTooltip(
       message: badge.tooltip,
       child: DecoratedBox(
         decoration: BoxDecoration(

@@ -61,13 +61,13 @@ void main() {
     expect(find.text('12 reviewed'), findsOneWidget);
     expect(find.text('8 used (67%) · 4 not selected'), findsOneWidget);
     expect(
-      find.byTooltip(
+      _findTooltip(
         '12 unique posts were reviewed. 8 posts were used in this summary. 4 posts were not selected. 2 top reads. 8 citations.',
       ),
       findsOneWidget,
     );
     expect(
-      find.byTooltip(
+      _findTooltip(
         'Degraded collection: 12 of 80 accepted. 16 candidates checked. 4 posts outside the summary date. 4 duplicate results. 10 new posts saved. Provider rate limit reached once. Collection stopped early after a temporary provider error.',
       ),
       findsOneWidget,
@@ -124,7 +124,7 @@ void main() {
     );
 
     expect(
-      find.byTooltip(
+      _findTooltip(
         '100 of 100 accepted. 120 candidates checked. 20 duplicate results. 40 new posts saved.',
       ),
       findsOneWidget,
@@ -175,3 +175,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+Finder _findTooltip(String message) => find.byWidgetPredicate(
+  (widget) =>
+      widget is AppTooltip &&
+      (widget.message ?? widget.richMessage?.toPlainText()) == message,
+);

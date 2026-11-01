@@ -43,10 +43,14 @@ class SourceBindingFormPanel extends StatelessWidget {
                     ),
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Close bind source',
-                  onPressed: store.closeBindForm,
-                  icon: const Icon(Icons.close),
+                MergeSemantics(
+                  child: AppTooltip(
+                    message: 'Close bind source',
+                    child: IconButton(
+                      onPressed: store.closeBindForm,
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
                 ),
               ],
             ),

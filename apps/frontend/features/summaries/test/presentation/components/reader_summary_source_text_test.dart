@@ -330,7 +330,7 @@ void main() {
       await tester.pumpWidget(_app(ReaderSummarySourceText(title)));
       expect(find.text(title), findsOneWidget);
       expect(find.text('Source text'), findsNothing);
-      expect(find.byTooltip(title), findsOneWidget);
+      expect(_findTooltip(title), findsOneWidget);
     });
   }
   for (final text in [
@@ -363,3 +363,9 @@ Widget _app(Widget child, {double scale = 1, double width = 358}) {
     ),
   );
 }
+
+Finder _findTooltip(String message) => find.byWidgetPredicate(
+  (widget) =>
+      widget is AppTooltip &&
+      (widget.message ?? widget.richMessage?.toPlainText()) == message,
+);

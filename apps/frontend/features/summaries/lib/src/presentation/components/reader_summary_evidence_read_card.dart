@@ -276,7 +276,7 @@ class _SelectionReasonBadges extends StatelessWidget {
     if (badges.isEmpty) {
       return const SizedBox.shrink();
     }
-    return Tooltip(
+    return AppTooltip(
       message: 'Ranking signals',
       child: Wrap(
         spacing: 6,

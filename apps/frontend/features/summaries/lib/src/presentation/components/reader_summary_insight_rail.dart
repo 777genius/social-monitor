@@ -51,7 +51,7 @@ class _RailSectionLabel extends StatelessWidget {
         ),
         if (tooltip != null) ...[
           const SizedBox(width: AppSpacing.xs + 2),
-          Tooltip(
+          AppTooltip(
             message: tooltip,
             waitDuration: const Duration(milliseconds: 250),
             child: Icon(

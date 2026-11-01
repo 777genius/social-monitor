@@ -153,16 +153,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Signal 1.00'), findsOneWidget);
 
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
+    );
     await tester.tap(
-      find.byKey(
-        const ValueKey('reader-summary-top-posts-board-additional-stories'),
-      ),
+      find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('Lazy top post 1'), findsOneWidget);
     expect(find.text('Signal 2.00'), findsOneWidget);
-    expect(find.text('Signal 1.00'), findsOneWidget);
+    expect(find.text('Signal 1.00'), findsNWidgets(2));
   });
 
   testWidgets('keeps backend editorial order for editorial sorting', (

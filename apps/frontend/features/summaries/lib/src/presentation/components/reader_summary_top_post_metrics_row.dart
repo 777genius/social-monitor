@@ -112,7 +112,7 @@ class _TopPostRelevanceColumn extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Tooltip(
+        AppTooltip(
           message: badge.tooltip,
           child: DecoratedBox(
             decoration: BoxDecoration(
@@ -246,40 +246,45 @@ class _TopPostMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = item.canonicalUrl;
     final colorScheme = Theme.of(context).colorScheme;
-    return PopupMenuButton<String>(
-      key: ValueKey(
-        'reader-summary-url-menu-${readerSummaryTopPostIdentity(item)}',
-      ),
-      tooltip: 'Post actions',
-      position: PopupMenuPosition.under,
-      icon: Icon(
-        Icons.more_vert_rounded,
-        size: 18,
-        color: colorScheme.onSurfaceVariant,
-      ),
-      onSelected: (action) => _handle(context, action),
-      itemBuilder: (context) => [
-        PopupMenuItem<String>(
-          key: readerSummaryUrlActionKey(
-            'post-menu',
-            readerSummaryTopPostIdentity(item),
+    return MergeSemantics(
+      child: AppTooltip(
+        message: 'Post actions',
+        child: PopupMenuButton<String>(
+          key: ValueKey(
+            'reader-summary-url-menu-${readerSummaryTopPostIdentity(item)}',
           ),
-          value: 'open',
-          enabled: url != null,
-          child: Semantics(
-            label: readerSummaryUrlActionSemantics(
-              'post-menu',
-              readerSummaryTopPostIdentity(item),
+          tooltip: '',
+          position: PopupMenuPosition.under,
+          icon: Icon(
+            Icons.more_vert_rounded,
+            size: 18,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          onSelected: (action) => _handle(context, action),
+          itemBuilder: (context) => [
+            PopupMenuItem<String>(
+              key: readerSummaryUrlActionKey(
+                'post-menu',
+                readerSummaryTopPostIdentity(item),
+              ),
+              value: 'open',
+              enabled: url != null,
+              child: Semantics(
+                label: readerSummaryUrlActionSemantics(
+                  'post-menu',
+                  readerSummaryTopPostIdentity(item),
+                ),
+                child: const Text('Open post'),
+              ),
             ),
-            child: const Text('Open post'),
-          ),
+            PopupMenuItem<String>(
+              value: 'copy',
+              enabled: url != null,
+              child: const Text('Copy link'),
+            ),
+          ],
         ),
-        PopupMenuItem<String>(
-          value: 'copy',
-          enabled: url != null,
-          child: const Text('Copy link'),
-        ),
-      ],
+      ),
     );
   }
 

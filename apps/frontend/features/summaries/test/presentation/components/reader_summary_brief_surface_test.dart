@@ -177,7 +177,7 @@ void main() {
       skipOffstage: false,
     );
     expect(tinyBubble, findsOneWidget);
-    final tooltip = tester.widget<Tooltip>(tinyBubble);
+    final tooltip = tester.widget<AppTooltip>(tinyBubble);
     expect(tooltip.message, contains('Tiny Unreadable Label Stay'));
     expect(tooltip.message, contains('Popularity: 1.0'));
     expect(tooltip.message, contains('Sources: rss'));

@@ -30,7 +30,7 @@ class _SourceFilterChips extends StatelessWidget {
         for (final entry in entries)
           FilterChip(
             key: ValueKey('reader-summary-source-filter-${entry.providerKey}'),
-            label: Tooltip(
+            label: AppTooltip(
               message: readerSummaryProviderLabel(entry.providerKey),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -101,7 +101,7 @@ class _SourceFilterStats extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final colorScheme = Theme.of(context).colorScheme;
-    return Tooltip(
+    return AppTooltip(
       message: collectedCount == null
           ? 'Posts used by this summary; total reviewed count is unavailable'
           : 'Unique posts reviewed, used and not selected by this summary',

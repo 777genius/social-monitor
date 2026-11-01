@@ -15,6 +15,7 @@ Read these before any code change:
 - `.claude/rules/flutter-clean-disk-deep-lessons.md` - concrete failure modes from `clean_disk` that must not be repeated here.
 - `apps/frontend/AGENTS.md` - frontend package roles, app/design-system/shared-kernel boundaries and local done checks.
 - `apps/frontend/docs/README.md` - frontend UX, design-system, state, API, testing, observability and privacy playbooks.
+- `apps/frontend/docs/frontend-live-development.md` - local Flutter debug runtime, Marionette MCP setup and safe reload/restart.
 - `docs/iterations/04-mobile-app/15-change-control.md` - change-control bans for the mobile/frontend iteration.
 - `docs/iterations/04-mobile-app/18-decision-log.md` - recorded architecture decisions for the mobile/frontend iteration.
 
@@ -69,6 +70,8 @@ Keep this test green before claiming frontend architecture work is done.
 
 ## Frontend Dev Runtime Refresh
 
+- Before declaring Marionette unavailable, read `apps/frontend/docs/frontend-live-development.md` and check all three parts: the app binding, the local MCP server package/configuration and the running debug app. A missing chat tool alone does not prove the project lacks Marionette.
+- Start the debug app from the repository root with `npm run frontend:run-connected-marionette`; connect Marionette to the VM service URI printed by that process. A release/static web preview does not expose the Marionette binding.
 - If the live local frontend is running and you change ordinary Dart UI files, run `npm run frontend:hot-reload` before asking the user to refresh.
 - Use `npm run frontend:hot-restart` for changes that must re-run app startup, such as `main`, app composition, web assets or pubspec changes.
 - On Flutter web, never call Marionette MCP `hot_restart` directly. DWDS can dispose the VM service before Flutter completes the restart and terminate the live dev runtime. Use `npm run frontend:hot-restart`, then reconnect Marionette to the exact new VM service URI if the URI changes.

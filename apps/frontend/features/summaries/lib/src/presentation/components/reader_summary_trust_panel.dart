@@ -336,11 +336,15 @@ class _EvidenceLine extends StatelessWidget {
                 'trust-evidence',
                 evidence.citationId,
               ),
-              child: IconButton(
-                tooltip: 'Open source',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => onOpenUrl(url),
-                icon: const Icon(Icons.open_in_new_outlined, size: 16),
+              child: MergeSemantics(
+                child: AppTooltip(
+                  message: 'Open source',
+                  child: IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => onOpenUrl(url),
+                    icon: const Icon(Icons.open_in_new_outlined, size: 16),
+                  ),
+                ),
               ),
             ),
         ],

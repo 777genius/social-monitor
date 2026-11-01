@@ -66,23 +66,31 @@ class _SummaryPeriodDateDialogState extends State<_SummaryPeriodDateDialog> {
                       ),
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Previous month',
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: _canShowPreviousMonth
-                        ? () => setState(() {
-                            _visibleMonth = _previousMonth(_visibleMonth);
-                          })
-                        : null,
+                  MergeSemantics(
+                    child: AppTooltip(
+                      message: 'Previous month',
+                      child: IconButton(
+                        icon: const Icon(Icons.chevron_left),
+                        onPressed: _canShowPreviousMonth
+                            ? () => setState(() {
+                                _visibleMonth = _previousMonth(_visibleMonth);
+                              })
+                            : null,
+                      ),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: 'Next month',
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: _canShowNextMonth
-                        ? () => setState(() {
-                            _visibleMonth = _nextMonth(_visibleMonth);
-                          })
-                        : null,
+                  MergeSemantics(
+                    child: AppTooltip(
+                      message: 'Next month',
+                      child: IconButton(
+                        icon: const Icon(Icons.chevron_right),
+                        onPressed: _canShowNextMonth
+                            ? () => setState(() {
+                                _visibleMonth = _nextMonth(_visibleMonth);
+                              })
+                            : null,
+                      ),
+                    ),
                   ),
                 ],
               ),

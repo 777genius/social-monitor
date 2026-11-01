@@ -88,6 +88,7 @@ ReaderSummaryTopPostsProjection readerSummaryTopPostsProjection(
     items: items,
     availability: availability,
     datasetOrder: List<String>.unmodifiable([
+      'summary:${summary.id}',
       'curated:${curatedPosts.length}',
       for (final item in curatedPosts)
         'curated-post:${readerSummaryTopPostIdentity(item)}',

@@ -64,37 +64,42 @@ class _TopPostFilterMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    return PopupMenuButton<String>(
-      key: const ValueKey('reader-summary-top-posts-filters'),
-      tooltip: 'Filter posts by source',
-      position: PopupMenuPosition.under,
-      onSelected: onProviderToggled,
-      itemBuilder: (context) => [
-        for (final providerKey in providerKeys)
-          CheckedPopupMenuItem<String>(
-            value: providerKey,
-            checked: !hiddenProviders.contains(providerKey),
-            child: Text(readerSummaryProviderLabel(providerKey)),
-          ),
-      ],
-      child: _TopPostControlSurface(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.tune_rounded,
-              size: 15,
-              color: colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: AppSpacing.xs + 2),
-            Text(
-              'Filters',
-              style: textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
+    return MergeSemantics(
+      child: AppTooltip(
+        message: 'Filter posts by source',
+        child: PopupMenuButton<String>(
+          key: const ValueKey('reader-summary-top-posts-filters'),
+          tooltip: '',
+          position: PopupMenuPosition.under,
+          onSelected: onProviderToggled,
+          itemBuilder: (context) => [
+            for (final providerKey in providerKeys)
+              CheckedPopupMenuItem<String>(
+                value: providerKey,
+                checked: !hiddenProviders.contains(providerKey),
+                child: Text(readerSummaryProviderLabel(providerKey)),
               ),
-            ),
           ],
+          child: _TopPostControlSurface(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.tune_rounded,
+                  size: 15,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: AppSpacing.xs + 2),
+                Text(
+                  'Filters',
+                  style: textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -164,7 +169,7 @@ class _TopPostViewToggleButton extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
         child: InkWell(
           onTap: selected ? null : onPressed,
-          child: Tooltip(
+          child: AppTooltip(
             message: tooltip,
             child: SizedBox.square(
               dimension: 28,

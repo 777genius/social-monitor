@@ -13,58 +13,66 @@ const _sortControl = ValueKey('reader-summary-top-posts-sort');
 const _byLikes = ValueKey('reader-summary-top-posts-sort-likes');
 
 void main() {
-  testWidgets('By likes reorders only the visible lane with stable rows', (
-    tester,
-  ) async {
-    _useViewport(tester);
-    final semantics = tester.ensureSemantics();
-    final preferences = FakeTopPostsSortPreferenceStore();
-    final sortStore = topPostsSortStoreFor(preferences);
-    addTearDown(sortStore.dispose);
-    await tester.pumpWidget(_TestApp(summary: _board(), sortStore: sortStore));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'By likes reorders the entire revealed ranked list with stable rows',
+    (tester) async {
+      _useViewport(tester);
+      final semantics = tester.ensureSemantics();
+      final preferences = FakeTopPostsSortPreferenceStore();
+      final sortStore = topPostsSortStoreFor(preferences);
+      addTearDown(sortStore.dispose);
+      await tester.pumpWidget(
+        _TestApp(summary: _board(), sortStore: sortStore),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.bySemanticsLabel('Top posts order'), findsOneWidget);
-    expect(
-      tester.getSemantics(find.bySemanticsLabel('Sort by model rank')),
-      isSemantics(isSelected: true, isInMutuallyExclusiveGroup: true),
-    );
-    expect(_visibleOrder(tester), ['low', 'unknown', 'high', 'mid']);
-    final highRow = tester.state(find.byKey(_rowKey('high')));
+      expect(find.bySemanticsLabel('Top posts order'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Sort by model rank')),
+        isSemantics(isSelected: true, isInMutuallyExclusiveGroup: true),
+      );
+      expect(_visibleOrder(tester), ['low', 'unknown', 'high', 'mid']);
+      final highRow = tester.state(find.byKey(_rowKey('high')));
 
-    await tester.tap(find.byKey(_byLikes));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_byLikes));
+      await tester.pumpAndSettle();
 
-    expect(_visibleOrder(tester), ['high', 'mid', 'low', 'unknown']);
-    expect(
-      tester.state(find.byKey(_rowKey('high'))),
-      same(highRow),
-      reason: 'the row keeps its element when the order moves it',
-    );
-    expect(
-      tester.getSemantics(find.bySemanticsLabel('Sort by likes')),
-      isSemantics(isSelected: true),
-    );
-    expect(find.textContaining('Signal '), findsNWidgets(4));
-    expect(preferences.saves, [TopPostsSortOrder.engagement]);
+      expect(_visibleOrder(tester), ['high', 'mid', 'low', 'unknown']);
+      expect(
+        tester.state(find.byKey(_rowKey('high'))),
+        same(highRow),
+        reason: 'the row keeps its element when the order moves it',
+      );
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Sort by likes')),
+        isSemantics(isSelected: true),
+      );
+      expect(find.textContaining('Signal '), findsNWidgets(4));
+      expect(preferences.saves, [TopPostsSortOrder.engagement]);
 
-    // "Show more" is sorted inside its own lane; no card changes lane.
-    await tester.tap(
-      find.byKey(
-        const ValueKey('reader-summary-top-posts-board-additional-stories'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(_visibleOrder(tester), ['more-high', 'more-low']);
-    expect(find.text('Post high'), findsNothing);
+      // Revealing appends backend additional membership before one shared sort.
+      await tester.tap(
+        find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
+      );
+      await tester.pumpAndSettle();
+      expect(_visibleOrder(tester), [
+        'more-high',
+        'high',
+        'mid',
+        'low',
+        'more-low',
+        'unknown',
+      ]);
+      expect(find.text('Post high'), findsOneWidget);
 
-    // News without rating keeps its own model order below the boards.
-    expect(
-      tester.getTopLeft(find.text('Post news-first')).dy,
-      lessThan(tester.getTopLeft(find.text('Post news-second')).dy),
-    );
-    semantics.dispose();
-  });
+      // News without rating keeps its own model order below the boards.
+      expect(
+        tester.getTopLeft(find.text('Post news-first')).dy,
+        lessThan(tester.getTopLeft(find.text('Post news-second')).dy),
+      );
+      semantics.dispose();
+    },
+  );
 
   testWidgets('a reload restores the remembered order on the first frame', (
     tester,

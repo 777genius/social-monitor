@@ -239,7 +239,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Citation safety'), findsOneWidget);
-    expect(find.byTooltip('Close detail'), findsOneWidget);
+    expect(_findTooltip('Close detail'), findsOneWidget);
   });
 
   testWidgets('long summaries list uses lazy repeated-row viewport', (
@@ -365,13 +365,24 @@ void main() {
 
     expect(find.text('repo-radar/project-11'), findsNothing);
 
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
+    );
     await tester.tap(
-      find.byKey(
-        const ValueKey('reader-summary-top-posts-board-additional-stories'),
-      ),
+      find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
     );
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.text('repo-radar/project-11'),
+      320,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('repo-radar/project-11'), findsWidgets);
   });
 
@@ -413,3 +424,9 @@ void main() {
 
   _registerCompactFailureAndEmptyStateTest();
 }
+
+Finder _findTooltip(String message) => find.byWidgetPredicate(
+  (widget) =>
+      widget is AppTooltip &&
+      (widget.message ?? widget.richMessage?.toPlainText()) == message,
+);

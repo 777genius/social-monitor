@@ -27,8 +27,7 @@ class ReaderSummaryTopPostsSliver extends StatefulWidget {
   onRated;
   final ValueChanged<String> onOpenUrl;
 
-  /// Reader-chosen order inside the active lane; it never moves a card to
-  /// another lane.
+  /// Reader-chosen order across all currently visible ranked cards.
   final TopPostsSortOrder sortOrder;
 
   /// `null` hides the order control.
@@ -41,7 +40,8 @@ class ReaderSummaryTopPostsSliver extends StatefulWidget {
 
 class _ReaderSummaryTopPostsSliverState
     extends State<ReaderSummaryTopPostsSliver> {
-  late _TopPostBoard _board;
+  bool _expanded = false;
+  late ReaderSummaryRankedPostsDisplay _display;
   late List<TopRead> _filteredItems;
   late List<ValueKey<String>> _rowKeys;
   late Map<Key, int> _rowIndexByKey;
@@ -53,7 +53,6 @@ class _ReaderSummaryTopPostsSliverState
   @override
   void initState() {
     super.initState();
-    _board = _availableTopPostBoard(widget.projection);
     _refreshBoardItems();
   }
 
@@ -67,7 +66,7 @@ class _ReaderSummaryTopPostsSliverState
     final sortChanged = widget.sortOrder != oldWidget.sortOrder;
     if (!datasetChanged && !periodChanged && !sortChanged) return;
     if (datasetChanged || periodChanged) {
-      _board = _availableTopPostBoard(widget.projection, preferred: _board);
+      _expanded = false;
     }
     _refreshBoardItems();
   }
@@ -75,7 +74,6 @@ class _ReaderSummaryTopPostsSliverState
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final activeBoard = _board;
     final filtered = _filteredItems;
     final sliverItemCount = math.max(0, filtered.length * 2 - 1);
 
@@ -83,17 +81,12 @@ class _ReaderSummaryTopPostsSliverState
       slivers: [
         SliverToBoxAdapter(
           child: _TopPostsHeader(
-            board: activeBoard,
-            topPostCount: widget.projection.curatedPosts.length,
-            additionalStoryCount:
-                widget.projection.additionalNotableStories.length,
-            curatedTopPostCount: widget.projection.curatedPosts.length,
-            selectedPostCount: widget.selectedPostCount,
+            visibleCount: filtered.length,
+            availableCount: _display.availableCount,
             providerKeys: _providerKeys,
             hiddenProviders: _hiddenProviders,
             denseView: _denseView,
             sortOrder: widget.sortOrder,
-            onBoardChanged: _setBoard,
             onProviderToggled: _toggleProvider,
             onDenseViewChanged: _setDenseView,
             onSortOrderChanged: widget.onSortOrderChanged,
@@ -105,8 +98,8 @@ class _ReaderSummaryTopPostsSliverState
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
               child: Text(
-                activeBoard == _TopPostBoard.additionalStories
-                    ? 'No additional stories qualified in this summary window.'
+                _display.remainingCount > 0
+                    ? 'No top posts match these source filters. Use Show more to view the remaining ranked posts.'
                     : 'No posts match the current source filters.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -146,16 +139,21 @@ class _ReaderSummaryTopPostsSliverState
               );
             },
           ),
+        if (_display.showRevealControl)
+          SliverToBoxAdapter(
+            child: _TopPostsShowMore(
+              expanded: _expanded,
+              remainingCount: _display.remainingCount,
+              onPressed: _toggleExpanded,
+            ),
+          ),
       ],
     );
   }
 
-  void _setBoard(_TopPostBoard board) {
-    if (_board == board) {
-      return;
-    }
+  void _toggleExpanded() {
     setState(() {
-      _board = board;
+      _expanded = !_expanded;
       _refreshBoardItems();
     });
   }
@@ -179,18 +177,14 @@ class _ReaderSummaryTopPostsSliverState
   }
 
   void _refreshBoardItems() {
-    final lane = switch (_board) {
-      _TopPostBoard.topPosts => widget.projection.curatedPosts,
-      _TopPostBoard.additionalStories =>
-        widget.projection.additionalNotableStories,
-    };
-    // Filter options keep the model order whatever the display order is.
-    _providerKeys = {
-      for (final item in lane) item.providerKey,
-    }.toList(growable: false);
-    _filteredItems = readerSummaryTopPostsInOrder(lane, widget.sortOrder)
-        .where((item) => !_hiddenProviders.contains(item.providerKey))
-        .toList(growable: false);
+    _display = ReaderSummaryRankedPostsDisplay(
+      projection: widget.projection,
+      expanded: _expanded,
+      sortOrder: widget.sortOrder,
+      hiddenProviders: _hiddenProviders,
+    );
+    _providerKeys = _display.providerKeys;
+    _filteredItems = _display.items;
     _rowKeys = [for (final item in _filteredItems) _topPostRowKey(item)];
     _rowIndexByKey = {for (final (index, key) in _rowKeys.indexed) key: index};
     _reservePreviewSpace = _filteredItems.any(

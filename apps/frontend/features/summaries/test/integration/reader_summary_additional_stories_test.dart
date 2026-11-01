@@ -15,7 +15,7 @@ import '../infrastructure/mappers/support/additional_stories_domain_fixture.dart
 
 void main() {
   testWidgets(
-    'keeps Additional stories isolated through the REST reader flow',
+    'reveals ranked additional stories through the REST reader flow',
     (tester) async {
       final fixtureReader = AdditionalStoriesDomainFixtureReader();
       final launcher = RecordingReaderSourceLauncher();
@@ -72,15 +72,13 @@ void main() {
         return key is ValueKey<String> &&
             key.value.startsWith('reader-summary-top-posts-board-');
       });
-      expect(boardKeys, findsNWidgets(2));
+      expect(boardKeys, findsNothing);
       expect(find.text('Top posts'), findsOneWidget);
-      expect(find.text('Additional stories'), findsOneWidget);
+      expect(find.text('Additional stories'), findsNothing);
       expect(find.text('GitHub trends'), findsNothing);
 
       await tester.tap(
-        find.byKey(
-          const ValueKey('reader-summary-top-posts-board-additional-stories'),
-        ),
+        find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
       );
       await tester.pumpAndSettle();
 

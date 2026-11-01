@@ -63,12 +63,7 @@ void main() {
 
     await tester.ensureVisible(find.byType(Image));
     await tester.pumpAndSettle();
-    final previewGesture = find.ancestor(
-      of: find.byType(Image),
-      matching: find.byType(GestureDetector),
-    );
-    expect(previewGesture, findsOneWidget);
-    await tester.tap(previewGesture);
+    await tester.tap(find.byType(Image));
     await tester.pumpAndSettle();
 
     final previewStrategies = tester

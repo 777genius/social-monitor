@@ -13,9 +13,7 @@ import '../../support/top_posts_sliver_test_fixtures.dart';
 part 'reader_summary_top_posts_sliver_test_app.dart';
 
 void main() {
-  testWidgets('shows backend promotion boards and keeps Top selected', (
-    tester,
-  ) async {
+  testWidgets('shows Top posts without category tabs', (tester) async {
     tester.view.physicalSize = const Size(320, 700);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -33,15 +31,10 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
+    expect(find.text('Top posts'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('reader-summary-top-posts-board-posts')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey('reader-summary-top-posts-board-additional-stories'),
-      ),
-      findsOneWidget,
+      find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
@@ -79,10 +72,17 @@ void main() {
 
       expect(find.text('Lazy top post 30'), findsNothing);
 
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
+        320,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(
-          const ValueKey('reader-summary-top-posts-board-additional-stories'),
-        ),
+        find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
       );
       await tester.pumpAndSettle();
 
@@ -180,24 +180,19 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    expect(find.bySemanticsLabel('Top posts, 2 items'), findsOneWidget);
-    expect(find.text('2 editorial picks from 3 selected'), findsOneWidget);
+    expect(find.text('Top posts'), findsOneWidget);
+    expect(find.text('Showing 2 of 3 ranked posts'), findsOneWidget);
     expect(find.text('Backend editorial winner'), findsOneWidget);
     expect(find.text('Higher engagement runner-up'), findsOneWidget);
     expect(find.text('Long-tail selected evidence'), findsNothing);
     expect(find.text('Signal 2.20'), findsOneWidget);
 
     await tester.tap(
-      find.byKey(
-        const ValueKey('reader-summary-top-posts-board-additional-stories'),
-      ),
+      find.byKey(const ValueKey('reader-summary-top-posts-show-more')),
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.bySemanticsLabel('Additional stories, 1 items'),
-      findsOneWidget,
-    );
+    expect(find.text('Showing 3 of 3 ranked posts'), findsOneWidget);
     expect(find.text('Long-tail selected evidence'), findsOneWidget);
     // The Additional lane carries the same backend Signal as Top.
     expect(find.text('Signal 1.40'), findsOneWidget);

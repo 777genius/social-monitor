@@ -12,13 +12,13 @@ import '../../domain/value_objects/top_posts_sort_order.dart';
 double? readerSummaryTopPostEngagement(TopRead item) =>
     item.promotionAttestation?.comparator?.engagement?.value;
 
-/// Display order of one ranked lane ("Top posts" or "Show more").
+/// Display order of the currently visible Top posts and revealed ranked cards.
 ///
 /// [TopPostsSortOrder.modelRank] returns [lane] untouched. For
 /// [TopPostsSortOrder.engagement] cards are ordered by
 /// [readerSummaryTopPostEngagement] descending; equal values keep their model
 /// order, and cards without a metric follow every measured card in their model
-/// order. Only the lane is reordered: no card moves to another lane.
+/// order. Ordering does not change backend membership or include news.
 List<TopRead> readerSummaryTopPostsInOrder(
   List<TopRead> lane,
   TopPostsSortOrder order,

@@ -110,24 +110,29 @@ class _NotHelpfulButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<ReaderFeedbackReason>(
-      key: const ValueKey('reader-summary-feedback-not-helpful'),
-      tooltip: 'Not helpful - tell us why',
-      enabled: enabled,
-      position: PopupMenuPosition.under,
-      onSelected: (reason) => onAction(action, reason),
-      itemBuilder: (context) => [
-        for (final reason in ReaderFeedbackReason.values)
-          PopupMenuItem<ReaderFeedbackReason>(
-            value: reason,
-            child: Text(reason.label),
+    return MergeSemantics(
+      child: AppTooltip(
+        message: 'Not helpful - tell us why',
+        child: PopupMenuButton<ReaderFeedbackReason>(
+          key: const ValueKey('reader-summary-feedback-not-helpful'),
+          tooltip: '',
+          enabled: enabled,
+          position: PopupMenuPosition.under,
+          onSelected: (reason) => onAction(action, reason),
+          itemBuilder: (context) => [
+            for (final reason in ReaderFeedbackReason.values)
+              PopupMenuItem<ReaderFeedbackReason>(
+                value: reason,
+                child: Text(reason.label),
+              ),
+          ],
+          child: _FeedbackButton(
+            icon: Icons.thumb_down_alt_outlined,
+            label: 'Not helpful',
+            enabled: enabled,
+            onPressed: null,
           ),
-      ],
-      child: _FeedbackButton(
-        icon: Icons.thumb_down_alt_outlined,
-        label: 'Not helpful',
-        enabled: enabled,
-        onPressed: null,
+        ),
       ),
     );
   }
