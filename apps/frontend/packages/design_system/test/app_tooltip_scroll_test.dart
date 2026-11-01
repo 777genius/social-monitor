@@ -77,7 +77,7 @@ void main() {
         );
         expect(
           tester.getSemantics(find.byType(IconButton)),
-          containsSemantics(
+          isSemantics(
             label: native.label,
             tooltip: native.tooltip,
             isButton: true,
