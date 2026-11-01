@@ -3,8 +3,8 @@
 ## Status
 
 Accepted, 2026-10-24; Top order changed to the hybrid score on 2026-10-29 and
-to a minimum popularity cohort on 2026-10-30 (policy stamp
-`reader_promotion.2026-10-30`). Supersedes the ordering of the Jev promotion path described
+to a minimum popularity cohort on 2026-10-30; independent news verification was
+added on 2026-11-01 (policy stamp `reader_promotion.2026-11-01`). Supersedes the ordering of the Jev promotion path described
 in `docs/plans/2026-09-20-jev-primary-scorer-implementation.md` section 3 item 9
 and section 9.2 ("no popularity tie-break", "X likes and HN points are not
 comparable"). Selection strategy `jev_primary_v3` is unchanged; only the
@@ -21,7 +21,7 @@ model's central/relevant boundary is noisy.
 
 ## Decision
 
-1. **Assessments are reused as they are.** No new model call, no rubric change.
+1. **Assessments are reused as they are.** No new assessment call, no rubric change.
    Relevance stays an admission gate (relevant or central) and is no longer an
    order key.
 2. **Two separate blocks, each post in exactly one.** Membership comes from one
@@ -207,3 +207,11 @@ change. No retained real-source example of that false merge was established here
 A future fix needs independently grounded actor/event evidence rather than a
 lower fuzzy-match threshold. The regression control here uses a distinct
 California/OpenAI privacy filing and verifies that a negative decision preserves it.
+
+Deploy the backend and generated frontend contract together. The existing
+single-stamp read policy withholds old promoted boards without rewriting their
+stored artifacts. For the 2026-11-01 delivery, rebuild October 31 first, then 30
+and 29; older October 23/25 artifacts remain rebuild-required until separately
+rebuilt. No schema migration or assessment-key change is required. Presentation
+batches whose input ordering changes may need new execution despite reusable
+assessments; the news verifier adds at most one bounded request per build.

@@ -15,9 +15,9 @@ enum ReaderSummaryPromotionAttestationDtoPolicyVersionPolicyVersion {
   @JsonValue('reader_post_promotion.v2')
   undefined1('reader_post_promotion.v2'),
 
-  /// Incorrect name has been replaced. Original name: `reader_promotion.2026-10-30`.
-  @JsonValue('reader_promotion.2026-10-30')
-  undefined2('reader_promotion.2026-10-30'),
+  /// Incorrect name has been replaced. Original name: `reader_promotion.2026-11-01`.
+  @JsonValue('reader_promotion.2026-11-01')
+  undefined2('reader_promotion.2026-11-01'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);

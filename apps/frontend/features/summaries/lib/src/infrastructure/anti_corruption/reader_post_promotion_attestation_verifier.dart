@@ -35,7 +35,7 @@ const readerPostPromotionAttestationSchemaV3 =
 /// attestation with any other stamp is rejected: the backend serves days
 /// ranked under an older stamp with empty boards and
 /// `freshness.reason = ranking_policy_changed` instead.
-const readerPromotionPolicyStamp = 'reader_promotion.2026-10-30';
+const readerPromotionPolicyStamp = 'reader_promotion.2026-11-01';
 const readerPostPromotionDigestV3 = 'reader_post_promotion_digest.sha256.v3';
 
 ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
