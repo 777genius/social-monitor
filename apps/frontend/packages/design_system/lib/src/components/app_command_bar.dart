@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../tokens/app_spacing.dart';
 import 'app_button.dart';
-import 'app_tooltip.dart';
+import 'tooltip/app_tooltip.dart';
 
 class AppCommandBar extends StatelessWidget {
   const AppCommandBar({super.key, required this.actions});

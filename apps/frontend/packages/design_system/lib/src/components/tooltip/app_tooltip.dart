@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+part 'app_tooltip_layout.dart';
+
 /// A passive hint whose hover region never blocks the page underneath it.
 class AppTooltip extends StatefulWidget {
   const AppTooltip({
@@ -225,34 +227,4 @@ class _AppTooltipState extends State<AppTooltip> {
       ),
     );
   }
-}
-
-class _TooltipLayout extends SingleChildLayoutDelegate {
-  const _TooltipLayout({
-    required this.target,
-    required this.verticalOffset,
-    required this.preferBelow,
-  });
-  final Offset target;
-  final double verticalOffset;
-  final bool preferBelow;
-
-  @override
-  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
-      constraints.loosen().deflate(const EdgeInsets.all(10));
-
-  @override
-  Offset getPositionForChild(Size size, Size childSize) => positionDependentBox(
-    size: size,
-    childSize: childSize,
-    target: target,
-    verticalOffset: verticalOffset,
-    preferBelow: preferBelow,
-  );
-
-  @override
-  bool shouldRelayout(_TooltipLayout oldDelegate) =>
-      target != oldDelegate.target ||
-      verticalOffset != oldDelegate.verticalOffset ||
-      preferBelow != oldDelegate.preferBelow;
 }

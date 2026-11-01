@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_spacing.dart';
-import '../app_tooltip.dart';
+import '../tooltip/app_tooltip.dart';
 import 'app_shell_sidebar_card_surface.dart';
 
 /// Compact dropdown-style card, e.g. the theme selector at the sidebar bottom.

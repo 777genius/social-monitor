@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_spacing.dart';
-import '../app_tooltip.dart';
+import '../tooltip/app_tooltip.dart';
 
 /// Collapse/expand control for the persistent sidebar.
 ///

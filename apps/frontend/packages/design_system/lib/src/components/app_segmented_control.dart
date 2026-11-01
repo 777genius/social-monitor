@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'app_tooltip.dart';
+import 'tooltip/app_tooltip.dart';
 
 /// One option of an [AppSegmentedControl].
 final class AppSegment<T extends Object> {

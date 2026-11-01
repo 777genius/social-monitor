@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../responsive/app_breakpoints.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
-import 'app_tooltip.dart';
+import 'tooltip/app_tooltip.dart';
 
 class AppResponsiveSplitView extends StatelessWidget {
   const AppResponsiveSplitView({

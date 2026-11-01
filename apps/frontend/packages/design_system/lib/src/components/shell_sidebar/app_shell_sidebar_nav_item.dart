@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_spacing.dart';
-import '../app_tooltip.dart';
+import '../tooltip/app_tooltip.dart';
 import 'app_shell_destination.dart';
 
 /// Single navigation row in the sidebar.
