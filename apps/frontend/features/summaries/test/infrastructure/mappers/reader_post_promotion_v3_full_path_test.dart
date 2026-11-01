@@ -62,7 +62,7 @@ void main() {
     expect(card.cardKind, ReaderSummaryCardKind.newsWithoutRating);
     expect(card.signalScore.value, 0);
     expect(attestation.isV3, isTrue);
-    expect(attestation.policyVersion, 'reader_promotion.2026-10-30');
+    expect(attestation.policyVersion, 'reader_promotion.2026-11-01');
     expect(attestation.placement, ReaderPostPromotionPlacement.news);
     expect(attestation.slot, 1);
     expect(attestation.providerKey, 'rss');
@@ -124,7 +124,7 @@ void main() {
       final attestation = _transportAttestation(payload);
       attestation[entry.key] = <String, String>{
         'schemaVersion': 'reader_post_promotion_attestation.v3',
-        'policyVersion': 'reader_promotion.2026-10-30',
+        'policyVersion': 'reader_promotion.2026-11-01',
         'digestVersion': 'reader_post_promotion_digest.sha256.v3',
       }[entry.key];
       expect(

@@ -251,7 +251,7 @@ ReaderPostPromotionAttestationApiDto _attestation({
   required String storyId,
 }) => ReaderPostPromotionAttestationApiDto(
   schemaVersion: 'reader_post_promotion_attestation.v3',
-  policyVersion: 'reader_promotion.2026-10-30',
+  policyVersion: 'reader_promotion.2026-11-01',
   candidateId: candidateId,
   canonicalIdentity: 'https://example.com/$candidateId',
   placement: placement,

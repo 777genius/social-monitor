@@ -158,7 +158,7 @@ describe("V3 verified independent news stories", () => {
   });
 
   it("never sends one publisher, social posts or ordinary RSS sites to the news verifier", async () => {
-    const verify = jest.fn(async (_input: ReaderSummaryStoryRelationVerifierInput) => []);
+    const verify = jest.fn(async () => []);
     const posts = elvis.map((title, index) => ({ ...news(title, index),
       title: `${title.split(" - ")[0]} - One Publisher` }));
     const fixture = workspaceSetup([...posts,

@@ -206,7 +206,7 @@ void main() {
   });
 
   test('keeps the policy stamp constant aligned with the backend', () {
-    expect(readerPromotionPolicyStamp, 'reader_promotion.2026-10-30');
+    expect(readerPromotionPolicyStamp, 'reader_promotion.2026-11-01');
   });
 }
 
