@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   readerSummaryScopeKey,
 } from "../../domain";
@@ -21,6 +22,7 @@ import {
 } from "./agent-runtime-reader-summary-model.adapter";
 import {
   agentRuntimeReaderSummaryStoryRelationVerifierInstructions,
+  agentRuntimeReaderSummaryIndependentNewsVerifierInstructions,
   agentRuntimeReaderSummaryStoryRelationVerifierJsonSchema,
   agentRuntimeReaderSummaryRelatedTopicVerifierInstructions,
   agentRuntimeReaderSummaryRelatedTopicVerifierJsonSchema,
@@ -126,7 +128,11 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
       ? `${scopeKey}:safe-recall-shadow`
       : input.verificationLane === "related_topic"
         ? `${scopeKey}:related-topic`
-        : scopeKey;
+        : input.verificationLane === "independent_news"
+          ? `${scopeKey}:independent-news:${createHash("sha256")
+            .update(buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(input))
+            .digest("hex").slice(0, 24)}`
+          : scopeKey;
     const relatedTopicLane = input.verificationLane === "related_topic";
     const command = {
       requestId: buildAgentRuntimeRequestId(
@@ -156,7 +162,9 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
         : activeReaderSummaryPurposes.storyRelations,
       systemPrompt: relatedTopicLane
         ? agentRuntimeReaderSummaryRelatedTopicVerifierInstructions
-        : agentRuntimeReaderSummaryStoryRelationVerifierInstructions,
+        : input.verificationLane === "independent_news"
+          ? agentRuntimeReaderSummaryIndependentNewsVerifierInstructions
+          : agentRuntimeReaderSummaryStoryRelationVerifierInstructions,
       prompt: relatedTopicLane
         ? buildAgentRuntimeReaderSummaryRelatedTopicVerifierPrompt(input)
         : buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(input),
@@ -180,14 +188,16 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
       },
       timeoutMs: relatedTopicLane
         ? (input.timeoutMs ?? this.relatedTopicTimeoutMs)
-        : input.verificationLane === "safe_recall_shadow"
+        : input.verificationLane !== undefined
           ? (input.timeoutMs ?? this.timeoutMs)
           : this.timeoutMs,
       metadata: {
         adapter: "agent-runtime-reader-summary-story-relation-verifier",
         promptVersion: relatedTopicLane
           ? this.relatedTopicPromptVersion
-          : this.promptVersion,
+          : input.verificationLane === "independent_news"
+            ? `${this.promptVersion}.independent_news.v1`
+            : this.promptVersion,
         ...(relatedTopicLane
           ? { taskRole: "related_topic_relation" }
           : {}),

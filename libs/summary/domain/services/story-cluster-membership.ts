@@ -23,6 +23,7 @@ import { strictStoryRelationTitleEvidence } from
 
 import { samePrimaryReleaseEvent } from "./story-release-event-identity";
 import {
+  hasIndependentNewsPublishers,
   isMultiSourceStoryHost,
   isPlatformStoryCopy,
   storyKeyHost,
@@ -230,14 +231,15 @@ export const isVerifiedStoryRelationGuardEligible = (
   candidate: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
 ): boolean => {
+  const independentNews = hasIndependentNewsPublishers(item, candidate);
   if (readerPostProviderFamily(item.providerKey) ===
-      readerPostProviderFamily(candidate.providerKey)) {
+      readerPostProviderFamily(candidate.providerKey) && !independentNews) {
     return false;
   }
   const sameAuthorSeries =
     item.providerKey === candidate.providerKey &&
     isVerifiedSameAuthorStorySeriesCandidate(item, candidate);
-  if (item.providerKey === candidate.providerKey && !sameAuthorSeries) {
+  if (item.providerKey === candidate.providerKey && !sameAuthorSeries && !independentNews) {
     return false;
   }
   const itemKey = storyKey(item, policy);

@@ -19,8 +19,8 @@ export type ReaderSummaryStoryRelationVerifierInput = {
   readonly evidence: readonly SummaryEvidenceItem[];
   readonly candidates: readonly (StoryRelationCandidate | RelatedTopicCandidate)[];
   /** Omitted for the unchanged production verification lane. */
-  readonly verificationLane?: "safe_recall_shadow" | "related_topic";
-  /** Shadow callers provide their independent execution bound. */
+  readonly verificationLane?: "safe_recall_shadow" | "related_topic" | "independent_news";
+  /** Bounded lanes provide their independent execution deadline. */
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
 };

@@ -77,6 +77,31 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     expect(promptPair.left.sourceText).toContain("bounded incident evidence");
   });
 
+  it("routes independent news through Codex with its own request and conservative prompt", async () => {
+    const client = new CapturingAgentRuntimeClient({ status: "completed",
+      structuredOutput: { decisions: [] }, warnings: [] });
+    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({ client,
+      model: "gpt-6.1-sol", reasoningEffort: "low" });
+    const query = input();
+    await verifier.verify(query);
+    const controller = new AbortController();
+    await verifier.verify({ ...query, verificationLane: "independent_news",
+      timeoutMs: 90_000, signal: controller.signal });
+    const command = client.commands[1]!;
+    expect(command).toMatchObject({ provider: "codex", timeoutMs: 90_000,
+      controls: { model: "gpt-6.1-sol", reasoningEffort: "low" },
+      metadata: { promptVersion: "reader_summary.story_relation.agent_runtime.v3.independent_news.v1",
+        verificationLane: "independent_news" } });
+    expect(command.requestId).not.toBe(client.commands[0]!.requestId);
+    expect(command.systemPrompt).toContain("independently named publishers");
+    expect(command.systemPrompt).toContain("shared parties alone are not enough");
+    expect(client.commands[0]!.systemPrompt).not.toContain("independently named publishers");
+    expect(client.signals[1]).toBe(controller.signal);
+    await verifier.verify({ ...query, verificationLane: "independent_news",
+      period: { ...query.period, startedAt: new Date("2026-07-10T00:00:00.000Z") } });
+    expect(client.commands[2]!.requestId).not.toBe(command.requestId);
+  });
+
   it("includes relevant source evidence beyond the old 50000 preview", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",

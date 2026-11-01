@@ -23,6 +23,8 @@ import { RelevanceReaderSummaryV3Promotion } from
   "../evidence/relevance-reader-summary-v3-promotion";
 import { PresentationRuntimeGuardedPromotion } from
   "../evidence/relevance-reader-summary-v3-presentation-runtime-guard";
+import { AgentRuntimeReaderSummaryStoryRelationVerifier } from
+  "../model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { AgentRuntimePromotionPresentationV3Builder,
   type AgentRuntimePromotionPresentationV3BuilderOptions } from
   "../model/agent-runtime-promotion-presentation-v3.builder";
@@ -55,6 +57,8 @@ export const createReaderSummaryV3Promotion = (prisma: PrismaSummaryClient, opti
     return new PresentationRuntimeGuardedPromotion(
       new AgentRuntimePromotionPresentationV3Builder({ ...options, client: runtime }),
       (presentation) => new RelevanceReaderSummaryV3Promotion(
-        assessments, presentation, supplementalEvidence),
+        assessments, presentation, supplementalEvidence,
+        new AgentRuntimeReaderSummaryStoryRelationVerifier({ ...options, client: runtime,
+          maxOutputTokens: 6_000 })),
       new NestStructuredLogger("ReaderSummaryV3Presentation"));
 };

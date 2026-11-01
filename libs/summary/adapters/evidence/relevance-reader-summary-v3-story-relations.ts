@@ -4,6 +4,7 @@ import {
   type ReaderSummaryPreparationCandidate,
   type StoryCluster,
   type SummaryEvidenceItem,
+  type SummaryEvidenceSelection,
 } from "../../domain";
 import { STORY_RANKING_POLICY_V1 } from
   "../../domain/policies/story-ranking-policy";
@@ -32,11 +33,13 @@ type StoryRelationParams = {
   readonly identity: ReaderSummaryScopeIdentity;
   readonly workspaceManifest: boolean;
   readonly deterministicStoryIds: ReadonlyMap<string, string>;
+  readonly verifiedStoryRelationPairs?: ReadonlySet<string>;
 };
 
 export const clusterPromotionStoryRelations = (
   params: StoryRelationParams,
-): { readonly kind: "ready"; readonly clusters: readonly StoryCluster[] } |
+): { readonly kind: "ready"; readonly clusters: readonly StoryCluster[];
+  readonly selection: SummaryEvidenceSelection } |
   { readonly kind: "budget_exhausted" } => {
   // The generic story matcher compares groups pairwise. Only candidates
   // eligible for V3 promotion can affect the global Top or Additional story
@@ -70,13 +73,15 @@ export const clusterPromotionStoryRelations = (
       compareUtf8Bytes(left.feedItemId, right.feedItemId)),
     limit: Math.max(1, comparisonEvidence.length),
     now: new Date(params.cutoffAt),
+    verifiedStoryRelationPairs: params.verifiedStoryRelationPairs,
   };
   const clustered = params.workspaceManifest
     ? clustering.clusterWithinComparisonBudget(clusteringParams,
       maxWorkspaceStoryPairComparisons)
     : { kind: "ready" as const, selection: clustering.cluster(clusteringParams) };
   return clustered.kind === "budget_exhausted" ? clustered :
-    { kind: "ready", clusters: clustered.selection.clusters };
+    { kind: "ready", clusters: clustered.selection.clusters,
+      selection: clustered.selection };
 };
 
 const compactExactStoryIdentities = (

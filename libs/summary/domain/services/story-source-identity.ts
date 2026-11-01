@@ -140,3 +140,14 @@ const copyText = (item: SummaryEvidenceItem): string =>
 const publisherOf = (item: SummaryEvidenceItem): string | undefined =>
   newsAggregatorTitleParts({ canonicalIdentity: item.canonicalUrl, title: item.title })
     ?.publisher;
+
+/** Same RSS transport, independently named publishers, never platform posts. */
+export const hasIndependentNewsPublishers = (
+  left: SummaryEvidenceItem,
+  right: SummaryEvidenceItem,
+): boolean => {
+  if (left.providerKey !== "rss" || right.providerKey !== "rss") return false;
+  const a = publisherOf(left);
+  const b = publisherOf(right);
+  return a !== undefined && b !== undefined && a !== b;
+};
