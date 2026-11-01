@@ -77,9 +77,9 @@ class _AppTooltipState extends State<AppTooltip> {
     return true;
   }
 
-  void _scheduleHide([Duration? delay]) {
+  void _scheduleHide({Duration? delay, bool ignoreFocus = false}) {
     _timer?.cancel();
-    if (_focused) return;
+    if (_focused && !ignoreFocus) return;
     _timer = Timer(
       delay ?? _theme.exitDuration ?? const Duration(milliseconds: 100),
       _hide,
@@ -141,15 +141,20 @@ class _AppTooltipState extends State<AppTooltip> {
                   : null,
               onLongPressEnd: trigger == TooltipTriggerMode.longPress
                   ? (_) => _scheduleHide(
-                      _theme.showDuration ?? const Duration(milliseconds: 1500),
+                      delay:
+                          _theme.showDuration ??
+                          const Duration(milliseconds: 1500),
+                      ignoreFocus: true,
                     )
                   : null,
               onTap: trigger == TooltipTriggerMode.tap
                   ? () {
                       _show();
                       _scheduleHide(
-                        _theme.showDuration ??
+                        delay:
+                            _theme.showDuration ??
                             const Duration(milliseconds: 1500),
+                        ignoreFocus: true,
                       );
                     }
                   : null,

@@ -164,6 +164,60 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  for (final trigger in [
+    TooltipTriggerMode.longPress,
+    TooltipTriggerMode.tap,
+  ]) {
+    testWidgets('$trigger timeout dismisses the hint while focus remains', (
+      tester,
+    ) async {
+      const showDuration = Duration(milliseconds: 200);
+      final focus = FocusNode();
+      addTearDown(focus.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            tooltipTheme: const TooltipThemeData(showDuration: showDuration),
+          ),
+          home: Scaffold(
+            body: AppTooltip(
+              message: _hintText,
+              triggerMode: trigger,
+              child: Focus(
+                focusNode: focus,
+                child: const SizedBox(
+                  width: 150,
+                  height: 60,
+                  child: Text('Press target'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      focus.requestFocus();
+      await tester.pump();
+      expect(focus.hasFocus, isTrue);
+      expect(find.text(_hintText), findsOneWidget);
+      if (trigger == TooltipTriggerMode.longPress) {
+        final press = await tester.startGesture(
+          tester.getCenter(find.text('Press target')),
+        );
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 1));
+        await press.up();
+      } else {
+        await tester.tap(find.text('Press target'));
+      }
+      await tester.pump();
+      await tester.pump(showDuration - const Duration(milliseconds: 1));
+      expect(find.text(_hintText), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 2));
+      expect(find.text(_hintText), findsNothing);
+      expect(focus.hasFocus, isTrue);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   testWidgets('long press reveals the default tooltip', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: Scaffold(body: _hint(_HintKind.plain))),

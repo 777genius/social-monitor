@@ -2,7 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
-import '../../features/summaries/test/support/top_posts_show_more_test_app.dart';
+import '../test/support/top_posts_show_more_test_app.dart';
 
 /// Fixture-only entrypoint; never registered in product routing or release builds.
 void main() {

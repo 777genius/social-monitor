@@ -113,12 +113,14 @@ rebases entrypoints outside `lib/` under `org-dartlang-app:/`; DWDS rejects
 absolute `file:` imports. Keep imports resolvable through package URIs or the
 compiler's configured filesystem roots.
 
-From `apps/frontend/app`, the dedicated entrypoint includes the frontend root
-so its relative imports into feature test support resolve in Flutter web:
+The fixture host belongs to the summaries feature, beside its test support;
+the app package must not import feature test internals. From `apps/frontend/app`,
+include the summaries root so the host's relative test imports resolve on web:
 
 ```sh
 fvm flutter run -d chrome --web-hostname=127.0.0.1 --web-port=53217 \
-  --filesystem-root="$(cd .. && pwd)" -t test_driver/top_posts_marionette.dart
+  --filesystem-root="$(cd ../features/summaries && pwd)" \
+  -t ../features/summaries/test_driver/top_posts_marionette.dart
 ```
 
 If changing the entrypoint/root produces `The Dart compiler exited unexpectedly`,
