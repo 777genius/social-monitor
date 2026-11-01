@@ -8,12 +8,11 @@ void main() {
     final fetch = html.indexOf("fetch('/app/bootstrap'");
     final bridge = html.indexOf('window.socialMonitorAppBootstrap');
     final flutter = html.indexOf('flutter_bootstrap.js');
-    final dartModule = html.indexOf('main.dart.mjs');
-    final dartWasm = html.indexOf('main.dart.wasm');
 
     expect(fetch, greaterThanOrEqualTo(0));
-    expect(fetch, lessThan(dartModule));
-    expect(fetch, lessThan(dartWasm));
+    expect(fetch, lessThan(flutter));
+    expect(html, isNot(contains('href="main.dart.mjs"')));
+    expect(html, isNot(contains('href="main.dart.wasm"')));
     expect(bridge, greaterThanOrEqualTo(0));
     expect(bridge, lessThan(flutter));
     expect(html, contains("cache: 'no-store'"));
