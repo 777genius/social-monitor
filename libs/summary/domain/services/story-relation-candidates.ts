@@ -3,6 +3,7 @@ import {
   type StoryRankingPolicy,
 } from "../policies/story-ranking-policy";
 import { readerPostProviderFamily } from "../policies/reader-post-promotion-policy";
+import { hasSharedIndependentNewsLawsuitEvent } from "./story-news-verification-evidence";
 import { hasIndependentNewsPublishers } from "./story-source-identity";
 import type {
   StoryCluster,
@@ -151,7 +152,7 @@ const relationCandidate = (params: {
   const sharedStoryEventFacet = hasSharedStoryEventFacet(
     params.left,
     params.right,
-  );
+  ) || hasSharedIndependentNewsLawsuitEvent(params.left, params.right);
   const sharedEntityAnchorTokens = sharedAnchorTokens.filter(
     (token) => !sharedEventTokens.includes(token),
   );

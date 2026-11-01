@@ -11,7 +11,7 @@ import {
   AgentRuntimeReaderSummaryStoryRelationVerifier,
   resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions,
 } from "./agent-runtime-reader-summary-story-relation-verifier.adapter";
-import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
+import { withTestExecutionAttestation, withTestGatewayExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 
 describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
   it("uses subscription runtime and decides every shortlisted pair", async () => {
@@ -79,7 +79,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
 
   it("routes independent news through Codex with its own request and conservative prompt", async () => {
     const client = new CapturingAgentRuntimeClient({ status: "completed",
-      structuredOutput: { decisions: [] }, warnings: [] });
+      structuredOutput: { decisions: [] }, warnings: [] }, true);
     const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({ client,
       model: "gpt-6.1-sol", reasoningEffort: "low" });
     const query = input();
@@ -455,7 +455,8 @@ class CapturingAgentRuntimeClient implements AgentRuntimeClientPort {
   readonly commands: AgentRuntimeTaskCommand[] = [];
   readonly signals: (AbortSignal | undefined)[] = [];
 
-  constructor(private readonly result: AgentRuntimeTaskResult) {}
+  constructor(private readonly result: AgentRuntimeTaskResult,
+    private readonly gateway = false) {}
 
   async runTask(
     command: AgentRuntimeTaskCommand,
@@ -463,7 +464,8 @@ class CapturingAgentRuntimeClient implements AgentRuntimeClientPort {
   ): Promise<AgentRuntimeTaskResult> {
     this.commands.push(command);
     this.signals.push(options?.signal);
-    return withTestExecutionAttestation(command, this.result);
+    return this.gateway ? withTestGatewayExecutionAttestation(command, this.result)
+      : withTestExecutionAttestation(command, this.result);
   }
 
   async checkHealth(): Promise<AgentRuntimeHealthResult> {

@@ -171,8 +171,6 @@ const operationalUnavailabilityPattern =
   /\b(?:downtime|offline|outage|service\s+disruption|unavailable)\b/iu;
 
 const claimFacetDefinitions = [
-  // Retrieval evidence only: parties and primary event still need verification.
-  [/\b(?:sue[sd]?|suing)\b/iu, "event:lawsuit-filing"],
   [/\bagents?[\s'’]+last\s+exam\b/iu, "benchmark:agents-last-exam"],
   [/\bartificial\s+analysis\b/iu, "benchmark:artificial-analysis"],
   [/\barc[\s-]?agi\b/iu, "benchmark:arc-agi"],
