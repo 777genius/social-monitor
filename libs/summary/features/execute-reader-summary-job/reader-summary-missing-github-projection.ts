@@ -56,6 +56,7 @@ export const resolveMissingGitHubProjectionOmission = async (params: {
     reason: missingGitHubProjectionOmissionReason,
     authorizedAt: observedThrough,
     readerQuality: "limited_sources",
+    expectedEligibleBindingId: bindingId,
   };
 };
 

@@ -57,7 +57,7 @@ describe("resolveMissingGitHubProjectionOmission", () => {
     const projection = reader([]);
     const omission = await resolve(projection);
     expect(omission).toEqual({ reason: missingGitHubProjectionOmissionReason, authorizedAt: observedThrough,
-      readerQuality: "limited_sources" });
+      readerQuality: "limited_sources", expectedEligibleBindingId: "github-binding-a" });
     const draft = { qualityFlags: ["low_confidence"] } as unknown as Parameters<
       typeof withReaderSummaryHistoricalOmissionQuality>[0];
     expect(withReaderSummaryHistoricalOmissionQuality(draft, omission).qualityFlags)
@@ -101,6 +101,24 @@ describe("resolveMissingGitHubProjectionOmission", () => {
     const decision = await prepublish(
       githubBoardArtifact({ selectedPostCount: 10, watchRanks: [1, 2, 3], watchStarsGained: 1_101 }), reader([]));
     expect(decision.publicationDecision.status).toBe("rejected");
+  });
+
+  it.each([
+    { bindings: [] },
+    { bindings: ["github-binding-b"] },
+    { bindings: ["github-binding-a", "github-binding-b"] },
+  ])("rejects automatic omission when eligible bindings change before publication: %j", async ({ bindings }) => {
+    let reads = 0;
+    const projection: ReaderSummaryGitHubProjectionReaderPort = {
+      async read() {
+        return { items: [], pageCount: 1,
+          eligibleBindingIds: reads++ === 0 ? ["github-binding-a"] : bindings };
+      },
+    };
+    const decision = await prepublish(artifactWithoutGitHubEvidence(), projection);
+    expect(decision.publicationDecision.status).toBe("rejected");
+    expect(decision.githubProjectionAudit.status).toBe("rejected");
+    expect(decision.githubProjectionAudit).not.toHaveProperty("historicalOmission");
   });
 
   it.each([

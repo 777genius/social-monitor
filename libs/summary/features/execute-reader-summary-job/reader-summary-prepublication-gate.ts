@@ -28,6 +28,7 @@ export type ReaderSummaryHistoricalGitHubOmission = {
   readonly reason: string;
   readonly authorizedAt: Date;
   readonly readerQuality?: "limited_sources";
+  readonly expectedEligibleBindingId?: string;
 };
 
 export const evaluateReaderSummaryPrepublication = async (params: {
@@ -87,6 +88,11 @@ export const evaluateReaderSummaryPrepublication = async (params: {
         dayEndedAt: snapshot.period.endedAt,
         observedThrough: params.observedThrough,
       });
+      const expectedBinding = params.historicalGitHubOmission.expectedEligibleBindingId;
+      if (expectedBinding !== undefined &&
+          (durable.eligibleBindingIds.length !== 1 || durable.eligibleBindingIds[0] !== expectedBinding)) {
+        throw new Error("Automatic GitHub omission eligibility changed during generation");
+      }
       const canonical = evaluateReaderSummaryGitHubProjection({
         artifact: params.artifact,
         eligibleBindingIds: durable.eligibleBindingIds,
