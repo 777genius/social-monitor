@@ -27,7 +27,7 @@ import { READER_POST_PRESENTATION_V3_MAX_BODY_UTF16,
   "../../domain/services/reader-post-presentation-v3";
 import type { ReaderSummaryV3PromotionPort,
   ReaderSummarySupplementalEvidenceSelectorPort,
-  ReaderSummaryV3PromotionOutcome } from "../../ports";
+  ReaderSummaryV3PromotionOutcome, ReaderSummaryStoryRelationVerifierPort } from "../../ports";
 import { maxReaderSummaryEvidenceItems } from
   "./relevance-reader-summary-evidence-support";
 import { clustersForSelection, v3EvidenceSelection } from
@@ -39,6 +39,7 @@ import { clusterPromotionStoryRelations, deterministicPromotionStoryId,
   "./relevance-reader-summary-v3-story-relations";
 import { planWorkspacePresentationSlate } from
   "./relevance-reader-summary-v3-presentation-slate";
+import { verifiedPromotionNewsPairs } from "./relevance-reader-summary-v3-news-relations";
 import { readerPostPromotionEngagementFact } from
   "./reader-post-promotion-engagement-facts";
 
@@ -52,6 +53,7 @@ implements ReaderSummaryV3PromotionPort {
     private readonly assessments: Pick<ReaderValueAssessmentStore, "read">,
     private readonly presentation: PromotionPresentationBuilder,
     private readonly supplementalEvidence: ReaderSummarySupplementalEvidenceSelectorPort,
+    private readonly storyVerifier?: ReaderSummaryStoryRelationVerifierPort,
   ) {}
 
   async build(params: Parameters<ReaderSummaryV3PromotionPort["build"]>[0]):
@@ -223,7 +225,7 @@ implements ReaderSummaryV3PromotionPort {
         blocked: snapshot.safety === "blocked",
       } satisfies ReaderPostPromotionV3Candidate;
     });
-    const clustered = clusterPromotionStoryRelations({
+    const relationParams = {
       candidates: rawCandidates, evidence: frozenEvidence,
       cutoffAt: params.manifest.cutoffAt,
       identity: { tenantId: job.tenantId, workspaceId: job.workspaceId,
@@ -231,9 +233,22 @@ implements ReaderSummaryV3PromotionPort {
       deterministicStoryIds,
       workspaceManifest: params.manifest.schemaVersion ===
         "reader_summary_preparation_manifest.v2",
-    });
+    };
+    let clustered = clusterPromotionStoryRelations(relationParams);
     if (clustered.kind === "budget_exhausted") {
       return { kind: "budget_exhausted" };
+    }
+    const verifiedStoryRelationPairs = await verifiedPromotionNewsPairs({
+      candidates: rawCandidates, evidence: frozenEvidence, selection: clustered.selection,
+      verifier: this.storyVerifier, query: {
+        tenantId: job.tenantId, workspaceId: job.workspaceId, scope: job.scope,
+        period: job.period, requestedAt: new Date(params.manifest.cutoffAt),
+      },
+    });
+    if (verifiedStoryRelationPairs.size > 0) {
+      clustered = clusterPromotionStoryRelations({ ...relationParams,
+        verifiedStoryRelationPairs });
+      if (clustered.kind === "budget_exhausted") return { kind: "budget_exhausted" };
     }
     const candidates = normalizeDuplicateStoryIds(rawCandidates,
       explicitStoryIds, deterministicStoryIds, clustered.clusters);

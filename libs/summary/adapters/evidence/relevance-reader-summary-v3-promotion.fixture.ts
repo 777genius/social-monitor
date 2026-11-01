@@ -8,7 +8,8 @@ import { tenantId, workspaceId, type JsonObject } from "@social-monitor/shared-k
 import { ReaderSummaryJob, type ReaderSummaryPreparationManifest } from
   "../../domain";
 import type { SummaryEvidenceItem } from "../../domain";
-import type { ReaderSummarySupplementalEvidenceSelectorPort } from "../../ports";
+import type { ReaderSummarySupplementalEvidenceSelectorPort,
+  ReaderSummaryStoryRelationVerifierPort } from "../../ports";
 import { sealReaderPostPresentationV3,
   type PromotionPresentationBuilder,
   type ReaderPostPresentationV3Input } from
@@ -23,7 +24,7 @@ type Candidate = ReturnType<typeof candidate>;
 export const workspaceSetup = (candidates: readonly Candidate[],
   failure?: "revoked" | "late" | "revision" | "rubric" | "interest_hash",
   presentation: PromotionPresentationBuilder = new TestPresentation(),
-  interestCount = 2) => {
+  interestCount = 2, storyVerifier?: ReaderSummaryStoryRelationVerifierPort) => {
   const base = setup(candidates, new TestPresentation());
   const job = ReaderSummaryJob.rehydrate({ ...base.job.toSnapshot(),
     scope: { type: "workspace" },
@@ -67,7 +68,7 @@ export const workspaceSetup = (candidates: readonly Candidate[],
           : { status: "unavailable" as const, assessmentId: reference.assessmentId };
       });
     },
-  }, presentation, new TestSupplementalEvidenceSelector([]));
+  }, presentation, new TestSupplementalEvidenceSelector([]), storyVerifier);
   return { job, manifest, subject, readInterests };
 };
 

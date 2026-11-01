@@ -3,8 +3,8 @@
 ## Status
 
 Accepted, 2026-10-24; Top order changed to the hybrid score on 2026-10-29 and
-to a minimum popularity cohort on 2026-10-30 (policy stamp
-`reader_promotion.2026-10-30`). Supersedes the ordering of the Jev promotion path described
+to a minimum popularity cohort on 2026-10-30; independent news verification was
+added on 2026-11-01 (policy stamp `reader_promotion.2026-11-01`). Supersedes the ordering of the Jev promotion path described
 in `docs/plans/2026-09-20-jev-primary-scorer-implementation.md` section 3 item 9
 and section 9.2 ("no popularity tie-break", "X likes and HN points are not
 comparable"). Selection strategy `jev_primary_v3` is unchanged; only the
@@ -21,7 +21,7 @@ model's central/relevant boundary is noisy.
 
 ## Decision
 
-1. **Assessments are reused as they are.** No new model call, no rubric change.
+1. **Assessments are reused as they are.** No new assessment call, no rubric change.
    Relevance stays an admission gate (relevant or central) and is no longer an
    order key.
 2. **Two separate blocks, each post in exactly one.** Membership comes from one
@@ -179,3 +179,39 @@ model's central/relevant boundary is noisy.
   internet" articles remain). One large event can still fill most of Top
   through different posts (about 8 of 12 on 2026-10-22); a per-story limit is
   an open product decision.
+
+## Independent News Verification - 2026-11-01
+
+V3 promotion now reuses the story-relation verifier before headline generation.
+Only admitted RSS items with a Google News publisher suffix participate. The
+first 64 items in news order can produce at most 32 verification pairs, in one
+request with a 90-second deadline. Retrieval uses headlines instead of HTML
+teaser links. Lawsuit verbs supply event retrieval context, never merge authority.
+The existing deterministic similarity threshold is unchanged. The runtime uses
+the configured summary model route and effort, including Codex gpt-6.1-sol/low.
+
+Different named publishers can be verified as one concrete story, including the
+retained October 25 Yahoo, NBC and New York Times Elvis/Anthropic headlines and
+the reported Texas/OpenAI paraphrases. Shared parties alone do not establish
+identity. The existing complete-batch reconciliation and confidence threshold
+apply; the cluster matcher requires every member pair, never transitive closure.
+Duplicate IDs and interest membership remain in the published cluster. A missing,
+invalid, low-confidence or timed-out decision leaves deterministic identities
+intact. Budget omissions can therefore still leave duplicates.
+
+Known preexisting risk: the deterministic matcher can merge synthetic headlines
+about different plaintiffs when most other words coincide, for example a Texas
+attorney-general/OpenAI deceptive-chatbot headline and its near-identical
+California variant. This happens before verification and is not repaired by this
+change. No retained real-source example of that false merge was established here.
+A future fix needs independently grounded actor/event evidence rather than a
+lower fuzzy-match threshold. The regression control here uses a distinct
+California/OpenAI privacy filing and verifies that a negative decision preserves it.
+
+Deploy the backend and generated frontend contract together. The existing
+single-stamp read policy withholds old promoted boards without rewriting their
+stored artifacts. For the 2026-11-01 delivery, rebuild October 31 first, then 30
+and 29; older October 23/25 artifacts remain rebuild-required until separately
+rebuilt. No schema migration or assessment-key change is required. Presentation
+batches whose input ordering changes may need new execution despite reusable
+assessments; the news verifier adds at most one bounded request per build.

@@ -57,7 +57,7 @@ language.
 - News without rating: the separate block for sources without a popularity
   rating (RSS), up to 16 posts, ordered by usefulness and then recency. Its
   cards never show a Signal. A Google News publisher appears at most once.
-- Ranking Policy Stamp: `reader_promotion.2026-10-30`, the meaning of the
+- Ranking Policy Stamp: `reader_promotion.2026-11-01`, the meaning of the
   promotion order. A day ranked under another stamp is served with empty
   boards and `ranking_policy_changed`; the UI shows it as waiting for a
   rebuild, not as broken.

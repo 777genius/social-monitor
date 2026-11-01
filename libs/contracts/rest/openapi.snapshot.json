@@ -4358,7 +4358,7 @@
             "enum": [
               "reader_post_promotion.v1",
               "reader_post_promotion.v2",
-              "reader_promotion.2026-10-30"
+              "reader_promotion.2026-11-01"
             ],
             "type": "string"
           },

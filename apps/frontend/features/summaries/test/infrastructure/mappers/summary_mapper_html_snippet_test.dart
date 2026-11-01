@@ -132,7 +132,7 @@ TopReadApiDto _item({
     publishedAt: DateTime.parse('2026-10-19T02:00:00.000000Z'),
     promotionAttestation: ReaderPostPromotionAttestationApiDto(
       schemaVersion: 'reader_post_promotion_attestation.v3',
-      policyVersion: 'reader_promotion.2026-10-30',
+      policyVersion: 'reader_promotion.2026-11-01',
       candidateId: 'candidate-a',
       canonicalIdentity: 'https://example.com/candidate-a',
       placement: 'top',

@@ -27,7 +27,7 @@ import {
  * membership changes meaning: artifacts carrying another stamp are then read
  * back as "rebuild required" instead of failing validation.
  */
-export const READER_PROMOTION_POLICY_STAMP = "reader_promotion.2026-10-30" as const;
+export const READER_PROMOTION_POLICY_STAMP = "reader_promotion.2026-11-01" as const;
 
 /**
  * Block sizes, all in one place.

@@ -21,8 +21,10 @@ import {
 import { strictStoryRelationTitleEvidence } from
   "./story-relation-title-evidence";
 
+import { hasSharedIndependentNewsLawsuitEvent } from "./story-news-verification-evidence";
 import { samePrimaryReleaseEvent } from "./story-release-event-identity";
 import {
+  hasIndependentNewsPublishers,
   isMultiSourceStoryHost,
   isPlatformStoryCopy,
   storyKeyHost,
@@ -230,14 +232,15 @@ export const isVerifiedStoryRelationGuardEligible = (
   candidate: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
 ): boolean => {
+  const independentNews = hasIndependentNewsPublishers(item, candidate);
   if (readerPostProviderFamily(item.providerKey) ===
-      readerPostProviderFamily(candidate.providerKey)) {
+      readerPostProviderFamily(candidate.providerKey) && !independentNews) {
     return false;
   }
   const sameAuthorSeries =
     item.providerKey === candidate.providerKey &&
     isVerifiedSameAuthorStorySeriesCandidate(item, candidate);
-  if (item.providerKey === candidate.providerKey && !sameAuthorSeries) {
+  if (item.providerKey === candidate.providerKey && !sameAuthorSeries && !independentNews) {
     return false;
   }
   const itemKey = storyKey(item, policy);
@@ -298,7 +301,8 @@ export const isVerifiedStoryRelationGuardEligible = (
       storyIdentitySpecificProductTokens(candidateTokens),
     ) > 0 ||
     sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_SUBJECT_TOKENS;
-  const sharedStoryEventFacet = hasSharedStoryEventFacet(item, candidate);
+  const sharedStoryEventFacet = hasSharedStoryEventFacet(item, candidate) ||
+    hasSharedIndependentNewsLawsuitEvent(item, candidate);
   const hasConcreteContext =
     sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_CONTEXT_TOKENS ||
     (sharedEventTokens.size > 0 && sharedModelVersionTokenCount > 0) ||

@@ -2,6 +2,9 @@ import {
   STORY_RANKING_POLICY_V1,
   type StoryRankingPolicy,
 } from "../policies/story-ranking-policy";
+import { readerPostProviderFamily } from "../policies/reader-post-promotion-policy";
+import { hasSharedIndependentNewsLawsuitEvent } from "./story-news-verification-evidence";
+import { hasIndependentNewsPublishers } from "./story-source-identity";
 import type {
   StoryCluster,
   SummaryEvidenceItem,
@@ -23,8 +26,6 @@ import {
   storyTopicEventTokens,
   storyTopicSimilarity,
 } from "./story-topic-tokenizer";
-import { readerPostProviderFamily } from
-  "../policies/reader-post-promotion-policy";
 
 export type StoryRelationCandidate = {
   readonly leftFeedItemId: string;
@@ -55,6 +56,7 @@ export const buildStoryRelationCandidates = (params: {
   readonly selection: SummaryEvidenceSelection;
   readonly evidence: readonly SummaryEvidenceItem[];
   readonly policy?: StoryRankingPolicy;
+  readonly independentNewsPublishers?: boolean;
 }): readonly StoryRelationCandidate[] => {
   const policy = params.policy ?? STORY_RANKING_POLICY_V1;
   const clusterByFeedItemId = clusterMembership(params.selection.clusters);
@@ -83,8 +85,10 @@ export const buildStoryRelationCandidates = (params: {
       if (
         rightClusterId === undefined ||
         leftClusterId === rightClusterId ||
-        readerPostProviderFamily(left.providerKey) ===
-          readerPostProviderFamily(right.providerKey) ||
+        (readerPostProviderFamily(left.providerKey) ===
+          readerPostProviderFamily(right.providerKey) &&
+          !(params.independentNewsPublishers === true &&
+            hasIndependentNewsPublishers(left, right))) ||
         !isVerifiedStoryRelationGuardEligible(left, right, policy) ||
         isDeterministicIndependentSourceStoryMatch(left, right, policy)
       ) {
@@ -148,7 +152,7 @@ const relationCandidate = (params: {
   const sharedStoryEventFacet = hasSharedStoryEventFacet(
     params.left,
     params.right,
-  );
+  ) || hasSharedIndependentNewsLawsuitEvent(params.left, params.right);
   const sharedEntityAnchorTokens = sharedAnchorTokens.filter(
     (token) => !sharedEventTokens.includes(token),
   );
