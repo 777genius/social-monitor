@@ -2,31 +2,23 @@ part of 'reader_summary_brief_surface.dart';
 
 class _TopPostsHeader extends StatelessWidget {
   const _TopPostsHeader({
-    required this.board,
-    required this.topPostCount,
-    required this.additionalStoryCount,
-    required this.curatedTopPostCount,
-    required this.selectedPostCount,
+    required this.visibleCount,
+    required this.availableCount,
     required this.providerKeys,
     required this.hiddenProviders,
     required this.denseView,
     required this.sortOrder,
-    required this.onBoardChanged,
     required this.onProviderToggled,
     required this.onDenseViewChanged,
     required this.onSortOrderChanged,
   });
 
-  final _TopPostBoard board;
-  final int topPostCount;
-  final int additionalStoryCount;
-  final int curatedTopPostCount;
-  final int selectedPostCount;
+  final int visibleCount;
+  final int availableCount;
   final List<String> providerKeys;
   final Set<String> hiddenProviders;
   final bool denseView;
   final TopPostsSortOrder sortOrder;
-  final ValueChanged<_TopPostBoard> onBoardChanged;
   final ValueChanged<String> onProviderToggled;
   final ValueChanged<bool> onDenseViewChanged;
 
@@ -39,11 +31,7 @@ class _TopPostsHeader extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final onSortOrderChanged = this.onSortOrderChanged;
     final subtitle = Text(
-      _topPostBoardSubtitle(
-        board,
-        curatedTopPostCount: curatedTopPostCount,
-        selectedPostCount: selectedPostCount,
-      ),
+      'Showing $visibleCount of $availableCount ranked posts',
       style: textTheme.labelSmall?.copyWith(
         color: colorScheme.onSurfaceVariant,
         fontWeight: FontWeight.w600,
@@ -77,11 +65,12 @@ class _TopPostsHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _TopPostBoardToggle(
-          board: board,
-          topPostCount: topPostCount,
-          additionalStoryCount: additionalStoryCount,
-          onChanged: onBoardChanged,
+        Text(
+          'Top posts',
+          style: textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
+          ),
         ),
         const SizedBox(height: AppSpacing.sm),
         LayoutBuilder(
@@ -110,22 +99,6 @@ class _TopPostsHeader extends StatelessWidget {
       ],
     );
   }
-}
-
-String _topPostBoardSubtitle(
-  _TopPostBoard board, {
-  required int curatedTopPostCount,
-  required int selectedPostCount,
-}) {
-  return switch (board) {
-    _TopPostBoard.topPosts =>
-      curatedTopPostCount == 1
-          ? '1 editorial pick from $selectedPostCount selected'
-          : '$curatedTopPostCount editorial picks from '
-                '$selectedPostCount selected',
-    _TopPostBoard.additionalStories =>
-      'Additional selected stories and explicitly related topics',
-  };
 }
 
 /// Stable row key: the card identity, independent of its position, so a row

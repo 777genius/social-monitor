@@ -44,7 +44,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Additional stories'), findsOneWidget);
+    expect(find.text('Additional stories'), findsNothing);
     expect(find.text('Legacy editorial read'), findsNothing);
     expect(find.text('Cursor background agents launch'), findsNothing);
     expect(find.text('Official watermark standard ships'), findsNothing);
