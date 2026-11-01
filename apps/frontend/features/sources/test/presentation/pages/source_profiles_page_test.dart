@@ -63,7 +63,7 @@ void main() {
     expect(find.text('Unsupported scope'), findsWidgets);
     expect(find.text('Connect source'), findsNothing);
 
-    await tester.tap(find.byTooltip('Show limitations').first);
+    await tester.tap(_findTooltip('Show limitations').first);
     await tester.pumpAndSettle();
 
     expect(find.text('Limitations'), findsWidgets);
@@ -102,3 +102,9 @@ class _TestApp extends StatelessWidget {
     );
   }
 }
+
+Finder _findTooltip(String message) => find.byWidgetPredicate(
+  (widget) =>
+      widget is AppTooltip &&
+      (widget.message ?? widget.richMessage?.toPlainText()) == message,
+);

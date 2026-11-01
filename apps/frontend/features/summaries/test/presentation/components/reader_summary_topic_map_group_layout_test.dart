@@ -134,7 +134,7 @@ void main() {
     final topicMap = _denseGroupedTopicMap();
     await _pumpTopicMap(tester, topicMap, width: 480);
 
-    final tooltip = tester.widget<Tooltip>(
+    final tooltip = tester.widget<AppTooltip>(
       find.byKey(const ValueKey('topic-map-bubble-topic:claude-code')),
     );
     final message = tooltip.message ?? '';

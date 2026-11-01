@@ -57,24 +57,28 @@ class _TopPostRatingControlState extends State<_TopPostRatingControl> {
             MouseRegion(
               onEnter: (_) => setState(() => _hoverRating = rating),
               onExit: (_) => setState(() => _hoverRating = null),
-              child: IconButton(
-                key: ValueKey('reader-summary-top-post-rating-$rating'),
-                tooltip: 'Rate $rating of 5',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: BoxConstraints.tightFor(
-                  width: widget.dense ? 24 : 26,
-                  height: widget.dense ? 24 : 26,
-                ),
-                iconSize: iconSize,
-                color: rating <= activeRating
-                    ? _topPostRatingActiveColor
-                    : colorScheme.onSurfaceVariant,
-                onPressed: _saving ? null : () => _submitRating(rating),
-                icon: Icon(
-                  rating <= activeRating
-                      ? Icons.star_rounded
-                      : Icons.star_border_rounded,
+              child: MergeSemantics(
+                child: AppTooltip(
+                  message: 'Rate $rating of 5',
+                  child: IconButton(
+                    key: ValueKey('reader-summary-top-post-rating-$rating'),
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints.tightFor(
+                      width: widget.dense ? 24 : 26,
+                      height: widget.dense ? 24 : 26,
+                    ),
+                    iconSize: iconSize,
+                    color: rating <= activeRating
+                        ? _topPostRatingActiveColor
+                        : colorScheme.onSurfaceVariant,
+                    onPressed: _saving ? null : () => _submitRating(rating),
+                    icon: Icon(
+                      rating <= activeRating
+                          ? Icons.star_rounded
+                          : Icons.star_border_rounded,
+                    ),
+                  ),
                 ),
               ),
             ),

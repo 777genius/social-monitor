@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_spacing.dart';
+import '../app_tooltip.dart';
 
 /// Collapse/expand control for the persistent sidebar.
 ///
@@ -76,6 +77,6 @@ class AppShellSidebarToggle extends StatelessWidget {
       return button;
     }
 
-    return Tooltip(message: label, preferBelow: false, child: button);
+    return AppTooltip(message: label, preferBelow: false, child: button);
   }
 }

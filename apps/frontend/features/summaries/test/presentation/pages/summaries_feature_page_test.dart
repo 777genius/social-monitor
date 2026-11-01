@@ -239,7 +239,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Citation safety'), findsOneWidget);
-    expect(find.byTooltip('Close detail'), findsOneWidget);
+    expect(_findTooltip('Close detail'), findsOneWidget);
   });
 
   testWidgets('long summaries list uses lazy repeated-row viewport', (
@@ -424,3 +424,9 @@ void main() {
 
   _registerCompactFailureAndEmptyStateTest();
 }
+
+Finder _findTooltip(String message) => find.byWidgetPredicate(
+  (widget) =>
+      widget is AppTooltip &&
+      (widget.message ?? widget.richMessage?.toPlainText()) == message,
+);

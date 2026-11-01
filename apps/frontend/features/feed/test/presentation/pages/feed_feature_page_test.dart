@@ -106,7 +106,7 @@ void main() {
     expect(find.text('Body preview'), findsOneWidget);
     expect(find.text('Source link'), findsOneWidget);
     expect(find.text('Copy URL'), findsOneWidget);
-    expect(find.byTooltip('Close post detail'), findsOneWidget);
+    expect(_findTooltip('Close post detail'), findsOneWidget);
     expect(find.text('All loaded'), findsNothing);
     expect(find.text('Mark reviewed'), findsNothing);
   });
@@ -231,7 +231,7 @@ void main() {
 
     expect(find.text('Body preview'), findsOneWidget);
     expect(find.text('Post details'), findsOneWidget);
-    expect(find.byTooltip('Close post detail'), findsOneWidget);
+    expect(_findTooltip('Close post detail'), findsOneWidget);
   });
 
   testWidgets('long feed list uses lazy repeated-row viewport', (tester) async {
@@ -393,3 +393,9 @@ class _TestApp extends StatelessWidget {
     );
   }
 }
+
+Finder _findTooltip(String message) => find.byWidgetPredicate(
+  (widget) =>
+      widget is AppTooltip &&
+      (widget.message ?? widget.richMessage?.toPlainText()) == message,
+);

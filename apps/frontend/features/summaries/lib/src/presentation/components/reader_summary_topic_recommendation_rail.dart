@@ -263,7 +263,7 @@ class _TopicSummary extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Tooltip(
+        AppTooltip(
           message: recommendation.topicLabel,
           child: Text(
             recommendation.topicLabel,

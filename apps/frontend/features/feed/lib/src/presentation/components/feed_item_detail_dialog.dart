@@ -46,10 +46,14 @@ class FeedItemDetailDialog extends StatelessWidget {
                       ),
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Close post detail',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                  MergeSemantics(
+                    child: AppTooltip(
+                      message: 'Close post detail',
+                      child: IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ),
                   ),
                 ],
               ),

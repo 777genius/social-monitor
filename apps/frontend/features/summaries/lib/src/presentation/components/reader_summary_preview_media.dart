@@ -65,7 +65,7 @@ class ReaderSummaryPreviewMedia extends StatelessWidget {
       image: true,
       button: enableLightbox,
       label: label,
-      child: Tooltip(
+      child: AppTooltip(
         message: media.kind == PreviewMediaKind.video
             ? 'Video preview'
             : 'Image preview',
@@ -117,10 +117,14 @@ class _PreviewLightbox extends StatelessWidget {
           Positioned(
             top: AppSpacing.md,
             right: AppSpacing.md,
-            child: IconButton.filledTonal(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close_rounded),
-              tooltip: 'Close preview',
+            child: MergeSemantics(
+              child: AppTooltip(
+                message: 'Close preview',
+                child: IconButton.filledTonal(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ),
             ),
           ),
           if (media.kind == PreviewMediaKind.video)

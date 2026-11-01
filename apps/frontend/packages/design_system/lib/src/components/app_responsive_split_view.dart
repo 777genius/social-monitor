@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../responsive/app_breakpoints.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
+import 'app_tooltip.dart';
 
 class AppResponsiveSplitView extends StatelessWidget {
   const AppResponsiveSplitView({
@@ -84,10 +85,14 @@ class _DetailPane extends StatelessWidget {
                   else
                     const Spacer(),
                   if (onClose != null)
-                    IconButton(
-                      tooltip: 'Close detail',
-                      onPressed: onClose,
-                      icon: const Icon(Icons.close),
+                    MergeSemantics(
+                      child: AppTooltip(
+                        message: 'Close detail',
+                        child: IconButton(
+                          onPressed: onClose,
+                          icon: const Icon(Icons.close),
+                        ),
+                      ),
                     ),
                 ],
               ),

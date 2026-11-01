@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_spacing.dart';
+import '../app_tooltip.dart';
 import 'app_shell_destination.dart';
 
 /// Single navigation row in the sidebar.
@@ -77,7 +78,7 @@ class AppShellSidebarNavItem extends StatelessWidget {
       return button;
     }
 
-    return Tooltip(
+    return AppTooltip(
       message: destination.label,
       preferBelow: false,
       child: button,

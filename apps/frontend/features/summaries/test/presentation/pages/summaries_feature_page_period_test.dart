@@ -43,13 +43,13 @@ void main() {
     expect(store.selectedSummaryPeriodPreset, SummaryPeriodPreset.weekly);
     expect(currentWeeklyPeriod.cadence, SummaryPeriodCadence.weekly);
 
-    await tester.tap(find.byTooltip('Previous period'));
+    await tester.tap(_findTooltip('Previous period'));
     await tester.pumpAndSettle();
     expect(store.canShowPreviousSummaryPeriod, isFalse);
     expect(store.canShowNextSummaryPeriod, isFalse);
     expect(store.selectedSummaryPeriod, currentWeeklyPeriod);
 
-    await tester.tap(find.byTooltip('Next period'));
+    await tester.tap(_findTooltip('Next period'));
     await tester.pumpAndSettle();
     expect(store.selectedSummaryPeriod, currentWeeklyPeriod);
 
@@ -126,3 +126,9 @@ final class _SourceLauncher implements ReaderSourceLauncher {
   @override
   Future<Result<Unit>> open(Uri uri) async => const Result.success(Unit.value);
 }
+
+Finder _findTooltip(String message) => find.byWidgetPredicate(
+  (widget) =>
+      widget is AppTooltip &&
+      (widget.message ?? widget.richMessage?.toPlainText()) == message,
+);

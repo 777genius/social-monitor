@@ -221,7 +221,7 @@ class _TopPostEvidenceStack extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Tooltip(
+        AppTooltip(
           message: style.tooltip,
           child: hasEvidenceRows
               ? Material(

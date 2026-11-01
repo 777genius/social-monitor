@@ -27,23 +27,27 @@ class ReaderSummaryTopicDecisionIconButton extends StatelessWidget {
         colorScheme.onSurfaceVariant,
     };
 
-    return IconButton.filledTonal(
-      tooltip: tooltip,
-      style: IconButton.styleFrom(
-        fixedSize: const Size.square(32),
-        minimumSize: const Size.square(32),
-        padding: EdgeInsets.zero,
-        backgroundColor: foreground.withValues(alpha: 0.12),
-        foregroundColor: foreground,
-        hoverColor: foreground.withValues(alpha: 0.16),
-        focusColor: foreground.withValues(alpha: 0.18),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: foreground.withValues(alpha: 0.22)),
+    return MergeSemantics(
+      child: AppTooltip(
+        message: tooltip,
+        child: IconButton.filledTonal(
+          style: IconButton.styleFrom(
+            fixedSize: const Size.square(32),
+            minimumSize: const Size.square(32),
+            padding: EdgeInsets.zero,
+            backgroundColor: foreground.withValues(alpha: 0.12),
+            foregroundColor: foreground,
+            hoverColor: foreground.withValues(alpha: 0.16),
+            focusColor: foreground.withValues(alpha: 0.18),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: BorderSide(color: foreground.withValues(alpha: 0.22)),
+            ),
+          ),
+          icon: Icon(icon, size: 17),
+          onPressed: onPressed,
         ),
       ),
-      icon: Icon(icon, size: 17),
-      onPressed: onPressed,
     );
   }
 }

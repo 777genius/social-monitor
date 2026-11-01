@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_tooltip.dart';
+
 /// One option of an [AppSegmentedControl].
 final class AppSegment<T extends Object> {
   const AppSegment({
@@ -72,14 +74,16 @@ class AppSegmentedControl<T extends Object> extends StatelessWidget {
           for (final segment in segments)
             ButtonSegment<T>(
               value: segment.value,
-              tooltip: segment.tooltip,
               icon: segment.icon == null ? null : Icon(segment.icon),
-              label: Text(
-                segment.label,
-                key: segment.key,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                semanticsLabel: segment.semanticLabel,
+              label: AppTooltip(
+                message: segment.tooltip,
+                child: Text(
+                  segment.label,
+                  key: segment.key,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  semanticsLabel: segment.semanticLabel,
+                ),
               ),
             ),
         ],
