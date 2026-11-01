@@ -3,6 +3,9 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/post_rating.dart';
+import '../../domain/entities/summary_citation.dart';
+import '../../domain/value_objects/top_posts_sort_order.dart';
+import '../stores/top_posts_sort_store.dart';
 import '../view_models/reader_summary_top_posts_projection.dart';
 import 'reader_summary_brief_surface.dart';
 
@@ -14,6 +17,7 @@ class ReaderSummaryTopPostsSectionSliver extends StatefulWidget {
     required this.onOpenUrl,
     this.ratingFor,
     this.onRated,
+    this.sortStore,
   });
 
   final ReaderSummary summary;
@@ -26,6 +30,10 @@ class ReaderSummaryTopPostsSectionSliver extends StatefulWidget {
     PostRatingReason? reason,
   )?
   onRated;
+
+  /// Remembered reader order of the ranked lanes; `null` keeps the model
+  /// order and hides the order control.
+  final TopPostsSortStore? sortStore;
 
   @override
   State<ReaderSummaryTopPostsSectionSliver> createState() =>
@@ -81,15 +89,18 @@ class _ReaderSummaryTopPostsSectionSliverState
           const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
           SliverPadding(
             padding: widget.contentPadding,
-            sliver: ReaderSummaryTopPostsSliver(
-              projection: projection,
-              selectedPostCount: _selectedPostCount(widget.summary),
-              period: widget.summary.period,
-              citationsById: citationsById,
-              ratingFor: widget.ratingFor,
-              onRated: widget.onRated,
-              onOpenUrl: widget.onOpenUrl,
-            ),
+            sliver: switch (widget.sortStore) {
+              null => _rankedPosts(projection, citationsById),
+              final sortStore => ListenableBuilder(
+                listenable: sortStore,
+                builder: (context, _) => _rankedPosts(
+                  projection,
+                  citationsById,
+                  sortOrder: sortStore.order,
+                  onSortOrderChanged: sortStore.select,
+                ),
+              ),
+            },
           ),
         ],
         if (projection.hasNewsWithoutRating) ...[
@@ -109,6 +120,23 @@ class _ReaderSummaryTopPostsSectionSliverState
       ],
     );
   }
+
+  Widget _rankedPosts(
+    ReaderSummaryTopPostsProjection projection,
+    Map<String, SummaryCitation> citationsById, {
+    TopPostsSortOrder sortOrder = TopPostsSortOrder.modelRank,
+    ValueChanged<TopPostsSortOrder>? onSortOrderChanged,
+  }) => ReaderSummaryTopPostsSliver(
+    projection: projection,
+    selectedPostCount: _selectedPostCount(widget.summary),
+    period: widget.summary.period,
+    citationsById: citationsById,
+    ratingFor: widget.ratingFor,
+    onRated: widget.onRated,
+    onOpenUrl: widget.onOpenUrl,
+    sortOrder: sortOrder,
+    onSortOrderChanged: onSortOrderChanged,
+  );
 }
 
 bool _hasSummaryEvidence(ReaderSummary summary) =>

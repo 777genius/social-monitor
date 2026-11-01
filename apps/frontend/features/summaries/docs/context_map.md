@@ -24,6 +24,9 @@
 
 ## Integration Rules
 
+- Browser storage is not an upstream context: it holds only the Top Posts Sort
+  Order code behind `TopPostsSortPreferenceStore` (ADR 398).
+
 - Do not import feed or settings feature packages directly.
 - Keep generated summary DTOs and provider-specific language in infrastructure.
 - Map weekly projection status, active-artifact presence and evidence limitations

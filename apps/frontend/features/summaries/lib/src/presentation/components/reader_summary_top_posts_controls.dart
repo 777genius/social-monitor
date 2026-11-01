@@ -1,5 +1,54 @@
 part of 'reader_summary_brief_surface.dart';
 
+/// "By model" / "By likes" order of the visible lane.
+class _TopPostSortToggle extends StatelessWidget {
+  const _TopPostSortToggle({
+    required this.sortOrder,
+    required this.onSortOrderChanged,
+  });
+
+  final TopPostsSortOrder sortOrder;
+  final ValueChanged<TopPostsSortOrder> onSortOrderChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    // The compact header stacks its controls full width; the wide header
+    // lays them out in a row with unbounded width.
+    return LayoutBuilder(
+      builder: (context, constraints) => AppSegmentedControl<TopPostsSortOrder>(
+        key: const ValueKey('reader-summary-top-posts-sort'),
+        semanticLabel: 'Top posts order',
+        selected: sortOrder,
+        onChanged: onSortOrderChanged,
+        expanded: constraints.hasBoundedWidth,
+        segments: _topPostSortSegments,
+      ),
+    );
+  }
+}
+
+const _topPostSortSegments = [
+  AppSegment(
+    key: ValueKey('reader-summary-top-posts-sort-model'),
+    value: TopPostsSortOrder.modelRank,
+    label: 'By model',
+    icon: Icons.auto_awesome_outlined,
+    semanticLabel: 'Sort by model rank',
+    tooltip: 'Model order: importance first, then popularity',
+  ),
+  AppSegment(
+    key: ValueKey('reader-summary-top-posts-sort-likes'),
+    value: TopPostsSortOrder.engagement,
+    label: 'By likes',
+    icon: Icons.favorite_border_rounded,
+    semanticLabel: 'Sort by likes',
+    tooltip:
+        'Most liked first: X likes + 2x reposts, Reddit score, '
+        'Hacker News points, GitHub stars. Posts without a metric '
+        'stay last.',
+  ),
+];
+
 class _TopPostFilterMenu extends StatelessWidget {
   const _TopPostFilterMenu({
     required this.providerKeys,

@@ -45,6 +45,15 @@ language.
   score and Signal 0, uniformly for the whole family.
 - Metric Maturity: a metric counts only when it was observed at least six
   hours after publication; otherwise it is unknown and adds popularity 0.
+- Source Engagement: the single native popularity number the backend signs
+  into a V3 comparator: X likes + 2 x reposts, Reddit score, Hacker News
+  points, GitHub max(stars, forks / 2) in the trending window. `null` means
+  unknown (legacy V1/V2 card, missing snapshot, unranked source).
+- Top Posts Sort Order: the reader's display order of the visible ranked lane,
+  "By model" (default, the authorized server order) or "By likes" (Source
+  Engagement descending, ties and unknown metrics in model order, unknown
+  last). It is a remembered reader preference, not a ranking decision: lane
+  membership, attested slots, Signal and News without rating never change.
 - News without rating: the separate block for sources without a popularity
   rating (RSS), up to 16 posts, ordered by usefulness and then recency. Its
   cards never show a Signal. A Google News publisher appears at most once.
@@ -121,7 +130,8 @@ language.
 - Promotion Policy V1 thresholds, ranking and refill decisions belong to the
   backend. Flutter preserves authorized server order, applies only the eight
   item lane caps and canonical deduplication with Top winning, and accepts
-  short or empty lanes.
+  short or empty lanes. The only reorder is the reader-chosen Top Posts Sort
+  Order inside one visible lane.
 
 ## Rename Backlog
 
