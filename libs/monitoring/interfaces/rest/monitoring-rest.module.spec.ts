@@ -48,6 +48,7 @@ import { ScanPolicyController } from './scan-policy.controller';
 import { ScanRequestController } from './scan-request.controller';
 import { ScanStatusController } from './scan-status.controller';
 import { SourceBindingController } from './source-binding.controller';
+import { SourceBindingAccessService } from './source-binding-access.service';
 import { SourceCredentialController } from './source-credential.controller';
 
 const MODULE_IMPORTS = 'imports';
@@ -94,7 +95,7 @@ describe('MonitoringRestModule composition', () => {
   it('keeps critical tokens bound to the same dependencies as singleton providers', () => {
     const providers = moduleMetadata<Provider[]>(MODULE_PROVIDERS);
 
-    expect(providers).toHaveLength(50);
+    expect(providers).toHaveLength(51);
     expect(factoryProvider(MONITORING_SOURCE_BINDING_REPOSITORY).inject).toEqual([
       MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT, InMemoryInterestCreationState,
     ]);
@@ -149,6 +150,7 @@ describe('MonitoringRestModule composition', () => {
     }
 
     const providerTokens = providers.map(providerToken);
+    expect(providerTokens).toContain(SourceBindingAccessService);
     for (const exportedProvider of moduleMetadata<unknown[]>(MODULE_EXPORTS)) {
       expect(providerTokens).toContain(exportedProvider);
     }
