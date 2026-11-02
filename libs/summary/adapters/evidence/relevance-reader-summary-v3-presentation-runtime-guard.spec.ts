@@ -52,6 +52,37 @@ const guardedSetup = (presentation: PromotionPresentationBuilder, count = 16) =>
 };
 
 describe('V3 promotion presentation runtime failures', () => {
+  it('withholds replacement authority after a completed batch with pending cleanup', async () => {
+    let call = 0;
+    const successful = new TestPresentation();
+    const fixture = guardedSetup({ build: async inputs => {
+      if (++call === 1) return (await successful.build(inputs)).map(result =>
+        ({ ...result, cleanupPending: true as const }));
+      return inputs.map(() => ({ status: 'unavailable' as const, reason: 'runtime_failure' as const,
+        runtimeFailure: { code: 'task_timeout', causeCategory: 'deadline', executionClosed: true } }));
+    } });
+    await expect(fixture.run()).resolves.toEqual({ kind: 'dependency_failure',
+      reason: 'presentation_runtime_failure_repeated:task_timeout' });
+    expect(fixture.logger.entries.at(-1)?.fields.executionsClosed).toBe(false);
+  });
+  it.each([true, false])('marks replacement authority only when every failed execution is closed (%s)', async closed => {
+    let call = 0;
+    const fixture = guardedSetup({ build: async inputs => {
+      call += 1;
+      return inputs.map(() => ({ status: 'unavailable' as const, reason: 'runtime_failure' as const,
+        runtimeFailure: { code: 'task_timeout', causeCategory: 'deadline',
+          executionClosed: call === 1 ? closed : true,
+          executionRef: '11111111-1111-4111-8111-111111111111',
+          requestRef: `sm${'a'.repeat(43)}-a1-r`,
+          effect: 'response_started' as const, elapsedMs: 270_001, timeoutMs: 270_000 } }));
+    } });
+    await expect(fixture.run()).resolves.toEqual({ kind: 'dependency_failure',
+      reason: `presentation_runtime_failure_repeated:task_timeout${closed ? ':executions_closed' : ''}` });
+    expect(fixture.logger.entries.at(-1)?.fields).toMatchObject({ executionsClosed: closed,
+      lastEffect: 'response_started', lastElapsedMs: 270_001, lastTimeoutMs: 270_000,
+      lastExecutionRef: '11111111-1111-4111-8111-111111111111',
+      lastRequestRef: `sm${'a'.repeat(43)}-a1-r` });
+  });
   it('skips a single runtime-failed batch and discloses the gap in the published artifact', async () => {
     const runtime = runtimeFailingBatches(call => call === 2);
     const fixture = guardedSetup(runtime.presentation);
@@ -142,7 +173,7 @@ describe('V3 promotion presentation runtime failures', () => {
     expect(fixture.logger.entries).toEqual([{ level: 'warn',
       message: 'reader summary presentation skipped a runtime-failed batch',
       fields: { attempted: 4, failed: 4, batchFailed: 4, consecutiveFailedBatches: 1,
-        lastCode: 'agent_runtime.cli_exit', lastCauseCategory: 'subscription_runtime_cli' } }]);
+        lastCode: 'agent_runtime.cli_exit', lastCauseCategory: 'subscription_runtime_cli', executionsClosed: false } }]);
   });
 
   it('starts every run with a fresh failure count and no disclosure when every task ran', async () => {

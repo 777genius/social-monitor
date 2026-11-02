@@ -28,7 +28,7 @@ export type ReaderPostPresentationV3Input = {
   readonly captureComplete: boolean;
 };
 
-export type ReaderPostPresentationV3Result =
+export type ReaderPostPresentationV3Result = (
   | { readonly status: "available"; readonly seal: ReaderDisplayHeadlineSeal;
       readonly presentationInputDigest: string }
   | { readonly status: "unavailable"; readonly reason:
@@ -37,12 +37,20 @@ export type ReaderPostPresentationV3Result =
   /** The runtime failed or rejected the task before any presentation was validated. */
   | { readonly status: "unavailable"; readonly reason: "runtime_failure";
       readonly runtimeFailure: ReaderPostPresentationRuntimeFailure }
-  | { readonly status: "dependency_failure"; readonly reason: string };
+  | { readonly status: "dependency_failure"; readonly reason: string }
+) & { readonly cleanupPending?: true };
 
 /** Sanitized runtime identifiers for operators; never messages or provider data. */
 export type ReaderPostPresentationRuntimeFailure = {
   readonly code: string;
   readonly causeCategory: string;
+  /** The gateway acknowledged closure and the dispatch effect is known. */
+  readonly executionClosed?: boolean;
+  readonly effect?: "not_dispatched" | "response_started" | "completed" | "effect_unknown";
+  readonly elapsedMs?: number;
+  readonly timeoutMs?: number;
+  readonly executionRef?: string;
+  readonly requestRef?: string;
 };
 
 export interface PromotionPresentationBuilder {

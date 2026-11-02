@@ -1,6 +1,7 @@
 import type { LlmEffect, LlmFailureCode } from "@agent-teams/account-gateway/llm";
 
 import { gatewayLlmFailure } from "./gateway-llm/gateway-llm-failure";
+import { presentationRuntimeFailureIdentity } from "./agent-runtime-promotion-presentation-v3-runtime-failure";
 import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../ports";
 import {
@@ -9,6 +10,20 @@ import {
 } from "./agent-runtime-promotion-presentation-v3.builder";
 
 describe("AgentRuntimePromotionPresentationV3Builder", () => {
+  it.each([true, false])("retains only valid gateway references for incident correlation (%s)", valid => {
+    const executionRef = "11111111-1111-4111-8111-111111111111";
+    const requestRef = `sm${"a".repeat(43)}-a1-r`;
+    const result = presentationRuntimeFailureIdentity({ status: "failed", warnings: [], failure: {
+      code: "task_timeout", safeMessage: "deadline", causeCategory: "deadline",
+      retryable: false, reconnectRequired: false, details: {
+        gatewayExecutionRef: valid ? executionRef : "untrusted reference text",
+        gatewayRequestRef: valid ? requestRef : "untrusted reference text",
+        providerPayload: "must never enter operator logs",
+      },
+    } });
+    expect(result).toEqual({ code: "task_timeout", causeCategory: "deadline",
+      ...(valid ? { executionRef, requestRef } : {}) });
+  });
   it("skips a repeatedly failed MiMo task as a runtime failure, never as a completed attestation failure", async () => {
     const client = new PresentationRuntimeClient();
     jest.spyOn(client as AgentRuntimeClientPort, "runTask").mockResolvedValue({
@@ -443,24 +458,37 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
         confidence: 0.9 })) } };
   };
 
+  it("preserves pending cleanup on a validated completed presentation batch", async () => {
+    const client = new PresentationRuntimeClient();
+    jest.spyOn(client, "runTask").mockImplementation(async command => ({
+      ...gatewayPresentation(command), warnings: [{ code: "gateway_cleanup_pending", message: "pending" }],
+    }));
+    const result = await new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "kimi-code", model: "k3-256k" }).build([fixtureInput()]);
+    expect(result).toEqual([expect.objectContaining({ status: "available", cleanupPending: true })]);
+  });
+
   it.each([["effect_unknown", "effect_unknown"], ["provider_failed", "response_started"],
     ["output_lost", "effect_unknown"]] as const)(
-    "retries a Kimi batch once after a gateway %s and skips it only if that repeats", async (code, effect) => {
+    "retries only a known closed Kimi failure and preserves uncertain gateway %s", async (code, effect) => {
       const kimi = { modelBackend: "kimi-code", model: "k3-256k" } as const;
       const recovering = new PresentationRuntimeClient();
       jest.spyOn(recovering, "runTask").mockResolvedValueOnce(gatewayFailure(code, effect))
         .mockImplementationOnce(async command => gatewayPresentation(command));
+      const mayReplace = effect !== "effect_unknown";
       await expect(new AgentRuntimePromotionPresentationV3Builder({ client: recovering, ...kimi })
-        .build([fixtureInput()])).resolves.toEqual([expect.objectContaining({ status: "available" })]);
-      expect(recovering.runTask).toHaveBeenCalledTimes(2);
+        .build([fixtureInput()])).resolves.toEqual([expect.objectContaining({
+          status: mayReplace ? "available" : "unavailable" })]);
+      expect(recovering.runTask).toHaveBeenCalledTimes(mayReplace ? 2 : 1);
 
       const failing = new PresentationRuntimeClient();
       const failure = gatewayFailure(code, effect);
       jest.spyOn(failing, "runTask").mockResolvedValue(failure);
       await expect(new AgentRuntimePromotionPresentationV3Builder({ client: failing, ...kimi })
         .build([fixtureInput()])).resolves.toEqual([{ status: "unavailable", reason: "runtime_failure",
-        runtimeFailure: { code: failure.failure!.code, causeCategory: failure.failure!.causeCategory } }]);
-      expect(failing.runTask).toHaveBeenCalledTimes(2);
+        runtimeFailure: { code: failure.failure!.code, causeCategory: failure.failure!.causeCategory,
+          effect, ...(mayReplace ? { executionClosed: true } : {}) } }]);
+      expect(failing.runTask).toHaveBeenCalledTimes(mayReplace ? 2 : 1);
     });
 
   it("keeps a busy Kimi account fatal for the run without retrying", async () => {

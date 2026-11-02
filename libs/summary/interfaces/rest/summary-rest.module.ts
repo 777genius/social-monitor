@@ -42,6 +42,7 @@ import {
   READER_SUMMARY_ACCEPTED_TOPIC_APPLIER,
   type ReaderSummaryAcceptedTopicApplierPort,
   type ReaderSummaryPolicyRepositoryPort,
+  type ReaderSummaryJobRepositoryPort,
   READER_SUMMARY_TOPIC_COLLECTION_METRICS_READER,
   READER_SUMMARY_TOPIC_RECOMMENDATION_DECISION_REPOSITORY,
   type ReaderSummaryTopicCollectionMetricsReaderPort,
@@ -190,6 +191,7 @@ import { SummaryController } from "./summary.controller";
       useFactory: (
         readerSummaryPolicies: ReaderSummaryPolicyRepositoryPort,
         requestReaderSummary: RequestReaderSummaryUseCase,
+        jobs: ReaderSummaryJobRepositoryPort,
       ) =>
         new SchedulePeriodicReaderSummariesUseCase(
           readerSummaryPolicies,
@@ -200,8 +202,12 @@ import { SummaryController } from "./summary.controller";
                 () => requestReaderSummary.execute(command),
               ),
           },
+          { findByIdempotencyKey: query => runWithTenantDatabaseAccess(
+            { tenantId: query.tenantId, workspaceId: query.workspaceId },
+            () => jobs.findByIdempotencyKey(query),
+          ) },
         ),
-      inject: [READER_SUMMARY_POLICY_REPOSITORY, RequestReaderSummaryUseCase],
+      inject: [READER_SUMMARY_POLICY_REPOSITORY, RequestReaderSummaryUseCase, READER_SUMMARY_JOB_REPOSITORY],
     },
     {
       provide: ExecuteSummaryJobUseCase,

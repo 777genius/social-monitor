@@ -25,6 +25,7 @@ export class PresentationRuntimeFailureGuard implements PromotionPresentationBui
   private consecutiveFailedBatches = 0;
   private attempted = 0;
   private failed = 0;
+  private allExecutionsClosed = true;
   private lastFailure?: ReaderPostPresentationRuntimeFailure;
 
   constructor(
@@ -46,9 +47,11 @@ export class PresentationRuntimeFailureGuard implements PromotionPresentationBui
     const results = await this.presentation.build(inputs);
     let failed = 0;
     for (const result of results) {
+      if (result.cleanupPending) this.allExecutionsClosed = false;
       if (result.status !== "unavailable" || result.reason !== "runtime_failure") continue;
       failed += 1;
       this.lastFailure = result.runtimeFailure;
+      this.allExecutionsClosed &&= result.runtimeFailure.executionClosed === true;
     }
     this.attempted += results.length;
     this.failed += failed;
@@ -61,14 +64,22 @@ export class PresentationRuntimeFailureGuard implements PromotionPresentationBui
       const fields = { attempted: this.attempted, failed: this.failed, batchFailed: failed,
         consecutiveFailedBatches: this.consecutiveFailedBatches,
         lastCode: this.lastFailureCode,
-        lastCauseCategory: this.lastFailure?.causeCategory ?? "unclassified" };
+        lastCauseCategory: this.lastFailure?.causeCategory ?? "unclassified",
+        executionsClosed: this.allExecutionsClosed,
+        ...(this.lastFailure?.effect === undefined ? {} : { lastEffect: this.lastFailure.effect }),
+        ...(this.lastFailure?.elapsedMs === undefined ? {} : { lastElapsedMs: this.lastFailure.elapsedMs }),
+        ...(this.lastFailure?.timeoutMs === undefined ? {} : { lastTimeoutMs: this.lastFailure.timeoutMs }),
+        ...(this.lastFailure?.executionRef === undefined ? {} : { lastExecutionRef: this.lastFailure.executionRef }),
+        ...(this.lastFailure?.requestRef === undefined ? {} : { lastRequestRef: this.lastFailure.requestRef }),
+      };
       if (stop) {
         this.logger.error("reader summary presentation stopped after repeated runtime failures", fields);
       } else {
         this.logger.warn("reader summary presentation skipped a runtime-failed batch", fields);
       }
     }
-    if (stop) throw new Error(`presentation_runtime_failure_repeated:${this.lastFailureCode}`);
+    if (stop) throw new Error(`presentation_runtime_failure_repeated:${this.lastFailureCode}${
+      this.allExecutionsClosed ? ":executions_closed" : ""}`);
     return results;
   }
 }
