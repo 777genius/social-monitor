@@ -29,8 +29,8 @@ import { INGESTION_CONVERSATION_PROJECTION, INGESTION_FEED_PROJECTION, INGESTION
 import { INGESTION_SCAN_COMMAND_QUEUE_READER, type ScanCommandQueueReaderPort } from './scan-command-queue-reader';
 import { ScanQueueDrainLoop } from './scan-queue-drain-loop';
 import { ScanSchedulerLoop } from './scan-scheduler-loop';
-import { ingestionWorkerRuntimeProviders } from './ingestion-worker-runtime.providers';
-import { ingestionWorkerStorageProviders } from './ingestion-worker-storage.providers';
+import { ingestionWorkerRuntimeProviders } from './adapters/composition/ingestion-worker-runtime.providers';
+import { ingestionWorkerStorageProviders } from './adapters/composition/ingestion-worker-storage.providers';
 
 @Module({
   imports: [

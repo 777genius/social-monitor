@@ -22,9 +22,9 @@ import { PrismaSourceCandidateMemoryRepository } from '@social-monitor/ingestion
 import { InMemoryScanFailureQueueAdapter } from '@social-monitor/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
 import { noopSourceEngagementProjection } from '@social-monitor/ingestion/ports';
 import type { ConversationProjectionPort, FeedProjectionPort, ScanAttemptRepositoryPort, ScanCursorRepositoryPort, ScanFailureQueuePort, ScanRetryQueuePort, ScanLeasePort, SourceCandidateMemoryPort, SourceEngagementProjectionPort, SourceItemRepositoryPort } from '@social-monitor/ingestion/ports';
-import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-projection.adapter';
-import { type PrismaIngestionWorkerClient } from './adapters/persistence/prisma-ingestion-worker-connection';
-import { INGESTION_CONVERSATION_PROJECTION, INGESTION_FEED_PROJECTION, INGESTION_SCAN_ATTEMPT_REPOSITORY, INGESTION_SCAN_CURSOR_REPOSITORY, INGESTION_SCAN_FAILURE_QUEUE, INGESTION_SCAN_LEASE, INGESTION_SOURCE_CANDIDATE_MEMORY, INGESTION_SOURCE_ENGAGEMENT_PROJECTION, INGESTION_SOURCE_ITEM_REPOSITORY, INGESTION_WORKER_PERSISTENCE_MODE, INGESTION_WORKER_PRISMA_CLIENT, type IngestionWorkerPersistenceMode } from './ingestion-worker-provider-tokens';
+import { InMemoryFeedProjectionAdapter } from '../../adapters/feed/in-memory-feed-projection.adapter';
+import { type PrismaIngestionWorkerClient } from '../../adapters/persistence/prisma-ingestion-worker-connection';
+import { INGESTION_CONVERSATION_PROJECTION, INGESTION_FEED_PROJECTION, INGESTION_SCAN_ATTEMPT_REPOSITORY, INGESTION_SCAN_CURSOR_REPOSITORY, INGESTION_SCAN_FAILURE_QUEUE, INGESTION_SCAN_LEASE, INGESTION_SOURCE_CANDIDATE_MEMORY, INGESTION_SOURCE_ENGAGEMENT_PROJECTION, INGESTION_SOURCE_ITEM_REPOSITORY, INGESTION_WORKER_PERSISTENCE_MODE, INGESTION_WORKER_PRISMA_CLIENT, type IngestionWorkerPersistenceMode } from '../../ingestion-worker-provider-tokens';
 
 export const ingestionWorkerStorageProviders: Provider[] = [
     InMemorySourceItemRepository,
