@@ -16,7 +16,12 @@ abstract final class ReaderPromotionLimits {
   static const news = 16;
 }
 
-/// A metric is mature when it was observed at least this many hours after
+const readerPromotionPolicyV1 = 'reader_promotion.2026-11-01';
+const readerPromotionPolicyV2 = 'reader_promotion.2026-11-02';
+bool supportedReaderPromotionPolicy(Object? version) =>
+    version == readerPromotionPolicyV1 || version == readerPromotionPolicyV2;
+
+/// Under V1 a metric is mature when it was observed at least this many hours after
 /// the post was published; earlier snapshots count as unknown.
 const readerPromotionMetricMaturityHours = 6;
 
@@ -40,21 +45,31 @@ bool readerPromotionSemanticallyAdmitted(ReaderPromotionComparator value) =>
 /// Block, maturity and popularity presence agree with each other.
 ///
 /// A news post never carries a metric; a ranked metric is mature exactly
-/// when the six-hour rule holds; popularity exists only for a mature metric
+/// when its signed policy allows the observation; popularity exists only for an eligible metric
 /// from a family that reaches the minimum cohort. A mature metric of a
 /// smaller family legitimately has no popularity; the board policy keeps
 /// that uniform per family.
-bool readerPromotionComparatorIsCoherent(ReaderPromotionComparator value) {
+bool readerPromotionComparatorIsCoherent(
+  ReaderPromotionComparator value, {
+  String policyVersion = readerPromotionPolicyV1,
+  ReaderPromotionExactTimestamp? ingestionCutoff,
+}) {
   final engagement = value.engagement;
   final mature =
       value.block == ReaderPromotionBlock.ranked &&
       engagement != null &&
-      readerPromotionMetricMature(
-        observedAt: engagement.observedAt,
-        publishedAt: value.publishedAt,
-      );
+      (policyVersion == readerPromotionPolicyV1
+          ? readerPromotionMetricMature(
+              observedAt: engagement.observedAt,
+              publishedAt: value.publishedAt,
+            )
+          : policyVersion == readerPromotionPolicyV2 &&
+                ingestionCutoff != null &&
+                engagement.observedAt.compareTo(value.publishedAt) >= 0 &&
+                engagement.observedAt.compareTo(ingestionCutoff) <= 0);
   final popularity = value.popularity;
-  return (value.block == ReaderPromotionBlock.ranked || engagement == null) &&
+  return supportedReaderPromotionPolicy(policyVersion) &&
+      (value.block == ReaderPromotionBlock.ranked || engagement == null) &&
       value.metricMature == mature &&
       (popularity == null || (mature && popularity.isSigned));
 }

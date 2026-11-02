@@ -11,7 +11,8 @@ import { selectReaderPostPromotionsV3, type ReaderPostPromotionV3Candidate } fro
   "../policies/reader-post-promotion-v3";
 import type { ReaderPostPromotionAttestationV3 } from
   "../policies/reader-post-promotion-policy-contract";
-import { READER_PROMOTION_POLICY_STAMP } from "../policies/reader-promotion-ranking";
+import { READER_PROMOTION_POLICY_V1 as READER_PROMOTION_POLICY_STAMP } from
+  "../policies/reader-promotion-policy-version";
 import { buildReaderPostPromotionProjection } from
   "../services/reader-post-promotion-projection";
 import { readerPostPresentationV3InputDigest } from

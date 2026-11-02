@@ -59,6 +59,21 @@ const _labelAliases = <String, String>{
 /// Slots follow the provider's native vocabulary. Missing metrics are omitted
 /// so rows do not show placeholder values such as `- Views`.
 List<TopPostMetric> topPostMetricsFor(TopRead read) {
+  // A derived count must retain its meaning instead of becoming raw Likes
+  // or Stars when the native-label parser examines its first word.
+  final derived = [
+    for (final metric in read.providerMetrics)
+      if (const {
+            'Likes + 2× reposts',
+            'Star/fork activity',
+          }.contains(metric.label.trim()) &&
+          RegExp(r'^[\d][\d,.]*[kKmM]?$').hasMatch(metric.value.trim()))
+        TopPostMetric(
+          value: formatCompactMetricValue(metric.value),
+          label: metric.label.trim(),
+        ),
+  ];
+  if (derived.isNotEmpty) return derived.take(4).toList(growable: false);
   final found = _parsedMetrics(read);
   final slots = _metricSlotsByProvider[read.providerKey.trim().toLowerCase()];
   if (slots == null) {

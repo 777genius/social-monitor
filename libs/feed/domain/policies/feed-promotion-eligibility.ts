@@ -52,10 +52,27 @@ export type FeedPromotionEligibility = EligiblePromotion | {
   readonly metricsState: FeedPromotionMetricsState;
 };
 
-export const classifyFeedPromotionEligibility = (params: {
+type PromotionMetricInput = {
   readonly providerKey: string;
   readonly providerMetadata?: JsonObject;
-}): FeedPromotionEligibility => {
+};
+type ReaderValueMetricEligibility = FeedPromotionEligibility |
+  (Omit<EligiblePromotion, "contentKind"> & { readonly contentKind: "quote" });
+
+/** Legacy promotion remains original-only, even when a caller supplies extra fields. */
+export const classifyFeedPromotionEligibility = (params: PromotionMetricInput): FeedPromotionEligibility => {
+  const result = classifyPromotionMetrics(params, false);
+  if (!result.eligible) return result;
+  if (result.contentKind === "quote") return rejected("forbidden_content_kind", "malformed");
+  return { ...result, contentKind: result.contentKind };
+};
+
+/** V3 records strict metrics after separately assessing the quote author's text. */
+export const classifyReaderValuePromotionMetrics = (params: PromotionMetricInput): ReaderValueMetricEligibility =>
+  classifyPromotionMetrics(params, true);
+
+const classifyPromotionMetrics = (params: PromotionMetricInput,
+  allowAuthoredQuotes: boolean): ReaderValueMetricEligibility => {
   const normalizedKey = params.providerKey.trim().toLocaleLowerCase("en-US");
   if (normalizedKey === "github-trending-page") {
     return rejected("appendix_only", "missing");
@@ -66,7 +83,7 @@ export const classifyFeedPromotionEligibility = (params: {
     return rejected("missing_metadata", "missing");
   }
   switch (family) {
-    case "x": return classifyX(params.providerMetadata);
+    case "x": return classifyX(params.providerMetadata, allowAuthoredQuotes);
     case "reddit": return classifyReddit(params.providerMetadata);
     case "hacker_news": return classifyHackerNews(params.providerMetadata);
     case "github_radar": return classifyGitHub(params.providerMetadata);
@@ -77,11 +94,12 @@ export const isFeedPromotionEligible = (
   params: Parameters<typeof classifyFeedPromotionEligibility>[0],
 ): boolean => classifyFeedPromotionEligibility(params).eligible;
 
-const classifyX = (metadata: JsonObject): FeedPromotionEligibility => {
+const classifyX = (metadata: JsonObject, allowAuthoredQuotes: boolean): ReaderValueMetricEligibility => {
   if (metadata.kind !== "x_post" && metadata.kind !== "twitter_post") {
     return badKind(metadata.kind);
   }
-  if (metadata.contentKind !== "original_post") {
+  const quote = metadata.contentKind === "quote" && allowAuthoredQuotes;
+  if (metadata.contentKind !== "original_post" && !quote) {
     return rejected(
       metadata.contentKind === "reply" || metadata.contentKind === "quote"
         ? "forbidden_content_kind"
@@ -90,7 +108,7 @@ const classifyX = (metadata: JsonObject): FeedPromotionEligibility => {
     );
   }
   if (hasContradictorySecondaryKind(metadata, [
-    "original_post", "post", "x_post", "twitter_post",
+    quote ? "quote" : "original_post", "post", "x_post", "twitter_post",
   ])) return rejected("contradictory_kind", "malformed");
   const publicSnake = object(metadata.public_metrics);
   const publicCamel = object(metadata.publicMetrics);
@@ -116,7 +134,7 @@ const classifyX = (metadata: JsonObject): FeedPromotionEligibility => {
   ]);
   if (state !== "observed" || likes.value === undefined ||
       reposts.value === undefined) return rejected("malformed_metadata", state);
-  return eligible("x", "x-twitter", "original_post", {
+  const result = eligible("x", "x-twitter", "original_post", {
     kind: "x_post",
     providerKey: "x-twitter",
     sourceKey: xProviderSourceKey({
@@ -128,6 +146,7 @@ const classifyX = (metadata: JsonObject): FeedPromotionEligibility => {
     likes: likes.value,
     reposts: reposts.value,
   }, authorityAttestation.value);
+  return quote ? { ...result, contentKind: "quote" } : result;
 };
 
 const classifyReddit = (metadata: JsonObject): FeedPromotionEligibility => {
@@ -251,7 +270,7 @@ const eligible = (
   contentKind: EligiblePromotion["contentKind"],
   metrics: FeedPromotionCanonicalMetrics,
   authorityAttestation?: EligiblePromotion["authorityAttestation"],
-): FeedPromotionEligibility => ({
+): EligiblePromotion => ({
   eligible: true,
   providerFamily,
   canonicalProviderKey,

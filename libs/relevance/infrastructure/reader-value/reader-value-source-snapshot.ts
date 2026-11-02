@@ -24,6 +24,7 @@ export function captureReaderValueSourceSnapshot(
     title: source.title,
     body: source.body,
     capture: stableCapture(source.capture, false),
+    ...(source.quotedContext === undefined ? {} : { quotedContext: source.quotedContext }),
   }));
   const sanitized = safety.evaluate({
     title: source.title, bodyPreview: source.body, providerKey: source.providerKey,
@@ -33,6 +34,7 @@ export function captureReaderValueSourceSnapshot(
   const retainedTitle = unicodePrefix(sanitized.sanitizedTitle, READER_VALUE_SNAPSHOT_BODY_LIMIT);
   const retainedBody = unicodePrefix(body, READER_VALUE_SNAPSHOT_BODY_LIMIT);
   return ok({
+    ...(source.quotedContext === undefined ? {} : { quotedContext: source.quotedContext }),
     sourceSnapshotSha256,
     interestSha256: sha256(source.interest),
     sanitizedTextSha256: sha256(JSON.stringify({ title: sanitized.sanitizedTitle, body })),

@@ -1,6 +1,6 @@
 import { readerPromotionProviderFamily, type JsonObject } from '@social-monitor/shared-kernel';
 
-export type ReaderValueSourceKind = 'original_post' | 'story' | 'article' | 'repository' | 'trending_repository';
+export type ReaderValueSourceKind = 'original_post' | 'quote_post' | 'story' | 'article' | 'repository' | 'trending_repository';
 export type ReaderValueSourceKindResult =
   | { readonly supported: true; readonly kind: ReaderValueSourceKind; readonly appendixOnly: boolean }
   | { readonly supported: false; readonly reason: 'unsupported_kind' };
@@ -14,6 +14,10 @@ export function classifyReaderValueSourceKind(providerKey: string, metadata: Jso
   }
   switch (readerPromotionProviderFamily(key)) {
     case 'x':
+      // A quote's own authored text can stand on its own. Missing quoted text
+      // is disclosed by the input snapshot, not classified as noise here.
+      if (metadata.contentKind === 'quote') return classify(metadata,
+        ['x_post', 'twitter_post'], ['quote', 'post', 'x_post', 'twitter_post'], 'quote_post');
       if (metadata.contentKind !== 'original_post') return unsupported();
       return classify(metadata, ['x_post', 'twitter_post'], ['original_post', 'post', 'x_post', 'twitter_post'], 'original_post');
     case 'reddit': return classify(metadata, ['reddit_post'], ['original_post', 'post'], 'original_post');

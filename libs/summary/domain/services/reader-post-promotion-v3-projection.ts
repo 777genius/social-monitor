@@ -12,7 +12,7 @@ import { capturedReaderSource, readerCapturedSourceDigest } from
   "./reader-post-display-headline";
 import type { ReaderPostPromotionProjection,
   ReaderPostPromotionProjectionInput } from "./reader-post-promotion-projection";
-import { READER_PROMOTION_POLICY_STAMP } from "../policies/reader-promotion-ranking";
+import { READER_PROMOTION_POLICY_V1 } from "../policies/reader-promotion-policy-version";
 
 export const buildReaderPostPromotionV3Projection = (
   params: ReaderPostPromotionProjectionInput,
@@ -63,7 +63,7 @@ export const buildReaderPostPromotionV3Projection = (
     return { storyClusterId: candidate.storyId,
       cardKind: placementCardKind[placement],
       promotionMarker: "reader_post_promotion" as const,
-      promotionPolicyVersion: READER_PROMOTION_POLICY_STAMP,
+      promotionPolicyVersion: candidate.ranking.policyVersion ?? READER_PROMOTION_POLICY_V1,
       promotionTier: placement, promotionCandidateId: candidate.candidateId,
       promotionCanonicalIdentity: publicCanonicalUrlIdentity(candidate.canonicalIdentity),
       title: publicHeadline.text, displayHeadline: publicHeadline,
@@ -104,12 +104,12 @@ export const buildReaderPostPromotionV3Projection = (
       cluster.duplicateFeedItemIds.includes(candidate.candidateId));
     const lead = admittedEvidence[index]!;
     return existing === undefined ? { id: candidate.storyId, storyKey: candidate.storyId,
-      rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
+      rankingPolicyVersion: candidate.ranking.policyVersion ?? READER_PROMOTION_POLICY_V1,
       representativeFeedItemId: candidate.candidateId, duplicateFeedItemIds: [],
       interestIds: [lead.interestId], providerKeys: [candidate.providerKey], score: 0,
       observedAtRange: { startedAt: lead.observedAt, endedAt: lead.observedAt },
       whyImportant: [] } : { ...existing, id: candidate.storyId,
-      rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
+      rankingPolicyVersion: candidate.ranking.policyVersion ?? READER_PROMOTION_POLICY_V1,
       representativeFeedItemId: candidate.candidateId };
   });
   const cardById = new Map(cards.map((card) => [card.promotionCandidateId!, card]));

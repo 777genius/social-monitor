@@ -4,7 +4,6 @@ import type { SummaryEvidenceSelection } from
   "../value-objects/summary-evidence-item";
 import type { ReaderSummaryPublicationRejectionFinding } from
   "./reader-summary-publication-decision";
-import { READER_PROMOTION_POLICY_STAMP } from "./reader-promotion-ranking";
 
 export const readerSummaryV3PromotionFindings = (
   snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
@@ -20,7 +19,7 @@ export const readerSummaryV3PromotionFindings = (
   ): boolean => actual.length === expected.length &&
     actual.every((card, index) => card.promotionCandidateId ===
       expected[index]?.candidateId &&
-      card.promotionPolicyVersion === READER_PROMOTION_POLICY_STAMP &&
+      card.promotionPolicyVersion === selection.policyVersion &&
       card.promotionTier === placement);
   return matches(promoted(snapshot.content?.topReads), selection.top, "top") &&
     matches(promoted(snapshot.content?.selectedPosts), selection.additional,

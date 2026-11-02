@@ -119,6 +119,27 @@ model's central/relevant boundary is noisy.
     REST returns empty boards and `freshness.reason = ranking_policy_changed`.
     No old comparator is kept.
 
+## 2026-11-02 forward policy candidate
+
+The test rollout adds `reader_promotion.2026-11-02`. It supersedes the six-hour
+eligibility rule and the single-version read behavior above. V2 uses every genuine
+metric observation in the inclusive interval `publishedAt <= observedAt <= cutoff`.
+It applies no age multiplier or estimated future engagement. Unknown, malformed,
+pre-publication and future observations do not enter the popularity cohort. The
+semantic gate, per-family percentile, five unique-source minimum, 40/60 score,
+representative selection and separate news/Trending behavior stay the same.
+
+Current V3 writers bind the policy to the exact frozen manifest cutoff. All-posts
+browse uses its injected request read time, so a genuine next-day observation of
+a prior-day post remains eligible. Neither path changes the observation time.
+
+V1 (`reader_promotion.2026-11-01`) remains readable and verifiable under the exact
+six-hour algorithm. Each board uses one supported stamp, including its cards and
+attestations; mixed stamps fail closed. The wire field `metricMature` is retained
+and means eligibility under that signed policy. Unsupported stamps require a
+rebuild. Historical artifacts are never rewritten. Legacy promotion V1/V2
+selection and validation keep their separate contracts.
+
 ## Consequences
 
 - REST adds `readerBrief.newsWithoutRatingPosts`; attestation placement gains

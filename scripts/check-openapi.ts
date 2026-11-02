@@ -1,3 +1,5 @@
+import { ReaderPostsController } from "@social-monitor/summary/interfaces/rest/reader-posts.controller";
+import { ListReaderPostsUseCase } from "@social-monitor/summary/features/list-reader-posts/list-reader-posts.use-case";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative } from "node:path";
 
@@ -282,6 +284,7 @@ const useCaseProviders = [
   GetReaderSummaryJobStatusUseCase,
   GetReaderSummaryQualityRejectionUseCase,
   GetReaderSummaryUseCase,
+  ListReaderPostsUseCase,
   GetReaderSummaryWeeklyProjectionUseCase,
   GetWebhookEndpointUseCase,
   GetBetaLaunchSupportUseCase,
@@ -361,6 +364,7 @@ const useCaseProviders = [
     SummaryController,
     ReaderSummaryWeeklyProjectionController,
     ReaderSummaryController,
+    ReaderPostsController,
     ReaderSummaryJobController,
     ReaderSummaryRequestController,
     ReaderSummaryTopicRecommendationController,

@@ -1,3 +1,5 @@
+import type { ReaderPromotionDiagnostics } from "../value-objects/reader-promotion-diagnostics";
+import type { ReaderPostPresentationFailureDetail } from "../services/reader-post-presentation-failure";
 import type { ReaderValueAnswers } from
   "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
 
@@ -12,7 +14,8 @@ import {
 
 export type ReaderPostPromotionV3Presentation =
   | { readonly status: "available"; readonly presentationInputDigest: string }
-  | { readonly status: "unavailable"; readonly reason: string }
+  | { readonly status: "unavailable"; readonly reason: string;
+      readonly validation?: ReaderPostPresentationFailureDetail }
   | { readonly status: "budget_exhausted" }
   | { readonly status: "pending" };
 
@@ -57,16 +60,21 @@ export type ReaderPostPromotionV3Selection =
   ReaderPromotionRankingResult<ReaderPostPromotionV3Candidate> & {
     /** Internal coverage disclosure; publication still binds only sealed survivors. */
     readonly presentationCoverageLimited?: true;
+    readonly diagnostics?: ReaderPromotionDiagnostics;
   };
+
+import { READER_PROMOTION_V1_CONTEXT, type ReaderPromotionRankingContext } from
+  "./reader-promotion-policy-version";
 
 /** Production entry point: identity checks plus the shared ranking core. */
 export const selectReaderPostPromotionsV3 = (
   candidates: readonly ReaderPostPromotionV3Candidate[],
+  context: ReaderPromotionRankingContext = READER_PROMOTION_V1_CONTEXT,
 ): ReaderPostPromotionV3Selection => {
   assertCandidateIdentities(candidates);
   return rankReaderPromotionCandidates(candidates.map((candidate) => ({
     ...candidate, eligible: technicallyEligible(candidate),
-  })));
+  })), undefined, context);
 };
 
 export const technicallyEligibleReaderPostPromotion = (

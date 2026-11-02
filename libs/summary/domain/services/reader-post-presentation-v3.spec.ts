@@ -118,7 +118,8 @@ describe("Promotion V3 full-source presentation", () => {
       kind: invalid.kind,
       wholeInput: { ...headline.wholeInput,
         qualificationJudgment: invalid.judgment },
-    } })).toEqual({ status: "unavailable", reason: "invalid_presentation" });
+    } })).toMatchObject({ status: "unavailable", reason: "invalid_presentation",
+      validation: { stage: "headline_seal", code: expect.any(String) } });
   });
 });
 

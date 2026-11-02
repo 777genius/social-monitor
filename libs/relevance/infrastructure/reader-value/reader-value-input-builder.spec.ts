@@ -8,6 +8,21 @@ import { readerValueRequestMatches } from './reader-value-request-guard';
 import { fixtureSource, preparedInput } from './reader-value-input-builder.spec-support';
 
 describe('conservative reader-value model input', () => {
+  it('assesses only a quote author\'s retained text with explicit missing context', () => {
+    const original = preparedInput();
+    const quote = preparedInput({ quotedContext: 'not_captured',
+      body: 'Ten practical findings from running a robot in production.' });
+    const wire = JSON.parse(quote.requestBody);
+    expect(wire.state.source_text).toBe('Ten practical findings from running a robot in production.');
+    expect(wire.state.quoted_context).toBe('not_captured_assess_authored_text_only');
+    expect(quote.snapshot.quotedContext).toBe('not_captured');
+    expect(readerValueRequestMatches(quote, 'openrouter-systemone')).toBe(true);
+    expect(preparedInput({ quotedContext: 'not_captured' }).sourceSnapshotSha256)
+      .not.toBe(original.sourceSnapshotSha256);
+    expect(preparedInput()).toEqual(original);
+    const forged = { ...quote, snapshot: { ...quote.snapshot, quotedContext: undefined } };
+    expect(readerValueRequestMatches(forged, 'openrouter-systemone')).toBe(false);
+  });
   it('binds the calibrated rubric to a distinct assessment identity without changing source or model', () => {
     const input = preparedInput();
     const wire = JSON.parse(input.requestBody);

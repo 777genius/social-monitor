@@ -6,6 +6,7 @@ import '../../domain/entities/reader_summary_job_snapshot.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../../domain/policies/reader_promotion_board_policy.dart';
 import '../../domain/value_objects/reader_captured_source.dart';
+import '../../domain/value_objects/reader_promotion_exact_timestamp.dart';
 import '../../domain/value_objects/reader_summary_provider_family.dart';
 import '../../domain/value_objects/summary_generation_status.dart';
 import '../../domain/value_objects/summary_id.dart';

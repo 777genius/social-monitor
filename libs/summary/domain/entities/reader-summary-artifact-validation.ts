@@ -9,9 +9,14 @@ import { sameProviderMetrics } from "./reader-summary-artifact-validation-values
 import { assertReaderSummaryPromotionAttestations } from
   "./reader-summary-promotion-attestation-validation";
 import { readerPostPromotionCardFields } from "./top-read";
+import { readReaderPromotionDiagnostics } from "../value-objects/reader-promotion-diagnostics";
 export const assertReaderSummaryArtifactValid = (
   props: ReaderSummaryArtifactProps,
 ): void => {
+  if (props.promotionDiagnostics !== undefined &&
+      readReaderPromotionDiagnostics(props.promotionDiagnostics) === undefined) {
+    throw new Error("Reader summary promotion diagnostics are invalid");
+  }
   if (
     props.promotionBoardState !== undefined &&
     props.promotionBoardState !== "legacy_unavailable" &&

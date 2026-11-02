@@ -1,3 +1,10 @@
+import { assertQuoteAssessmentPostgresContract } from "./reader-summary-quote-assessment-postgres-contract";
+import { PrismaReaderValueAssessmentStore } from "../../libs/relevance/infrastructure/reader-value/prisma-reader-value-assessment-store";
+import { readerSummaryV3AssessmentSqlClient } from "./reader-summary-v3-postgres-assessment-lifecycle";
+import { assertV3RankingPolicyPostgresContract } from "./reader-summary-v3-policy-postgres-contract";
+import { readPersistedV3FixtureArtifact } from "./reader-summary-v3-artifact-readback";
+import { buildApplicationV3FixturePayload } from "./reader-summary-v3-application-publication-fixture";
+export { buildApplicationV3FixturePayload } from "./reader-summary-v3-application-publication-fixture";
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
@@ -8,25 +15,15 @@ import { PrismaReaderSummaryV3Preflight } from
   "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-v3-preflight";
 import { PrismaReaderSummaryJobRepository } from
   "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
-import { readerSummaryArtifactFromPrisma, type PrismaReaderSummaryArtifactRecord } from
-  "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-records";
-import { sealReaderPostPresentationV3 } from "../../libs/summary/domain/services/reader-post-presentation-v3";
 import { canonicalPromotionPayload, promotionPayloadDigest } from "../../libs/summary/domain/services/reader-post-promotion-attestation";
 import type { ReaderSummaryPublicationCommand, ReaderSummaryV3PreparationSourcePort } from "../../libs/summary/ports";
 import type { PrismaReaderSummaryClient } from
   "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-client";
-import { READER_PROMOTION_POLICY_STAMP, ReaderSummaryArtifact, selectReaderPostPromotionsV3,
-  type ReaderPostPromotionAttestationV3, type ReaderPostPromotionV3Candidate,
-  type ReaderSummaryJob,
-  type SummaryEvidenceSelection } from
+import { ReaderSummaryArtifact,
+  type ReaderSummaryJob } from
   "../../libs/summary/domain";
-import { buildReaderSummaryDraftWithPromotionContent } from
-  "../../libs/summary/features/execute-reader-summary-job/reader-summary-promotion-content";
-import { buildReaderSummaryPromotionArtifactFields } from
-  "../../libs/summary/features/execute-reader-summary-job/reader-summary-promotion-artifact-fields";
 import { serializeReaderSummaryArtifact } from "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-json";
 import { presentReaderSummaryArtifact } from "../../libs/summary/features/shared/reader-summary-artifact-presenter";
-import { validReaderDisplayRestBinding } from "../../libs/summary/interfaces/rest/reader-summary-display-rest-binding";
 import { readerSummaryArtifactViewFromReaderSummaryView } from "../../libs/summary/interfaces/rest/reader-summary-rest.mapper";
 import type { ReaderSummaryPublicationRunningFixture } from
   "./reader-summary-publication-postgres-running-fixture";
@@ -58,28 +55,8 @@ type Params = {
   readonly publish: (client: PoolClient,
     payload: Readonly<Record<string, unknown>>) => Promise<string>;
 };
-type V3ArtifactPayload = Record<string, unknown> & {
-  citationMap: Array<Record<string, string>>;
-  promotionAttestations?: ReaderPostPromotionAttestationV3[];
-  content?: { newsWithoutRatingPosts?: Array<Record<string, unknown>> };
-};
-type V3FixturePayload = Record<string, unknown> & {
-  tenantId: string;
-  workspaceId: string;
-  interestId: string;
-  readerSummaryArtifactId: string;
-  requestedAt: string;
-  periodStartedAt: string;
-  periodEndedAt: string;
-  periodTimezone: string;
-  periodKey: string;
-  modelVersion: string;
-  report: Record<string, unknown> & {
-    promptVersion: string;
-    artifactPayload: V3ArtifactPayload;
-  };
-  exactProof: Record<string, unknown>;
-};
+import type { V3ArtifactPayload, V3FixturePayload } from
+  "./reader-summary-v3-publication-fixture-types";
 export const assertReaderSummaryV3PostgresContract = async (params: Params) => {
   const cancelFirst = await preflightFixture(params, "NO_SIGNAL", 12);
   await params.client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
@@ -139,6 +116,15 @@ export const assertReaderSummaryV3PostgresContract = async (params: Params) => {
       34, { publicationInterestId: randomUUID() }) });
   await assertProductionPreflightDeadlineLockOutcomes(params);
   await assertProductionPreflightHydration(params);
+  await assertV3RankingPolicyPostgresContract({ client: params.client,
+    createFixture: params.createFixture,
+    advance: (fixture, source) => advanceV3Preflight(params.client, fixture, fixture.payload, source),
+    publish: (fixture, artifact) => publishThroughProductionEquivalentGuard(params.client,
+      fixture, fixture.payload, params.publish, artifact),
+    assertCounts: (fixture, publications, outbox) => assertCounts(params.client, fixture, publications, outbox) });
+  await assertQuoteAssessmentPostgresContract({ client: params.client,
+    store: new PrismaReaderValueAssessmentStore(readerSummaryV3AssessmentSqlClient(params.client)),
+    interestId: payload.interestId });
   console.log("Reader summary V3 cancel/replay/revocation PostgreSQL 18 contract OK");
 };
 const assertFrozenAuthorityTamperCases = async (params: Params): Promise<void> => {
@@ -422,12 +408,13 @@ const preflightFixture = async (params: Params, status: "COMPLETED" | "NO_SIGNAL
 
 const advanceV3Preflight = async (client: PoolClient,
   fixture: ReaderSummaryPublicationRunningFixture,
-  rawPayload: Readonly<Record<string, unknown>>) => {
+  rawPayload: Readonly<Record<string, unknown>>,
+  sourceOverride?: ReaderSummaryV3PreparationSourcePort) => {
   const payload = asV3Payload(rawPayload);
   const exactCutoff = payload.report.artifactPayload.promotionAttestations?.[0]
     ?.exactIngestionCutoff;
   await resetV3PreflightFixture(client, fixture.jobId, exactCutoff);
-  const outcome = await runV3Preflight(client, fixture, payload);
+  const outcome = await runV3Preflight(client, fixture, payload, sourceOverride);
   assert(outcome.kind === "claimed", "real V3 preflight did not claim ready job");
   return outcome;
 };
@@ -450,14 +437,15 @@ const resetV3PreflightFixture = async (client: PoolClient, jobId: string,
 };
 
 const runV3Preflight = async (client: PoolClient,
-  fixture: ReaderSummaryPublicationRunningFixture, payload: V3FixturePayload) => {
+  fixture: ReaderSummaryPublicationRunningFixture, payload: V3FixturePayload,
+  sourceOverride?: ReaderSummaryV3PreparationSourcePort) => {
   const prisma = postgresPreflightClient(client);
   const jobs = new PrismaReaderSummaryJobRepository(prisma);
   const job = await jobs.findById({ tenantId: tenantId(payload.tenantId),
     workspaceId: workspaceId(payload.workspaceId), readerSummaryJobId: fixture.jobId });
   if (job === null) throw new Error("V3 preflight fixture job is missing");
   const outcome = await new PrismaReaderSummaryV3Preflight(prisma, jobs,
-    await postgresPreparationSource(client, payload))
+    sourceOverride ?? await postgresPreparationSource(client, payload))
     .advance({ job, requestedAt: job.toSnapshot().requestedAt,
       startedAt: job.toSnapshot().requestedAt });
   if (outcome.kind === "claimed" || outcome.kind === "already_running") {
@@ -659,224 +647,15 @@ const assertApplicationPayloadRoundTrip = async (client: PoolClient,
     persistedAttestation.assessment.assessedAt === "2026-06-14T09:01:00.123456Z" &&
     persistedAttestation.exactIngestionCutoff === "2026-06-14T10:00:00.123456Z",
   "V3 provider timestamps or attestation cutoff lost PostgreSQL microseconds");
-  const record = (await client.query<PrismaReaderSummaryArtifactRecord>(`SELECT id::text AS "id",
-    tenant_id::text AS "tenantId", workspace_id::text AS "workspaceId", scope_type AS "scopeType",
-    scope_key AS "scopeKey", interest_id::text AS "interestId", cadence::text AS "cadence",
-    period_started_at AS "periodStartedAt", period_ended_at AS "periodEndedAt", period_timezone AS "periodTimezone",
-    period_key AS "periodKey", user_id::text AS "userId", subscription_id::text AS "subscriptionId",
-    status::text AS "status", schema_version AS "schemaVersion", model_version AS "modelVersion",
-    prompt_version AS "promptVersion", headline AS "headline", summary_text AS "summaryText",
-    artifact_payload AS "artifactPayload", citations AS "citations", quality_signals AS "qualitySignals",
-    created_at AS "createdAt", updated_at AS "updatedAt" FROM reader_summary_artifacts WHERE id=$1::uuid`,
-  [fixture.artifactId])).rows[0];
-  if (record === undefined) throw new Error("V3 persisted artifact is missing");
+  const persisted = await readPersistedV3FixtureArtifact(client, fixture.artifactId);
   const rest = readerSummaryArtifactViewFromReaderSummaryView(presentReaderSummaryArtifact(
-    readerSummaryArtifactFromPrisma(record), { status: "fresh", checkedAt: new Date(payload.requestedAt) }));
+    persisted, { status: "fresh", checkedAt: new Date(payload.requestedAt) }));
   const transport = JSON.parse(JSON.stringify(rest)) as typeof rest;
   const newsCard = transport.readerBrief.newsWithoutRatingPosts[0];
   assert(newsCard?.promotionAttestation?.exactIngestionCutoff === "2026-06-14T10:00:00.123456Z" &&
     newsCard.promotionAttestation.canonicalPayload !== undefined,
   "production persistence parser/REST mapper did not emit serializable V3 transport");
   assertFlutterV3FixtureFresh(transport);
-};
-
-export const buildApplicationV3FixturePayload = async (client: PoolClient,
-  source: Readonly<Record<string, unknown>>) => {
-  const payload = JSON.parse(JSON.stringify(source)) as V3FixturePayload;
-  const baseArtifact = payload.report.artifactPayload;
-  const citation = baseArtifact.citationMap[0] as Record<string, string>;
-  const candidateId = citation.feedItemId;
-  const sourceItemId = citation.sourceItemId;
-  const citationId = citation.citationId;
-  if (candidateId === undefined || sourceItemId === undefined ||
-      citationId === undefined) throw new Error("V3 fixture citation is incomplete");
-
-  const authority = (await client.query<{ readonly source_binding_id: string;
-    readonly interest_id: string; readonly provider_key: string;
-    readonly title: string; readonly body: string;
-    readonly published_at: string; readonly observed_at: string;
-    readonly canonical_url: string; readonly trusted_intent: string }>(
-    `SELECT f.source_binding_id::text, f.interest_id::text, f.provider_key,
-      f.title, COALESCE(s.body, f.body_preview, '') AS body,
-      to_char(f.published_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') published_at,
-      to_char(f.observed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') observed_at,
-      f.canonical_url, i.query AS trusted_intent
-    FROM feed_items f JOIN source_items s
-      ON s.tenant_id=f.tenant_id AND s.workspace_id=f.workspace_id
-      AND s.id=f.source_item_id
-    JOIN interests i ON i.tenant_id=f.tenant_id AND i.workspace_id=f.workspace_id
-      AND i.id=f.interest_id WHERE f.id=$1::uuid`, [candidateId])).rows[0];
-  if (authority === undefined || authority.interest_id !== payload.interestId ||
-      authority.provider_key !== "rss") {
-    throw new Error("V3 fixture source authority is incomplete");
-  }
-  const title = authority.title;
-  const sourceText = authority.body;
-  const input = { tenantId: payload.tenantId, workspaceId: payload.workspaceId,
-    interestId: authority.interest_id, candidateId,
-    sourceItemId, sourceBindingId: authority.source_binding_id,
-    providerKey: authority.provider_key, trustedIntent: authority.trusted_intent,
-    sourceSnapshotSha256: "1".repeat(64), title, body: sourceText,
-    captureComplete: true };
-  const quote = title;
-  const headline = { status: "accepted" as const, kind: "claim" as const,
-    text: title, binding: { candidateId: input.candidateId,
-      providerKey: input.providerKey, tenantId: input.tenantId,
-      workspaceId: input.workspaceId, interestId: input.interestId,
-      sourceBindingId: input.sourceBindingId, sourceItemId: input.sourceItemId,
-      trustedIntent: input.trustedIntent, availability: "body_present" as const,
-      reviewedInputDigest: promotionPayloadDigest(JSON.stringify({
-        candidateId: input.candidateId, providerKey: input.providerKey,
-        context: { tenantId: input.tenantId, workspaceId: input.workspaceId,
-          interestId: input.interestId, sourceBindingId: input.sourceBindingId,
-          sourceItemId: input.sourceItemId, trustedIntent: input.trustedIntent,
-          availability: "body_present" }, title, body: sourceText })) },
-    support: [{ field: "title" as const, start: 0, end: quote.length,
-      quote }], qualifications: [], confidence: 0.9,
-    wholeInput: { titleLength: title.length, bodyLength: sourceText.length,
-      qualificationJudgment: "none" as const } };
-  const presentation = sealReaderPostPresentationV3({ input, headline });
-  if (presentation.status !== "available") throw new Error("Invalid V3 fixture");
-  const candidate: ReaderPostPromotionV3Candidate = { candidateId,
-    providerKey: authority.provider_key, providerFamily: "rss",
-    sourceItemId, canonicalIdentity: authority.canonical_url,
-    storyId: "story-v3", publishedAt: authority.published_at,
-    assessmentId: randomUUID(), assessedAt: authority.observed_at,
-    rubricVersion: "reader-value.v1",
-    sourceSnapshotSha256: input.sourceSnapshotSha256, inputSha256: "2".repeat(64),
-    rubricSha256: "b".repeat(64), modelConfigVersion: "jev.v1",
-    answers: fixtureReaderValueAnswers(), usefulness: "useful", relevance: "central",
-    engagement: null, title,
-    presentation: {
-      status: "available" as const,
-      presentationInputDigest: presentation.presentationInputDigest },
-    scopeValid: true, sourceIdentityValid: true, freshnessValid: true,
-    safetyValid: true, citationValid: true, blocked: false };
-  const assessmentSnapshot = {
-    sourceSnapshotSha256: candidate.sourceSnapshotSha256,
-    interestSha256: sha256(authority.trusted_intent),
-    sanitizedTextSha256: sha256(`${title}\n${sourceText}`),
-    title, body: sourceText, interest: authority.trusted_intent,
-    capture: { representationVersion: "capture.v1", availability: "complete",
-      segments: [] },
-    availableAt: candidate.publishedAt, originalTitleLength: title.length,
-    originalBodyLength: sourceText.length, retainedSnapshotTruncated: false,
-    safety: "allowed",
-  };
-  await client.query(`INSERT INTO reader_value_assessments(
-      id,tenant_id,workspace_id,interest_id,source_item_id,source_revision_key,
-      source_snapshot_sha256,interest_sha256,rubric_version,rubric_sha256,
-      input_builder_version,model_config_version,input_sha256,request_sha256,
-      input_snapshot,request_body,state,attempts,attempt_history,next_attempt_at,
-      usefulness,relevance,context_sufficiency,evidence_basis,result,
-      requested_model,resolved_model,provider,assessed_at,expires_at)
-    VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'publication-fixture',
-      $6,$7,$8,$9,'input.v1',$10,$11,$12,$13::jsonb,'{}','assessed',0,'[]',
-      clock_timestamp(),$14,$15,$16,$17,$18::jsonb,'fixture-model','fixture-model',
-      'fixture',$19::timestamptz,CURRENT_TIMESTAMP+interval '180 days')`, [
-    candidate.assessmentId, payload.tenantId, payload.workspaceId,
-    authority.interest_id, sourceItemId, candidate.sourceSnapshotSha256,
-    assessmentSnapshot.interestSha256, candidate.rubricVersion,
-    candidate.rubricSha256, candidate.modelConfigVersion, candidate.inputSha256,
-    sha256("{}"), JSON.stringify(assessmentSnapshot),
-    candidate.answers.usefulness.choice, candidate.answers.relevance.choice,
-    candidate.answers.context_sufficiency.choice,
-    candidate.answers.evidence_basis.choice, JSON.stringify(candidate.answers),
-    candidate.assessedAt,
-  ]);
-  const promotionV3 = selectReaderPostPromotionsV3([candidate]);
-  assert(promotionV3.outcome === "ready", "V3 fixture candidate was not admitted");
-  const exactIngestionCutoff = `${candidate.publishedAt.slice(0, 10)}T10:00:00.123456Z`;
-  const sourceWindow = { windowId: "v3-window",
-    startedAt: new Date(payload.periodStartedAt),
-    endedAt: new Date(payload.periodEndedAt),
-    selectedFeedItemIds: [candidate.candidateId], storyClusterIds: [candidate.storyId],
-    periodStartedAt: new Date(payload.periodStartedAt),
-    periodEndedAt: new Date(payload.periodEndedAt),
-    ingestionCutoff: new Date(exactIngestionCutoff), exactIngestionCutoff };
-  const evidenceItem = { readerHeadline: presentation.seal.headline,
-    feedItemId: candidateId, sourceItemId,
-    sourceBindingId: authority.source_binding_id,
-    interestId: authority.interest_id, providerKey: "rss" as const,
-    canonicalUrl: authority.canonical_url, title, bodyPreview: sourceText,
-    sourceText, publishedAt: new Date(candidate.publishedAt),
-    observedAt: new Date(candidate.assessedAt), score: 0, whyImportant: [],
-    readerActionKind: "read_source" as const, storyKeyHint: candidate.storyId };
-  const cluster = { id: candidate.storyId, storyKey: candidate.storyId,
-    rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
-    representativeFeedItemId: candidateId, duplicateFeedItemIds: [],
-    interestIds: [authority.interest_id], providerKeys: ["rss"], score: 0,
-    observedAtRange: { startedAt: new Date(candidate.assessedAt),
-      endedAt: new Date(candidate.assessedAt) }, whyImportant: [] };
-  const artifactCitation = { citationId, feedItemId: candidateId, sourceItemId,
-    providerKey: "rss", field: "title" as const,
-    canonicalUrl: authority.canonical_url };
-  const evidence: SummaryEvidenceSelection = {
-    rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP, sourceWindow,
-    clusters: [cluster], selectedEvidence: [evidenceItem], promotionV3 };
-  const draft = { headline: title, executiveSummary: sourceText,
-    topStories: [{ storyClusterId: candidate.storyId, title,
-      summary: sourceText, interestIds: [authority.interest_id],
-      providerKeys: ["rss"], citationIds: [citationId] }],
-    interestHighlights: [], repeatedSignals: [], risksAndUnknowns: sourceText.startsWith("\u001f") ? Array.from({ length: 12 }, (_, index) => ({ description: `Capture uncertainty ${index}: ${sourceText.slice(0, 63_970)}`, citationIds: [citationId], reason: "source_limit" as const })) : [],
-    citationMap: [artifactCitation], qualityFlags: [],
-    confidence: { level: "high" as const, score: 0.9,
-      rationale: "Validated V3 fixture evidence." },
-    lineage: { schemaVersion: "reader_summary.artifact.v1" as const,
-      modelVersion: payload.modelVersion,
-      providerVersion: "reader-summary.provider.pg-gate.v1",
-      promptVersion: payload.report.promptVersion,
-      rulesVersion: "reader-summary.rules.pg-gate.v1",
-      evalDatasetVersion: "reader-summary.eval.pg-gate.v1",
-      rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP },
-    usage: { inputTokens: 1, outputTokens: 1, estimatedCostUsd: 0 } };
-  const draftWithContent = buildReaderSummaryDraftWithPromotionContent(evidence, draft);
-  const applicationArtifact = ReaderSummaryArtifact.create({
-    schemaVersion: "reader_summary.artifact.v1",
-    readerSummaryId: payload.readerSummaryArtifactId,
-    tenantId: tenantId(payload.tenantId), workspaceId: workspaceId(payload.workspaceId),
-    scope: { type: "interest", interestId: authority.interest_id },
-    period: { cadence: "daily", startedAt: new Date(payload.periodStartedAt),
-      endedAt: new Date(payload.periodEndedAt), timezone: payload.periodTimezone,
-      periodKey: payload.periodKey }, generatedAt: new Date(payload.requestedAt),
-    sourceWindow, storyClusters: [cluster], contextArtifacts: [],
-    ...draftWithContent,
-    ...buildReaderSummaryPromotionArtifactFields({
-      artifactId: payload.readerSummaryArtifactId,
-      modelEvidence: evidence, draft: draftWithContent }),
-  });
-  const artifact = serializeReaderSummaryArtifact(applicationArtifact);
-  const snapshot = applicationArtifact.toSnapshot();
-  payload.report.headline = snapshot.headline;
-  payload.report.summaryText = snapshot.executiveSummary;
-  payload.report.artifactPayload = artifact as V3ArtifactPayload;
-  payload.report.citations = snapshot.citationMap;
-  const view = presentReaderSummaryArtifact(applicationArtifact,
-    { status: "fresh", checkedAt: new Date(payload.requestedAt) });
-  const rest = readerSummaryArtifactViewFromReaderSummaryView(view);
-  const card = view.content.newsWithoutRatingPosts[0]; // RSS is unranked: news block.
-  const attestation = view.promotionAttestations[0];
-  assert(card !== undefined && attestation !== undefined &&
-    validReaderDisplayRestBinding(card, attestation, view),
-  "application-built V3 artifact failed the REST display binding");
-  assert(attestation.ingestionCutoff === new Date(exactIngestionCutoff).toISOString() &&
-    attestation.exactIngestionCutoff === exactIngestionCutoff,
-  "application-shaped V3 attestation lost the exact cutoff");
-  assert(rest.readerBrief.newsWithoutRatingPosts[0]?.publishedAt === candidate.publishedAt &&
-    rest.readerBrief.newsWithoutRatingPosts[0]?.title === headline.text,
-  "application-built V3 artifact lost REST/client timestamp or headline parity");
-  assert(!JSON.stringify({ rest, attestation }).includes(authority.trusted_intent) &&
-    JSON.stringify(attestation).includes("interestDigest"),
-  "SQL-read V3 public REST payload exposed private interest text");
-  const reportCanonical = stableJson(payload.report);
-  const reportSha256 = sha256(reportCanonical);
-  payload.reportCanonical = reportCanonical;
-  payload.reportSha256 = reportSha256;
-  payload.exactProof.reportSha256 = reportSha256;
-  const proofCanonical = stableJson(payload.exactProof);
-  payload.proofCanonical = proofCanonical;
-  payload.proofSha256 = sha256(proofCanonical);
-  return { payload, applicationArtifact };
 };
 
 const publishThroughApplicationGuard = async (params: Params,

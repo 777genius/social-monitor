@@ -1267,6 +1267,42 @@ export const mobileApiOperations = [
     ]
   },
   {
+    "operationId": "ReaderPostsController_list",
+    "clientName": "ReaderPostsController_list",
+    "method": "GET",
+    "path": "/reader-posts",
+    "tags": [
+      "reader-summaries"
+    ],
+    "summary": "Browse all collected posts in a period using saved assessments; no model calls.",
+    "pathParameters": [],
+    "queryParameters": [
+      "cursor",
+      "endedAt",
+      "excludedProviders",
+      "interestId",
+      "limit",
+      "order",
+      "startedAt"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ReaderPostsPageDto"
+    ]
+  },
+  {
     "operationId": "ReaderSummaryController_list",
     "clientName": "ReaderSummaryController_list",
     "method": "GET",

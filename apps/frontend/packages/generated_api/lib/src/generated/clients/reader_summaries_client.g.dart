@@ -20,6 +20,60 @@ class _ReaderSummariesClient implements ReaderSummariesClient {
   final ParseErrorLogger? errorLogger;
 
   @override
+  Future<ReaderPostsPageDto> readerPostsControllerList({
+    required String endedAt,
+    required String startedAt,
+    required String xWorkspaceId,
+    required String xTenantId,
+    String? cursor,
+    String? excludedProviders,
+    num? limit,
+    Order? order,
+    String? interestId,
+    String? authorization,
+    String? xWorkspaceRole,
+  }) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{
+      r'endedAt': endedAt,
+      r'startedAt': startedAt,
+      r'cursor': cursor,
+      r'excludedProviders': excludedProviders,
+      r'limit': limit,
+      r'order': order?.toJson(),
+      r'interestId': interestId,
+    };
+    queryParameters.removeWhere((k, v) => v == null);
+    final _headers = <String, dynamic>{
+      r'x-workspace-id': xWorkspaceId,
+      r'x-tenant-id': xTenantId,
+      r'authorization': authorization,
+      r'x-workspace-role': xWorkspaceRole,
+    };
+    _headers.removeWhere((k, v) => v == null);
+    const Map<String, dynamic>? _data = null;
+    final _options = _setStreamType<ReaderPostsPageDto>(
+      Options(method: 'GET', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/reader-posts',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, Object?>>(_options);
+    late ReaderPostsPageDto _value;
+    try {
+      _value = ReaderPostsPageDto.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<ListReaderSummariesResponseDto> readerSummaryControllerList({
     required String xWorkspaceId,
     required String xTenantId,

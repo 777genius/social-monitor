@@ -1,3 +1,4 @@
+import type { ReaderPromotionDiagnostics } from "../value-objects/reader-promotion-diagnostics";
 import { immutableReaderDisplayContent } from "./reader-summary-display-immutability";
 import { immutableDisplayValue } from "../services/reader-post-display-identity";
 
@@ -98,6 +99,7 @@ export type ReaderSummaryArtifactProps = {
   readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
   readonly promotionAttestations?: readonly ReaderPostPromotionAttestationAny[];
   readonly promotionEvidenceFacts?: readonly ReaderPostPromotionInput[];
+  readonly promotionDiagnostics?: ReaderPromotionDiagnostics;
   /**
    * `legacy_unavailable`: persisted before promotion boards existed.
    * `rebuild_required`: the board was ranked under another
@@ -137,6 +139,7 @@ export type GeneratedReaderSummaryDraft = Omit<
   | "relatedTopicRelations"
   | "promotionAttestations"
   | "promotionEvidenceFacts"
+  | "promotionDiagnostics"
   | "promotionBoardState"
   | "contextArtifacts"
   | "personalization"
@@ -163,6 +166,9 @@ export class ReaderSummaryArtifact {
   toSnapshot(): ReaderSummaryArtifactProps {
     return {
       ...this.props,
+      ...(this.props.promotionDiagnostics === undefined ? {} : {
+        promotionDiagnostics: structuredClone(this.props.promotionDiagnostics),
+      }),
       period: cloneReaderSummaryPeriod(this.props.period),
       sourceWindow: cloneSummarySourceWindow(this.props.sourceWindow),
       promotionAttestations: clonePromotionAttestations(
@@ -179,6 +185,9 @@ const withImmutablePromotionAttestations = (
   props: ReaderSummaryArtifactProps,
 ): ReaderSummaryArtifactProps => ({
   ...props,
+  ...(props.promotionDiagnostics === undefined ? {} : {
+    promotionDiagnostics: immutableDisplayValue(props.promotionDiagnostics),
+  }),
   content: immutableReaderDisplayContent(props.content),
   period: freezeReaderSummaryPeriod(props.period),
   sourceWindow: freezeSummarySourceWindow(props.sourceWindow),

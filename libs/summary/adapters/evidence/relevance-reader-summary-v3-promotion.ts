@@ -1,3 +1,4 @@
+import { readerPromotionDiagnostics } from "../../domain/value-objects/reader-promotion-diagnostics";
 import type {
   ReaderValueAssessmentStore,
   ReaderValueRead,
@@ -10,6 +11,7 @@ import { validateReaderValueAnswers } from
 
 import {
   READER_PROMOTION_PRESENTATION_BUDGET,
+  READER_PROMOTION_POLICY_STAMP,
   readerPromotionSourceForProviderKey,
   selectGitHubTrendingSupplementalEvidence,
   selectReaderPostPromotionsV3,
@@ -59,6 +61,8 @@ implements ReaderSummaryV3PromotionPort {
   async build(params: Parameters<ReaderSummaryV3PromotionPort["build"]>[0]):
   Promise<ReaderSummaryV3PromotionOutcome> {
     const job = params.job.toSnapshot();
+    const rankingContext = { policyVersion: READER_PROMOTION_POLICY_STAMP,
+      ingestionCutoff: params.manifest.cutoffAt };
     if (job.scope.type === "workspace" &&
         params.manifest.schemaVersion !== "reader_summary_preparation_manifest.v2" ||
         job.scope.type === "interest" &&
@@ -275,7 +279,7 @@ implements ReaderSummaryV3PromotionPort {
       // same story its representative.
       const slate = planWorkspacePresentationSlate(candidates.map((candidate) => ({
         ...candidate, presentation: statuses.get(candidate.candidateId)!,
-      })));
+      })), rankingContext);
       if (slate.settled) break;
       const queue = admitted.filter((candidate) => slate.needed.has(candidate.candidateId))
         .sort((left, right) => {
@@ -357,7 +361,9 @@ implements ReaderSummaryV3PromotionPort {
           sealById.set(candidate.candidateId, result.seal);
         } else {
           const outcome = { status: "unavailable" as const,
-            reason: result.reason };
+            reason: result.reason,
+            ...("validation" in result && result.validation !== undefined
+              ? { validation: result.validation } : {}) };
           statuses.set(candidate.candidateId, outcome);
           outcomeByBinding.set(bindingFor(candidate), outcome);
         }
@@ -370,7 +376,7 @@ implements ReaderSummaryV3PromotionPort {
     }
     const completed = candidates.map((candidate) => ({ ...candidate,
       presentation: statuses.get(candidate.candidateId)! }));
-    let selection = selectReaderPostPromotionsV3(completed);
+    let selection = selectReaderPostPromotionsV3(completed, rankingContext);
     const publishedCount = selection.top.length + selection.additional.length +
       selection.news.length;
     if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
@@ -390,7 +396,7 @@ implements ReaderSummaryV3PromotionPort {
     if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
         selection.excluded.some((entry) =>
           entry.reason === "presentation_budget_exhausted") &&
-        !planWorkspacePresentationSlate(completed).settled) {
+        !planWorkspacePresentationSlate(completed, rankingContext).settled) {
       if (chargedBindings.size < maxPresentationCandidates || selection.outcome !== "ready" ||
           publishedCount < 8) {
         return { kind: "budget_exhausted" };
@@ -399,6 +405,7 @@ implements ReaderSummaryV3PromotionPort {
       // sealed survivors, retaining every unavailable/unattempted exclusion.
       selection = Object.freeze({ ...selection, presentationCoverageLimited: true });
     }
+    selection = { ...selection, diagnostics: readerPromotionDiagnostics(completed, selection, attempted) };
     if (selection.outcome !== "ready") {
       if (selection.outcome !== "no_signal" || supplementalEvidence.length === 0) {
         return { kind: selection.outcome };

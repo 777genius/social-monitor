@@ -28,6 +28,7 @@ final class ReaderPostPromotionAttestation {
     this.providerKey,
     this.storyId,
     this.exactPublishedAt,
+    this.exactIngestionCutoff,
   });
 
   final String schemaVersion;
@@ -54,6 +55,7 @@ final class ReaderPostPromotionAttestation {
   final String? providerKey;
   final String? storyId;
   final String? exactPublishedAt;
+  final String? exactIngestionCutoff;
 
   bool get isV2 => schemaVersion == 'reader_post_promotion_attestation.v2';
   bool get isV3 => schemaVersion == 'reader_post_promotion_attestation.v3';

@@ -34,7 +34,7 @@ const _topPostSortSegments = [
     label: 'By model',
     icon: Icons.auto_awesome_outlined,
     semanticLabel: 'Sort by model rank',
-    tooltip: 'Model order: importance first, then popularity',
+    tooltip: 'Useful and important posts, balanced with popularity. Unassessed posts stay last.',
   ),
   AppSegment(
     key: ValueKey('reader-summary-top-posts-sort-likes'),

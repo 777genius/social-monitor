@@ -1,6 +1,8 @@
 import {
   READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3,
   READER_PROMOTION_POLICY_STAMP,
+  READER_PROMOTION_POLICY_V1,
+  supportedReaderPromotionPolicy,
   readerPostPromotionCardFields,
   type ReaderSummaryContent,
   type TopRead,
@@ -11,13 +13,14 @@ const currentCardPolicyVersions: ReadonlySet<string> = new Set([
   "reader_post_promotion.v1",
   "reader_post_promotion.v2",
   READER_PROMOTION_POLICY_STAMP,
+  READER_PROMOTION_POLICY_V1,
 ]);
 
 /**
- * A Jev promotion board ranked under another READER_PROMOTION_POLICY_STAMP.
+ * A Jev promotion board ranked under an unsupported promotion policy stamp.
  *
  * Such a board is not corrupt, it is outdated: its attestations follow an
- * older comparator. It is read back with its promoted cards reduced to plain
+ * comparator this reader does not implement. It is read back with its promoted cards reduced to plain
  * cards and no attestations, flagged `rebuild_required`, so the day opens
  * as "needs rebuild" instead of failing rehydration. No old comparator is
  * interpreted here.
@@ -37,7 +40,7 @@ export const supersededPromotionBoard = (input: {
     item !== null && typeof item === "object" &&
     (item as Record<string, unknown>).schemaVersion ===
       READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3 &&
-    (item as Record<string, unknown>).policyVersion !== READER_PROMOTION_POLICY_STAMP);
+    !supportedReaderPromotionPolicy((item as Record<string, unknown>).policyVersion));
   const staleCard = contentCards(input.content).some((card) =>
     card.promotionMarker === "reader_post_promotion" &&
     card.promotionPolicyVersion !== undefined &&

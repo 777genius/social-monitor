@@ -41,6 +41,7 @@ export * from "./policies/reader-post-promotion-v3";
 export * from "./policies/reader-post-promotion-engagement";
 export * from "./policies/reader-promotion-news-publisher";
 export * from "./policies/reader-promotion-ranking";
+export * from "./policies/reader-promotion-policy-version";
 export * from "./policies/reader-promotion-score";
 export * from "./policies/reader-promotion-source-registry";
 export * from "./policies/reader-post-promotion-support-authority";

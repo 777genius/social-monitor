@@ -17,6 +17,7 @@ export type ReaderValueCapture = {
 };
 
 export type ReaderValueSource = {
+  readonly quotedContext?: 'not_captured';
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly interestId: string;
@@ -32,6 +33,7 @@ export type ReaderValueSource = {
 };
 
 export type ReaderValueSourceSnapshot = {
+  readonly quotedContext?: 'not_captured';
   readonly sourceSnapshotSha256: string;
   /** Exact raw interest revision, before redaction; always part of assessment identity. */
   readonly interestSha256: string;

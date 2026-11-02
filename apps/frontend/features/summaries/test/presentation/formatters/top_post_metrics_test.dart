@@ -1,8 +1,38 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/presentation/formatters/top_post_metrics.dart';
+import '../../support/top_posts_test_fixtures.dart';
 
 void main() {
+  test(
+    'keeps a weighted source count distinct from native Likes and Reposts',
+    () {
+      final derived = topPostMetricsFor(
+        topPostFixture(
+          title: 'Synthetic weighted metric',
+          providerKey: 'x-twitter',
+          providerMetrics: const [
+            ProviderMetric(label: 'Likes + 2× reposts', value: '1250'),
+          ],
+        ),
+      );
+      expect(derived.single.label, 'Likes + 2× reposts');
+      expect(derived.single.value, '1.3K');
+      final native = topPostMetricsFor(
+        topPostFixture(
+          title: 'Synthetic native metrics',
+          providerKey: 'x-twitter',
+          providerMetrics: const [
+            ProviderMetric(label: 'Likes', value: '1044'),
+            ProviderMetric(label: 'Reposts', value: '103'),
+          ],
+        ),
+      );
+      expect(native.map((metric) => metric.label), ['Likes', 'Reposts']);
+      expect(native.map((metric) => metric.value), ['1.0K', '103']);
+    },
+  );
+
   test('preserves an exact canonical GitHub Top 10', () {
     final posts = List.generate(10, (index) => _githubTrend(index + 1));
 

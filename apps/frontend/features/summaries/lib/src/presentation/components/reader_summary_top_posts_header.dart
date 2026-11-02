@@ -11,8 +11,12 @@ class _TopPostsHeader extends StatelessWidget {
     required this.onProviderToggled,
     required this.onDenseViewChanged,
     required this.onSortOrderChanged,
+    this.selectedOnly = true,
+    this.onSelectedOnlyChanged,
   });
 
+  final bool selectedOnly;
+  final ValueChanged<bool>? onSelectedOnlyChanged;
   final int visibleCount;
   final int availableCount;
   final List<String> providerKeys;
@@ -31,7 +35,7 @@ class _TopPostsHeader extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final onSortOrderChanged = this.onSortOrderChanged;
     final subtitle = Text(
-      'Showing $visibleCount of $availableCount ranked posts',
+      'Showing $visibleCount of $availableCount ${selectedOnly ? 'ranked posts' : 'posts'}',
       style: textTheme.labelSmall?.copyWith(
         color: colorScheme.onSurfaceVariant,
         fontWeight: FontWeight.w600,
@@ -43,6 +47,13 @@ class _TopPostsHeader extends StatelessWidget {
       runSpacing: AppSpacing.sm,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
+        if (onSelectedOnlyChanged != null)
+          AppCheckbox(
+            key: const ValueKey('reader-summary-selected-posts'),
+            label: 'Selected posts',
+            value: selectedOnly,
+            onChanged: onSelectedOnlyChanged,
+          ),
         if (onSortOrderChanged != null)
           _TopPostSortToggle(
             sortOrder: sortOrder,
@@ -60,13 +71,14 @@ class _TopPostsHeader extends StatelessWidget {
         ),
       ],
     );
-    final hasBoardItems = providerKeys.isNotEmpty;
+    final hasBoardItems =
+        providerKeys.isNotEmpty || onSelectedOnlyChanged != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Top posts',
+          selectedOnly ? 'Top posts' : 'All posts',
           style: textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w800,
             letterSpacing: 0,
@@ -75,7 +87,8 @@ class _TopPostsHeader extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
         LayoutBuilder(
           builder: (context, constraints) {
-            if (constraints.maxWidth < 640) {
+            if (constraints.maxWidth <
+                (onSelectedOnlyChanged == null ? 640 : 900)) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

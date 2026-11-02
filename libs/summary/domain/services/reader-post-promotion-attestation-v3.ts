@@ -8,7 +8,7 @@ import {
   type ReaderPostPromotionAttestationV3,
   type ReaderPostPromotionPlacement,
 } from "../policies/reader-post-promotion-policy-contract";
-import { READER_PROMOTION_POLICY_STAMP } from "../policies/reader-promotion-ranking";
+import { READER_PROMOTION_POLICY_V1 } from "../policies/reader-promotion-policy-version";
 import { canonicalPromotionPayload, promotionPayloadDigest } from
   "./reader-post-promotion-attestation";
 import { readerPostPresentationV3Identity } from "./reader-post-presentation-v3";
@@ -40,7 +40,7 @@ export const buildReaderPostPromotionAttestationV3 = (params: {
   }
   const body = {
     schemaVersion: READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3,
-    policyVersion: READER_PROMOTION_POLICY_STAMP,
+    policyVersion: params.candidate.ranking.policyVersion ?? READER_PROMOTION_POLICY_V1,
     digestVersion: READER_POST_PROMOTION_DIGEST_V3,
     artifactId: params.binding.artifactId,
     sourceWindowId: params.binding.sourceWindowId,

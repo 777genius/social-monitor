@@ -4,7 +4,7 @@ import type { ReaderValueAnswers } from
 import { canonicalReaderSummaryPreparationTimestamp } from
   "../value-objects/reader-summary-preparation";
 import {
-  readerPostPromotionMetricMature,
+  readerPostPromotionMetricEligible,
   readerPostPromotionPopularityByCandidate,
   readerPostPromotionSignalScore,
   type ReaderPostPromotionPopularity,
@@ -17,17 +17,14 @@ import {
 import {
   READER_PROMOTION_SOURCE_REGISTRY,
   readerPromotionEngagementClass,
+  readerPromotionProviderIsPost,
   type ReaderPromotionEngagementClass,
   type ReaderPromotionSourceRegistry,
 } from "./reader-promotion-source-registry";
 
-/**
- * Stamp of what the reader promotion order means. It is persisted on every
- * promoted card and attestation. Change it whenever ordering, gate or block
- * membership changes meaning: artifacts carrying another stamp are then read
- * back as "rebuild required" instead of failing validation.
- */
-export const READER_PROMOTION_POLICY_STAMP = "reader_promotion.2026-11-01" as const;
+import { READER_PROMOTION_V1_CONTEXT, type ReaderPromotionPolicyVersion,
+  type ReaderPromotionRankingContext } from "./reader-promotion-policy-version";
+export { READER_PROMOTION_POLICY_STAMP } from "./reader-promotion-policy-version";
 
 /**
  * Block sizes, all in one place.
@@ -98,11 +95,12 @@ export type ReaderPromotionCandidateInput = {
 
 export type ReaderPromotionRankingFacts = {
   readonly block: ReaderPromotionEngagementClass;
-  /** Ranked post whose metric was observed at least 6h after publication. */
+  /** Metric is eligible under policyVersion (V1: >=6h; V2: observed within cutoff). */
   readonly metricMature: boolean;
+  readonly policyVersion?: ReaderPromotionPolicyVersion;
   /**
-   * Present only for a mature metric in a family with at least
-   * READER_PROMOTION_MIN_POPULARITY_COHORT mature gate-passed posts.
+   * Present only for a policy-eligible metric in a family with at least
+   * READER_PROMOTION_MIN_POPULARITY_COHORT eligible gate-passed posts.
    */
   readonly popularity: ReaderPostPromotionPopularity | null;
   /** Card "Signal" value: percentile * 10, or 0 when unknown. */
@@ -126,7 +124,7 @@ export type ReaderPromotionExclusionReason =
   | "capacity_exhausted";
 
 export type ReaderPromotionRankingResult<T> = {
-  readonly policyVersion: typeof READER_PROMOTION_POLICY_STAMP;
+  readonly policyVersion: ReaderPromotionPolicyVersion;
   readonly outcome: "ready" | "no_signal" | "presentation_unavailable" |
     "budget_exhausted";
   /** "Top posts": the first 12 ranked posts. */
@@ -219,6 +217,7 @@ export const readerPromotionSemanticallyAdmitted = (candidate: {
 export const rankReaderPromotionCandidates = <T extends ReaderPromotionCandidateInput>(
   candidates: readonly T[],
   registry: ReaderPromotionSourceRegistry = READER_PROMOTION_SOURCE_REGISTRY,
+  context: ReaderPromotionRankingContext = READER_PROMOTION_V1_CONTEXT,
 ): ReaderPromotionRankingResult<T> => {
   assertRankingInput(candidates, registry);
   const exclusions: Array<{ candidateId: string; reason: ReaderPromotionExclusionReason }> = [];
@@ -227,13 +226,13 @@ export const rankReaderPromotionCandidates = <T extends ReaderPromotionCandidate
     compareUtf8Bytes(left.candidateId, right.candidateId))) {
     const reason = candidate.eligible === false ? "technical_ineligible"
       : !readerPromotionSemanticallyAdmitted(candidate) ? "semantic_not_admitted"
-        : candidate.appendixOnly === true ? "appendix_only" : undefined;
+        : candidate.appendixOnly === true || !readerPromotionProviderIsPost(candidate.providerKey) ? "appendix_only" : undefined;
     if (reason === undefined) admitted.push(candidate);
     else exclusions.push({ candidateId: candidate.candidateId, reason });
   }
-  if (admitted.length === 0) return freeze("no_signal", [], [], [], exclusions);
+  if (admitted.length === 0) return freeze("no_signal", [], [], [], exclusions, context.policyVersion);
 
-  const ranked = withRankingFacts(admitted, registry);
+  const ranked = withRankingFacts(admitted, registry, context);
   const rankedBlock = ranked.filter((item) => item.ranking.block === "ranked")
     .sort((left, right) => compareRankedReaderPromotion(orderKey(left), orderKey(right)));
   const newsBlock = ranked.filter((item) => item.ranking.block === "unranked")
@@ -250,13 +249,13 @@ export const rankReaderPromotionCandidates = <T extends ReaderPromotionCandidate
   exclusions.push(...board.exclusions);
   if (board.rankedReady.length + board.newsReady.length === 0) {
     return freeze(exclusions.some((item) => item.reason === "presentation_unavailable")
-      ? "presentation_unavailable" : "budget_exhausted", [], [], [], exclusions);
+      ? "presentation_unavailable" : "budget_exhausted", [], [], [], exclusions, context.policyVersion);
   }
   for (const candidate of [...board.rankedReady.slice(READER_PROMOTION_LIMITS.rankedTotal),
     ...board.newsReady.slice(READER_PROMOTION_LIMITS.news)]) {
     exclusions.push({ candidateId: candidate.candidateId, reason: "capacity_exhausted" });
   }
-  return freeze("ready", board.top, board.additional, board.news, exclusions);
+  return freeze("ready", board.top, board.additional, board.news, exclusions, context.policyVersion);
 };
 
 /**
@@ -319,13 +318,14 @@ const orderKey = readerPromotionOrderKey;
 const withRankingFacts = <T extends ReaderPromotionCandidateInput>(
   admitted: readonly T[],
   registry: ReaderPromotionSourceRegistry,
+  context: ReaderPromotionRankingContext,
 ): ReaderPromotionRanked<T>[] => {
   const blockOf = (candidate: T): ReaderPromotionEngagementClass =>
     readerPromotionEngagementClass(candidate.providerFamily, registry)!;
   const mature = (candidate: T): boolean => {
     const engagement = usableEngagement(candidate.engagement);
     return blockOf(candidate) === "ranked" && engagement !== null &&
-      readerPostPromotionMetricMature(engagement, candidate.publishedAt);
+      readerPostPromotionMetricEligible(engagement, candidate.publishedAt, context);
   };
   const popularity = readerPostPromotionPopularityByCandidate(admitted
     .filter(mature).map((candidate) => ({
@@ -340,6 +340,7 @@ const withRankingFacts = <T extends ReaderPromotionCandidateInput>(
     return { ...candidate, ranking: Object.freeze({
       block,
       metricMature: mature(candidate),
+      policyVersion: context.policyVersion,
       popularity: value,
       signalScore: readerPostPromotionSignalScore(value),
       newsPublisher: block === "unranked" ? readerPromotionNewsPublisher({
@@ -447,8 +448,9 @@ const freeze = <T>(
   additional: readonly ReaderPromotionRanked<T>[],
   news: readonly ReaderPromotionRanked<T>[],
   excluded: readonly { candidateId: string; reason: ReaderPromotionExclusionReason }[],
+  policyVersion: ReaderPromotionPolicyVersion,
 ): ReaderPromotionRankingResult<T> => Object.freeze({
-  policyVersion: READER_PROMOTION_POLICY_STAMP,
+  policyVersion,
   outcome,
   top: Object.freeze([...top]),
   additional: Object.freeze([...additional]),

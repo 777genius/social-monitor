@@ -173,6 +173,7 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
             ? canonicalPostgresTimestamp(row.engagement_observed_at) : null,
           source: { ...scope, interestId: row.interest_id, sourceItemId: row.source_item_id,
             providerKey: row.provider_key, canonicalUrl: row.canonical_url, title: row.title, body: row.body,
+            ...(providerMetadata.contentKind === 'quote' ? { quotedContext: 'not_captured' as const } : {}),
             interest: row.query, ...readReaderValueCapture(metadata, row.provider_key, row.title, row.body,
               { sourceItemId: row.source_item_id, canonicalUrl: row.canonical_url }) },
         };

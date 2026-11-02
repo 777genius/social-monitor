@@ -1,7 +1,7 @@
 import { validateReaderValueAnswers } from
   "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
 import { canonicalPromotionPayload, promotionPayloadDigest,
-  READER_PROMOTION_POLICY_STAMP } from "../../../domain";
+  supportedReaderPromotionPolicy } from "../../../domain";
 import { readerPostPresentationV3Identity } from
   "../../../domain/services/reader-post-presentation-v3";
 import { assertV3PublicDisplayHeadlineSealPayload } from
@@ -24,7 +24,7 @@ export const assertV3PromotionAttestation = (
   strings(item, ["schemaVersion", "policyVersion", "digestVersion", "digest",
     "canonicalPayload", "artifactId", "sourceWindowId", "placement", "candidateId",
     "provider", "canonicalIdentity", "storyId", "publishedAt", "decision"]);
-  exactValue(item.policyVersion, READER_PROMOTION_POLICY_STAMP, "policyVersion");
+  if (!supportedReaderPromotionPolicy(item.policyVersion)) invalid("policyVersion");
   exactValue(item.digestVersion, "reader_post_promotion_digest.sha256.v3", "digestVersion");
   if (!/^[0-9a-f]{64}$/u.test(item.digest as string)) invalid("digest");
   dates(item, ["periodStartedAt", "periodEndedAt", "ingestionCutoff"], []);

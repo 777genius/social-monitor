@@ -9,6 +9,9 @@ import {
   readerPromotionOrderKey,
 } from "../../domain/policies/reader-promotion-ranking";
 
+import { READER_PROMOTION_V1_CONTEXT, type ReaderPromotionRankingContext } from
+  "../../domain/policies/reader-promotion-policy-version";
+
 const unresolved = (candidate: ReaderPostPromotionV3Candidate): boolean =>
   candidate.presentation.status === "pending" ||
   candidate.presentation.status === "budget_exhausted";
@@ -26,6 +29,7 @@ const published = (selection: ReaderPostPromotionV3Selection) =>
 /** Pending availability is a planning bound, never a publication result. */
 export const planWorkspacePresentationSlate = (
   candidates: readonly ReaderPostPromotionV3Candidate[],
+  context: ReaderPromotionRankingContext = READER_PROMOTION_V1_CONTEXT,
 ): {
   readonly needed: ReadonlySet<string>;
   readonly settled: boolean;
@@ -39,8 +43,8 @@ export const planWorkspacePresentationSlate = (
 } => {
   const unresolvedIds = new Set(candidates.filter(unresolved)
     .map((candidate) => candidate.candidateId));
-  const actual = selectReaderPostPromotionsV3(candidates);
-  const optimistic = selectReaderPostPromotionsV3(optimistically(candidates));
+  const actual = selectReaderPostPromotionsV3(candidates, context);
+  const optimistic = selectReaderPostPromotionsV3(optimistically(candidates), context);
   const orderedIds = (selection: ReaderPostPromotionV3Selection): string =>
     JSON.stringify([selection.top, selection.additional, selection.news]
       .map((block) => block.map((candidate) => candidate.candidateId)));

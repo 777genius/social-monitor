@@ -5,6 +5,7 @@ describe('reader-value source kind discovery', () => {
   it.each<[string, JsonObject]>([
     ['x-twitter', { kind: 'x_post', contentKind: 'original_post' }],
     ['twitter', { kind: 'twitter_post', contentKind: 'original_post' }],
+    ['x-twitter', { kind: 'x_post', contentKind: 'quote' }],
     ['reddit', { kind: 'reddit_post' }],
     ['hn', { kind: 'hacker_news_story' }],
     ['rss', { kind: 'rss_item' }],
@@ -28,12 +29,17 @@ describe('reader-value source kind discovery', () => {
     ['unknown', { kind: 'rss_item' }], ['rss', {}], ['rss', { kind: 'reddit_post' }],
     ['reddit', { kind: 'reddit_comment' }], ['hn', { kind: 'hacker_news_comment' }],
     ['x', { kind: 'x_post', contentKind: 'reply' }],
-    ['x', { kind: 'x_post', contentKind: 'quote' }],
     ['x', { kind: 'x_post' }],
     ['x', { kind: 'x_post', contentKind: 'original_post', postType: 'reply' }],
     ['hn', { kind: 'hacker_news_story', contentType: 'comment' }],
     ['github-repo-radar', { kind: 'github_repository_trend', type: 1 }],
   ])('reports unsupported identity/kind for %s without classifying it as noise', (provider, metadata) => {
     expect(classifyReaderValueSourceKind(provider, metadata)).toEqual({ supported: false, reason: 'unsupported_kind' });
+  });
+  it('keeps quote identity distinct and rejects contradictory reply metadata', () => {
+    expect(classifyReaderValueSourceKind('x', { kind: 'x_post', contentKind: 'quote' }))
+      .toEqual({ supported: true, kind: 'quote_post', appendixOnly: false });
+    expect(classifyReaderValueSourceKind('x', { kind: 'x_post', contentKind: 'quote', postType: 'reply' }))
+      .toEqual({ supported: false, reason: 'unsupported_kind' });
   });
 });

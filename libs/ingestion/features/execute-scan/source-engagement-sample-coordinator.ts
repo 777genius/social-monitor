@@ -82,9 +82,10 @@ export const prepareSourceEngagementSamples = (params: {
               externalId: item.externalId,
               publishedAt: item.publishedAt,
               ...engagement,
-              refreshReadModels:
-                classificationByExternalId.get(item.externalId)?.kind ===
-                "engagement_changed",
+              // Memory is binding-scoped, while source/feed metric authority
+              // is shared. Even an unchanged binding can supersede another
+              // binding's metrics; the projector guards accepted observation time.
+              refreshReadModels: true,
             };
       },
     ),

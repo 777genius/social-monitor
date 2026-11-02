@@ -5,7 +5,7 @@ import type { ReaderActionKind } from "./reader-action";
 import type { ProviderMetric } from "../value-objects/provider-metric-label";
 import type { PreviewMedia } from "../value-objects/preview-media";
 import type { SignalScore } from "../value-objects/signal-score";
-import type { READER_PROMOTION_POLICY_STAMP } from "../policies/reader-promotion-ranking";
+import type { ReaderPromotionPolicyVersion } from "../policies/reader-promotion-policy-version";
 import type {
   ReaderSummaryEditorialScoreComponents,
   ReaderSummaryEditorialSlateEntry,
@@ -51,7 +51,7 @@ export type TopRead = {
   readonly promotionPolicyVersion?:
     | "reader_post_promotion.v1"
     | "reader_post_promotion.v2"
-    | typeof READER_PROMOTION_POLICY_STAMP;
+    | ReaderPromotionPolicyVersion;
   readonly promotionTier?: "top" | "additional" | "news";
   readonly promotionCandidateId?: string;
   readonly promotionCanonicalIdentity?: string;

@@ -65,7 +65,8 @@ describe("OpenAI Promotion V3 presentation builder", () => {
       }] })) });
 
     await expect(builder.build([source])).resolves.toEqual([
-      { status: "unavailable", reason: "invalid_presentation" },
+      { status: "unavailable", reason: "invalid_presentation",
+        validation: { stage: "headline_seal", code: "qualification_judgment" } },
     ]);
   });
 

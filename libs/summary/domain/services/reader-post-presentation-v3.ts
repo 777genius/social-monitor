@@ -6,7 +6,8 @@ import type {
 } from "../value-objects/summary-reader-headline";
 import { canonicalPromotionPayload, promotionPayloadDigest } from
   "./reader-post-promotion-attestation";
-import { validDisplayHeadlineContract } from "./reader-post-display-headline";
+import { validDisplayHeadlineContract, displayHeadlineContentFailure } from "./reader-post-display-headline";
+import type { ReaderPostPresentationFailureDetail } from "./reader-post-presentation-failure";
 
 export const READER_POST_PRESENTATION_V3 = "reader_post_presentation.v3" as const;
 export const READER_POST_PRESENTATION_V3_MAX_TITLE_UTF16 = 2_000;
@@ -33,7 +34,8 @@ export type ReaderPostPresentationV3Result = (
       readonly presentationInputDigest: string }
   | { readonly status: "unavailable"; readonly reason:
       "incomplete_source" | "input_over_budget" | "unsafe_text" |
-      "insufficient_support" | "invalid_presentation" }
+      "insufficient_support" | "invalid_presentation";
+      readonly validation?: ReaderPostPresentationFailureDetail }
   /** The runtime failed or rejected the task before any presentation was validated. */
   | { readonly status: "unavailable"; readonly reason: "runtime_failure";
       readonly runtimeFailure: ReaderPostPresentationRuntimeFailure }
@@ -149,7 +151,16 @@ export const sealReaderPostPresentationV3 = (params: {
     return { status: "unavailable", reason: "input_over_budget" };
   }
   if (headline.status !== "accepted" || !validHeadline(input, headline)) {
-    return { status: "unavailable", reason: "invalid_presentation" };
+    const code = headline.status !== "accepted" ? "headline_status" :
+      displayHeadlineContentFailure({ kind: headline.kind, text: headline.text,
+        support: headline.support, qualifications: headline.qualifications,
+        confidence: headline.confidence,
+        qualificationJudgment: headline.wholeInput.qualificationJudgment }, {
+        title: input.title, body: input.body, captureAvailability: "available",
+        reviewAvailability: input.body.trim() ? "body_present" : "title_only",
+      }, READER_POST_PRESENTATION_V3_MAX_BODY_UTF16) ?? "headline_binding";
+    return { status: "unavailable", reason: "invalid_presentation",
+      validation: { stage: "headline_seal", code } };
   }
   const source: ReaderCapturedSource = {
     title: input.title,

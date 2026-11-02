@@ -1,4 +1,5 @@
 import '../value_objects/reader_promotion_comparator.dart';
+import '../value_objects/reader_promotion_exact_timestamp.dart';
 import 'reader_promotion_ranking_policy.dart';
 
 /// One promoted card on the board: its story and its signed comparator.
@@ -6,10 +7,14 @@ final class ReaderPromotionBoardEntry {
   const ReaderPromotionBoardEntry({
     required this.storyId,
     required this.comparator,
+    this.policyVersion = readerPromotionPolicyV1,
+    this.ingestionCutoff,
   });
 
   final String storyId;
   final ReaderPromotionComparator comparator;
+  final String policyVersion;
+  final ReaderPromotionExactTimestamp? ingestionCutoff;
 }
 
 /// Independent client check of a published reader promotion board.
@@ -40,7 +45,8 @@ bool readerPromotionBoardIsConsistent({
   }
   final ranked = [...top, ...additional];
   final all = [...ranked, ...news];
-  return ranked.every(
+  return all.map((entry) => entry.policyVersion).toSet().length <= 1 &&
+      ranked.every(
         (entry) => entry.comparator.block == ReaderPromotionBlock.ranked,
       ) &&
       news.every(
@@ -49,7 +55,11 @@ bool readerPromotionBoardIsConsistent({
       all.every(
         (entry) =>
             readerPromotionSemanticallyAdmitted(entry.comparator) &&
-            readerPromotionComparatorIsCoherent(entry.comparator),
+            readerPromotionComparatorIsCoherent(
+              entry.comparator,
+              policyVersion: entry.policyVersion,
+              ingestionCutoff: entry.ingestionCutoff,
+            ),
       ) &&
       _ordered(ranked, compareRankedReaderPromotion) &&
       _ordered(news, compareUnrankedReaderPromotion) &&
