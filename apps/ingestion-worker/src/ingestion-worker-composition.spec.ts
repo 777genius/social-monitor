@@ -26,6 +26,7 @@ const providerToken = (provider: Provider): unknown =>
 describe('IngestionWorkerModule composition contract', () => {
   it('registers each persistence and runtime contract once', () => {
     const tokens = providers().map(providerToken);
+    expect(new Set(tokens).size).toBe(tokens.length);
     for (const token of [
       INGESTION_CONVERSATION_PROJECTION,
       INGESTION_FEED_PROJECTION,

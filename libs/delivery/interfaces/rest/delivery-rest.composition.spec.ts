@@ -26,6 +26,7 @@ const providerToken = (provider: Provider): unknown =>
 describe('DeliveryRestModule composition contract', () => {
   it('registers each storage and application boundary exactly once', () => {
     const tokens = moduleProviders().map(providerToken);
+    expect(new Set(tokens).size).toBe(tokens.length);
     for (const token of [
       DELIVERY_ATTEMPT_REPOSITORY,
       DELIVERY_DIGEST_REPOSITORY,
