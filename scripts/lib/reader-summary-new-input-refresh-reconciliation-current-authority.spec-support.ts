@@ -1,15 +1,14 @@
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { refreshBytesHash, refreshHash } from "./reader-summary-new-input-refresh-manifest";
+import { refreshBytesHash, refreshHash, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
 import { reconciliationEvidence } from "./reader-summary-new-input-refresh-reconciliation.spec-support";
 import { refreshManifest } from "./reader-summary-new-input-refresh.spec-support";
 import type { RefreshCurrentAuthorityReconciliationEvidence } from "./reader-summary-new-input-refresh-reconciliation";
 
 type Row = { at: string; event: Record<string, unknown> };
-export function currentAuthorityFixture(change?: (rows: Row[]) => void) {
+export function currentAuthorityFixture(change?: (rows: Row[]) => void, manifest: RefreshManifest = refreshManifest()) {
   const root = mkdtempSync(join(tmpdir(), "refresh-current-authority-spec-"));
-  const manifest = refreshManifest();
   const base = { ...reconciliationEvidence(), date: manifest.date, operation: manifest.operation };
   const observedThrough = manifest.observedThrough;
   const save = (name: string, text: string) => {
@@ -22,7 +21,9 @@ export function currentAuthorityFixture(change?: (rows: Row[]) => void) {
     at: manifest.preparedAt, event: { status, operation: base.operation, ...fields } });
   const failures = Array.from({ length: 6 }, (_, index) => row("requires_reconciliation", {
     requestId: `synthetic-${index}`, purpose: "social_monitor.relevance.assess_source_content.v1",
-    requestSha256: refreshHash({ index }), observedThrough, model: "gpt-5.6-sol", reasoningEffort: "low",
+    requestSha256: refreshHash({ index }), observedThrough,
+    model: manifest.format === "reader-summary-seven-day-new-input-v2" ? manifest.model : "gpt-5.6-sol",
+    reasoningEffort: manifest.format === "reader-summary-seven-day-new-input-v2" ? manifest.reasoningEffort : "low",
     delegated: false, preDelegationFailureStage: "current_authority",
   }));
   const attempts = failures.map((failure) => ({

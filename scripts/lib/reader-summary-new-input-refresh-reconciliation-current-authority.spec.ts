@@ -1,8 +1,11 @@
+import { approvedGatewayLlmSdkIdentity } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { refreshManifest } from "./reader-summary-new-input-refresh.spec-support";
+import { FakeReconciliationDatabase } from "./reader-summary-new-input-refresh-reconciliation.spec-support";
 import { chmodSync, linkSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { assertRefreshReconciliationEvidence, refreshReconciliationAccountingFor } from "./reader-summary-new-input-refresh-reconciliation";
+import { assertRefreshReconciliationEvidence, refreshReconciliationAccountingFor, reconcileConsumedRefreshJob } from "./reader-summary-new-input-refresh-reconciliation";
 import { currentAuthorityFixture } from "./reader-summary-new-input-refresh-reconciliation-current-authority.spec-support";
-import { refreshBytesHash, refreshHash } from "./reader-summary-new-input-refresh-manifest";
+import { refreshBytesHash, refreshHash, refreshOperation, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
 
 const roots: string[] = [];
 const fixture = (...args: Parameters<typeof currentAuthorityFixture>) => {
@@ -81,3 +84,72 @@ it("rejects nested provider evidence and malformed lifecycle counts", () => {
     expect(() => verify(evidence)).toThrow();
   }
 });
+
+const gatewayRoutes: NonNullable<RefreshManifest["gateway"]>[] = [
+  { profileId: "TEST-codex", modelBackend: "openai-chatgpt", model: "gpt-6.1-sol",
+    reasoningEffort: "low", minOutputTokens: 16_384 },
+  { profileId: "TEST-kimi", modelBackend: "kimi-code", model: "k3-256k", minOutputTokens: 32_768 },
+  { profileId: "TEST-openrouter", modelBackend: "openrouter", model: "openai/gpt-oss-120b",
+    reasoningEffort: "medium", minOutputTokens: 32_768 },
+];
+function gatewayManifest(route = gatewayRoutes[0]!): RefreshManifest {
+  const value: RefreshManifest = { ...refreshManifest(), format: "reader-summary-seven-day-new-input-v2",
+    gateway: route, model: route.model, reasoningEffort: route.reasoningEffort ?? "default",
+    runtime: { engine: "gateway-llm", packageVersion: approvedGatewayLlmSdkIdentity.packageVersion,
+      launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256 } };
+  return { ...value, operation: refreshOperation(value) };
+}
+// Rebind reviewed attempt hashes so policy rejection cannot be attributed to
+// stale hashes after changing the journal's model/effort pair.
+function rebindAttempts(evidence: ReturnType<typeof fixture>["evidence"]) {
+  const rows = readFileSync(evidence.invocation.journalPath, "utf8").trimEnd().split("\n")
+    .map((line) => JSON.parse(line) as { event: { requestId?: string } });
+  return { ...evidence, invocation: { ...evidence.invocation,
+    attempts: evidence.invocation.attempts.map((attempt) => ({ ...attempt,
+      attemptSha256: refreshHash(rows.find((row) => row.event.requestId === attempt.requestId)),
+    })) } };
+}
+it.each(gatewayRoutes)("reconciles the immutable v2 $model route with zero paid effects and exact replay", async (route) => {
+  const { evidence } = fixture(undefined, gatewayManifest(route));
+  expect(() => verify(evidence)).not.toThrow();
+  const database = new FakeReconciliationDatabase([{ id: evidence.jobId, operation: evidence.operation,
+    status: "FAILED", artifactId: null, date: evidence.date, sha: "f".repeat(64), publications: 0 }]);
+  const input = { client: database.client, evidence, evidenceSha256: refreshHash(evidence),
+    now: new Date("2026-09-07T12:00:00.000Z"), ids: { generate: () => "00000000-0000-4000-8000-00000000000a" } };
+  const receipt = await reconcileConsumedRefreshJob(input);
+  expect(receipt).toMatchObject({ status: "reconciled", operation: evidence.operation,
+    accounting: { providerInvocations: 0, providerUsage: "none", summaryGenerations: 0, publications: 0, artifacts: 0 } });
+  expect(await reconcileConsumedRefreshJob(input)).toMatchObject({ status: "already_reconciled" });
+  expect(database.reconciliations).toHaveLength(1);
+  expect(database.counters).toHaveLength(0);
+  database.assertJobsUntouched();
+});
+it.each([
+  { model: "gpt-5.6-sol", reasoningEffort: "low" },
+  { model: "gpt-6.1-sol", reasoningEffort: "high" },
+])("rejects fully rehashed v2 journal pair $model/$reasoningEffort", async (pair) => {
+  const { evidence } = fixture((rows) => {
+    rows.filter((row) => row.event.status === "requires_reconciliation")
+      .forEach((row) => Object.assign(row.event, pair));
+  }, gatewayManifest());
+  const reviewed = rebindAttempts(evidence), query = jest.fn();
+  expect(() => verify(reviewed)).toThrow();
+  await expect(reconcileConsumedRefreshJob({ client: { $queryRaw: query }, evidence: reviewed,
+    evidenceSha256: refreshHash(reviewed), now: new Date("2026-09-07T12:00:00.000Z"),
+    ids: { generate: () => "00000000-0000-4000-8000-00000000000a" } })).rejects.toThrow();
+  expect(query).not.toHaveBeenCalled();
+});
+it.each(["missing-route", "null-route", "primitive-route", "wrong-model", "wrong-effort", "wrong-sdk", "v1-extra-gateway"])(
+  "rejects immutable, rehashed %s manifest before trusting its event identity", (kind) => {
+    const value = kind === "v1-extra-gateway" ? refreshManifest() : gatewayManifest();
+    if (kind === "missing-route") delete (value as { gateway?: unknown }).gateway;
+    if (kind === "null-route") Object.assign(value, { gateway: null });
+    if (kind === "primitive-route") Object.assign(value, { gateway: "gateway-llm" });
+    if (kind === "wrong-model") Object.assign(value, { model: "gpt-5.6-sol" });
+    if (kind === "wrong-effort") Object.assign(value, { reasoningEffort: "high" });
+    if (kind === "wrong-sdk") Object.assign(value, { runtime: { ...value.runtime, launcherSha256: "e".repeat(64) } });
+    if (kind === "v1-extra-gateway") Object.assign(value, { gateway: gatewayRoutes[0] });
+    const manifest = { ...value, operation: refreshOperation(value) };
+    const { evidence } = fixture(undefined, manifest);
+    expect(() => verify(evidence)).toThrow();
+  });

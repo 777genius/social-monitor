@@ -1,4 +1,4 @@
-import type { PoolClient } from "pg";
+import type { ReaderSummaryPublicationPostgresClient } from "./reader-summary-publication-postgres-fixture-scope";
 import { approvedGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 import { assertPostgres as assert, assertPostgresRejectsContaining as assertRejects } from "./reader-summary-publication-postgres-assertions";
 
@@ -7,8 +7,8 @@ type Proof = Record<string, unknown>;
 
 /** The real capability is exercised under its ordinary tenant runtime role. */
 export const assertReaderSummaryWeeklyGatewayPostgresContract = async (params: {
-  readonly adminClient: PoolClient;
-  readonly runtimeClient: PoolClient;
+  readonly adminClient: ReaderSummaryPublicationPostgresClient;
+  readonly runtimeClient: ReaderSummaryPublicationPostgresClient;
   readonly payload: Payload;
   readonly rebuild: (payload: Payload) => Payload;
 }): Promise<void> => {
