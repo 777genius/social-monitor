@@ -1,6 +1,6 @@
 import { readerPromotionProviderIsPost } from "../../domain/policies/reader-promotion-source-registry";
 import { DomainError, err, ok, type Result, type Clock } from "@social-monitor/shared-kernel";
-import type { ReaderPost, ReaderPostCatalog, ReaderPostWindow } from "../../application/contracts/reader-post-catalog";
+import { READER_POST_CANDIDATE_BUDGET, type ReaderPost, type ReaderPostCatalog, type ReaderPostWindow } from "../../application/contracts/reader-post-catalog";
 import { readerPostsInBrowseOrder } from "../../domain/policies/reader-post-browse-order";
 import { readerValueSha256 } from "@social-monitor/relevance/domain/reader-value/reader-value-config";
 
@@ -34,8 +34,8 @@ export class ListReaderPostsUseCase {
       if (error instanceof DomainError) return err(error);
       throw error;
     }
+    if (posts.length > READER_POST_CANDIDATE_BUDGET) return err(new DomainError("operation.conflict", "Post window is too large; choose a shorter period"));
     posts = posts.filter((post) => readerPromotionProviderIsPost(post.providerKey));
-    if (posts.length > 20_000) return err(new DomainError("operation.conflict", "Post window is too large; choose a shorter period"));
     const ranked = readerPostsInBrowseOrder(posts, query.order, readCutoff);
     const providerKeys = [...new Set(posts.map((post) => post.providerKey))].sort();
     const ordered = ranked.filter((post) => !query.excludedProviders?.includes(post.providerKey));

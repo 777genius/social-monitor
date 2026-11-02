@@ -32,9 +32,12 @@ export async function catalogFixture(composition: {
   await db.query("INSERT INTO source_catalog_entries VALUES($1,'x-twitter')", [catalog]);
   await db.query("INSERT INTO source_bindings VALUES($1,$2,$3,$4,$5,'ENABLED',NULL)", [binding, tenant, workspace, interest, catalog]);
   const safety = new SourceContentSafetyPolicy(), builder = composition.builder;
+  const statements: string[] = [];
   const client: ReaderPostsSqlClient = { $transaction: operation => db.transaction(async tx => operation({
-    $queryRawUnsafe: async <T>(query: string, ...values: unknown[]) => (await tx.query(query,
-      values.map(value => value instanceof Date ? value.toISOString() : value))).rows as T,
+    $queryRawUnsafe: async <T>(query: string, ...values: unknown[]) => {
+      statements.push(query);
+      return (await tx.query(query, values.map(value => value instanceof Date ? value.toISOString() : value))).rows as T;
+    },
     $executeRawUnsafe: async (query, ...values) => { await tx.query(query, values); return 0; },
   })) };
   const reader = new PrismaReaderPostCatalog(client, safety, composition.identity);
@@ -65,5 +68,16 @@ export async function catalogFixture(composition: {
         input.interestSha256, input.rubricVersion, input.rubricSha256, input.inputBuilderVersion, input.modelConfigVersion,
         input.requestSha256, input.inputSha256, state, JSON.stringify(result)]);
   };
-  return { db, reader, builder, window, insertPost, insertAssessment };
+  const insertPosts = async (count: number) => {
+    const first = await insertPost();
+    await db.query(`WITH copies AS (
+      INSERT INTO source_items(id,tenant_id,workspace_id,provider_key,title,body,canonical_url,content_hash,metadata)
+      SELECT gen_random_uuid(),s.tenant_id,s.workspace_id,s.provider_key,s.title,s.body,s.canonical_url,s.content_hash,s.metadata
+      FROM source_items s JOIN feed_items f ON f.source_item_id=s.id
+      CROSS JOIN generate_series(1,$2::integer) WHERE f.id=$1::uuid RETURNING id)
+      INSERT INTO feed_items SELECT gen_random_uuid(),f.tenant_id,f.workspace_id,c.id,f.provider_key,
+        f.interest_id,f.source_binding_id,f.published_at,f.provider_metadata,f.status
+      FROM copies c CROSS JOIN feed_items f WHERE f.id=$1::uuid`, [first.id, count - 1]);
+  };
+  return { db, reader, builder, identity: composition.identity, statements, window, insertPost, insertPosts, insertAssessment };
 }

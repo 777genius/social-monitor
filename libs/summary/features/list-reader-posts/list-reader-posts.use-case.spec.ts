@@ -18,6 +18,20 @@ const query = {
 const clock = { now: () => new Date("2026-11-02T12:00:00Z") };
 
 describe("all reader posts", () => {
+  it("accepts exactly 2000 candidates while paginating the complete pool", async () => {
+    const posts = Array.from({ length: 2000 }, (_, index) => post(`post-${index}`, index));
+    const result = await new ListReaderPostsUseCase({ read: async () => posts }, clock).execute(query);
+    expect(result.ok && result.value.total).toBe(2000);
+    expect(result.ok && result.value.items).toHaveLength(2);
+  });
+  it("rejects 2001 candidates before exclusions can hide overflow", async () => {
+    const posts = Array.from({ length: 2001 }, (_, index) => post(`post-${index}`, index));
+    const result = await new ListReaderPostsUseCase({ read: async () => posts }, clock)
+      .execute({ ...query, excludedProviders: ["reddit"] });
+    expect(result).toMatchObject({ ok: false, error: {
+      code: "operation.conflict", message: "Post window is too large; choose a shorter period",
+    } });
+  });
   it("never mixes GitHub Trending repositories into either post order or counts", async () => {
     const useCase = new ListReaderPostsUseCase({ read: async () => [
       post("post", 1), { ...post("trending", 99999, "important"), providerKey: "github-trending-page", providerFamily: "github_radar" },

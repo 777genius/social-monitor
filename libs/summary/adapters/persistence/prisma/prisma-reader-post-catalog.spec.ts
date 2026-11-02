@@ -17,6 +17,25 @@ describe("All posts current assessment identity over real SQL", () => {
   beforeEach(async () => { fixture = await createFixture(); });
   afterEach(async () => { await fixture.db.close(); });
 
+  it("returns the complete 2000-candidate window without truncating it", async () => {
+    await fixture.insertPosts(2000);
+    const prepare = jest.spyOn(fixture.identity, "prepare").mockReturnValue(undefined);
+    const posts = await fixture.reader.read(fixture.window);
+    expect(posts).toHaveLength(2000);
+    expect(new Set(posts.map(post => post.sourceItemId)).size).toBe(2000);
+    expect(prepare).toHaveBeenCalledTimes(2000);
+  });
+  it("rejects 2001 candidates before preparing input or joining assessments", async () => {
+    await fixture.insertPosts(2001);
+    const prepare = jest.spyOn(fixture.identity, "prepare");
+    await expect(fixture.reader.read(fixture.window)).rejects.toMatchObject({
+      code: "operation.conflict", message: "Post window is too large; choose a shorter period",
+    });
+    expect(prepare).not.toHaveBeenCalled();
+    expect(fixture.statements).toHaveLength(1);
+    expect(fixture.statements[0]).not.toContain("reader_value_assessments");
+  });
+
   it("keeps an unassessed quote visible and discloses missing context without inventing labels", async () => {
     await fixture.insertPost();
     expect(await fixture.reader.read(fixture.window)).toEqual([expect.objectContaining({

@@ -5,7 +5,7 @@ import type { SourceContentSafetyPolicy } from "@social-monitor/relevance/domain
 import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import { DomainError } from "@social-monitor/shared-kernel";
 import type { JsonObject } from "@social-monitor/shared-kernel";
-import type { ReaderPost, ReaderPostCatalog, ReaderPostWindow } from "../../../application/contracts/reader-post-catalog";
+import { READER_POST_CANDIDATE_BUDGET, type ReaderPost, type ReaderPostCatalog, type ReaderPostWindow } from "../../../application/contracts/reader-post-catalog";
 import { readerPromotionSourceForProviderKey } from "../../../domain/policies/reader-promotion-source-registry";
 
 export interface ReaderPostsSqlClient {
@@ -74,7 +74,7 @@ export class PrismaReaderPostCatalog implements ReaderPostCatalog {
           AND NOT EXISTS (SELECT 1 FROM feed_items revoked WHERE revoked.tenant_id=f.tenant_id
             AND revoked.workspace_id=f.workspace_id AND revoked.source_item_id=f.source_item_id
             AND revoked.interest_id=f.interest_id AND revoked.status='TOMBSTONED')
-        ORDER BY f.id LIMIT 20001)
+        ORDER BY f.id LIMIT $7::integer)
         SELECT id,source_item_id,provider_key,published_at,
           engagement_observed_at,interest_id,content_hash,content_kind,input_bytes,
           CASE WHEN input_bytes <= $6 THEN canonical_url ELSE '' END AS canonical_url,
@@ -87,8 +87,8 @@ export class PrismaReaderPostCatalog implements ReaderPostCatalog {
           CASE WHEN input_bytes <= $6 THEN source_metadata ELSE '{}'::jsonb END AS source_metadata
         FROM (SELECT visible.*,sum(source_bytes) OVER () AS input_bytes FROM visible) bounded`,
       window.tenantId, window.workspaceId, window.interestId ?? null,
-      window.startedAt, window.endedAt, this.assessment.maxSourceBytes);
-      if (rows.length > 20_000 || rows.some(row => !Number.isSafeInteger(Number(row.input_bytes)) ||
+      window.startedAt, window.endedAt, this.assessment.maxSourceBytes, READER_POST_CANDIDATE_BUDGET + 1);
+      if (rows.length > READER_POST_CANDIDATE_BUDGET || rows.some(row => !Number.isSafeInteger(Number(row.input_bytes)) ||
           Number(row.input_bytes) > this.assessment.maxSourceBytes)) {
         throw new DomainError("operation.conflict", "Post window is too large; choose a shorter period");
       }

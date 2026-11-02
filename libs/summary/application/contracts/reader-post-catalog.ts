@@ -1,5 +1,8 @@
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
+/** Larger candidate windows must return a choose-shorter-period conflict, never a partial list. */
+export const READER_POST_CANDIDATE_BUDGET = 2_000;
+
 export type ReaderPost = {
   readonly id: string;
   readonly sourceItemId: string;
