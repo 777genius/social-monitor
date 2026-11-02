@@ -5,7 +5,7 @@ import { PrismaReaderSummaryReadyProjectionStore } from '../../adapters/persiste
 import { PrismaSummaryReadyProjectionStore } from '../../adapters/persistence/prisma/prisma-summary-ready-projection.store';
 import { ProjectReaderSummaryReadyEventUseCase } from '../../features/project-reader-summary-ready-event/project-reader-summary-ready-event.use-case';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
-import { PrismaDeliveryConnection } from '../../adapters/persistence/prisma/prisma-delivery-connection';
+import type { PrismaDeliveryConnection } from '../../adapters/persistence/prisma/prisma-delivery-connection';
 import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
 import { AssembleDigestUseCase } from '../../features/assemble-digest/assemble-digest.use-case';
 import { CreateDigestScheduleUseCase } from '../../features/create-digest-schedule/create-digest-schedule.use-case';
