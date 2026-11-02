@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { preserveQuotedPostAvailability } from './quoted-post-capture-availability';
 import { hasRedditMediaContext } from './reddit-media-context';
+import { GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION, googleNewsArticleId } from './google-news-article';
 import { sanitizeUrlCredentials, type JsonObject } from '@social-monitor/shared-kernel';
 
 export const CONTENT_CAPTURE_VERSION = 'source_content_capture.v1';
@@ -198,7 +199,9 @@ export const preserveSourceCapture = <T extends CaptureText>(incoming: T, existi
     return result;
   }
   const article = prior.article;
-  if (article.extractionVersion !== ARTICLE_REPRESENTATION_VERSION) return result;
+  if (article.extractionVersion !== ARTICLE_REPRESENTATION_VERSION &&
+      !(googleNewsArticleId(next.articleUrl ?? '') !== undefined &&
+        article.extractionVersion === GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION)) return result;
   result = captureArticleText(result, {
     text: existing.body.slice(article.offset, article.offset + article.length),
     sourceUrl: article.sourceUrl, finalUrl: article.finalUrl,
