@@ -20,6 +20,24 @@ export class AcquisitionDatabaseFixture {
 
   readonly connection = {
     ...this.tables,
+    $queryRaw: async (query: TemplateStringsArray) => {
+      // This engagement fixture has native self-posts only: no article URL,
+      // pending capture or legacy opportunity. Still exercise the real due query.
+      const sql = query.join("?");
+      if (!sql.includes("SELECT provider_item_id FROM source_items") ||
+          !sql.includes("source_binding_id =") || !sql.includes("LIMIT")) {
+        throw new Error("Unexpected SQL in engagement fixture");
+      }
+      this.accesses.push(currentDatabaseAccess());
+      for (const row of this.rows("sourceItem")) {
+        const metadata = row.metadata as Row | undefined;
+        const capture = metadata?.contentCapture as Row | undefined;
+        if (capture?.articleUrl || metadata?.articleCaptureAttempt) {
+          throw new Error("Engagement fixture does not support linked article captures");
+        }
+      }
+      return [];
+    },
     $transaction: async <T>(operation: (connection: unknown) => Promise<T>) => {
       this.accesses.push(currentDatabaseAccess());
       const before = Object.fromEntries(Object.entries(this.tables).map(
