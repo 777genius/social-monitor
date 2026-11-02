@@ -11,7 +11,10 @@ no prompt, response or credential is logged.
 The periodic scheduler may create at most two deterministic replacement jobs
 for a V3 dependency failure marked `executions_closed`. Pauses are five minutes
 before replacement one and ten minutes before replacement two. Recovery expires
-48 hours after the period ends and respects quota, queue capacity, current V3
+48 hours after the period ends. The scheduler revisits existing failed daily
+periods after UTC midnight and does not create missing historical periods. A
+queued or completed replacement leaves the tick budget available for current
+work. Recovery respects quota, queue capacity, current V3
 selection and normal publication guards. Each replacement has the same period
 and scope, but a new preparation cutoff: newly arrived source data can enter
 through normal frozen preparation. The original failure remains in history.
@@ -21,7 +24,8 @@ required; durable job uniqueness supplies the identity fence.
 
 Recovery can repeat paid generation after a known closed request, including
 already successful batches from the failed job. It is bounded, not free replay.
-Unknown effects, unacknowledged cleanup, auth/quota failures, quality failures,
+Unknown effects, unacknowledged cleanup (including earlier completed batches),
+auth/quota failures, quality failures,
 native operator-owned jobs and ordinary API requests do not receive automatic
 replacement authority. Previously recorded failures lack the new closure proof
 and remain for explicit operational reconciliation; do not rewrite their reason

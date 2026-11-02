@@ -443,6 +443,16 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
         confidence: 0.9 })) } };
   };
 
+  it("preserves pending cleanup on a validated completed presentation batch", async () => {
+    const client = new PresentationRuntimeClient();
+    jest.spyOn(client, "runTask").mockImplementation(async command => ({
+      ...gatewayPresentation(command), warnings: [{ code: "gateway_cleanup_pending", message: "pending" }],
+    }));
+    const result = await new AgentRuntimePromotionPresentationV3Builder({ client,
+      modelBackend: "kimi-code", model: "k3-256k" }).build([fixtureInput()]);
+    expect(result).toEqual([expect.objectContaining({ status: "available", cleanupPending: true })]);
+  });
+
   it.each([["effect_unknown", "effect_unknown"], ["provider_failed", "response_started"],
     ["output_lost", "effect_unknown"]] as const)(
     "retries only a known closed Kimi failure and preserves uncertain gateway %s", async (code, effect) => {

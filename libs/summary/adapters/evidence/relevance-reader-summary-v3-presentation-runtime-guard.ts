@@ -47,6 +47,7 @@ export class PresentationRuntimeFailureGuard implements PromotionPresentationBui
     const results = await this.presentation.build(inputs);
     let failed = 0;
     for (const result of results) {
+      if (result.cleanupPending) this.allExecutionsClosed = false;
       if (result.status !== "unavailable" || result.reason !== "runtime_failure") continue;
       failed += 1;
       this.lastFailure = result.runtimeFailure;

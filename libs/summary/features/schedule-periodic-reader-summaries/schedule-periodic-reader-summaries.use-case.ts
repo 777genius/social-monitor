@@ -14,7 +14,8 @@ import {
   type ReaderSummaryPolicy,
   type ScheduledReaderSummaryCadence,
 } from "../../domain";
-import type { ReaderSummaryPolicyRepositoryPort } from "../../ports";
+import { readerSummaryTransientRecoveryKey } from "../../domain/policies/reader-summary-transient-recovery";
+import type { ReaderSummaryJobRepositoryPort, ReaderSummaryPolicyRepositoryPort } from "../../ports";
 import type { RequestReaderSummaryUseCase } from "../request-reader-summary/request-reader-summary.use-case";
 import type { SchedulePeriodicReaderSummariesCommand } from "./schedule-periodic-reader-summaries.command";
 import type {
@@ -33,6 +34,7 @@ export class SchedulePeriodicReaderSummariesUseCase {
       RequestReaderSummaryUseCase,
       "execute"
     >,
+    private readonly jobs?: Pick<ReaderSummaryJobRepositoryPort, "findByIdempotencyKey">,
   ) {}
 
   async execute(
@@ -89,39 +91,43 @@ export class SchedulePeriodicReaderSummariesUseCase {
 
     for (const policy of policies) {
       for (const cadence of policy.toScheduleSettings().cadences) {
-        if (evaluated >= command.limit) {
-          break;
-        }
-
-        evaluated += 1;
-        if (
-          !scheduleWindow.canSchedule({
-            cadence,
-            now: command.now,
-          })
-        ) {
-          notReady += 1;
-          continue;
-        }
-
-        const item = await this.scheduleOne({
-          policy,
-          cadence,
-          now: command.now,
-          correlationId: command.correlationId,
-        });
-
-        if (item.ok) {
-          summaries.push(item.value);
-          if (item.value.created) {
-            scheduled += 1;
-          } else {
-            existing += 1;
+        const recoveryTimes = cadence === "daily" && scheduleWindow.canSchedule({ cadence, now: command.now })
+          ? await this.recoveryTimes(policy, command.now) : [];
+        for (const periodNow of [...recoveryTimes, command.now]) {
+          if (evaluated >= command.limit) {
+            break;
           }
-          continue;
-        }
 
-        failures.push(item.failure);
+          evaluated += 1;
+          if (
+            !scheduleWindow.canSchedule({
+              cadence,
+              now: command.now,
+            })
+          ) {
+            notReady += 1;
+            continue;
+          }
+
+          const item = await this.scheduleOne({
+            policy,
+            cadence,
+            now: periodNow,
+            correlationId: command.correlationId,
+          });
+
+          if (item.ok) {
+            summaries.push(item.value);
+            if (item.value.created) {
+              scheduled += 1;
+            } else {
+              existing += 1;
+            }
+            continue;
+          }
+
+          failures.push(item.failure);
+        }
       }
 
       if (evaluated >= command.limit) {
@@ -138,6 +144,35 @@ export class SchedulePeriodicReaderSummariesUseCase {
       summaries,
       failures,
     });
+  }
+
+  /** Revisit only existing failed daily periods; never backfill missing days.
+   * A requested/completed replacement does not consume the next tick's limit.
+   */
+  private async recoveryTimes(policy: ReaderSummaryPolicy, now: Date): Promise<readonly Date[]> {
+    if (this.jobs === undefined) return [];
+    const snapshot = policy.toSnapshot();
+    const result: Date[] = [];
+    for (const days of [1, 2]) {
+      const periodNow = new Date(now.getTime() - days * 86_400_000);
+      const period = completedReaderSummaryPeriodForCadence({ cadence: "daily", now: periodNow,
+        timezone: DEFAULT_READER_SUMMARY_TIMEZONE });
+      let key = readerSummaryScheduleIdempotencyKey({ ...snapshot,
+        scopeKey: readerSummaryScopeKey(snapshot.scope), cadence: "daily", period,
+        policyVersion: snapshot.updatedAt.toISOString() });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const job = await this.jobs.findByIdempotencyKey({ tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId, idempotencyKey: key });
+        if (job === null) {
+          if (attempt > 0) result.push(periodNow);
+          break;
+        }
+        const next = readerSummaryTransientRecoveryKey(job.toSnapshot(), now);
+        if (next === undefined) break;
+        key = next;
+      }
+    }
+    return result;
   }
 
   private async scheduleOne(params: {

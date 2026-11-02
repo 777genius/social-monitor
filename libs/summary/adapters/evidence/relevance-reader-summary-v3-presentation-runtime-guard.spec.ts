@@ -52,6 +52,19 @@ const guardedSetup = (presentation: PromotionPresentationBuilder, count = 16) =>
 };
 
 describe('V3 promotion presentation runtime failures', () => {
+  it('withholds replacement authority after a completed batch with pending cleanup', async () => {
+    let call = 0;
+    const successful = new TestPresentation();
+    const fixture = guardedSetup({ build: async inputs => {
+      if (++call === 1) return (await successful.build(inputs)).map(result =>
+        ({ ...result, cleanupPending: true as const }));
+      return inputs.map(() => ({ status: 'unavailable' as const, reason: 'runtime_failure' as const,
+        runtimeFailure: { code: 'task_timeout', causeCategory: 'deadline', executionClosed: true } }));
+    } });
+    await expect(fixture.run()).resolves.toEqual({ kind: 'dependency_failure',
+      reason: 'presentation_runtime_failure_repeated:task_timeout' });
+    expect(fixture.logger.entries.at(-1)?.fields.executionsClosed).toBe(false);
+  });
   it.each([true, false])('marks replacement authority only when every failed execution is closed (%s)', async closed => {
     let call = 0;
     const fixture = guardedSetup({ build: async inputs => {

@@ -28,7 +28,7 @@ export type ReaderPostPresentationV3Input = {
   readonly captureComplete: boolean;
 };
 
-export type ReaderPostPresentationV3Result =
+export type ReaderPostPresentationV3Result = (
   | { readonly status: "available"; readonly seal: ReaderDisplayHeadlineSeal;
       readonly presentationInputDigest: string }
   | { readonly status: "unavailable"; readonly reason:
@@ -37,7 +37,8 @@ export type ReaderPostPresentationV3Result =
   /** The runtime failed or rejected the task before any presentation was validated. */
   | { readonly status: "unavailable"; readonly reason: "runtime_failure";
       readonly runtimeFailure: ReaderPostPresentationRuntimeFailure }
-  | { readonly status: "dependency_failure"; readonly reason: string };
+  | { readonly status: "dependency_failure"; readonly reason: string }
+) & { readonly cleanupPending?: true };
 
 /** Sanitized runtime identifiers for operators; never messages or provider data. */
 export type ReaderPostPresentationRuntimeFailure = {

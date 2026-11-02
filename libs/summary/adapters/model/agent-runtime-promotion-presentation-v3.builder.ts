@@ -175,9 +175,13 @@ implements PromotionPresentationBuilder {
     if (presentationRuntimeFailureDisposition(result) === "retry") {
       result = await this.client.runTask(command);
     }
+    const cleanupPending = result.warnings.some(warning => warning.code === "gateway_cleanup_pending") ||
+      result.failure?.details?.gatewayCleanup === "pending";
+    const withCleanup = (value: ReaderPostPresentationV3Result): ReaderPostPresentationV3Result =>
+      cleanupPending ? { ...value, cleanupPending: true } : value;
     if (presentationRuntimeFailureDisposition(result) !== undefined) {
       const runtimeFailure = presentationRuntimeFailureIdentity(result);
-      return inputs.map(() => ({ status: "unavailable", reason: "runtime_failure", runtimeFailure }));
+      return inputs.map(() => withCleanup({ status: "unavailable", reason: "runtime_failure", runtimeFailure }));
     }
     const failure = result.status === "failed" ? result.failure : undefined;
     if (failure && (failure.code === "unknown_runtime_failure" ||
@@ -191,7 +195,7 @@ implements PromotionPresentationBuilder {
            (failure.details?.presentationValidationStage === "schema_parse_or_normalization" &&
             failure.details?.presentationOutputValidatorCalled === "false" &&
             failure.details?.presentationOutputValidatorAccepted === "not_returned"))))) {
-      return inputs.map(() => ({ status: "unavailable", reason: "invalid_presentation" }));
+      return inputs.map(() => withCleanup({ status: "unavailable", reason: "invalid_presentation" }));
     }
     if (result.status !== "completed") {
       readAgentRuntimeObjectOutput(result, parseObject, "Reader promotion presentation");
@@ -203,16 +207,16 @@ implements PromotionPresentationBuilder {
     const rawOutput = readAgentRuntimeObjectOutput(result, parseObject,
       "Reader promotion presentation");
     const decoded = catalogCandidates === undefined ? undefined : decodeMimoQualifiedHeadlines(rawOutput, catalogCandidates);
-    if (decoded?.failure) return inputs.map(() => ({ status: "unavailable", reason: "invalid_presentation" }));
+    if (decoded?.failure) return inputs.map(() => withCleanup({ status: "unavailable", reason: "invalid_presentation" }));
     const output = decoded?.output ?? rawOutput;
     const proposals = contractProposals(output.presentations, inputs);
     return inputs.map((input) => {
       const proposal = proposals.get(input.candidateId);
-      if (proposal === undefined) return { status: "unavailable", reason: "invalid_presentation" };
+      if (proposal === undefined) return withCleanup({ status: "unavailable", reason: "invalid_presentation" });
       if (proposal.status === "unavailable") {
-        return { status: "unavailable", reason: "insufficient_support" };
+        return withCleanup({ status: "unavailable", reason: "insufficient_support" });
       }
-      return sealReaderPostPresentationV3({ input, headline: bind(input, proposal) });
+      return withCleanup(sealReaderPostPresentationV3({ input, headline: bind(input, proposal) }));
     });
   }
 }
