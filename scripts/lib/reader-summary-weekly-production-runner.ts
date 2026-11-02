@@ -31,8 +31,10 @@ import {
   type WeeklyProductionCanary,
 } from "./reader-summary-weekly-production-quality-gate";
 import {
-  readerSummaryWeeklyProductionModel,
-} from "./reader-summary-weekly-production-model";
+  assertReaderSummaryWeeklyProductionModelProof,
+  legacyReaderSummaryWeeklyProductionModelProof,
+  type ReaderSummaryWeeklyProductionModelProof,
+} from "./reader-summary-weekly-production-execution-proof";
 import type {
   ReaderSummaryWeeklyProductionDbState,
   ReaderSummaryWeeklyProductionStatus,
@@ -74,7 +76,9 @@ export type ReaderSummaryWeeklyProductionRunnerParams = Readonly<{
   dbState: ReaderSummaryWeeklyProductionDbState;
   reviewManifest: ReaderSummaryWeeklyReviewManifest | null;
   outputDirectory: string;
-  model: ReaderSummaryWeeklyModelPort;
+  model: ReaderSummaryWeeklyModelPort & Readonly<{
+    getGatewayExecutionProof?: () => ReaderSummaryWeeklyProductionModelProof | undefined;
+  }>;
   replay: boolean;
   generatedAt: Date;
   generatedBy?: string;
@@ -123,13 +127,7 @@ type ProofEnvelope = Readonly<{
   qualityGateSha256: string;
   canarySha256: string;
   artifactSha256: string;
-  model: {
-    provider: "agent-runtime";
-    agentProvider: "codex";
-    model: "gpt-5.6-sol";
-    reasoningEffort: "high";
-    runtimeOutput: "output_text";
-  };
+  model: ReaderSummaryWeeklyProductionModelProof;
   zeroProviderCalls: true;
 }>;
 
@@ -346,13 +344,8 @@ const proofFor = (input: {
   qualityGateSha256: input.qualityGateSha256,
   canarySha256: input.canarySha256,
   artifactSha256: input.artifactSha256,
-  model: Object.freeze({
-    provider: "agent-runtime",
-    agentProvider: "codex",
-    model: readerSummaryWeeklyProductionModel,
-    reasoningEffort: "high",
-    runtimeOutput: "output_text",
-  }),
+  model: input.params.model.getGatewayExecutionProof?.() ??
+    legacyReaderSummaryWeeklyProductionModelProof,
   zeroProviderCalls: true,
 });
 
@@ -365,6 +358,7 @@ const validateArtifactPair = (
 ): void => {
   const proof = proofValue as ProofEnvelope;
   const artifactEnvelope = artifact as ArtifactEnvelope;
+  assertReaderSummaryWeeklyProductionModelProof(proof.model, input, artifactEnvelope.output);
   const reconstructed = ReaderSummaryWeeklyArtifact.create({
     input,
     output: artifactEnvelope.output,
@@ -465,11 +459,6 @@ const validateArtifactPair = (
     proof.qualityGateSha256 !== qualityGateSha256 ||
     proof.canarySha256 !== canarySha256 ||
     proof.artifactSha256 !== validation.artifactSha256 ||
-    proof.model?.provider !== "agent-runtime" ||
-    proof.model?.agentProvider !== "codex" ||
-    proof.model?.model !== readerSummaryWeeklyProductionModel ||
-    proof.model?.reasoningEffort !== "high" ||
-    proof.model?.runtimeOutput !== "output_text" ||
     proof.zeroProviderCalls !== true
   ) {
     throw new Error("Reader summary weekly artifact/proof does not match admitted input");

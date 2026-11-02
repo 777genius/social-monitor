@@ -1,5 +1,5 @@
 import { executionAttestationOutputMatches, isConcreteRuntimePackageVersion,
-  isSha256Hex, subscriptionRuntimeEngine } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+  isSha256Hex, isAttestedRuntimeIdentity } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { sourceContentAssessmentPurpose } from "@social-monitor/relevance/adapters/model/agent-runtime-source-content-quality-reviewer.adapter";
 import { PROMOTION_ASSESSMENT_BOUNDS } from "@social-monitor/relevance/features/rank-feed-items/promotion-content-assessment";
 import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "@social-monitor/summary/ports";
@@ -61,7 +61,7 @@ export function verifyRefreshAssessmentExecution(command: AgentRuntimeTaskComman
   if (result.status !== "completed" || result.failure !== undefined || a === undefined ||
       a.schemaVersion !== 1 || a.requestId !== command.requestId || a.purpose !== sourceContentAssessmentPurpose ||
       a.provider !== command.provider || a.model !== command.controls.model ||
-      a.reasoningEffort !== command.controls.reasoningEffort || a.runtimeEngine !== subscriptionRuntimeEngine ||
+      a.reasoningEffort !== (command.controls.reasoningEffort ?? "default") || !isAttestedRuntimeIdentity(a) ||
       !isConcreteRuntimePackageVersion(a.runtimePackageVersion) || !isSha256Hex(a.launcherSha256) ||
       !isSha256Hex(a.canonicalRequestSha256) || a.selectedOutputKind !== "structured_output" ||
       !executionAttestationOutputMatches(a, result)) throw new Error("Invalid refresh assessment attestation");

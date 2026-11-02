@@ -7,17 +7,15 @@ import {
   verifyAndRecordReaderSummaryExecution,
 } from "../../libs/summary/adapters/model/reader-summary-execution-attestation";
 import {
-  activeReaderSummaryModel,
   activeReaderSummaryPurposes,
-  activeReaderSummaryReasoningEffort,
 } from "../../libs/summary/adapters/model/active-reader-summary-generation-profile";
 import {
   canonicalizeReaderSummaryWeeklyJson,
-  exactReaderSummaryWeeklySha256,
   readerSummaryWeeklyScopeKey,
 } from "../../libs/summary/domain/value-objects/reader-summary-weekly-canonical-json";
 import {
   createReaderSummaryWeeklyReviewManifest,
+  canonicalReaderSummaryWeeklyReviewExecutionAttestation,
   deriveReaderSummaryWeeklyReviewStoryCandidates,
   readerSummaryWeeklyReviewResponseSchemaVersion,
   type ReaderSummaryWeeklyReviewAuthority,
@@ -31,6 +29,12 @@ import type {
 import type {
   ReaderSummaryWeeklyReviewManifestPort,
 } from "../../libs/summary/ports/reader-summary-weekly-review-manifest.port";
+import {
+  assertReaderSummaryWeeklyCommandExecution,
+  assertReaderSummaryWeeklyRuntimeIdentity,
+  legacyReaderSummaryWeeklyExecutionProfile,
+  type ReaderSummaryWeeklyExecutionProfile,
+} from "./reader-summary-weekly-execution-profile";
 import {
   buildReaderSummaryWeeklyReviewPrompt,
 } from "./reader-summary-weekly-review-prompt";
@@ -58,11 +62,10 @@ export type ReaderSummaryWeeklyReviewProducerParams = Readonly<{
   manifestStore: ReaderSummaryWeeklyReviewManifestPort;
   agentRuntime: AgentRuntimeClientPort;
   timeoutMs?: number;
+  executionProfile?: ReaderSummaryWeeklyExecutionProfile;
 }>;
 
 const purpose = activeReaderSummaryPurposes.weeklyReview;
-const model = activeReaderSummaryModel;
-const reasoningEffort = activeReaderSummaryReasoningEffort;
 
 export class ReaderSummaryWeeklyReviewManifestAuthorityError extends Error {
   constructor(message: string) {
@@ -74,6 +77,7 @@ export class ReaderSummaryWeeklyReviewManifestAuthorityError extends Error {
 export const runReaderSummaryWeeklyReviewProducer = async (
   params: ReaderSummaryWeeklyReviewProducerParams,
 ): Promise<ReaderSummaryWeeklyReviewProducerResult> => {
+  const executionProfile = params.executionProfile ?? legacyReaderSummaryWeeklyExecutionProfile;
   const timeoutMs = params.timeoutMs ?? 600_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
     throw new Error("Reader summary weekly review timeout is invalid");
@@ -88,6 +92,8 @@ export const runReaderSummaryWeeklyReviewProducer = async (
   });
   if (existing !== null) {
     assertExistingManifestAuthority(existing, authority);
+    assertReaderSummaryWeeklyRuntimeIdentity(existing.executionAttestation);
+    canonicalReaderSummaryWeeklyReviewExecutionAttestation(existing.executionAttestation, existing.modelResponseSha256);
     return Object.freeze({
       outcome: "replayed",
       manifest: existing,
@@ -102,7 +108,7 @@ export const runReaderSummaryWeeklyReviewProducer = async (
     candidates,
     outputSchema: readerSummaryWeeklyReviewResponseJsonSchema,
   });
-  const command = reviewCommand(authority, prompt, timeoutMs);
+  const command = reviewCommand(authority, prompt, timeoutMs, executionProfile);
   const result = await params.agentRuntime.runTask(command);
   if (result.status !== "completed") {
     throw readerSummaryWeeklySubscriptionRuntimeFailureFromResult(
@@ -132,13 +138,14 @@ export const runReaderSummaryWeeklyReviewProducer = async (
     attempt: "1",
     normalizedOutput: normalizedResponse,
   });
+  if (result.executionAttestation === undefined) throw new Error("Weekly review execution attestation is absent");
+  assertReaderSummaryWeeklyCommandExecution(command, result.executionAttestation, executionProfile);
   const manifest = createReaderSummaryWeeklyReviewManifest({
     authority,
     selections,
     modelResponseSha256,
-    executionAttestation: reviewExecutionAttestation(
-      result.executionAttestation,
-      modelResponseSha256,
+    executionAttestation: canonicalReaderSummaryWeeklyReviewExecutionAttestation(
+      result.executionAttestation as ReaderSummaryWeeklyReviewExecutionAttestation, modelResponseSha256,
     ),
   });
   const persisted = await params.manifestStore.persist({ manifest });
@@ -162,6 +169,7 @@ const reviewCommand = (
   authority: ReaderSummaryWeeklyReviewAuthority,
   prompt: ReturnType<typeof buildReaderSummaryWeeklyReviewPrompt>,
   timeoutMs: number,
+  executionProfile: ReaderSummaryWeeklyExecutionProfile,
 ): AgentRuntimeTaskCommand => {
   const requestId = [
     "reader-summary-weekly-review",
@@ -184,56 +192,17 @@ const reviewCommand = (
       interactive: false,
       outputSchemaName: "reader_summary_weekly_review_response_v1",
       schemaVersion: readerSummaryWeeklyReviewResponseSchemaVersion,
-      model,
-      reasoningEffort,
+      model: executionProfile.model,
+      reasoningEffort: executionProfile.reasoningEffort,
       maxOutputTokens: 8_000,
     },
     timeoutMs,
     metadata: {
       producer: "reader-summary-weekly-review",
-      reasoningEffort,
+      reasoningEffort: executionProfile.reasoningEffort,
       runtimeOutput: "structured_output",
     },
   };
-};
-
-const reviewExecutionAttestation = (
-  input: unknown,
-  modelResponseSha256: string,
-): ReaderSummaryWeeklyReviewExecutionAttestation => {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw new Error("Reader summary weekly review execution attestation is absent");
-  }
-  const attestation = input as ReaderSummaryWeeklyReviewExecutionAttestation;
-  if (
-    attestation.schemaVersion !== 1 ||
-    attestation.purpose !== purpose ||
-    attestation.provider !== "codex" ||
-    attestation.model !== model ||
-    attestation.reasoningEffort !== reasoningEffort ||
-    attestation.runtimeEngine !== "subscription-runtime-cli" ||
-    attestation.selectedOutputKind !== "structured_output" ||
-    exactReaderSummaryWeeklySha256(
-      attestation.selectedOutputSha256,
-      "weekly review selected output hash",
-    ) !== modelResponseSha256
-  ) {
-    throw new Error("Reader summary weekly review execution attestation diverged");
-  }
-  return Object.freeze({
-    schemaVersion: 1,
-    requestId: attestation.requestId,
-    purpose,
-    canonicalRequestSha256: attestation.canonicalRequestSha256,
-    provider: "codex",
-    model,
-    reasoningEffort,
-    runtimeEngine: "subscription-runtime-cli",
-    runtimePackageVersion: attestation.runtimePackageVersion,
-    launcherSha256: attestation.launcherSha256,
-    selectedOutputKind: "structured_output",
-    selectedOutputSha256: modelResponseSha256,
-  });
 };
 
 const assertExistingManifestAuthority = (

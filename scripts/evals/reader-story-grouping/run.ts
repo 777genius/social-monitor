@@ -6,7 +6,7 @@ import { loadDataset, readJson, check, fileSha } from "./dataset";
 import { assertSource, verifySourceUnchanged } from "./source-identity";
 import { prepareBlock, applyDecisions, caseRows, type CaseRow } from "./replay";
 import { captureRequest, makeManifest, verifyManifest, checkReceiptBinding, normalizeCapturedResponse,
-  type RequestManifest, type CaptureReceipt, type RequestEnvelope } from "./requests";
+  evaluationGatewayRoute, type RequestManifest, type CaptureReceipt, type RequestEnvelope } from "./requests";
 import { evaluationRun, runArguments, runRoot } from "./run-identity";
 import { writeReport } from "./report";
 
@@ -18,9 +18,10 @@ export const run = async (args: string[]): Promise<void> => {
   check(["offline", "import"].includes(mode), "Usage: run.ts offline OUT | import OUT RECEIPT [INDEPENDENT_TRUSTED_RECEIPT_FILE_SHA256]");
   if (execution) check(!existsSync(join(out, "results.json")), "Explicit run output already exists; preserve it and choose a new run/output");
   const data = loadDataset();
+  const gateway = evaluationGatewayRoute(process.env);
   const prepared = await Promise.all(data.blocks.map((b) => prepareBlock(data, b, execution)));
-  const requests = (await Promise.all(prepared.map(captureRequest))).filter((r): r is RequestEnvelope => r !== undefined);
-  const manifest = makeManifest(data, requests, source, execution);
+  const requests = (await Promise.all(prepared.map((p) => captureRequest(p, gateway)))).filter((r): r is RequestEnvelope => r !== undefined);
+  const manifest = makeManifest(data, requests, source, execution, gateway);
   const manifestValidator = new Ajv().compile(readJson<object>("scripts/evals/reader-story-grouping/request-manifest.schema.json"));
   check(manifestValidator(manifest), `Invalid request manifest: ${JSON.stringify(manifestValidator.errors)}`);
   let receipt: CaptureReceipt | undefined;
@@ -35,7 +36,7 @@ export const run = async (args: string[]): Promise<void> => {
     const validator = new Ajv({ allErrors: true }).compile(schema);
     check(validator(receipt), `Invalid receipt schema: ${JSON.stringify(validator.errors)}`);
     checkReceiptBinding(manifest, receipt);
-    if (receipt.captureKind === "live_subscription") {
+    if (receipt.captureKind !== "offline_fixture") {
       check(trustedReceiptSha && fileSha(receiptPath!) === trustedReceiptSha,
         "Live import requires independently supplied trusted receipt file SHA256; a self-asserted live flag is insufficient");
       check(execution, "Live import requires explicit --run-id matching offline preparation");

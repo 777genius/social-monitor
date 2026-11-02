@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { assertReaderSummaryWeeklyGatewayPostgresContract } from "./reader-summary-weekly-gateway-postgres-contract";
 
 import type { PoolClient } from "pg";
 
@@ -114,6 +115,7 @@ export const assertReaderSummaryWeeklyReviewManifestPostgresContract = async (
   const payload = payloadFor(manifest);
 
   await assertRejectedPayloads(params.runtimeClient, authority, candidate, payload);
+  await assertReaderSummaryWeeklyGatewayPostgresContract({ ...params, payload, rebuild: rebuildPayload });
   const outcomes = await Promise.all([
     persistWithSerializableRetry(params.runtimeClient, payload),
     persistWithSerializableRetry(params.concurrentRuntimeClient, payload),
@@ -409,10 +411,7 @@ export const readerSummaryWeeklyReviewManifestCatalogIsSecure = (
     row.tenant_scope_week_unique_constraint === true &&
     row.unmanaged_index_count === "0" &&
     /current_setting\('transaction_isolation'\)\s*<>\s*'serializable'/iu.test(definition) &&
-    /v_attestation->>'purpose'\s*<>\s*'social_monitor\.reader_summary\.weekly\.review\.v2'/u
-      .test(definition) &&
-    /v_attestation->>'reasoningEffort'\s*<>\s*'high'/u.test(definition) &&
-    !/v_attestation->>'reasoningEffort'\s*<>\s*'xhigh'/u.test(definition) &&
+    /public\."reader_summary_weekly_review_attestation_valid"\(\s*v_attestation,\s*v_model_response_sha256\s*\)\s*IS NOT TRUE/u.test(definition) &&
     /FOR\s+UPDATE/iu.test(definition) &&
     /FOR\s+SHARE\s+OF\s+evidence_row/iu.test(definition) &&
     !/DATE\s+'2026-07-23'/iu.test(definition) &&

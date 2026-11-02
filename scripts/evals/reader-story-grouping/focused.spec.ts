@@ -15,7 +15,7 @@ import { confusion } from "./report";
 let data: Dataset; let prepared: PreparedBlock[]; let envelopes: RequestEnvelope[]; let manifest: RequestManifest;
 beforeAll(async () => {
   data = loadDataset(); prepared = await Promise.all(data.blocks.map((b) => prepareBlock(data, b)));
-  envelopes = (await Promise.all(prepared.map(captureRequest))).filter((r): r is RequestEnvelope => r !== undefined);
+  envelopes = (await Promise.all(prepared.map((p) => captureRequest(p)))).filter((r): r is RequestEnvelope => r !== undefined);
   // Unit-test identity only; real clean-commit binding is exercised in source-identity.spec.ts.
   manifest = makeManifest(data, envelopes, { revision: "b".repeat(40), treeSha: "c".repeat(40), worktree: "clean" });
 });

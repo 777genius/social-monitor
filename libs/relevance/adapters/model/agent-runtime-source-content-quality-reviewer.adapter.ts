@@ -16,6 +16,9 @@ export type AgentRuntimeSourceContentQualityOptions = {
   readonly ids: IdGenerator;
   readonly clock: Clock;
   readonly providerInstanceId?: string;
+  readonly model?: string;
+  readonly modelBackend?: string;
+  readonly reasoningEffort?: string;
   readonly batchTimeoutMs: number;
   readonly totalTimeoutMs: number;
 };
@@ -67,7 +70,10 @@ export class AgentRuntimeSourceContentQualityReviewerAdapter implements SourceCo
       provider: "codex" as const, providerInstanceId: this.options.providerInstanceId,
       purpose: sourceContentAssessmentPurpose,
       systemPrompt: promotionReviewInstructions, prompt, outputSchema: promotionResponseSchema,
-      controls: { interactive: false, model: "gpt-5.6-sol", reasoningEffort: "low",
+      controls: { interactive: false, model: this.options.model ?? "gpt-5.6-sol",
+        ...(this.options.modelBackend === undefined ? {} : { modelBackend: this.options.modelBackend }),
+        ...(this.options.reasoningEffort === "default" ? {} :
+          { reasoningEffort: this.options.reasoningEffort ?? "low" }),
         outputSchemaName: "social_monitor_source_content_quality_review",
         schemaVersion: "source_content_assessment.v1", maxOutputTokens: 6_000 },
       timeoutMs, metadata: { adapter: "agent-runtime-source-content-quality-reviewer" },
@@ -102,7 +108,7 @@ export class AgentRuntimeSourceContentQualityReviewerAdapter implements SourceCo
         attestation === undefined || attestation.schemaVersion !== 1 ||
         attestation.requestId !== requestId || attestation.purpose !== command.purpose ||
         attestation.provider !== command.provider || attestation.model !== command.controls.model ||
-        attestation.reasoningEffort !== command.controls.reasoningEffort ||
+        attestation.reasoningEffort !== (command.controls.reasoningEffort ?? "default") ||
         !isAttestedRuntimeIdentity(attestation) ||
         !isSha256Hex(attestation.canonicalRequestSha256) ||
         attestation.selectedOutputKind !== "structured_output" ||

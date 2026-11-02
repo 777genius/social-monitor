@@ -4,6 +4,7 @@ import { createConsumerControlClient } from "@agent-teams/account-gateway/http";
 import { createLlmClient, executionConnector } from "@agent-teams/account-gateway/llm";
 import type { LlmEffort, LlmPolicy } from "@agent-teams/account-gateway/llm";
 import type { Clock } from "@social-monitor/shared-kernel";
+import { assertRuntimeProfileAllowsMode } from "@social-monitor/platform-config";
 
 import type { AgentRuntimeClientPort } from "../../ports";
 import {
@@ -26,6 +27,19 @@ import { approvedGatewayLlmSdkIdentity } from "../model/gateway-llm/gateway-llm-
 
 /** How reader-summary model tasks are executed: the CLI runtime over gRPC, or account-gateway. */
 export type ReaderSummaryAgentRuntimeTransport = "agent-runtime" | typeof readerSummaryGatewayTransport;
+
+/** Shared transport selector for summary, assessment and maintenance callers. */
+export const resolveSummaryAgentRuntimeTransport = (
+  env: NodeJS.ProcessEnv,
+): ReaderSummaryAgentRuntimeTransport => {
+  const value = env.AGENT_RUNTIME_TRANSPORT?.trim() || "agent-runtime";
+  if (value !== "agent-runtime" && value !== "gateway-llm") {
+    throw new Error('AGENT_RUNTIME_TRANSPORT must be "agent-runtime" or "gateway-llm"');
+  }
+  assertRuntimeProfileAllowsMode({ env, settingName: "AGENT_RUNTIME_TRANSPORT",
+    selectedMode: value, durableModes: ["agent-runtime", "gateway-llm"] });
+  return value;
+};
 
 /**
  * Backends the gateway serves: the gateway-only ones, and Codex, which also
@@ -214,8 +228,8 @@ export const createGatewayLlmAgentRuntimeClient = (
   });
 };
 
-/** The reader-summary agent-runtime port for the selected transport. */
-export const createReaderSummaryAgentRuntimeClient = (params: {
+/** The shared model-task port; the legacy connection is created only when selected. */
+export const createSummaryAgentRuntimeClient = (params: {
   readonly transport: ReaderSummaryAgentRuntimeTransport;
   readonly env: NodeJS.ProcessEnv;
   readonly clock: Clock;
@@ -223,11 +237,18 @@ export const createReaderSummaryAgentRuntimeClient = (params: {
   readonly agentRuntime: () => AgentRuntimeClientPort;
 }): AgentRuntimeClientPort => {
   assertReaderSummaryTransportBackend(params.transport, params.env);
+  if (params.env.AGENT_RUNTIME_TRANSPORT?.trim() &&
+    resolveSummaryAgentRuntimeTransport(params.env) !== params.transport) {
+    throw new Error("Selected summary transport conflicts with AGENT_RUNTIME_TRANSPORT");
+  }
   return params.transport === "gateway-llm"
     ? createGatewayLlmAgentRuntimeClient(resolveGatewayLlmTransportConfig(params.env),
       { clock: params.clock, runId: params.runId })
     : params.agentRuntime();
 };
+
+/** Compatibility entry point for existing reader-summary composition. */
+export const createReaderSummaryAgentRuntimeClient = createSummaryAgentRuntimeClient;
 
 const readTokenFile = (path: string): string => readFileSync(path, "utf8");
 

@@ -31,7 +31,8 @@ export type ReaderSummaryAttestedTaskRole =
   | "topic_relation"
   | "story_relation"
   | "related_topic_relation"
-  | "weekly_review";
+  | "weekly_review"
+  | "weekly_generate";
 
 export type VerifiedReaderSummaryExecutionAttestation = {
   readonly taskRole: ReaderSummaryAttestedTaskRole;
@@ -52,6 +53,7 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
   readonly taskRole: ReaderSummaryAttestedTaskRole;
   readonly attempt: string;
   readonly normalizedOutput: unknown;
+  readonly selectedOutputKind?: "structured_output" | "output_text";
   readonly legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract;
   readonly sink?: VerifiedReaderSummaryExecutionAttestationSink;
 }): Promise<void> => {
@@ -98,7 +100,8 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
     (mimoGeneration && attestation.runtimeEngine !== subscriptionRuntimeEngine) ||
     !isAttestedRuntimeIdentity(attestation) ||
     !isSha256Hex(attestation.canonicalRequestSha256) ||
-    attestation.selectedOutputKind !== "structured_output" ||
+    attestation.selectedOutputKind !== (params.selectedOutputKind ?? "structured_output") ||
+    (params.selectedOutputKind === "output_text" && params.taskRole !== "weekly_generate") ||
     !isSha256Hex(attestation.selectedOutputSha256) ||
     !executionAttestationOutputMatches(attestation, params.result)
   ) {
@@ -135,6 +138,7 @@ const activeReaderSummaryPurposeMatches = (
   story_relation: [activeReaderSummaryPurposes.storyRelations],
   related_topic_relation: [activeReaderSummaryPurposes.relatedTopicRelations],
   weekly_review: [activeReaderSummaryPurposes.weeklyReview],
+  weekly_generate: [activeReaderSummaryPurposes.weeklyGenerate],
 } as const)[role].some((candidate: string) => candidate === purpose);
 
 const expectedReasoningEffort = (

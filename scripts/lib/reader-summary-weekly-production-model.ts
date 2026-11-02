@@ -1,3 +1,4 @@
+import type { ReaderSummaryWeeklyGatewayProductionProof } from "./reader-summary-weekly-production-execution-proof";
 import { createHash } from "node:crypto";
 
 import {
@@ -28,6 +29,14 @@ import {
   activeReaderSummaryReasoningEffort,
 } from "../../libs/summary/adapters/model/active-reader-summary-generation-profile";
 
+import { deepFreezeReaderSummaryWeekly } from "../../libs/summary/domain/value-objects/reader-summary-weekly-canonical-json";
+import { verifyAndRecordReaderSummaryExecution } from "../../libs/summary/adapters/model/reader-summary-execution-attestation";
+import {
+  assertReaderSummaryWeeklyCommandExecution,
+  legacyReaderSummaryWeeklyExecutionProfile,
+  type ReaderSummaryWeeklyExecutionProfile,
+} from "./reader-summary-weekly-execution-profile";
+
 import { readerSummaryWeeklySubscriptionRuntimeFailureFromResult } from "./reader-summary-weekly-execution-receipt";
 
 export const readerSummaryWeeklyProductionModel = activeReaderSummaryModel;
@@ -35,8 +44,9 @@ export const readerSummaryWeeklyProductionModel = activeReaderSummaryModel;
 export type ReaderSummaryWeeklyAgentRuntimeModelParams = Readonly<{
   client: AgentRuntimeClientPort;
   provider?: typeof activeReaderSummaryProvider;
-  model?: typeof activeReaderSummaryModel;
-  reasoningEffort?: typeof activeReaderSummaryReasoningEffort;
+  model?: string;
+  executionProfile?: ReaderSummaryWeeklyExecutionProfile;
+  reasoningEffort?: string;
   timeoutMs?: number;
   maxOutputTokens?: number;
 }>;
@@ -44,17 +54,26 @@ export type ReaderSummaryWeeklyAgentRuntimeModelParams = Readonly<{
 export class AgentRuntimeReaderSummaryWeeklyTextModel
   implements ReaderSummaryWeeklyModelPort
 {
+  private lastGatewayProof: ReaderSummaryWeeklyGatewayProductionProof | undefined;
+
+  getGatewayExecutionProof(): ReaderSummaryWeeklyGatewayProductionProof | undefined {
+    if (this.params.executionProfile?.transport === "gateway-llm" && this.lastGatewayProof === undefined) {
+      throw new Error("Weekly gateway generation lacks verified execution proof");
+    }
+    return this.lastGatewayProof;
+  }
+
   private readonly provider: typeof activeReaderSummaryProvider;
-  private readonly model: typeof activeReaderSummaryModel;
-  private readonly reasoningEffort: typeof activeReaderSummaryReasoningEffort;
+  private readonly model: string;
+  private readonly reasoningEffort: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
 
   constructor(private readonly params: ReaderSummaryWeeklyAgentRuntimeModelParams) {
     this.provider = params.provider ?? activeReaderSummaryProvider;
-    this.model = params.model ?? readerSummaryWeeklyProductionModel;
+    this.model = params.model ?? params.executionProfile?.model ?? readerSummaryWeeklyProductionModel;
     this.reasoningEffort =
-      params.reasoningEffort ?? activeReaderSummaryReasoningEffort;
+      params.reasoningEffort ?? params.executionProfile?.reasoningEffort ?? activeReaderSummaryReasoningEffort;
     this.timeoutMs = params.timeoutMs ?? 600_000;
     this.maxOutputTokens = params.maxOutputTokens ?? 16_000;
   }
@@ -62,6 +81,7 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
   async generate(
     input: ReaderSummaryWeeklyModelInput,
   ): Promise<ReaderSummaryWeeklyModelOutput> {
+    this.lastGatewayProof = undefined;
     const command = this.command(input);
     const result = await this.params.client.runTask(command);
     if (result.status !== "completed") {
@@ -70,30 +90,48 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
         result.status,
       );
     }
-    const outputText = result.outputText;
+    const profile = this.params.executionProfile ?? legacyReaderSummaryWeeklyExecutionProfile;
+    const outputText = profile.transport === "gateway-llm"
+      ? result.structuredOutput === undefined ? undefined : JSON.stringify(result.structuredOutput)
+      : result.outputText;
     if (outputText === undefined || outputText.trim().length === 0) {
       throw new Error("Reader summary weekly agent-runtime returned no text");
     }
-    if (
-      result.executionAttestation === undefined ||
-      result.executionAttestation.purpose !==
-        activeReaderSummaryPurposes.weeklyGenerate ||
-      result.executionAttestation.provider !== "codex" ||
-      result.executionAttestation.model !== readerSummaryWeeklyProductionModel ||
-      result.executionAttestation.reasoningEffort !==
-        activeReaderSummaryReasoningEffort ||
-      result.executionAttestation.runtimeEngine !==
-        "subscription-runtime-cli" ||
-      result.executionAttestation.selectedOutputKind !== "output_text"
-    ) {
-      throw new Error(
-        "Reader summary weekly agent-runtime attestation must prove codex gpt-5.6-sol high output_text",
-      );
+    if (result.executionAttestation === undefined) {
+      throw new Error("Reader summary weekly execution attestation is absent");
     }
-    return parseOpenAiReaderSummaryWeeklyResponse(input, outputText);
+    assertReaderSummaryWeeklyCommandExecution(command, result.executionAttestation, profile);
+    const output = parseOpenAiReaderSummaryWeeklyResponse(input, outputText);
+    await verifyAndRecordReaderSummaryExecution({ command, result,
+      taskRole: "weekly_generate", attempt: "1", normalizedOutput: output,
+      selectedOutputKind: profile.transport === "gateway-llm" ? "structured_output" : "output_text",
+    });
+    if (profile.transport === "gateway-llm" && result.executionAttestation.runtimeEngine === "gateway-llm") {
+      this.lastGatewayProof = deepFreezeReaderSummaryWeekly({
+        provider: "gateway-llm", agentProvider: "codex", model: this.model,
+        reasoningEffort: this.reasoningEffort, runtimeOutput: "structured_output",
+        gatewayMinOutputTokens: profile.gatewayMinOutputTokens!, maxOutputTokens: this.maxOutputTokens,
+        executionAttestation: JSON.parse(JSON.stringify(result.executionAttestation)),
+        rawStructuredOutput: JSON.parse(JSON.stringify(result.structuredOutput)),
+      });
+    }
+    return output;
   }
 
   private command(input: ReaderSummaryWeeklyModelInput): AgentRuntimeTaskCommand {
+    return buildReaderSummaryWeeklyGenerationCommand(input, {
+      provider: this.provider, model: this.model, reasoningEffort: this.reasoningEffort,
+      maxOutputTokens: this.maxOutputTokens, timeoutMs: this.timeoutMs,
+      transport: this.params.executionProfile?.transport ?? "agent-runtime",
+    });
+  }
+}
+
+export const buildReaderSummaryWeeklyGenerationCommand = (
+  input: ReaderSummaryWeeklyModelInput,
+  config: Readonly<{ provider: "codex"; model: string; reasoningEffort: string;
+    maxOutputTokens: number; timeoutMs: number; transport: "agent-runtime" | "gateway-llm" }>,
+): AgentRuntimeTaskCommand => {
     const requestId = [
       "reader-summary-weekly",
       input.tenantId,
@@ -109,7 +147,7 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
       tenantId: tenantId(input.tenantId),
       workspaceId: workspaceId(input.workspaceId),
       correlationId: `${requestId}:correlation`,
-      provider: this.provider,
+      provider: config.provider,
       purpose: activeReaderSummaryPurposes.weeklyGenerate,
       systemPrompt: buildOpenAiReaderSummaryWeeklyInstructions(),
       prompt: buildOpenAiReaderSummaryWeeklyPromptPayload(input),
@@ -118,17 +156,17 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
         interactive: false,
         outputSchemaName: "reader_summary_weekly_output_v1",
         schemaVersion: "reader_summary.weekly_model_output.v1",
-        model: this.model,
-        reasoningEffort: this.reasoningEffort,
-        maxOutputTokens: this.maxOutputTokens,
+        model: config.model,
+        reasoningEffort: config.reasoningEffort,
+        maxOutputTokens: config.maxOutputTokens,
       },
-      timeoutMs: this.timeoutMs,
+      timeoutMs: config.timeoutMs,
       metadata: {
         adapter: "agent-runtime-reader-summary-weekly-production",
         promptVersion: currentReaderSummaryWeeklyPromptRelease.id,
-        reasoningEffort: this.reasoningEffort,
-        runtimeOutput: "output_text",
+        reasoningEffort: config.reasoningEffort,
+        runtimeOutput: config.transport === "gateway-llm"
+          ? "structured_output" : "output_text",
       },
     };
-  }
-}
+};

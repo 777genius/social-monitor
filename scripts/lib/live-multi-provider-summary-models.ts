@@ -1,18 +1,21 @@
 import { writeFileSync } from "node:fs";
 import { OpenAiSourceContentQualityReviewerAdapter } from "@social-monitor/relevance/adapters/model/openai-source-content-quality-reviewer.adapter";
+import { AgentRuntimeSourceContentQualityReviewerAdapter } from "@social-monitor/relevance/adapters/model/agent-runtime-source-content-quality-reviewer.adapter";
 import { resolveRelevanceContentQualityOpenAiOptions, resolveRelevanceContentQualityReviewerMode } from "@social-monitor/relevance/interfaces/rest/relevance-provider-tokens";
 import { NOOP_SOURCE_CONTENT_QUALITY_REVIEWER, type SourceContentQualityReviewerPort } from "@social-monitor/relevance/ports";
-import { SystemClock } from "@social-monitor/shared-kernel";
+import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
+import { createSummaryAgentRuntimeClient, resolveSummaryAgentRuntimeTransport } from "@social-monitor/summary/adapters/composition/reader-summary-agent-runtime-transport";
 import { DeterministicSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-summary-model.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { OpenAiResponsesReaderSummaryModelAdapter, resolveOpenAiResponsesReaderSummaryModelOptions } from "@social-monitor/summary/adapters/model/openai-responses-reader-summary-model.adapter";
 import { OpenAiResponsesSummaryModelAdapter, resolveOpenAiResponsesSummaryModelOptions } from "@social-monitor/summary/adapters/model/openai-responses-summary-model.adapter";
 import { buildInstructions as buildSummaryInstructions, buildPromptPayload as buildSummaryPromptPayload } from "@social-monitor/summary/adapters/model/openai-responses-summary-prompt";
 import { openAiSummaryJsonSchema } from "@social-monitor/summary/adapters/model/openai-responses-summary-schema";
-import { AgentRuntimeReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-model.adapter";
-import { AgentRuntimeSummaryModelAdapter } from "@social-monitor/summary/adapters/model/agent-runtime-summary-model.adapter";
+import { AgentRuntimeReaderSummaryModelAdapter, resolveAgentRuntimeReaderSummaryModelOptions } from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-model.adapter";
+import { AgentRuntimeSummaryModelAdapter, resolveAgentRuntimeSummaryModelOptions } from "@social-monitor/summary/adapters/model/agent-runtime-summary-model.adapter";
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
-import type { ReaderSummaryModelPort, SummaryModelPort } from "@social-monitor/summary/ports";
+import type { AgentRuntimeClientPort, ReaderSummaryModelPort, SummaryModelPort } from "@social-monitor/summary/ports";
+import { createSourceAssessmentRuntime } from "@social-monitor/summary/interfaces/rest/source-assessment-runtime-provider-tokens";
 import { summaryModelMode, readOptionalEnv, readPositiveIntegerEnv, liveSummaryMaxOutputTokens, summaryPromptDebugPathEnv, readerSummaryModelMode, liveReaderSummaryMaxOutputTokens, liveSummaryMaxInputTokens, liveSummaryBudgetTokens, liveReaderSummaryMaxInputTokens, liveReaderSummaryBudgetTokens } from "./live-multi-provider-summary-config";
 
 export const buildSummaryModel = (): SummaryModelPort => {
@@ -23,12 +26,10 @@ export const buildSummaryModel = (): SummaryModelPort => {
   if (summaryModelMode === "agent-runtime") {
     return new LiveBudgetSummaryModel(
       new AgentRuntimeSummaryModelAdapter({
-        client: buildAgentRuntimeClient("summary"),
-        agentProvider: readAgentRuntimeProvider(),
-        providerInstanceId: readOptionalEnv(
-          "AGENT_RUNTIME_PROVIDER_INSTANCE_ID",
-        ),
-        model: readOptionalEnv("LIVE_MULTI_PROVIDER_AGENT_RUNTIME_MODEL"),
+        ...resolveAgentRuntimeSummaryModelOptions({ ...process.env,
+          AGENT_RUNTIME_SUMMARY_MODEL: readOptionalEnv("LIVE_MULTI_PROVIDER_AGENT_RUNTIME_MODEL")
+            ?? process.env.AGENT_RUNTIME_SUMMARY_MODEL,
+        }, buildAgentRuntimeClient("summary")),
         timeoutMs: readPositiveIntegerEnv(
           "AGENT_RUNTIME_SUMMARY_TIMEOUT_MS",
           180_000,
@@ -124,14 +125,11 @@ export const buildReaderSummaryModel = (): ReaderSummaryModelPort => {
   if (readerSummaryModelMode === "agent-runtime") {
     return new LiveBudgetReaderSummaryModel(
       new AgentRuntimeReaderSummaryModelAdapter({
-        client: buildAgentRuntimeClient("reader-summary"),
-        agentProvider: readAgentRuntimeProvider(),
-        providerInstanceId: readOptionalEnv(
-          "AGENT_RUNTIME_PROVIDER_INSTANCE_ID",
-        ),
-        model: readOptionalEnv(
-          "LIVE_MULTI_PROVIDER_AGENT_RUNTIME_READER_MODEL",
-        ),
+        ...resolveAgentRuntimeReaderSummaryModelOptions({ ...process.env,
+          AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL:
+            readOptionalEnv("LIVE_MULTI_PROVIDER_AGENT_RUNTIME_READER_MODEL")
+              ?? process.env.AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL,
+        }, buildAgentRuntimeClient("reader-summary")),
         timeoutMs: readPositiveIntegerEnv(
           "AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS",
           240_000,
@@ -152,8 +150,13 @@ export const buildReaderSummaryModel = (): ReaderSummaryModelPort => {
   );
 };
 
-const buildAgentRuntimeClient = (service: string): GrpcAgentRuntimeClient =>
-  GrpcAgentRuntimeClient.connect({
+const buildAgentRuntimeClient = (service: string): AgentRuntimeClientPort =>
+  createSummaryAgentRuntimeClient({
+    transport: resolveSummaryAgentRuntimeTransport(process.env),
+    env: process.env,
+    clock: new SystemClock(),
+    runId: new CryptoIdGenerator().generate(),
+    agentRuntime: () => GrpcAgentRuntimeClient.connect({
     address: readOptionalEnv("AGENT_RUNTIME_GRPC_ADDRESS") ?? "127.0.0.1:50052",
     clock: new SystemClock(),
     options: {
@@ -165,16 +168,8 @@ const buildAgentRuntimeClient = (service: string): GrpcAgentRuntimeClient =>
       ),
       serviceToken: readOptionalEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
     },
+    }),
   });
-
-const readAgentRuntimeProvider = (): "codex" | "claude" => {
-  const value = readOptionalEnv("AGENT_RUNTIME_PROVIDER") ?? "codex";
-  if (value === "codex" || value === "claude") {
-    return value;
-  }
-
-  throw new Error('AGENT_RUNTIME_PROVIDER must be "codex" or "claude"');
-};
 
 class LiveBudgetSummaryModel implements SummaryModelPort {
   constructor(private readonly delegate: SummaryModelPort) {}
@@ -300,6 +295,15 @@ export const buildSourceContentQualityReviewer =
 
     if (mode === "disabled") {
       return NOOP_SOURCE_CONTENT_QUALITY_REVIEWER;
+    }
+
+    if (mode === "agent-runtime") {
+      const clock = new SystemClock();
+      return new AgentRuntimeSourceContentQualityReviewerAdapter({
+        ...createSourceAssessmentRuntime({ env: process.env, clock,
+          client: buildAgentRuntimeClient("reader-summary") }),
+        clock, ids: new CryptoIdGenerator(),
+      });
     }
 
     return new OpenAiSourceContentQualityReviewerAdapter(

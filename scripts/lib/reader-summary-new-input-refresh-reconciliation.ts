@@ -1,3 +1,4 @@
+import { refreshManifestFormat } from "./reader-summary-new-input-refresh-manifest";
 import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { IdGenerator } from "@social-monitor/shared-kernel";
@@ -185,7 +186,7 @@ function assertPreProviderArtifacts(e: RefreshPreProviderReconciliationEvidence)
   };
   const v = e.invocation;
   const manifest = parse(immutable(v.manifestPath, e.manifestSha256));
-  if (manifest.format !== "reader-summary-seven-day-new-input-v1" ||
+  if (!refreshManifestFormat(manifest.format) ||
       manifest.operation !== e.operation || manifest.date !== e.date ||
       manifest.tenantId !== e.tenantId || manifest.workspaceId !== e.workspaceId) invalid();
   const directory = resolve(v.capturePath);
@@ -334,7 +335,7 @@ function assertCurrentAuthorityArtifacts(e: RefreshCurrentAuthorityReconciliatio
       v.delegatedInvocationCount !== 0 || v.providerUsageReported !== false ||
       !Array.isArray(v.attempts) || v.attempts.length === 0 || v.attempts.length > 6) invalid();
   const manifest = object(JSON.parse(immutable(v.manifestPath, e.manifestSha256)));
-  if (manifest.format !== "reader-summary-seven-day-new-input-v1" || manifest.operation !== e.operation ||
+  if (!refreshManifestFormat(manifest.format) || manifest.operation !== e.operation ||
       manifest.date !== e.date || manifest.tenantId !== e.tenantId || manifest.workspaceId !== e.workspaceId ||
       !isoInstant(manifest.observedThrough)) invalid();
   const text = immutable(v.journalPath, v.journalSha256);

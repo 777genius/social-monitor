@@ -1,10 +1,12 @@
-import type { Clock } from "@social-monitor/shared-kernel";
+import { CryptoIdGenerator, type Clock } from "@social-monitor/shared-kernel";
 import type { AgentRuntimeClientPort } from "../../ports";
 import { GrpcAgentRuntimeClient } from "../../adapters/model/grpc-agent-runtime-client";
 import { parsePositiveInteger } from "../../adapters/model/agent-runtime-model-support";
 import { resolveAgentRuntimeReaderSummaryModelOptions } from "../../adapters/model/agent-runtime-reader-summary-model.adapter";
 import { resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions } from "../../adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { resolveSummaryAgentRuntimeClientOptions } from "./summary-agent-runtime-provider-tokens";
+import { assertReaderSummaryTransportBackend, createSummaryAgentRuntimeClient, resolveSummaryAgentRuntimeTransport } from
+  "../../adapters/composition/reader-summary-agent-runtime-transport";
 
 // Reuse the scheduled runtime's endpoint, identity and established task budgets.
 // A supplied capture client is reused; REST connects to the same hosted pool.
@@ -13,10 +15,14 @@ export const createSourceAssessmentRuntime = (input: {
   readonly clock: Clock;
   readonly client?: AgentRuntimeClientPort;
 }) => {
-  const client = input.client ?? GrpcAgentRuntimeClient.connect({
-    address: resolveSummaryAgentRuntimeClientOptions(input.env, { requireAddress: true }).address,
-    clock: input.clock,
-    options: resolveSummaryAgentRuntimeClientOptions(input.env, { requireAddress: true }),
+  const transport = resolveSummaryAgentRuntimeTransport(input.env);
+  assertReaderSummaryTransportBackend(transport, input.env);
+  const client = input.client ?? createSummaryAgentRuntimeClient({
+    env: input.env, transport, clock: input.clock, runId: new CryptoIdGenerator().generate(),
+    agentRuntime: () => {
+      const options = resolveSummaryAgentRuntimeClientOptions(input.env, { requireAddress: true });
+      return GrpcAgentRuntimeClient.connect({ address: options.address, clock: input.clock, options });
+    },
   });
   const summary = resolveAgentRuntimeReaderSummaryModelOptions(input.env, client);
   const relation = resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(input.env, client);
@@ -29,5 +35,8 @@ export const createSourceAssessmentRuntime = (input: {
     3_600_000,
   );
   return { client, providerInstanceId: summary.providerInstanceId,
+    ...(transport === "gateway-llm" ? { model: summary.model,
+      modelBackend: summary.modelBackend,
+      reasoningEffort: summary.reasoningEffort ?? "default" } : {}),
     totalTimeoutMs, batchTimeoutMs: Math.min(relation.timeoutMs ?? 300_000, totalTimeoutMs, 600_000) };
 };

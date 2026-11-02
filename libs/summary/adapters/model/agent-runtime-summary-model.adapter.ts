@@ -25,6 +25,13 @@ import {
 } from "./openai-responses-summary-response-parser";
 import { openAiSummaryJsonSchema } from "./openai-responses-summary-schema";
 import {
+  resolveReaderSummaryDailyTaskIdentityFromEnv,
+  resolveReaderSummaryGenerationIdentityFromEnv,
+  resolveReaderSummaryReasoningEffortFromEnv,
+  readerSummaryRouteControls,
+  type ReaderSummaryGenerationBackend,
+} from "./active-reader-summary-generation-profile";
+import {
   AgentRuntimeModelProviderError,
   buildAgentRuntimeRequestId,
   classifyAgentRuntimeError,
@@ -40,6 +47,8 @@ export type AgentRuntimeSummaryModelAdapterOptions = {
   readonly agentProvider?: AgentRuntimeProvider;
   readonly providerInstanceId?: string;
   readonly model?: string;
+  readonly modelBackend?: ReaderSummaryGenerationBackend;
+  readonly reasoningEffort?: string;
   readonly promptVersion?: string;
   readonly evalDatasetVersion?: string;
   readonly timeoutMs?: number;
@@ -61,6 +70,7 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
   private readonly agentProvider: AgentRuntimeProvider;
   private readonly providerInstanceId?: string;
   private readonly model: string;
+  private readonly routeControls: Readonly<Record<string, unknown>>;
   private readonly promptVersion: string;
   private readonly evalDatasetVersion: string;
   private readonly timeoutMs: number;
@@ -72,6 +82,8 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
     this.agentProvider = options.agentProvider ?? defaultAgentProvider;
     this.providerInstanceId = options.providerInstanceId;
     this.model = nonEmptyOrFallback(options.model, defaultModel);
+    this.routeControls = options.modelBackend === undefined ? {} :
+      readerSummaryRouteControls(options.modelBackend, options.reasoningEffort ?? "default");
     this.promptVersion = nonEmptyOrFallback(
       options.promptVersion,
       defaultPromptVersion,
@@ -179,6 +191,7 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
         outputSchemaName: "social_monitor_summary_artifact",
         schemaVersion: selectedRoute.schemaVersion,
         ...runtimeModelControl(this.model, defaultModel),
+        ...this.routeControls,
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
@@ -300,6 +313,7 @@ export const resolveAgentRuntimeSummaryModelOptions = (
   agentProvider: parseAgentRuntimeProvider(env.AGENT_RUNTIME_PROVIDER),
   providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
   model: env.AGENT_RUNTIME_SUMMARY_MODEL,
+  ...resolveSummaryGatewayIdentity(env),
   promptVersion: env.AGENT_RUNTIME_SUMMARY_PROMPT_VERSION,
   evalDatasetVersion: env.SUMMARY_EVAL_DATASET_VERSION,
   timeoutMs: parsePositiveInteger(
@@ -309,6 +323,21 @@ export const resolveAgentRuntimeSummaryModelOptions = (
     env.AGENT_RUNTIME_SUMMARY_MAX_OUTPUT_TOKENS,
   ),
 });
+
+const resolveSummaryGatewayIdentity = (env: NodeJS.ProcessEnv): Partial<AgentRuntimeSummaryModelAdapterOptions> => {
+  if (env.AGENT_RUNTIME_TRANSPORT?.trim() !== "gateway-llm") return {};
+  const identity = resolveReaderSummaryGenerationIdentityFromEnv(env);
+  const purposeModel = env.AGENT_RUNTIME_SUMMARY_MODEL?.trim();
+  const route = resolveReaderSummaryDailyTaskIdentityFromEnv(env,
+    purposeModel === defaultModel ? undefined : purposeModel);
+  const reasoningEffort = resolveReaderSummaryReasoningEffortFromEnv(env) ?? "default";
+  const requestedEffort = env.AGENT_RUNTIME_SUMMARY_REASONING_EFFORT?.trim();
+  if (requestedEffort && requestedEffort !== reasoningEffort) {
+    throw new Error("Gateway summary reasoning effort conflicts with purpose policy");
+  }
+  return { agentProvider: identity.provider, model: route.model,
+    modelBackend: route.modelBackend, reasoningEffort };
+};
 
 const parseAgentRuntimeProvider = (
   value: string | undefined,

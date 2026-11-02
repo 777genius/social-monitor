@@ -123,3 +123,16 @@ supply the authenticated receipt file SHA256. Hashes bind bytes and source, not
 operator authenticity. The harness never repairs auth, resets journals, increases
 budgets or retries a failed RPC. This patch's verification uses local test clients
 and offline fixtures only; it grants no live authorization.
+
+## Gateway capture
+
+Offline preparation and the trusted live composition use the same reviewed
+`AGENT_RUNTIME_TRANSPORT=gateway-llm` environment and gateway route settings.
+The composition may supply that environment as `TrustedComposition.env`.
+Gateway requests/receipts use schema version 3 and `live_gateway` provenance;
+their canonical inputs bind profile, model, effort and the effective token
+floor. The transport must report the pinned SDK identity and each response must
+carry genuine gateway request/execution references. The harness preserves a raw
+response before validating it and stops on the first invalid identity without
+retrying. A configured gateway never falls back to CLI admission or transport.
+Existing version 2 CLI request/receipt shapes remain readable unchanged.

@@ -3,7 +3,10 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
-      "const": 2
+      "enum": [
+        2,
+        3
+      ]
     },
     "labelSealSha256": {
       "type": "string",
@@ -139,6 +142,49 @@
         "id",
         "namespaceSha256"
       ]
+    },
+    "gateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profileId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+        },
+        "modelBackend": {
+          "enum": [
+            "openai-chatgpt",
+            "kimi-code",
+            "openrouter"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reasoningEffort": {
+          "enum": [
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ]
+        },
+        "minOutputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        }
+      },
+      "required": [
+        "profileId",
+        "modelBackend",
+        "model",
+        "minOutputTokens"
+      ]
     }
   },
   "required": [
@@ -153,5 +199,28 @@
     "captureSourceRevision",
     "evaluatedSource"
   ],
-  "$schema": "http://json-schema.org/draft-07/schema#"
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": 3
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "gateway"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "gateway"
+          ]
+        }
+      }
+    }
+  ]
 }

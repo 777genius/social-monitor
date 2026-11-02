@@ -4,6 +4,7 @@ import {
   createReaderSummaryWeeklyReviewManifest,
   deriveReaderSummaryWeeklyReviewStoryCandidates,
   type ReaderSummaryWeeklyReviewManifest,
+  type ReaderSummaryWeeklyReviewExecutionAttestation,
   type ReaderSummaryWeeklyReviewSelection,
 } from "../../libs/summary/domain/value-objects/reader-summary-weekly-review-manifest";
 
@@ -40,6 +41,7 @@ export const reviewManifestFor = (
   options: Readonly<{
     selections?: readonly ReaderSummaryWeeklyReviewSelection[];
     responseSalt?: string;
+    executionAttestation?: ReaderSummaryWeeklyReviewExecutionAttestation;
   }> = {},
 ): ReaderSummaryWeeklyReviewManifest => {
   const authority = readerSummaryWeeklyReviewAuthorityFromProductionState(dbState);
@@ -58,7 +60,7 @@ export const reviewManifestFor = (
     authority,
     selections,
     modelResponseSha256,
-    executionAttestation: Object.freeze({
+    executionAttestation: options.executionAttestation ?? Object.freeze({
       schemaVersion: 1 as const,
       requestId: "reader-summary-weekly-review:fixture",
       purpose: "social_monitor.reader_summary.weekly.review.v2" as const,

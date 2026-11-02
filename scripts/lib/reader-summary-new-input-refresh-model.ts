@@ -1,3 +1,5 @@
+import { resolveGatewayLlmTransportConfig } from "@social-monitor/summary/adapters/composition/reader-summary-agent-runtime-transport";
+import { gatewayLlmCanonicalRequestSha256 } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-request-identity";
 import { sourceContentAssessmentPurpose, refreshAssessmentBudget, refreshAssessmentLimits, verifyRefreshAssessmentExecution } from "./reader-summary-new-input-refresh-assessment-runtime";
 import { activeReaderSummaryPurposes, mimoReaderSummaryBackend, mimoReaderSummaryModel, verifyAndRecordMimoDailyExecution } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
@@ -26,12 +28,17 @@ const noInvocation: AgentRuntimeClientPort = {
   checkHealth: async () => { throw new Error("Preparation cannot invoke runtime"); },
 };
 export function refreshCaptureModelControls(env: NodeJS.ProcessEnv) {
-  return { assessment: refreshAssessmentLimits, generation: [
+  const gateway = env.AGENT_RUNTIME_TRANSPORT?.trim() === "gateway-llm"
+    ? resolveGatewayLlmTransportConfig(env).route : undefined;
+  return { ...(gateway === undefined ? {} : { gateway: refreshGatewayRoute(gateway) }), assessment: refreshAssessmentLimits, generation: [
     resolveAgentRuntimeReaderSummaryModelOptions(env, noInvocation),
     resolveAgentRuntimeReaderSummaryTopicLabelerOptions(env, noInvocation),
     resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(env, noInvocation),
     resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(env, noInvocation),
   ].map(({ client, ...options }) => { void client; return options; }) };
+}
+export function refreshGatewayRoute(route: import("@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-client").GatewayLlmRoute) {
+  const { accountRefs, ...identity } = route; void accountRefs; return identity;
 }
 export function refreshGenerationSha256(env: NodeJS.ProcessEnv): string {
   return refreshHash(refreshCaptureModelControls(env));
@@ -145,9 +152,13 @@ export function guardedRefreshRuntime(input: {
     activeReaderSummaryPurposes.topicRelations, activeReaderSummaryPurposes.storyRelations,
     activeReaderSummaryPurposes.relatedTopicRelations, sourceContentAssessmentPurpose];
   const expectedReasoningEffort = (purpose: string) =>
-    purpose === sourceContentAssessmentPurpose ? "low" : "high";
+    input.manifest.gateway ? (input.manifest.gateway.reasoningEffort ?? "default") :
+      purpose === sourceContentAssessmentPurpose ? "low" : "high";
   const admittedModel = (command: AgentRuntimeTaskCommand): boolean =>
-    command.purpose !== sourceContentAssessmentPurpose &&
+    input.manifest.gateway !== undefined
+      ? command.controls.model === input.manifest.gateway.model &&
+        (command.controls.modelBackend ?? "openai-chatgpt") === input.manifest.gateway.modelBackend
+      : command.purpose !== sourceContentAssessmentPurpose &&
       command.controls.modelBackend === mimoReaderSummaryBackend
       ? command.controls.model === mimoReaderSummaryModel
       : command.controls.model === "gpt-5.6-sol" &&
@@ -179,7 +190,7 @@ export function guardedRefreshRuntime(input: {
         if (purposes.includes(command.purpose) && command.metadata?.attempt !== "repair" &&
             command.tenantId === input.manifest.tenantId && command.workspaceId === input.manifest.workspaceId &&
             command.provider === "codex" && admittedModel(command) &&
-            command.controls.reasoningEffort === expectedReasoningEffort(command.purpose)) {
+            (command.controls.reasoningEffort ?? "default") === expectedReasoningEffort(command.purpose)) {
           capture({ kind: "invocation_rejected", command, delegated: false,
             reason: ambiguous ? "authority_rejected" : concurrencyFull ? "in_flight" :
               seen.has(command.requestId) ? "duplicate_request" : "generation_already_consumed" });
@@ -189,7 +200,7 @@ export function guardedRefreshRuntime(input: {
       if (!purposes.includes(command.purpose) || command.metadata?.attempt === "repair" ||
           command.tenantId !== input.manifest.tenantId || command.workspaceId !== input.manifest.workspaceId ||
           command.provider !== "codex" || !admittedModel(command) ||
-          command.controls.reasoningEffort !== expectedReasoningEffort(command.purpose)) {
+          (command.controls.reasoningEffort ?? "default") !== expectedReasoningEffort(command.purpose)) {
         ambiguous = true;
         throw new Error("Refresh invocation budget or model authority rejected");
       }
@@ -234,6 +245,10 @@ export function guardedRefreshRuntime(input: {
       };
       const verifyIdentity = (result: AgentRuntimeTaskResult) => {
         const attestation = result.executionAttestation!;
+        if (input.manifest.gateway && (attestation.runtimeEngine !== "gateway-llm" ||
+          attestation.gateway.profileId !== input.manifest.gateway.profileId)) {
+          throw new Error("Refresh gateway profile differs from reviewed authority");
+        }
         if (attestation.canonicalRequestSha256 !== canonicalRequestSha256) {
           throw new Error("Refresh execution attestation does not bind the invoked request");
         }
@@ -254,7 +269,9 @@ export function guardedRefreshRuntime(input: {
         // contract for profile defaults/controls. Hash before any awaited work;
         // the journal's refreshHash(command) is not the canonical runtime request.
         preDelegationFailureStage = "request_admission";
-        canonicalRequestSha256 = canonicalJsonSha256(admitSubscriptionRuntimeRequest({
+        canonicalRequestSha256 = input.manifest.gateway
+          ? gatewayLlmCanonicalRequestSha256(command, input.manifest.gateway)
+          : canonicalJsonSha256(admitSubscriptionRuntimeRequest({
           ...command,
           providerInstanceId: command.providerInstanceId?.trim() || undefined,
           cwd: command.cwd?.trim() || undefined,
