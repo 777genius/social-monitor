@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ReaderSummaryPublicationCommand } from "../../../ports";
-import { readerSummaryWorkspaceManifestSha256,
+import { READER_PROMOTION_POLICY_V1, readerSummaryWorkspaceManifestSha256,
   type ReaderSummaryWorkspacePreparationManifest } from "../../../domain";
 import { canonicalPromotionPayload, promotionPayloadDigest } from
   "../../../domain/services/reader-post-promotion-attestation";
@@ -180,6 +180,7 @@ const promoted = () => {
     trustedIntent: "first query", sourceSnapshotSha256: candidate.sourceSnapshotSha256,
     title: source.title, body: source.body, captureComplete: true });
   const attestation = { schemaVersion: "reader_post_promotion_attestation.v3",
+    policyVersion: READER_PROMOTION_POLICY_V1,
     candidateId: candidate.candidateId, exactIngestionCutoff: cutoff,
     ingestionCutoff: new Date(cutoff), publishedAt: candidate.publishedAt,
     assessment: { assessmentId: candidate.assessmentId, assessedAt,
