@@ -233,7 +233,7 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     const ids = [4, 5, 6, 7].map((n) => `00000000-0000-4000-8000-00000000001${n}`);
     const inputs = ids.map((candidateId) => ({ ...fixtureInput(), candidateId }));
     const proposal = (candidateId: string, text = "Useful database method") => ({ candidateId, status: "available",
-      kind: "claim", text, support: [{ field: "bodyPreview", start: 0, end: 7, quote: "Useful " }],
+      kind: "claim", text, support: [{ field: "bodyPreview", start: 0, end: 19, quote: "Useful body source." }],
       qualifications: [], confidence: 0.9, qualificationJudgment: "none" });
     const client = new PresentationRuntimeClient();
     jest.spyOn(client, "runTask").mockResolvedValueOnce({ status: "completed", warnings: [], structuredOutput: {
@@ -670,7 +670,7 @@ class PresentationRuntimeClient implements AgentRuntimeClientPort {
         status: "available",
         kind: "claim",
         text: "Useful database method",
-        support: [{ field: "bodyPreview", start: 0, end: 7, quote: "Useful " }],
+        support: [{ field: "bodyPreview", start: 0, end: 19, quote: "Useful body source." }],
         qualifications: [],
         confidence: 0.9,
         qualificationJudgment: "none",

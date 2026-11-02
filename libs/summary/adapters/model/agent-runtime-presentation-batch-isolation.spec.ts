@@ -24,8 +24,8 @@ const wire = () => ({ contractVersion: "mimo_qualified_headline.v1", presentatio
     qualifications: [], confidence: 0.9 })) });
 const canonicalWire = () => ({ presentations: candidates.map((candidate) => ({
       candidateId: candidate.candidateId, status: "available", kind: "claim",
-      text: "Useful database method", support: [{ field: "bodyPreview", start: 0,
-        end: 7, quote: "Useful " }], qualifications: [], confidence: 0.9,
+      text: "Useful database method", support: [readerPostPresentationReferenceCatalog(candidate)
+        .find(r => r.field === "bodyPreview")!], qualifications: [], confidence: 0.9,
       qualificationJudgment: "none",
     })) });
 const clientFor = (output: Record<string, unknown>): AgentRuntimeClientPort => ({
@@ -69,12 +69,12 @@ describe("strict independent presentation outcomes", () => {
 
   it("retains the exact failed grounding predicate on the Codex canonical path", async () => {
     const output = canonicalWire();
-    output.presentations[1]!.support[0]!.quote = "Useful";
+    output.presentations[1]!.support = [{ ...output.presentations[1]!.support[0]!, quote: "Useful" }];
     const results = await new AgentRuntimePromotionPresentationV3Builder({
       client: clientFor(output), model: "gpt-6.1-sol", reasoningEffort: "low" }).build(inputs);
     expect(results.map(r => r.status)).toEqual(["available", "unavailable", "available", "available"]);
     expect(results[1]).toEqual({ status: "unavailable", reason: "invalid_presentation",
-      validation: { stage: "headline_seal", code: "source_reference" } });
+      validation: { stage: "proposal_contract", code: "source_reference" } });
   });
 
   it.each(["qualification_judgment", "display_text", "confidence"] as const)(

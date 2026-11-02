@@ -1,7 +1,8 @@
 import type { ReaderDisplayHeadline } from "../../domain";
-import { readerPostPresentationCandidates,
+import { readerPostPresentationV3OutputSchema as baseSchema, readerPostPresentationCandidates,
   type ReaderPostPresentationCandidate } from "../../domain/services/reader-post-presentation-v3-proposal";
-import { readerPostPresentationReferenceCatalog, readerPostPresentationCatalogOutputSchema } from "../../domain/services/reader-post-presentation-reference-catalog";
+import { readerPostPresentationReferenceCatalog, readerPostPresentationCatalogReferenceFailure,
+  type ReaderPostPresentationCatalogReferences } from "../../domain/services/reader-post-presentation-reference-catalog";
 import { readerPostCanonicalPresentationInstructions } from "./reader-post-canonical-presentation-instructions";
 import { mimoQualifiedHeadlineOutputSchema } from "../../domain/services/mimo-qualified-headline-codec";
 import { decodeReaderPostPresentationBatch } from "../../domain/services/reader-post-presentation-batch-decode";
@@ -126,8 +127,9 @@ implements PromotionPresentationBuilder {
     })) });
     const catalogCandidates = readerPostPresentationCandidates(prompt);
     const sourceCopyWire = usesSourceCopyOptions(this.modelBackend);
-    const schema = sourceCopyWire ? mimoQualifiedHeadlineOutputSchema(catalogCandidates)
-      : readerPostPresentationCatalogOutputSchema(catalogCandidates);
+    // Keep Codex's provider-qualified wire schema; narrow copied references per
+    // item below, so one invalid sibling does not discard valid presentations.
+    const schema = sourceCopyWire ? mimoQualifiedHeadlineOutputSchema(catalogCandidates) : baseSchema;
     const systemPrompt = sourceCopyWire ? mimoPresentationInstructions(catalogCandidates)
       : readerPostCanonicalPresentationInstructions(catalogCandidates);
     const requestDigest = promotionPayloadDigest(canonicalPromotionPayload({
@@ -221,11 +223,16 @@ implements PromotionPresentationBuilder {
         [[row.candidateId, row.proposal] as const]));
     const failures = new Map(decoded?.flatMap((row) => row.failure === undefined ? [] :
       [[row.candidateId, row.failure] as const]));
-    return inputs.map((input) => {
+    return inputs.map((input, index) => {
       const proposal = proposals.get(input.candidateId);
       if (proposal === undefined) return withCleanup({ status: "unavailable", reason: "invalid_presentation",
         validation: { stage: decoded === undefined ? "proposal_contract" : "source_copy_decode",
           code: failures.get(input.candidateId)?.code ?? "proposal_missing_or_invalid" } });
+      // contractProposals already checked the canonical reference-array shape.
+      const catalogFailure = sourceCopyWire ? null : readerPostPresentationCatalogReferenceFailure(
+        proposal as unknown as ReaderPostPresentationCatalogReferences, catalogCandidates[index]!);
+      if (catalogFailure !== null) return withCleanup({ status: "unavailable", reason: "invalid_presentation",
+        validation: { stage: "proposal_contract", code: catalogFailure } });
       if (proposal.status === "unavailable") {
         return withCleanup({ status: "unavailable", reason: "insufficient_support" });
       }
