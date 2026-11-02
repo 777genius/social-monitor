@@ -1,37 +1,19 @@
-import { InMemoryReaderSummaryReadyProjectionStore } from '../../adapters/persistence/in-memory-reader-summary-ready-projection.store';
-import { InMemorySummaryReadyProjectionStore } from '../../adapters/persistence/in-memory-summary-ready-projection.store';
-import { PrismaReaderSummaryReadyProjectionStore } from '../../adapters/persistence/prisma/prisma-reader-summary-ready-projection.store';
-import { PrismaSummaryReadyProjectionStore } from '../../adapters/persistence/prisma/prisma-summary-ready-projection.store';
 import { ProjectReaderSummaryReadyEventUseCase } from '../../features/project-reader-summary-ready-event/project-reader-summary-ready-event.use-case';
 import { Module } from '@nestjs/common';
 import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
-import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
-
 import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in-memory-delivery-attempt.repository';
 import { InMemoryDigestScheduleRepository } from '../../adapters/persistence/in-memory-digest-schedule.repository';
 import { InMemoryDigestRepository } from '../../adapters/persistence/in-memory-digest.repository';
 import { InMemoryRealtimeEventRepository } from '../../adapters/persistence/in-memory-realtime-event.repository';
 import { InMemoryWebhookEndpointRepository } from '../../adapters/persistence/in-memory-webhook-endpoint.repository';
-import { PrismaDeliveryAttemptRepository } from '../../adapters/persistence/prisma/prisma-delivery-attempt.repository';
 import type { PrismaDeliveryClient } from '../../adapters/persistence/prisma/prisma-delivery-client';
 import { PrismaDeliveryConnection } from '../../adapters/persistence/prisma/prisma-delivery-connection';
-import { PrismaDigestScheduleRepository } from '../../adapters/persistence/prisma/prisma-digest-schedule.repository';
-import { PrismaDigestRepository } from '../../adapters/persistence/prisma/prisma-digest.repository';
-import { PrismaRealtimeEventRepository } from '../../adapters/persistence/prisma/prisma-realtime-event.repository';
-import { PrismaWebhookEndpointRepository } from '../../adapters/persistence/prisma/prisma-webhook-endpoint.repository';
 import { InMemoryNotificationPreferenceReader } from '../../adapters/preferences/in-memory-notification-preference.reader';
-import { PrismaNotificationPreferenceReader } from '../../adapters/preferences/prisma/prisma-notification-preference.reader';
 import { InMemoryWebhookReplayStore } from '../../adapters/replay/in-memory-webhook-replay.store';
-import { PrismaWebhookReplayStore } from '../../adapters/replay/prisma/prisma-webhook-replay.store';
 import { InMemoryWebhookSecretVault } from '../../adapters/secrets/in-memory-webhook-secret.vault';
-import {
-  PrismaWebhookSecretVault,
-  resolveWebhookSecretEncryptionKey,
-} from '../../adapters/secrets/prisma/prisma-webhook-secret.vault';
 import { InMemoryDigestSourceReader } from '../../adapters/source/in-memory-digest-source.reader';
-import { PrismaDigestSourceReader } from '../../adapters/source/prisma/prisma-digest-source.reader';
 import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
 import { AssembleDigestUseCase } from '../../features/assemble-digest/assemble-digest.use-case';
 import { CreateDigestScheduleUseCase } from '../../features/create-digest-schedule/create-digest-schedule.use-case';
@@ -53,53 +35,20 @@ import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt
 import { SetNotificationPreferenceUseCase } from '../../features/set-notification-preference/set-notification-preference.use-case';
 import { UpdateWorkspaceDigestPreferenceUseCase } from '../../features/update-workspace-digest-preference/update-workspace-digest-preference.use-case';
 import { UpdateWorkspaceTelemetryConsentUseCase } from '../../features/update-workspace-telemetry-consent/update-workspace-telemetry-consent.use-case';
-import type { DeliveryChannel } from '../../domain';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
 import { DELIVERY_ATTEMPT_WORKFLOW, deliveryWorkflowProviders } from './delivery-workflow.providers';
-import {
-  createDeliveryWebhookProviders,
-  deliveryWebhookExports,
-} from './delivery-webhook.providers';
+import { createDeliveryWebhookProviders, deliveryWebhookExports } from './delivery-webhook.providers';
 import { DeliveryReadAuthorizer } from './delivery-read.authorizer';
 import { DigestSchedulesController } from './digest-schedules.controller';
-import {
-  DELIVERY_ATTEMPT_REPOSITORY,
-  DELIVERY_DIGEST_REPOSITORY,
-  DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
-  DELIVERY_DIGEST_SOURCE_READER,
-  DELIVERY_ENABLED_CHANNELS,
-  DELIVERY_NOTIFICATION_PREFERENCE_MANAGER,
-  DELIVERY_NOTIFICATION_PREFERENCE_READER,
-  DELIVERY_PERSISTENCE_MODE,
-  DELIVERY_PRISMA_CLIENT,
-  DELIVERY_REALTIME_EVENT_REPOSITORY,
-  DELIVERY_REALTIME_FANOUT,
-  DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
-  DELIVERY_WEBHOOK_REPLAY_STORE,
-  DELIVERY_WEBHOOK_SECRET_VAULT,
-  resolveDeliveryEnabledChannels,
-  resolveDeliveryPersistenceMode,
-  type DeliveryPersistenceMode,
-} from './delivery-provider-tokens';
+import { DELIVERY_ATTEMPT_REPOSITORY, DELIVERY_DIGEST_REPOSITORY, DELIVERY_DIGEST_SCHEDULE_REPOSITORY, DELIVERY_DIGEST_SOURCE_READER, DELIVERY_ENABLED_CHANNELS, DELIVERY_NOTIFICATION_PREFERENCE_MANAGER, DELIVERY_NOTIFICATION_PREFERENCE_READER, DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, DELIVERY_REALTIME_EVENT_REPOSITORY, DELIVERY_REALTIME_FANOUT, DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_REPLAY_STORE, DELIVERY_WEBHOOK_SECRET_VAULT, resolveDeliveryEnabledChannels, resolveDeliveryPersistenceMode, type DeliveryPersistenceMode } from './delivery-provider-tokens';
 import { DigestsController } from './digests.controller';
 import { NotificationPreferencesController } from './notification-preferences.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
 import { WorkspaceSettingsController } from './workspace-settings.controller';
 import { WebhookEndpointsController } from './webhook-endpoints.controller';
 import { RealtimeEventsGateway } from '../ws/realtime-events.gateway';
-import type {
-  DeliveryAttemptRepositoryPort,
-  DigestRepositoryPort,
-  DigestScheduleRepositoryPort,
-  DigestSourceReaderPort,
-  NotificationPreferenceManagementPort,
-  NotificationPreferenceReaderPort,
-  RealtimeFanoutPort,
-  RealtimeEventRepositoryPort,
-  WebhookEndpointRepositoryPort,
-  WebhookReplayStorePort,
-  WebhookSecretVaultPort,
-} from '../../ports';
+import { deliveryStorageProviders } from './delivery-storage.providers';
+import { deliveryApplicationProviders } from './delivery-application.providers';
 
 export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
 
@@ -152,285 +101,8 @@ export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
       provide: DELIVERY_REALTIME_FANOUT,
       useExisting: RealtimeEventsGateway,
     },
-    {
-      provide: DELIVERY_ATTEMPT_REPOSITORY,
-      useFactory: (
-        mode: DeliveryPersistenceMode,
-        prisma: PrismaDeliveryClient | null,
-        inMemoryAttempts: InMemoryDeliveryAttemptRepository,
-      ): DeliveryAttemptRepositoryPort =>
-        mode === 'prisma'
-          ? new PrismaDeliveryAttemptRepository(requirePrismaDeliveryClient(prisma))
-          : inMemoryAttempts,
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryDeliveryAttemptRepository],
-    },
-    {
-      provide: DELIVERY_DIGEST_REPOSITORY,
-      useFactory: (
-        mode: DeliveryPersistenceMode,
-        prisma: PrismaDeliveryClient | null,
-        inMemoryDigests: InMemoryDigestRepository,
-      ): DigestRepositoryPort =>
-        mode === 'prisma'
-          ? new PrismaDigestRepository(requirePrismaDeliveryClient(prisma))
-          : inMemoryDigests,
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryDigestRepository],
-    },
-    {
-      provide: DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
-      useFactory: (
-        mode: DeliveryPersistenceMode,
-        prisma: PrismaDeliveryClient | null,
-        inMemorySchedules: InMemoryDigestScheduleRepository,
-      ): DigestScheduleRepositoryPort =>
-        mode === 'prisma'
-          ? new PrismaDigestScheduleRepository(requirePrismaDeliveryClient(prisma))
-          : inMemorySchedules,
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryDigestScheduleRepository],
-    },
-    {
-      provide: DELIVERY_DIGEST_SOURCE_READER,
-      useFactory: (
-        mode: DeliveryPersistenceMode,
-        prisma: PrismaDeliveryClient | null,
-        inMemorySources: InMemoryDigestSourceReader,
-      ): DigestSourceReaderPort =>
-        mode === 'prisma'
-          ? new PrismaDigestSourceReader(requirePrismaDeliveryClient(prisma))
-          : inMemorySources,
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryDigestSourceReader],
-    },
-    {
-      provide: DELIVERY_REALTIME_EVENT_REPOSITORY,
-      useFactory: (
-        mode: DeliveryPersistenceMode,
-        prisma: PrismaDeliveryClient | null,
-        inMemoryEvents: InMemoryRealtimeEventRepository,
-      ): RealtimeEventRepositoryPort =>
-        mode === 'prisma'
-          ? new PrismaRealtimeEventRepository(requirePrismaDeliveryClient(prisma))
-          : inMemoryEvents,
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryRealtimeEventRepository],
-    },
-    {
-      provide: DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
-      useFactory: (
-        mode: DeliveryPersistenceMode,
-        prisma: PrismaDeliveryClient | null,
-        inMemoryEndpoints: InMemoryWebhookEndpointRepository,
-      ): WebhookEndpointRepositoryPort =>
-        mode === 'prisma'
-          ? new PrismaWebhookEndpointRepository(requirePrismaDeliveryClient(prisma))
-          : inMemoryEndpoints,
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryWebhookEndpointRepository],
-    },
-    {
-      provide: DELIVERY_WEBHOOK_SECRET_VAULT,
-      useFactory: (
-        mode: DeliveryPersistenceMode,
-        prisma: PrismaDeliveryClient | null,
-        inMemorySecrets: InMemoryWebhookSecretVault,
-      ): WebhookSecretVaultPort =>
-        mode === 'prisma'
-          ? new PrismaWebhookSecretVault(
-            requirePrismaDeliveryClient(prisma),
-            resolveWebhookSecretEncryptionKey(process.env),
-          )
-          : inMemorySecrets,
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryWebhookSecretVault],
-    },
-    {
-      provide: DELIVERY_WEBHOOK_REPLAY_STORE,
-      useFactory: (
-        mode: DeliveryPersistenceMode,
-        prisma: PrismaDeliveryClient | null,
-        inMemoryReplayStore: InMemoryWebhookReplayStore,
-      ): WebhookReplayStorePort =>
-        mode === 'prisma'
-          ? new PrismaWebhookReplayStore(requirePrismaDeliveryClient(prisma))
-          : inMemoryReplayStore,
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryWebhookReplayStore],
-    },
-    {
-      provide: DELIVERY_NOTIFICATION_PREFERENCE_READER,
-      useFactory: (
-        mode: DeliveryPersistenceMode,
-        prisma: PrismaDeliveryClient | null,
-        inMemoryPreferences: InMemoryNotificationPreferenceReader,
-      ): NotificationPreferenceReaderPort & NotificationPreferenceManagementPort =>
-        mode === 'prisma'
-          ? new PrismaNotificationPreferenceReader(requirePrismaDeliveryClient(prisma))
-          : inMemoryPreferences,
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryNotificationPreferenceReader],
-    },
-    {
-      provide: DELIVERY_NOTIFICATION_PREFERENCE_MANAGER,
-      useExisting: DELIVERY_NOTIFICATION_PREFERENCE_READER,
-    },
-    {
-      provide: QueueDeliveryAttemptUseCase,
-      useFactory: (attempts: DeliveryAttemptRepositoryPort) =>
-        new QueueDeliveryAttemptUseCase(attempts, new CryptoIdGenerator(), new SystemClock()),
-      inject: [DELIVERY_ATTEMPT_REPOSITORY],
-    },
-    {
-      provide: GetDeliveryAttemptUseCase,
-      useFactory: (attempts: DeliveryAttemptRepositoryPort) => new GetDeliveryAttemptUseCase(attempts),
-      inject: [DELIVERY_ATTEMPT_REPOSITORY],
-    },
-    {
-      provide: ListDeliveryAttemptsUseCase,
-      useFactory: (attempts: DeliveryAttemptRepositoryPort) => new ListDeliveryAttemptsUseCase(attempts),
-      inject: [DELIVERY_ATTEMPT_REPOSITORY],
-    },
-    {
-      provide: AssembleDigestUseCase,
-      useFactory: (
-        digests: DigestRepositoryPort,
-        sources: DigestSourceReaderPort,
-        queueDeliveryAttempt: QueueDeliveryAttemptUseCase,
-      ) =>
-        new AssembleDigestUseCase(
-          digests,
-          sources,
-          queueDeliveryAttempt,
-          new CryptoIdGenerator(),
-          new SystemClock(),
-        ),
-      inject: [DELIVERY_DIGEST_REPOSITORY, DELIVERY_DIGEST_SOURCE_READER, QueueDeliveryAttemptUseCase],
-    },
-    {
-      provide: GetDigestUseCase,
-      useFactory: (digests: DigestRepositoryPort) => new GetDigestUseCase(digests),
-      inject: [DELIVERY_DIGEST_REPOSITORY],
-    },
-    {
-      provide: CreateDigestScheduleUseCase,
-      useFactory: (
-        schedules: DigestScheduleRepositoryPort,
-        enabledChannels: readonly DeliveryChannel[],
-      ) =>
-        new CreateDigestScheduleUseCase(
-          schedules,
-          new CryptoIdGenerator(),
-          new SystemClock(),
-          enabledChannels,
-        ),
-      inject: [DELIVERY_DIGEST_SCHEDULE_REPOSITORY, DELIVERY_ENABLED_CHANNELS],
-    },
-    {
-      provide: GetDigestScheduleUseCase,
-      useFactory: (schedules: DigestScheduleRepositoryPort) => new GetDigestScheduleUseCase(schedules),
-      inject: [DELIVERY_DIGEST_SCHEDULE_REPOSITORY],
-    },
-    {
-      provide: ListDigestSchedulesUseCase,
-      useFactory: (schedules: DigestScheduleRepositoryPort) => new ListDigestSchedulesUseCase(schedules),
-      inject: [DELIVERY_DIGEST_SCHEDULE_REPOSITORY],
-    },
-    {
-      provide: SetNotificationPreferenceUseCase,
-      useFactory: (
-        preferences: NotificationPreferenceManagementPort,
-        enabledChannels: readonly DeliveryChannel[],
-      ) => new SetNotificationPreferenceUseCase(preferences, enabledChannels),
-      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER, DELIVERY_ENABLED_CHANNELS],
-    },
-    {
-      provide: GetNotificationPreferenceUseCase,
-      useFactory: (preferences: NotificationPreferenceManagementPort) =>
-        new GetNotificationPreferenceUseCase(preferences),
-      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
-    },
-    {
-      provide: GetWorkspaceSettingsUseCase,
-      useFactory: (preferences: NotificationPreferenceManagementPort) =>
-        new GetWorkspaceSettingsUseCase(preferences),
-      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
-    },
-    {
-      provide: UpdateWorkspaceDigestPreferenceUseCase,
-      useFactory: (preferences: NotificationPreferenceManagementPort) =>
-        new UpdateWorkspaceDigestPreferenceUseCase(preferences),
-      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
-    },
-    {
-      provide: UpdateWorkspaceTelemetryConsentUseCase,
-      useFactory: (preferences: NotificationPreferenceManagementPort) =>
-        new UpdateWorkspaceTelemetryConsentUseCase(preferences),
-      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
-    },
-    {
-      provide: ApplyDeliverySuppressionUseCase,
-      useFactory: (attempts: DeliveryAttemptRepositoryPort) =>
-        new ApplyDeliverySuppressionUseCase(attempts, new SystemClock()),
-      inject: [DELIVERY_ATTEMPT_REPOSITORY],
-    },
-    {
-      provide: RecordDeliveryAttemptStateUseCase,
-      useFactory: (attempts: DeliveryAttemptRepositoryPort) =>
-        new RecordDeliveryAttemptStateUseCase(attempts, new SystemClock()),
-      inject: [DELIVERY_ATTEMPT_REPOSITORY],
-    },
-    {
-      provide: RetryDeliveryAttemptUseCase,
-      useFactory: (
-        attempts: DeliveryAttemptRepositoryPort,
-        sendDeliveryAttempt: SendDeliveryAttemptUseCase,
-      ) => new RetryDeliveryAttemptUseCase(attempts, sendDeliveryAttempt),
-      inject: [DELIVERY_ATTEMPT_REPOSITORY, SendDeliveryAttemptUseCase],
-    },
-    {
-      provide: ScheduleDueDigestsUseCase,
-      useFactory: (
-        schedules: DigestScheduleRepositoryPort,
-        assembleDigest: AssembleDigestUseCase,
-      ) => new ScheduleDueDigestsUseCase(schedules, assembleDigest, new SystemClock()),
-      inject: [DELIVERY_DIGEST_SCHEDULE_REPOSITORY, AssembleDigestUseCase],
-    },
-    {
-      provide: RecordRealtimeEventUseCase,
-      useFactory: (events: RealtimeEventRepositoryPort, fanout: RealtimeFanoutPort) =>
-        new RecordRealtimeEventUseCase(events, new CryptoIdGenerator(), new SystemClock(), fanout),
-      inject: [DELIVERY_REALTIME_EVENT_REPOSITORY, DELIVERY_REALTIME_FANOUT],
-    },
-    {
-      provide: ListRealtimeEventsUseCase,
-      useFactory: (events: RealtimeEventRepositoryPort) => new ListRealtimeEventsUseCase(events),
-      inject: [DELIVERY_REALTIME_EVENT_REPOSITORY],
-    },
-    {
-      provide: ProjectReaderSummaryReadyEventUseCase,
-      useFactory: (
-        mode: DeliveryPersistenceMode,
-        prisma: PrismaDeliveryConnection | null,
-        events: RealtimeEventRepositoryPort,
-      ) => {
-        const ids = new CryptoIdGenerator();
-        if (mode === 'prisma') {
-          if (prisma === null) throw new Error('Reader summary projection requires Prisma');
-          return new ProjectReaderSummaryReadyEventUseCase(new PrismaReaderSummaryReadyProjectionStore(prisma, ids));
-        }
-        return new ProjectReaderSummaryReadyEventUseCase(new InMemoryReaderSummaryReadyProjectionStore(events, ids));
-      },
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, DELIVERY_REALTIME_EVENT_REPOSITORY],
-    },
-    {
-      provide: ProjectSummaryReadyEventUseCase,
-      useFactory: (
-        mode: DeliveryPersistenceMode,
-        prisma: PrismaDeliveryConnection | null,
-        events: RealtimeEventRepositoryPort,
-        fanout: RealtimeFanoutPort,
-      ) => {
-        if (mode === 'prisma') {
-          if (prisma === null) throw new Error('Summary ready projection requires Prisma');
-          return new ProjectSummaryReadyEventUseCase(new PrismaSummaryReadyProjectionStore(prisma), fanout);
-        }
-        return new ProjectSummaryReadyEventUseCase(new InMemorySummaryReadyProjectionStore(events), fanout);
-      },
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, DELIVERY_REALTIME_EVENT_REPOSITORY, DELIVERY_REALTIME_FANOUT],
-    },
+    ...deliveryStorageProviders,
+    ...deliveryApplicationProviders,
   ],
   exports: [
     ProjectReaderSummaryReadyEventUseCase,
@@ -481,11 +153,3 @@ export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
   ],
 })
 export class DeliveryRestModule {}
-
-const requirePrismaDeliveryClient = (client: PrismaDeliveryClient | null): PrismaDeliveryClient => {
-  if (client === null) {
-    throw new Error('Prisma delivery client is required when DELIVERY_PERSISTENCE=prisma');
-  }
-
-  return client;
-};
