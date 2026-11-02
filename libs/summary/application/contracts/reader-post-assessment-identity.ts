@@ -15,6 +15,9 @@ export type ReaderPostAssessmentIdentity = {
   readonly interestSha256: string; readonly rubricVersion: string;
   readonly rubricSha256: string; readonly inputBuilderVersion: string;
   readonly modelConfigVersion: string; readonly requestSha256: string;
+  readonly quotedContext?: "not_captured";
+  /** Set only after validating the retained quoted-post contract for this current input. */
+  readonly quotedContextCaptured?: true;
   matchesInputSha256(value: string): boolean;
 };
 

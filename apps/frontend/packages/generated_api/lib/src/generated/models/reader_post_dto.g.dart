@@ -20,6 +20,7 @@ ReaderPostDto _$ReaderPostDtoFromJson(Map<String, dynamic> json) =>
       sourceItemId: json['sourceItemId'] as String,
       title: json['title'] as String,
       usefulness: json['usefulness'] as String?,
+      likeCount: json['likeCount'] as num?,
       quotedContext: json['quotedContext'] as String?,
     );
 
@@ -30,6 +31,7 @@ Map<String, dynamic> _$ReaderPostDtoToJson(ReaderPostDto instance) =>
       'engagement': instance.engagement,
       'engagementObservedAt': instance.engagementObservedAt,
       'id': instance.id,
+      'likeCount': instance.likeCount,
       'providerFamily': instance.providerFamily,
       'providerKey': instance.providerKey,
       'publishedAt': instance.publishedAt,

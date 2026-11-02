@@ -1,6 +1,37 @@
 import { feedProviderMetricsFromMetadata } from "@social-monitor/feed/domain";
-import type { JsonObject } from "@social-monitor/shared-kernel";
+import { buildSourceEngagementMetrics } from "@social-monitor/ingestion/domain";
+import type { JsonObject, JsonValue } from "@social-monitor/shared-kernel";
 import { readerPostPromotionEngagementFact } from "./reader-post-promotion-engagement-facts";
+import { readerPromotionSourceForProviderKey } from "../../domain/policies/reader-promotion-source-registry";
+
+/** Manual Likes display/order uses genuine X likes, independently of weighted engagement. */
+export function readerBrowseSourceLikeCount(params: {
+  providerKey: string; providerMetadata?: JsonObject;
+}): number | null | undefined {
+  if (readerPromotionSourceForProviderKey(params.providerKey)?.family !== "x") return undefined;
+  const result = buildSourceEngagementMetrics({ providerKey: "x-twitter", metadata: xLikeAliases(params.providerMetadata) });
+  return result.qualityFlags.invalidMetricValue || result.qualityFlags.conflictingAliases
+    ? null : result.metrics?.likes ?? null;
+}
+
+/** Project only the documented native X like aliases; the shared parser still owns all validation. */
+const xLikeAliases = (metadata: JsonObject = {}): JsonObject => {
+  const projected: Record<string, JsonValue> = {};
+  for (const key of ["kind", "likes"]) if (Object.hasOwn(metadata, key)) projected[key] = metadata[key]!;
+  for (const [container, aliases] of [
+    ["publicMetrics", ["like_count", "likeCount"]],
+    ["public_metrics", ["like_count"]],
+    ["metrics", ["likes"]],
+  ] as const) {
+    const values = metadata[container];
+    if (values !== null && typeof values === "object" && !Array.isArray(values)) {
+      const object = values as JsonObject;
+      projected[container] = Object.fromEntries(aliases.filter(key => Object.hasOwn(object, key))
+        .map(key => [key, object[key]!]));
+    }
+  }
+  return projected;
+};
 
 /** Native counts may exist without a timestamp, but missing counts stay unknown. */
 export function readerBrowseSourceEngagement(params: {

@@ -7,6 +7,8 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Mapping
 
 from .canonical_search_invocation import CanonicalInvocation
+from .quoted_post import quoted_post_from_scweet_record
+from .post_lookup import execute_post_lookup
 from .canonical_search_services import CanonicalSearchServices, CanonicalSearchObserver
 from .account_pool import AccountLimitOverride, AccountPoolLimits
 from .account_limit_profiles import AccountLimitProfile, load_account_limit_profiles
@@ -142,6 +144,13 @@ def runtime_limits_from_account_pool(
 
 
 class ScweetDailySearchCollector(DailySearchCollectorPort):
+    def lookup_posts(self, request):
+        return execute_post_lookup(request, clock=self._clock, ledger=self._account_pool_ledger,
+            prepare_accounts=self._prepare_account_pool, observer=self._account_usage_observer,
+            start_execution=self._post_lookup_factory, normalize_record=post_from_scweet_record,
+            classify_error=lambda exc: classify_scweet_error(exc, clock=self._clock,
+                scweet_db_path=self._scweet_db_path), db_path=self._scweet_db_path)
+
     def __init__(
         self,
         scweet_factory: ScweetFactory,
@@ -153,8 +162,10 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
         account_usage_observer: AccountUsageObserverPort | None = None,
         candidate_rejection_repository: CandidateRejectionRepositoryPort | None = None,
         candidate_rejection_policy: CandidateRejectionPolicy | None = None,
+        post_lookup_factory: ScweetFactory | None = None,
     ) -> None:
         self._scweet_factory = scweet_factory
+        self._post_lookup_factory = post_lookup_factory or scweet_factory
         self._clock = clock or SystemClock()
         self._scweet_db_path = scweet_db_path
         self._account_pool_ledger = account_pool_ledger
@@ -208,7 +219,7 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
 
         reconcile_runs()
 
-        def create_scweet() -> Any:
+        def create_scweet(*, strict_lookup: bool = False) -> Any:
             from Scweet import Scweet, ScweetConfig
 
             reconcile_runs()
@@ -221,6 +232,7 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 n_splits=settings.scweet_n_splits,
                 api_page_size=settings.scweet_api_page_size,
                 max_empty_pages=settings.scweet_max_empty_pages,
+                request_404_retries=0 if strict_lookup else 1,
             )
             return Scweet(
                 cookies_file=settings.scweet_cookies_file,
@@ -274,6 +286,7 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
             candidate_rejection_repository=SqliteCandidateRejectionRepository(
                 settings.scweet_db_path,
             ),
+            post_lookup_factory=lambda: create_scweet(strict_lookup=True),
         )
 
     def collect_daily_search(
@@ -537,6 +550,8 @@ def post_from_scweet_record(
         source_product=product,
         trend_score=trend_score(metrics),
         content_kind=content_kind_from_scweet_record(record),
+        quoted_post=quoted_post_from_scweet_record(record)
+        if content_kind_from_scweet_record(record) is XPostContentKind.QUOTE else None,
     )
 
 
@@ -597,6 +612,8 @@ def content_kind_from_scweet_record(record: Mapping[str, Any]) -> XPostContentKi
     if explicit == "reply":
         return XPostContentKind.REPLY
     if explicit == "quote":
+        return XPostContentKind.QUOTE
+    if record.get("is_quote") is True or isinstance(record.get("quoted_tweet"), Mapping):
         return XPostContentKind.QUOTE
     if explicit is not None:
         return XPostContentKind.UNKNOWN

@@ -15,10 +15,14 @@ ReaderPostsPage readerPostsPageFromRest(generated.ReaderPostsPageDto dto) =>
 
 TopRead readerPostFromRest(generated.ReaderPostDto dto) {
   final judgment = dto.relevance == null || dto.usefulness == null
-      ? 'Not assessed'
-      : '${_assessmentLabel(dto.relevance!)} · ${_assessmentLabel(dto.usefulness!)}';
+      ? 'No AI assessment'
+      : dto.relevance == 'insufficient_context' &&
+            dto.usefulness == 'insufficient_context'
+      ? 'Not enough information to assess'
+      : 'Topic: ${_assessmentLabel(dto.relevance!)} · '
+            'Usefulness: ${_assessmentLabel(dto.usefulness!)}';
   final assessment = dto.quotedContext == 'not_captured'
-      ? '$judgment · Quoted context was not captured'
+      ? '$judgment · Quoted post text unavailable'
       : judgment;
   return TopRead(
     title: dto.title,
@@ -47,10 +51,12 @@ TopRead readerPostFromRest(generated.ReaderPostDto dto) {
     ),
     confirmedProviderKeys: const [],
     providerMetrics: [
-      if (dto.engagement case final engagement?)
+      if (dto.providerFamily == 'x') ...[
+        if (_nativeLikes(dto.likeCount) case final likes?)
+          ProviderMetric(label: 'Likes', value: likes.toString()),
+      ] else if (dto.engagement case final engagement?)
         ProviderMetric(
           label: switch (dto.providerFamily) {
-            'x' => 'Likes + 2× reposts',
             'reddit' => 'Score',
             'hacker_news' => 'Points',
             'github_radar' => 'Star/fork activity',
@@ -67,15 +73,24 @@ TopRead readerPostFromRest(generated.ReaderPostDto dto) {
   );
 }
 
+int? _nativeLikes(num? value) =>
+    value != null &&
+        value.isFinite &&
+        value >= 0 &&
+        value <= 9007199254740991 &&
+        value % 1 == 0
+    ? value.toInt()
+    : null;
+
 String _assessmentLabel(String value) => switch (value) {
-  'central' => 'Central',
+  'central' => 'Direct match',
   'relevant' => 'Relevant',
-  'adjacent' => 'Adjacent',
-  'unrelated' => 'Unrelated',
+  'adjacent' => 'Related',
+  'unrelated' => 'Off topic',
   'important' => 'Important',
   'useful' => 'Useful',
-  'context' => 'Context',
-  'noise' => 'Noise',
-  'insufficient_context' => 'Insufficient context',
+  'context' => 'Background',
+  'noise' => 'Low',
+  'insufficient_context' => 'Not enough information',
   _ => 'Unknown assessment',
 };

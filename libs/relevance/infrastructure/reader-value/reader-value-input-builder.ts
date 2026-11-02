@@ -48,7 +48,8 @@ export class ConservativeReaderValueInputBuilder implements ReaderValueInputBuil
         interestSha256: snapshot.interestSha256, requestSha256: sha256(requestBody) })),
       requestSha256: sha256(requestBody), snapshot: { ...snapshot,
         ...(terminalFailure ? { interest: '' } : {}),
-        modelInputTruncated: terminalFailure !== undefined || snapshot.retainedSnapshotTruncated || title !== snapshot.title || body !== snapshot.body,
+        modelInputTruncated: terminalFailure !== undefined || snapshot.retainedSnapshotTruncated || title !== snapshot.title || body !== snapshot.body
+          || (snapshot.quotedPost !== undefined && snapshot.quotedPost.body.length > 2000),
         sentTextSha256: sha256(JSON.stringify({ title: terminalFailure ? '' : title, body })),
         sentTitleLength: terminalFailure ? 0 : title.length, sentBodyLength: body.length },
     });

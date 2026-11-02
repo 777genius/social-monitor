@@ -5,6 +5,8 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import { sourceItemRelevanceScore } from "../../../domain";
+import { createHash } from "node:crypto";
+import { validatedXQuotedPost } from "./x-quoted-post";
 import { unicodePrefix } from "../../../domain/value-objects/source-content-capture";
 import type { FetchedSourceItem } from "../../../ports";
 import type { XExperimentalDailyScanConfig } from "./x-twitter-experimental-daily-config";
@@ -22,6 +24,7 @@ export const normalizeXPost = (
   searchQuery: string,
   maxItems: number,
   verifiedAuthority?: VerifiedXPromotionAuthorityIdentity,
+  acquiredAt?: Date,
 ): FetchedSourceItem => ({
   externalId: `${providerKey}:${post.tweetId}`,
   canonicalUrl: post.canonicalUrl,
@@ -32,6 +35,7 @@ export const normalizeXPost = (
   metadata: normalizeJsonObject({
     kind: "x_post",
     ...(post.contentKind === undefined ? {} : { contentKind: post.contentKind }),
+    ...quotedPostMetadata(post, acquiredAt),
     provider: providerKey,
     tweetId: post.tweetId,
     ...(post.authorHandle === undefined
@@ -81,6 +85,20 @@ export const normalizeXPost = (
     mediaUrls: post.mediaUrls,
   }),
 });
+
+const quotedPostMetadata = (post: XDailyCollectedPost, acquiredAt?: Date): JsonObject => {
+  if (acquiredAt === undefined || !Number.isFinite(acquiredAt.getTime()) || acquiredAt < post.publishedAt) return {};
+  const quoted = post.contentKind === "quote"
+    ? validatedXQuotedPost(post.quotedPost, post.tweetId, post.publishedAt) : undefined;
+  const text = quoted === undefined ? "" : redactSensitiveText(quoted.text);
+  return quoted === undefined ? {} : { quotedPost: {
+    version: "x_quoted_post.v1", parentTweetId: post.tweetId,
+    tweetId: quoted.tweetId, canonicalUrl: quoted.canonicalUrl,
+    authorHandle: quoted.authorHandle, publishedAt: quoted.publishedAt.toISOString(),
+    availableAt: acquiredAt.toISOString(),
+    text, bodySha256: createHash("sha256").update(text).digest("hex"),
+  } };
+};
 
 export const xPostMatchesMetricThresholds = (
   metrics: XDailyPostMetrics,

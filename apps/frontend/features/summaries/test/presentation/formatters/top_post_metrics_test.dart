@@ -5,7 +5,7 @@ import '../../support/top_posts_test_fixtures.dart';
 
 void main() {
   test(
-    'keeps a weighted source count distinct from native Likes and Reposts',
+    'shows native X likes without displaying weighted activity or reposts',
     () {
       final derived = topPostMetricsFor(
         topPostFixture(
@@ -16,8 +16,7 @@ void main() {
           ],
         ),
       );
-      expect(derived.single.label, 'Likes + 2× reposts');
-      expect(derived.single.value, '1.3K');
+      expect(derived, isEmpty);
       final native = topPostMetricsFor(
         topPostFixture(
           title: 'Synthetic native metrics',
@@ -28,8 +27,8 @@ void main() {
           ],
         ),
       );
-      expect(native.map((metric) => metric.label), ['Likes', 'Reposts']);
-      expect(native.map((metric) => metric.value), ['1.0K', '103']);
+      expect(native.map((metric) => metric.label), ['Likes']);
+      expect(native.map((metric) => metric.value), ['1.0K']);
     },
   );
 

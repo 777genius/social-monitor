@@ -7,12 +7,25 @@ import "google/protobuf/timestamp.proto";
 service XCollectorService {
   rpc CollectDailySearch(CollectDailySearchRequest) returns (CollectDailySearchResponse);
   rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse);
+  rpc LookupPosts(LookupPostsRequest) returns (CollectDailySearchResponse);
+}
+
+message LookupPostsRequest {
+  uint32 schema_version = 1;
+  string request_id = 2;
+  string tenant_id = 3;
+  string workspace_id = 4;
+  string source_binding_id = 5;
+  string scan_job_id = 6;
+  string correlation_id = 7;
+  repeated string tweet_ids = 8;
 }
 
 enum XSearchProduct {
   X_SEARCH_PRODUCT_UNSPECIFIED = 0;
   X_SEARCH_PRODUCT_TOP = 1;
   X_SEARCH_PRODUCT_LATEST = 2;
+  X_SEARCH_PRODUCT_ID_LOOKUP = 3;
 }
 
 enum XCollectorHealthStatus {
@@ -78,6 +91,16 @@ message XCollectedPost {
   XSearchProduct source_product = 9;
   double trend_score = 10;
   XPostContentKind content_kind = 11;
+  XQuotedPost quoted_post = 12;
+}
+
+// Context belongs to another author. Its metrics are deliberately excluded.
+message XQuotedPost {
+  string tweet_id = 1;
+  string canonical_url = 2;
+  string text = 3;
+  string author_handle = 4;
+  google.protobuf.Timestamp published_at = 5;
 }
 
 message XPostMetrics {

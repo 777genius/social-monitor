@@ -67,9 +67,71 @@ class ObservationSchemaCompatibilityTest(unittest.TestCase):
     def test_exact_descriptor_projection_and_donor_closure(self):
         descriptor = descriptor_pb2.FileDescriptorProto()
         pb.DESCRIPTOR.CopyToProto(descriptor)
+        # This current producer adds only the closed quote/lookup extension.
+        # Preserve the immutable legacy descriptor hash by projecting precisely
+        # those new tags away; every old field/type/method still binds its hash.
+        extensions = {"XQuotedPost": [
+            ("tweet_id", 1, 9, 1, ""), ("canonical_url", 2, 9, 1, ""),
+            ("text", 3, 9, 1, ""), ("author_handle", 4, 9, 1, ""),
+            ("published_at", 5, 11, 1, ".google.protobuf.Timestamp")],
+            "LookupPostsRequest": [(name, index, 13 if index == 1 else 9,
+                3 if index == 8 else 1, "") for index, name in enumerate([
+                    "schema_version", "request_id", "tenant_id", "workspace_id",
+                    "source_binding_id", "scan_job_id", "correlation_id", "tweet_ids"], 1)]}
+        for name, fields in extensions.items():
+            message = next(m for m in descriptor.message_type if m.name == name)
+            self.assertEqual([(f.name, f.number, f.type, f.label, f.type_name) for f in message.field], fields)
+            actual = descriptor_pb2.DescriptorProto()
+            actual.CopyFrom(message)
+            expected = descriptor_pb2.DescriptorProto(name=name)
+            for field, (field_name, number, kind, label, type_name) in zip(actual.field, fields, strict=True):
+                field.ClearField('json_name')
+                added = expected.field.add(name=field_name, number=number, type=kind, label=label)
+                if type_name:
+                    added.type_name = type_name
+            self.assertEqual(actual.SerializeToString(deterministic=True), expected.SerializeToString(deterministic=True))
+        parent = next(m for m in descriptor.message_type if m.name == "XCollectedPost")
+        extension = [f for f in parent.field if f.number == 12]
+        self.assertEqual([(f.name, f.number, f.type, f.label, f.type_name) for f in extension],
+            [("quoted_post", 12, 11, 1, ".social_monitor.x_collector.v1.XQuotedPost")])
+        field = descriptor_pb2.FieldDescriptorProto()
+        field.CopyFrom(extension[0])
+        field.ClearField('json_name')
+        expected_field = descriptor_pb2.FieldDescriptorProto(name="quoted_post", number=12, type=11,
+            label=1, type_name=".social_monitor.x_collector.v1.XQuotedPost")
+        self.assertEqual(field.SerializeToString(deterministic=True), expected_field.SerializeToString(deterministic=True))
+        product = next(e for e in descriptor.enum_type if e.name == "XSearchProduct")
+        self.assertEqual([(v.name, v.number) for v in product.value if v.number == 3],
+                         [("X_SEARCH_PRODUCT_ID_LOOKUP", 3)])
+        self.assertEqual(next(v for v in product.value if v.number == 3).SerializeToString(deterministic=True),
+            descriptor_pb2.EnumValueDescriptorProto(name="X_SEARCH_PRODUCT_ID_LOOKUP", number=3).SerializeToString(deterministic=True))
+        lookup = next(m for m in descriptor.service[0].method if m.name == "LookupPosts")
+        self.assertEqual((lookup.input_type, lookup.output_type, lookup.client_streaming, lookup.server_streaming),
+            (".social_monitor.x_collector.v1.LookupPostsRequest",
+             ".social_monitor.x_collector.v1.CollectDailySearchResponse", False, False))
+        self.assertEqual(lookup.SerializeToString(deterministic=True), descriptor_pb2.MethodDescriptorProto(
+            name="LookupPosts", input_type=".social_monitor.x_collector.v1.LookupPostsRequest",
+            output_type=".social_monitor.x_collector.v1.CollectDailySearchResponse").SerializeToString(deterministic=True))
         def normalized_hash(added):
             projected = descriptor_pb2.FileDescriptorProto()
             projected.CopyFrom(descriptor)
+            selected = [m for m in projected.message_type if m.name not in extensions]
+            del projected.message_type[:]
+            projected.message_type.extend(selected)
+            for message in projected.message_type:
+                if message.name == "XCollectedPost":
+                    fields = [f for f in message.field if f.number != 12]
+                    del message.field[:]
+                    message.field.extend(fields)
+            for enum in projected.enum_type:
+                if enum.name == "XSearchProduct":
+                    values = [v for v in enum.value if v.number != 3]
+                    del enum.value[:]
+                    enum.value.extend(values)
+            for service in projected.service:
+                methods = [m for m in service.method if m.name != "LookupPosts"]
+                del service.method[:]
+                service.method.extend(methods)
             for field in ['message_type', 'enum_type']:
                 selected = [item for item in getattr(projected, field) if (item.name in NEW_NAMES) == added]
                 del getattr(projected, field)[:]
@@ -86,7 +148,7 @@ class ObservationSchemaCompatibilityTest(unittest.TestCase):
             return hashlib.sha256(projected.SerializeToString(deterministic=True)).hexdigest()
         self.assertEqual(normalized_hash(False), BASELINE_HASH)
         self.assertEqual(normalized_hash(True), ADDED_HASH)
-        self.assertEqual([m.name for m in descriptor.service[0].method], ['CollectDailySearch', 'CheckHealth'])
+        self.assertEqual([m.name for m in descriptor.service[0].method], ['CollectDailySearch', 'CheckHealth', 'LookupPosts'])
         event = pb.XObservationEvent.DESCRIPTOR
         self.assertEqual([f.number for f in event.oneofs_by_name['payload'].fields], [1, 2, 3])
         self.assertEqual(pb.XObservationSendOutcome.DESCRIPTOR.fields_by_name['acquisition'].number, 23)

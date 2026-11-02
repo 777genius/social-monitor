@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { JsonObject } from "@social-monitor/shared-kernel";
+import { normalizeXPost } from "@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-item";
 import { captureNativeText } from "@social-monitor/ingestion/domain/value-objects/source-content-capture";
 import { readReaderValueCapture } from "@social-monitor/relevance/infrastructure/reader-value/reader-value-capture";
 import { ConservativeReaderValueInputBuilder } from "@social-monitor/relevance/infrastructure/reader-value/reader-value-input-builder";
@@ -39,8 +41,36 @@ describe("All posts current assessment identity over real SQL", () => {
   it("keeps an unassessed quote visible and discloses missing context without inventing labels", async () => {
     await fixture.insertPost();
     expect(await fixture.reader.read(fixture.window)).toEqual([expect.objectContaining({
-      engagement: 104, usefulness: null, relevance: null, quotedContext: "not_captured",
+      engagement: 104, likeCount: 100, usefulness: null, relevance: null, quotedContext: "not_captured",
     })]);
+  });
+  it("keeps raw likes separate from Model engagement and does not invent missing X likes", async () => {
+    const post = await fixture.insertPost();
+    await fixture.db.query("UPDATE feed_items SET provider_metadata=$1 WHERE id=$2",
+      [JSON.stringify({ kind: "x_post", likes: 5, retweets: 100 }), post.id]);
+    expect((await fixture.reader.read(fixture.window))[0]).toMatchObject({ likeCount: 5, engagement: 205 });
+    await fixture.db.query("UPDATE feed_items SET provider_metadata=$1 WHERE id=$2",
+      [JSON.stringify({ kind: "x_post", retweets: 100 }), post.id]);
+    expect((await fixture.reader.read(fixture.window))[0]).toMatchObject({ likeCount: null, engagement: null });
+  });
+  it("clears the missing-quote warning only for validated captured context, including unassessed posts", async () => {
+    const post = await fixture.insertPost();
+    const fetched = normalizeXPost({ tweetId: "200", canonicalUrl: "https://x.com/quoting/status/200",
+      text: "I measured this improvement.", authorHandle: "quoting", publishedAt: new Date("2026-10-31T12:00:00Z"),
+      metrics: { likes: 10, retweets: 1, replies: 0 }, mediaUrls: [], sourceProduct: "top", trendScore: 12,
+      contentKind: "quote", quotedPost: { tweetId: "100", canonicalUrl: "https://x.com/original/status/100",
+        text: "The original experiment and its measurements.", authorHandle: "original",
+        publishedAt: new Date("2026-10-31T11:00:00Z") } }, "robotics", 25, undefined, new Date("2026-10-31T12:01:00Z"));
+    await fixture.db.query("UPDATE source_items SET title=$1,body=$2,canonical_url=$3,metadata=$4 WHERE id=$5",
+      [fetched.title, fetched.body, fetched.canonicalUrl, JSON.stringify(fetched.metadata), post.input.sourceItemId]);
+    await fixture.db.query("UPDATE feed_items SET provider_metadata=$1,published_at=$2 WHERE id=$3",
+      [JSON.stringify(fetched.metadata), fetched.publishedAt!.toISOString(), post.id]);
+    const captured = (await fixture.reader.read(fixture.window))[0];
+    expect(captured).toMatchObject({ likeCount: 10, usefulness: null, relevance: null });
+    expect(captured).not.toHaveProperty("quotedContext");
+    const forged = { ...fetched.metadata, quotedPost: { ...(fetched.metadata!.quotedPost as JsonObject), text: "Changed quote" } };
+    await fixture.db.query("UPDATE feed_items SET provider_metadata=$1 WHERE id=$2", [JSON.stringify(forged), post.id]);
+    expect((await fixture.reader.read(fixture.window))[0]).toMatchObject({ quotedContext: "not_captured" });
   });
   it("shows labels only from the exact rebuilt current source and scoring configuration", async () => {
     const post = await fixture.insertPost();

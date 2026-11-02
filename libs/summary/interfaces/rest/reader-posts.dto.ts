@@ -10,6 +10,9 @@ export class ReaderPostDto {
   @ApiProperty() declare readonly canonicalUrl: string;
   @ApiProperty() declare readonly publishedAt: string;
   @ApiProperty({ type: Number, nullable: true }) declare readonly engagement: number | null;
+  @ApiPropertyOptional({ type: Number, nullable: true, minimum: 0,
+    description: "Raw X like count for Likes display and sorting; null when unknown, omitted for other providers. Reposts are excluded." })
+  declare readonly likeCount?: number | null;
   @ApiProperty({ type: String, nullable: true }) declare readonly engagementObservedAt: string | null;
   @ApiProperty({ type: String, nullable: true }) declare readonly usefulness: string | null;
   @ApiProperty({ type: String, nullable: true }) declare readonly relevance: string | null;

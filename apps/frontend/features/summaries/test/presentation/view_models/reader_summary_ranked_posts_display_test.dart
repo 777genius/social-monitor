@@ -21,6 +21,7 @@ void main() {
               'extra-$i',
               engagement: (100 + i).toDouble(),
               providerKey: 'x-twitter',
+              nativeLikes: 100 + i,
               placement: ReaderPostPromotionPlacement.additional,
             ),
         ],

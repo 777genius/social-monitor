@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { preserveQuotedPostAvailability } from './quoted-post-capture-availability';
 import { sanitizeUrlCredentials, type JsonObject } from '@social-monitor/shared-kernel';
 
 export const CONTENT_CAPTURE_VERSION = 'source_content_capture.v1';
@@ -176,14 +177,15 @@ export const captureArticleText = <T extends CaptureText>(item: T, article: {
 
 // Both repository implementations apply this before computing effective revision.
 export const preserveSourceCapture = <T extends CaptureText>(incoming: T, existing: CaptureText): T => {
-  const next = readContentCapture(incoming);
+  const quoted = preserveQuotedPostAvailability(incoming, existing);
+  const next = readContentCapture(quoted);
   const prior = readContentCapture(existing);
-  if (next === undefined || prior === undefined) return incoming;
+  if (next === undefined || prior === undefined) return quoted;
   const native = next.nativeRevision === prior.nativeRevision
     ? { ...next.native, availableAt: prior.native.availableAt } : next.native;
   const sameOpportunity = next.nativeRevision === prior.nativeRevision && next.articleUrl === prior.articleUrl;
-  const input = sameOpportunity && incoming.metadata?.articleCaptureAttempt === undefined && existing.metadata?.articleCaptureAttempt !== undefined
-    ? { ...incoming, metadata: { ...incoming.metadata, articleCaptureAttempt: existing.metadata.articleCaptureAttempt } } : incoming;
+  const input = sameOpportunity && quoted.metadata?.articleCaptureAttempt === undefined && existing.metadata?.articleCaptureAttempt !== undefined
+    ? { ...quoted, metadata: { ...quoted.metadata, articleCaptureAttempt: existing.metadata.articleCaptureAttempt } } : quoted;
   let result = withCapture(input, { ...next, native });
   if (next.articleUrl !== prior.articleUrl || prior.article === undefined) return result;
   if (next.article !== undefined) {

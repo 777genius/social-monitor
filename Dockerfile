@@ -51,6 +51,7 @@ COPY scripts/lib/clean-real-day-collection-report.ts \
   scripts/lib/clean-real-day-provider-acquisition.ts \
   scripts/lib/clean-real-day-scan-policy-targets.ts \
   scripts/lib/clean-real-day-source-config-reader.ts \
+  scripts/lib/clean-real-day-source-providers.ts \
   scripts/lib/clean-real-day-target-discovery.ts \
   scripts/lib/collection-scan-execution.ts \
   scripts/lib/env-file.ts \

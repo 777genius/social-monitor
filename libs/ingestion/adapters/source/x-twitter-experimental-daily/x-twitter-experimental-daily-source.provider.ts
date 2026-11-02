@@ -229,6 +229,7 @@ export class XTwitterSourceProvider implements SourceProviderPort {
             : this.authorityRegistry.resolveVerifiedIdentity(
                 item.post.authorHandle,
               ) ?? undefined,
+          this.clock.now(),
         ),
       );
 

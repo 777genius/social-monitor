@@ -27,25 +27,28 @@ void main() {
     );
   });
 
-  test('likes order is descending, stable on ties, unknown metrics last', () {
-    final ordered = readerSummaryTopPostsInOrder(
-      lane,
-      TopPostsSortOrder.engagement,
-    );
+  test(
+    'likes order is descending, identity breaks ties, unknown metrics last',
+    () {
+      final ordered = readerSummaryTopPostsInOrder(
+        lane,
+        TopPostsSortOrder.engagement,
+      );
 
-    expect(titles(ordered), [
-      'Post c',
-      'Post a', // 10 ties with d: model order wins
-      'Post d',
-      'Post f', // a measured 0 still beats an unknown metric
-      'Post b', // unknown metrics keep their model order
-      'Post e',
-    ]);
-    expect(titles(lane).first, 'Post a', reason: 'input lane is not mutated');
-    expect(() => ordered.add(lane.first), throwsUnsupportedError);
-  });
+      expect(titles(ordered), [
+        'Post c',
+        'Post a', // 10 ties with d: candidate identity wins
+        'Post d',
+        'Post f', // a measured 0 still beats an unknown metric
+        'Post b', // unknown metrics use candidate identity
+        'Post e',
+      ]);
+      expect(titles(lane).first, 'Post a', reason: 'input lane is not mutated');
+      expect(() => ordered.add(lane.first), throwsUnsupportedError);
+    },
+  );
 
-  test('a lane without any metric keeps the model order', () {
+  test('a lane without any metric uses source identity', () {
     final unknown = [engagementTopPost('x'), engagementTopPost('y')];
 
     expect(

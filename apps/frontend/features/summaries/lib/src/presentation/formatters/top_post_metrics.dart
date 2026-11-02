@@ -19,8 +19,8 @@ final class TopPostMetric {
 }
 
 const _metricSlotsByProvider = <String, List<String>>{
-  'x-twitter': ['Likes', 'Reposts', 'Replies', 'Views'],
-  'twitter': ['Likes', 'Reposts', 'Replies', 'Views'],
+  'x-twitter': ['Likes'],
+  'twitter': ['Likes'],
   'reddit': ['Upvotes', 'Comments', 'Shares', 'Views'],
   'hacker-news': ['Points', 'Comments', 'Shares', 'Views'],
   _githubTrendingProviderKey: ['Stars', 'Stars today', 'Rank', 'Forks'],
@@ -63,10 +63,7 @@ List<TopPostMetric> topPostMetricsFor(TopRead read) {
   // or Stars when the native-label parser examines its first word.
   final derived = [
     for (final metric in read.providerMetrics)
-      if (const {
-            'Likes + 2× reposts',
-            'Star/fork activity',
-          }.contains(metric.label.trim()) &&
+      if (const {'Star/fork activity'}.contains(metric.label.trim()) &&
           RegExp(r'^[\d][\d,.]*[kKmM]?$').hasMatch(metric.value.trim()))
         TopPostMetric(
           value: formatCompactMetricValue(metric.value),
@@ -186,6 +183,8 @@ num? _githubTrendingStarsToday(TopRead read) {
 Map<String, String> _parsedMetrics(TopRead read) {
   final found = <String, String>{};
   for (final metric in read.providerMetrics) {
+    // A legacy weighted count is not a native like count.
+    if (metric.label.trim() == 'Likes + 2× reposts') continue;
     _collectTrendingToday(metric, found);
     _collectFromText(metric.value, found);
     _collectLabeled(metric.label, metric.value, found);

@@ -18,6 +18,18 @@ const query = {
 const clock = { now: () => new Date("2026-11-02T12:00:00Z") };
 
 describe("all reader posts", () => {
+  it("paginates raw X Likes independently of weighted Model engagement", async () => {
+    const posts = [
+      { ...post("reposted", 210), providerKey: "x-twitter", providerFamily: "x", likeCount: 10 },
+      { ...post("liked", 40), providerKey: "x-twitter", providerFamily: "x", likeCount: 40 },
+      ...[1, 2, 3].map(count => ({ ...post(`x-${count}`, count), providerKey: "x-twitter", providerFamily: "x", likeCount: count })),
+    ];
+    const useCase = new ListReaderPostsUseCase({ read: async () => posts }, clock);
+    const likes = await useCase.execute({ ...query, order: "likes", limit: 1 });
+    const model = await useCase.execute({ ...query, order: "model", limit: 1 });
+    expect(likes.ok && likes.value.items[0]).toMatchObject({ id: "liked", likeCount: 40, engagement: 40 });
+    expect(model.ok && model.value.items[0]).toMatchObject({ id: "reposted", likeCount: 10, engagement: 210 });
+  });
   it("accepts exactly 2000 candidates while paginating the complete pool", async () => {
     const posts = Array.from({ length: 2000 }, (_, index) => post(`post-${index}`, index));
     const result = await new ListReaderPostsUseCase({ read: async () => posts }, clock).execute(query);

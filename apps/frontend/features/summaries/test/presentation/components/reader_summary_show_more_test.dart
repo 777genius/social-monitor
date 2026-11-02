@@ -151,6 +151,7 @@ ReaderSummary _summary({bool nextPeriod = false, String extra = 'extra'}) =>
           extra,
           engagement: 900,
           providerKey: 'x-twitter',
+          nativeLikes: 900,
           placement: ReaderPostPromotionPlacement.additional,
         ),
       ],

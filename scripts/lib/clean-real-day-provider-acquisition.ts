@@ -1,3 +1,6 @@
+import { buildProviders, xCollectorConfigured } from "./clean-real-day-source-providers";
+import { ArticleContentSourceItemEnrichmentAdapter } from "@social-monitor/ingestion/adapters/enrichment/article-content-source-item-enrichment.adapter";
+import { HttpReadabilityArticleContentExtractor } from "@social-monitor/ingestion/adapters/enrichment/http-readability-article-content-extractor";
 import { ConversationUnitProjectionAdapter } from "@social-monitor/conversation/adapters/ingestion/conversation-unit-projection.adapter";
 import { PrismaConversationUnitRepository } from "@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-unit.repository";
 import { PrismaFeedProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-projection.adapter";
@@ -8,27 +11,13 @@ import { PrismaScanLeaseAdapter } from "@social-monitor/ingestion/adapters/persi
 import { PrismaSourceItemRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-item.repository";
 import { PrismaSourceCandidateMemoryRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-candidate-memory.repository";
 import { CircuitBreakerSourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter";
-import { GitHubTrendingPageSourceProvider } from "@social-monitor/ingestion/adapters/source/github-trending-page/github-trending-page-source.provider";
-import { HttpGitHubTrendingPageClient } from "@social-monitor/ingestion/adapters/source/github-trending-page/http-github-trending-page-client";
-import { HackerNewsSourceProvider } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-source.provider";
-import { HttpHackerNewsClient } from "@social-monitor/ingestion/adapters/source/hacker-news/http-hacker-news-client";
 import { InMemorySourceProviderRegistry } from "@social-monitor/ingestion/adapters/source/in-memory-source-provider.registry";
-import { HttpRedditClient } from "@social-monitor/ingestion/adapters/source/reddit/http-reddit-client";
-import { RedditAppOnlyTokenProvider } from "@social-monitor/ingestion/adapters/source/reddit/app-only-reddit-token-provider";
-import { RedditRefreshTokenProvider } from "@social-monitor/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider";
-import { RedditSourceProvider } from "@social-monitor/ingestion/adapters/source/reddit/reddit-source.provider";
 import { RegistrySourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter";
-import { HttpRssClient } from "@social-monitor/ingestion/adapters/source/rss/http-rss-client";
-import { RssSourceProvider } from "@social-monitor/ingestion/adapters/source/rss/rss-source.provider";
 import { SocialResearchSourceQueryPlannerAdapter } from "@social-monitor/ingestion/adapters/source/social-research-source-query-planner.adapter";
 import { sourceReadinessProfiles } from "@social-monitor/ingestion/adapters/source/source-readiness-profiles";
-import { GrpcXDailyCollectorClient } from "@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/grpc-x-daily-collector-client";
-import { DEFAULT_X_COLLECTOR_GRPC_TIMEOUT_MS } from "@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/x-collector-runtime-config";
-import { XTwitterSourceProvider } from "@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider";
 import { ExecuteScanUseCase } from "@social-monitor/ingestion/features/execute-scan/execute-scan.use-case";
 import {
   SourceFetchError,
-  type SourceProviderPort,
   type SourceQuery,
   type SourceRuntimeConfig,
 } from "@social-monitor/ingestion/ports";
@@ -319,7 +308,7 @@ export const buildLiveRuntime = (params: {
     ids,
     clock,
     undefined,
-    undefined,
+    new ArticleContentSourceItemEnrichmentAdapter(new HttpReadabilityArticleContentExtractor()),
     new ConversationUnitProjectionAdapter(
       new PrismaConversationUnitRepository(params.connection, ids),
       ids,
@@ -446,82 +435,8 @@ const executeLiveTargetScan = async (
   };
 };
 
-const buildProviders = (
-  clock: SystemClock,
-  includeGitHub: boolean,
-): readonly SourceProviderPort[] => {
-  const providers: SourceProviderPort[] = [];
-  if (includeGitHub) {
-    providers.push(
-      new GitHubTrendingPageSourceProvider(
-        new HttpGitHubTrendingPageClient(
-          positiveIntegerEnv(process.env.GITHUB_TRENDING_TIMEOUT_MS, 10_000),
-        ),
-        clock,
-      ),
-    );
-  }
-  const redditTokenProvider = RedditAppOnlyTokenProvider.fromEnvironment(
-    process.env,
-  );
-  providers.push(
-    new HackerNewsSourceProvider(
-      new HttpHackerNewsClient(
-        positiveIntegerEnv(process.env.HACKER_NEWS_TIMEOUT_MS, 10_000),
-      ),
-      clock,
-    ),
-    new RedditSourceProvider(
-      new HttpRedditClient(),
-      redditTokenProvider ?? undefined,
-      RedditRefreshTokenProvider.fromEnvironment(process.env),
-    ),
-    new RssSourceProvider(
-      new HttpRssClient(positiveIntegerEnv(process.env.RSS_TIMEOUT_MS, 10_000)),
-    ),
-  );
-  const xCollectorAddress = process.env.X_COLLECTOR_GRPC_ADDRESS?.trim();
-  if (xCollectorConfigured() && xCollectorAddress !== undefined) {
-    providers.push(
-      new XTwitterSourceProvider(
-        GrpcXDailyCollectorClient.connect({
-          address: xCollectorAddress,
-          clock,
-          options: {
-            timeoutMs: positiveIntegerEnv(
-              process.env.X_COLLECTOR_GRPC_TIMEOUT_MS,
-              DEFAULT_X_COLLECTOR_GRPC_TIMEOUT_MS,
-            ),
-            serviceToken: optionalEnv(process.env.X_COLLECTOR_SERVICE_TOKEN),
-          },
-        }),
-        clock,
-      ),
-    );
-  }
-  return providers;
-};
-
 const shouldReuseDurableSnapshot = (
   target: CleanRealDaySourceBindingTarget,
   closedRequestedUtcDay: boolean,
 ): boolean =>
   closedRequestedUtcDay && target.providerKey === "github-trending-page";
-
-const xCollectorConfigured = (): boolean =>
-  (process.env.X_COLLECTOR_ENABLED === "1" ||
-    process.env.X_COLLECTOR_EXPERIMENTAL_ENABLED === "1") &&
-  optionalEnv(process.env.X_COLLECTOR_GRPC_ADDRESS) !== undefined;
-
-const optionalEnv = (value: string | undefined): string | undefined => {
-  const trimmed = value?.trim();
-  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
-};
-
-const positiveIntegerEnv = (
-  value: string | undefined,
-  fallback: number,
-): number => {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-};

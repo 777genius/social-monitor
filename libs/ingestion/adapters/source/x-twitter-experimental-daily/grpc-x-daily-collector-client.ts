@@ -1,4 +1,6 @@
 import { credentials, type ChannelCredentials } from '@grpc/grpc-js';
+import { validatedXQuotedPost } from './x-quoted-post';
+import type { XPostLookupRequest } from './x-daily-collector-client.port';
 import {
   createGrpcDeadline,
   createGrpcRequestMetadata,
@@ -83,6 +85,31 @@ export class GrpcXDailyCollectorClient implements XDailyCollectorClientPort {
       );
     });
   }
+
+  async lookupPosts(request: XPostLookupRequest): Promise<XDailyCollectorResult> {
+    if (request.tweetIds.length < 1 || request.tweetIds.length > 50 ||
+        new Set(request.tweetIds).size !== request.tweetIds.length ||
+        request.tweetIds.some(id => !/^[1-9][0-9]{0,19}$/u.test(id))) {
+      throw new Error('Post lookup requires 1-50 distinct numeric ids');
+    }
+    return new Promise((resolve, reject) => this.client.lookupPosts({
+      schemaVersion, requestId: request.requestId, tenantId: request.tenantId,
+      workspaceId: request.workspaceId, sourceBindingId: request.sourceBindingId,
+      scanJobId: request.scanJobId, correlationId: request.correlationId,
+      tweetIds: [...request.tweetIds],
+    }, createGrpcRequestMetadata({ correlationId: request.correlationId,
+      serviceToken: this.options.serviceToken }),
+    { deadline: createGrpcDeadline(this.clock, this.options.timeoutMs) }, (error, response) => {
+      if (error !== null) { reject(error); return; }
+      const result = fromGrpcResponse(response);
+      if (response.schemaVersion !== schemaVersion || result.posts.length > request.tweetIds.length ||
+          new Set(result.posts.map(post => post.tweetId)).size !== result.posts.length ||
+          result.posts.some(post => !request.tweetIds.includes(post.tweetId))) {
+        reject(new Error('Post lookup returned an unrequested identity')); return;
+      }
+      resolve(result);
+    }));
+  }
 }
 
 const toGrpcRequest = (
@@ -150,6 +177,13 @@ const fromGrpcPost = (
     sourceProduct,
     trendScore: Number.isFinite(post.trendScore) ? post.trendScore : 0,
     contentKind: fromGrpcContentKind(post.contentKind),
+    ...(fromGrpcContentKind(post.contentKind) !== 'quote' || post.quotedPost === undefined ||
+        post.quotedPost.publishedAt === undefined ? {} : {
+      quotedPost: validatedXQuotedPost({ tweetId: post.quotedPost.tweetId,
+        canonicalUrl: post.quotedPost.canonicalUrl, text: post.quotedPost.text,
+        authorHandle: post.quotedPost.authorHandle, publishedAt: post.quotedPost.publishedAt },
+      post.tweetId, publishedAt),
+    }),
   }];
 };
 
@@ -214,12 +248,14 @@ const toGrpcSearchProduct = (
 
 const fromGrpcSearchProduct = (
   product: XSearchProduct,
-): XDailySearchProduct | undefined => {
+): XDailyCollectedPost['sourceProduct'] | undefined => {
   switch (product) {
     case XSearchProduct.X_SEARCH_PRODUCT_TOP:
       return 'top';
     case XSearchProduct.X_SEARCH_PRODUCT_LATEST:
       return 'latest';
+    case XSearchProduct.X_SEARCH_PRODUCT_ID_LOOKUP:
+      return 'id_lookup';
     case XSearchProduct.X_SEARCH_PRODUCT_UNSPECIFIED:
     case XSearchProduct.UNRECOGNIZED:
       return undefined;

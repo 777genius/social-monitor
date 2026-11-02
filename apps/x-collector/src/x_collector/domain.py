@@ -3,11 +3,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from .quoted_post import XQuotedPost
 
 
 class SearchProduct(str, Enum):
     TOP = "top"
     LATEST = "latest"
+    ID_LOOKUP = "id_lookup"
+
+
+@dataclass(frozen=True)
+class PostLookupRequest:
+    request_id: str
+    tenant_id: str
+    workspace_id: str
+    source_binding_id: str
+    scan_job_id: str
+    correlation_id: str
+    tweet_ids: tuple[str, ...]
+
+    @property
+    def query(self) -> str:
+        return "known_post_id_lookup"
 
 
 class XPostContentKind(str, Enum):
@@ -70,6 +87,7 @@ class XCollectedPost:
     source_product: SearchProduct
     trend_score: float
     content_kind: XPostContentKind = XPostContentKind.UNKNOWN
+    quoted_post: XQuotedPost | None = None
 
 
 @dataclass(frozen=True)

@@ -3063,6 +3063,12 @@
           "id": {
             "type": "string"
           },
+          "likeCount": {
+            "description": "Raw X like count for Likes display and sorting; null when unknown, omitted for other providers. Reposts are excluded.",
+            "minimum": 0,
+            "nullable": true,
+            "type": "number"
+          },
           "providerFamily": {
             "type": "string"
           },

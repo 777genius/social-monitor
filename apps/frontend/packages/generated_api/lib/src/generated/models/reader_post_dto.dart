@@ -21,6 +21,7 @@ class ReaderPostDto {
     required this.sourceItemId,
     required this.title,
     required this.usefulness,
+    this.likeCount,
     this.quotedContext,
   });
 
@@ -32,6 +33,9 @@ class ReaderPostDto {
   final num? engagement;
   final String? engagementObservedAt;
   final String id;
+
+  /// Raw X like count for Likes display and sorting; null when unknown, omitted for other providers. Reposts are excluded.
+  final num? likeCount;
   final String providerFamily;
   final String providerKey;
   final String publishedAt;

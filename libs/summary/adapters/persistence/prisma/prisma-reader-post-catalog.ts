@@ -1,6 +1,6 @@
 import { validateReaderValueAnswers } from "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
 import type { ReaderPostAssessmentIdentity, ReaderPostAssessmentIdentityBuilder } from "../../../application/contracts/reader-post-assessment-identity";
-import { readerBrowseSourceEngagement } from "../../evidence/reader-browse-source-engagement";
+import { readerBrowseSourceEngagement, readerBrowseSourceLikeCount } from "../../evidence/reader-browse-source-engagement";
 import type { SourceContentSafetyPolicy } from "@social-monitor/relevance/domain/source-content-safety";
 import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import { DomainError } from "@social-monitor/shared-kernel";
@@ -93,6 +93,7 @@ export class PrismaReaderPostCatalog implements ReaderPostCatalog {
         throw new DomainError("operation.conflict", "Post window is too large; choose a shorter period");
       }
       const answers = new Map<string, { usefulness: string; relevance: string }>();
+      const capturedQuoteRows = new Set<string>();
       // Rebuild in bounded batches; full request bodies never accumulate for the whole window.
       for (let offset = 0; offset < rows.length; offset += 100) {
         const prepared = new Map<string, ReaderPostAssessmentIdentity>();
@@ -102,7 +103,10 @@ export class PrismaReaderPostCatalog implements ReaderPostCatalog {
             interest: row.interest_query, contentHash: row.content_hash,
             sourceMetadata: row.source_metadata ?? {}, providerMetadata: row.provider_metadata ?? {} };
           const current = this.assessment.prepare(source);
-          if (current !== undefined) prepared.set(row.id, current);
+          if (current !== undefined) {
+            prepared.set(row.id, current);
+            if (current.quotedContextCaptured === true) capturedQuoteRows.add(row.id);
+          }
         }
         const inputs = [...prepared].map(([id, input]) => ({ id, ...input }));
         // Only current identity fields cross the SQL boundary, never request bodies.
@@ -138,6 +142,8 @@ export class PrismaReaderPostCatalog implements ReaderPostCatalog {
         const safe = this.safety.evaluate({ providerKey: row.provider_key,
           title: row.title_preview, canonicalUrl: row.canonical_url, bodyPreview: row.body_preview });
         if (safe.status === "blocked" || !safe.sanitizedCanonicalUrl) return [];
+        const likeCount = readerBrowseSourceLikeCount({ providerKey: row.provider_key,
+          providerMetadata: row.provider_metadata ?? undefined });
         return [{ id: row.id, sourceItemId: row.source_item_id,
           providerKey: row.provider_key,
           providerFamily: readerPromotionSourceForProviderKey(row.provider_key)?.family ?? row.provider_key,
@@ -146,8 +152,9 @@ export class PrismaReaderPostCatalog implements ReaderPostCatalog {
             providerMetadata: row.provider_metadata ?? undefined,
             engagementObservedAt: row.engagement_observed_at }),
           engagementObservedAt: row.engagement_observed_at,
+          ...(likeCount === undefined ? {} : { likeCount }),
           usefulness: answers.get(row.id)?.usefulness ?? null, relevance: answers.get(row.id)?.relevance ?? null,
-          ...(row.content_kind === "quote"
+          ...(row.content_kind === "quote" && !capturedQuoteRows.has(row.id)
             ? { quotedContext: "not_captured" as const } : {}) }];
       });
       // Select one projection per source only after current assessments match.

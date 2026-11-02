@@ -13,6 +13,8 @@ export type ReaderPost = {
   readonly canonicalUrl: string;
   readonly publishedAt: string;
   readonly engagement: number | null;
+  /** Raw X likes only; null means unknown, absent for other providers. */
+  readonly likeCount?: number | null;
   readonly engagementObservedAt: string | null;
   readonly usefulness: string | null;
   readonly relevance: string | null;

@@ -1,11 +1,16 @@
 import { readerValueQuestions } from '../../domain/reader-value/reader-value-rubric';
 import { readerValueScoringConfiguration, type ReaderValueScoringProvider } from './reader-value-provider-config';
 import type { ReaderValueSourceSnapshot } from '../../domain/reader-value/reader-value-source';
+import { unicodePrefix } from './reader-value-source-snapshot';
 
 export type ReaderValueRequestState = {
   readonly trusted_interest: string; readonly title: string;
   readonly source_text: string; readonly context_state: string;
-  readonly quoted_context?: 'not_captured_assess_authored_text_only';
+  readonly quoted_context?: 'not_captured_assess_authored_text_only' | {
+    readonly attribution: 'separate_author_context_only_assess_quoting_authored_text';
+    readonly source_post_id: string; readonly author_handle: string;
+    readonly canonical_url: string; readonly source_text: string; readonly truncated: boolean;
+  };
 };
 
 export const readerValueRequestState = (snapshot: ReaderValueSourceSnapshot,
@@ -15,6 +20,13 @@ export const readerValueRequestState = (snapshot: ReaderValueSourceSnapshot,
   ...(snapshot.quotedContext === undefined ? {} : {
     quoted_context: 'not_captured_assess_authored_text_only' as const,
   }),
+  ...(snapshot.quotedPost === undefined ? {} : { quoted_context: {
+    attribution: 'separate_author_context_only_assess_quoting_authored_text' as const,
+    source_post_id: snapshot.quotedPost.tweetId, author_handle: snapshot.quotedPost.authorHandle,
+    canonical_url: snapshot.quotedPost.canonicalUrl,
+    source_text: unicodePrefix(snapshot.quotedPost.body, 2000),
+    truncated: snapshot.quotedPost.body.length > 2000,
+  } }),
 });
 
 const decisionsQuestions = Object.entries(readerValueQuestions).map(([name, question]) => ({

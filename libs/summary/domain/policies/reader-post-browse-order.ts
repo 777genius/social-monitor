@@ -1,4 +1,4 @@
-import { readerPromotionProviderIsPost } from "./reader-promotion-source-registry";
+import { readerPromotionProviderIsPost, readerPromotionSourceForProviderKey } from "./reader-promotion-source-registry";
 import type { ReaderPostPromotionPopularity } from "./reader-post-promotion-engagement";
 import { readerPostPromotionPopularityByCandidate, readerPostPromotionMetricEligible } from "./reader-post-promotion-engagement";
 import { compareReaderPromotionScoreDesc, readerPromotionScore } from "./reader-promotion-score";
@@ -10,6 +10,7 @@ type BrowsePost = {
   readonly providerKey: string;
   readonly providerFamily: string; readonly publishedAt: string;
   readonly engagement: number | null; readonly engagementObservedAt: string | null;
+  readonly likeCount?: number | null;
   readonly usefulness: string | null; readonly relevance: string | null;
 };
 
@@ -27,6 +28,21 @@ export function readerPostsInBrowseOrder<T extends BrowsePost>(
   posts: readonly T[], order: "model" | "likes", ingestionCutoff: string,
 ): readonly T[] {
   const eligible = posts.filter((post) => readerPromotionProviderIsPost(post.providerKey));
+  const stableOrder = (left: T, right: T) => right.publishedAt.localeCompare(left.publishedAt) ||
+    Buffer.compare(Buffer.from(left.id), Buffer.from(right.id));
+  if (order === "likes") {
+    const value = (post: T) => readerPromotionSourceForProviderKey(post.providerKey)?.family === "x"
+      ? post.likeCount ?? null : post.engagement;
+    return [...eligible].sort((left, right) => {
+      const a = value(left), b = value(right);
+      if (a !== b) {
+        if (a === null) return 1;
+        if (b === null) return -1;
+        return b - a;
+      }
+      return stableOrder(left, right);
+    });
+  }
   const popularity = readerPostPromotionPopularityByCandidate(eligible.filter((post) =>
     admitted(post) && post.engagement !== null && post.engagement >= 0 &&
     post.engagementObservedAt !== null && readerPostPromotionMetricEligible({
@@ -41,18 +57,12 @@ export function readerPostsInBrowseOrder<T extends BrowsePost>(
     popularity: popularity.get(post.id) as ReaderPostPromotionPopularity | undefined ?? null,
   });
   return [...eligible].sort((left, right) => {
-    if (order === "likes" && left.engagement !== right.engagement) {
-      if (left.engagement === null) return 1;
-      if (right.engagement === null) return -1;
-      return right.engagement - left.engagement;
-    }
     const leftAdmitted = admitted(left), rightAdmitted = admitted(right);
     if (leftAdmitted !== rightAdmitted) return leftAdmitted ? -1 : 1;
     const compared = leftAdmitted
       ? compareReaderPromotionScoreDesc(score(left), score(right))
       : ordinal(relevance, left.relevance) - ordinal(relevance, right.relevance) ||
         ordinal(usefulness, left.usefulness) - ordinal(usefulness, right.usefulness);
-    return compared || right.publishedAt.localeCompare(left.publishedAt) ||
-      Buffer.compare(Buffer.from(left.id), Buffer.from(right.id));
+    return compared || stableOrder(left, right);
   });
 }
