@@ -21,9 +21,9 @@ describe("known-id normal collector gRPC boundary", () => {
       get(key: string): unknown[] }, options: { deadline: Date }, callback: (error: Error | null, response: unknown) => void) => {
       calls.push({ wire, authorization: metadata.get("authorization"), deadline: options.deadline.toISOString() });
       callback(null, { schemaVersion: 1, nextCursor: "", posts: [XCollectedPost.decode(XCollectedPost.encode(post()).finish())], warnings: [] });
-    } } as never, { now: () => new Date("2026-11-02T00:00:00Z") }, { timeoutMs: 1000, serviceToken: "synthetic-token" });
+    } } as never, { now: () => new Date("2026-11-02T00:00:00Z") }, { timeoutMs: 1000, serviceToken: "token-value" });
     const result = await client.lookupPosts(request);
-    expect(calls).toEqual([{ wire: { ...request, schemaVersion: 1 }, authorization: ["Bearer synthetic-token"],
+    expect(calls).toEqual([{ wire: { ...request, schemaVersion: 1 }, authorization: ["Bearer token-value"],
       deadline: "2026-11-02T00:00:01.000Z" }]);
     expect(result.posts).toHaveLength(1);
     expect(result.posts[0]).toMatchObject({ tweetId: "200", text: "My own conclusion.",
