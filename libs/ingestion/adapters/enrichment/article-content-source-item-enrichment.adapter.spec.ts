@@ -1,10 +1,29 @@
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { tenantId, workspaceId, type JsonObject } from '@social-monitor/shared-kernel';
 
 import type { ArticleContentExtractionResult, ArticleContentExtractorPort, ExtractArticleContentCommand } from '../../ports';
 import { ArticleContentSourceItemEnrichmentAdapter } from './article-content-source-item-enrichment.adapter';
 import { captureSha256, readContentCapture } from '../../domain/value-objects/source-content-capture';
 
 describe('ArticleContentSourceItemEnrichmentAdapter', () => {
+  it.each<JsonObject>([
+    { linkedUrl: 'https://i.redd.it/example.jpg' },
+    { linkedUrl: 'https://v.redd.it/example' },
+    { linkedUrl: 'https://example.test/watch', postHint: 'rich:video' },
+  ])('skips article HTTP for Reddit media without claiming its context complete: %j', async (metadata) => {
+    const extractor = new FakeArticleExtractor();
+    const enrichment = new ArticleContentSourceItemEnrichmentAdapter(extractor);
+    const result = await enrichment.enrich({
+      tenantId: tenantId('tenant-1'), workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1', scanJobId: 'scan-1', providerKey: 'reddit',
+      correlationId: 'corr-1', capturedAt: new Date('2026-11-03'), clock: { now: () => new Date('2026-11-03') },
+      items: [{ externalId: 'reddit:t3_media', canonicalUrl: 'https://www.reddit.com/r/science/comments/example/',
+        title: 'Experiment recording', body: '', publishedAt: new Date('2026-11-02'), metadata }],
+    });
+    expect(extractor.calls).toHaveLength(0);
+    expect(result).toMatchObject({ enriched: 0, skipped: 1, failed: 0 });
+    expect(readContentCapture(result.items[0]!)).toMatchObject({ articleUrl: null, presentationComplete: false });
+  });
+
   it('enriches Reddit link posts through metadata linkedUrl and keeps only safe article metadata', async () => {
     const extractor = new FakeArticleExtractor();
     const enrichment = new ArticleContentSourceItemEnrichmentAdapter(extractor);

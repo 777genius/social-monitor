@@ -1,6 +1,7 @@
 import { ContentHttpPolicyError } from '../http/guarded-content-http';
 import { createHash } from 'node:crypto';
 import { articleFetchUrl, articleRequestUrl, captureNativeText, captureArticleText, requiresLiveArticleCredentials, sanitizeCaptureUrl } from '../../domain/value-objects/source-content-capture';
+import { hasRedditMediaContext } from '../../domain/value-objects/reddit-media-context';
 
 import type { JsonObject } from '@social-monitor/shared-kernel';
 import { redactSensitiveRecord, redactSensitiveText } from '@social-monitor/shared-kernel';
@@ -205,7 +206,10 @@ const sanitizeArticleItem = (
   return {
     ...item,
     canonicalUrl: sanitizeCaptureUrl(item.canonicalUrl),
-    metadata: safeMetadata,
+    // Ineligible URLs are removed above; preserve the missing-media fact before
+    // captureNativeText loses the host that established it.
+    metadata: providerKey === 'reddit' && hasRedditMediaContext(item.metadata)
+      ? { ...safeMetadata, nativeContentIncomplete: true } : safeMetadata,
   };
 };
 
