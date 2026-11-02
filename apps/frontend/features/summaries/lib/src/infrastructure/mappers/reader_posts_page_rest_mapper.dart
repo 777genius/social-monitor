@@ -29,7 +29,9 @@ TopRead readerPostFromRest(generated.ReaderPostDto dto) {
     providerKey: dto.providerKey,
     // Browse identity does not grant promotion, story-cluster or headline authority.
     storyClusterId: 'source:${dto.sourceItemId}',
-    summary: dto.bodyPreview.isEmpty ? assessment : dto.bodyPreview,
+    summary: dto.bodyPreview.isEmpty
+        ? 'Post text unavailable.'
+        : dto.bodyPreview,
     capturedSource: ReaderCapturedSource(
       title: dto.title,
       body: dto.bodyPreview.isEmpty ? null : dto.bodyPreview,

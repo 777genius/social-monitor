@@ -43,6 +43,19 @@ void main() {
     expect(post.reason, 'Not enough information to assess');
   });
 
+  test('does not repeat the assessment as the body of a title-only post', () {
+    final post = readerPostFromRest(
+      readerPostRestTestDto(
+        bodyPreview: '',
+        relevance: 'insufficient_context',
+        usefulness: 'insufficient_context',
+      ),
+    );
+    expect(post.reason, 'Not enough information to assess');
+    expect(post.summary, 'Post text unavailable.');
+    expect(post.capturedSource?.body, isNull);
+  });
+
   test('never substitutes weighted engagement for unknown native likes', () {
     for (final likes in <num?>[null, -1, 1.5, 9007199254740992]) {
       expect(

@@ -1,6 +1,7 @@
 import 'package:social_monitor_generated_api/social_monitor_generated_api.dart';
 
 ReaderPostDto readerPostRestTestDto({
+  String bodyPreview = 'The collected comment',
   num? likeCount,
   String? relevance,
   String? usefulness,
@@ -11,7 +12,7 @@ ReaderPostDto readerPostRestTestDto({
   'providerKey': 'x-twitter',
   'providerFamily': 'x',
   'title': 'A comment on a quoted post',
-  'bodyPreview': 'The collected comment',
+  'bodyPreview': bodyPreview,
   'canonicalUrl': 'https://example.test/post',
   'publishedAt': '2026-10-31T10:00:00Z',
   'engagement': 1250,
