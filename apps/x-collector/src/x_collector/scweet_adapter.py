@@ -69,6 +69,7 @@ from .sqlite_candidate_rejection_repository import (
 
 ScweetFactory = Callable[[], Any]
 MAX_ACCOUNT_FAILOVERS_PER_PASS = 2
+POST_LOOKUP_ACCOUNT_LEASE_TTL_SECONDS = 600
 LOGGER = logging.getLogger(__name__)
 
 
@@ -224,6 +225,12 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
 
             reconcile_runs()
 
+            # Profile lookups have no search-worker heartbeat. Keep their real
+            # account lease alive through bounded transaction setup and query.
+            lookup_config = (
+                {"lease_ttl_s": POST_LOOKUP_ACCOUNT_LEASE_TTL_SECONDS}
+                if strict_lookup else {}
+            )
             config = ScweetConfig(
                 daily_requests_limit=runtime_limits.daily_requests,
                 daily_tweets_limit=runtime_limits.daily_tweets,
@@ -233,6 +240,7 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 api_page_size=settings.scweet_api_page_size,
                 max_empty_pages=settings.scweet_max_empty_pages,
                 request_404_retries=0 if strict_lookup else 1,
+                **lookup_config,
             )
             return Scweet(
                 cookies_file=settings.scweet_cookies_file,

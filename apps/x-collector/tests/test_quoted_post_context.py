@@ -126,3 +126,4 @@ def test_lookup_sdk_factory_disables_query_replay_without_changing_normal_search
         collector._post_lookup_factory()
         collector._scweet_factory()
     assert [value.request_404_retries for value in configurations] == [0, 1]
+    assert [value.lease_ttl_s for value in configurations] == [600, 120]
