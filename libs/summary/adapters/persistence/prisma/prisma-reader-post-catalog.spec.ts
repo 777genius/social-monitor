@@ -5,7 +5,7 @@ import { ConservativeReaderValueInputBuilder } from "@social-monitor/relevance/i
 import { SourceContentSafetyPolicy } from "@social-monitor/relevance/domain/source-content-safety";
 import type { ReaderValueScoringProvider } from "@social-monitor/relevance/infrastructure/reader-value/reader-value-provider-config";
 import { ReaderPostCurrentAssessmentIdentityAdapter } from "@social-monitor/relevance/infrastructure/reader-value/reader-post-current-assessment-identity.adapter";
-import { catalogFixture } from "./prisma-reader-post-catalog.spec-support";
+import { catalogFixture } from "../../../../../test/support/reader-post-catalog";
 
 const createFixture = (provider: ReaderValueScoringProvider = "openrouter-systemone") => {
   const builder = new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy(), provider);

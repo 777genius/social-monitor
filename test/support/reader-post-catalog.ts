@@ -6,8 +6,8 @@ import type { ReaderValuePreparedInput } from "@social-monitor/relevance/applica
 import type { ReaderValueInputBuilder } from "@social-monitor/relevance/application/contracts/reader-value-inventory";
 import type { ReaderValueSource } from "@social-monitor/relevance/domain/reader-value/reader-value-source";
 import { readerValueLabels } from "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
-import type { ReaderPostAssessmentIdentityBuilder } from "../../../application/contracts/reader-post-assessment-identity";
-import { PrismaReaderPostCatalog, type ReaderPostsSqlClient } from "./prisma-reader-post-catalog";
+import type { ReaderPostAssessmentIdentityBuilder } from "@social-monitor/summary/application/contracts/reader-post-assessment-identity";
+import { PrismaReaderPostCatalog, type ReaderPostsSqlClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-post-catalog";
 
 export async function catalogFixture(composition: {
   readonly builder: ReaderValueInputBuilder; readonly identity: ReaderPostAssessmentIdentityBuilder;
