@@ -107,7 +107,9 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
               sourceItemId: plan.snapshot.id,
               sourceBindingId: command.sourceBindingId,
               providerKey: command.providerKey,
-              dedupeKey: plan.dedupeKey,
+              // Capturing a shared article enriches a post; it cannot replace
+              // that existing post's durable feed identity with another post's.
+              dedupeKey: existingFeedItem?.dedupeKey ?? plan.dedupeKey,
               canonicalUrl: plan.snapshot.canonicalUrl,
               title: plan.snapshot.title,
               bodyPreview: plan.bodyPreview,
@@ -136,7 +138,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
                       tenantId_interestId_dedupeKey: {
                         tenantId: command.tenantId,
                         interestId: command.interestId,
-                        dedupeKey: plan.dedupeKey,
+                        dedupeKey: update.dedupeKey,
                       },
                     },
                     update,
