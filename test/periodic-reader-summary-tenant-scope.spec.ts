@@ -75,6 +75,7 @@ describe("periodic reader summary tenant composition", () => {
       { quotaPerHour: 10 },
     );
     const saved = new Map<string, ReaderSummaryJob>();
+    const lookupKeys: string[] = [];
     const jobs: ReaderSummaryJobRepositoryPort = {
       async save(job) {
         const snapshot = job.toSnapshot();
@@ -85,7 +86,9 @@ describe("periodic reader summary tenant composition", () => {
         });
         saved.set(snapshot.idempotencyKey, job);
       },
-      async findByIdempotencyKey({ idempotencyKey }) {
+      async findByIdempotencyKey({ idempotencyKey, tenantId, workspaceId }) {
+        expect(currentDatabaseAccess()).toEqual({ kind: "tenant", tenantId, workspaceId });
+        lookupKeys.push(idempotencyKey);
         return saved.get(idempotencyKey) ?? null;
       },
       async findById() {
@@ -141,6 +144,7 @@ describe("periodic reader summary tenant composition", () => {
     const scheduler = provider!.useFactory(
       policies,
       request,
+      jobs,
     ) as SchedulePeriodicReaderSummariesUseCase;
     const command = { limit: 10, now, correlationId: "periodic-scope-regression" };
 
@@ -156,6 +160,9 @@ describe("periodic reader summary tenant composition", () => {
     );
     expect(queue.all()).toHaveLength(2);
     expect(currentDatabaseAccess()).toBeUndefined();
+    expect(lookupKeys.some(key => key.includes(
+      "daily:2026-10-17T00:00:00.000Z:2026-10-18T00:00:00.000Z:UTC",
+    ))).toBe(true);
 
     const repeated = await scheduler.execute(command);
 
