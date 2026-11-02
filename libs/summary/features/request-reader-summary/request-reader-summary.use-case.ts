@@ -23,6 +23,7 @@ import type {
 } from "../../ports";
 import type { RequestReaderSummaryCommand } from "./request-reader-summary.command";
 import type { RequestReaderSummaryResult } from "./request-reader-summary.result";
+import { readerSummaryTransientRecoveryKey } from "../../domain/policies/reader-summary-transient-recovery";
 
 type RequestReaderSummaryFailure = DomainError | Error;
 
@@ -143,6 +144,14 @@ export class RequestReaderSummaryUseCase {
         ));
       }
 
+      const recoveryKey = command.recoverTransientFailure === true && !native
+        ? readerSummaryTransientRecoveryKey(snapshot, this.clock.now()) : undefined;
+      if (recoveryKey !== undefined && this.selectionStrategy.resolve({
+        tenantId: command.tenantId, workspaceId: command.workspaceId,
+        interestId: command.scope.type === "interest" ? command.scope.interestId : undefined,
+      }) === "jev_primary_v3") {
+        return this.execute({ ...command, idempotencyKey: recoveryKey });
+      }
       return ok({
         readerSummaryJobId: snapshot.id,
         period: periodToResult(snapshot.period),

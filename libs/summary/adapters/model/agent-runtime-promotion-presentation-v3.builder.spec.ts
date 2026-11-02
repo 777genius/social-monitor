@@ -445,22 +445,25 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
 
   it.each([["effect_unknown", "effect_unknown"], ["provider_failed", "response_started"],
     ["output_lost", "effect_unknown"]] as const)(
-    "retries a Kimi batch once after a gateway %s and skips it only if that repeats", async (code, effect) => {
+    "retries only a known closed Kimi failure and preserves uncertain gateway %s", async (code, effect) => {
       const kimi = { modelBackend: "kimi-code", model: "k3-256k" } as const;
       const recovering = new PresentationRuntimeClient();
       jest.spyOn(recovering, "runTask").mockResolvedValueOnce(gatewayFailure(code, effect))
         .mockImplementationOnce(async command => gatewayPresentation(command));
+      const mayReplace = effect !== "effect_unknown";
       await expect(new AgentRuntimePromotionPresentationV3Builder({ client: recovering, ...kimi })
-        .build([fixtureInput()])).resolves.toEqual([expect.objectContaining({ status: "available" })]);
-      expect(recovering.runTask).toHaveBeenCalledTimes(2);
+        .build([fixtureInput()])).resolves.toEqual([expect.objectContaining({
+          status: mayReplace ? "available" : "unavailable" })]);
+      expect(recovering.runTask).toHaveBeenCalledTimes(mayReplace ? 2 : 1);
 
       const failing = new PresentationRuntimeClient();
       const failure = gatewayFailure(code, effect);
       jest.spyOn(failing, "runTask").mockResolvedValue(failure);
       await expect(new AgentRuntimePromotionPresentationV3Builder({ client: failing, ...kimi })
         .build([fixtureInput()])).resolves.toEqual([{ status: "unavailable", reason: "runtime_failure",
-        runtimeFailure: { code: failure.failure!.code, causeCategory: failure.failure!.causeCategory } }]);
-      expect(failing.runTask).toHaveBeenCalledTimes(2);
+        runtimeFailure: { code: failure.failure!.code, causeCategory: failure.failure!.causeCategory,
+          effect, ...(mayReplace ? { executionClosed: true } : {}) } }]);
+      expect(failing.runTask).toHaveBeenCalledTimes(mayReplace ? 2 : 1);
     });
 
   it("keeps a busy Kimi account fatal for the run without retrying", async () => {

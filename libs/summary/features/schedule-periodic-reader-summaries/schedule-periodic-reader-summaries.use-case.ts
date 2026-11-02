@@ -184,6 +184,7 @@ export class SchedulePeriodicReaderSummariesUseCase {
           timezone: period.timezone,
         },
         idempotencyKey,
+        recoverTransientFailure: true,
         correlationId: `${params.correlationId}:${params.cadence}:${period.periodKey}`,
       });
 

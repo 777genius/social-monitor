@@ -11,10 +11,8 @@ const transientPresentationRuntimeCodes = new Set([
   "agent_runtime.failed",
   "agent_runtime.cli_exit",
   "agent_runtime.invalid_cli_result",
-  // Gateway attempts that broke after dispatch: a provider failure inside the
-  // stream, lost output or an unknown effect. A Kimi stream failed this way
-  // about 18 s in, and the same request completed later. The retry may be
-  // paid twice; the run guard caps how many batches can spend it.
+  // A known, closed gateway failure may buy one replacement. Lost dispatch
+  // acknowledgements and pending cleanup are filtered below, never replayed.
   "provider_effect_unknown",
   "provider_failed",
   "provider_output_lost",
@@ -62,6 +60,9 @@ export const presentationRuntimeFailureDisposition = (
       runWideAccountAvailabilities.has(details.availability ?? "")) return undefined;
   if (runWideFailureMarker.test(
     `${failure.code} ${failure.causeCategory} ${failure.safeMessage}`.toLowerCase())) return undefined;
+  // A lost dispatch acknowledgement is not permission to buy another call.
+  // Preserve its effect for operator reconciliation instead of replaying it.
+  if (details.gatewayEffect === "effect_unknown" || details.gatewayCleanup === "pending") return "skip";
   return timedOut ? "skip" : "retry";
 };
 
@@ -71,7 +72,24 @@ export const presentationRuntimeFailureIdentity = (
 ): ReaderPostPresentationRuntimeFailure => ({
   code: runtimeIdentifier(result.failure?.code),
   causeCategory: runtimeIdentifier(result.failure?.causeCategory),
+  ...(result.failure?.details?.gatewayCleanup === "closed" &&
+      ["completed", "not_dispatched", "response_started"].includes(result.failure.details.gatewayEffect ?? "")
+    ? { executionClosed: true } : {}),
+  ...runtimeTiming(result.failure?.details),
 });
+
+const runtimeTiming = (details: Readonly<Record<string, string>> | undefined):
+Pick<ReaderPostPresentationRuntimeFailure, "effect" | "elapsedMs" | "timeoutMs"> => {
+  const effect = details?.gatewayEffect;
+  const elapsed = details?.gatewayElapsedMs;
+  const timeout = details?.gatewayHardTimeoutMs;
+  return {
+    ...(["completed", "not_dispatched", "response_started", "effect_unknown"].includes(effect ?? "")
+      ? { effect: effect as ReaderPostPresentationRuntimeFailure["effect"] } : {}),
+    ...(elapsed !== undefined && /^[0-9]{1,10}$/u.test(elapsed) ? { elapsedMs: Number(elapsed) } : {}),
+    ...(timeout !== undefined && /^[0-9]{1,10}$/u.test(timeout) ? { timeoutMs: Number(timeout) } : {}),
+  };
+};
 
 const runtimeIdentifier = (value: string | undefined): string =>
   value !== undefined && /^[a-z][a-z0-9_.-]{0,63}$/u.test(value) ? value : "unclassified";

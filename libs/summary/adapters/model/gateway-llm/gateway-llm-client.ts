@@ -1,5 +1,5 @@
 import {
-  LLM_MAX_DEADLINE_MS, LlmSchemaError, prepareStrictJsonSchema,
+  LlmSchemaError, prepareStrictJsonSchema,
 } from "@agent-teams/account-gateway/llm";
 import type {
   LlmClient, LlmEffort, LlmFailure, LlmPolicy, LlmSuccess, LlmTask,
@@ -23,6 +23,7 @@ import {
 } from "./gateway-llm-failure";
 import { toGatewayOutputSchema } from "./gateway-llm-output-schema";
 import { collectOutputViolations } from "./gateway-llm-output-violations";
+import { gatewayLlmDeadline } from "./gateway-llm-deadline";
 import type { GatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 
 /**
@@ -106,8 +107,13 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
         (retry.kind === "new_attempt" && !retry.mayDuplicateCost);
       if (!replay || retries >= this.maxRetries || options?.signal?.aborted === true ||
           remainingMs <= afterMs) {
-        return failed(gatewayLlmFailure(result, identity, prepared.outputViolations()),
-          now.getTime() - startedAt);
+        const elapsedMs = now.getTime() - startedAt;
+        const failure = gatewayLlmFailure(result, identity, prepared.outputViolations());
+        return failed({ ...failure, details: { ...failure.details,
+          gatewayElapsedMs: String(elapsedMs),
+          gatewaySoftTimeoutMs: String(command.timeoutMs),
+          gatewayHardTimeoutMs: String(prepared.task.deadline.getTime() - startedAt),
+        } }, elapsedMs);
       }
       await this.options.sleep(afterMs, options?.signal);
       if (retry.kind === "new_attempt") {
@@ -196,7 +202,7 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
         ...(route.reasoningEffort === undefined ? {} : { effort: route.reasoningEffort }),
         maxOutputTokens: Math.max(route.minOutputTokens,
           Number.isSafeInteger(requested) && (requested as number) > 0 ? requested as number : 0),
-        deadline: new Date(startedAt + Math.min(command.timeoutMs, LLM_MAX_DEADLINE_MS)),
+        deadline: gatewayLlmDeadline(startedAt, command.timeoutMs),
         ...(decode === undefined ? {} : { decode }),
       },
     };
@@ -228,8 +234,12 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
     return {
       status: "completed",
       ...output,
-      warnings: result.cleanup === "pending" ? [{ code: "gateway_cleanup_pending",
-        message: "Gateway execution close was not acknowledged" }] : [],
+      warnings: [
+        ...(result.cleanup === "pending" ? [{ code: "gateway_cleanup_pending",
+          message: "Gateway execution close was not acknowledged" }] : []),
+        ...(durationMs > command.timeoutMs ? [{ code: "gateway_settlement_grace_used",
+          message: "Gateway task settled after its nominal timeout" }] : []),
+      ],
       ...(usage.inputTokens === null || usage.outputTokens === null ? {} : {
         usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
           totalTokens: usage.inputTokens + usage.outputTokens, estimatedCostUsd: 0 },

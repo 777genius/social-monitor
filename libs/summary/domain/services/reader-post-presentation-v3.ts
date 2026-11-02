@@ -43,6 +43,11 @@ export type ReaderPostPresentationV3Result =
 export type ReaderPostPresentationRuntimeFailure = {
   readonly code: string;
   readonly causeCategory: string;
+  /** The gateway acknowledged closure and the dispatch effect is known. */
+  readonly executionClosed?: boolean;
+  readonly effect?: "not_dispatched" | "response_started" | "completed" | "effect_unknown";
+  readonly elapsedMs?: number;
+  readonly timeoutMs?: number;
 };
 
 export interface PromotionPresentationBuilder {

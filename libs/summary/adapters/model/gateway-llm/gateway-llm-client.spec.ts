@@ -18,6 +18,7 @@ import { CooldownRotatingAccountSelector } from "./gateway-llm-account-selector"
 import { RunScopedGatewayLlmAttempts } from "./gateway-llm-attempts";
 import { GatewayLlmClient, type GatewayLlmRoute } from "./gateway-llm-client";
 import { approvedGatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
+import { gatewayLlmDeadline, gatewayLlmSettlementGraceMs } from "./gateway-llm-deadline";
 
 type Access = Awaited<ReturnType<ConsumerControlPort["runAccess"]>>;
 type Script = {
@@ -110,6 +111,57 @@ const command = (overrides: Partial<AgentRuntimeTaskCommand> = {}): AgentRuntime
   controls: { model: "k3-256k", modelBackend: "kimi-code", maxOutputTokens: 6_000 },
   timeoutMs: 60_000,
   ...overrides,
+});
+
+describe("gateway settlement grace", () => {
+  afterEach(() => jest.useRealTimers());
+
+  it("keeps the same admitted request open for a late valid response", async () => {
+    jest.useFakeTimers();
+    const h = harness({ request: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60_500));
+      return completedStream('{"label":"late valid response","note":null}');
+    } });
+    const started = Date.now();
+    const pending = h.client.runTask(command());
+    await jest.advanceTimersByTimeAsync(60_500);
+    const result = await pending;
+    expect(result.status).toBe("completed");
+    expect(result.warnings).toContainEqual(expect.objectContaining({
+      code: "gateway_settlement_grace_used" }));
+    expect(h.requests()).toBe(1);
+    expect(h.prepares).toHaveLength(1);
+    expect(Date.parse(h.prepares[0]!.deadline)).toBe(started + 60_000 + gatewayLlmSettlementGraceMs);
+  });
+
+  it("does not extend the gateway admission ceiling", () => {
+    expect(gatewayLlmDeadline(0, 3_600_000).getTime()).toBe(3_600_000);
+  });
+
+  it("reports a hard deadline with effect and timing without dispatching a replacement", async () => {
+    jest.useFakeTimers();
+    const h = harness({ request: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 90_001));
+      throw new GatewayError("cancelled", "response_started");
+    } });
+    const pending = h.client.runTask(command());
+    await jest.advanceTimersByTimeAsync(90_001);
+    const result = await pending;
+    expect(result).toMatchObject({ status: "failed", failure: {
+      code: "task_timeout", details: { gatewayElapsedMs: "90001",
+        gatewaySoftTimeoutMs: "60000", gatewayHardTimeoutMs: "90000",
+        gatewayCleanup: "closed" } } });
+    expect(h.requests()).toBe(1);
+  });
+
+  it("keeps cancellation authoritative during the grace period", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const h = harness();
+    const result = await h.client.runTask(command(), { signal: controller.signal });
+    expect(result.failure?.code).toBe("task_cancelled");
+    expect(h.requests()).toBe(0);
+  });
 });
 
 const labelInput = {
