@@ -10,27 +10,27 @@ const tenantId = 'tenant-test' as TenantId;
 const workspaceId = 'workspace-test' as WorkspaceId;
 
 const createHarness = () => {
-  const authorizeBearer = jest.fn().mockResolvedValue(undefined);
+  const authorizeToken = jest.fn().mockResolvedValue(undefined);
   const authorizeWorkspace = jest.fn().mockReturnValue({ ok: true, value: undefined });
   const parseRoles = jest.fn().mockReturnValue(['admin']);
   const recordAudit = jest.fn().mockResolvedValue({ ok: true, value: undefined });
 
   const service = new SourceBindingAccessService(
     { execute: recordAudit } as unknown as RecordPublicApiAuditEventUseCase,
-    { authorize: authorizeBearer } as unknown as ApiKeyRequestAuthorizer,
+    { authorize: authorizeToken } as unknown as ApiKeyRequestAuthorizer,
     { authorize: authorizeWorkspace } as unknown as WorkspaceAuthorizationPolicyPort,
     { parse: parseRoles } as unknown as WorkspaceRoleHeaderParser,
   );
 
-  return { service, authorizeBearer, authorizeWorkspace, parseRoles, recordAudit };
+  return { service, authorizeToken, authorizeWorkspace, parseRoles, recordAudit };
 };
 
 describe('SourceBindingAccessService', () => {
   it('enforces the read scope for bearer callers without trusting role headers', async () => {
     const h = createHarness();
-    await h.service.authorizeSourceBindingRead(tenantId, workspaceId, 'owner', 'Bearer test-placeholder');
-    expect(h.authorizeBearer).toHaveBeenCalledWith({
-      authorizationHeader: 'Bearer test-placeholder',
+    await h.service.authorizeSourceBindingRead(tenantId, workspaceId, 'owner', 'Bearer JWT');
+    expect(h.authorizeToken).toHaveBeenCalledWith({
+      authorizationHeader: 'Bearer JWT',
       tenantId,
       workspaceId,
       requiredScope: 'read:interests',
@@ -45,7 +45,7 @@ describe('SourceBindingAccessService', () => {
     await h.service.authorizeSourceBindingWrite(
       tenantId, workspaceId, 'owner,admin', undefined, 'source_bindings.update_status',
     );
-    expect(h.authorizeBearer).not.toHaveBeenCalled();
+    expect(h.authorizeToken).not.toHaveBeenCalled();
     expect(h.parseRoles).toHaveBeenCalledWith('owner,admin');
     expect(h.authorizeWorkspace).toHaveBeenCalledWith({
       tenantId,
