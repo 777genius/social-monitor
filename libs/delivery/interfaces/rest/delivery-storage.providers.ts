@@ -21,6 +21,9 @@ import { PrismaDigestSourceReader } from '../../adapters/source/prisma/prisma-di
 import { DELIVERY_ATTEMPT_REPOSITORY, DELIVERY_DIGEST_REPOSITORY, DELIVERY_DIGEST_SCHEDULE_REPOSITORY, DELIVERY_DIGEST_SOURCE_READER, DELIVERY_NOTIFICATION_PREFERENCE_MANAGER, DELIVERY_NOTIFICATION_PREFERENCE_READER, DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, DELIVERY_REALTIME_EVENT_REPOSITORY, DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_REPLAY_STORE, DELIVERY_WEBHOOK_SECRET_VAULT, type DeliveryPersistenceMode } from './delivery-provider-tokens';
 import type { DeliveryAttemptRepositoryPort, DigestRepositoryPort, DigestScheduleRepositoryPort, DigestSourceReaderPort, NotificationPreferenceManagementPort, NotificationPreferenceReaderPort, RealtimeEventRepositoryPort, WebhookEndpointRepositoryPort, WebhookReplayStorePort, WebhookSecretVaultPort } from '../../ports';
 
+/** Lazily resolve environment at vault-factory execution, preserving mode-specific validation. */
+export const DELIVERY_STORAGE_ENV_READER = Symbol('DELIVERY_STORAGE_ENV_READER');
+
 export const deliveryStorageProviders: Provider[] = [
     {
       provide: DELIVERY_ATTEMPT_REPOSITORY,
@@ -100,14 +103,15 @@ export const deliveryStorageProviders: Provider[] = [
         mode: DeliveryPersistenceMode,
         prisma: PrismaDeliveryClient | null,
         inMemorySecrets: InMemoryWebhookSecretVault,
+        readEnvironment: () => NodeJS.ProcessEnv,
       ): WebhookSecretVaultPort =>
         mode === 'prisma'
           ? new PrismaWebhookSecretVault(
             requirePrismaDeliveryClient(prisma),
-            resolveWebhookSecretEncryptionKey(process.env),
+            resolveWebhookSecretEncryptionKey(readEnvironment()),
           )
           : inMemorySecrets,
-      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryWebhookSecretVault],
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryWebhookSecretVault, DELIVERY_STORAGE_ENV_READER],
     },
     {
       provide: DELIVERY_WEBHOOK_REPLAY_STORE,

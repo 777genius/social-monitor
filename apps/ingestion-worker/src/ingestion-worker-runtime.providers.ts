@@ -11,7 +11,7 @@ import { NoopScanExecutionReporterAdapter } from '@social-monitor/ingestion/adap
 import { sourceProviderRegistryProviders } from '@social-monitor/ingestion/interfaces/source/source-provider-registry.providers';
 import { articleContentEnrichmentProviders } from './article-content-enrichment.module';
 import { githubRepoRadarProviders } from './github-repo-radar.module';
-import { INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS, INGESTION_SCAN_QUEUE_READER_MODE, type IngestionScanQueueReaderMode, resolveIngestionRabbitMqScanQueueReaderOptions } from './ingestion-worker-provider-tokens';
+import { INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS, INGESTION_SCAN_QUEUE_READER_MODE, type IngestionScanQueueReaderMode, type resolveIngestionRabbitMqScanQueueReaderOptions } from './ingestion-worker-provider-tokens';
 import { INGESTION_SCAN_COMMAND_QUEUE_READER, InMemoryScanCommandQueueReader, RabbitMqScanCommandQueueReader, type ScanCommandQueueReaderPort } from './scan-command-queue-reader';
 
 const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(

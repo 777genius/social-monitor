@@ -47,7 +47,7 @@ import { RealtimeEventsController } from './realtime-events.controller';
 import { WorkspaceSettingsController } from './workspace-settings.controller';
 import { WebhookEndpointsController } from './webhook-endpoints.controller';
 import { RealtimeEventsGateway } from '../ws/realtime-events.gateway';
-import { deliveryStorageProviders } from './delivery-storage.providers';
+import { DELIVERY_STORAGE_ENV_READER, deliveryStorageProviders } from './delivery-storage.providers';
 import { deliveryApplicationProviders } from './delivery-application.providers';
 
 export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
@@ -100,6 +100,10 @@ export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
     {
       provide: DELIVERY_REALTIME_FANOUT,
       useExisting: RealtimeEventsGateway,
+    },
+    {
+      provide: DELIVERY_STORAGE_ENV_READER,
+      useValue: () => process.env,
     },
     ...deliveryStorageProviders,
     ...deliveryApplicationProviders,
