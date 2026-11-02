@@ -76,7 +76,21 @@ export const presentationRuntimeFailureIdentity = (
       ["completed", "not_dispatched", "response_started"].includes(result.failure.details.gatewayEffect ?? "")
     ? { executionClosed: true } : {}),
   ...runtimeTiming(result.failure?.details),
+  ...runtimeReferences(result.failure?.details),
 });
+
+/** Only identifiers issued by this SDK, never arbitrary provider diagnostics. */
+const runtimeReferences = (details: Readonly<Record<string, string>> | undefined):
+Pick<ReaderPostPresentationRuntimeFailure, "executionRef" | "requestRef"> => {
+  const executionRef = details?.gatewayExecutionRef;
+  const requestRef = details?.gatewayRequestRef;
+  return {
+    ...(executionRef !== undefined && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(executionRef)
+      ? { executionRef } : {}),
+    ...(requestRef !== undefined && /^sm[A-Za-z0-9_-]{43}-a[1-9][0-9]{0,3}-r$/u.test(requestRef)
+      ? { requestRef } : {}),
+  };
+};
 
 const runtimeTiming = (details: Readonly<Record<string, string>> | undefined):
 Pick<ReaderPostPresentationRuntimeFailure, "effect" | "elapsedMs" | "timeoutMs"> => {

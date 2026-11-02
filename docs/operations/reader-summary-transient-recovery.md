@@ -5,7 +5,8 @@ beyond the nominal task budget, capped by the SDK's one-hour admission ceiling.
 Caller cancellation still wins. A valid late response is validated and attested
 by the same SDK; the adapter does not submit another inference to retrieve it.
 After hard cancellation the gateway stores status, not recoverable response text.
-The diagnostic includes elapsed, nominal and hard budgets, effect and cleanup;
+The diagnostic includes elapsed, nominal and hard budgets, effect, cleanup and
+strictly validated execution/request references for correlation with the gateway;
 no prompt, response or credential is logged.
 
 The periodic scheduler may create at most two deterministic replacement jobs

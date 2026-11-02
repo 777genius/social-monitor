@@ -49,6 +49,8 @@ export type ReaderPostPresentationRuntimeFailure = {
   readonly effect?: "not_dispatched" | "response_started" | "completed" | "effect_unknown";
   readonly elapsedMs?: number;
   readonly timeoutMs?: number;
+  readonly executionRef?: string;
+  readonly requestRef?: string;
 };
 
 export interface PromotionPresentationBuilder {

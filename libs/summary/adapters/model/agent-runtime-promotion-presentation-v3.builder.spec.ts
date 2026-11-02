@@ -1,6 +1,7 @@
 import type { LlmEffect, LlmFailureCode } from "@agent-teams/account-gateway/llm";
 
 import { gatewayLlmFailure } from "./gateway-llm/gateway-llm-failure";
+import { presentationRuntimeFailureIdentity } from "./agent-runtime-promotion-presentation-v3-runtime-failure";
 import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../ports";
 import {
@@ -9,6 +10,20 @@ import {
 } from "./agent-runtime-promotion-presentation-v3.builder";
 
 describe("AgentRuntimePromotionPresentationV3Builder", () => {
+  it.each([true, false])("retains only valid gateway references for incident correlation (%s)", valid => {
+    const executionRef = "11111111-1111-4111-8111-111111111111";
+    const requestRef = `sm${"a".repeat(43)}-a1-r`;
+    const result = presentationRuntimeFailureIdentity({ status: "failed", warnings: [], failure: {
+      code: "task_timeout", safeMessage: "deadline", causeCategory: "deadline",
+      retryable: false, reconnectRequired: false, details: {
+        gatewayExecutionRef: valid ? executionRef : "untrusted reference text",
+        gatewayRequestRef: valid ? requestRef : "untrusted reference text",
+        providerPayload: "must never enter operator logs",
+      },
+    } });
+    expect(result).toEqual({ code: "task_timeout", causeCategory: "deadline",
+      ...(valid ? { executionRef, requestRef } : {}) });
+  });
   it("skips a repeatedly failed MiMo task as a runtime failure, never as a completed attestation failure", async () => {
     const client = new PresentationRuntimeClient();
     jest.spyOn(client as AgentRuntimeClientPort, "runTask").mockResolvedValue({

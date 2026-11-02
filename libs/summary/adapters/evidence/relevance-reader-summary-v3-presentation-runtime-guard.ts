@@ -69,6 +69,8 @@ export class PresentationRuntimeFailureGuard implements PromotionPresentationBui
         ...(this.lastFailure?.effect === undefined ? {} : { lastEffect: this.lastFailure.effect }),
         ...(this.lastFailure?.elapsedMs === undefined ? {} : { lastElapsedMs: this.lastFailure.elapsedMs }),
         ...(this.lastFailure?.timeoutMs === undefined ? {} : { lastTimeoutMs: this.lastFailure.timeoutMs }),
+        ...(this.lastFailure?.executionRef === undefined ? {} : { lastExecutionRef: this.lastFailure.executionRef }),
+        ...(this.lastFailure?.requestRef === undefined ? {} : { lastRequestRef: this.lastFailure.requestRef }),
       };
       if (stop) {
         this.logger.error("reader summary presentation stopped after repeated runtime failures", fields);

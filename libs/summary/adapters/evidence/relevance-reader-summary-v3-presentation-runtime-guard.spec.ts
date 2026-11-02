@@ -72,12 +72,16 @@ describe('V3 promotion presentation runtime failures', () => {
       return inputs.map(() => ({ status: 'unavailable' as const, reason: 'runtime_failure' as const,
         runtimeFailure: { code: 'task_timeout', causeCategory: 'deadline',
           executionClosed: call === 1 ? closed : true,
+          executionRef: '11111111-1111-4111-8111-111111111111',
+          requestRef: `sm${'a'.repeat(43)}-a1-r`,
           effect: 'response_started' as const, elapsedMs: 270_001, timeoutMs: 270_000 } }));
     } });
     await expect(fixture.run()).resolves.toEqual({ kind: 'dependency_failure',
       reason: `presentation_runtime_failure_repeated:task_timeout${closed ? ':executions_closed' : ''}` });
     expect(fixture.logger.entries.at(-1)?.fields).toMatchObject({ executionsClosed: closed,
-      lastEffect: 'response_started', lastElapsedMs: 270_001, lastTimeoutMs: 270_000 });
+      lastEffect: 'response_started', lastElapsedMs: 270_001, lastTimeoutMs: 270_000,
+      lastExecutionRef: '11111111-1111-4111-8111-111111111111',
+      lastRequestRef: `sm${'a'.repeat(43)}-a1-r` });
   });
   it('skips a single runtime-failed batch and discloses the gap in the published artifact', async () => {
     const runtime = runtimeFailingBatches(call => call === 2);
