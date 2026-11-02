@@ -1,4 +1,4 @@
-import fs = require("node:fs");
+import fs from "node:fs";
 import type { AgentRuntimeClientPort } from "../../ports";
 import { GatewayLlmClient } from "../../adapters/model/gateway-llm/gateway-llm-client";
 import { GrpcAgentRuntimeClient } from "../../adapters/model/grpc-agent-runtime-client";

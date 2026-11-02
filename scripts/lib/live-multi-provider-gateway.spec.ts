@@ -1,4 +1,4 @@
-import fs = require("node:fs");
+import fs from "node:fs";
 
 const settings = {
   LIVE_MULTI_PROVIDER_SUMMARY_MODEL: "agent-runtime",
@@ -26,18 +26,18 @@ describe("live multi-provider gateway composition", () => {
     jest.restoreAllMocks();
   });
 
-  it("constructs all model paths without opening the old CLI or OpenAI credential path", () => {
+  it("constructs all model paths without opening the old CLI or OpenAI credential path", async () => {
     const read = fs.readFileSync;
     jest.spyOn(fs, "readFileSync").mockImplementation(((path, options) =>
       path === settings.AGENT_RUNTIME_GATEWAY_LLM_CONTROL_TOKEN_FILE
         ? "synthetic-control-token" : read(path, options)) as typeof fs.readFileSync);
-    jest.isolateModules(() => {
-      const { GrpcAgentRuntimeClient } = require("../../libs/summary/adapters/model/grpc-agent-runtime-client");
+    await jest.isolateModulesAsync(async () => {
+      const { GrpcAgentRuntimeClient } = await import("../../libs/summary/adapters/model/grpc-agent-runtime-client");
       const grpc = jest.spyOn(GrpcAgentRuntimeClient, "connect").mockImplementation(() => {
         throw new Error("Unexpected legacy runtime connection");
       });
       const { buildSummaryModel, buildReaderSummaryModel, buildSourceContentQualityReviewer } =
-        require("./live-multi-provider-summary-models");
+        await import("./live-multi-provider-summary-models");
       expect(() => buildSummaryModel()).not.toThrow();
       expect(() => buildReaderSummaryModel()).not.toThrow();
       const assessment = buildSourceContentQualityReviewer();
@@ -49,14 +49,14 @@ describe("live multi-provider gateway composition", () => {
   it.each([
     ["LIVE_MULTI_PROVIDER_AGENT_RUNTIME_MODEL", "buildSummaryModel"],
     ["LIVE_MULTI_PROVIDER_AGENT_RUNTIME_READER_MODEL", "buildReaderSummaryModel"],
-  ])("rejects a purpose override that disagrees with the gateway: %s", (setting, factory) => {
+  ] as const)("rejects a purpose override that disagrees with the gateway: %s", async (setting, factory) => {
     process.env[setting] = "gpt-5.6-sol";
     const read = fs.readFileSync;
     jest.spyOn(fs, "readFileSync").mockImplementation(((path, options) =>
       path === settings.AGENT_RUNTIME_GATEWAY_LLM_CONTROL_TOKEN_FILE
         ? "synthetic-control-token" : read(path, options)) as typeof fs.readFileSync);
-    jest.isolateModules(() => {
-      const models = require("./live-multi-provider-summary-models");
+    await jest.isolateModulesAsync(async () => {
+      const models = await import("./live-multi-provider-summary-models");
       expect(() => models[factory]()).toThrow(/model|purpose/iu);
     });
   });

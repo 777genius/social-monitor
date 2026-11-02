@@ -1,5 +1,6 @@
 import { resolveGatewayLlmTransportConfig } from "@social-monitor/summary/adapters/composition/reader-summary-agent-runtime-transport";
 import { gatewayLlmCanonicalRequestSha256 } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-request-identity";
+import type { GatewayLlmRoute } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-client";
 import { sourceContentAssessmentPurpose, refreshAssessmentBudget, refreshAssessmentLimits, verifyRefreshAssessmentExecution } from "./reader-summary-new-input-refresh-assessment-runtime";
 import { activeReaderSummaryPurposes, mimoReaderSummaryBackend, mimoReaderSummaryModel, verifyAndRecordMimoDailyExecution } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
@@ -37,7 +38,7 @@ export function refreshCaptureModelControls(env: NodeJS.ProcessEnv) {
     resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(env, noInvocation),
   ].map(({ client, ...options }) => { void client; return options; }) };
 }
-export function refreshGatewayRoute(route: import("@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-client").GatewayLlmRoute) {
+export function refreshGatewayRoute(route: GatewayLlmRoute) {
   const { accountRefs, ...identity } = route; void accountRefs; return identity;
 }
 export function refreshGenerationSha256(env: NodeJS.ProcessEnv): string {
