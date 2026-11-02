@@ -116,6 +116,14 @@ export class SchedulePeriodicReaderSummariesUseCase {
             correlationId: command.correlationId,
           });
 
+          // Discovery uses durable state; the current selector can disable V3
+          // before dispatch. An unchanged old failure must not consume today's slot.
+          if (periodNow.getTime() !== command.now.getTime() && item.ok && !item.value.created &&
+              item.value.status === "failed") {
+            evaluated -= 1;
+            continue;
+          }
+
           if (item.ok) {
             summaries.push(item.value);
             if (item.value.created) {

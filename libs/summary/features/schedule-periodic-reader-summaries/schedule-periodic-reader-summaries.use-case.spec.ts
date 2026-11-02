@@ -177,7 +177,7 @@ class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
 }
 
 describe("SchedulePeriodicReaderSummariesUseCase", () => {
-  it.each(["requested", "completed"] as const)("recovers across midnight without starving current work when replacement is %s", async replacementStatus => {
+  it.each(["requested", "completed", "rollback"] as const)("recovers across midnight without starving current work when replacement is %s", async replacementStatus => {
     const d = makeDependencies();
     d.time.now = new Date("2026-07-15T23:59:00Z");
     await d.policies.save(ReaderSummaryPolicy.create({ id: "rollover-policy",
@@ -196,6 +196,17 @@ describe("SchedulePeriodicReaderSummariesUseCase", () => {
       failedAt: d.time.now, terminalFailureCode: "presentation_dependency_unavailable",
       failureReason: "presentation_runtime_failure_repeated:task_timeout:executions_closed" }));
     d.time.now = new Date("2026-07-16T00:04:00Z");
+    if (replacementStatus === "rollback") {
+      d.time.strategy = "legacy_v2";
+      for (let repeat = 0; repeat < 2; repeat += 1) {
+        const current = await tick();
+        expect(current).toMatchObject({ ok: true, value: { evaluated: 1, summaries: [
+          expect.objectContaining({ period: expect.objectContaining({ startedAt: "2026-07-15T00:00:00.000Z" }) }),
+        ] } });
+      }
+      expect(d.queue.all()).toHaveLength(2);
+      return;
+    }
     const recovered = await tick();
     expect(recovered).toMatchObject({ ok: true, value: { scheduled: 1, summaries: [
       expect.objectContaining({ period: expect.objectContaining({ startedAt: "2026-07-14T00:00:00.000Z" }) }),
@@ -415,7 +426,8 @@ describe("SchedulePeriodicReaderSummariesUseCase", () => {
 });
 
 const makeDependencies = () => {
-  const time = { now: new Date("2026-07-15T12:00:00.000Z") };
+  const time = { now: new Date("2026-07-15T12:00:00.000Z"),
+    strategy: "jev_primary_v3" as "jev_primary_v3" | "legacy_v2" };
   const policies = new FakeReaderSummaryPolicyRepository();
   const jobs = new FakeReaderSummaryJobRepository();
   const queue = new FakeReaderSummaryJobQueue();
@@ -425,7 +437,7 @@ const makeDependencies = () => {
     new AllowAllSummaryQuota(),
     new SequenceIdGenerator(),
     { now: () => time.now },
-    { resolve: () => "jev_primary_v3" },
+    { resolve: () => time.strategy },
   );
 
   return {
