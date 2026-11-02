@@ -9,6 +9,8 @@ import {
   assertReaderSummaryTransportBackend,
   createGatewayLlmAgentRuntimeClient,
   createReaderSummaryAgentRuntimeClient,
+  createSummaryAgentRuntimeClient,
+  resolveSummaryAgentRuntimeTransport,
   resolveGatewayLlmTransportConfig,
 } from "./reader-summary-agent-runtime-transport";
 
@@ -31,6 +33,17 @@ const gatewayEnv = (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
 const clock = { now: () => new Date("2026-10-30T00:00:00.000Z") };
 
 describe("reader summary agent-runtime transport", () => {
+  it("uses one shared transport selector and retains the legacy entry point", () => {
+    expect(createReaderSummaryAgentRuntimeClient).toBe(createSummaryAgentRuntimeClient);
+    expect(resolveSummaryAgentRuntimeTransport({})).toBe("agent-runtime");
+    expect(resolveSummaryAgentRuntimeTransport({ AGENT_RUNTIME_TRANSPORT: " gateway-llm " })).toBe("gateway-llm");
+    expect(() => resolveSummaryAgentRuntimeTransport({ AGENT_RUNTIME_TRANSPORT: "direct" })).toThrow();
+    expect(() => createSummaryAgentRuntimeClient({ transport: "agent-runtime", env: {
+      AGENT_RUNTIME_TRANSPORT: "gateway-llm", AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+    }, clock, runId: "synthetic-conflict", agentRuntime: () => { throw new Error("must not connect"); } }))
+      .toThrow("Selected summary transport conflicts");
+  });
+
   it("resolves the Kimi route without reasoning and with room for thinking", () => {
     const env = gatewayEnv();
     expect(resolveGatewayLlmTransportConfig(env)).toEqual({

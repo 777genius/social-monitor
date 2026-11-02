@@ -6,7 +6,7 @@ import type {
 } from "@agent-teams/account-gateway/llm";
 import type { Clock } from "@social-monitor/shared-kernel";
 import {
-  canonicalJsonSha256, gatewayLlmRuntimeEngine, observedModelMatches,
+  gatewayLlmRuntimeEngine, observedModelMatches,
   selectedAgentRuntimeOutput,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 
@@ -25,6 +25,7 @@ import { toGatewayOutputSchema } from "./gateway-llm-output-schema";
 import { collectOutputViolations } from "./gateway-llm-output-violations";
 import { gatewayLlmDeadline } from "./gateway-llm-deadline";
 import type { GatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
+import { gatewayLlmCanonicalRequestSha256 } from "./gateway-llm-request-identity";
 
 /**
  * The one gateway profile and model a client serves. Tasks must name exactly
@@ -249,14 +250,7 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
         schemaVersion: 1,
         requestId: command.requestId,
         purpose: command.purpose,
-        canonicalRequestSha256: canonicalJsonSha256({
-          purpose: command.purpose, provider: command.provider,
-          profileId: prepared.task.profileId, model: prepared.task.model,
-          reasoningEffort: prepared.reasoningEffort,
-          maxOutputTokens: prepared.task.maxOutputTokens,
-          systemPrompt: command.systemPrompt, prompt: command.prompt,
-          outputSchema: command.outputSchema,
-        }),
+        canonicalRequestSha256: gatewayLlmCanonicalRequestSha256(command, prepared.route),
         provider: command.provider,
         model: prepared.task.model,
         reasoningEffort: prepared.reasoningEffort,

@@ -1,3 +1,4 @@
+import { assertReaderSummaryWeeklyRuntimeIdentity } from "./reader-summary-weekly-execution-profile";
 import {
   canonicalizeReaderSummaryWeeklyJson,
   readerSummaryWeeklyScopeKey,
@@ -8,6 +9,7 @@ import {
 import { readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion } from "../../libs/summary/domain/value-objects/reader-summary-weekly-publication-github-evidence";
 import {
   deriveReaderSummaryWeeklyReviewCitationSelector,
+  canonicalReaderSummaryWeeklyReviewExecutionAttestation,
   readerSummaryWeeklyReviewManifestSchemaVersion,
   readerSummaryWeeklyReviewStoryIdentityPrefix,
   type ReaderSummaryWeeklyReviewManifest,
@@ -223,29 +225,10 @@ const assertManifestCanonicalIntegrity = (
 const assertManifestExecutionAttestation = (
   manifest: ReaderSummaryWeeklyReviewManifest,
 ): void => {
-  const attestation = manifest.executionAttestation;
-  if (
-    attestation.schemaVersion !== 1 ||
-    !(
-      (attestation.purpose ===
-        "social_monitor.reader_summary.weekly.review.v2" &&
-        attestation.reasoningEffort === "high") ||
-      (attestation.purpose ===
-        "social_monitor.reader_summary.weekly.review" &&
-        attestation.reasoningEffort === "xhigh")
-    ) ||
-    attestation.provider !== "codex" ||
-    attestation.model !== "gpt-5.6-sol" ||
-    attestation.runtimeEngine !== "subscription-runtime-cli" ||
-    attestation.selectedOutputKind !== "structured_output" ||
-    !isSha(attestation.canonicalRequestSha256) ||
-    !isSha(attestation.launcherSha256) ||
-    !isSha(attestation.selectedOutputSha256) ||
-    !isSha(manifest.modelResponseSha256) ||
-    attestation.selectedOutputSha256 !== manifest.modelResponseSha256
-  ) {
-    throw new Error("Reader summary weekly review manifest attestation diverged");
-  }
+  canonicalReaderSummaryWeeklyReviewExecutionAttestation(
+    manifest.executionAttestation, manifest.modelResponseSha256,
+  );
+  assertReaderSummaryWeeklyRuntimeIdentity(manifest.executionAttestation);
 };
 
 const assertManifestMatchesCertifiedWeek = (

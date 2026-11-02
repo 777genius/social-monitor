@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { createSummaryAgentRuntimeClient, resolveSummaryAgentRuntimeTransport, resolveGatewayLlmTransportConfig, assertReaderSummaryTransportBackend } from
+  "@social-monitor/summary/adapters/composition/reader-summary-agent-runtime-transport";
 import { PrismaMonitoringConnection } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-connection";
 import { PrismaInterestRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-interest.repository";
 import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
@@ -17,7 +20,7 @@ import { refreshScope, refreshDates, refreshDefaultDates, refreshOperation, refr
 import { refreshSourceSha256, readReviewedRefresh, readReviewedRefreshSuccessor, assertRefreshFences, readRefreshFenceAuthority } from "./lib/reader-summary-new-input-refresh-files";
 import { captureRefreshAuthority, preflightRefreshSelection, assertRefreshHasNewInput, refreshPeriod } from "./lib/reader-summary-new-input-refresh-capture";
 import { readRefreshJobs, readRefreshPrior, readRefreshReconciliations } from "./lib/reader-summary-new-input-refresh-postgres";
-import { refreshGenerationSha256 } from "./lib/reader-summary-new-input-refresh-model";
+import { refreshGenerationSha256, refreshGatewayRoute } from "./lib/reader-summary-new-input-refresh-model";
 import { assertRefreshEqual, refreshLiveJobs } from "./lib/reader-summary-new-input-refresh-guard";
 import { executeNewInputRefresh } from "./lib/reader-summary-new-input-refresh-execution";
 import { resolveReaderSummaryServingAuthority } from "./lib/reader-summary-serving-authority";
@@ -48,8 +51,11 @@ async function main(): Promise<void> {
   const command = parseRefreshCommand(process.argv.slice(2));
   if (command.mode === "source") { console.log(refreshSourceSha256()); return; }
   const clock = new SystemClock();
-  // The refresh runs only on the gRPC CLI runtime, so it keeps the CLI Codex identity.
-  const runtimeEnv = readerSummaryCliRuntimeEnv(process.env);
+  const transport = resolveSummaryAgentRuntimeTransport(process.env);
+  assertReaderSummaryTransportBackend(transport, process.env);
+  const runtimeEnv = transport === "gateway-llm" ? process.env : readerSummaryCliRuntimeEnv(process.env);
+  const gateway = transport === "gateway-llm"
+    ? refreshGatewayRoute(resolveGatewayLlmTransportConfig(runtimeEnv).route) : undefined;
   const sourceSha256 = refreshSourceSha256();
   const deployedSourceSha256 = required("READER_SUMMARY_REFRESH_DEPLOYED_SOURCE_SHA256");
   if (sourceSha256 !== deployedSourceSha256) throw new Error("Refresh source differs from reviewed deployed source");
@@ -94,12 +100,14 @@ async function main(): Promise<void> {
           assertRefreshEqual(await readRefreshPrior(summary, date), prior, "preparation prior");
           const period = refreshPeriod(date);
           const value: Omit<RefreshManifest, "operation"> = {
-            format: "reader-summary-seven-day-new-input-v1", ...refreshScope, date,
+            format: gateway ? "reader-summary-seven-day-new-input-v2" : "reader-summary-seven-day-new-input-v1", ...refreshScope, date,
+            ...(gateway ? { gateway } : {}),
             ...(successor === undefined ? {} : { successor }),
             startedAt: period.startedAt.toISOString(), endedAt: period.endedAt.toISOString(), timezone: "UTC",
             observedThrough: observedThrough.toISOString(), preparedAt: clock.now().toISOString(),
             prior, authority, sourceSha256, deployedSourceSha256, generationSha256,
-            runtime: runtimeAuthority, fenceAuthority, model: "gpt-5.6-sol", reasoningEffort: "high",
+            runtime: runtimeAuthority, fenceAuthority, model: gateway?.model ?? "gpt-5.6-sol",
+            reasoningEffort: gateway ? gateway.reasoningEffort ?? "default" : "high",
           };
           const manifest: RefreshManifest = { ...value, operation: refreshOperation(value) };
           assertRefreshManifest(manifest, clock.now());
@@ -137,9 +145,14 @@ async function main(): Promise<void> {
       const assertFences = () => assertRefreshFences(manifest.date, fencePaths,
         process.env.READER_SUMMARY_DATE_FENCE_TOKEN, manifest.fenceAuthority);
       assertFences(); assertSource();
-      const channel = new AgentRuntimeServiceClient(required("AGENT_RUNTIME_GRPC_ADDRESS"), credentials.createInsecure());
-      const runtime = new GrpcAgentRuntimeClient(channel, clock, {
-        timeoutMs: 5_000, serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN });
+      assertRefreshEqual(gateway, manifest.gateway, "selected gateway route");
+      let channel: AgentRuntimeServiceClient | undefined;
+      const runtime = createSummaryAgentRuntimeClient({ transport, env: runtimeEnv, clock, runId: randomUUID(),
+        agentRuntime: () => {
+          channel = new AgentRuntimeServiceClient(required("AGENT_RUNTIME_GRPC_ADDRESS"), credentials.createInsecure());
+          return new GrpcAgentRuntimeClient(channel, clock, {
+            timeoutMs: 5_000, serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN });
+        } });
       const record = (event: unknown) => {
         const fd = openSync(join(output, `${manifest.date}.journal.jsonl`), constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
         try { writeSync(fd, JSON.stringify({ at: clock.now().toISOString(), event }) + "\n"); fsyncSync(fd); }
@@ -172,7 +185,7 @@ async function main(): Promise<void> {
       } catch {
         record({ status: "stopped_requires_reconciliation", operation: manifest.operation, manifestSha256: command.sha256 });
         throw new Error("Refresh stopped; reconcile original operation");
-      } finally { channel.close(); }
+      } finally { channel?.close(); }
     });
   } finally { await Promise.all([monitoring?.close(), feedConnection.close(), summary.close()]); }
 }

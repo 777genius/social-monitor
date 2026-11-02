@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
@@ -69,6 +70,14 @@ import {
   assertReaderSummaryWeeklyProductionSlot,
   prepareReaderSummaryWeeklyProductionSlot,
 } from "./lib/reader-summary-weekly-production-slot";
+import {
+  createSummaryAgentRuntimeClient,
+  resolveSummaryAgentRuntimeTransport,
+} from "../libs/summary/adapters/composition/reader-summary-agent-runtime-transport";
+import {
+  resolveReaderSummaryWeeklyExecutionProfile,
+  type ReaderSummaryWeeklyExecutionProfile,
+} from "./lib/reader-summary-weekly-execution-profile";
 import { weeklyAgentRuntimeDefaultCwd } from "./lib/weekly-agent-runtime-default-cwd";
 
 loadDotenvIfPresent(".env");
@@ -126,12 +135,12 @@ async function main(): Promise<void> {
       new PrismaReaderSummaryWeeklyStoryAuthority(connection),
       repository,
     );
+    const executionProfile = resolveReaderSummaryWeeklyExecutionProfile(process.env);
     const agentRuntime = lazyAgentRuntime(options.modelTimeoutMs);
     const model = new AgentRuntimeReaderSummaryWeeklyTextModel({
       client: agentRuntime,
       provider: "codex",
-      model: "gpt-5.6-sol",
-      reasoningEffort: "high",
+      executionProfile,
       timeoutMs: options.modelTimeoutMs,
     });
     const publisher: ReaderSummaryWeeklyProductionPublisher = {
@@ -155,6 +164,7 @@ async function main(): Promise<void> {
         publisher,
         manifestStore: reviewManifestStore,
         reviewAgentRuntime: agentRuntime,
+        executionProfile,
         attemptNumber: 1,
       });
       if (outcome.status !== "completed") process.exitCode = 75;
@@ -187,6 +197,7 @@ async function main(): Promise<void> {
           publisher,
           manifestStore: reviewManifestStore,
           reviewAgentRuntime: agentRuntime,
+          executionProfile,
           attemptNumber,
         }),
       wait: waitForRetry,
@@ -221,9 +232,14 @@ const replayPublisher: ReaderSummaryWeeklyProductionPublisher = Object.freeze({
 const lazyAgentRuntime = (
   timeoutMs: number,
 ): AgentRuntimeClientPort => {
-  let client: GrpcAgentRuntimeClient | undefined;
-  const resolve = (): GrpcAgentRuntimeClient => {
-    client ??= GrpcAgentRuntimeClient.connect({
+  let client: AgentRuntimeClientPort | undefined;
+  const resolve = (): AgentRuntimeClientPort => {
+    client ??= createSummaryAgentRuntimeClient({
+      transport: resolveSummaryAgentRuntimeTransport(process.env),
+      env: process.env,
+      clock: new SystemClock(),
+      runId: randomUUID(),
+      agentRuntime: () => GrpcAgentRuntimeClient.connect({
       address: requireEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
       clock: new SystemClock(),
       options: {
@@ -231,6 +247,7 @@ const lazyAgentRuntime = (
         serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN,
         defaultCwd: weeklyAgentRuntimeDefaultCwd(process.env.AGENT_RUNTIME_TASK_CWD),
       },
+      }),
     });
     return client;
   };
@@ -268,6 +285,7 @@ const executeWindow = async (params: Readonly<{
   publisher: ReaderSummaryWeeklyProductionPublisher;
   manifestStore: ReaderSummaryWeeklyReviewManifestPort;
   reviewAgentRuntime?: AgentRuntimeClientPort;
+  executionProfile?: ReaderSummaryWeeklyExecutionProfile;
   attemptNumber: number;
 }>): Promise<ReaderSummaryWeeklyScheduledSlotOutcome> => {
   let receipt: ReaderSummaryWeeklyExecutionReceipt | undefined;
@@ -324,6 +342,7 @@ const executeWindow = async (params: Readonly<{
       }
       const reviewAdmission = await runWithTenantDatabaseAccess(params.scope, () =>
         admitReaderSummaryWeeklyReviewManifest({
+          executionProfile: params.executionProfile,
           dbState: input.dbState,
           replay: input.mode === "replay",
           manifestStore: params.manifestStore,

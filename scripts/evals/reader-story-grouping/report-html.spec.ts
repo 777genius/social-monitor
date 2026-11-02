@@ -9,7 +9,7 @@ let report: ReportResult;
 beforeAll(async () => {
   const data = loadDataset();
   const blocks = await Promise.all(data.blocks.map((b) => prepareBlock(data, b)));
-  const requests = (await Promise.all(blocks.map(captureRequest))).filter((r): r is RequestEnvelope => r !== undefined);
+  const requests = (await Promise.all(blocks.map((p) => captureRequest(p)))).filter((r): r is RequestEnvelope => r !== undefined);
   const rows = (await Promise.all(blocks.map((b) => caseRows(data, b, applyDecisions(b))))).flat();
   const manifest = makeManifest(data, requests, { revision: "b".repeat(40), treeSha: "c".repeat(40), worktree: "clean" });
   report = buildReport(data, rows, "OFFLINE_DETERMINISTIC_NO_VERIFIER", manifest, []);

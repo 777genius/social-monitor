@@ -17,6 +17,15 @@ import {
   readerSummaryWeeklyStoryIdentitySchemaVersion,
 } from "./reader-summary-weekly-story-identity";
 
+export {
+  canonicalReaderSummaryWeeklyReviewExecutionAttestation,
+  type ReaderSummaryWeeklyReviewExecutionAttestation,
+} from "./reader-summary-weekly-review-execution-attestation";
+import {
+  canonicalReaderSummaryWeeklyReviewExecutionAttestation,
+  type ReaderSummaryWeeklyReviewExecutionAttestation,
+} from "./reader-summary-weekly-review-execution-attestation";
+
 export const readerSummaryWeeklyReviewManifestSchemaVersion = "reader_summary.weekly_review_manifest.v1" as const;
 export const readerSummaryWeeklyReviewAuthoritySchemaVersion = "reader_summary.weekly_review_authority.v1" as const;
 export const readerSummaryWeeklyReviewResponseSchemaVersion = "reader_summary.weekly_review_response.v1" as const;
@@ -59,12 +68,6 @@ export type ReaderSummaryWeeklyReviewStoryCandidate = Readonly<{
 export type ReaderSummaryWeeklyReviewSelection = Readonly<{
   story: string; label: ReaderSummaryWeeklyReviewLabel; citationSelectors: readonly string[];
   beforeCitationSelector?: string; afterCitationSelector?: string; terminalCitationSelector?: string;
-}>;
-export type ReaderSummaryWeeklyReviewExecutionAttestation = Readonly<{
-  schemaVersion: 1; requestId: string; purpose: "social_monitor.reader_summary.weekly.review" | "social_monitor.reader_summary.weekly.review.v2";
-  canonicalRequestSha256: string; provider: "codex"; model: "gpt-5.6-sol"; reasoningEffort: "high" | "xhigh";
-  runtimeEngine: "subscription-runtime-cli"; runtimePackageVersion: string; launcherSha256: string;
-  selectedOutputKind: "structured_output"; selectedOutputSha256: string;
 }>;
 type ReaderSummaryWeeklyReviewAuthorityBinding = Readonly<{
   schemaVersion: typeof readerSummaryWeeklyReviewAuthoritySchemaVersion;
@@ -175,7 +178,7 @@ export const createReaderSummaryWeeklyReviewManifest = (input: CreateReaderSumma
   assertUniqueStoryDates(citations);
   const observations = reviewedObservations(selections, citations, candidates);
   const modelResponseSha256 = exactReaderSummaryWeeklySha256(input.modelResponseSha256, "weekly review model response hash");
-  const executionAttestation = canonicalExecutionAttestation(input.executionAttestation, modelResponseSha256);
+  const executionAttestation = canonicalReaderSummaryWeeklyReviewExecutionAttestation(input.executionAttestation, modelResponseSha256);
   const body = deepFreezeReaderSummaryWeekly({
     schemaVersion: readerSummaryWeeklyReviewManifestSchemaVersion, tenantId: reviewAuthority.tenantId,
     workspaceId: reviewAuthority.workspaceId, scope: cloneReviewScope(reviewAuthority.scope), scopeKey: reviewAuthority.scopeKey,
@@ -344,29 +347,6 @@ const reviewedObservations = (selections: readonly ReaderSummaryWeeklyReviewSele
   });
   return deepFreezeReaderSummaryWeekly(observations);
 };
-
-const canonicalExecutionAttestation = (input: ReaderSummaryWeeklyReviewExecutionAttestation, modelResponseSha256: string): ReaderSummaryWeeklyReviewExecutionAttestation => {
-  assertReaderSummaryWeeklyExactObject(input, ["schemaVersion", "requestId", "purpose", "canonicalRequestSha256", "provider", "model", "reasoningEffort", "runtimeEngine", "runtimePackageVersion", "launcherSha256", "selectedOutputKind", "selectedOutputSha256"], "weekly review execution attestation", { allowAuthoritativeHashes: true });
-  if (input.schemaVersion !== 1 || !validWeeklyReviewExecutionIdentity(input) || input.provider !== "codex" || input.model !== "gpt-5.6-sol" || input.runtimeEngine !== "subscription-runtime-cli" || input.selectedOutputKind !== "structured_output" || exactReaderSummaryWeeklySha256(input.selectedOutputSha256, "weekly review selected output hash") !== modelResponseSha256) {
-    throw new Error("Reader summary weekly review execution attestation is invalid");
-  }
-  return deepFreezeReaderSummaryWeekly({
-    schemaVersion: 1, requestId: exactReaderSummaryWeeklyIdentity(input.requestId, "weekly review request id"), purpose: input.purpose,
-    canonicalRequestSha256: exactReaderSummaryWeeklySha256(input.canonicalRequestSha256, "weekly review canonical request hash"),
-    provider: input.provider, model: input.model, reasoningEffort: input.reasoningEffort, runtimeEngine: input.runtimeEngine,
-    runtimePackageVersion: exactText(input.runtimePackageVersion, "weekly review runtime package version", 256),
-    launcherSha256: exactReaderSummaryWeeklySha256(input.launcherSha256, "weekly review launcher hash"),
-    selectedOutputKind: input.selectedOutputKind, selectedOutputSha256: modelResponseSha256,
-  });
-};
-
-const validWeeklyReviewExecutionIdentity = (
-  input: ReaderSummaryWeeklyReviewExecutionAttestation,
-): boolean =>
-  (input.purpose === "social_monitor.reader_summary.weekly.review.v2" &&
-    input.reasoningEffort === "high") ||
-  (input.purpose === "social_monitor.reader_summary.weekly.review" &&
-    input.reasoningEffort === "xhigh");
 
 const assertUniqueStoryDates = (citations: readonly ReaderSummaryWeeklyReviewedCitation[]): void => {
   const keys = citations.map((citation) => `${citation.storyId}\u0000${citation.requestedUtcDate}`);

@@ -1,4 +1,4 @@
-type ReaderSummaryPublicationPostgresClient = Readonly<{
+export type ReaderSummaryPublicationPostgresClient = Readonly<{
   query<TRow = Record<string, unknown>>(
     sql: string,
     values?: readonly unknown[],

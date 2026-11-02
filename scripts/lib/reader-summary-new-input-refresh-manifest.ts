@@ -1,4 +1,8 @@
+import { isCodexGatewayReaderSummaryRoute } from "@social-monitor/summary/adapters/model/codex-reader-summary-route";
 import { createHash } from "node:crypto";
+import { approvedGatewayLlmSdkIdentity } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { isGatewayReaderSummaryExecution, resolveReaderSummaryGenerationIdentity, type ReaderSummaryGenerationBackend } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+import type { GatewayLlmRoute } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-client";
 import { readerSummaryNewInputRefreshPrefix } from
   "@social-monitor/summary/application/contracts/reader-summary-new-input-refresh-authority";
 
@@ -33,7 +37,7 @@ export type RefreshAuthority = Readonly<{
   feedCount: number; eligibleCount: number; metricRowCount: number;
 }>;
 export type RefreshManifest = Readonly<{
-  format: "reader-summary-seven-day-new-input-v1";
+  format: "reader-summary-seven-day-new-input-v1" | "reader-summary-seven-day-new-input-v2";
   tenantId: string; workspaceId: string; date: string;
   startedAt: string; endedAt: string; timezone: "UTC";
   observedThrough: string; preparedAt: string;
@@ -41,7 +45,9 @@ export type RefreshManifest = Readonly<{
   sourceSha256: string; deployedSourceSha256: string; generationSha256: string;
   runtime: Readonly<{ engine: string; packageVersion: string; launcherSha256: string }>;
   fenceAuthority: Readonly<{ global: string; dates: string; fences: string }>;
-  model: "gpt-5.6-sol"; reasoningEffort: "high";
+  model: string; reasoningEffort: string;
+  /** v2 binds a gateway route; legacy manifests keep their exact JSON shape. */
+  gateway?: Readonly<Omit<GatewayLlmRoute, "accountRefs">>;
   operation: string;
   successor?: RefreshSuccessorGrant;
 }>;
@@ -61,18 +67,17 @@ export const refreshOperation = (m: Omit<RefreshManifest, "operation">): string 
     prior: m.prior, input: m.authority,
     source: m.sourceSha256, deployed: m.deployedSourceSha256, generation: m.generationSha256,
     runtime: m.runtime, model: m.model, effort: m.reasoningEffort,
+    ...(m.format === "reader-summary-seven-day-new-input-v2" ? { format: m.format, gateway: m.gateway } : {}),
   });
 
 export function assertRefreshManifest(m: RefreshManifest, now: Date, fresh = true, depth = 0): void {
   if (m.successor !== undefined) assertRefreshSuccessorGrant(m, now, { assertOriginal: assertRefreshManifest, hash: refreshHash }, depth);
-  if (m.format !== "reader-summary-seven-day-new-input-v1" ||
+  if (!refreshManifestFormat(m.format) || !validRefreshRuntimePolicy(m) ||
       m.tenantId !== refreshScope.tenantId || m.workspaceId !== refreshScope.workspaceId ||
       !refreshDates.includes(m.date) || m.timezone !== "UTC" ||
       m.startedAt !== `${m.date}T00:00:00.000Z` ||
       m.endedAt !== new Date(Date.parse(m.startedAt) + 86_400_000).toISOString() ||
-      m.model !== "gpt-5.6-sol" || m.reasoningEffort !== "high" ||
       m.sourceSha256 !== m.deployedSourceSha256 ||
-      m.runtime.engine !== "subscription-runtime-cli" ||
       m.runtime.packageVersion.trim().length === 0 ||
       !["COMPLETED", "NO_SIGNAL"].includes(m.prior.status) ||
       m.operation !== refreshOperation(m)) {
@@ -117,4 +122,29 @@ function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b))
     .map(([key, v]) => `${JSON.stringify(key)}:${canonical(v)}`).join(",")}}`;
+}
+
+export const refreshManifestFormat = (format: unknown): boolean =>
+  format === "reader-summary-seven-day-new-input-v1" || format === "reader-summary-seven-day-new-input-v2";
+function validRefreshRuntimePolicy(m: RefreshManifest): boolean {
+  if (m.format === "reader-summary-seven-day-new-input-v1") return m.gateway === undefined &&
+    m.model === "gpt-5.6-sol" && m.reasoningEffort === "high" && m.runtime.engine === "subscription-runtime-cli";
+  const route = m.gateway;
+  if (!route || !["openai-chatgpt", "kimi-code", "openrouter"].includes(route.modelBackend)) return false;
+  try {
+    resolveReaderSummaryGenerationIdentity({ backend: route.modelBackend as ReaderSummaryGenerationBackend, model: route.model });
+  } catch { return false; }
+  if (route.modelBackend === "kimi-code" && route.reasoningEffort !== undefined) return false;
+  return m.runtime.engine === "gateway-llm" &&
+    m.runtime.packageVersion === approvedGatewayLlmSdkIdentity.packageVersion &&
+    m.runtime.launcherSha256 === approvedGatewayLlmSdkIdentity.archiveSha256 &&
+    Object.keys(route).sort().join(",") === (route.reasoningEffort === undefined
+      ? "minOutputTokens,model,modelBackend,profileId" : "minOutputTokens,model,modelBackend,profileId,reasoningEffort") &&
+    /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u.test(route.profileId) &&
+    ["openai-chatgpt", "kimi-code", "openrouter"].includes(route.modelBackend) &&
+    route.model === m.model && (route.reasoningEffort ?? "default") === m.reasoningEffort &&
+    Number.isSafeInteger(route.minOutputTokens) && route.minOutputTokens > 0 && route.minOutputTokens <= 65_536 &&
+    (route.modelBackend === "openai-chatgpt"
+      ? isCodexGatewayReaderSummaryRoute(m.model, m.reasoningEffort)
+      : isGatewayReaderSummaryExecution({ runtimeEngine: m.runtime.engine, model: m.model, reasoningEffort: m.reasoningEffort }));
 }

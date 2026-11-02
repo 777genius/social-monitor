@@ -1,3 +1,4 @@
+import { refreshManifestFormat } from "./reader-summary-new-input-refresh-manifest";
 import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { IdGenerator } from "@social-monitor/shared-kernel";
@@ -185,7 +186,7 @@ function assertPreProviderArtifacts(e: RefreshPreProviderReconciliationEvidence)
   };
   const v = e.invocation;
   const manifest = parse(immutable(v.manifestPath, e.manifestSha256));
-  if (manifest.format !== "reader-summary-seven-day-new-input-v1" ||
+  if (!refreshManifestFormat(manifest.format) ||
       manifest.operation !== e.operation || manifest.date !== e.date ||
       manifest.tenantId !== e.tenantId || manifest.workspaceId !== e.workspaceId) invalid();
   const directory = resolve(v.capturePath);
@@ -334,7 +335,7 @@ function assertCurrentAuthorityArtifacts(e: RefreshCurrentAuthorityReconciliatio
       v.delegatedInvocationCount !== 0 || v.providerUsageReported !== false ||
       !Array.isArray(v.attempts) || v.attempts.length === 0 || v.attempts.length > 6) invalid();
   const manifest = object(JSON.parse(immutable(v.manifestPath, e.manifestSha256)));
-  if (manifest.format !== "reader-summary-seven-day-new-input-v1" || manifest.operation !== e.operation ||
+  if (!refreshManifestFormat(manifest.format) || manifest.operation !== e.operation ||
       manifest.date !== e.date || manifest.tenantId !== e.tenantId || manifest.workspaceId !== e.workspaceId ||
       !isoInstant(manifest.observedThrough)) invalid();
   const text = immutable(v.journalPath, v.journalSha256);
@@ -362,6 +363,15 @@ function assertCurrentAuthorityArtifacts(e: RefreshCurrentAuthorityReconciliatio
   const statuses = ["before", "admission", "preflight", "operation_consumed",
     ...v.attempts.map(() => "requires_reconciliation"), "stopped_requires_reconciliation"];
   if (rows.length !== statuses.length) invalid();
+  // Validate the reviewed route before using it as assessment identity. The
+  // final journal timestamp preserves the original historical/successor checks.
+  const terminalAt = rows.at(-1)?.at;
+  if (!isoInstant(terminalAt)) invalid();
+  assertRefreshManifest(manifest as unknown as RefreshManifest, new Date(String(terminalAt)), false);
+  const expectedModel = manifest.format === "reader-summary-seven-day-new-input-v2"
+    ? manifest.model : "gpt-5.6-sol";
+  const expectedEffort = manifest.format === "reader-summary-seven-day-new-input-v2"
+    ? manifest.reasoningEffort : "low";
   let previousAt = -Infinity;
   const seen = new Set<string>();
   rows.forEach((row, index) => {
@@ -405,12 +415,11 @@ function assertCurrentAuthorityArtifacts(e: RefreshCurrentAuthorityReconciliatio
       if (!attempt || seen.has(String(event.requestId)) || event.purpose !== attempt.purpose ||
           event.requestSha256 !== attempt.requestSha256 || row.at !== attempt.failedAt ||
           refreshHash(row) !== attempt.attemptSha256 || event.observedThrough !== manifest.observedThrough ||
-          event.model !== "gpt-5.6-sol" || event.reasoningEffort !== "low" || event.delegated !== false ||
+          event.model !== expectedModel || event.reasoningEffort !== expectedEffort || event.delegated !== false ||
           event.preDelegationFailureStage !== "current_authority") invalid();
       seen.add(String(event.requestId));
     }
   });
-  assertRefreshManifest(manifest as unknown as RefreshManifest, new Date(previousAt), false);
 }
 
 export function readReviewedRefreshReconciliation(

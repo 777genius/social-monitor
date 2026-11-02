@@ -3,12 +3,16 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
-      "const": 2
+      "enum": [
+        2,
+        3
+      ]
     },
     "captureKind": {
       "enum": [
         "live_subscription",
-        "offline_fixture"
+        "offline_fixture",
+        "live_gateway"
       ]
     },
     "manifestSha256": {
@@ -43,6 +47,9 @@
         "launcherSha256": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
+        },
+        "runtimeEngine": {
+          "const": "gateway-llm"
         }
       },
       "required": [
@@ -166,13 +173,26 @@
                     "const": "codex"
                   },
                   "model": {
-                    "const": "gpt-5.6-sol"
+                    "type": "string",
+                    "minLength": 1
                   },
                   "reasoningEffort": {
-                    "const": "high"
+                    "enum": [
+                      "default",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max",
+                      "ultra"
+                    ]
                   },
                   "runtimeEngine": {
-                    "const": "subscription-runtime-cli"
+                    "enum": [
+                      "subscription-runtime-cli",
+                      "gateway-llm"
+                    ]
                   },
                   "runtimePackageVersion": {
                     "type": "string"
@@ -187,6 +207,56 @@
                   "selectedOutputSha256": {
                     "type": "string",
                     "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "gateway": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "profileId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+                      },
+                      "taskId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+                      },
+                      "requestRef": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+                      },
+                      "executionRef": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+                      },
+                      "accountRef": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+                      },
+                      "attempt": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "observedModel": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "requestSha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      }
+                    },
+                    "required": [
+                      "profileId",
+                      "taskId",
+                      "requestRef",
+                      "executionRef",
+                      "accountRef",
+                      "attempt",
+                      "observedModel",
+                      "requestSha256"
+                    ]
                   }
                 },
                 "required": [
@@ -202,6 +272,29 @@
                   "launcherSha256",
                   "selectedOutputKind",
                   "selectedOutputSha256"
+                ],
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "runtimeEngine": {
+                          "const": "gateway-llm"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "gateway"
+                      ]
+                    },
+                    "else": {
+                      "not": {
+                        "required": [
+                          "gateway"
+                        ]
+                      }
+                    }
+                  }
                 ]
               }
             },

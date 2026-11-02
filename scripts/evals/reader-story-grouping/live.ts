@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
+import { approvedGatewayLlmSdkIdentity } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports";
 import { check, fileSha, loadDataset, readJson } from "./dataset";
@@ -7,12 +8,13 @@ import { assertSource, verifySourceUnchanged } from "./source-identity";
 import { evaluationRun, runArguments, claimLiveRun } from "./run-identity";
 import { prepareBlock, applyDecisions } from "./replay";
 import { captureRequest, makeManifest, verifyManifest, normalizeCapturedResponse,
-  checkReceiptBinding, type RequestManifest, type RequestEnvelope, type CaptureReceipt } from "./requests";
+  checkReceiptBinding, verifyCapturedRuntime, evaluationGatewayRoute, type RequestManifest, type RequestEnvelope, type CaptureReceipt } from "./requests";
 
 /** Parent supplies an already authenticated, disposable-scope client. No auth loading or provisioning here. */
 export type TrustedComposition = {
   client: AgentRuntimeClientPort;
   operatorRecord: string;
+  env?: NodeJS.ProcessEnv;
   close: () => void | Promise<void>;
 };
 export const runLiveWithTrustedClient = async (manifestPath: string, out: string,
@@ -21,9 +23,10 @@ export const runLiveWithTrustedClient = async (manifestPath: string, out: string
   const execution = evaluationRun(runId, source);
   check(execution, "Live execution requires explicit --run-id matching offline preparation");
   const data = loadDataset(); const frozen = readJson<RequestManifest>(manifestPath);
+  const gateway = evaluationGatewayRoute(trusted.env ?? process.env);
   const prepared = await Promise.all(data.blocks.map((b) => prepareBlock(data, b, execution)));
-  const requests = (await Promise.all(prepared.map(captureRequest))).filter((r): r is RequestEnvelope => r !== undefined);
-  verifyManifest(data, frozen, makeManifest(data, requests, source, execution));
+  const requests = (await Promise.all(prepared.map((p) => captureRequest(p, gateway)))).filter((r): r is RequestEnvelope => r !== undefined);
+  verifyManifest(data, frozen, makeManifest(data, requests, source, execution, gateway));
   verifySourceUnchanged(source);
   check(!existsSync(out), "Live output directory already exists; no automatic rerun/resume");
   check(trusted.operatorRecord.trim().length > 0, "Missing operator transport provenance");
@@ -31,15 +34,17 @@ export const runLiveWithTrustedClient = async (manifestPath: string, out: string
   mkdirSync(out, { recursive: true });
   // One bounded read-only health RPC, no launch/provision/smoke and no real tenant.
   const health = await trusted.client.checkHealth("reader-story-grouping-eval");
-  check(health.status === "serving" && health.runtimeEngine === "subscription-runtime-cli" &&
+  check(health.status === "serving" && health.runtimeEngine === (gateway ? "gateway-llm" : "subscription-runtime-cli") &&
     health.launcherSha256, "Existing trusted subscription runtime has no serving attested identity");
+  if (gateway) check(health.runtimeVersion === approvedGatewayLlmSdkIdentity.packageVersion &&
+    health.launcherSha256 === approvedGatewayLlmSdkIdentity.archiveSha256, "Gateway SDK differs from reviewed installation");
   const receipt: CaptureReceipt = {
     evaluationRun: execution,
-    schemaVersion: 2, captureKind: "live_subscription", manifestSha256: canonicalJsonSha256(frozen),
+    schemaVersion: gateway ? 3 : 2, captureKind: gateway ? "live_gateway" : "live_subscription", manifestSha256: canonicalJsonSha256(frozen),
     captureSourceRevision: frozen.captureSourceRevision, evaluatedSource: source,
     labelSealSha256: frozen.labelSealSha256, replaySha256: frozen.replaySha256,
     transport: { authentication: "existing_authenticated_composition", operatorRecord: trusted.operatorRecord,
-      runtimePackageVersion: health.runtimeVersion, launcherSha256: health.launcherSha256! }, responses: [],
+      ...(gateway ? { runtimeEngine: "gateway-llm" as const } : {}), runtimePackageVersion: health.runtimeVersion, launcherSha256: health.launcherSha256! }, responses: [],
   };
   for (const envelope of requests) {
     verifySourceUnchanged(source);
@@ -55,6 +60,7 @@ export const runLiveWithTrustedClient = async (manifestPath: string, out: string
     writeFileSync(join(out, `response-${envelope.blockId}.json`), JSON.stringify(row, null, 2) + "\n", { flag: "wx" });
     receipt.responses.push(row);
     const p = prepared.find((b) => b.block.id === envelope.blockId)!;
+    verifyCapturedRuntime(envelope, result, receipt.transport, gateway);
     const decisions = await normalizeCapturedResponse(p, envelope, result);
     check(applyDecisions(p, decisions).batch?.responseAccepted, "Live decision batch failed closed; raw receipt preserved");
   }

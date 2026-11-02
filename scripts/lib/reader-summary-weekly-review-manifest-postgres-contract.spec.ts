@@ -29,16 +29,16 @@ describe("reader summary weekly review manifest PostgreSQL catalog contract", ()
     ["unmanaged index", { unmanaged_index_count: "1" }],
     ["reserved alias", { function_definition: `${secureDefinition()} AS seal` }],
     ["table lock", { function_definition: `${secureDefinition()} LOCK TABLE ignored` }],
-    ["legacy purpose", {
+    ["unbound attestation validator", {
       function_definition: secureDefinition().replace(
-        "weekly.review.v2",
-        "weekly.review",
+        "reader_summary_weekly_review_attestation_valid",
+        "another_validator",
       ),
     }],
-    ["legacy reasoning", {
+    ["NULL-permissive attestation predicate", {
       function_definition: secureDefinition().replace(
-        "reasoningEffort' <> 'high",
-        "reasoningEffort' <> 'xhigh",
+        "IS NOT TRUE",
+        "IS FALSE",
       ),
     }],
   ] as const)("fails closed for insecure %s", (_label, override) => {
@@ -103,8 +103,9 @@ const secureSnapshot = (): ReaderSummaryWeeklyReviewManifestCatalogSnapshot => (
 function secureDefinition(): string {
   return `
   current_setting('transaction_isolation') <> 'serializable'
-  v_attestation->>'purpose' <> 'social_monitor.reader_summary.weekly.review.v2'
-  v_attestation->>'reasoningEffort' <> 'high'
+  public."reader_summary_weekly_review_attestation_valid"(
+    v_attestation, v_model_response_sha256
+  ) IS NOT TRUE
   FOR UPDATE
   FOR SHARE OF evidence_row
   historical_unavailable

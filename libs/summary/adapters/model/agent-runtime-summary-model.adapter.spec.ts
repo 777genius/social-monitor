@@ -11,8 +11,62 @@ import {
   AgentRuntimeSummaryModelAdapter,
   resolveAgentRuntimeSummaryModelOptions,
 } from "./agent-runtime-summary-model.adapter";
+import { gatewayModelTaskFixture } from "../composition/gateway-model-task.spec-support";
+import { resolveGatewayLlmTransportConfig } from "../composition/reader-summary-agent-runtime-transport";
 
 describe("AgentRuntimeSummaryModelAdapter", () => {
+  it("executes an ordinary summary through the real gateway SDK request contract", async () => {
+    const env = { AGENT_RUNTIME_TRANSPORT: "gateway-llm", AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_GATEWAY_LLM_CONTROL_ORIGIN: "https://gateway.example.test",
+      AGENT_RUNTIME_GATEWAY_LLM_CONTROL_TOKEN_FILE: "/fixture/control-token",
+      AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS: "synthetic-account",
+      AGENT_RUNTIME_GATEWAY_LLM_POLICY_SUBJECT_REF: "synthetic-social-monitor",
+      AGENT_RUNTIME_GATEWAY_LLM_POLICY_REVISION: "1", AGENT_RUNTIME_GATEWAY_LLM_BINDING_REVISION: "0" };
+    const fixture = gatewayModelTaskFixture(resolveGatewayLlmTransportConfig(env).route, validProviderDraft());
+    const adapter = new AgentRuntimeSummaryModelAdapter(resolveAgentRuntimeSummaryModelOptions(env, fixture.client));
+    const input = buildInput();
+    const route = adapter.route(input, { preferredProvider: "agent-runtime", maxInputTokens: 12_000,
+      maxOutputTokens: 4_000, maxEstimatedCostUsd: 1 }, { remainingTokens: 20_000, remainingCostUsd: 1 });
+    const attempt = await adapter.summarize(input, route);
+    expect(attempt.route.model).toBe("codex:gpt-6.1-sol");
+    expect(attempt.draft.headline).toBe("Backend signals are converging");
+    expect(fixture.bodies).toHaveLength(1);
+    expect(fixture.bodies[0]).toMatchObject({ model: "gpt-6.1-sol", reasoning: { effort: "low" },
+      max_output_tokens: 16_384, text: { format: { type: "json_schema", strict: true } } });
+  });
+
+  it.each([
+    ["openai-chatgpt", undefined, "gpt-6.1-sol", "low"],
+    ["openai-chatgpt", "agent-runtime-summary", "gpt-6.1-sol", "low"],
+    ["kimi-code", undefined, "k3-256k", undefined],
+  ])("binds %s summary lineage and task controls to the gateway model", async (backend, alias, model, effort) => {
+    const client = new CapturingAgentRuntimeClient({ status: "completed",
+      structuredOutput: validProviderDraft(), warnings: [] });
+    const adapter = new AgentRuntimeSummaryModelAdapter(resolveAgentRuntimeSummaryModelOptions({
+      AGENT_RUNTIME_TRANSPORT: "gateway-llm", AGENT_RUNTIME_READER_SUMMARY_BACKEND: backend,
+      AGENT_RUNTIME_SUMMARY_MODEL: alias,
+    }, client));
+    const input = buildInput();
+    const route = adapter.route(input, { preferredProvider: "agent-runtime", maxInputTokens: 12_000, maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1 }, { remainingTokens: 20_000, remainingCostUsd: 1 });
+    const result = await adapter.summarize(input, route);
+    expect(result.route.model).toBe(`codex:${model}`);
+    expect(client.commands[0]).toMatchObject({ tenantId: input.tenantId, workspaceId: input.workspaceId,
+      purpose: "social_monitor.summary.generate", controls: { model } });
+    expect(client.commands[0]!.controls.reasoningEffort).toBe(effort);
+    expect(client.commands[0]!.controls.modelBackend).toBe(backend === "kimi-code" ? backend : undefined);
+  });
+
+  it.each([
+    { AGENT_RUNTIME_SUMMARY_MODEL: "gpt-5.6-sol" },
+    { AGENT_RUNTIME_SUMMARY_REASONING_EFFORT: "high" },
+    { AGENT_RUNTIME_PROVIDER: "claude" },
+  ])("rejects a conflicting gateway summary identity: %o", (extra) => {
+    expect(() => resolveAgentRuntimeSummaryModelOptions({
+      AGENT_RUNTIME_TRANSPORT: "gateway-llm", AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt", ...extra,
+    }, new CapturingAgentRuntimeClient({ status: "completed", warnings: [] }))).toThrow();
+  });
+
   it("runs a generic agent task and normalizes structured summary output", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",

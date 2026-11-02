@@ -121,6 +121,24 @@ The parent must account for every original ID exactly once with no missing/extra
 
 After verifying metric authority, use the existing `scripts/run-reader-summary-new-input-refresh.ts` prepare/review/apply path separately for each date Aug 30–Sep 5. Preserve its unconsumed per-date generation budget, canonical new-input requirement, 30-minute manifest freshness, promotion freshness/eligibility, original publications, source/runtime/fence/policy checks and exact reviewed SHA. Seven `no_eligible_input` outcomes do not satisfy completion. Require seven verified new publications, previous artifacts retained, and each successful date's expected +1 job/artifact/publication/outbox. No summary algorithm, thresholds, model, date policy or provider behavior is changed here.
 
+The supported summary refresh selects `AGENT_RUNTIME_TRANSPORT` explicitly. With
+`gateway-llm`, prepare emits `reader-summary-seven-day-new-input-v2`, binding the
+configured gateway profile, backend, physical model, effort and effective output
+token floor alongside the pinned SDK version/archive digest. Configure the same
+reviewed route for apply and supply its health identity in
+`READER_SUMMARY_REFRESH_RUNTIME_AUTHORITY_JSON`; mismatched route, SDK or health
+refuses execution. There is no CLI fallback for a configured gateway. The
+`agent-runtime` transport retains the legacy v1 manifest and CLI identity.
+
+Keep original v1 manifests, receipts, reconciliation evidence and operation
+identities unchanged. Both formats use the existing per-date operation namespace
+and consumed-date checks: switching transport, changing an output path, renewing
+capture time or preparing v2 cannot reset a consumed generation or assessment
+budget. A gateway completion must bind its actual profile/request/execution
+references, canonical model input and selected output hash; failed or uncertain
+calls remain consumed and require reconciliation of the original operation.
+Dates, freshness, source/fence authority and publication checks remain unchanged.
+
 Worker evidence is focused deterministic tests, real Linux process/flock/SIGKILL/I/O-failure tests and compiler/lint/architecture gates. SIGKILL tests are process-death evidence; they do not simulate storage hardware power loss. The native PostgreSQL gate now seeds 19 original content changes and four late arrivals and checks frozen membership, no late-row observations, amendment, effective transactional sample guard rollback, lost acknowledgement and no-refetch/no-duplicate resume. The parent executes that gate on its disposable database before release; worker unit tests are not a native PostgreSQL or production success claim.
 
 ## Fixed September 8 retained metric renewal

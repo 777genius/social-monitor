@@ -5,6 +5,9 @@ import { SourceContentQualityPolicy } from "../../domain";
 import { AgentRuntimeSourceContentQualityReviewerAdapter } from "./agent-runtime-source-content-quality-reviewer.adapter";
 import { promotionWireCandidate } from "./promotion-review-wire";
 import { attestRefreshExecution, refreshTestRuntimeClient } from "../../../../scripts/lib/reader-summary-new-input-refresh-model.spec-support";
+import { createSourceAssessmentRuntime } from "@social-monitor/summary/interfaces/rest/source-assessment-runtime-provider-tokens";
+import { gatewayModelTaskFixture } from "@social-monitor/summary/adapters/composition/gateway-model-task.spec-support";
+import { resolveGatewayLlmTransportConfig } from "@social-monitor/summary/adapters/composition/reader-summary-agent-runtime-transport";
 
 const cutoff = new Date("2026-09-11T12:00:00.000Z");
 
@@ -39,6 +42,30 @@ const stageOf = async (promise: Promise<unknown>): Promise<string> => {
 };
 
 describe("AgentRuntimeSourceContentQualityReviewerAdapter failure stage classification", () => {
+  it.each([
+    ["openai-chatgpt", "gpt-6.1-sol", "low"], ["kimi-code", "k3-256k", undefined],
+  ])("executes source assessment on %s through the SDK and verifies its completion", async (backend, model, effort) => {
+    const input = request();
+    const env = { AGENT_RUNTIME_TRANSPORT: "gateway-llm", AGENT_RUNTIME_READER_SUMMARY_BACKEND: backend,
+      AGENT_RUNTIME_GATEWAY_LLM_CONTROL_ORIGIN: "https://gateway.example.test",
+      AGENT_RUNTIME_GATEWAY_LLM_CONTROL_TOKEN_FILE: "/fixture/control-token",
+      AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS: "synthetic-account",
+      AGENT_RUNTIME_GATEWAY_LLM_POLICY_SUBJECT_REF: "synthetic-social-monitor",
+      AGENT_RUNTIME_GATEWAY_LLM_POLICY_REVISION: "1", AGENT_RUNTIME_GATEWAY_LLM_BINDING_REVISION: "0" };
+    const fixture = gatewayModelTaskFixture(resolveGatewayLlmTransportConfig(env).route,
+      { reviews: [{ ...validReview(input),
+        readerHeadline: { status: "unavailable", reasonCode: "insufficient_support" } }] });
+    const adapter = new AgentRuntimeSourceContentQualityReviewerAdapter({
+      ...createSourceAssessmentRuntime({ env, clock: new FixedClock(cutoff), client: fixture.client }),
+      clock: new FixedClock(cutoff), ids: { generate: () => "synthetic-gateway-assessment" },
+    });
+    const [result] = await adapter.reviewBatch([input]);
+    expect(result!.decision).toBe("promote");
+    expect(fixture.bodies).toHaveLength(1);
+    expect(fixture.bodies[0]).toMatchObject({ model, text: { format: { type: "json_schema", strict: true } } });
+    expect(fixture.bodies[0]!.reasoning).toEqual(effort === undefined ? undefined : { effort });
+  });
+
   it("classifies a transport call failure as runtime_status when the call itself throws", async () => {
     const client = refreshTestRuntimeClient(async () => { throw new Error("synthetic transport outage"); });
     const stage = await stageOf(adapterFor(client).reviewBatch([request()]));
