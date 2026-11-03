@@ -64,7 +64,7 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
     eligibleWatchCitationIds,
   );
   const sections = rawSections
-    .slice(0, maxNarrativeSections)
+    .slice(0, params.input.dailyEditorialPlan === undefined ? maxNarrativeSections : 10)
     .flatMap((value, index): readonly ReaderSummaryNarrativeSection[] => {
       const kind = normalizeSetValue(
         value.kind,
@@ -161,6 +161,7 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
       knownCitationIds,
       leadCitationIds: coverage.allowedLeadCitationIds,
     }),
+    params.input.dailyEditorialPlan !== undefined,
   );
 
   return bounded;
@@ -407,6 +408,7 @@ const assertNarrativeCoverage = (
   sections: readonly ReaderSummaryNarrativeSection[],
   plannedSecondaryCitations: ReadonlyMap<string, ReadonlySet<string>>,
   diagnostics: string,
+  allPlanned = false,
 ): void => {
   if (!sections.some((section) => section.kind === "lead")) {
     throw new Error(
@@ -416,7 +418,7 @@ const assertNarrativeCoverage = (
   const secondarySections = sections.filter(
     (section) => section.kind === "secondary_signal",
   );
-  const plannedClusterIds = [...plannedSecondaryCitations.keys()].slice(0, 3);
+  const plannedClusterIds = [...plannedSecondaryCitations.keys()].slice(0, allPlanned ? 10 : 3);
   const actualClusterIds = secondarySections
     .map((section) => section.storyClusterId)
     .filter((clusterId): clusterId is string => clusterId !== undefined);
