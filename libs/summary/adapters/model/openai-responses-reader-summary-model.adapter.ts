@@ -1,6 +1,7 @@
 export { resolveOpenAiResponsesReaderSummaryModelOptions } from "./openai-responses-reader-summary-options";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
 import { validateDailyEditorialPlan } from "../../domain";
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import {
   buildDailyEditorialPrompt, dailyEditorialInstructions, dailyEditorialOutputSchema,
   dailyEditorialSha256,
@@ -207,7 +208,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
           estimatedCostUsd: actual.estimatedCostUsd };
       })(),
       editorRequestSha256: dailyEditorialSha256(prompt),
-      editorOutputSha256: dailyEditorialSha256(JSON.stringify(plan)),
+      editorOutputSha256: canonicalJsonSha256(plan),
     };
   }
 
