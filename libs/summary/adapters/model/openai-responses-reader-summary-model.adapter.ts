@@ -188,14 +188,20 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     const output = extractOpenAiOutputText(response);
     if (output === undefined) throw new Error("Daily editorial provider returned no output");
     const plan = parseReaderSummaryDailyEditorOutput(parseOpenAiReaderSummaryJsonObject(output), input.evidence);
+    const estimate = {
+      inputTokens: Math.ceil(prompt.length / this.inputTokenDivisor),
+      outputTokens: Math.min(this.maxOutputTokens, 3_000),
+      estimatedCostUsd: (Math.ceil(prompt.length / this.inputTokenDivisor) *
+        this.estimatedInputCostUsdPerMillionTokens + Math.min(this.maxOutputTokens, 3_000) *
+        this.estimatedOutputCostUsdPerMillionTokens) / 1_000_000,
+    };
+    const usage = resolveOpenAiReaderSummaryUsage(response, estimate);
     return { plan, receipt: dailyEditorReceipt(prompt, plan),
-      usage: resolveOpenAiReaderSummaryUsage(response, {
-        inputTokens: Math.ceil(prompt.length / this.inputTokenDivisor),
-        outputTokens: Math.min(this.maxOutputTokens, 3_000),
-        estimatedCostUsd: (Math.ceil(prompt.length / this.inputTokenDivisor) *
-          this.estimatedInputCostUsdPerMillionTokens + Math.min(this.maxOutputTokens, 3_000) *
-          this.estimatedOutputCostUsdPerMillionTokens) / 1_000_000,
-      }) };
+      usage: {
+        inputTokens: usage.inputTokens ?? estimate.inputTokens,
+        outputTokens: usage.outputTokens ?? estimate.outputTokens,
+        estimatedCostUsd: usage.estimatedCostUsd,
+      } };
   }
 
   async generate(
