@@ -8,6 +8,61 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
+  testWidgets('shows all six daily digest topics with a bounded signal list', (
+    tester,
+  ) async {
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          narrativeSections: [
+            const ReaderSummaryNarrativeSectionApiDto(
+              id: 'lead',
+              kind: 'lead',
+              title: 'Lead',
+              text: 'Daily workflow overview.',
+              citationIds: ['bc-1'],
+            ),
+            for (var index = 1; index <= 6; index++)
+              ReaderSummaryNarrativeSectionApiDto(
+                id: 'signal-$index',
+                kind: 'secondary_signal',
+                title: 'Topic $index',
+                text: 'Grounded signal $index.',
+                citationIds: const ['bc-1'],
+                storyClusterId: 'story-$index',
+              ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ReaderSummaryExecutiveBrief(
+              summary: summary,
+              citationsById: {
+                for (final citation in summary.citations) citation.id: citation,
+              },
+              onOpenUrl: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    for (var index = 1; index <= 5; index++) {
+      expect(
+        find.byKey(ValueKey('reader-summary-narrative-signal-$index')),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.byKey(const ValueKey('reader-summary-narrative-signal-6')),
+      findsNothing,
+    );
+  });
+
   testWidgets('renders secondary signals with compact claim trust details', (
     tester,
   ) async {

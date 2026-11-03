@@ -34,7 +34,7 @@ class _ReaderSummaryNarrative extends StatelessWidget {
           (section) =>
               section.kind == ReaderSummaryNarrativeSectionKind.secondarySignal,
         )
-        .take(3)
+        .take(5)
         .toList(growable: false);
 
     return Column(
