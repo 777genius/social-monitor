@@ -7,6 +7,7 @@ import {
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
+import { readerSummaryCitableEvidence } from "./reader-summary-evidence-citation-map";
 
 export type ReaderSummaryPromptRelease = {
   readonly id: string;
@@ -146,10 +147,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
 ): string => {
   const primaryEvidence = primaryReaderSummaryEvidence(input.evidence);
   const additionalEvidence = additionalReaderSummaryEvidence(input.evidence);
-  // For daily generation, citations follow the frozen narrative top-30,
-  // not the independently selected promotion-board evidence.
-  const citedEvidence = input.evidence.dailyGenerationInput === undefined
-    ? input.evidence.selectedEvidence : primaryEvidence.selectedEvidence;
+  const citedEvidence = readerSummaryCitableEvidence(input.evidence);
   const citationIdByFeedItemId = new Map(
     citedEvidence.map((item, index) => [item.feedItemId, `c${index + 1}`] as const),
   );

@@ -32,6 +32,8 @@ it("sends exactly thirty Likes inputs, retains a non-promoted narrative and keep
   expect(request.input).not.toContain("board-only source text");
   expect(attempt.dailyGenerationReceipt).toEqual(readerSummaryDailyInputReceipt(request.input, evidence.dailyGenerationInput));
   expect(attempt.dailyGenerationReceipt!.evidence).toHaveLength(30);
+  expect(attempt.draft.citationMap).toHaveLength(31);
+  expect(attempt.draft.citationMap[30]?.providerKey).toBe("github-trending-page");
   const publication = buildReaderSummaryDraftWithPromotionContent(evidence, attempt.draft);
   expect(publication.content.narrativeSections?.filter(section => section.kind === "secondary_signal")).toHaveLength(5);
   expect(publication.content.narrativeSections?.[0]?.citationIds).toEqual(["c1", "c2"]);
