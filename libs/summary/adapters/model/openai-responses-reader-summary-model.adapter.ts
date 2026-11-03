@@ -28,6 +28,7 @@ import {
   normalizeOpenAiReaderSummaryDraft,
   OpenAiReaderSummaryOutputParseError,
   openAiReaderSummaryJsonSchema,
+  dailyEditorialReaderSummaryJsonSchema,
   parseOpenAiReaderSummaryJsonObject,
   readOpenAiResponseBody,
   resolveOpenAiReaderSummaryUsage,
@@ -234,7 +235,8 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
           type: "json_schema",
           name: "social_monitor_reader_summary_artifact",
           strict: true,
-          schema: openAiReaderSummaryJsonSchema,
+          schema: input.dailyEditorialPlan === undefined
+            ? openAiReaderSummaryJsonSchema : dailyEditorialReaderSummaryJsonSchema,
         },
       },
     });
