@@ -40,8 +40,15 @@ export const assertDailyGenerationArtifactBinding = (props: ReaderSummaryArtifac
   };
   if (props.dailyEditorialPlan !== undefined) {
     const { plan } = validateDailyEditorialProof(props.dailyEditorialPlan, proof);
-    const sections = (props.content.narrativeSections ?? []).filter(section =>
-      section.id !== "github-trending");
+    const allSections = props.content.narrativeSections ?? [];
+    const appendices = allSections.filter(section => section.id === "github-trending");
+    if (appendices.length > 1 || appendices.some(section =>
+      section.kind !== "watch" || section.citationIds.length === 0 ||
+      section.citationIds.some(id =>
+        byCitation.get(id)?.providerKey !== "github-trending-page"))) {
+      throw new Error("Daily editorial GitHub appendix is invalid");
+    }
+    const sections = allSections.filter(section => section.id !== "github-trending");
     if (sections.length !== plan.topics.length ||
         props.topStories.length !== plan.topics.length) {
       throw new Error("Daily editorial article does not cover every planned topic");
