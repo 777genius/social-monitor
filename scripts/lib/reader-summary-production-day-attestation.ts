@@ -58,6 +58,7 @@ export type ProductionDayRuntimeProvenance =
 type ValidAttestationRecord = {
   readonly taskRole:
     | "summary"
+    | "daily_editor"
     | "topic_label"
     | "topic_relation"
     | "story_relation"
@@ -380,6 +381,9 @@ const executionEffortForPurpose = (
   attempt: string,
   purpose: unknown,
 ): "high" | "xhigh" | null => {
+  if (role === "daily_editor") {
+    return attempt === "primary" && purpose === "social_monitor.reader_summary.daily.editor.v1" ? "high" : null;
+  }
   if (role === "summary") {
     if (attempt === "primary") {
       if (purpose === "social_monitor.reader_summary.generate.v2") return "high";
@@ -444,6 +448,7 @@ const isTaskRole = (
   value: unknown,
 ): value is ValidAttestationRecord["taskRole"] =>
   value === "summary" ||
+  value === "daily_editor" ||
   value === "topic_label" ||
   value === "topic_relation" ||
   value === "story_relation" ||
