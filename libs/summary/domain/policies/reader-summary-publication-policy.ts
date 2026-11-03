@@ -9,9 +9,9 @@ import type { ReaderSummaryCitation } from "../entities/citation";
 import { readerSummaryIndependentProviderFamilyCount } from "../value-objects/reader-summary-provider-identity";
 import {
   buildReaderSummaryCoveragePlan,
-  dailyEditorialCoveragePlan,
   type ReaderSummaryCoveragePlan,
 } from "../services/reader-summary-coverage-plan";
+import { dailyEditorialCoveragePlan } from "../services/reader-summary-daily-editorial-plan";
 import { evaluateReaderSummaryArtifactEditorialQuality } from "./reader-summary-artifact-editorial-quality-policy";
 import { primaryReaderSummaryEvidence } from "./reader-summary-github-trending-policy";
 import { isGitHubReaderItem } from "./reader-summary-github-projection-audit";
