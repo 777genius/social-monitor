@@ -333,6 +333,7 @@ const backendMessage =
 
 export const activeReaderSummaryPurposes = Object.freeze({
   generate: "social_monitor.reader_summary.generate.v2",
+  dailyEditor: "social_monitor.reader_summary.daily.editor.v1",
   repair: "social_monitor.reader_summary.repair.v2",
   topicLabel: "social_monitor.reader_summary.topic_map.label.v2",
   topicRelations:
