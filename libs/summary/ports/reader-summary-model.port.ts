@@ -9,6 +9,8 @@ import type {
   ReaderSummaryPeriod,
   ReaderSummaryScope,
   ReaderSummaryUsage,
+  ReaderSummaryDailyEditorialPlan,
+  ReaderSummaryDailyEditorialReceipt,
   SummaryEvidenceSelection,
   ReaderSummaryDailyInputReceipt,
 } from "../domain";
@@ -41,6 +43,7 @@ export type ReaderSummaryModelInput = {
   readonly subscriptionId?: string;
   readonly evidence: SummaryEvidenceSelection;
   readonly coveragePlan: ReaderSummaryCoveragePlan;
+  readonly dailyEditorialPlan?: ReaderSummaryDailyEditorialPlan;
   readonly contextArtifacts: readonly ReaderSummaryContextArtifact[];
   readonly policy: ReaderSummaryGenerationPolicy;
   readonly requestedAt: Date;
@@ -54,6 +57,7 @@ export type ReaderSummaryModelEstimate = {
 
 export type ProviderReaderSummaryAttempt = {
   readonly dailyGenerationReceipt?: ReaderSummaryDailyInputReceipt;
+  readonly dailyEditorialWriterPlanSha256?: string;
   readonly route: ReaderSummaryModelRoute;
   readonly draft: GeneratedReaderSummaryDraft & {
     readonly lineage: ReaderSummaryLineage;
@@ -81,7 +85,18 @@ export type ReaderSummaryModelValidationResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly failure: ReaderSummaryModelFailure };
 
+export type ReaderSummaryDailyEditorialAttempt = {
+  readonly plan: ReaderSummaryDailyEditorialPlan;
+  readonly receipt: ReaderSummaryDailyEditorialReceipt;
+  readonly usage: ReaderSummaryModelEstimate;
+};
+
 export interface ReaderSummaryModelPort {
+  /** Optional: only the new daily top-30 profile calls this capability. */
+  planDaily?(
+    input: ReaderSummaryModelInput,
+    route: ReaderSummaryModelRoute,
+  ): Promise<ReaderSummaryDailyEditorialAttempt>;
   route(
     input: ReaderSummaryModelInput,
     policy: ReaderSummaryModelPolicy,
