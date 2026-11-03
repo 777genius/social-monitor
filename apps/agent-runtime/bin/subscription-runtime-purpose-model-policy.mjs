@@ -75,7 +75,7 @@ const mimoSchemaMarkers = Object.freeze({
 const mimoRootProperties = Object.freeze({
   "social_monitor.reader_summary.promotion_presentation.v3": ["presentations"],
   "social_monitor.reader_summary.generate.v2": ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
-  "social_monitor.reader_summary.daily_editorial.plan.v1": ["version", "topics"],
+  "social_monitor.reader_summary.daily_editorial.plan.v1": ["topics", "version"],
   "social_monitor.reader_summary.repair.v2": ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
   "social_monitor.reader_summary.topic_map.label.v2": ["nodeLabels", "groups"],
   "social_monitor.reader_summary.topic_map.verify_relations.v2": ["decisions"],
