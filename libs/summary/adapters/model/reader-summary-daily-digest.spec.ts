@@ -169,6 +169,23 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
   expect(dailyGenerationPublicationMatches({ ...guard,
     artifact: { ...saved, dailyEditorialPlan: { ...saved.dailyEditorialPlan!,
       editorOutputSha256: "0".repeat(64) } } })).toBe(false);
+  expect(dailyGenerationPublicationMatches({ ...guard,
+    artifact: { ...saved, dailyEditorialPlan: { ...saved.dailyEditorialPlan!,
+      editorRequestSha256: "0".repeat(64) } } })).toBe(false);
+  const invalidAppendix = {
+    id: "github-trending", kind: "watch" as const, title: "Forged appendix",
+    text: "Unverified GitHub claim", citationIds: ["c1"],
+  };
+  expect(() => ReaderSummaryArtifact.rehydrate({ ...saved, content: {
+    ...saved.content!, narrativeSections: [
+      ...(saved.content?.narrativeSections ?? []), invalidAppendix,
+    ],
+  } })).toThrow("Daily editorial GitHub appendix is invalid");
+  const invalidLead = saved.content?.narrativeSections?.map(section =>
+    section.kind === "lead" ? { ...section, citationIds: ["c1"] } : section) ?? [];
+  expect(() => ReaderSummaryArtifact.rehydrate({ ...saved,
+    content: { ...saved.content!, narrativeSections: invalidLead },
+  })).toThrow("Daily editorial topic cites sources outside its plan");
 });
 
 it("calls the attested daily editor once with all frozen sources and their native metrics", async () => {
