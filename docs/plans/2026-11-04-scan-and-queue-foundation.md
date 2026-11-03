@@ -104,8 +104,10 @@ remain separate designs; neither is silently folded into this refactor.
   result, rate-limit backoff, provider-failure backoff, then eligible.
 - Freshness deadline equality remains fresh; backoff equality is eligible.
   Incomplete successful collection must not suppress a new scan.
-- Admission reads five recent jobs; health metrics retain their 50-job/24h
-  window. Preserve metadata-first classification and legacy reason fallback.
+- Manual/scheduled admission reads five recent jobs; health backoff retains its
+  full 50-job input and separately computes its 24-hour metrics window. A shared
+  policy consumes caller-provided history without imposing a universal limit or
+  time filter. Preserve metadata-first classification and legacy reason fallback.
 - Preserve the 900-second transient cap, 30-second reset buffer, two-failure
   threshold and maximum multiplier four.
 - Scheduler next-run adjustment and health's reported freshness deadline are
@@ -154,6 +156,12 @@ remain separate designs; neither is silently folded into this refactor.
    delivery on abort/shutdown and report uncertain settlement.
    Enter a settling state synchronously to reject concurrent/double settlement;
    failed settlement leaves recoverable ownership, not a falsely completed item.
+7. Failed cleanup must retain reachable ownership. RabbitMQ recovery closes only
+   the message's captured native origin channel, or confirms it already closed;
+   it never looks up or closes a replacement channel. When release and origin
+   recovery both fail, retain the unsettled handles and retry recovery before
+   acquiring more messages. A later drain cannot silently accumulate abandoned
+   batches. Fake channels without origin recovery retain and retry settlement.
 
 ### Behavior to preserve and failure cases
 
@@ -178,8 +186,9 @@ remain separate designs; neither is silently folded into this refactor.
 1. Reproduce missing provider/noop declarations in isolated fixture trees.
 2. Discover runtime imports/re-exports from existing module roots independently
    of the readiness contract. Traverse only the relevant local composition
-   scope; stop at other modules/adapters/business layers and avoid following
-   every imported dependency in the repository.
+   scope, including `adapters/composition` and provider wiring beneath adapter
+   directories. Stop at other module roots, concrete implementations and business
+   layers, not at a directory name; avoid following every repository dependency.
 3. Use TypeScript syntax parsing for runtime references and configured path
    aliases. Type-only imports, comments and fixtures must not create false
    adapter declarations; unresolved relevant local composition imports fail
@@ -232,5 +241,67 @@ ownership before decode, per-occurrence local reservation identity, synchronous
 settling guards, faithful rollback in durable-path fixtures and explicit limits
 of dispatch atomicity. These corrections are included above before coding.
 
-Implementation and review evidence will be appended here. No implementation
-completion or final verification is claimed by this plan.
+A third independent critic required reachable ownership after cleanup failure,
+composition discovery beneath adapter directories, and preservation of health's
+50-job backoff input separately from its 24-hour metrics. These corrections are
+included above; origin recovery remains a small transport capability.
+
+### Implemented slices
+
+- `abc619e`: independently discover runtime persistence composition, then compare
+  the resulting adapter inventory with explicit ownership/risk declarations.
+  The old declaration-driven JavaScript scanner is removed.
+- `9871fab`: domain admission policies, required scan dispatch, one dispatch-plan
+  construction boundary, migrated composition/fixtures and split workflow tests.
+  The two changed test files no longer need line-cap exemptions.
+- `2b27194`: shared command readers, occurrence-based local reservations,
+  RabbitMQ acquisition/recovery ownership and final cleanup in all five loops.
+  Native recovery stays bound to the message's captured channel.
+
+### Implementation review rounds
+
+Round 1 used independent reviewers across ownership boundaries. Two reviewers
+compared monitoring behavior with the pinned baseline and checked constructor
+composition, the full health history, quota ordering, rollback and retry. Two
+reviewers independently checked queue acquisition, poisoning, uncertain
+settlement, replacement-channel races, retry heartbeat and all five worker loops.
+They found no remaining material issue in slices A/B.
+
+The composition critic reproduced two additional fail-open forms: anonymous
+default provider factories and namespace re-exports through a barrel. Both new
+fixtures failed before the correction. The scanner now registers anonymous
+default declarations and recognizes namespace re-exports as runtime wiring.
+Round 2 independently reviewed those exact corrections and reran all 15 fixtures;
+the two escapes are closed without changing the readiness inventory.
+
+### Verified checkpoint
+
+| Check | Result |
+| --- | --- |
+| Monitoring focused suites | 72 tests in 11 suites pass; existing 59 baseline scenarios retained. |
+| Queue/worker focused suites | 59 tests in 9 suites pass, including failure cleanup across all five loops. |
+| Readiness inventory | Actual repository check and 15 regression fixtures pass. |
+| Architecture | Boundaries and all 28 architecture fixtures pass. |
+| TypeScript and build | Whole-project no-emit typecheck and production build pass. |
+| Lint and quality | Whole-repository ESLint, code-quality guardrails and source line cap pass. |
+| Public contracts | Isolated OpenAPI snapshot check passes; no API shape change. |
+| Migrated smoke flows | All eight flows pass, including cross-process command relay and autonomous monitoring. |
+| New integrated regression | HTTP request -> real local queue reader -> worker backpressure -> redelivery -> persisted attempt/feed -> scoped HTTP read/replay passes. |
+
+The new E2E regression was also run on an isolated checkout of the original
+`e544229` baseline. It fails at the first backpressure boundary: the queue contains
+zero messages instead of one. The refactored path preserves the message, reports
+redelivery on its next reservation, completes the scan and does not enqueue more
+work when the HTTP idempotency key is replayed.
+
+Two fixture maintenance corrections were verified against that same baseline.
+The GitHub smoke had non-UUID tenant/workspace literals; replacing those two
+values with deterministic UUIDs restores its existing tenant guard. The autonomous
+smoke's committed deterministic evidence had stale generated identities. Fresh
+baseline and refactored evidence are byte-for-byte identical; the documented
+update changes only nineteen identity strings. Its fixed timestamp, fixture-only
+provenance, counts, statuses, metrics and content are unchanged.
+
+Full backend E2E and remote checks are being evaluated after this checkpoint.
+The local broker/database harnesses above are explicit deterministic fixtures;
+no live PostgreSQL/RabbitMQ or production readiness claim is inferred from them.

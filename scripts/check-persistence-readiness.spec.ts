@@ -174,4 +174,23 @@ describe('persistence readiness composition discovery', () => {
     };
     expect(check({ files, modules: [moduleDeclaration([providerFile])] })).toEqual([]);
   });
+
+  it('follows anonymous default provider factories', () => {
+    const files = {
+      [moduleFile]: "import createProviders from './fixture.providers'; export const fixture = { providers: createProviders() };",
+      [providerFile]: "import { InMemoryFixtureRepository } from '../../../libs/fixture/adapters/memory'; export default function () { return [InMemoryFixtureRepository]; }",
+    };
+    expect(check({ files }).join('\n')).toContain('InMemoryFixtureRepository');
+    expect(check({ files, modules: [moduleDeclaration([providerFile])] })).toEqual([]);
+  });
+
+  it('follows namespace re-exports through local barrels', () => {
+    const files = {
+      [moduleFile]: "import { wiring } from './index'; export const fixture = { providers: wiring.providers };",
+      'apps/fixture/src/index.ts': "export * as wiring from './fixture.providers';",
+      [providerFile]: providerSource,
+    };
+    expect(check({ files }).join('\n')).toContain('InMemoryFixtureRepository');
+    expect(check({ files, modules: [moduleDeclaration([providerFile])] })).toEqual([]);
+  });
 });

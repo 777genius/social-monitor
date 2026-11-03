@@ -50,7 +50,10 @@ export function readCompositionSource(file: string, selected?: readonly string[]
       const specifier = text(statement.moduleSpecifier);
       const clause = statement.exportClause;
       if (!clause && specifier) { stars.push(specifier); hasRuntimeReexport = true; }
-      if (clause && ts.isNamespaceExport(clause) && specifier) exports.set(clause.name.text, { specifier, name: '*' });
+      if (clause && ts.isNamespaceExport(clause) && specifier) {
+        exports.set(clause.name.text, { specifier, name: '*' });
+        hasRuntimeReexport = true;
+      }
       if (clause && ts.isNamedExports(clause)) for (const element of clause.elements) {
         if (element.isTypeOnly) continue;
         const name = element.propertyName?.text ?? element.name.text;
@@ -66,9 +69,13 @@ export function readCompositionSource(file: string, selected?: readonly string[]
       if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
         if (ts.isIdentifier(declaration.name)) register(declaration.name.text, declaration, exported);
       }
-      if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement)) && statement.name) {
-        register(statement.name.text, statement, exported);
-        if (modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)) exports.set('default', { local: statement.name.text });
+      if (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement)) {
+        if (statement.name) register(statement.name.text, statement, exported);
+        if (modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)) {
+          const local = statement.name?.text ?? 'default';
+          locals.set(local, statement);
+          exports.set('default', { local });
+        }
       }
       if (ts.isExportAssignment(statement)) { locals.set('default', statement.expression); exports.set('default', { local: 'default' }); }
     }
