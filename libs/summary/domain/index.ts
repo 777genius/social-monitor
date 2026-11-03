@@ -140,3 +140,4 @@ export { MIMO_QUALIFIED_HEADLINE_CONTRACT, mimoQualifiedHeadlineOutputSchema, de
 
 export * from "./value-objects/reader-summary-daily-generation-input";
 export * from "./services/reader-summary-daily-generation-selection";
+export * from "./services/reader-summary-daily-editorial-plan";
