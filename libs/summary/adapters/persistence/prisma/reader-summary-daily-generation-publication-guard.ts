@@ -7,6 +7,7 @@ import { dailyEditorialCoveragePlan, validateDailyEditorialProof } from
   "../../../domain/services/reader-summary-daily-editorial-plan";
 import { dailyReaderSummaryGenerationEvidence } from "../../evidence/reader-summary-daily-generation-evidence";
 import { buildAdaptiveReaderSummaryEvidence } from "../../model/openai-responses-reader-summary-adaptive-evidence";
+import { buildDailyEditorialPromptFromEvidence } from "../../model/reader-summary-daily-editorial-model";
 
 /** Called inside the publication transaction, after frozen assessment/config locks. */
 export function dailyGenerationPublicationMatches(params:
@@ -29,9 +30,14 @@ export function dailyGenerationPublicationMatches(params:
     if (editorialProfile !== (proofPlan !== undefined)) return false;
     const editorial = proofPlan === undefined ? undefined :
       validateDailyEditorialProof(proofPlan, expected.proof);
-    if (editorial !== undefined &&
-        createHash("sha256").update(JSON.stringify(editorial.plan)).digest("hex") !==
-          editorial.editorOutputSha256) return false;
+    if (editorial !== undefined) {
+      const planSha = createHash("sha256").update(JSON.stringify(editorial.plan)).digest("hex");
+      const editorEvidence = buildAdaptiveReaderSummaryEvidence(selection, buildReaderSummaryCoveragePlan(selection));
+      const requestSha = createHash("sha256").update(
+        buildDailyEditorialPromptFromEvidence(expected.proof, editorEvidence)).digest("hex");
+      if (planSha !== editorial.editorOutputSha256 ||
+          requestSha !== editorial.editorRequestSha256) return false;
+    }
     const coverage = editorial === undefined ? buildReaderSummaryCoveragePlan(selection) :
       dailyEditorialCoveragePlan(editorial.plan, selection);
     const evidence = buildAdaptiveReaderSummaryEvidence(selection, coverage);
