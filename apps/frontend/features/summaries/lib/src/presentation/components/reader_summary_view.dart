@@ -239,11 +239,11 @@ class _ExecutiveBoardCard extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (hasCoverage) ...[
-              ReaderSummaryCoverageBySourceBand(summary: summary),
-              const SizedBox(height: AppSpacing.lg),
-            ],
             boardBody,
+            if (hasCoverage) ...[
+              const SizedBox(height: AppSpacing.lg),
+              ReaderSummaryCoverageBySourceBand(summary: summary),
+            ],
           ],
         );
       },

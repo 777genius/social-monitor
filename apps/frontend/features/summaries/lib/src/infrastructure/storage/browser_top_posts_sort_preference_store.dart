@@ -4,7 +4,7 @@ import 'browser_preference_storage.dart';
 
 /// Keeps the Top posts order in per-origin browser preference storage
 /// (ADR 398). The value is one stable code; anything else reads as nothing
-/// saved, so a corrupted or foreign value falls back to the model order.
+/// saved, so a corrupted or foreign value falls back to the default order.
 final class BrowserTopPostsSortPreferenceStore
     implements TopPostsSortPreferenceStore {
   const BrowserTopPostsSortPreferenceStore({

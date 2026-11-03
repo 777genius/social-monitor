@@ -4,6 +4,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/domain/entities/summary_citation.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/reader_posts_page.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/top_posts_sort_order.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_top_posts_section_sliver.dart';
 
 import '../../support/reader_posts_browse_test_catalog.dart';
@@ -16,7 +17,7 @@ void main() {
     'keeps the unavailable notice and browse checkbox on an empty selected board',
     (tester) async {
       final catalog = ControlledReaderPostCatalog();
-      final browse = catalog.createStore();
+      final browse = catalog.createStore()..selectOnly(true);
       addTearDown(browse.dispose);
       final theme = AppTheme.light();
       final summary = topPostsSummaryFixture(
@@ -97,13 +98,10 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
-      expect(find.text('Selected posts'), findsOneWidget);
-      expect(catalog.queries, isEmpty);
-      await tester.tap(
-        find.byKey(const ValueKey('reader-summary-selected-posts')),
-      );
       await tester.pump();
+      expect(find.text('Selected posts'), findsOneWidget);
+      expect(browse.selectedOnly, isFalse);
+      expect(catalog.queries.single.order, TopPostsSortOrder.engagement);
       expect(find.text('All posts'), findsOneWidget);
       expect(catalog.queries, hasLength(1));
       catalog.responses.single.complete(
@@ -119,7 +117,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Post outside-selection'), findsOneWidget);
       expect(find.text('Show more (1)'), findsOneWidget);
-      await tester.tap(find.text('By likes'));
+      await tester.tap(
+        find.byKey(const ValueKey('reader-summary-top-posts-sort-model')),
+      );
       await tester.pump();
       expect(catalog.queries, hasLength(2));
       catalog.responses.last.complete(

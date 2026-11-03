@@ -22,10 +22,10 @@ final class ReaderPostsBrowseStore extends ChangeNotifier {
   final OperationGenerationGuard _generation = OperationGenerationGuard();
   SummaryPeriod? _period;
   String? _summaryId;
-  TopPostsSortOrder _order = TopPostsSortOrder.modelRank;
+  TopPostsSortOrder _order = TopPostsSortOrder.engagement;
   final Set<String> _hiddenProviders = {};
   AsyncViewState<ReaderPostsPage> _state = const InitialViewState();
-  bool _selectedOnly = true;
+  bool _selectedOnly = false;
   bool _isDisposed = false;
   ReaderPostsPage? _firstPage;
   int _visibleTarget = 12;

@@ -9,15 +9,15 @@ import '../../support/top_posts_sort_test_fixtures.dart';
 
 void main() {
   test(
-    'selected is the default and switching back discards a late all-post response',
+    'all posts load by default and selecting posts discards a late response',
     () async {
       final catalog = ControlledReaderPostCatalog();
       final store = catalog.createStore();
       addTearDown(store.dispose);
-      store.bind(showMoreSummaryFixture(), TopPostsSortOrder.modelRank);
-      expect(store.selectedOnly, isTrue);
-      expect(catalog.queries, isEmpty);
-      store.selectOnly(false);
+      store.bind(showMoreSummaryFixture(), TopPostsSortOrder.engagement);
+      expect(store.selectedOnly, isFalse);
+      await Future<void>.delayed(Duration.zero);
+      expect(catalog.queries.single.order, TopPostsSortOrder.engagement);
       expect(catalog.queries, hasLength(1));
       store.selectOnly(true);
       catalog.responses.single.complete(
@@ -39,7 +39,7 @@ void main() {
       addTearDown(store.dispose);
       final summary = showMoreSummaryFixture();
       store.bind(summary, TopPostsSortOrder.modelRank);
-      store.selectOnly(false);
+      await Future<void>.delayed(Duration.zero);
       store.bind(summary, TopPostsSortOrder.engagement);
       await Future<void>.delayed(Duration.zero);
       catalog.responses[1].complete(

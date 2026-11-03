@@ -16,7 +16,7 @@ void main() {
       addTearDown(store.dispose);
       final summary = showMoreSummaryFixture();
       store.bind(summary, TopPostsSortOrder.modelRank);
-      store.selectOnly(false);
+      await _settle();
       catalog.responses[0].complete(
         Result.success(_page('model', 0, cursor: 'm12')),
       );
@@ -77,7 +77,7 @@ void main() {
       addTearDown(store.dispose);
       final summary = showMoreSummaryFixture();
       store.bind(summary, TopPostsSortOrder.modelRank);
-      store.selectOnly(false);
+      await _settle();
       catalog.responses[0].complete(
         Result.success(_page('model', 0, cursor: 'm12')),
       );

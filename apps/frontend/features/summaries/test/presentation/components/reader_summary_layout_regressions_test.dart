@@ -7,6 +7,7 @@ import 'package:social_monitor_summaries/src/domain/entities/reader_summary_topi
 import 'package:social_monitor_summaries/src/domain/value_objects/reader_action_target.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
+import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_view.dart';
 import 'package:social_monitor_summaries/src/presentation/components/workspace_summary_period_shell.dart';
 
@@ -207,58 +208,65 @@ void main() {
     expect(descriptionText.maxLines, 4);
   });
 
-  testWidgets('lays provider coverage out across the expanded summary width', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1280, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
+  testWidgets(
+    'places full-width provider coverage below the article and tags',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
 
-    final summary = const SummaryMapper().readerSummaryToDomain(
-      mixedSourceReaderSummaryApiDto(),
-    );
+      final summary = const SummaryMapper().readerSummaryToDomain(
+        mixedSourceReaderSummaryApiDto(),
+      );
 
-    await tester.pumpWidget(_TestApp(summary: summary));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_TestApp(summary: summary));
+      await tester.pumpAndSettle();
 
-    final section = find.byKey(
-      const ValueKey('reader-summary-coverage-by-source'),
-    );
-    final hackerNews = find.byKey(
-      const ValueKey('reader-summary-provider-coverage-hacker-news'),
-    );
-    final rss = find.byKey(
-      const ValueKey('reader-summary-provider-coverage-rss'),
-    );
-    final reddit = find.byKey(
-      const ValueKey('reader-summary-provider-coverage-reddit'),
-    );
-    final github = find.byKey(
-      const ValueKey('reader-summary-provider-coverage-github-trending-page'),
-    );
+      final section = find.byKey(
+        const ValueKey('reader-summary-coverage-by-source'),
+      );
+      final hackerNews = find.byKey(
+        const ValueKey('reader-summary-provider-coverage-hacker-news'),
+      );
+      final rss = find.byKey(
+        const ValueKey('reader-summary-provider-coverage-rss'),
+      );
+      final reddit = find.byKey(
+        const ValueKey('reader-summary-provider-coverage-reddit'),
+      );
+      final github = find.byKey(
+        const ValueKey('reader-summary-provider-coverage-github-trending-page'),
+      );
 
-    expect(section, findsOneWidget);
-    expect(tester.getSize(section).width, greaterThan(900));
-    expect(hackerNews, findsOneWidget);
-    expect(rss, findsOneWidget);
-    expect(reddit, findsOneWidget);
-    expect(github, findsNothing);
+      expect(section, findsOneWidget);
+      expect(tester.getSize(section).width, greaterThan(900));
+      expect(
+        tester.getTopLeft(section).dy,
+        greaterThan(
+          tester.getBottomLeft(find.byType(ReaderSummaryExecutiveBrief)).dy,
+        ),
+      );
+      expect(hackerNews, findsOneWidget);
+      expect(rss, findsOneWidget);
+      expect(reddit, findsOneWidget);
+      expect(github, findsNothing);
 
-    final firstTop = tester.getTopLeft(hackerNews).dy;
-    expect((tester.getTopLeft(rss).dy - firstTop).abs(), lessThan(1));
-    expect((tester.getTopLeft(reddit).dy - firstTop).abs(), lessThan(1));
-    expect(
-      tester.getTopLeft(rss).dx,
-      greaterThan(tester.getTopLeft(hackerNews).dx),
-    );
-    expect(
-      tester.getTopLeft(reddit).dx,
-      greaterThan(tester.getTopLeft(rss).dx),
-    );
-  });
+      final firstTop = tester.getTopLeft(hackerNews).dy;
+      expect((tester.getTopLeft(rss).dy - firstTop).abs(), lessThan(1));
+      expect((tester.getTopLeft(reddit).dy - firstTop).abs(), lessThan(1));
+      expect(
+        tester.getTopLeft(rss).dx,
+        greaterThan(tester.getTopLeft(hackerNews).dx),
+      );
+      expect(
+        tester.getTopLeft(reddit).dx,
+        greaterThan(tester.getTopLeft(rss).dx),
+      );
+    },
+  );
 }
 
 ReaderSummary _summaryWithPreview() {
