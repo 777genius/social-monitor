@@ -302,7 +302,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy, requir
   const summaryIdentity = records.find(
     (record) => record.taskRole === "summary",
   ).attestation;
-  const editor = records.find(record => record.taskRole === "daily_editor");
+
   if (editor && !["provider", "model", "reasoningEffort", "runtimeEngine",
     "runtimePackageVersion", "launcherSha256"].every(field =>
     editor.attestation[field] === summaryIdentity[field])) {
