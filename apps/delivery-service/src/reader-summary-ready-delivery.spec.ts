@@ -19,7 +19,10 @@ function setup(input: readonly GetMessage[], failAck = false) {
   const messages = [...input];
   const channel = {
     assertExchange: jest.fn(), assertQueue: jest.fn(), bindQueue: jest.fn(), prefetch: jest.fn(),
-    get: jest.fn(async () => messages.shift() ?? false), ack: jest.fn(async () => undefined), nack: jest.fn(),
+    get: jest.fn(async () => messages.shift() ?? false), ack: jest.fn(async () => undefined),
+    nack: jest.fn(async (delivery: GetMessage, _all: boolean, requeue: boolean) => {
+      if (requeue) messages.push({ ...delivery, fields: { ...delivery.fields, redelivered: true } });
+    }),
   } satisfies RabbitMqSummaryReadyEventQueueReaderChannelPort;
   if (failAck) channel.ack.mockRejectedValueOnce(new Error('fixture lost ack'));
   const metrics = new InMemoryMetricsRecorder();
@@ -33,9 +36,9 @@ function setup(input: readonly GetMessage[], failAck = false) {
     new InMemorySummaryReadyProjectionStore(events), { publish: async () => undefined }), metrics, runtime);
   const queue = new RabbitMqSummaryReadyEventQueueReader(channel, resolveDeliverySummaryReadyEventQueueOptions({}));
   const dispatcher = new SummaryReadyEventDispatcher(legacy, reader);
-  return { channel, events, reader, dispatcher, runtime,
-    loop: new SummaryReadyEventDrainLoop(queue, dispatcher,
-      { enabled: true, intervalMs: 60_000, limit: input.length, runOnStart: true }, metrics, clock) };
+  const createLoop = () => new SummaryReadyEventDrainLoop(queue, dispatcher,
+    { enabled: true, intervalMs: 60_000, limit: input.length, runOnStart: true }, metrics, clock);
+  return { channel, events, reader, dispatcher, runtime, createLoop, loop: createLoop() };
 }
 function message(event: Record<string, unknown>, routingKey = String(event.eventType)): GetMessage {
   return { content: Buffer.from(JSON.stringify(event)), fields: { routingKey, redelivered: false },
@@ -47,14 +50,18 @@ describe('delivery shared summary ready queue', () => {
     const reader = readerSummaryReadyFixture();
     const old = { ...reader, eventType: 'summary.ready', causationId: 'fixture-cause',
       payload: { ...reader.payload, interestId: 'fixture-interest', summaryId: 'fixture-summary', summaryJobId: 'fixture-job' } };
-    const fixture = setup([message(reader), message(reader), message(old)], true);
-    try { await fixture.loop.onModuleInit(); } finally { await fixture.loop.onModuleDestroy(); }
+    const fixture = setup([message(reader), message(old)], true);
+    await expect(fixture.loop.onModuleInit()).rejects.toThrow('fixture lost ack');
+    await fixture.loop.onModuleDestroy();
+    const restarted = fixture.createLoop();
+    try { await restarted.onModuleInit(); } finally { await restarted.onModuleDestroy(); }
     expect(fixture.channel.bindQueue.mock.calls).toEqual([
       ['events.delivery.summary.ready', 'social-monitor.events', 'reader_summary.ready'],
       ['events.delivery.summary.ready', 'social-monitor.events', 'summary.ready'],
     ]);
     expect(fixture.channel.ack).toHaveBeenCalledTimes(3);
-    expect(fixture.channel.nack).toHaveBeenCalledTimes(1);
+    expect(fixture.channel.nack).toHaveBeenCalledTimes(2);
+    for (const call of fixture.channel.nack.mock.calls) expect(call.slice(1)).toEqual([false, true]);
     const replay = await fixture.events.list({ ...reader.payload,
       channel: `workspace:${reader.workspaceId}:summary-status`, limit: 10 });
     expect(replay.events).toHaveLength(1);

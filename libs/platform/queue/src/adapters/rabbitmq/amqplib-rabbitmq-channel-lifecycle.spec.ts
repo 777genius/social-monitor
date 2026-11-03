@@ -222,4 +222,53 @@ describe('RabbitMQ channel generation ownership', () => {
     expect(markPublished).not.toHaveBeenCalled();
     expect(markFailed).toHaveBeenCalledWith(expect.objectContaining({ terminal: false }));
   });
+
+  it('recovers only the acquired origin when a replacement appears during cleanup', async () => {
+    const f = fixture();
+    await f.adapter.get('synthetic', { noAck: false });
+    const origin = f.channel();
+    origin.deliveries.push(message(1));
+    const acquired = await f.adapter.get('synthetic', { noAck: false });
+    if (acquired === false) throw new Error('fixture delivery absent');
+    let finish!: () => void;
+    const closeOrigin = jest.spyOn(origin, 'close').mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const recovering = f.adapter.recoverDelivery(acquired);
+    origin.emit('close');
+    await f.adapter.get('synthetic', { noAck: false });
+    const replacement = f.channel();
+    expect(replacement).not.toBe(origin);
+    const closeReplacement = jest.spyOn(replacement, 'close');
+    finish();
+    await recovering;
+    expect(closeOrigin).toHaveBeenCalledTimes(1);
+    expect(closeReplacement).not.toHaveBeenCalled();
+    replacement.deliveries.push(message(1));
+    const current = await f.adapter.get('synthetic', { noAck: false });
+    if (current === false) throw new Error('fixture delivery absent');
+    await f.adapter.ack(current);
+    expect(replacement.ack).toHaveBeenCalledWith(current);
+  });
+
+  it('retains open-origin authority after failed close and retries one close for sibling recoveries', async () => {
+    const f = fixture();
+    await f.adapter.get('synthetic', { noAck: false });
+    const origin = f.channel();
+    origin.deliveries.push(message(1), message(2));
+    const first = await f.adapter.get('synthetic', { noAck: false });
+    const second = await f.adapter.get('synthetic', { noAck: false });
+    if (first === false || second === false) throw new Error('fixture delivery absent');
+    const closeOrigin = jest.spyOn(origin, 'close').mockRejectedValueOnce(new Error('fixture close not confirmed'));
+    await expect(f.adapter.recoverDelivery(first)).rejects.toThrow('not confirmed');
+    // Failed close alone must not make a still-open native channel locally dead.
+    await f.adapter.ack(second);
+    let finish!: () => void;
+    closeOrigin.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const left = f.adapter.recoverDelivery(first);
+    const right = f.adapter.recoverDelivery(first);
+    finish();
+    await Promise.all([left, right]);
+    expect(closeOrigin).toHaveBeenCalledTimes(2);
+    await f.adapter.get('synthetic', { noAck: false });
+    expect(f.channel()).not.toBe(origin);
+  });
 });
