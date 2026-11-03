@@ -97,4 +97,3 @@ const dailySourceText = (snapshot: ReaderValueSourceSnapshot, cutoff: string): s
 const safeSourceBody = (value: string): string =>
   /(?:^|\n)[ \t]*(?:Authored post:|Captured quoted post by )/iu.test(value)
     ? JSON.stringify(value) : value;
-};
