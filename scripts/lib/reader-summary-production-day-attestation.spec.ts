@@ -37,6 +37,10 @@ describe("production day purpose-specific executor identity", () => {
     editor.attestation.model = "unrelated-model";
     expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [], true))
       .toBeNull();
+    editor.attestation.model = records[0]!.attestation.model;
+    editor.attestation.launcherSha256 = "0".repeat(64);
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [], true))
+      .toBeNull();
   });
 
   it("accepts pinned MiMo for every daily task role and the repair purpose", () => {
