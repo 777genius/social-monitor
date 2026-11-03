@@ -151,6 +151,7 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
     });
   const bounded = canonicalNarrativeOrder(
     ensureCitedLead(sections, coverage, params.storyTitlesByClusterId),
+    params.input.dailyEditorialPlan === undefined ? maxNarrativeSections : 10,
   );
   assertNarrativeCoverage(
     bounded,
@@ -472,6 +473,7 @@ const rawCitationIds = (section: Record<string, unknown>): readonly string[] =>
 
 const canonicalNarrativeOrder = (
   sections: readonly ReaderSummaryNarrativeSection[],
+  maxSections: number = maxNarrativeSections,
 ): readonly ReaderSummaryNarrativeSection[] => {
   const order = new Map(
     readerSummaryNarrativeSectionKinds.map((kind, index) => [kind, index]),
@@ -489,9 +491,9 @@ const canonicalNarrativeOrder = (
     )
     .filter(
       (section, index) =>
-        section.kind !== "secondary_signal" || index < maxNarrativeSections,
+        section.kind !== "secondary_signal" || index < maxSections,
     )
-    .slice(0, maxNarrativeSections);
+    .slice(0, maxSections);
 };
 
 const displayLabel = (section: ReaderSummaryNarrativeSection): string =>
