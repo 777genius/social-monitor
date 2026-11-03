@@ -73,6 +73,17 @@ export const assertDailyGenerationArtifactBinding = (props: ReaderSummaryArtifac
     }
   }
   for (const story of props.topStories) check(story.citationIds, story.storyClusterId);
+  // Editorial supplements also reach the public artifact. They may not cite
+  // promotion-only cards or other sources absent from the frozen writer input.
+  if (props.dailyEditorialPlan !== undefined) {
+    for (const citationIds of [
+      ...props.interestHighlights.map(item => item.citationIds),
+      ...props.repeatedSignals.map(item => item.citationIds),
+      ...props.risksAndUnknowns.map(item => item.citationIds),
+    ]) {
+      if (citationIds !== undefined && citationIds.length > 0) check(citationIds);
+    }
+  }
   for (const section of props.content?.narrativeSections ?? []) {
     const githubAppendix = section.id === "github-trending" && section.kind === "watch" &&
       section.citationIds.every(id => byCitation.get(id)?.providerKey === "github-trending-page");

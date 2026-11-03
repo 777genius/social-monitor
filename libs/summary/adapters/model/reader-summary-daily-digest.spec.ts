@@ -188,6 +188,19 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
       ...saved.dailyGenerationInput!.sent!, editorialPlanSha256: "0".repeat(64),
     } },
   } })).toBe(false);
+  const frozenIds = new Set(selected.map(entry => entry.feedItemId));
+  const outsideCitation = saved.citationMap.find(citation =>
+    !frozenIds.has(citation.feedItemId))?.citationId;
+  expect(outsideCitation).toBeDefined();
+  expect(() => ReaderSummaryArtifact.rehydrate({ ...saved,
+    interestHighlights: [{ interestId: "unplanned", title: "Outside story",
+      summary: "The writer never received this board-only source.",
+      citationIds: [outsideCitation!] }],
+  })).toThrow("Daily narrative cites evidence outside actual model input");
+  expect(() => ReaderSummaryArtifact.rehydrate({ ...saved,
+    risksAndUnknowns: [{ description: "Unsupported risk",
+      citationIds: [outsideCitation!] }],
+  })).toThrow("Daily narrative cites evidence outside actual model input");
   const invalidAppendix = {
     id: "github-trending", kind: "watch" as const, title: "Forged appendix",
     text: "Unverified GitHub claim", citationIds: ["c1"],
