@@ -42,6 +42,7 @@ export type ReaderSummaryModelInput = {
   readonly subscriptionId?: string;
   readonly evidence: SummaryEvidenceSelection;
   readonly coveragePlan: ReaderSummaryCoveragePlan;
+  readonly dailyEditorialPlan?: DailyEditorialPlan;
   readonly contextArtifacts: readonly ReaderSummaryContextArtifact[];
   readonly policy: ReaderSummaryGenerationPolicy;
   readonly requestedAt: Date;
