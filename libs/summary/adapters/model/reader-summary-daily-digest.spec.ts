@@ -9,6 +9,7 @@ import { serializeReaderSummaryArtifact } from "../persistence/prisma/prisma-rea
 import { normalizeReaderSummaryArtifactPayload } from "../persistence/prisma/prisma-reader-summary-artifact-payload";
 import { dailyGenerationPublicationMatches } from "../persistence/prisma/reader-summary-daily-generation-publication-guard";
 import { createHash } from "node:crypto";
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
 import { CapturingAgentRuntimeClient } from "./agent-runtime-reader-summary-model.spec-support";
 import { ReaderSummaryArtifact, validateDailyEditorialPlan, dailyEditorialCoveragePlan } from "../../domain";
@@ -147,7 +148,7 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
   expect(attempt.draft.topStories.map(item => item.storyClusterId))
     .toEqual([writer.coveragePlan.lead!, ...writer.coveragePlan.secondary].map(item => item.clusterId));
   const draft = buildReaderSummaryDraftWithPromotionContent(evidence, attempt.draft);
-  const editorOutputSha256 = createHash("sha256").update(JSON.stringify(plan)).digest("hex");
+  const editorOutputSha256 = canonicalJsonSha256(plan);
   const artifact = buildReaderSummaryModelArtifact({
     snapshot: job.toSnapshot(), readerSummaryId: "daily-editorial-test-artifact",
     generatedAt: writer.requestedAt, modelEvidence: evidence, contextArtifacts: [],
