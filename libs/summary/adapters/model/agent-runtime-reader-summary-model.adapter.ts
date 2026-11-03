@@ -1,6 +1,7 @@
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
 import { buildReaderSummaryDailyEditorPayload, dailyEditorInstructions, dailyEditorJsonSchema,
-  parseReaderSummaryDailyEditorOutput, dailyEditorReceipt, dailyWriterPlanSha256 } from "./reader-summary-daily-editor";
+  parseReaderSummaryDailyEditorOutput, dailyEditorReceipt, dailyWriterPlanSha256,
+  assertDailyEditorialRawWriter } from "./reader-summary-daily-editor";
 import { dailyEditorialWriterJsonSchema } from "./reader-summary-daily-writer-schema";
 import { READER_SUMMARY_DAILY_EDITORIAL_PROMPT_VERSION } from "../../domain";
 import {
@@ -277,6 +278,9 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           parseOpenAiReaderSummaryJsonObject,
           "Reader summary",
         );
+        if (input.dailyEditorialPlan !== undefined) {
+          assertDailyEditorialRawWriter(rawDraft, input.evidence, input.dailyEditorialPlan);
+        }
         const draft = normalizeOpenAiReaderSummaryDraft(
           rawDraft,
           input,
