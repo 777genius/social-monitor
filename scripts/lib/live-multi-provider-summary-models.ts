@@ -267,6 +267,14 @@ class LiveBudgetReaderSummaryModel implements ReaderSummaryModelPort {
     return this.delegate.estimate(input, route);
   }
 
+  planDaily(input: Parameters<ReaderSummaryModelPort["generate"]>[0],
+    route: Parameters<ReaderSummaryModelPort["generate"]>[1]) {
+    if (this.delegate.planDaily === undefined) {
+      throw new Error("Configured live model does not support daily editorial planning");
+    }
+    return this.delegate.planDaily(input, route);
+  }
+
   generate(
     input: Parameters<ReaderSummaryModelPort["generate"]>[0],
     route: Parameters<ReaderSummaryModelPort["generate"]>[1],
