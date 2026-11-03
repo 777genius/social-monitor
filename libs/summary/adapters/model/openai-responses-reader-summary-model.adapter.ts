@@ -226,7 +226,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     }
 
     const prompt = buildOpenAiReaderSummaryPromptPayload(input);
-    const dailyGenerationReceipt = readerSummaryDailyInputReceipt(prompt, input.evidence.dailyGenerationInput);
+    const dailyGenerationReceipt = readerSummaryDailyInputReceipt(prompt, input.evidence.dailyGenerationInput, input.dailyEditorialPlan);
     const responseJson = await this.createResponse({
       model: selectedRoute.model,
       store: false,
