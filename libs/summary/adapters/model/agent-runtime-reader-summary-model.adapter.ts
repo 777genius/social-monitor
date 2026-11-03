@@ -1,4 +1,8 @@
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
+import { buildReaderSummaryDailyEditorPayload, dailyEditorInstructions, dailyEditorJsonSchema,
+  parseReaderSummaryDailyEditorOutput, dailyEditorReceipt, dailyWriterPlanSha256 } from "./reader-summary-daily-editor";
+import { dailyEditorialWriterJsonSchema } from "./reader-summary-daily-writer-schema";
+import { READER_SUMMARY_DAILY_EDITORIAL_PROMPT_VERSION } from "../../domain";
 import {
   buildReaderSummary,
   primaryReaderSummaryEvidence,
@@ -17,6 +21,7 @@ import type {
   ReaderSummaryModelPolicy,
   ReaderSummaryModelPort,
   ReaderSummaryModelRoute,
+  ReaderSummaryDailyEditorialAttempt,
   ReaderSummaryModelValidationResult,
 } from "../../ports";
 import {
@@ -155,7 +160,10 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = { ...this.buildRoute(), ...(input.evidence.dailyGenerationInput === undefined ? {} : { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
+    const route = { ...this.buildRoute(), ...(input.dailyEditorialPlan !== undefined
+      ? { promptVersion: READER_SUMMARY_DAILY_EDITORIAL_PROMPT_VERSION }
+      : input.evidence.dailyGenerationInput === undefined ? {} :
+        { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
     const estimate = this.estimate(input, route);
 
     if (
@@ -198,6 +206,43 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       outputTokens,
       estimatedCostUsd: 0,
     };
+  }
+
+  async planDaily(
+    input: ReaderSummaryModelInput,
+    selectedRoute: ReaderSummaryModelRoute,
+  ): Promise<ReaderSummaryDailyEditorialAttempt> {
+    if (this.legacyRecovery || input.evidence.dailyGenerationInput === undefined) {
+      throw new Error("Daily editorial planning is unavailable outside the new daily profile");
+    }
+    const prompt = buildReaderSummaryDailyEditorPayload(input.evidence);
+    const commandBase = this.buildTaskCommand(input, selectedRoute, "primary");
+    const command: AgentRuntimeTaskCommand = {
+      ...commandBase,
+      requestId: buildAgentRuntimeRequestId("reader-summary-daily-editor",
+        input.tenantId, input.workspaceId, readerSummaryScopeKey(input.scope), input.requestedAt),
+      purpose: activeReaderSummaryPurposes.dailyEditor,
+      systemPrompt: dailyEditorInstructions,
+      prompt,
+      outputSchema: dailyEditorJsonSchema,
+      controls: { ...commandBase.controls,
+        outputSchemaName: "social_monitor_reader_summary_daily_editor",
+        maxOutputTokens: Math.min(3_000, this.maxOutputTokens) },
+      metadata: { ...commandBase.metadata, promptVersion: READER_SUMMARY_DAILY_EDITORIAL_PROMPT_VERSION },
+    };
+    const result = await this.client.runTask(command);
+    const raw = readAgentRuntimeObjectOutput(result, parseOpenAiReaderSummaryJsonObject,
+      "Daily editorial plan");
+    const plan = parseReaderSummaryDailyEditorOutput(raw, input.evidence);
+    await verifyAndRecordReaderSummaryExecution({
+      command, result, taskRole: "daily_editor", attempt: "primary",
+      normalizedOutput: plan, sink: this.verifiedAttestationSink,
+    });
+    return { plan, receipt: dailyEditorReceipt(prompt, plan),
+      usage: usageFromAgentRuntime(result.usage, {
+        inputTokens: Math.ceil(prompt.length / this.inputTokenDivisor),
+        outputTokens: Math.min(3_000, this.maxOutputTokens), estimatedCostUsd: 0,
+      }) };
   }
 
   async generate(
@@ -251,7 +296,10 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           sink: this.verifiedAttestationSink,
         });
 
-        return { route: selectedRoute, draft, ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }) };
+        return { route: selectedRoute, draft,
+          ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }),
+          ...(input.dailyEditorialPlan === undefined ? {} :
+            { dailyEditorialWriterPlanSha256: dailyWriterPlanSha256(command.prompt) }) };
       } catch (error) {
         if (attempt === "primary" && isRepairableNarrativeError(error)) {
           continue;
@@ -290,7 +338,8 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   ): AgentRuntimeTaskCommand {
     const isRepair = attempt === "repair";
     const hardLimits = isGatewayReaderSummaryBackend(this.modelBackend)
-      ? `\n${readerSummaryGatewayHardLimits}` : "";
+      ? `\n${input.dailyEditorialPlan === undefined ? readerSummaryGatewayHardLimits :
+        gatewayOutputHardLimits(dailyEditorialWriterJsonSchema)}` : "";
     const repairInstruction = !isRepair ? ""
       : `\n${schemaViolations === undefined ? narrativeRepairInstruction : schemaRepairInstruction(schemaViolations)}`;
     return {
@@ -321,10 +370,12 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           : activeReaderSummaryPurposes.generate,
       systemPrompt: `${buildOpenAiReaderSummaryInstructions(input)}${hardLimits}${repairInstruction}`,
       prompt: buildOpenAiReaderSummaryPromptPayload(input),
-      outputSchema: openAiReaderSummaryJsonSchema,
+      outputSchema: input.dailyEditorialPlan === undefined ?
+        openAiReaderSummaryJsonSchema : dailyEditorialWriterJsonSchema,
       controls: {
         interactive: false,
-        outputSchemaName: "social_monitor_reader_summary_artifact",
+        outputSchemaName: input.dailyEditorialPlan === undefined ?
+          "social_monitor_reader_summary_artifact" : "social_monitor_reader_summary_daily_editorial_article",
         schemaVersion: selectedRoute.schemaVersion,
         model: this.model,
         ...(this.modelBackend === "xiaomi-mimo-token-plan"
