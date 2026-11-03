@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { resolveReaderSummaryAuthorityBoundary, withFirstPublicationInventoryQuality, failReaderSummaryProviderExecution, bindFirstPublicationEvidence, type FirstPublicationExecutionBoundary } from "./reader-summary-first-publication-execution";
 import type { ReaderSummaryFirstPublicationAuthority } from "../../application/contracts/reader-summary-first-publication-authority";
 import type { ReaderSummaryNewInputRefreshAuthority } from "../../application/contracts/reader-summary-new-input-refresh-authority";
@@ -5,6 +6,9 @@ import { type Clock, DomainError, type IdGenerator, err, ok, type Result } from
   "@social-monitor/shared-kernel";
 import { assertReaderSummaryCitationsAgainstEvidence,
   admitReaderPostPromotionEvidence, buildReaderSummaryCoveragePlan,
+  readerSummaryDailyEditorialCoveragePlan, readReaderSummaryDailyEditorialPlan,
+  assertReaderSummaryDailyEditorialArticle,
+  type ReaderSummaryDailyEditorialProof, type ReaderSummaryDailyEditorialReceipt,
   calibrateReaderSummaryConfidence, defaultReaderSummaryGenerationPolicy,
   type ReaderSummaryArtifact, type ReaderSummaryJob, ReaderSummaryPublicationPolicy,
   primaryReaderSummaryEvidence, resolveEffectiveReaderSummaryPolicy,
@@ -399,7 +403,7 @@ export class ExecuteReaderSummaryJobUseCase {
     }
     const basePolicy =
       policy?.toGenerationPolicy() ?? defaultReaderSummaryGenerationPolicy();
-    const input = {
+    const input: import("../../ports").ReaderSummaryModelInput = {
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
       scope: snapshot.scope,
@@ -410,15 +414,51 @@ export class ExecuteReaderSummaryJobUseCase {
       coveragePlan: buildReaderSummaryCoveragePlan(primaryEvidence),
       contextArtifacts: [],
       policy: { ...resolveEffectiveReaderSummaryPolicy(basePolicy, userPreference),
-        ...(modelEvidence.dailyGenerationInput === undefined ? {} : { maxStories: 6 }) },
+        ...(modelEvidence.dailyGenerationInput === undefined ? {} : { maxStories: 10 }) },
       requestedAt: snapshot.requestedAt,
     };
-    const route = this.readerSummaryModel.route(
-      input,
-      defaultModelPolicy,
-      defaultModelBudget,
-    );
-    const attempt = await this.readerSummaryModel.generate(input, route);
+    let writerInput: import("../../ports").ReaderSummaryModelInput = input;
+    let editorReceipt: ReaderSummaryDailyEditorialReceipt | undefined;
+    let editorUsage: import("../../ports").ReaderSummaryModelEstimate | undefined;
+    if (modelEvidence.dailyGenerationInput !== undefined) {
+      if (this.readerSummaryModel.planDaily === undefined) {
+        return err(this.readerSummaryModel.classifyError(
+          new Error("Active daily model route cannot produce an editorial plan")));
+      }
+      const editorRoute = this.readerSummaryModel.route(input, defaultModelPolicy, defaultModelBudget);
+      const editorial = await this.readerSummaryModel.planDaily(input, editorRoute);
+      const verified = readReaderSummaryDailyEditorialPlan(
+        editorial.plan, modelEvidence.dailyGenerationInput);
+      editorReceipt = editorial.receipt;
+      editorUsage = editorial.usage;
+      writerInput = {
+        ...input, dailyEditorialPlan: verified,
+        coveragePlan: readerSummaryDailyEditorialCoveragePlan(modelEvidence, verified),
+      };
+    }
+    const remainingBudget = editorUsage === undefined ? defaultModelBudget : {
+      remainingTokens: defaultModelBudget.remainingTokens - editorUsage.inputTokens - editorUsage.outputTokens,
+      remainingCostUsd: defaultModelBudget.remainingCostUsd - editorUsage.estimatedCostUsd,
+    };
+    if (remainingBudget.remainingTokens <= 0 || remainingBudget.remainingCostUsd < 0) {
+      return err(this.readerSummaryModel.classifyError(new Error("Daily editorial model budget exceeded")));
+    }
+    const route = this.readerSummaryModel.route(writerInput, defaultModelPolicy, remainingBudget);
+    const attempt = await this.readerSummaryModel.generate(writerInput, route);
+    let dailyEditorialProof: ReaderSummaryDailyEditorialProof | undefined;
+    if (writerInput.dailyEditorialPlan !== undefined) {
+      const frozen = modelEvidence.dailyGenerationInput!;
+      const expectedHash = createHash("sha256").update(JSON.stringify(writerInput.dailyEditorialPlan)).digest("hex");
+      if (attempt.dailyEditorialWriterPlanSha256 !== expectedHash || editorReceipt === undefined) {
+        return err(this.readerSummaryModel.classifyError(new Error("Daily writer did not send the verified editorial plan")));
+      }
+      dailyEditorialProof = {
+        plan: writerInput.dailyEditorialPlan,
+        inputSha256: createHash("sha256").update(JSON.stringify(frozen.selected)).digest("hex"),
+        editor: editorReceipt,
+        writerPlanSha256: attempt.dailyEditorialWriterPlanSha256,
+      };
+    }
     if (modelEvidence.dailyGenerationInput !== undefined && attempt.dailyGenerationReceipt === undefined) {
       return err(this.readerSummaryModel.classifyError(new Error("Daily generation input receipt missing")));
     }
@@ -441,8 +481,27 @@ export class ExecuteReaderSummaryJobUseCase {
       modelEvidence,
       qualityDraft,
     );
+    if (dailyEditorialProof !== undefined) {
+      try {
+        assertReaderSummaryDailyEditorialArticle({
+          proof: dailyEditorialProof, input: modelEvidence.dailyGenerationInput!,
+          stories: draftWithContent.topStories,
+          sections: draftWithContent.content.narrativeSections ?? [],
+          citations: draftWithContent.citationMap,
+        });
+      } catch (error) {
+        return err(this.readerSummaryModel.classifyError(error));
+      }
+    }
     const calibratedDraft = {
       ...draftWithContent,
+      ...(editorUsage === undefined ? {} : { usage: {
+        inputTokens: draftWithContent.usage.inputTokens === null ? null :
+          draftWithContent.usage.inputTokens + editorUsage.inputTokens,
+        outputTokens: draftWithContent.usage.outputTokens === null ? null :
+          draftWithContent.usage.outputTokens + editorUsage.outputTokens,
+        estimatedCostUsd: draftWithContent.usage.estimatedCostUsd + editorUsage.estimatedCostUsd,
+      } }),
       confidence: calibrateReaderSummaryConfidence({
         confidence: draftWithContent.confidence,
         topReads: draftWithContent.content.topReads,
@@ -451,7 +510,8 @@ export class ExecuteReaderSummaryJobUseCase {
     const createArtifact = (draft: ReaderSummaryDraft): ReaderSummaryArtifact =>
       buildReaderSummaryModelArtifact({ snapshot, readerSummaryId, generatedAt,
         modelEvidence, contextArtifacts: context.artifacts, draft,
-        dailyGenerationReceipt: attempt.dailyGenerationReceipt });
+        dailyGenerationReceipt: attempt.dailyGenerationReceipt,
+        dailyEditorialProof });
     const preflightArtifact = createArtifact(calibratedDraft);
     if (
       this.publicationPolicy.evaluate({
