@@ -5,7 +5,6 @@ import { type Clock, DomainError, type IdGenerator, err, ok, type Result } from
   "@social-monitor/shared-kernel";
 import { assertReaderSummaryCitationsAgainstEvidence,
   admitReaderPostPromotionEvidence, buildReaderSummaryCoveragePlan,
-  dailyEditorialCoveragePlan,
   calibrateReaderSummaryConfidence, defaultReaderSummaryGenerationPolicy,
   type ReaderSummaryArtifact, type ReaderSummaryJob, ReaderSummaryPublicationPolicy,
   primaryReaderSummaryEvidence, resolveEffectiveReaderSummaryPolicy,
@@ -55,6 +54,7 @@ import {
   withReaderSummaryTopicMap,
 } from "./execute-reader-summary-job-support";
 import { buildReaderSummaryModelArtifact } from "./reader-summary-model-artifact";
+import { generateReaderSummaryWithDailyEditor } from "./reader-summary-daily-editorial-generation";
 import { buildReaderSummaryV3Evidence, prepareReaderSummaryV3Job } from "./reader-summary-v3-execution";
 type ExecuteReaderSummaryJobFailure = DomainError | Error;
 export class ExecuteReaderSummaryJobUseCase {
@@ -414,36 +414,10 @@ export class ExecuteReaderSummaryJobUseCase {
         ...(modelEvidence.dailyGenerationInput === undefined ? {} : { maxStories: 6 }) },
       requestedAt: snapshot.requestedAt,
     };
-    const route = this.readerSummaryModel.route(
-      input,
-      defaultModelPolicy,
-      defaultModelBudget,
-    );
-    const editor = modelEvidence.dailyGenerationInput === undefined
-      ? undefined
-      : await this.readerSummaryModel.planDaily?.(input, route);
-    if (modelEvidence.dailyGenerationInput !== undefined && editor === undefined) {
-      return err(this.readerSummaryModel.classifyError(
-        new Error("Daily editorial planning adapter is unavailable")));
-    }
-    const writerInput = editor === undefined ? input : {
-      ...input,
-      coveragePlan: dailyEditorialCoveragePlan(editor.plan, modelEvidence),
-      dailyEditorialPlan: editor.plan,
-      policy: { ...input.policy, maxStories: editor.plan.topics.length },
-    };
-    const remainingBudget = editor === undefined ? defaultModelBudget : {
-      remainingTokens: defaultModelBudget.remainingTokens -
-        editor.usage.inputTokens - editor.usage.outputTokens,
-      remainingCostUsd: defaultModelBudget.remainingCostUsd - editor.usage.estimatedCostUsd,
-    };
-    if (remainingBudget.remainingTokens < 0 || remainingBudget.remainingCostUsd < 0) {
-      return err({ kind: "budget_exceeded", retryable: false,
-        message: "Daily editorial planning consumed the model budget" });
-    }
-    const writerRoute = editor === undefined ? route :
-      this.readerSummaryModel.route(writerInput, defaultModelPolicy, remainingBudget);
-    const attempt = await this.readerSummaryModel.generate(writerInput, writerRoute);
+    const { attempt, editor } = await generateReaderSummaryWithDailyEditor({
+      model: this.readerSummaryModel, input, policy: defaultModelPolicy,
+      budget: defaultModelBudget,
+    });
     if (modelEvidence.dailyGenerationInput !== undefined && attempt.dailyGenerationReceipt === undefined) {
       return err(this.readerSummaryModel.classifyError(new Error("Daily generation input receipt missing")));
     }
@@ -452,17 +426,7 @@ export class ExecuteReaderSummaryJobUseCase {
     if (!validation.ok) {
       return err(validation.failure);
     }
-    const generatedDraft = editor === undefined ? attempt.draft : {
-      ...attempt.draft,
-      usage: {
-        inputTokens: attempt.draft.usage.inputTokens === null ? null :
-          attempt.draft.usage.inputTokens + editor.usage.inputTokens,
-        outputTokens: attempt.draft.usage.outputTokens === null ? null :
-          attempt.draft.usage.outputTokens + editor.usage.outputTokens,
-        estimatedCostUsd: attempt.draft.usage.estimatedCostUsd +
-          editor.usage.estimatedCostUsd,
-      },
-    };
+    const generatedDraft = attempt.draft;
     try {
       assertReaderSummaryCitationsAgainstEvidence(generatedDraft, modelEvidence);
     } catch (error) {
