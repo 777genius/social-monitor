@@ -7,6 +7,7 @@ import type {
 import type { SummaryEvidenceSelection } from "../value-objects/summary-evidence-item";
 import type { ReaderSummaryCitation } from "../entities/citation";
 import { readerSummaryIndependentProviderFamilyCount } from "../value-objects/reader-summary-provider-identity";
+import { readerSummaryDailyEditorialCoveragePlan } from "../services/reader-summary-daily-editorial-plan";
 import {
   buildReaderSummaryCoveragePlan,
   type ReaderSummaryCoveragePlan,
@@ -129,11 +130,10 @@ export class ReaderSummaryPublicationPolicy {
     }
 
     if (!noSignal) {
-      const coveragePlan = buildReaderSummaryCoveragePlan(
-        primaryReaderSummaryEvidence(
-          params.editorialEvidence ?? params.evidence,
-        ),
-      );
+      const authoritativeEvidence = primaryReaderSummaryEvidence(params.editorialEvidence ?? params.evidence);
+      const coveragePlan = snapshot.dailyEditorialProof === undefined
+        ? buildReaderSummaryCoveragePlan(authoritativeEvidence)
+        : readerSummaryDailyEditorialCoveragePlan(authoritativeEvidence, snapshot.dailyEditorialProof.plan);
       const editorialQuality = evaluateReaderSummaryArtifactEditorialQuality(
         { ...editorialQualityInput(snapshot, coveragePlan.mode, params.evidence),
           coveragePolicyVersion: coveragePlan.policyVersion },
@@ -324,7 +324,7 @@ const coveragePlanIssues = (
         )
           ? ["Secondary signal is outside the deterministic coverage plan"]
           : []),
-        ...(sectionClusterId !== undefined &&
+        ...(snapshot.dailyEditorialProof === undefined && sectionClusterId !== undefined &&
         section.citationIds.some(
           (citationId) => clusterIdForCitation(citationId) !== sectionClusterId,
         )
@@ -353,7 +353,7 @@ const coveragePlanIssues = (
       ? ["Single-story lead does not match the deterministic coverage plan"]
       : []),
     ...mainNarrativeCitationClusterIds
-      .filter((clusterId) => !plannedClusterIds.has(clusterId))
+      .filter((clusterId) => snapshot.dailyEditorialProof === undefined && !plannedClusterIds.has(clusterId))
       .map(
         () =>
           "Main narrative cites a story outside the deterministic coverage plan",
