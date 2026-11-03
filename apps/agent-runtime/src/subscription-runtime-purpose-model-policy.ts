@@ -121,6 +121,7 @@ const profilesByPurpose: Readonly<
     sourceContentAssessmentStructuredProfile,
   "social_monitor.summary.generate": genericSummaryStructuredProfile,
   "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.daily_editorial.plan.v1": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.repair.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.topic_map.label.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.topic_map.verify_relations.v2":
