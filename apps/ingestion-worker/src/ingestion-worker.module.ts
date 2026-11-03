@@ -78,6 +78,10 @@ import { ingestionWorkerStorageProviders } from './adapters/composition/ingestio
     },
     ...ingestionWorkerRuntimeProviders,
     {
+      provide: InMemoryMetricsRecorder,
+      useExisting: METRICS_RECORDER,
+    },
+    {
       provide: INGESTION_SCAN_EXECUTION_REPORTER,
       useFactory: (
         mode: IngestionScanReporterMode,

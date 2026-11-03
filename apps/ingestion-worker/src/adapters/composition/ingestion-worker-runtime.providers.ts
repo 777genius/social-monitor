@@ -1,5 +1,5 @@
 import type { Provider } from '@nestjs/common';
-import { InMemoryMetricsRecorder, type MetricsRecorderPort } from '@social-monitor/platform-metrics';
+import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import { METRICS_RECORDER } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import { AmqplibRabbitMqChannel } from '@social-monitor/platform-queue/adapters/rabbitmq';
@@ -30,10 +30,6 @@ export const ingestionWorkerRuntimeProviders: Provider[] = [
       inject: [METRICS_RECORDER],
     },
     InMemoryScanLeaseAdapter,
-    {
-      provide: InMemoryMetricsRecorder,
-      useExisting: METRICS_RECORDER,
-    },
     {
       provide: INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL,
       useFactory: (
