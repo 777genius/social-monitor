@@ -104,7 +104,7 @@ export const assertDailyEditorialRawWriter = (
     throw new Error("Daily writer omitted or added planned article topics");
   }
   const byId = new Map(frozen.selected.map(item => [item.feedItemId, item] as const));
-  const citationById = new Map(evidence.selectedEvidence.map((item, index) =>
+  const citationById = new Map<string, string>(evidence.selectedEvidence.map((item, index) =>
     [`c${index + 1}`, item.feedItemId] as const));
   for (const [index, topic] of normalizedPlan.topics.entries()) {
     const expectedAnchor = byId.get(topic.feedItemIds[0]!)!.storyId;
