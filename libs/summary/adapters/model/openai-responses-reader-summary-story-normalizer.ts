@@ -113,6 +113,8 @@ export const normalizeTopStories = (
       ];
     });
 
+  // The editorial profile must never fabricate a missing topic from fallback candidates.
+  if (input.dailyEditorialPlan !== undefined) return repaired;
   const normalized =
     repaired.length === 0 ? fallbackTopStories(input, citationMap) : repaired;
   if (input.evidence.editorialSlate !== undefined) {
