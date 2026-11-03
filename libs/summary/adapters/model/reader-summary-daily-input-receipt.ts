@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import type { ReaderSummaryDailyGenerationInput, ReaderSummaryDailyInputReceipt, DailyEditorialPlan } from "../../domain";
 
 /** Inspect only the command supplied to the real client, never model claims. */
@@ -15,11 +16,16 @@ export const readerSummaryDailyInputReceipt = (prompt: string,
       (payload.additionalEvidence?.length ?? 0) !== 0 || (payload.contextArtifacts?.length ?? 0) !== 0) {
     throw new Error("Daily model input differs from frozen generation selection");
   }
-  if (editorialPlan !== undefined && JSON.stringify(payload.dailyEditorialPlan) !== JSON.stringify(editorialPlan)) {
+  if ((editorialPlan === undefined) !== (payload.dailyEditorialPlan === undefined) ||
+      (editorialPlan !== undefined &&
+        JSON.stringify(payload.dailyEditorialPlan) !== JSON.stringify(editorialPlan))) {
     throw new Error("Daily writer prompt omitted the validated editorial plan");
   }
   return { payloadSha256: sha(prompt), evidence: evidence.map(entry => ({
-    feedItemId: String(entry.feedItemId), sha256: sha(JSON.stringify(entry)) })) };
+    feedItemId: String(entry.feedItemId), sha256: sha(JSON.stringify(entry)) })),
+    ...(editorialPlan === undefined ? {} : {
+      editorialPlanSha256: canonicalJsonSha256(payload.dailyEditorialPlan),
+    }) };
 };
 
 const sha = (value: string): string => createHash("sha256").update(value, "utf8").digest("hex");
