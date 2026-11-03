@@ -28,7 +28,6 @@ import {
   normalizeOpenAiReaderSummaryDraft,
   OpenAiReaderSummaryOutputParseError,
   openAiReaderSummaryJsonSchema,
-  dailyEditorialReaderSummaryJsonSchema,
   parseOpenAiReaderSummaryJsonObject,
   readOpenAiResponseBody,
   resolveOpenAiReaderSummaryUsage,
@@ -39,6 +38,7 @@ import {
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
+import { dailyEditorialReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
