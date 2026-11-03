@@ -95,5 +95,5 @@ const dailySourceText = (snapshot: ReaderValueSourceSnapshot, cutoff: string): s
 
 /** Preserve historical ordinary bytes; quote only bodies spoofing envelope labels. */
 const safeSourceBody = (value: string): string =>
-  /(?:^|\n)[ \t]*(?:Authored post:|Captured quoted post by )/iu.test(value)
+  /(?:Authored\s+post\s*:|Captured\s+quoted\s+post\s+by\b)/iu.test(value)
     ? JSON.stringify(value) : value;
