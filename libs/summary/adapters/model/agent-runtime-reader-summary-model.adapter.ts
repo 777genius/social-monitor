@@ -378,8 +378,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
         openAiReaderSummaryJsonSchema : dailyEditorialWriterJsonSchema,
       controls: {
         interactive: false,
-        outputSchemaName: input.dailyEditorialPlan === undefined ?
-          "social_monitor_reader_summary_artifact" : "social_monitor_reader_summary_daily_editorial_article",
+        outputSchemaName: "social_monitor_reader_summary_artifact",
         schemaVersion: selectedRoute.schemaVersion,
         model: this.model,
         ...(this.modelBackend === "xiaomi-mimo-token-plan"
