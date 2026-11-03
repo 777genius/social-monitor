@@ -1,8 +1,8 @@
-import { isGitHubTrendingEvidence, primaryReaderSummaryEvidence,
+import { primaryReaderSummaryEvidence,
   type ReaderSummaryCitation, type SummaryEvidenceItem, type SummaryEvidenceSelection } from "../../domain";
 
-/** The daily article cites its frozen narrative inputs, plus the separate GitHub appendix.
- * The promotion board can contain different ordinary posts and is never citation authority.
+/** Daily writer IDs follow frozen narrative order; extra board/appendix citations
+ * remain available to public cards, but are not passed as model evidence.
  */
 export const readerSummaryCitableEvidence = (
   selection: SummaryEvidenceSelection,
@@ -11,7 +11,7 @@ export const readerSummaryCitableEvidence = (
   const narrative = primaryReaderSummaryEvidence(selection).selectedEvidence;
   const narrativeIds = new Set(narrative.map(item => item.feedItemId));
   return [...narrative, ...selection.selectedEvidence.filter(item =>
-    isGitHubTrendingEvidence(item) && !narrativeIds.has(item.feedItemId))];
+    !narrativeIds.has(item.feedItemId))];
 };
 
 export const buildReaderSummaryEvidenceCitationMap = (

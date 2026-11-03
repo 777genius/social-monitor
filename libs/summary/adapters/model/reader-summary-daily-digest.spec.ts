@@ -33,7 +33,10 @@ it("sends exactly thirty Likes inputs, retains a non-promoted narrative and keep
   expect(attempt.dailyGenerationReceipt).toEqual(readerSummaryDailyInputReceipt(request.input, evidence.dailyGenerationInput));
   expect(attempt.dailyGenerationReceipt!.evidence).toHaveLength(30);
   expect(attempt.draft.citationMap).toHaveLength(31);
-  expect(attempt.draft.citationMap[30]?.providerKey).toBe("github-trending-page");
+  const frozenIds = new Set(selected.map(item => item.feedItemId));
+  const boardOnly = evidence.selectedEvidence.find(item => !frozenIds.has(item.feedItemId));
+  expect(boardOnly).toBeDefined();
+  expect(attempt.draft.citationMap[30]?.feedItemId).toBe(boardOnly?.feedItemId);
   const publication = buildReaderSummaryDraftWithPromotionContent(evidence, attempt.draft);
   expect(publication.content.narrativeSections?.filter(section => section.kind === "secondary_signal")).toHaveLength(5);
   expect(publication.content.narrativeSections?.[0]?.citationIds).toEqual(["c1", "c2"]);
