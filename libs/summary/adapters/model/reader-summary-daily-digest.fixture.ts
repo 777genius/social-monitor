@@ -51,7 +51,10 @@ export function dailyProviderDraft(input: ReaderSummaryModelInput) {
         executiveSummary: "Several separate source-reported developments affect engineering work.",
         narrativeSections: [{ kind: "lead", title: "Daily developments",
           text: "Separate source-reported developments introduce distinct capabilities and limitations across engineering workflows.",
-          storyClusterId: null, citationIds: [citation(planned[0]!.feedItemIds[0]!), citation(planned[1]!.feedItemIds[0]!)] },
+          storyClusterId: input.dailyEditorialPlan === undefined ? null : planned[0]!.clusterId,
+          citationIds: input.dailyEditorialPlan === undefined
+            ? [citation(planned[0]!.feedItemIds[0]!), citation(planned[1]!.feedItemIds[0]!)]
+            : planned[0]!.feedItemIds.slice(0, 3).map(citation) },
         ...planned.slice(1).map((item, index) => ({ kind: "secondary_signal", title: `Development ${index + 2}`,
           text: `Source ${index + 2} describes a distinct capability and its source-local constraints for this engineering workflow.`,
           storyClusterId: item.clusterId, citationIds: [citation(item.feedItemIds[0]!)] }))],
