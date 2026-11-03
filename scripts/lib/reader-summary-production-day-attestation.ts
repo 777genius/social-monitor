@@ -392,6 +392,7 @@ const executionEffortForPurpose = (
   attempt: string,
   purpose: unknown,
 ): "high" | "xhigh" | null => {
+  if (role === "daily_editor" && attempt !== "primary") return null;
   if (role === "summary") {
     if (attempt === "primary") {
       if (purpose === "social_monitor.reader_summary.generate.v2") return "high";
