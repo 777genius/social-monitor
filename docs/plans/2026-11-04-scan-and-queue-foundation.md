@@ -287,6 +287,10 @@ the two escapes are closed without changing the readiness inventory.
 | Public contracts | Isolated OpenAPI snapshot check passes; no API shape change. |
 | Migrated smoke flows | All eight flows pass, including cross-process command relay and autonomous monitoring. |
 | New integrated regression | HTTP request -> real local queue reader -> worker backpressure -> redelivery -> persisted attempt/feed -> scoped HTTP read/replay passes. |
+| Full backend E2E | All 77 suites / 150 tests pass. |
+| Runtime profile guards | Existing selector and durable-profile checks pass. |
+| Additional transport smoke flows | Delivery drain, summary drain, summary-ready event drain, summary-ready projection and RabbitMQ publisher pass. |
+| Shutdown/persistence lifecycle contract | Updated structural contract suite passes all 78 tests; independently reviewed. |
 
 The new E2E regression was also run on an isolated checkout of the original
 `e544229` baseline. It fails at the first backpressure boundary: the queue contains
@@ -294,14 +298,36 @@ zero messages instead of one. The refactored path preserves the message, reports
 redelivery on its next reservation, completes the scan and does not enqueue more
 work when the HTTP idempotency key is replayed.
 
-Two fixture maintenance corrections were verified against that same baseline.
-The GitHub smoke had non-UUID tenant/workspace literals; replacing those two
-values with deterministic UUIDs restores its existing tenant guard. The autonomous
+Fixture maintenance corrections were verified against that same baseline.
+The GitHub and summary-queue smoke scripts had non-UUID tenant/workspace literals;
+replacing only those values with deterministic UUIDs restores their existing
+tenant guards. The autonomous
 smoke's committed deterministic evidence had stale generated identities. Fresh
 baseline and refactored evidence are byte-for-byte identical; the documented
 update changes only nineteen identity strings. Its fixed timestamp, fixture-only
 provenance, counts, statuses, metrics and content are unchanged.
 
-Full backend E2E and remote checks are being evaluated after this checkpoint.
-The local broker/database harnesses above are explicit deterministic fixtures;
-no live PostgreSQL/RabbitMQ or production readiness claim is inferred from them.
+The full unit corpus exposed one stale structural lifecycle assertion requiring
+literal direct `delivery.nack` calls. It now asserts the shared batch construction,
+requeue, waiting for the active tick and final unsettled release. The existing
+Nest phase, backpressure and database shutdown requirements remain intact. An
+independent reviewer verified this correction without requesting a runtime change.
+
+### Remaining baseline fixture debt and validation limits
+
+`check:reader-summary-workflow` fails identically on the refactored tree and
+`e544229`: its selected-evidence fixture cannot provide the backend editorial
+slate now required for promotion attestations. Its publication REST subcheck was
+run separately so the first failure could not hide it. In the default environment,
+both trees reject its in-memory composition under the durable `jev_primary_v3`
+profile. Explicit `NODE_ENV=test` reaches the same missing-editorial-slate guard.
+These reader publication fixtures need modernization in the excluded summary
+work; they are not passing evidence for this PR. No promotion, profile or durable
+guard was relaxed. Worker transport is independently covered by the five-loop
+failure tests, the passing transport smokes and the full backend E2E corpus.
+
+The comprehensive unit run and exact-head remote checks are being evaluated after
+this checkpoint. The local broker/database harnesses above are explicit
+deterministic fixtures; no live PostgreSQL/RabbitMQ or production readiness claim
+is inferred from them. Required backend/database CI jobs run after the PR leaves
+draft; draft-skipped jobs are not counted as verification.

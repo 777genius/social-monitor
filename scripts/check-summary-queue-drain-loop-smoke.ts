@@ -49,8 +49,8 @@ async function main(): Promise<void> {
 }
 
 async function verifyInMemoryDrainLoop(): Promise<void> {
-  const tenant = tenantId('tenant-summary-queue-drain-loop-smoke');
-  const workspace = workspaceId('workspace-summary-queue-drain-loop-smoke');
+  const tenant = tenantId('00000000-0000-4000-8000-000000000201');
+  const workspace = workspaceId('00000000-0000-4000-8000-000000000202');
   const summaryJobId = 'summary-queue-drain-loop-smoke';
   const summaryJobs = new InMemorySummaryJobRepository();
   const summaryArtifacts = new InMemorySummaryArtifactRepository();
