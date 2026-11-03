@@ -2,6 +2,7 @@ import type { ReaderSummaryArtifactProps } from "../entities/reader-summary-arti
 import { readReaderSummaryDailyGenerationInput, type ReaderSummaryDailyGenerationInput } from "../value-objects/reader-summary-daily-generation-input";
 import type { StoryCluster } from "../value-objects/summary-evidence-item";
 import { readerPromotionProviderIsPost } from "../policies/reader-promotion-source-registry";
+import { validateDailyEditorialProof } from "./reader-summary-daily-editorial-plan";
 
 /** Separate narrative authority; artifact.storyClusters remains the sealed board. */
 export const dailyGenerationNarrativeClusters = (proof: ReaderSummaryDailyGenerationInput): readonly StoryCluster[] =>
@@ -33,10 +34,37 @@ export const assertDailyGenerationArtifactBinding = (props: ReaderSummaryArtifac
       return entry === undefined || storyId !== undefined && entry.storyId !== storyId;
     })) throw new Error("Daily narrative cites evidence outside actual model input");
   };
+  if (props.dailyEditorialPlan !== undefined) {
+    const { plan } = validateDailyEditorialProof(props.dailyEditorialPlan, proof);
+    const sections = (props.content.narrativeSections ?? []).filter(section =>
+      section.id !== "github-trending");
+    if (sections.length !== plan.topics.length ||
+        props.topStories.length !== plan.topics.length) {
+      throw new Error("Daily editorial article does not cover every planned topic");
+    }
+    for (let index = 0; index < plan.topics.length; index++) {
+      const topic = plan.topics[index]!;
+      const section = sections[index]!;
+      const story = props.topStories[index]!;
+      const anchor = byFeed.get(topic.feedItemIds[0]!);
+      if (anchor === undefined || section.storyClusterId !== anchor.storyId ||
+          section.kind !== (index === 0 ? "lead" : "secondary_signal") ||
+          story.storyClusterId !== anchor.storyId) {
+        throw new Error("Daily editorial topic order does not match the plan");
+      }
+      if (section.citationIds.length < 1 ||
+          section.citationIds.some(id =>
+            !topic.feedItemIds.includes(byCitation.get(id)?.feedItemId ?? "")) ||
+          story.citationIds.length !== 1 ||
+          byCitation.get(story.citationIds[0]!)?.feedItemId !== anchor.feedItemId) {
+        throw new Error("Daily editorial topic cites sources outside its plan");
+      }
+    }
+  }
   for (const story of props.topStories) check(story.citationIds, story.storyClusterId);
   for (const section of props.content?.narrativeSections ?? []) {
     const githubAppendix = section.id === "github-trending" && section.kind === "watch" &&
       section.citationIds.every(id => byCitation.get(id)?.providerKey === "github-trending-page");
-    if (!githubAppendix) check(section.citationIds, section.storyClusterId);
+    if (!githubAppendix && props.dailyEditorialPlan === undefined) check(section.citationIds, section.storyClusterId);
   }
 };
