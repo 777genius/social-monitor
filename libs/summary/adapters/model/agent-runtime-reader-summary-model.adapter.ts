@@ -86,7 +86,6 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly inputTokenDivisor?: number;
   readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 };
-
 const provider = "agent-runtime";
 const defaultReasoningEffort = activeReaderSummaryReasoningEffort;
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
