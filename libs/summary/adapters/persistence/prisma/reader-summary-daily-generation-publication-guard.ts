@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { stableReaderSummaryPublicationJson as stableJson } from "./reader-summary-publication-json-comparison";
 import type { ReaderValueSourceSnapshot } from "@social-monitor/relevance/domain/reader-value/reader-value-source";
 import type { ReaderSummaryArtifactProps } from "../../../domain";
@@ -31,7 +32,7 @@ export function dailyGenerationPublicationMatches(params:
     const editorial = proofPlan === undefined ? undefined :
       validateDailyEditorialProof(proofPlan, expected.proof);
     if (editorial !== undefined) {
-      const planSha = createHash("sha256").update(JSON.stringify(editorial.plan)).digest("hex");
+      const planSha = canonicalJsonSha256(editorial.plan);
       const editorEvidence = buildAdaptiveReaderSummaryEvidence(selection, buildReaderSummaryCoveragePlan(selection));
       const requestSha = createHash("sha256").update(
         buildDailyEditorialPromptFromEvidence(expected.proof, editorEvidence)).digest("hex");
