@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ReaderSummaryModelInput, ReaderSummaryModelEstimate } from "../../ports";
-import type { DailyEditorialPlan } from "../../domain";
+import type { DailyEditorialPlan, ReaderSummaryDailyGenerationInput } from "../../domain";
 import { buildOpenAiReaderSummaryPromptPayload } from "./openai-responses-reader-summary-prompt";
 
 export const dailyEditorialPurpose = "social_monitor.reader_summary.daily_editorial.plan.v1";
@@ -43,12 +43,22 @@ export function buildDailyEditorialPrompt(input: ReaderSummaryModelInput): strin
   if (writerPayload.evidence.length !== frozen.selected.length) {
     throw new Error("Daily editorial evidence differs from the frozen input");
   }
+  return buildDailyEditorialPromptFromEvidence(frozen, writerPayload.evidence);
+}
+
+export function buildDailyEditorialPromptFromEvidence(
+  frozen: ReaderSummaryDailyGenerationInput,
+  evidence: readonly Record<string, unknown>[],
+): string {
+  if (evidence.length !== frozen.selected.length) {
+    throw new Error("Daily editorial evidence length differs from frozen input");
+  }
   return JSON.stringify({
     version: "reader_summary.daily_editorial.request.v1",
     frozenInputSha256: frozen.manifestSha256,
     periodKey: frozen.periodKey,
     sourceWindowCutoff: frozen.cutoffAt,
-    sources: writerPayload.evidence.map((item, index) => {
+    sources: evidence.map((item, index) => {
       const binding = frozen.selected[index]!;
       if (binding.feedItemId !== item.feedItemId) {
         throw new Error("Daily editorial evidence order differs from frozen input");
