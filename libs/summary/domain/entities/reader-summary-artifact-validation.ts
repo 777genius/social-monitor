@@ -11,9 +11,19 @@ import { assertReaderSummaryPromotionAttestations } from
 import { readerPostPromotionCardFields } from "./top-read";
 import { readReaderPromotionDiagnostics } from "../value-objects/reader-promotion-diagnostics";
 import { assertDailyGenerationArtifactBinding, dailyGenerationNarrativeClusters } from "../services/reader-summary-daily-input-binding";
+import { readReaderSummaryDailyEditorialProof, READER_SUMMARY_DAILY_EDITORIAL_PROMPT_VERSION } from "../services/reader-summary-daily-editorial-plan";
 export const assertReaderSummaryArtifactValid = (
   props: ReaderSummaryArtifactProps,
 ): void => {
+  if (props.dailyEditorialProof !== undefined) {
+    if (props.dailyGenerationInput === undefined ||
+        props.lineage.promptVersion !== READER_SUMMARY_DAILY_EDITORIAL_PROMPT_VERSION ||
+        readReaderSummaryDailyEditorialProof(props.dailyEditorialProof, props.dailyGenerationInput) === undefined) {
+      throw new Error("Private daily editorial proof does not match generation profile");
+    }
+  } else if (props.lineage.promptVersion === READER_SUMMARY_DAILY_EDITORIAL_PROMPT_VERSION) {
+    throw new Error("New daily editorial artifact must retain its private proof");
+  }
   assertDailyGenerationArtifactBinding(props);
   if (props.promotionDiagnostics !== undefined &&
       readReaderPromotionDiagnostics(props.promotionDiagnostics) === undefined) {
