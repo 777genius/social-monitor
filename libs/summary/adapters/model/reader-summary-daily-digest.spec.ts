@@ -144,6 +144,7 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
     dailyEditorialPlan: typeof plan };
   expect(payload.evidence.map(item => item.feedItemId)).toEqual(selected.map(item => item.feedItemId));
   expect(payload.dailyEditorialPlan).toEqual(plan);
+  expect(attempt.dailyGenerationReceipt?.editorialPlanSha256).toBe(canonicalJsonSha256(plan));
   expect(attempt.draft.content?.narrativeSections?.length).toBe(10);
   expect(attempt.draft.topStories.map(item => item.storyClusterId))
     .toEqual([writer.coveragePlan.lead!, ...writer.coveragePlan.secondary].map(item => item.clusterId));
@@ -173,6 +174,11 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
   expect(dailyGenerationPublicationMatches({ ...guard,
     artifact: { ...saved, dailyEditorialPlan: { ...saved.dailyEditorialPlan!,
       editorRequestSha256: "0".repeat(64) } } })).toBe(false);
+  expect(dailyGenerationPublicationMatches({ ...guard, artifact: { ...saved,
+    dailyGenerationInput: { ...saved.dailyGenerationInput!, sent: {
+      ...saved.dailyGenerationInput!.sent!, editorialPlanSha256: "0".repeat(64),
+    } },
+  } })).toBe(false);
   const invalidAppendix = {
     id: "github-trending", kind: "watch" as const, title: "Forged appendix",
     text: "Unverified GitHub claim", citationIds: ["c1"],
