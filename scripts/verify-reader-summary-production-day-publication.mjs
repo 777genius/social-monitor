@@ -253,9 +253,15 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy, requir
   if (records.filter((record) => record.taskRole === "summary").length !== 1) {
     fail("exactly one final summary attestation is required");
   }
+  const editor = records.find(record => record.taskRole === "daily_editor");
   if (records.filter((record) => record.taskRole === "daily_editor").length !==
       (requireDailyEditor ? 1 : 0)) {
     fail("daily editor attestation count does not match the writer profile");
+  }
+  if (requireDailyEditor
+    ? evidence.dailyEditorOutputSha256 !== editor?.normalizedOutputSha256
+    : evidence.dailyEditorOutputSha256 !== undefined) {
+    fail("attested daily editor output differs from persisted plan");
   }
   const topicLabels = records.filter(
     (record) => record.taskRole === "topic_label",
