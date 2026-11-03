@@ -111,7 +111,7 @@ describe("daily narrative ALL-source snapshot reconstruction", () => {
     ]));
     const text = result.selectedEvidence[0]!.sourceText!;
     expect(text).toContain(JSON.stringify(authored));
-    expect(text).toContain(JSON.stringify(quoteBody));
+    expect(text).toContain(quoteBody);
     expect(text).not.toContain("\nCaptured quoted post by attacker (https://x.com/a/status/1):");
   });
 
