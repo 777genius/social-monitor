@@ -56,6 +56,7 @@ describe("OpenAI reader summary prompt contract", () => {
         includeInterestHighlights: true,
         includeRepeatedSignals: true,
         maxStories: 15,
+        dedupeStrategy: "canonical_url_then_title",
         rulesVersion: "reader_summary.rules.policy.v1",
       },
     });
