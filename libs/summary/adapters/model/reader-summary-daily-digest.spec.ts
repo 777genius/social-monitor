@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
 import { CapturingAgentRuntimeClient } from "./agent-runtime-reader-summary-model.spec-support";
-import { ReaderSummaryArtifact, validateDailyEditorialPlan, dailyEditorialCoveragePlan } from "../../domain";
+import { ReaderSummaryArtifact, validateDailyEditorialPlan, dailyEditorialCoveragePlan, primaryReaderSummaryEvidence } from "../../domain";
 import { buildReaderSummaryDraftWithPromotionContent } from "../../features/execute-reader-summary-job/reader-summary-promotion-content";
 import { buildReaderSummaryModelArtifact } from "../../features/execute-reader-summary-job/reader-summary-model-artifact";
 import { buildReaderSummaryCoverageView } from "../../features/shared/reader-summary-coverage-presenter";
@@ -136,6 +136,10 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
       })),
     ],
   }, evidence.dailyGenerationInput!);
+  // The promotion board is independent; the writer plan uses frozen narrative sources.
+  const dailyEvidence = primaryReaderSummaryEvidence(evidence).selectedEvidence;
+  const boardOnly = { ...evidence, selectedEvidence: [], dailyGenerationEvidence: dailyEvidence };
+  expect(dailyEditorialCoveragePlan(plan, boardOnly).secondary).toHaveLength(9);
   const writer = { ...input, dailyEditorialPlan: plan,
     coveragePlan: dailyEditorialCoveragePlan(plan, evidence),
     policy: { ...input.policy, maxStories: plan.topics.length } };
