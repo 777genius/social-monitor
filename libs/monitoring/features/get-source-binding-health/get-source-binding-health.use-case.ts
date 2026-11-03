@@ -8,15 +8,12 @@ import type {
   ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
 } from '../../ports';
-import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
+import { effectiveProviderScanCadence } from '../../domain/policies/provider-scan-cadence';
 import { presentScanPolicy } from '../shared/scan-policy-presenter';
-import {
-  boundedTransientProviderBackoffSeconds,
-  providerFailureBackoffUntil,
-} from '../shared/scan-freshness-guard';
+import { evaluateScheduledScanAdmission } from '../../domain/policies/scan-admission-policy';
 import {
   scheduledScanIdempotencyKey,
-} from '../shared/scan-scheduler-decision-policy';
+} from '../../domain/policies/scan-schedule-policy';
 import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
 import { buildScanStatusView } from '../shared/scan-status-view';
 import { presentSourceBinding } from '../shared/source-binding-presenter';
@@ -122,15 +119,15 @@ export class GetSourceBindingHealthUseCase {
             scanPolicySnapshot.nextRunAt,
           ),
         });
-    const providerFailureBackoff = cadence === undefined
-      ? null
-      : providerFailureBackoffUntil({
-          recentJobs: recentScanJobs.scanJobs,
-          backoffSeconds: boundedTransientProviderBackoffSeconds({
-            intervalSeconds: cadence.intervalSeconds,
-          }),
-          now,
-        });
+    const admission = cadence === undefined ? undefined : evaluateScheduledScanAdmission({
+      activeScan: activeScanJob !== null,
+      duplicateWindow: duplicateScheduledScan !== null && scanPolicySnapshot !== undefined &&
+        scanPolicySnapshot.nextRunAt.getTime() <= now.getTime(),
+      latestJob: latestScanSnapshot ?? null,
+      recentJobs: recentScanJobs.scanJobs.map((job) => job.toSnapshot()),
+      cadence,
+      now,
+    });
     const latestAttempt = latestScanSnapshot === undefined
       ? null
       : await this.scanExecutionAttempts.findLatestByScanJob({
@@ -172,12 +169,9 @@ export class GetSourceBindingHealthUseCase {
       bindingStatus: bindingSnapshot.status,
       providerKey: bindingSnapshot.providerKey,
       scanPolicySnapshot,
-      activeScanJob,
-      duplicateScheduledScan,
-      latestScanJob,
+      admission,
       freshness,
       cadence,
-      providerFailureBackoff,
       now,
     });
     const latestScan = latestScanSnapshot === undefined || latestScanStatusView === undefined

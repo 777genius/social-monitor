@@ -90,10 +90,10 @@ export const monitoringSchedulerProviders: Provider[] = [
         scanPolicies,
         scanJobs,
         scanQueue,
+        scanDispatch,
         new CryptoIdGenerator(),
         new SystemClock(),
         schedulerDecisions,
-        scanDispatch,
       ),
     inject: [
       MONITORING_SOURCE_BINDING_REPOSITORY,

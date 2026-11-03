@@ -3,7 +3,7 @@ import type {
   ScanExecutionAttemptSnapshot,
   ScanSchedulerDecisionRecord,
 } from '../../ports';
-import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
+import { effectiveProviderScanCadence } from '../../domain/policies/provider-scan-cadence';
 import {
   summarizeScanProviderHealth,
 } from '../shared/scan-provider-health-summary';

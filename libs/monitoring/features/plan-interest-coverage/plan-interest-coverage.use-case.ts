@@ -10,7 +10,7 @@ import type {
   SourceCatalogPort,
   InterestRepositoryPort,
 } from "../../ports";
-import { providerScanCadenceProfile } from "../shared/scan-cadence-policy";
+import { providerScanCadenceProfile } from "../../domain/policies/provider-scan-cadence";
 import { presentInterest } from "../shared/interest-presenter";
 import type { PlanInterestCoverageCommand } from "./plan-interest-coverage.command";
 import type {

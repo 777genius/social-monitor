@@ -1,5 +1,5 @@
 import type { ScanPolicy, ScanPolicyProps } from '../../domain';
-import { effectiveProviderScanCadence } from './scan-cadence-policy';
+import { effectiveProviderScanCadence } from '../../domain/policies/provider-scan-cadence';
 
 export type ScanPolicyCadenceView = {
   readonly providerKey: string;

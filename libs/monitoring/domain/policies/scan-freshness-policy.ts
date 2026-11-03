@@ -1,7 +1,7 @@
 import type { JsonObject } from '@social-monitor/shared-kernel';
 
-import type { ScanJob } from '../../domain';
-import { buildScanStatusView } from './scan-status-view';
+import type { ScanJobProps } from '../entities/scan-job';
+import { classifyScanFailure } from './scan-failure-classification';
 
 const maximumTransientProviderBackoffSeconds = 900;
 const providerRateLimitResetBufferMs = 30_000;
@@ -15,11 +15,11 @@ export const boundedTransientProviderBackoffSeconds = (params: {
   );
 
 export const isFreshSuccessfulScan = (params: {
-  readonly latestJob: ScanJob | null;
+  readonly latestJob: ScanJobProps | null;
   readonly freshnessSeconds: number;
   readonly now: Date;
 }): boolean => {
-  const latestSnapshot = params.latestJob?.toSnapshot();
+  const latestSnapshot = params.latestJob ?? undefined;
 
   return (
     latestSnapshot?.status === 'succeeded' &&
@@ -31,20 +31,16 @@ export const isFreshSuccessfulScan = (params: {
 };
 
 export const rateLimitBackoffUntil = (params: {
-  readonly latestJob: ScanJob | null;
+  readonly latestJob: ScanJobProps | null;
   readonly backoffSeconds: number;
   readonly now: Date;
 }): Date | null => {
-  const latestSnapshot = params.latestJob?.toSnapshot();
+  const latestSnapshot = params.latestJob ?? undefined;
 
   if (
     latestSnapshot?.status !== 'failed' ||
     latestSnapshot.completedAt === undefined ||
-    buildScanStatusView({
-      status: latestSnapshot.status,
-      failureReason: latestSnapshot.failureReason,
-      failureMetadata: latestSnapshot.failureMetadata,
-    }).failureClass !== 'provider_rate_limited'
+    classifyScanFailure(latestSnapshot.failureReason, latestSnapshot.failureMetadata) !== 'provider_rate_limited'
   ) {
     return null;
   }
@@ -67,7 +63,7 @@ export const rateLimitBackoffUntil = (params: {
 };
 
 export const providerFailureBackoffUntil = (params: {
-  readonly recentJobs: readonly ScanJob[];
+  readonly recentJobs: readonly ScanJobProps[];
   readonly backoffSeconds: number;
   readonly now: Date;
   readonly failureThreshold?: number;
@@ -79,7 +75,7 @@ export const providerFailureBackoffUntil = (params: {
   let latestProviderFailureCompletedAt: Date | undefined;
 
   for (const job of params.recentJobs) {
-    const snapshot = job.toSnapshot();
+    const snapshot = job;
 
     if (snapshot.status === 'requested' || snapshot.status === 'enqueued') {
       continue;
@@ -89,14 +85,10 @@ export const providerFailureBackoffUntil = (params: {
       break;
     }
 
-    const view = buildScanStatusView({
-      status: snapshot.status,
-      failureReason: snapshot.failureReason,
-      failureMetadata: snapshot.failureMetadata,
-    });
+    const failureClass = classifyScanFailure(snapshot.failureReason, snapshot.failureMetadata);
     if (
-      view.failureClass !== 'provider_unavailable' &&
-      view.failureClass !== 'provider_auth_failed'
+      failureClass !== 'provider_unavailable' &&
+      failureClass !== 'provider_auth_failed'
     ) {
       break;
     }

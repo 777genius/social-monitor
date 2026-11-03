@@ -108,12 +108,12 @@ describe('RequestScanUseCase transactional dispatch', () => {
       policies,
       jobs,
       directQueue,
-      directOutbox,
+      dispatch,
       new InMemoryIdempotencyAdapter(),
       allowingQuota,
       new SequenceIdGenerator(),
-      new FixedClock(now),
-      dispatch,
+      new FixedClock(now)
+
     );
 
     const result = await useCase.execute({

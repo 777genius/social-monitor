@@ -19,7 +19,7 @@ import type {
 } from '../../ports';
 import type { SetScanPolicyCommand } from './set-scan-policy.command';
 import type { SetScanPolicyResult } from './set-scan-policy.result';
-import { validateProviderScanCadence } from '../shared/scan-cadence-policy';
+import { validateProviderScanCadence } from '../../domain/policies/provider-scan-cadence';
 
 type SetScanPolicyFailure = DomainError | Error;
 

@@ -1,3 +1,4 @@
+import { DirectScanDispatchAdapter } from '@social-monitor/monitoring/adapters/queue/direct-scan-dispatch.adapter';
 import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
 import { InMemorySourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-creation.store';
@@ -225,8 +226,10 @@ async function main(): Promise<void> {
       scanPolicies,
       scanJobs,
       scanQueue,
+      new DirectScanDispatchAdapter(scanJobs, scanQueue, new InMemoryOutboxAdapter()),
       ids,
-      clock,
+      clock
+
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
