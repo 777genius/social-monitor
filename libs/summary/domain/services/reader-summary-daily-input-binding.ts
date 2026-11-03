@@ -1,6 +1,7 @@
 import type { ReaderSummaryArtifactProps } from "../entities/reader-summary-artifact";
 import { readReaderSummaryDailyGenerationInput, type ReaderSummaryDailyGenerationInput } from "../value-objects/reader-summary-daily-generation-input";
 import type { StoryCluster } from "../value-objects/summary-evidence-item";
+import { assertReaderSummaryDailyEditorialArticle } from "./reader-summary-daily-editorial-plan";
 import { readerPromotionProviderIsPost } from "../policies/reader-promotion-source-registry";
 
 /** Separate narrative authority; artifact.storyClusters remains the sealed board. */
@@ -27,6 +28,20 @@ export const assertDailyGenerationArtifactBinding = (props: ReaderSummaryArtifac
   for (const entry of proof.selected) providerCounts.set(entry.providerKey, (providerCounts.get(entry.providerKey) ?? 0) + 1);
   if (props.content.sourceMix.length !== providerCounts.size || props.content.sourceMix.some(source =>
     source.itemCount !== providerCounts.get(source.providerKey))) throw new Error("Daily source mix differs from actual model input");
+  if (props.dailyEditorialProof !== undefined) {
+    assertReaderSummaryDailyEditorialArticle({
+      proof: props.dailyEditorialProof, input: proof,
+      stories: props.topStories, sections: props.content.narrativeSections ?? [],
+      citations: props.citationMap,
+    });
+    for (const section of props.content.narrativeSections ?? []) {
+      if (section.id === "github-trending" && (
+        section.kind !== "watch" || section.citationIds.some(id =>
+          byCitation.get(id)?.providerKey !== "github-trending-page")
+      )) throw new Error("Daily GitHub appendix citation binding is invalid");
+    }
+    return;
+  }
   const check = (ids: readonly string[], storyId?: string): void => {
     if (ids.length === 0 || ids.some(id => {
       const citation = byCitation.get(id), entry = citation === undefined ? undefined : byFeed.get(citation.feedItemId);
