@@ -42,7 +42,7 @@ export const assertNoReaderSummaryPromptReleaseOverride = (params: {
 export const buildOpenAiReaderSummaryInstructions = (
   input: ReaderSummaryModelInput,
 ): string =>
-  input.dailyEditorialPlan !== undefined ? dailyEditorialWriterInstructions(input) :
+  input.dailyEditorialPlan !== undefined ? dailyEditorialWriterInstructions(input).join("\n") :
   input.evidence.dailyGenerationInput !== undefined ? dailyDigestInstructions(input) : [
     "You are the production workspace summary model for Social Monitor.",
     "Return only JSON that matches the provided schema.",
