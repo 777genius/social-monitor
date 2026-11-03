@@ -228,8 +228,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
       text: {
         format: {
           type: "json_schema",
-          name: input.dailyEditorialPlan === undefined ?
-            "social_monitor_reader_summary_artifact" : "social_monitor_reader_summary_daily_editorial_article",
+          name: "social_monitor_reader_summary_artifact",
           strict: true,
           schema: input.dailyEditorialPlan === undefined ? openAiReaderSummaryJsonSchema : dailyEditorialWriterJsonSchema,
         },
