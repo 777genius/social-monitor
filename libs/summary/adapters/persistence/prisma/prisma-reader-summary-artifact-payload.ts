@@ -1,6 +1,7 @@
 import { normalizeReaderSummaryUsage } from "./prisma-reader-summary-usage";
 import { readReaderPromotionDiagnostics } from "../../../domain/value-objects/reader-promotion-diagnostics";
 import { readReaderSummaryDailyGenerationInput } from "../../../domain/value-objects/reader-summary-daily-generation-input";
+import { readReaderSummaryDailyEditorialProof } from "../../../domain/services/reader-summary-daily-editorial-plan";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
@@ -123,6 +124,9 @@ export const normalizeReaderSummaryArtifactPayload = (
     sourceWindow: normalizeReaderSummarySourceWindow(value.sourceWindow),
     ...(Object.hasOwn(value, "dailyGenerationInput") ? {
       dailyGenerationInput: requireDailyGenerationInput(value.dailyGenerationInput),
+    } : {}),
+    ...(Object.hasOwn(value, "dailyEditorialProof") ? {
+      dailyEditorialProof: requireDailyEditorialProof(value.dailyEditorialProof, value.dailyGenerationInput),
     } : {}),
     storyClusters: requireArray<SerializedReaderSummaryStoryCluster>(
       value.storyClusters,
@@ -477,4 +481,11 @@ const requireDailyGenerationInput = (value: unknown) => {
   const parsed = readReaderSummaryDailyGenerationInput(value);
   if (parsed === undefined) throw new Error("Persisted daily generation input is invalid");
   return parsed;
+};
+
+const requireDailyEditorialProof = (value: unknown, frozen: unknown) => {
+  const input = readReaderSummaryDailyGenerationInput(frozen);
+  const proof = input === undefined ? undefined : readReaderSummaryDailyEditorialProof(value, input);
+  if (proof === undefined) throw new Error("Persisted daily editorial proof is invalid");
+  return proof;
 };
