@@ -54,6 +54,7 @@ const mimoPresentationStructuredProfile = Object.freeze({
 const mimoSummaryPurposes = new Set([
   "social_monitor.reader_summary.promotion_presentation.v3",
   "social_monitor.reader_summary.generate.v2",
+  "social_monitor.reader_summary.daily_editorial.plan.v1",
   "social_monitor.reader_summary.repair.v2",
   "social_monitor.reader_summary.topic_map.label.v2",
   "social_monitor.reader_summary.topic_map.verify_relations.v2",
@@ -64,6 +65,7 @@ const mimoSummaryPurposes = new Set([
 const mimoSchemaMarkers = Object.freeze({
   "social_monitor.reader_summary.promotion_presentation.v3": ["social_monitor_reader_post_presentation_v3", "reader_post_presentation.v3"],
   "social_monitor.reader_summary.generate.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+  "social_monitor.reader_summary.daily_editorial.plan.v1": ["social_monitor_daily_editorial_plan", "reader_summary.daily_editorial.v1"],
   "social_monitor.reader_summary.repair.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
   "social_monitor.reader_summary.topic_map.label.v2": ["social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1"],
   "social_monitor.reader_summary.topic_map.verify_relations.v2": ["social_monitor_reader_summary_topic_relations", "reader_summary.topic_relation.v1"],
@@ -73,6 +75,7 @@ const mimoSchemaMarkers = Object.freeze({
 const mimoRootProperties = Object.freeze({
   "social_monitor.reader_summary.promotion_presentation.v3": ["presentations"],
   "social_monitor.reader_summary.generate.v2": ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
+  "social_monitor.reader_summary.daily_editorial.plan.v1": ["version", "topics"],
   "social_monitor.reader_summary.repair.v2": ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
   "social_monitor.reader_summary.topic_map.label.v2": ["nodeLabels", "groups"],
   "social_monitor.reader_summary.topic_map.verify_relations.v2": ["decisions"],
@@ -108,6 +111,7 @@ const profilesByPurpose = Object.freeze({
     sourceContentAssessmentStructuredProfile,
   "social_monitor.summary.generate": genericSummaryStructuredProfile,
   "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.daily_editorial.plan.v1": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.repair.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.topic_map.label.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.topic_map.verify_relations.v2":
