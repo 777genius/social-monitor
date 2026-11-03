@@ -87,3 +87,44 @@ export const dailyWriterPlanSha256 = (prompt: string): string => {
   if (payload.dailyEditorialPlan === undefined) throw new Error("Writer command omitted editorial plan");
   return dailyEditorialSha256(JSON.stringify(payload.dailyEditorialPlan));
 };
+
+/** Check the raw response before fallback/top-up normalizers can hide an omission. */
+export const assertDailyEditorialRawWriter = (
+  raw: Record<string, unknown>,
+  evidence: SummaryEvidenceSelection,
+  plan: ReaderSummaryDailyEditorialPlan,
+): void => {
+  const frozen = evidence.dailyGenerationInput;
+  if (frozen === undefined) throw new Error("Frozen daily editorial evidence missing");
+  const normalizedPlan = readReaderSummaryDailyEditorialPlan(plan, frozen);
+  const sections = raw.narrativeSections, stories = raw.topStories;
+  if (!Array.isArray(sections) || !Array.isArray(stories) ||
+      sections.length !== normalizedPlan.topics.length ||
+      stories.length !== normalizedPlan.topics.length) {
+    throw new Error("Daily writer omitted or added planned article topics");
+  }
+  const byId = new Map(frozen.selected.map(item => [item.feedItemId, item] as const));
+  const citationById = new Map(evidence.selectedEvidence.map((item, index) =>
+    [`c${index + 1}`, item.feedItemId] as const));
+  for (const [index, topic] of normalizedPlan.topics.entries()) {
+    const expectedAnchor = byId.get(topic.feedItemIds[0]!)!.storyId;
+    const section = sections[index], story = stories[index];
+    if (section === null || typeof section !== "object" || Array.isArray(section) ||
+        story === null || typeof story !== "object" || Array.isArray(story)) {
+      throw new Error("Daily writer returned malformed story or section");
+    }
+    const s = section as Record<string, unknown>, t = story as Record<string, unknown>;
+    if (s.kind !== (index === 0 ? "lead" : "secondary_signal") ||
+        s.storyClusterId !== expectedAnchor || t.storyClusterId !== expectedAnchor) {
+      throw new Error("Daily writer reordered or changed a planned topic");
+    }
+    const allowed = new Set(topic.feedItemIds);
+    for (const value of [s.citationIds, t.citationIds]) {
+      if (!Array.isArray(value) || value.length === 0 ||
+          value.some(id => typeof id !== "string" ||
+            !allowed.has(citationById.get(id) ?? ""))) {
+        throw new Error("Daily writer cited evidence outside its planned topic");
+      }
+    }
+  }
+};
