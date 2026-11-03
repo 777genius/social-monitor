@@ -90,10 +90,10 @@ const validRetainedQuote = (quote: NonNullable<ReaderValueSourceSnapshot["quoted
 const dailySourceText = (snapshot: ReaderValueSourceSnapshot, cutoff: string): string => {
   const quote = snapshot.quotedPost;
   return quote === undefined || !validRetainedQuote(quote, cutoff) ? safeSourceBody(snapshot.body) :
-    `Authored post:\n${safeSourceBody(snapshot.body)}\n\nCaptured quoted post by ${quote.authorHandle} (${quote.canonicalUrl}):\n${safeSourceBody(quote.body)}`;
+    `Authored post:\n${JSON.stringify(snapshot.body)}\n\nCaptured quoted post by ${quote.authorHandle} (${quote.canonicalUrl}):\n${JSON.stringify(quote.body)}`;
 };
 
-/** Preserve historical ordinary bytes; quote only bodies spoofing envelope labels. */
+/** Preserve ordinary post bytes; quote suspicious untrusted text without captured quote context. */
 const safeSourceBody = (value: string): string =>
   /(?:Authored\s+post\s*:|Captured\s+quoted\s+post\s+by\b)/iu.test(value)
     ? JSON.stringify(value) : value;
