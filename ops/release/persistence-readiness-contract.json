@@ -154,6 +154,10 @@
     },
     {
       "moduleFile": "apps/ingestion-worker/src/ingestion-worker.module.ts",
+      "adapterSourceFiles": [
+        "apps/ingestion-worker/src/adapters/composition/ingestion-worker-runtime.providers.ts",
+        "apps/ingestion-worker/src/adapters/composition/ingestion-worker-storage.providers.ts"
+      ],
       "context": "ingestion-worker",
       "owner": "ingestion-owner",
       "inMemoryStateAdapters": [
