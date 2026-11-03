@@ -59,10 +59,12 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
   readonly sink?: VerifiedReaderSummaryExecutionAttestationSink;
 }): Promise<void> => {
   const attestation = params.result.executionAttestation;
-  const mimoGeneration = params.taskRole === "summary" &&
-    params.legacyRecoveryContract === undefined &&
-    (params.command.purpose === activeReaderSummaryPurposes.generate ||
-      params.command.purpose === activeReaderSummaryPurposes.repair) &&
+  const mimoGeneration = params.legacyRecoveryContract === undefined &&
+    (params.taskRole === "summary" &&
+      (params.command.purpose === activeReaderSummaryPurposes.generate ||
+        params.command.purpose === activeReaderSummaryPurposes.repair) ||
+      params.taskRole === "daily_editor" &&
+        params.command.purpose === activeReaderSummaryPurposes.dailyEditorial) &&
     params.command.controls.modelBackend === mimoReaderSummaryBackend;
   // A gateway-only backend or Codex model carries its own model and effort;
   // the command is the configured route, so the attestation must repeat it
