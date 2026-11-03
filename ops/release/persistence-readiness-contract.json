@@ -62,10 +62,14 @@
     },
     {
       "moduleFile": "libs/summary/interfaces/rest/summary-rest-infrastructure.module.ts",
+      "adapterSourceFiles": [
+        "libs/summary/interfaces/rest/summary-conversation-persistence.providers.ts"
+      ],
       "context": "summary-api",
       "owner": "summary-owner",
       "inMemoryStateAdapters": [
         "InMemoryAutoSummaryCandidateRepository",
+        "InMemoryConversationUnitRepository",
         "InMemoryFeedItemReadRepository",
         "InMemorySummaryJobRepository",
         "InMemorySummaryArtifactRepository",
@@ -75,14 +79,34 @@
         "InMemorySummaryJobQueueAdapter",
         "InMemorySummaryEventPublisher"
       ],
-      "risk": "summary jobs, artifacts, feedback, policies and events can opt into Prisma, and summary job publishing can opt into RabbitMQ, but default local mode is still process-local",
+      "risk": "summary jobs, artifacts, feedback, policies, conversation units and events can opt into Prisma, and summary job publishing can opt into RabbitMQ, but default local mode is still process-local",
       "durableReplacementPlan": "SummaryRestModule can opt into Prisma job/artifact/feedback/policy persistence and durable outbox events with SUMMARY_PERSISTENCE=prisma; summary job publishing can opt into RabbitMQ with SUMMARY_JOB_QUEUE_MODE=rabbitmq; event-relay can dispatch Prisma outbox events to RabbitMQ with start:event-relay; remaining blocker is deployment evidence with shared DATABASE_URL/RABBITMQ_URL"
+    },
+    {
+      "moduleFile": "libs/summary/interfaces/rest/summary-rest.module.ts",
+      "adapterSourceFiles": [
+        "libs/summary/interfaces/rest/summary-reader-summary-persistence.providers.ts",
+        "libs/summary/interfaces/rest/summary-reader-summary-publication.provider.ts",
+        "libs/summary/interfaces/rest/summary-reader-summary.providers.ts"
+      ],
+      "context": "reader-summary-api",
+      "owner": "summary-owner",
+      "inMemoryStateAdapters": [
+        "InMemoryQueuePublisher",
+        "InMemoryReaderSummaryArtifactRepository",
+        "InMemoryReaderSummaryJobRepository",
+        "InMemoryReaderSummaryPolicyRepository",
+        "InMemoryReaderSummaryTopicRecommendationDecisionRepository"
+      ],
+      "risk": "reader-summary jobs, artifacts, policies, recommendation decisions and default queue publishing use process-local state in local mode; the extracted provider composition must remain covered by the durability inventory",
+      "durableReplacementPlan": "Reader-summary repositories and publication use SUMMARY_PERSISTENCE=prisma; queue publishing uses SUMMARY_JOB_QUEUE_MODE=rabbitmq. Beta runtime requires these durable selectors and shared DATABASE_URL/RABBITMQ_URL, with deployed cross-process publication and delivery evidence."
     },
     {
       "moduleFile": "libs/delivery/interfaces/rest/delivery-rest.module.ts",
       "context": "delivery-api",
       "owner": "delivery-owner",
       "adapterSourceFiles": [
+        "libs/delivery/interfaces/rest/delivery-storage.providers.ts",
         "libs/delivery/interfaces/rest/delivery-workflow.providers.ts"
       ],
       "inMemoryStateAdapters": [
