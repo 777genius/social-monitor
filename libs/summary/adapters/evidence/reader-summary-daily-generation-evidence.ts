@@ -87,8 +87,14 @@ const validRetainedQuote = (quote: NonNullable<ReaderValueSourceSnapshot["quoted
   createHash("sha256").update(quote.body, "utf8").digest("hex") === quote.bodySha256 &&
   compareReaderSummaryPreparationTimestamps(quote.availableAt, cutoff) <= 0;
 
+/** Prevent source-authored lines from impersonating our platform-owned attribution markers.
+ * Ordinary frozen source text is untouched, preserving old daily receipts. */
+const escapeAttributionMarkers = (body: string): string =>
+  body.replace(/^([ \\t]*)(Authored post:|Captured quoted post by )/gmu,
+    (_line, indent: string, marker: string) => `${indent}[source text] ${marker}`);
+
 const dailySourceText = (snapshot: ReaderValueSourceSnapshot, cutoff: string): string => {
   const quote = snapshot.quotedPost;
   return quote === undefined || !validRetainedQuote(quote, cutoff) ? snapshot.body :
-    `Authored post:\n${snapshot.body}\n\nCaptured quoted post by ${quote.authorHandle} (${quote.canonicalUrl}):\n${quote.body}`;
+    `Authored post:\n${escapeAttributionMarkers(snapshot.body)}\n\nCaptured quoted post by ${quote.authorHandle} (${quote.canonicalUrl}):\n${escapeAttributionMarkers(quote.body)}`;
 };
