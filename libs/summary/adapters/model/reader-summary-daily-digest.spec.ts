@@ -16,6 +16,7 @@ import { buildReaderSummaryDraftWithPromotionContent } from "../../features/exec
 import { buildReaderSummaryModelArtifact } from "../../features/execute-reader-summary-job/reader-summary-model-artifact";
 import { buildReaderSummaryCoverageView } from "../../features/shared/reader-summary-coverage-presenter";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
+import { buildDailyEditorialPrompt } from "./reader-summary-daily-editorial-model";
 import { dailyDigestFixture, dailyPromotionFixture, dailyProviderDraft, generateDailyFixture } from "./reader-summary-daily-digest.fixture";
 
 it("sends exactly thirty Likes inputs, retains a non-promoted narrative and keeps the separate sealed board", async () => {
@@ -153,7 +154,8 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
     draft, dailyGenerationReceipt: attempt.dailyGenerationReceipt,
     dailyEditorialPlan: { plan,
       frozenManifestSha256: evidence.dailyGenerationInput!.manifestSha256,
-      editorRequestSha256: "a".repeat(64), editorOutputSha256 },
+      editorRequestSha256: createHash("sha256").update(buildDailyEditorialPrompt(input)).digest("hex"),
+      editorOutputSha256 },
   });
   const saved = artifact.toSnapshot();
   expect(saved.content?.sourceMix.reduce((sum, source) => sum + source.itemCount, 0)).toBe(30);
