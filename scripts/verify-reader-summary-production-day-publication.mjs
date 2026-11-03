@@ -275,7 +275,10 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
   ) {
     fail("duplicate execution task attempt");
   }
-  const topicRecords = records.filter((record) => record.taskRole !== "summary");
+  const editors = records.filter((record) => record.taskRole === "daily_editor");
+  if (editors.length > 1) fail("daily editorial attestation must be unique");
+  const topicRecords = records.filter((record) =>
+    record.taskRole !== "summary" && record.taskRole !== "daily_editor");
   const identities = new Set(
     topicRecords.map((record) =>
       [
@@ -292,6 +295,11 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
     (record) => record.taskRole === "summary",
   ).attestation;
   const topicIdentity = topicLabels[0].attestation;
+  if (editors.length === 1 && ["provider", "model", "reasoningEffort",
+    "runtimeEngine", "runtimePackageVersion", "launcherSha256"].some(
+    key => editors[0].attestation[key] !== summaryIdentity[key])) {
+    fail("editor and writer runtime attestations do not agree");
+  }
   const sameCodexIdentity = [
     "provider", "model", "reasoningEffort", "runtimeEngine",
     "runtimePackageVersion", "launcherSha256",
