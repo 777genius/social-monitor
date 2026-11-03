@@ -7,9 +7,11 @@ import {
 import { productionExecutionAttestations } from "./reader-summary-production-day-attestation.spec-support";
 import { approvedGatewayLlmSdkIdentity } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 
-const evidenceWith = (records: ReturnType<typeof productionExecutionAttestations>) => ({
+const evidenceWith = (records: ReturnType<typeof productionExecutionAttestations>,
+  editorOutputSha256?: string) => ({
   result: { selectedFeedItemCount: 1, status: "completed" },
   executionAttestations: records,
+  ...(editorOutputSha256 === undefined ? {} : { dailyEditorOutputSha256: editorOutputSha256 }),
   durableReadback: {
     summaryContentSha256: "1".repeat(64), topicMapSha256: "2".repeat(64),
     executionAttestationSetSha256: canonicalJsonSha256(records),
@@ -30,17 +32,19 @@ describe("production day purpose-specific executor identity", () => {
         requestId: "editor-request",
         purpose: "social_monitor.reader_summary.daily_editorial.plan.v1" } };
     records.push(editor);
-    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [], true))
-      .not.toBeNull();
-    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), []))
-      .toBeNull();
+    expect(runtimeProvenanceFromExecutorAttestations(
+      evidenceWith(records, editor.normalizedOutputSha256), [], true)).not.toBeNull();
+    expect(runtimeProvenanceFromExecutorAttestations(
+      evidenceWith(records, "0".repeat(64)), [], true)).toBeNull();
+    expect(runtimeProvenanceFromExecutorAttestations(
+      evidenceWith(records, editor.normalizedOutputSha256), [])).toBeNull();
     editor.attestation.model = "unrelated-model";
-    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [], true))
-      .toBeNull();
+    expect(runtimeProvenanceFromExecutorAttestations(
+      evidenceWith(records, editor.normalizedOutputSha256), [], true)).toBeNull();
     editor.attestation.model = records[0]!.attestation.model;
     editor.attestation.launcherSha256 = "0".repeat(64);
-    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [], true))
-      .toBeNull();
+    expect(runtimeProvenanceFromExecutorAttestations(
+      evidenceWith(records, editor.normalizedOutputSha256), [], true)).toBeNull();
   });
 
   it("accepts pinned MiMo for every daily task role and the repair purpose", () => {
