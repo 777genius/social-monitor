@@ -134,7 +134,7 @@ const activeReaderSummaryPurposeMatches = (
       : attempt === "repair"
         ? [activeReaderSummaryPurposes.repair]
         : [],
-  daily_editor: [activeReaderSummaryPurposes.dailyEditorial],
+  daily_editor: attempt === "primary" ? [activeReaderSummaryPurposes.dailyEditorial] : [],
   topic_label: [activeReaderSummaryPurposes.topicLabel],
   topic_relation: [activeReaderSummaryPurposes.topicRelations],
   story_relation: [activeReaderSummaryPurposes.storyRelations],
