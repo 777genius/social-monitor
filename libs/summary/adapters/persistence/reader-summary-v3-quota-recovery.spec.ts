@@ -91,7 +91,23 @@ const scenario = async (topicMapBuilder?: BuildReaderSummaryTopicMapUseCase,
     prepare: async () => { throw new Error("Manifest was already frozen"); },
     coverage: async () => ({ status: "ready" }),
   });
-  const model = new DeterministicReaderSummaryModelAdapter();
+  let editorialCalls = 0;
+  const model = Object.assign(new DeterministicReaderSummaryModelAdapter(), {
+    async planDaily(input: Parameters<DeterministicReaderSummaryModelAdapter["generate"]>[0]) {
+      editorialCalls += 1;
+      const frozen = input.evidence.dailyGenerationInput;
+      const first = frozen?.selected[0];
+      if (first === undefined) throw new Error("Daily editorial test requires a frozen post");
+      return {
+        plan: { version: "reader_summary.daily_editorial.v1" as const,
+          topics: [{ title: "Test event", why: "Quota boundary",
+            depth: "detailed" as const, feedItemIds: [first.feedItemId] }] },
+        usage: { inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0 },
+        editorRequestSha256: "a".repeat(64),
+        editorOutputSha256: "b".repeat(64),
+      };
+    },
+  });
   const publication: ReaderSummaryPublicationPort = {
     publish: async (command) => {
       if (!await jobs.saveExecutionOutcome({ job: command.finalJob,
@@ -111,7 +127,7 @@ const scenario = async (topicMapBuilder?: BuildReaderSummaryTopicMapUseCase,
       { build: async () => ({ kind: "ready", evidence: makeReaderEvidenceSelection() }) },
   );
   const preparedSnapshot = prepared.toSnapshot();
-  return { jobs, model, execute, jobKey: { tenantId: preparedSnapshot.tenantId,
+  return { jobs, model, execute, editorialCalls: () => editorialCalls, jobKey: { tenantId: preparedSnapshot.tenantId,
     workspaceId: preparedSnapshot.workspaceId, readerSummaryJobId: preparedSnapshot.id } };
 };
 
@@ -172,7 +188,7 @@ describe("V3 quota recovery", () => {
       { length: 16 }, (_, index) => id(index + 17))));
     const fixture = workspaceSetup(Array.from({ length: 32 }, (_, index) =>
       candidate(index + 1, "useful", "relevant")), undefined, presentation);
-    const { jobs, model, execute, jobKey } = await scenario(undefined, fixture);
+    const { jobs, model, execute, jobKey, editorialCalls } = await scenario(undefined, fixture);
     const writer = jest.spyOn(model, "generate").mockRejectedValue(
       Object.assign(new Error("Writer quota"), { failure: {
         kind: "provider_rate_limited", retryable: true,
@@ -180,6 +196,7 @@ describe("V3 quota recovery", () => {
     const first = await execute(new Date("2026-09-21T00:00:00Z")).execute(jobKey);
     expect(first).toMatchObject({ ok: false });
     expect(presentation.attempted).toBe(32);
+    expect(editorialCalls()).toBe(1);
     expect(writer).toHaveBeenCalledTimes(1);
     expect((await jobs.findById(jobKey))?.toSnapshot()).toMatchObject({
       status: "failed", terminalFailureCode: "provider_execution_failed",

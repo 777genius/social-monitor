@@ -21,7 +21,7 @@ import {
   isValidReaderSummaryNarrativeLead,
   type ReaderSummaryNarrativeCoverage,
 } from "./openai-responses-reader-summary-narrative-coverage";
-
+import { normalizeDailyEditorialNarrative } from "./openai-responses-reader-summary-editorial-narrative";
 const narrativeKinds = new Set(readerSummaryNarrativeSectionKinds);
 const maxNarrativeSections = 7;
 
@@ -34,6 +34,9 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
   readonly storySummariesByClusterId: ReadonlyMap<string, string>;
   readonly storySummariesByCitationId: ReadonlyMap<string, string>;
 }): readonly ReaderSummaryNarrativeSection[] => {
+  if (params.input.dailyEditorialPlan !== undefined) {
+    return normalizeDailyEditorialNarrative(params);
+  }
   const rawSections = Array.isArray(params.rawSections)
     ? params.rawSections
         .map(asRecord)

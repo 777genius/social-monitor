@@ -40,6 +40,8 @@ export type ReaderSummaryDailyGenerationInput = {
 export type ReaderSummaryDailyInputReceipt = {
   readonly payloadSha256: string;
   readonly evidence: readonly { readonly feedItemId: string; readonly sha256: string }[];
+  /** Canonical hash of the editorial plan actually sent to the writer; absent for old profiles. */
+  readonly editorialPlanSha256?: string;
 };
 
 export const readReaderSummaryDailyGenerationInput = (
@@ -78,7 +80,10 @@ export const readReaderSummaryDailyGenerationInput = (
   if (Object.hasOwn(v, "sent")) {
     const selected = v.selected;
     const sent = v.sent as ReaderSummaryDailyInputReceipt | undefined;
-    if (sent === undefined || sent === null || typeof sent !== "object" || Object.keys(sent).length !== 2 ||
+    if (sent === undefined || sent === null || typeof sent !== "object" ||
+        Object.keys(sent).length !== (Object.hasOwn(sent, "editorialPlanSha256") ? 3 : 2) ||
+        (Object.hasOwn(sent, "editorialPlanSha256") &&
+          (typeof sent.editorialPlanSha256 !== "string" || !sha(sent.editorialPlanSha256))) ||
         typeof sent.payloadSha256 !== "string" || !sha(sent.payloadSha256) || !Array.isArray(sent.evidence) ||
         sent.evidence.length !== v.selected.length || sent.evidence.some((entry, index) =>
           entry === null || typeof entry !== "object" || Object.keys(entry).length !== 2 ||

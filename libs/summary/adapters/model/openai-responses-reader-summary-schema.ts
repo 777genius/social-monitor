@@ -158,3 +158,14 @@ function arraySchema(items: unknown, maxItems: number) {
 function stringArraySchema(maxItems = 10, maxLength = 120) {
   return { type: "array", items: stringSchema(maxLength), maxItems };
 }
+
+/** Extra room only for the versioned daily editorial writer. */
+export const dailyEditorialReaderSummaryJsonSchema = {
+  ...openAiReaderSummaryJsonSchema,
+  properties: {
+    ...openAiReaderSummaryJsonSchema.properties,
+    executiveSummary: stringSchema(5_000),
+    narrativeSections: arraySchema({ $ref: "#/$defs/narrativeSection" }, 10),
+    topStories: arraySchema({ $ref: "#/$defs/topStory" }, 10),
+  },
+} as const;

@@ -8,7 +8,7 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
-  testWidgets('shows all six daily digest topics with a bounded signal list', (
+  testWidgets('shows all ten daily digest topics without truncation', (
     tester,
   ) async {
     final summary = const SummaryMapper().readerSummaryToDomain(
@@ -22,7 +22,7 @@ void main() {
               text: 'Daily workflow overview.',
               citationIds: ['bc-1'],
             ),
-            for (var index = 1; index <= 6; index++)
+            for (var index = 1; index <= 9; index++)
               ReaderSummaryNarrativeSectionApiDto(
                 id: 'signal-$index',
                 kind: 'secondary_signal',
@@ -51,16 +51,12 @@ void main() {
         ),
       ),
     );
-    for (var index = 1; index <= 5; index++) {
+    for (var index = 1; index <= 9; index++) {
       expect(
         find.byKey(ValueKey('reader-summary-narrative-signal-$index')),
         findsOneWidget,
       );
     }
-    expect(
-      find.byKey(const ValueKey('reader-summary-narrative-signal-6')),
-      findsNothing,
-    );
   });
 
   testWidgets('renders secondary signals with compact claim trust details', (

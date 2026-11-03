@@ -1,4 +1,5 @@
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
+import { runAgentRuntimeDailyEditor } from "./agent-runtime-reader-summary-daily-editorial";
 import {
   buildReaderSummary,
   primaryReaderSummaryEvidence,
@@ -10,6 +11,7 @@ import type {
   AgentRuntimeTaskCommand,
   AgentRuntimeTaskResult,
   ProviderReaderSummaryAttempt,
+  ReaderSummaryDailyEditorialAttempt,
   ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
   ReaderSummaryModelFailure,
@@ -31,7 +33,7 @@ import {
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-response-parser";
-import { openAiReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
+import { openAiReaderSummaryJsonSchema, dailyEditorialReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
 import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
 import {
   verifyAndRecordReaderSummaryExecution,
@@ -46,6 +48,7 @@ import {
   positiveIntegerOrFallback,
   readAgentRuntimeObjectOutput,
   usageFromAgentRuntime,
+  sumReaderSummaryUsage,
 } from "./agent-runtime-model-support";
 import {
   type activeReaderSummaryProvider,
@@ -83,7 +86,6 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly inputTokenDivisor?: number;
   readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 };
-
 const provider = "agent-runtime";
 const defaultReasoningEffort = activeReaderSummaryReasoningEffort;
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
@@ -155,7 +157,10 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = { ...this.buildRoute(), ...(input.evidence.dailyGenerationInput === undefined ? {} : { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
+    const route = { ...this.buildRoute(), ...(input.dailyEditorialPlan !== undefined
+      ? { promptVersion: "reader_summary.prompt.2026-11-03.daily_editorial_v1" }
+      : input.evidence.dailyGenerationInput === undefined ? {} :
+        { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
     const estimate = this.estimate(input, route);
 
     if (
@@ -200,6 +205,15 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     };
   }
 
+  async planDaily(input: ReaderSummaryModelInput, route: ReaderSummaryModelRoute):
+    Promise<ReaderSummaryDailyEditorialAttempt> {
+    if (this.legacyRecovery || input.evidence.dailyGenerationInput === undefined)
+      throw new Error("Daily editorial planning is not available for this profile");
+    return runAgentRuntimeDailyEditor({ input, client: this.client,
+      baseCommand: this.buildTaskCommand(input, route, "primary"),
+      inputTokenDivisor: this.inputTokenDivisor, maxOutputTokens: this.maxOutputTokens,
+      sink: this.verifiedAttestationSink });
+  }
   async generate(
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
@@ -215,7 +229,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     // Two attempts at most: the repair runs once, for either cause.
     for (const attempt of readerSummaryNarrativeAttempts) {
       const command = this.buildTaskCommand(input, selectedRoute, attempt, schemaViolations);
-      const dailyGenerationReceipt = readerSummaryDailyInputReceipt(command.prompt, input.evidence.dailyGenerationInput);
+      const dailyGenerationReceipt = readerSummaryDailyInputReceipt(command.prompt, input.evidence.dailyGenerationInput, input.dailyEditorialPlan);
       const result = await this.client.runTask(command);
       const attemptUsage = usageFromAgentRuntime(
         result.usage,
@@ -289,8 +303,10 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     schemaViolations?: readonly string[],
   ): AgentRuntimeTaskCommand {
     const isRepair = attempt === "repair";
+    const selectedSchema = input.dailyEditorialPlan === undefined
+      ? openAiReaderSummaryJsonSchema : dailyEditorialReaderSummaryJsonSchema;
     const hardLimits = isGatewayReaderSummaryBackend(this.modelBackend)
-      ? `\n${readerSummaryGatewayHardLimits}` : "";
+      ? `\n${gatewayOutputHardLimits(selectedSchema)}` : "";
     const repairInstruction = !isRepair ? ""
       : `\n${schemaViolations === undefined ? narrativeRepairInstruction : schemaRepairInstruction(schemaViolations)}`;
     return {
@@ -321,7 +337,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           : activeReaderSummaryPurposes.generate,
       systemPrompt: `${buildOpenAiReaderSummaryInstructions(input)}${hardLimits}${repairInstruction}`,
       prompt: buildOpenAiReaderSummaryPromptPayload(input),
-      outputSchema: openAiReaderSummaryJsonSchema,
+      outputSchema: selectedSchema,
       controls: {
         interactive: false,
         outputSchemaName: "social_monitor_reader_summary_artifact",
@@ -446,7 +462,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 const narrativeRepairInstruction =
   "Repair the complete JSON response. Every narrativeSections item must use the non-empty string fields title and text, never summary, body or description. If coveragePlan.lead is null, return empty topStories and narrativeSections plus a concrete noSignalReason. For single_story, narrativeSections[0] must have kind lead and cite coveragePlan.lead. For daily_synthesis, it must have kind lead, set storyClusterId to null, and cite both coveragePlan.lead and at least one coveragePlan.secondary cluster. Return exactly one secondary_signal for every coveragePlan.secondary entry. Omit any watch that is not self-contained and backed by high engagement, first-party authority or cross-provider support. Do not change facts or invent citations.";
 
-const readerSummaryGatewayHardLimits = gatewayOutputHardLimits(openAiReaderSummaryJsonSchema);
 
 const schemaRepairInstruction = (violations: readonly string[]): string =>
   `Your previous response was rejected by the output schema at: ${violations.join("; ")}. Each entry is path:rule, with the limit after = (maxLength in characters, maxItems in items). Regenerate the complete JSON response from the same evidence. Rewrite every listed field as complete, shorter text inside its limit; never cut a sentence or word, and keep every other field inside the hard limits. Do not change facts or invent citations.`;
@@ -482,15 +497,3 @@ export const resolveAgentRuntimeReaderSummaryModelOptions = (
     ),
   };
 };
-
-const sumReaderSummaryUsage = (
-  accumulated: ReaderSummaryModelEstimate | undefined,
-  attempt: ReaderSummaryModelEstimate,
-): ReaderSummaryModelEstimate => accumulated === undefined
-  ? attempt
-  : {
-      inputTokens: accumulated.inputTokens + attempt.inputTokens,
-      outputTokens: accumulated.outputTokens + attempt.outputTokens,
-      estimatedCostUsd:
-        accumulated.estimatedCostUsd + attempt.estimatedCostUsd,
-    };

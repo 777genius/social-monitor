@@ -257,3 +257,15 @@ const nonNegativeIntegerOrFallback = (
   Number.isInteger(value) && value >= 0
     ? value
     : fallback;
+
+/** Aggregate the physical usage of primary and repair attempts. */
+export const sumReaderSummaryUsage = (
+  accumulated: AgentRuntimeModelEstimate | undefined,
+  attempt: AgentRuntimeModelEstimate,
+): AgentRuntimeModelEstimate => accumulated === undefined
+  ? attempt
+  : {
+      inputTokens: accumulated.inputTokens + attempt.inputTokens,
+      outputTokens: accumulated.outputTokens + attempt.outputTokens,
+      estimatedCostUsd: accumulated.estimatedCostUsd + attempt.estimatedCostUsd,
+    };

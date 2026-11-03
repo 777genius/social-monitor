@@ -54,6 +54,7 @@ import {
   withReaderSummaryTopicMap,
 } from "./execute-reader-summary-job-support";
 import { buildReaderSummaryModelArtifact } from "./reader-summary-model-artifact";
+import { generateReaderSummaryWithDailyEditor } from "./reader-summary-daily-editorial-generation";
 import { buildReaderSummaryV3Evidence, prepareReaderSummaryV3Job } from "./reader-summary-v3-execution";
 type ExecuteReaderSummaryJobFailure = DomainError | Error;
 export class ExecuteReaderSummaryJobUseCase {
@@ -413,12 +414,10 @@ export class ExecuteReaderSummaryJobUseCase {
         ...(modelEvidence.dailyGenerationInput === undefined ? {} : { maxStories: 6 }) },
       requestedAt: snapshot.requestedAt,
     };
-    const route = this.readerSummaryModel.route(
-      input,
-      defaultModelPolicy,
-      defaultModelBudget,
-    );
-    const attempt = await this.readerSummaryModel.generate(input, route);
+    const { attempt, editor } = await generateReaderSummaryWithDailyEditor({
+      model: this.readerSummaryModel, input, policy: defaultModelPolicy,
+      budget: defaultModelBudget,
+    });
     if (modelEvidence.dailyGenerationInput !== undefined && attempt.dailyGenerationReceipt === undefined) {
       return err(this.readerSummaryModel.classifyError(new Error("Daily generation input receipt missing")));
     }
@@ -427,14 +426,15 @@ export class ExecuteReaderSummaryJobUseCase {
     if (!validation.ok) {
       return err(validation.failure);
     }
+    const generatedDraft = attempt.draft;
     try {
-      assertReaderSummaryCitationsAgainstEvidence(attempt.draft, modelEvidence);
+      assertReaderSummaryCitationsAgainstEvidence(generatedDraft, modelEvidence);
     } catch (error) {
       return err(this.readerSummaryModel.classifyError(error));
     }
     const draftWithContext = context.unavailable
-      ? withReaderSummaryContextUnavailable(attempt.draft)
-      : attempt.draft;
+      ? withReaderSummaryContextUnavailable(generatedDraft)
+      : generatedDraft;
     const inventoryDraft = withFirstPublicationInventoryQuality(draftWithContext, firstPublicationBoundary);
     const qualityDraft = withReaderSummaryHistoricalOmissionQuality(inventoryDraft, githubOmission);
     const draftWithContent = buildReaderSummaryDraftWithPromotionContent(
@@ -451,7 +451,13 @@ export class ExecuteReaderSummaryJobUseCase {
     const createArtifact = (draft: ReaderSummaryDraft): ReaderSummaryArtifact =>
       buildReaderSummaryModelArtifact({ snapshot, readerSummaryId, generatedAt,
         modelEvidence, contextArtifacts: context.artifacts, draft,
-        dailyGenerationReceipt: attempt.dailyGenerationReceipt });
+        dailyGenerationReceipt: attempt.dailyGenerationReceipt,
+        ...(editor === undefined || modelEvidence.dailyGenerationInput === undefined ? {} : {
+          dailyEditorialPlan: { plan: editor.plan,
+            frozenManifestSha256: modelEvidence.dailyGenerationInput.manifestSha256,
+            editorRequestSha256: editor.editorRequestSha256,
+            editorOutputSha256: editor.editorOutputSha256 },
+        }) });
     const preflightArtifact = createArtifact(calibratedDraft);
     if (
       this.publicationPolicy.evaluate({

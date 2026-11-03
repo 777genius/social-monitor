@@ -1,6 +1,7 @@
 import { normalizeReaderSummaryUsage } from "./prisma-reader-summary-usage";
 import { readReaderPromotionDiagnostics } from "../../../domain/value-objects/reader-promotion-diagnostics";
 import { readReaderSummaryDailyGenerationInput } from "../../../domain/value-objects/reader-summary-daily-generation-input";
+import { validateDailyEditorialProof } from "../../../domain/services/reader-summary-daily-editorial-plan";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
@@ -123,6 +124,10 @@ export const normalizeReaderSummaryArtifactPayload = (
     sourceWindow: normalizeReaderSummarySourceWindow(value.sourceWindow),
     ...(Object.hasOwn(value, "dailyGenerationInput") ? {
       dailyGenerationInput: requireDailyGenerationInput(value.dailyGenerationInput),
+    } : {}),
+    ...(Object.hasOwn(value, "dailyEditorialPlan") ? {
+      dailyEditorialPlan: validateDailyEditorialProof(value.dailyEditorialPlan,
+        requireDailyGenerationInput(value.dailyGenerationInput)),
     } : {}),
     storyClusters: requireArray<SerializedReaderSummaryStoryCluster>(
       value.storyClusters,

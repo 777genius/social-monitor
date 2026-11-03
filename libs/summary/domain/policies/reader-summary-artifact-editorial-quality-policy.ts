@@ -22,6 +22,7 @@ export type ReaderSummaryEditorialNarrativeSection = {
 export type ReaderSummaryArtifactEditorialQualityInput = {
   readonly headline: string;
   readonly coverageMode: ReaderSummaryCoverageMode;
+  readonly dailyEditorialPlan?: boolean;
   readonly coveragePolicyVersion?: typeof READER_SUMMARY_DAILY_INPUT_POLICY;
   readonly topPostTitles: readonly string[];
   readonly citations: readonly ReaderSummaryEditorialCitationSupport[];
@@ -125,6 +126,7 @@ export const evaluateReaderSummaryArtifactEditorialQuality = (
   const dailySynthesis = input.coverageMode === "daily_synthesis";
   const dailyInputPolicy = input.coveragePolicyVersion === READER_SUMMARY_DAILY_INPUT_POLICY;
   const singleStoryLeadIsHonestlyClusterBound =
+    input.dailyEditorialPlan === true ? lead?.storyClusterId !== undefined :
     input.coverageMode !== "single_story" ||
     (lead?.storyClusterId !== undefined &&
       lead.storyClusterId.trim().length > 0 &&

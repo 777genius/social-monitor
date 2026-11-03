@@ -11,6 +11,7 @@ import {
   buildReaderSummaryCoveragePlan,
   type ReaderSummaryCoveragePlan,
 } from "../services/reader-summary-coverage-plan";
+import { dailyEditorialCoveragePlan } from "../services/reader-summary-daily-editorial-plan";
 import { evaluateReaderSummaryArtifactEditorialQuality } from "./reader-summary-artifact-editorial-quality-policy";
 import { primaryReaderSummaryEvidence } from "./reader-summary-github-trending-policy";
 import { isGitHubReaderItem } from "./reader-summary-github-projection-audit";
@@ -129,11 +130,10 @@ export class ReaderSummaryPublicationPolicy {
     }
 
     if (!noSignal) {
-      const coveragePlan = buildReaderSummaryCoveragePlan(
-        primaryReaderSummaryEvidence(
-          params.editorialEvidence ?? params.evidence,
-        ),
-      );
+      const editorialEvidence = primaryReaderSummaryEvidence(params.editorialEvidence ?? params.evidence);
+      const coveragePlan = snapshot.dailyEditorialPlan === undefined
+        ? buildReaderSummaryCoveragePlan(editorialEvidence)
+        : dailyEditorialCoveragePlan(snapshot.dailyEditorialPlan.plan, editorialEvidence);
       const editorialQuality = evaluateReaderSummaryArtifactEditorialQuality(
         { ...editorialQualityInput(snapshot, coveragePlan.mode, params.evidence),
           coveragePolicyVersion: coveragePlan.policyVersion },
@@ -144,7 +144,7 @@ export class ReaderSummaryPublicationPolicy {
           reason: `Reader summary editorial quality gate failed: ${issue}`,
         });
       }
-      for (const issue of coveragePlanIssues(snapshot, coveragePlan)) {
+      for (const issue of snapshot.dailyEditorialPlan === undefined ? coveragePlanIssues(snapshot, coveragePlan) : []) {
         rejectionFindings.push({
           code: "editorial_quality",
           reason: `Reader summary editorial quality gate failed: ${issue}`,
@@ -374,6 +374,7 @@ const editorialQualityInput = (
 
   return {
     headline: snapshot.content?.headline ?? snapshot.headline,
+    dailyEditorialPlan: snapshot.dailyEditorialPlan !== undefined,
     coverageMode,
     // Board titles now carry full source context. Also compare the original
     // headings of their cited sources so appended bodies cannot hide copying.

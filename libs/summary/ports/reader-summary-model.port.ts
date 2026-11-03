@@ -11,6 +11,7 @@ import type {
   ReaderSummaryUsage,
   SummaryEvidenceSelection,
   ReaderSummaryDailyInputReceipt,
+  DailyEditorialPlan,
 } from "../domain";
 
 export type ReaderSummaryModelRoute = {
@@ -41,6 +42,7 @@ export type ReaderSummaryModelInput = {
   readonly subscriptionId?: string;
   readonly evidence: SummaryEvidenceSelection;
   readonly coveragePlan: ReaderSummaryCoveragePlan;
+  readonly dailyEditorialPlan?: DailyEditorialPlan;
   readonly contextArtifacts: readonly ReaderSummaryContextArtifact[];
   readonly policy: ReaderSummaryGenerationPolicy;
   readonly requestedAt: Date;
@@ -50,6 +52,13 @@ export type ReaderSummaryModelEstimate = {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly estimatedCostUsd: number;
+};
+
+export type ReaderSummaryDailyEditorialAttempt = {
+  readonly plan: DailyEditorialPlan;
+  readonly usage: ReaderSummaryModelEstimate;
+  readonly editorRequestSha256: string;
+  readonly editorOutputSha256: string;
 };
 
 export type ProviderReaderSummaryAttempt = {
@@ -82,6 +91,9 @@ export type ReaderSummaryModelValidationResult =
   | { readonly ok: false; readonly failure: ReaderSummaryModelFailure };
 
 export interface ReaderSummaryModelPort {
+  /** Only the new daily top-30 profile uses this capability. */
+  planDaily?(input: ReaderSummaryModelInput, route: ReaderSummaryModelRoute):
+    Promise<ReaderSummaryDailyEditorialAttempt>;
   route(
     input: ReaderSummaryModelInput,
     policy: ReaderSummaryModelPolicy,

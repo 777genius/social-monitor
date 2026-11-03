@@ -130,7 +130,9 @@ export class RecoverableReaderSummaryPublication
   async publish(
     command: ReaderSummaryPublicationCommand,
   ): Promise<ReaderSummaryPublicationOutcome> {
-    this.recovery.prepare(command, this.attestations());
+    const attestations = this.attestations();
+    assertAttestedDailyEditorialPublication(command, attestations);
+    this.recovery.prepare(command, attestations);
     return this.delegate.publish(command);
   }
 }
@@ -144,8 +146,14 @@ export const createRecoverableReaderSummaryPublication = (input: {
   publication: ReaderSummaryPublicationPort;
   recovery: ReaderSummaryDbPublicationRecoveryStore | null;
 }> => {
+  const guarded: ReaderSummaryPublicationPort = {
+    async publish(command) {
+      assertAttestedDailyEditorialPublication(command, input.attestations());
+      return input.delegate.publish(command);
+    },
+  };
   if (input.recoveryDirectory === undefined) {
-    return Object.freeze({ publication: input.delegate, recovery: null });
+    return Object.freeze({ publication: guarded, recovery: null });
   }
   const recovery = new ReaderSummaryDbPublicationRecoveryStore(
     input.recoveryDirectory,
@@ -154,9 +162,7 @@ export const createRecoverableReaderSummaryPublication = (input: {
   return Object.freeze({
     recovery,
     publication: new RecoverableReaderSummaryPublication(
-      input.delegate,
-      recovery,
-      input.attestations,
+      input.delegate, recovery, input.attestations,
     ),
   });
 };
@@ -166,6 +172,30 @@ export const assertReaderSummaryDbPublicationFailpointInactive = (
 ): void => {
   if (value === "after-db-before-state") {
     throw new Error("failpoint: after DB publication before terminal state");
+  }
+};
+
+/**
+ * Validate the runtime-attested editor digest before the DB publication
+ * boundary. Frozen IDs are checked again in the existing transactional guard.
+ */
+export const assertAttestedDailyEditorialPublication = (
+  command: ReaderSummaryPublicationCommand,
+  attestations: readonly VerifiedReaderSummaryExecutionAttestation[],
+): void => {
+  const snapshot = command.artifact.toSnapshot();
+  const plan = snapshot.dailyEditorialPlan;
+  const editors = attestations.filter(record => record.taskRole === "daily_editor");
+  if (plan === undefined) {
+    if (editors.length > 0) throw new Error("Unplanned daily editor attestation");
+    return;
+  }
+  const editor = editors[0];
+  if (editors.length !== 1 || editor?.attempt !== "primary" ||
+      editor.attestation.purpose !== "social_monitor.reader_summary.daily_editorial.plan.v1" ||
+      editor.normalizedOutputSha256 !== plan.editorOutputSha256 ||
+      snapshot.dailyGenerationInput?.sent?.editorialPlanSha256 !== plan.editorOutputSha256) {
+    throw new Error("Daily editorial publication does not match the verified editor and writer");
   }
 };
 

@@ -9,13 +9,15 @@ import { serializeReaderSummaryArtifact } from "../persistence/prisma/prisma-rea
 import { normalizeReaderSummaryArtifactPayload } from "../persistence/prisma/prisma-reader-summary-artifact-payload";
 import { dailyGenerationPublicationMatches } from "../persistence/prisma/reader-summary-daily-generation-publication-guard";
 import { createHash } from "node:crypto";
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
 import { CapturingAgentRuntimeClient } from "./agent-runtime-reader-summary-model.spec-support";
-import { ReaderSummaryArtifact } from "../../domain";
+import { ReaderSummaryArtifact, validateDailyEditorialPlan, dailyEditorialCoveragePlan, primaryReaderSummaryEvidence } from "../../domain";
 import { buildReaderSummaryDraftWithPromotionContent } from "../../features/execute-reader-summary-job/reader-summary-promotion-content";
 import { buildReaderSummaryModelArtifact } from "../../features/execute-reader-summary-job/reader-summary-model-artifact";
 import { buildReaderSummaryCoverageView } from "../../features/shared/reader-summary-coverage-presenter";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
+import { buildDailyEditorialPrompt } from "./reader-summary-daily-editorial-model";
 import { dailyDigestFixture, dailyPromotionFixture, dailyProviderDraft, generateDailyFixture } from "./reader-summary-daily-digest.fixture";
 
 it("sends exactly thirty Likes inputs, retains a non-promoted narrative and keeps the separate sealed board", async () => {
@@ -117,4 +119,110 @@ it("fails closed with a typed unsupported outcome before narrative dispatch when
   const fixture = await dailyPromotionFixture(false);
   expect(fixture.outcome).toEqual({ kind: "unsupported_daily_digest", reason: "no_promotion_board" });
   expect(fixture.presentation.attempted).toBe(0);
+});
+
+it("publishes ten source-bound editorial topics with a late lead and cross-cluster group", async () => {
+  const { input, evidence, manifest, snapshots, job } = await dailyDigestFixture();
+  const selected = evidence.dailyGenerationInput!.selected;
+  const plan = validateDailyEditorialPlan({
+    version: "reader_summary.daily_editorial.v1",
+    topics: [
+      { title: "Late important event", why: "More significant than popularity rank",
+        depth: "detailed", feedItemIds: [selected[19]!.feedItemId, selected[26]!.feedItemId] },
+      ...selected.slice(0, 9).map((entry, index) => ({
+        title: `Distinct story ${index + 1}`, why: "Concrete independent value",
+        depth: index < 3 ? "detailed" : "brief",
+        feedItemIds: [entry.feedItemId],
+      })),
+    ],
+  }, evidence.dailyGenerationInput!);
+  // The promotion board is independent; the writer plan uses frozen narrative sources.
+  const dailyEvidence = primaryReaderSummaryEvidence(evidence).selectedEvidence;
+  const boardOnly = { ...evidence, selectedEvidence: [], dailyGenerationEvidence: dailyEvidence };
+  expect(dailyEditorialCoveragePlan(plan, boardOnly).secondary).toHaveLength(9);
+  const writer = { ...input, dailyEditorialPlan: plan,
+    coveragePlan: dailyEditorialCoveragePlan(plan, evidence),
+    policy: { ...input.policy, maxStories: plan.topics.length } };
+  const { attempt, request } = await generateDailyFixture(writer);
+  const payload = JSON.parse(request.input) as { evidence: readonly { feedItemId: string }[];
+    dailyEditorialPlan: typeof plan };
+  expect(payload.evidence.map(item => item.feedItemId)).toEqual(selected.map(item => item.feedItemId));
+  expect(payload.dailyEditorialPlan).toEqual(plan);
+  expect(attempt.dailyGenerationReceipt?.editorialPlanSha256).toBe(canonicalJsonSha256(plan));
+  expect(attempt.draft.content?.narrativeSections?.length).toBe(10);
+  expect(attempt.draft.topStories.map(item => item.storyClusterId))
+    .toEqual([writer.coveragePlan.lead!, ...writer.coveragePlan.secondary].map(item => item.clusterId));
+  const draft = buildReaderSummaryDraftWithPromotionContent(evidence, attempt.draft);
+  const editorOutputSha256 = canonicalJsonSha256(plan);
+  const artifact = buildReaderSummaryModelArtifact({
+    snapshot: job.toSnapshot(), readerSummaryId: "daily-editorial-test-artifact",
+    generatedAt: writer.requestedAt, modelEvidence: evidence, contextArtifacts: [],
+    draft, dailyGenerationReceipt: attempt.dailyGenerationReceipt,
+    dailyEditorialPlan: { plan,
+      frozenManifestSha256: evidence.dailyGenerationInput!.manifestSha256,
+      editorRequestSha256: createHash("sha256").update(buildDailyEditorialPrompt(input)).digest("hex"),
+      editorOutputSha256 },
+  });
+  const saved = artifact.toSnapshot();
+  expect(saved.content?.sourceMix.reduce((sum, source) => sum + source.itemCount, 0)).toBe(30);
+  expect(saved.dailyEditorialPlan?.plan.topics).toHaveLength(10);
+  expect(saved.content?.narrativeSections?.filter(section => section.kind === "secondary_signal")).toHaveLength(9);
+  const guard = { manifest, manifestSha256: evidence.dailyGenerationInput!.manifestSha256,
+    periodKey: input.period.periodKey,
+    identity: { tenantId: input.tenantId, workspaceId: input.workspaceId, scope: input.scope },
+    snapshots, artifact: saved };
+  expect(dailyGenerationPublicationMatches(guard)).toBe(true);
+  expect(dailyGenerationPublicationMatches({ ...guard,
+    artifact: { ...saved, dailyEditorialPlan: { ...saved.dailyEditorialPlan!,
+      editorOutputSha256: "0".repeat(64) } } })).toBe(false);
+  expect(dailyGenerationPublicationMatches({ ...guard,
+    artifact: { ...saved, dailyEditorialPlan: { ...saved.dailyEditorialPlan!,
+      editorRequestSha256: "0".repeat(64) } } })).toBe(false);
+  expect(dailyGenerationPublicationMatches({ ...guard, artifact: { ...saved,
+    dailyGenerationInput: { ...saved.dailyGenerationInput!, sent: {
+      ...saved.dailyGenerationInput!.sent!, editorialPlanSha256: "0".repeat(64),
+    } },
+  } })).toBe(false);
+  const invalidAppendix = {
+    id: "github-trending", kind: "watch" as const, title: "Forged appendix",
+    text: "Unverified GitHub claim", citationIds: ["c1"],
+  };
+  expect(() => ReaderSummaryArtifact.rehydrate({ ...saved, content: {
+    ...saved.content!, narrativeSections: [
+      ...(saved.content?.narrativeSections ?? []), invalidAppendix,
+    ],
+  } })).toThrow("Daily editorial GitHub appendix is invalid");
+  const invalidLead = saved.content?.narrativeSections?.map(section =>
+    section.kind === "lead" ? { ...section, citationIds: ["c1"] } : section) ?? [];
+  expect(() => ReaderSummaryArtifact.rehydrate({ ...saved,
+    content: { ...saved.content!, narrativeSections: invalidLead },
+  })).toThrow("Daily editorial topic cites sources outside its plan");
+});
+
+it("calls the attested daily editor once with all frozen sources and their native metrics", async () => {
+  const { input, evidence } = await dailyDigestFixture();
+  const selected = evidence.dailyGenerationInput!.selected;
+  const rawPlan = { version: "reader_summary.daily_editorial.v1",
+    topics: [{ title: "Important later event", why: "Practical impact is high",
+      depth: "detailed", feedItemIds: [selected[19]!.feedItemId] }] };
+  const client = new CapturingAgentRuntimeClient({
+    status: "completed", structuredOutput: rawPlan, warnings: [],
+  });
+  const adapter = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
+  const route = adapter.route(input, {
+    preferredProvider: "agent-runtime", maxInputTokens: 100000,
+    maxOutputTokens: 16000, maxEstimatedCostUsd: 5,
+  }, { remainingTokens: 160000, remainingCostUsd: 10 });
+  const result = await adapter.planDaily(input, route);
+  expect(result.plan.topics[0]?.feedItemIds).toEqual([selected[19]!.feedItemId]);
+  expect(client.commands).toHaveLength(1);
+  expect(client.commands[0]!.purpose).toBe("social_monitor.reader_summary.daily_editorial.plan.v1");
+  const payload = JSON.parse(client.commands[0]!.prompt) as {
+    sources: readonly { feedItemId: string; nativeCount: number | null }[];
+  };
+  expect(payload.sources.map(source => source.feedItemId))
+    .toEqual(selected.map(source => source.feedItemId));
+  expect(payload.sources[0]?.nativeCount).toBe(selected[0]?.nativeCount);
+  expect(result.editorRequestSha256).toBe(
+    createHash("sha256").update(client.commands[0]!.prompt).digest("hex"));
 });
