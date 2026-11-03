@@ -10,6 +10,7 @@ import type {
   ReaderSummaryScope,
   ReaderSummaryUsage,
   SummaryEvidenceSelection,
+  ReaderSummaryDailyInputReceipt,
 } from "../domain";
 
 export type ReaderSummaryModelRoute = {
@@ -52,6 +53,7 @@ export type ReaderSummaryModelEstimate = {
 };
 
 export type ProviderReaderSummaryAttempt = {
+  readonly dailyGenerationReceipt?: ReaderSummaryDailyInputReceipt;
   readonly route: ReaderSummaryModelRoute;
   readonly draft: GeneratedReaderSummaryDraft & {
     readonly lineage: ReaderSummaryLineage;

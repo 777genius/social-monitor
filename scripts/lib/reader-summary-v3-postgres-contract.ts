@@ -1,3 +1,4 @@
+import { assertV3DailyInputPostgresContract } from "./reader-summary-v3-daily-input-postgres-contract";
 import { assertQuoteAssessmentPostgresContract } from "./reader-summary-quote-assessment-postgres-contract";
 import { PrismaReaderValueAssessmentStore } from "../../libs/relevance/infrastructure/reader-value/prisma-reader-value-assessment-store";
 import { readerSummaryV3AssessmentSqlClient } from "./reader-summary-v3-postgres-assessment-lifecycle";
@@ -58,6 +59,10 @@ type Params = {
 import type { V3ArtifactPayload, V3FixturePayload } from
   "./reader-summary-v3-publication-fixture-types";
 export const assertReaderSummaryV3PostgresContract = async (params: Params) => {
+  await assertV3DailyInputPostgresContract({ client: params.client, createFixture: params.createFixture,
+    advance: (fixture, source) => advanceV3Preflight(params.client, fixture, fixture.payload, source),
+    publish: (fixture, artifact) => publishThroughProductionEquivalentGuard(params.client,
+      fixture, fixture.payload, params.publish, artifact) });
   const cancelFirst = await preflightFixture(params, "NO_SIGNAL", 12);
   await params.client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
   assert((await cancelLocked(params.client, cancelFirst)) === 1,

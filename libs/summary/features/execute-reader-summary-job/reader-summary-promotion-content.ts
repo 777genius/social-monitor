@@ -60,6 +60,8 @@ export const buildReaderSummaryDraftWithPromotionContent = (
     selectedEvidence: evidence.selectedEvidence,
     editorialSlate: evidence.editorialSlate,
     promotionV3: evidence.promotionV3,
+    dailyGenerationInput: evidence.dailyGenerationInput,
+    dailyGenerationEvidence: evidence.dailyGenerationEvidence,
     qualityFlags,
     noSignalReason: draft.noSignalReason,
   });

@@ -166,7 +166,8 @@ export const withReaderSummaryTopicMap = async (params: {
     clusters: primaryEvidence.clusters,
     selectedEvidence: primaryEvidence.selectedEvidence,
     topStories: params.draft.topStories,
-    citationMap: params.draft.citationMap,
+    citationMap: primaryEvidence.dailyGenerationInput === undefined ? params.draft.citationMap :
+      params.draft.citationMap.filter(citation => primaryEvidence.dailyGenerationInput!.selected.some(entry => entry.feedItemId === citation.feedItemId)),
   });
   if (!topicMapResult.ok) {
     return err(topicMapResult.error);
@@ -183,7 +184,7 @@ const topicMapEvidenceAdmission = (
 ): ReaderSummaryTopicMapEvidenceAdmission =>
   selectionStrategy === "jev_primary_v3"
     ? { selectionStrategy,
-        admittedCandidateIds: [
+        admittedCandidateIds: evidence.dailyGenerationInput?.selected.map(entry => entry.feedItemId) ?? [
           ...(evidence.promotionV3?.top ?? []),
           ...(evidence.promotionV3?.additional ?? []),
           ...(evidence.promotionV3?.news ?? []),

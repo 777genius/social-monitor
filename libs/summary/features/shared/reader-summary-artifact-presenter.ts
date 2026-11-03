@@ -148,6 +148,7 @@ export type ReaderSummaryArtifactView = Omit<
   | "contextArtifacts"
   | "promotionAttestations"
   | "promotionEvidenceFacts"
+  | "dailyGenerationInput"
   | "content"
   | "topStories"
 > & {
@@ -206,9 +207,11 @@ export const presentReaderSummaryArtifact = (
     snapshot.promotionBoardState);
   const {
     promotionEvidenceFacts: _promotionEvidenceFacts,
+    dailyGenerationInput: _dailyGenerationInput,
     ...publicSnapshot
   } = snapshot;
   void _promotionEvidenceFacts;
+  void _dailyGenerationInput;
   const {
     periodStartedAt: _periodStartedAt,
     periodEndedAt: _periodEndedAt,

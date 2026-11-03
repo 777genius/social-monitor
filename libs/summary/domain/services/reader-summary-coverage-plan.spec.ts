@@ -1,3 +1,4 @@
+import { READER_SUMMARY_DAILY_INPUT_POLICY } from "../value-objects/reader-summary-daily-generation-input";
 import type {
   StoryCluster,
   SummaryEvidenceItem,
@@ -478,6 +479,60 @@ describe("buildReaderSummaryCoveragePlan", () => {
     ]);
 
     expect(buildReaderSummaryCoveragePlan(selection).mode).toBe("single_story");
+  });
+});
+
+describe("native likes daily input coverage", () => {
+  const withInput = (base: SummaryEvidenceSelection, ordered: readonly string[]): SummaryEvidenceSelection => ({
+    ...base,
+    dailyGenerationInput: {
+      policyVersion: READER_SUMMARY_DAILY_INPUT_POLICY,
+      manifestSha256: "a".repeat(64), periodKey: "daily:test", cutoffAt: "2026-07-10T00:00:00Z",
+      candidateCount: ordered.length, excluded: [],
+      selected: ordered.map(id => {
+        const story = base.clusters.find(item => item.id === id)!;
+        const evidence = evidenceById(base, story.representativeFeedItemId);
+        return { feedItemId: evidence.feedItemId, sourceItemId: evidence.sourceItemId,
+          assessmentId: `assessment-${id}`, interestId: evidence.interestId,
+          publishedAt: evidence.publishedAt.toISOString(), observedAt: evidence.observedAt.toISOString(),
+          sourceSnapshotSha256: "b".repeat(64),
+          inputSha256: "c".repeat(64), storyId: id, providerKey: evidence.providerKey,
+          nativeCount: 100, engagementObservedAt: "2026-07-09T12:05:00Z" };
+      }),
+    },
+  });
+
+  it.each([1, 2, 3, 4, 5, 6, 8])("uses up to six grounded topics from %i ordered same-provider events", count => {
+    const clusters = Array.from({ length: count }, (_, index) =>
+      cluster(`event-${index}`, index === 0 ? 100 : 0.01, `item-${index}`, ["reddit"]));
+    const base = buildSelection(clusters);
+    const ordered = [...clusters].reverse().map(item => item.id);
+    const plan = buildReaderSummaryCoveragePlan(withInput(base, ordered));
+    expect(plan.policyVersion).toBe(READER_SUMMARY_DAILY_INPUT_POLICY);
+    expect(plan.mode).toBe(count >= 2 ? "daily_synthesis" : "single_story");
+    expect([plan.lead!, ...plan.secondary].map(item => item.clusterId)).toEqual(ordered.slice(0, 6));
+    expect([plan.lead!, ...plan.secondary].flatMap(item => item.feedItemIds)).toEqual(
+      ordered.slice(0, 6).map(id => clusters.find(item => item.id === id)!.representativeFeedItemId));
+  });
+
+  it("excludes promoted-only evidence and ignores old semantic lead eligibility gates", () => {
+    const base = buildSelection([cluster("promoted", 100, "promoted", ["rss"]),
+      cluster("input", 0.01, "input", ["reddit"])]);
+    const selection = withInput(base, ["input"]);
+    const plan = buildReaderSummaryCoveragePlan({ ...selection, selectedEvidence:
+      selection.selectedEvidence.map(item => ({ ...item, contentQuality: {
+        ...item.contentQuality!, decision: "downrank", qualityScore: 0.01 } })) });
+    expect(plan.lead?.clusterId).toBe("input");
+    expect(plan.lead?.feedItemIds).toEqual(["input"]);
+  });
+
+  it("fails closed for missing or mismatched story evidence and appendix-only inputs", () => {
+    const base = buildSelection([cluster("input", 1, "input", ["reddit"])]);
+    const selection = withInput(base, ["input"]);
+    expect(() => buildReaderSummaryCoveragePlan({ ...selection, selectedEvidence: [] })).toThrow("bound story evidence");
+    expect(() => buildReaderSummaryCoveragePlan({ ...selection, clusters: [] })).toThrow("bound story evidence");
+    const github = withInput(buildSelection([cluster("repo", 100, "repo", ["github-trending-page"])]), ["repo"]);
+    expect(() => buildReaderSummaryCoveragePlan(github)).toThrow("bound story evidence");
   });
 });
 

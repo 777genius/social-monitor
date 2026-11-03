@@ -1,4 +1,5 @@
 import type { ReaderPromotionDiagnostics } from "../value-objects/reader-promotion-diagnostics";
+import type { ReaderSummaryDailyGenerationInput } from "../value-objects/reader-summary-daily-generation-input";
 import { immutableReaderDisplayContent } from "./reader-summary-display-immutability";
 import { immutableDisplayValue } from "../services/reader-post-display-identity";
 
@@ -100,6 +101,7 @@ export type ReaderSummaryArtifactProps = {
   readonly promotionAttestations?: readonly ReaderPostPromotionAttestationAny[];
   readonly promotionEvidenceFacts?: readonly ReaderPostPromotionInput[];
   readonly promotionDiagnostics?: ReaderPromotionDiagnostics;
+  readonly dailyGenerationInput?: ReaderSummaryDailyGenerationInput;
   /**
    * `legacy_unavailable`: persisted before promotion boards existed.
    * `rebuild_required`: the board was ranked under another
@@ -140,6 +142,7 @@ export type GeneratedReaderSummaryDraft = Omit<
   | "promotionAttestations"
   | "promotionEvidenceFacts"
   | "promotionDiagnostics"
+  | "dailyGenerationInput"
   | "promotionBoardState"
   | "contextArtifacts"
   | "personalization"
@@ -166,6 +169,7 @@ export class ReaderSummaryArtifact {
   toSnapshot(): ReaderSummaryArtifactProps {
     return {
       ...this.props,
+      ...(this.props.dailyGenerationInput === undefined ? {} : { dailyGenerationInput: structuredClone(this.props.dailyGenerationInput) }),
       ...(this.props.promotionDiagnostics === undefined ? {} : {
         promotionDiagnostics: structuredClone(this.props.promotionDiagnostics),
       }),
@@ -185,6 +189,7 @@ const withImmutablePromotionAttestations = (
   props: ReaderSummaryArtifactProps,
 ): ReaderSummaryArtifactProps => ({
   ...props,
+  ...(props.dailyGenerationInput === undefined ? {} : { dailyGenerationInput: immutableDisplayValue(props.dailyGenerationInput) }),
   ...(props.promotionDiagnostics === undefined ? {} : {
     promotionDiagnostics: immutableDisplayValue(props.promotionDiagnostics),
   }),

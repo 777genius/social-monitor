@@ -1,3 +1,4 @@
+import { READER_SUMMARY_DAILY_INPUT_POLICY } from "../value-objects/reader-summary-daily-generation-input";
 import { readerSummaryHeadlinesEquivalent } from "../value-objects/reader-summary-headline-equivalence";
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead } from "../entities/top-read";
@@ -13,6 +14,7 @@ export const groundedReaderHeadline = (params: {
   readonly topReads: readonly TopRead[];
   readonly narrativeLeadTitle?: string;
   readonly thematicSynthesisSupport?: {
+    readonly coveragePolicyVersion?: typeof READER_SUMMARY_DAILY_INPUT_POLICY;
     readonly clusterCount: number;
     readonly providerCount: number;
   };
@@ -35,7 +37,7 @@ export const groundedReaderHeadline = (params: {
   const explicitlySourceFramed = isExplicitlySourceFramedText(fallback, lead);
   const safelySupportedThematicSynthesis =
     (params.thematicSynthesisSupport?.clusterCount ?? 0) >= 2 &&
-    (params.thematicSynthesisSupport?.providerCount ?? 0) >= 2;
+    ((params.thematicSynthesisSupport?.providerCount ?? 0) >= 2 || params.thematicSynthesisSupport?.coveragePolicyVersion === READER_SUMMARY_DAILY_INPUT_POLICY);
   // A headline that restates the top-ranked read while the lead narrative
   // covers another story is off-lead: source framing must not bless it.
   const copiesOffLeadTopReadTitle =

@@ -69,7 +69,7 @@ export const workspaceSetup = (candidates: readonly Candidate[],
       });
     },
   }, presentation, new TestSupplementalEvidenceSelector([]), storyVerifier);
-  return { job, manifest, subject, readInterests };
+  return { job, manifest, subject, readInterests, assessments };
 };
 
 export const setup = (candidates: readonly Candidate[],

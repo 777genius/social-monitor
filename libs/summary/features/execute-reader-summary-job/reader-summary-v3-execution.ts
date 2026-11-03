@@ -66,7 +66,7 @@ export const buildReaderSummaryV3Evidence = async (params: {
       : "presentation_unavailable" as const;
   const failed = params.job.failTerminal({ failedAt: params.clock.now(),
     failureReason: promotion.kind === "dependency_failure"
-      ? promotion.reason : promotion.kind, terminalFailureCode: code });
+      ? promotion.reason : promotion.kind === "unsupported_daily_digest" ? `${promotion.kind}:${promotion.reason}` : promotion.kind, terminalFailureCode: code });
   if (!(await saveReaderSummaryExecutionOutcome(params.jobs, failed,
     params.claimStartedAt))) {
     return { kind: "error", error: new DomainError("operation.conflict",

@@ -53,7 +53,7 @@ export const buildApplicationV3FixturePayload = async (client: ReaderSummaryPubl
       AND s.id=f.source_item_id
     JOIN interests i ON i.tenant_id=f.tenant_id AND i.workspace_id=f.workspace_id
       AND i.id=f.interest_id WHERE f.id=$1::uuid`, [candidateId])).rows[0];
-  if (authority === undefined || authority.interest_id !== payload.interestId ||
+  if (authority === undefined || (payload.scopeType !== "workspace" && authority.interest_id !== payload.interestId) ||
       (authority.provider_key !== "rss" && authority.provider_key !== "reddit" && authority.provider_key !== "x-twitter")) {
     throw new Error("V3 fixture source authority is incomplete");
   }
@@ -168,7 +168,7 @@ export const buildApplicationV3FixturePayload = async (client: ReaderSummaryPubl
     schemaVersion: "reader_summary.artifact.v1",
     readerSummaryId: payload.readerSummaryArtifactId,
     tenantId: tenantId(payload.tenantId), workspaceId: workspaceId(payload.workspaceId),
-    scope: { type: "interest", interestId: authority.interest_id },
+    scope: payload.scopeType === "workspace" ? { type: "workspace" } : { type: "interest", interestId: authority.interest_id },
     period: { cadence: "daily", startedAt: new Date(payload.periodStartedAt),
       endedAt: new Date(payload.periodEndedAt), timezone: payload.periodTimezone,
       periodKey: payload.periodKey }, generatedAt: new Date(payload.requestedAt),

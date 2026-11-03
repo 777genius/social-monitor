@@ -1,3 +1,4 @@
+import { stableReaderSummaryPublicationJson as stableJson } from "./reader-summary-publication-json-comparison";
 import { createHash } from "node:crypto";
 import { validateReaderValueAnswers } from
   "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
@@ -19,6 +20,7 @@ import { type ReaderSummaryVisibleCandidate,
   "./prisma-reader-summary-v3-readiness";
 import { frozenEngagementMatchesAttestation, frozenPopularityMatchesAttestations } from
   "../reader-summary-promotion-engagement-guard";
+import { dailyGenerationPublicationMatches } from "./reader-summary-daily-generation-publication-guard";
 
 type JobGuardRow = {
   readonly status: string;
@@ -327,6 +329,17 @@ ReaderSummaryPublicationTransactionGuard = async (
       return reject(client, job, "config_unavailable");
     }
   }
+  if (artifact.dailyGenerationInput !== undefined) {
+    if (!workspaceManifest || job.period.cadence !== "daily") return reject(client, job, "config_unavailable");
+    if (!dailyGenerationPublicationMatches({
+      manifest: manifest as unknown as ReaderSummaryPreparationManifest,
+      manifestSha256: row.preparation_manifest_sha256!, periodKey: job.period.periodKey,
+      identity: { tenantId: job.tenantId, workspaceId: job.workspaceId, scope: job.scope },
+      snapshots: new Map(assessments.map(assessment => [assessment.id, assessment.input_snapshot])),
+      artifact,
+    })) return reject(client, job, "config_unavailable");
+  }
+
   if (!frozenPopularityMatchesAttestations({ candidates, period: job.period,
     attestations: artifact.promotionAttestations ?? [],
     assessmentFor: (candidate) => typeof candidate.assessmentId === "string"
@@ -460,15 +473,6 @@ const optionalRecord = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown> : undefined;
 
-const stableJson = (value: unknown): string => JSON.stringify(sortJson(value));
-
-const sortJson = (value: unknown): unknown => Array.isArray(value)
-  ? value.map(sortJson)
-  : value !== null && typeof value === "object"
-    ? Object.fromEntries(Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, child]) => [key, sortJson(child)]))
-    : value;
 
 const canonicalTimestamp = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;

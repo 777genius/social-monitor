@@ -135,7 +135,8 @@ export class ReaderSummaryPublicationPolicy {
         ),
       );
       const editorialQuality = evaluateReaderSummaryArtifactEditorialQuality(
-        editorialQualityInput(snapshot, coveragePlan.mode, params.evidence),
+        { ...editorialQualityInput(snapshot, coveragePlan.mode, params.evidence),
+          coveragePolicyVersion: coveragePlan.policyVersion },
       );
       for (const issue of editorialQuality.issues) {
         rejectionFindings.push({
@@ -424,6 +425,7 @@ const renderedNarrativeMarkdown = (
 const storyClusterIdsByFeedItemId = (
   snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
 ): ReadonlyMap<string, ReadonlySet<string>> => {
+  if (snapshot.dailyGenerationInput !== undefined) return new Map(snapshot.dailyGenerationInput.selected.map(entry => [entry.feedItemId, new Set([entry.storyId])]));
   const clusterIdsByFeedItemId = new Map<string, Set<string>>();
   for (const cluster of snapshot.storyClusters) {
     for (const feedItemId of [

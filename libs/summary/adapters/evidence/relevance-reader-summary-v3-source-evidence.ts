@@ -12,7 +12,7 @@ import { providerMetricFacts } from "./reader-summary-provider-evidence";
 export const evidenceItem = (
   frozen: ReaderSummaryPreparationCandidate,
   input: ReaderPostPresentationV3Input,
-  assessment: ReaderValueAssessment,
+  assessment: { readonly input: Pick<ReaderValueAssessment["input"], "interestId"> },
   seal: ReaderDisplayHeadlineSeal,
 ): SummaryEvidenceItem => ({
   readerHeadline: seal.headline,
@@ -36,7 +36,7 @@ const displayCanonicalUrl = (identity: string): string =>
 export const clusteringEvidenceItem = (
   frozen: ReaderSummaryPreparationCandidate,
   input: ReaderPostPresentationV3Input,
-  assessment: ReaderValueAssessment,
+  assessment: { readonly input: Pick<ReaderValueAssessment["input"], "interestId"> },
 ): SummaryEvidenceItem => ({
   feedItemId: frozen.candidateId, sourceItemId: frozen.sourceItemId,
   sourceBindingId: frozen.sourceBindingId, interestId: assessment.input.interestId,

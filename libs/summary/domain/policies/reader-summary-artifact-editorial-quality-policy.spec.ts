@@ -1,3 +1,4 @@
+import { READER_SUMMARY_DAILY_INPUT_POLICY } from "../value-objects/reader-summary-daily-generation-input";
 import {
   evaluateReaderSummaryArtifactEditorialQuality,
   type ReaderSummaryArtifactEditorialQualityInput,
@@ -216,6 +217,37 @@ describe("evaluateReaderSummaryArtifactEditorialQuality", () => {
 
     expect(result.qualityGates.renderedMarkdownIsWellFormed).toBe(false);
     expect(result.issues).toContain(issue);
+  });
+});
+
+describe("native likes input editorial grounding", () => {
+  const sameProvider = (): ReaderSummaryArtifactEditorialQualityInput => ({
+    ...dailySynthesis(), coveragePolicyVersion: READER_SUMMARY_DAILY_INPUT_POLICY,
+    citations: dailySynthesis().citations.map(item => ({ ...item, providerKey: "reddit" })),
+  });
+  it("accepts distinct grounded events without a provider diversity or dominance quota", () => {
+    const result = evaluateReaderSummaryArtifactEditorialQuality(sameProvider());
+    expect(result.blockingPassed).toBe(true);
+    expect(result.metrics).toMatchObject({ leadClusterCount: 2, leadProviderCount: 1, dominantProviderShare: 1 });
+    const legacy = evaluateReaderSummaryArtifactEditorialQuality({ ...sameProvider(), coveragePolicyVersion: undefined });
+    expect(legacy.qualityGates.dailySynthesisLeadHasMultipleProviders).toBe(false);
+    expect(legacy.qualityGates.mainNarrativeProviderDominanceControlled).toBe(false);
+  });
+  it("still rejects a one-event daily synthesis", () => {
+    const input = sameProvider();
+    const result = evaluateReaderSummaryArtifactEditorialQuality({ ...input,
+      narrativeSections: input.narrativeSections.map(item => item.kind === "lead" ? { ...item, citationIds: ["c1"] } : item) });
+    expect(result.blockingPassed).toBe(false);
+    expect(result.qualityGates.dailySynthesisLeadHasMultipleClusters).toBe(false);
+  });
+  it("retains citation, headline and markdown protections", () => {
+    const input = sameProvider();
+    const result = evaluateReaderSummaryArtifactEditorialQuality({ ...input,
+      headline: input.topPostTitles[0]!, renderedMarkdown: "<table>unsafe</table>",
+      narrativeSections: [...input.narrativeSections, section({ kind: "secondary_signal", citationIds: ["missing"] })] });
+    expect(result.blockingPassed).toBe(false);
+    expect(result.qualityGates).toMatchObject({ narrativeCitationsResolve: false,
+      headlineIsNotCopiedFromTopPost: false, renderedMarkdownIsWellFormed: false });
   });
 });
 

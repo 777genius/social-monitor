@@ -1,3 +1,4 @@
+import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
 import {
   buildReaderSummary,
   primaryReaderSummaryEvidence,
@@ -154,7 +155,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = this.buildRoute();
+    const route = { ...this.buildRoute(), ...(input.evidence.dailyGenerationInput === undefined ? {} : { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
     const estimate = this.estimate(input, route);
 
     if (
@@ -214,6 +215,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     // Two attempts at most: the repair runs once, for either cause.
     for (const attempt of readerSummaryNarrativeAttempts) {
       const command = this.buildTaskCommand(input, selectedRoute, attempt, schemaViolations);
+      const dailyGenerationReceipt = readerSummaryDailyInputReceipt(command.prompt, input.evidence.dailyGenerationInput);
       const result = await this.client.runTask(command);
       const attemptUsage = usageFromAgentRuntime(
         result.usage,
@@ -249,7 +251,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           sink: this.verifiedAttestationSink,
         });
 
-        return { route: selectedRoute, draft };
+        return { route: selectedRoute, draft, ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }) };
       } catch (error) {
         if (attempt === "primary" && isRepairableNarrativeError(error)) {
           continue;

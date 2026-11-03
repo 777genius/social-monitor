@@ -1,3 +1,4 @@
+import { READER_SUMMARY_DAILY_INPUT_POLICY } from "../value-objects/reader-summary-daily-generation-input";
 import { readerSummaryHeadlinesEquivalent } from "../value-objects/reader-summary-headline-equivalence";
 import type { ReaderSummaryNarrativeSectionKind } from "../entities/reader-summary-narrative-section";
 import type { ReaderSummaryCoverageMode } from "../value-objects/reader-summary-coverage-mode";
@@ -21,6 +22,7 @@ export type ReaderSummaryEditorialNarrativeSection = {
 export type ReaderSummaryArtifactEditorialQualityInput = {
   readonly headline: string;
   readonly coverageMode: ReaderSummaryCoverageMode;
+  readonly coveragePolicyVersion?: typeof READER_SUMMARY_DAILY_INPUT_POLICY;
   readonly topPostTitles: readonly string[];
   readonly citations: readonly ReaderSummaryEditorialCitationSupport[];
   readonly narrativeSections: readonly ReaderSummaryEditorialNarrativeSection[];
@@ -121,6 +123,7 @@ export const evaluateReaderSummaryArtifactEditorialQuality = (
   );
   const markdownIssues = malformedMarkdownIssues(input.renderedMarkdown);
   const dailySynthesis = input.coverageMode === "daily_synthesis";
+  const dailyInputPolicy = input.coveragePolicyVersion === READER_SUMMARY_DAILY_INPUT_POLICY;
   const singleStoryLeadIsHonestlyClusterBound =
     input.coverageMode !== "single_story" ||
     (lead?.storyClusterId !== undefined &&
@@ -132,7 +135,7 @@ export const evaluateReaderSummaryArtifactEditorialQuality = (
     dailySynthesisLeadHasMultipleClusters:
       !dailySynthesis || leadClusterIds.length >= 2,
     dailySynthesisLeadHasMultipleProviders:
-      !dailySynthesis || leadProviderKeys.length >= 2,
+      !dailySynthesis || dailyInputPolicy || leadProviderKeys.length >= 2,
     secondarySignalsUseUniqueClusters:
       secondaryClusterIds.length === secondarySignals.length &&
       new Set(secondaryClusterIds).size === secondaryClusterIds.length,
@@ -143,7 +146,7 @@ export const evaluateReaderSummaryArtifactEditorialQuality = (
     ),
     headlineIsNotCopiedFromTopPost: !copiedHeadline,
     mainNarrativeProviderDominanceControlled:
-      !dailySynthesis || dominantProviderShare <= maximumDominantProviderShare,
+      !dailySynthesis || dailyInputPolicy || dominantProviderShare <= maximumDominantProviderShare,
     singleStoryLeadIsHonestlyClusterBound,
     renderedMarkdownIsWellFormed: markdownIssues.length === 0,
   };

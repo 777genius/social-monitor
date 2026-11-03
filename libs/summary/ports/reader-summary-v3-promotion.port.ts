@@ -9,6 +9,7 @@ export type ReaderSummaryV3PromotionOutcome =
   | { readonly kind: "no_signal" }
   | { readonly kind: "presentation_unavailable" }
   | { readonly kind: "budget_exhausted" }
+  | { readonly kind: "unsupported_daily_digest"; readonly reason: "no_promotion_board" | "no_context" }
   /**
    * The frozen manifest predates a field the current policy needs
    * (`engagementObservedAt`). It can never be ranked; only a new job with a

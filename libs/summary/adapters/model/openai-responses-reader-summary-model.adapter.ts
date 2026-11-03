@@ -1,3 +1,5 @@
+export { resolveOpenAiResponsesReaderSummaryModelOptions } from "./openai-responses-reader-summary-options";
+import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
 import type {
   ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
@@ -25,11 +27,6 @@ import {
   resolveOpenAiReaderSummaryUsage,
 } from "./openai-responses-reader-summary-model-support";
 import {
-  openAiApiKeySourceDescription,
-  resolveOpenAiApiKey,
-} from "./openai-api-key-source";
-import {
-  assertNoReaderSummaryPromptReleaseOverride,
   buildOpenAiReaderSummaryInstructions,
   buildOpenAiReaderSummaryPromptPayload,
   currentReaderSummaryPromptRelease,
@@ -110,7 +107,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = this.buildRoute();
+    const route = { ...this.buildRoute(), ...(input.evidence.dailyGenerationInput === undefined ? {} : { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
     const estimate = this.estimate(input, route);
 
     if (
@@ -178,12 +175,14 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
       });
     }
 
+    const prompt = buildOpenAiReaderSummaryPromptPayload(input);
+    const dailyGenerationReceipt = readerSummaryDailyInputReceipt(prompt, input.evidence.dailyGenerationInput);
     const responseJson = await this.createResponse({
       model: selectedRoute.model,
       store: false,
       max_output_tokens: this.maxOutputTokens,
       instructions: buildOpenAiReaderSummaryInstructions(input),
-      input: buildOpenAiReaderSummaryPromptPayload(input),
+      input: prompt,
       text: {
         format: {
           type: "json_schema",
@@ -220,6 +219,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     return {
       route: selectedRoute,
       draft,
+      ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }),
     };
   }
 
@@ -409,48 +409,6 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
   }
 }
 
-export const resolveOpenAiResponsesReaderSummaryModelOptions = (
-  env: NodeJS.ProcessEnv,
-  params: { readonly requireApiKey: boolean },
-): OpenAiResponsesReaderSummaryModelAdapterOptions => {
-  assertNoReaderSummaryPromptReleaseOverride({
-    environmentName: "OPENAI_READER_SUMMARY_PROMPT_VERSION",
-    value: env.OPENAI_READER_SUMMARY_PROMPT_VERSION,
-  });
-  const apiKey = resolveOpenAiApiKey(env);
-
-  if (params.requireApiKey && apiKey.length === 0) {
-    throw new Error(
-      `READER_SUMMARY_MODEL_PROVIDER=openai-responses requires ${openAiApiKeySourceDescription}`,
-    );
-  }
-
-  return {
-    apiKey,
-    endpointUrl: env.OPENAI_RESPONSES_ENDPOINT_URL,
-    model:
-      env.OPENAI_READER_SUMMARY_MODEL ??
-      env.OPENAI_READER_SUMMARY_MODEL ??
-      env.OPENAI_SUMMARY_MODEL,
-    evalDatasetVersion:
-      env.READER_SUMMARY_EVAL_DATASET_VERSION ??
-      env.READER_SUMMARY_EVAL_DATASET_VERSION,
-    timeoutMs: parsePositiveInteger(
-      env.OPENAI_READER_SUMMARY_TIMEOUT_MS ??
-        env.OPENAI_READER_SUMMARY_TIMEOUT_MS,
-    ),
-    maxOutputTokens: parsePositiveInteger(
-      env.OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS ??
-        env.OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS,
-    ),
-    estimatedInputCostUsdPerMillionTokens: parseNonNegativeNumber(
-      env.OPENAI_SUMMARY_INPUT_COST_USD_PER_MILLION_TOKENS,
-    ),
-    estimatedOutputCostUsdPerMillionTokens: parseNonNegativeNumber(
-      env.OPENAI_SUMMARY_OUTPUT_COST_USD_PER_MILLION_TOKENS,
-    ),
-  };
-};
 
 class ReaderSummaryModelProviderError extends Error {
   constructor(readonly failure: ReaderSummaryModelFailure) {
@@ -481,17 +439,3 @@ const nonNegativeNumberOrFallback = (
   typeof value === "number" && Number.isFinite(value) && value >= 0
     ? value
     : fallback;
-
-const parsePositiveInteger = (
-  value: string | undefined,
-): number | undefined => {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-};
-
-const parseNonNegativeNumber = (
-  value: string | undefined,
-): number | undefined => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
-};

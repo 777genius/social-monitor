@@ -155,6 +155,8 @@ export const normalizeOpenAiReaderSummaryDraft = (
     selectedEvidence: input.evidence.selectedEvidence,
     editorialSlate: input.evidence.editorialSlate,
     promotionV3: input.evidence.promotionV3,
+    dailyGenerationInput: input.evidence.dailyGenerationInput,
+    dailyGenerationEvidence: input.evidence.dailyGenerationEvidence,
     qualityFlags: normalizedQualityFlags,
     noSignalReason,
   });

@@ -1,5 +1,6 @@
 import { normalizeReaderSummaryUsage } from "./prisma-reader-summary-usage";
 import { readReaderPromotionDiagnostics } from "../../../domain/value-objects/reader-promotion-diagnostics";
+import { readReaderSummaryDailyGenerationInput } from "../../../domain/value-objects/reader-summary-daily-generation-input";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
@@ -120,6 +121,9 @@ export const normalizeReaderSummaryArtifactPayload = (
         ? fallback.createdAt
         : requireDate(value.generatedAt, "Reader summary generation date"),
     sourceWindow: normalizeReaderSummarySourceWindow(value.sourceWindow),
+    ...(Object.hasOwn(value, "dailyGenerationInput") ? {
+      dailyGenerationInput: requireDailyGenerationInput(value.dailyGenerationInput),
+    } : {}),
     storyClusters: requireArray<SerializedReaderSummaryStoryCluster>(
       value.storyClusters,
       "Reader summary story clusters",
@@ -467,4 +471,10 @@ const normalizeReaderSummaryLineage = (
     ...lineage,
     schemaVersion: "reader_summary.artifact.v1",
   };
+};
+
+const requireDailyGenerationInput = (value: unknown) => {
+  const parsed = readReaderSummaryDailyGenerationInput(value);
+  if (parsed === undefined) throw new Error("Persisted daily generation input is invalid");
+  return parsed;
 };

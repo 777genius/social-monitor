@@ -44,6 +44,7 @@ import { planWorkspacePresentationSlate } from
 import { verifiedPromotionNewsPairs } from "./relevance-reader-summary-v3-news-relations";
 import { readerPostPromotionEngagementFact } from
   "./reader-post-promotion-engagement-facts";
+import { dailyReaderSummaryGenerationEvidence } from "./reader-summary-daily-generation-evidence";
 
 /** Headline verification budget; sized with READER_PROMOTION_LIMITS. */
 export const maxPresentationCandidates = READER_PROMOTION_PRESENTATION_BUDGET;
@@ -406,7 +407,19 @@ implements ReaderSummaryV3PromotionPort {
       selection = Object.freeze({ ...selection, presentationCoverageLimited: true });
     }
     selection = { ...selection, diagnostics: readerPromotionDiagnostics(completed, selection, attempted) };
+    const daily = job.selectionStrategy === "jev_primary_v3" && job.period.cadence === "daily" && params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2"
+      ? dailyReaderSummaryGenerationEvidence({ manifest: params.manifest,
+          manifestSha256: job.preparationManifestSha256!, periodKey: job.period.periodKey,
+          identity: { tenantId: job.tenantId, workspaceId: job.workspaceId, scope: job.scope },
+          snapshots: new Map([...assessmentById].map(([id, assessment]) => [id, assessment.input.snapshot])) })
+      : undefined;
+    if (daily !== undefined && daily.proof.selected.length === 0 && selection.outcome === "ready") {
+      return { kind: "unsupported_daily_digest", reason: "no_context" };
+    }
     if (selection.outcome !== "ready") {
+      if (daily !== undefined && daily.proof.selected.length > 0) {
+        return { kind: "unsupported_daily_digest", reason: "no_promotion_board" };
+      }
       if (selection.outcome !== "no_signal" || supplementalEvidence.length === 0) {
         return { kind: selection.outcome };
       }
@@ -434,7 +447,18 @@ implements ReaderSummaryV3PromotionPort {
     const value = v3EvidenceSelection({ jobId: job.id, period: job.period,
       cutoffAt: params.manifest.cutoffAt, clusters,
       primaryEvidence: selectedOrdered, supplementalEvidence, selection });
-    return { kind: "ready", evidence: value };
+    if (daily === undefined) return { kind: "ready", evidence: value };
+    const evidenceById = new Map(value.selectedEvidence.map(item => [item.feedItemId, item]));
+    // Model inputs come first in exactly their frozen Likes order; sealed
+    // cards and GitHub remain backend-only citation/presentation authority.
+    const union = [...daily.selectedEvidence.map(item => evidenceById.get(item.feedItemId) ?? item),
+      ...value.selectedEvidence.filter(item => !daily.proof.selected.some(entry => entry.feedItemId === item.feedItemId))];
+    const existingClusters = new Set(value.clusters.map(cluster => cluster.id));
+    return { kind: "ready", evidence: { ...value, dailyGenerationInput: daily.proof,
+      dailyGenerationEvidence: daily.selectedEvidence,
+      selectedEvidence: union,
+      clusters: [...value.clusters, ...daily.clusters.filter(cluster => !existingClusters.has(cluster.id))],
+      sourceWindow: { ...value.sourceWindow, selectedFeedItemIds: union.map(item => item.feedItemId) } } };
   }
 }
 
