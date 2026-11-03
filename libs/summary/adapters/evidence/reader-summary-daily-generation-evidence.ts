@@ -90,7 +90,7 @@ const validRetainedQuote = (quote: NonNullable<ReaderValueSourceSnapshot["quoted
 /** Prevent source-authored lines from impersonating our platform-owned attribution markers.
  * Ordinary frozen source text is untouched, preserving old daily receipts. */
 const escapeAttributionMarkers = (body: string): string =>
-  body.replace(/^([ \\t]*)(Authored post:|Captured quoted post by )/gmu,
+  body.replace(/^([ \t]*)(Authored post:|Captured quoted post by )/gmu,
     (_line, indent: string, marker: string) => `${indent}[source text] ${marker}`);
 
 const dailySourceText = (snapshot: ReaderValueSourceSnapshot, cutoff: string): string => {
