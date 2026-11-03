@@ -160,7 +160,10 @@ export const runtimeProvenanceFromExecutorAttestations = (
   if (new Set(taskAttempts).size !== taskAttempts.length) {
     violations.push("execution attestations contain duplicate task attempts");
   }
-  const topicRecords = records.filter((value) => value.taskRole !== "summary");
+  const editors = records.filter((value) => value.taskRole === "daily_editor");
+  if (editors.length > 1) violations.push("daily editorial attestation must be unique");
+  const topicRecords = records.filter((value) =>
+    value.taskRole !== "summary" && value.taskRole !== "daily_editor");
   const identities = new Set(
     topicRecords.map((value) =>
       [
@@ -175,6 +178,13 @@ export const runtimeProvenanceFromExecutorAttestations = (
   );
   const summaryIdentity = summaries[0]?.attestation;
   const topicIdentity = topicLabels[0]?.attestation;
+  const editorIdentity = editors[0]?.attestation;
+  if (editorIdentity && summaryIdentity && [
+    "provider", "model", "reasoningEffort", "runtimeEngine", "runtimePackageVersion", "launcherSha256",
+  ].some(key => editorIdentity[key as keyof typeof editorIdentity] !==
+    summaryIdentity[key as keyof typeof summaryIdentity])) {
+    violations.push("daily editorial task does not match writer runtime identity");
+  }
   if (identities.size !== 1 ||
     (summaryIdentity?.model === "mimo-v2.6-pro" &&
       topicRecords.some((value) =>
