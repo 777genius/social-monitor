@@ -1,4 +1,5 @@
 import { readerSummaryScopeKey, validateDailyEditorialPlan } from "../../domain";
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand,
   ReaderSummaryDailyEditorialAttempt, ReaderSummaryModelInput } from "../../ports";
 import { buildAgentRuntimeRequestId, readAgentRuntimeObjectOutput,
@@ -54,6 +55,6 @@ export async function runAgentRuntimeDailyEditor(params: {
       outputTokens: 3_000, estimatedCostUsd: 0,
     }),
     editorRequestSha256: dailyEditorialSha256(prompt),
-    editorOutputSha256: dailyEditorialSha256(JSON.stringify(plan)),
+    editorOutputSha256: canonicalJsonSha256(plan),
   };
 }
