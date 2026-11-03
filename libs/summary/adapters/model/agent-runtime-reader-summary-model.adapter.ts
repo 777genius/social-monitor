@@ -229,6 +229,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       outputSchema: dailyEditorialOutputSchema,
       controls: { ...baseCommand.controls,
         outputSchemaName: "social_monitor_daily_editorial_plan",
+        schemaVersion: "reader_summary.daily_editorial.v1",
         maxOutputTokens: Math.min(this.maxOutputTokens, 3_000) },
       metadata: { ...baseCommand.metadata, promptVersion: "reader_summary.daily_editorial.v1" },
     };
