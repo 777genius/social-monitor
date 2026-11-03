@@ -130,7 +130,9 @@ export class RecoverableReaderSummaryPublication
   async publish(
     command: ReaderSummaryPublicationCommand,
   ): Promise<ReaderSummaryPublicationOutcome> {
-    this.recovery.prepare(command, this.attestations());
+    const attestations = this.attestations();
+    assertAttestedDailyEditorialPublication(command, attestations);
+    this.recovery.prepare(command, attestations);
     return this.delegate.publish(command);
   }
 }
@@ -159,14 +161,9 @@ export const createRecoverableReaderSummaryPublication = (input: {
   );
   return Object.freeze({
     recovery,
-    publication: {
-      async publish(command) {
-        const attestations = input.attestations();
-        assertAttestedDailyEditorialPublication(command, attestations);
-        recovery.prepare(command, attestations);
-        return input.delegate.publish(command);
-      },
-    },
+    publication: new RecoverableReaderSummaryPublication(
+      input.delegate, recovery, input.attestations,
+    ),
   });
 };
 
