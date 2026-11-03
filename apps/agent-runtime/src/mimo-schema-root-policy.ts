@@ -22,7 +22,7 @@ export const assertMimoSchemaRoot = (
     !properties || Array.isArray(properties) || !Array.isArray(required) ||
     required.length !== expected?.length ||
     expected.some((key) => !required.includes(key) || !Object.hasOwn(properties, key)) ||
-    firstSchema?.type !== (first === "headline" ? "string" : "array")) {
+    firstSchema?.type !== (first === "headline" || first === "version" ? "string" : "array")) {
     throw new Error("outputSchema conflicts with MiMo purpose policy");
   }
 };
