@@ -138,10 +138,12 @@ export const runtimeProvenanceFromExecutorAttestations = (
       (editors.length === 1 && summaries.length === 1 &&
         [editors[0]!.attestation.provider, editors[0]!.attestation.model,
           editors[0]!.attestation.reasoningEffort, editors[0]!.attestation.runtimeEngine,
-          editors[0]!.attestation.runtimePackageVersion].join("\u0000") !==
+          editors[0]!.attestation.runtimePackageVersion,
+          editors[0]!.attestation.launcherSha256].join("\u0000") !==
         [summaries[0]!.attestation.provider, summaries[0]!.attestation.model,
           summaries[0]!.attestation.reasoningEffort, summaries[0]!.attestation.runtimeEngine,
-          summaries[0]!.attestation.runtimePackageVersion].join("\u0000"))) {
+          summaries[0]!.attestation.runtimePackageVersion,
+          summaries[0]!.attestation.launcherSha256].join("\u0000"))) {
     violations.push("daily editor must share the summary runtime identity");
   }
   if (summaries.length !== 1) {
