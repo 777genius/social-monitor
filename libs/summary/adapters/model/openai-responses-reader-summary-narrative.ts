@@ -519,8 +519,8 @@ const normalizeDailyEditorialNarrative = (params: {
     const anchor = byFeed.get(topic.feedItemIds[0]!);
     const expectedKind = index === 0 ? "lead" : "secondary_signal";
     const citations = item?.citationIds;
-    if (item === null || item?.kind !== expectedKind ||
-        item.storyClusterId !== anchor?.storyId ||
+    if (anchor === undefined || item === null || item?.kind !== expectedKind ||
+        item.storyClusterId !== anchor.storyId ||
         !Array.isArray(citations) || citations.length < 1 || citations.length > 3 ||
         citations.some(id => typeof id !== "string" ||
           !topic.feedItemIds.includes(byCitation.get(id)?.feedItemId ?? ""))) {
