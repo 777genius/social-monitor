@@ -1,5 +1,9 @@
 export { resolveOpenAiResponsesReaderSummaryModelOptions } from "./openai-responses-reader-summary-options";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
+import { buildReaderSummaryDailyEditorPayload, dailyEditorInstructions, dailyEditorJsonSchema,
+  parseReaderSummaryDailyEditorOutput, dailyEditorReceipt, dailyWriterPlanSha256 } from "./reader-summary-daily-editor";
+import { dailyEditorialWriterJsonSchema } from "./reader-summary-daily-writer-schema";
+import { READER_SUMMARY_DAILY_EDITORIAL_PROMPT_VERSION } from "../../domain";
 import type {
   ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
@@ -8,6 +12,7 @@ import type {
   ReaderSummaryModelPolicy,
   ReaderSummaryModelPort,
   ReaderSummaryModelRoute,
+  ReaderSummaryDailyEditorialAttempt,
   ReaderSummaryModelValidationResult,
   ProviderReaderSummaryAttempt,
 } from "../../ports";
@@ -107,7 +112,10 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = { ...this.buildRoute(), ...(input.evidence.dailyGenerationInput === undefined ? {} : { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
+    const route = { ...this.buildRoute(), ...(input.dailyEditorialPlan !== undefined
+      ? { promptVersion: READER_SUMMARY_DAILY_EDITORIAL_PROMPT_VERSION }
+      : input.evidence.dailyGenerationInput === undefined ? {} :
+        { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
     const estimate = this.estimate(input, route);
 
     if (
@@ -156,6 +164,39 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     };
   }
 
+  async planDaily(
+    input: ReaderSummaryModelInput,
+    _selectedRoute: ReaderSummaryModelRoute,
+  ): Promise<ReaderSummaryDailyEditorialAttempt> {
+    if (input.evidence.dailyGenerationInput === undefined) {
+      throw new Error("Daily editorial planning requires frozen daily evidence");
+    }
+    if (this.apiKey.length === 0) {
+      throw new Error("Daily editorial model provider requires OPENAI_API_KEY");
+    }
+    const prompt = buildReaderSummaryDailyEditorPayload(input.evidence);
+    const response = await this.createResponse({
+      model: this.model, store: false,
+      max_output_tokens: Math.min(this.maxOutputTokens, 3_000),
+      instructions: dailyEditorInstructions,
+      input: prompt,
+      text: { format: { type: "json_schema",
+        name: "social_monitor_reader_summary_daily_editor",
+        strict: true, schema: dailyEditorJsonSchema } },
+    });
+    const output = extractOpenAiOutputText(response);
+    if (output === undefined) throw new Error("Daily editorial provider returned no output");
+    const plan = parseReaderSummaryDailyEditorOutput(parseOpenAiReaderSummaryJsonObject(output), input.evidence);
+    return { plan, receipt: dailyEditorReceipt(prompt, plan),
+      usage: resolveOpenAiReaderSummaryUsage(response, {
+        inputTokens: Math.ceil(prompt.length / this.inputTokenDivisor),
+        outputTokens: Math.min(this.maxOutputTokens, 3_000),
+        estimatedCostUsd: (Math.ceil(prompt.length / this.inputTokenDivisor) *
+          this.estimatedInputCostUsdPerMillionTokens + Math.min(this.maxOutputTokens, 3_000) *
+          this.estimatedOutputCostUsdPerMillionTokens) / 1_000_000,
+      }) };
+  }
+
   async generate(
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
@@ -186,9 +227,10 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
       text: {
         format: {
           type: "json_schema",
-          name: "social_monitor_reader_summary_artifact",
+          name: input.dailyEditorialPlan === undefined ?
+            "social_monitor_reader_summary_artifact" : "social_monitor_reader_summary_daily_editorial_article",
           strict: true,
-          schema: openAiReaderSummaryJsonSchema,
+          schema: input.dailyEditorialPlan === undefined ? openAiReaderSummaryJsonSchema : dailyEditorialWriterJsonSchema,
         },
       },
     });
@@ -220,6 +262,8 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
       route: selectedRoute,
       draft,
       ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }),
+      ...(input.dailyEditorialPlan === undefined ? {} :
+        { dailyEditorialWriterPlanSha256: dailyWriterPlanSha256(prompt) }),
     };
   }
 
