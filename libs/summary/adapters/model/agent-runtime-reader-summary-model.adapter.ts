@@ -37,7 +37,7 @@ import {
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-response-parser";
-import { openAiReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
+import { openAiReaderSummaryJsonSchema, dailyEditorialReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
 import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
 import {
   verifyAndRecordReaderSummaryExecution,
@@ -337,8 +337,10 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     schemaViolations?: readonly string[],
   ): AgentRuntimeTaskCommand {
     const isRepair = attempt === "repair";
+    const selectedSchema = input.dailyEditorialPlan === undefined
+      ? openAiReaderSummaryJsonSchema : dailyEditorialReaderSummaryJsonSchema;
     const hardLimits = isGatewayReaderSummaryBackend(this.modelBackend)
-      ? `\n${readerSummaryGatewayHardLimits}` : "";
+      ? `\n${gatewayOutputHardLimits(selectedSchema)}` : "";
     const repairInstruction = !isRepair ? ""
       : `\n${schemaViolations === undefined ? narrativeRepairInstruction : schemaRepairInstruction(schemaViolations)}`;
     return {
@@ -369,7 +371,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           : activeReaderSummaryPurposes.generate,
       systemPrompt: `${buildOpenAiReaderSummaryInstructions(input)}${hardLimits}${repairInstruction}`,
       prompt: buildOpenAiReaderSummaryPromptPayload(input),
-      outputSchema: openAiReaderSummaryJsonSchema,
+      outputSchema: selectedSchema,
       controls: {
         interactive: false,
         outputSchemaName: "social_monitor_reader_summary_artifact",
@@ -494,7 +496,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 const narrativeRepairInstruction =
   "Repair the complete JSON response. Every narrativeSections item must use the non-empty string fields title and text, never summary, body or description. If coveragePlan.lead is null, return empty topStories and narrativeSections plus a concrete noSignalReason. For single_story, narrativeSections[0] must have kind lead and cite coveragePlan.lead. For daily_synthesis, it must have kind lead, set storyClusterId to null, and cite both coveragePlan.lead and at least one coveragePlan.secondary cluster. Return exactly one secondary_signal for every coveragePlan.secondary entry. Omit any watch that is not self-contained and backed by high engagement, first-party authority or cross-provider support. Do not change facts or invent citations.";
 
-const readerSummaryGatewayHardLimits = gatewayOutputHardLimits(openAiReaderSummaryJsonSchema);
 
 const schemaRepairInstruction = (violations: readonly string[]): string =>
   `Your previous response was rejected by the output schema at: ${violations.join("; ")}. Each entry is path:rule, with the limit after = (maxLength in characters, maxItems in items). Regenerate the complete JSON response from the same evidence. Rewrite every listed field as complete, shorter text inside its limit; never cut a sentence or word, and keep every other field inside the hard limits. Do not change facts or invent citations.`;
