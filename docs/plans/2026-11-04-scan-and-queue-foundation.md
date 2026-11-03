@@ -290,7 +290,7 @@ the two escapes are closed without changing the readiness inventory.
 | Full backend E2E | All 77 suites / 150 tests pass. |
 | Runtime profile guards | Existing selector and durable-profile checks pass. |
 | Additional transport smoke flows | Delivery drain, summary drain, summary-ready event drain, summary-ready projection and RabbitMQ publisher pass. |
-| Shutdown/persistence lifecycle contract | Updated structural contract suite passes all 78 tests; independently reviewed. |
+| Shutdown/persistence lifecycle contracts | Both updated structural contract suites pass all 85 tests; independently reviewed. |
 
 The new E2E regression was also run on an isolated checkout of the original
 `e544229` baseline. It fails at the first backpressure boundary: the queue contains
@@ -307,11 +307,12 @@ baseline and refactored evidence are byte-for-byte identical; the documented
 update changes only nineteen identity strings. Its fixed timestamp, fixture-only
 provenance, counts, statuses, metrics and content are unchanged.
 
-The full unit corpus exposed one stale structural lifecycle assertion requiring
-literal direct `delivery.nack` calls. It now asserts the shared batch construction,
-requeue, waiting for the active tick and final unsettled release. The existing
-Nest phase, backpressure and database shutdown requirements remain intact. An
-independent reviewer verified this correction without requesting a runtime change.
+The full unit corpus exposed stale assertions in two structural lifecycle suites
+requiring literal direct `delivery.nack` calls and the old handler-error variable.
+They now assert the shared batch construction/requeue, waiting for the active tick
+and final unsettled release. The existing Nest phase, backpressure, error
+classification, redaction and database shutdown requirements remain intact. An
+independent reviewer verified these corrections without requesting a runtime change.
 
 ### Remaining baseline fixture debt and validation limits
 

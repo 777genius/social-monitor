@@ -391,8 +391,8 @@ describe('hostile PostgreSQL pool budget review', () => {
     expect(worker).toContain(
       'worker drain threshold exceeded; continuing to wait before resource shutdown',
     );
-    expect(queueLoop).toContain("error.code === 'operation.backpressure'");
-    expect(queueLoop).toContain('delivery.nack({ requeue: true })');
+    expect(queueLoop).toContain("handlerError.code === 'operation.backpressure'");
+    expect(queueLoop).toContain('await batch.nack(delivery, { requeue: true })');
     expect(worker).toContain('postgres.too_many_connections');
     expect(worker).toContain("['code', 'sqlState', 'sqlstate', 'originalCode']");
     expect(worker).toContain('redactSensitiveText');
