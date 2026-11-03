@@ -445,6 +445,17 @@ export class ExecuteReaderSummaryJobUseCase {
     }
     const route = this.readerSummaryModel.route(writerInput, defaultModelPolicy, remainingBudget);
     const attempt = await this.readerSummaryModel.generate(writerInput, route);
+    if (editorUsage !== undefined) {
+      const estimate = this.readerSummaryModel.estimate(writerInput, route);
+      const writerInputTokens = attempt.draft.usage.inputTokens ?? estimate.inputTokens;
+      const writerOutputTokens = attempt.draft.usage.outputTokens ?? estimate.outputTokens;
+      if (editorUsage.inputTokens + editorUsage.outputTokens + writerInputTokens + writerOutputTokens >
+            defaultModelBudget.remainingTokens ||
+          editorUsage.estimatedCostUsd + attempt.draft.usage.estimatedCostUsd >
+            defaultModelBudget.remainingCostUsd) {
+        return err(this.readerSummaryModel.classifyError(new Error("Daily editorial total model budget exceeded")));
+      }
+    }
     let dailyEditorialProof: ReaderSummaryDailyEditorialProof | undefined;
     if (writerInput.dailyEditorialPlan !== undefined) {
       const frozen = modelEvidence.dailyGenerationInput!;
