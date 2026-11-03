@@ -85,6 +85,7 @@ type ValidAttestationRecord = {
 export const runtimeProvenanceFromExecutorAttestations = (
   evidence: Record<string, unknown>,
   violations: string[],
+  requireDailyEditor = false,
 ): ProductionDayRuntimeProvenance | null => {
   const result = record(evidence.result);
   const selected = result?.selectedFeedItemCount;
@@ -133,7 +134,7 @@ export const runtimeProvenanceFromExecutorAttestations = (
     (value) => value.taskRole === "topic_label",
   );
   const editors = records.filter(value => value.taskRole === "daily_editor");
-  if (editors.length > 1 ||
+  if (editors.length !== (requireDailyEditor ? 1 : 0) ||
       (editors.length === 1 && summaries.length === 1 &&
         [editors[0]!.attestation.provider, editors[0]!.attestation.model,
           editors[0]!.attestation.reasoningEffort, editors[0]!.attestation.runtimeEngine,
