@@ -9,7 +9,11 @@ describe('RabbitMQ command acquisition and recovery', () => {
     const malformed = { ...queueMessageFixture(), content: Buffer.from('{') };
     const wrong = { ...queueMessageFixture(), content: Buffer.from(JSON.stringify({ ...queueCommandFixture(), commandType: 'other' })) };
     const valid = queueMessageFixture('valid');
-    valid.properties.headers = { 'x-death': [{ count: 2, reason: 'rejected', queue: 'synthetic' }] };
+    valid.properties.headers = { 'x-death': [{
+      count: 2, reason: 'rejected', queue: 'synthetic',
+      time: { '!': 'timestamp', value: 1_700_000_000 },
+      exchange: 'synthetic', 'routing-keys': ['synthetic.execute'],
+    }] };
     const f = queueReaderFixture([malformed, wrong, valid]);
     const reader = new RabbitMqQueueCommandReader(f.channel, options);
     expect(await reader.drain({ ...request, limit: 2 })).toEqual([]);

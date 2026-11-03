@@ -199,6 +199,18 @@ remain separate designs; neither is silently folded into this refactor.
 5. Keep the existing npm gate name and CI invocation. New executable source is
    TypeScript; no new handwritten `.mjs`/`.mts` implementation files.
 
+The inventory identifies known business-state roles by class name; it does not
+infer whether every implementation needs durable storage. Recognized roles include
+repositories, queues, ledgers, read models, shared state, publication state and
+projection stores. Metric observations, configured provider registries and
+delegates without separate state are excluded. The existing module-root globs
+remain `libs/*/interfaces/rest/*.module.ts` and `apps/*/src/*.module.ts`.
+The delivery-provider factory helper and its simulated delivery provider remain
+outside this bounded inventory. Their existing risk is declared separately in the
+delivery contract, which requires HTTP webhook delivery and webhook-only beta
+channels. This gate does not claim complete discovery of arbitrary wiring or
+every class with mutable process-local data.
+
 ## Verification and evidence
 
 Use the smallest set that proves the changed contracts, reusing existing broad
@@ -274,13 +286,29 @@ default declarations and recognizes namespace re-exports as runtime wiring.
 Round 2 independently reviewed those exact corrections and reran all 15 fixtures;
 the two escapes are closed without changing the readiness inventory.
 
+A subsequent bounded audit of the external security review confirmed five
+preexisting name-classifier omissions inside the already discovered composition:
+the scan execution-attempt read model, interest-creation shared state, reader-summary
+publication, and the two summary-ready projection stores. Five parameterized
+fixtures failed before extending the known roles with `ReadModel`, `State`,
+`Publication` and `ProjectionStore`; the existing fixtures and a transient/delegate
+exclusion case passed. The actual gate then reported exactly those five missing
+declarations and the delivery application provider source. Explicit declarations
+were added under the existing monitoring, summary and delivery owners. Shared
+interest-creation state is backing storage for already inventoried repositories,
+outbox and idempotency records, not an additional independent store. No root or
+helper traversal was broadened, and no deployed data-loss claim follows from these
+local-mode registrations. The repository gate and all 21 fixtures now pass.
+Independent review verified the five state owners, exclusions and unchanged
+boundaries, reran all 21 fixtures, and found no material issue.
+
 ### Verified checkpoint
 
 | Check | Result |
 | --- | --- |
 | All monitoring suites | 272 tests in 57 suites pass, including all monitoring integration specs; existing 59 baseline scenarios retained. |
 | All queue/worker suites | 140 tests in 26 suites pass across platform queue, the three worker apps and queue integration specs, including failure cleanup across all five loops. |
-| Readiness inventory | Actual repository check and 15 regression fixtures pass. |
+| Readiness inventory | Actual repository check and 21 regression fixtures pass. |
 | Architecture | Boundaries and all 28 architecture fixtures pass. |
 | TypeScript and build | Whole-project no-emit typecheck and production build pass. |
 | Lint and quality | Whole-repository ESLint, code-quality guardrails and source line cap pass. |
@@ -321,6 +349,13 @@ expected array entry were deleted. The exact dependency array still requires
 actual Nest module compilation remain verified. Independent review and the entire
 monitoring test corpus pass after this correction.
 
+The full static test-type check additionally required a complete typed RabbitMQ
+`x-death` fixture and a `Promise<void>` acknowledgement mock. Both corrections
+preserve the existing assertions and use no casts. After these and the final
+readiness-classifier changes, a fresh `tsc --noEmit --incremental false --project
+tsconfig.json` passes, including test sources. Production-only build checks are
+not used as evidence for test type correctness.
+
 ### Remaining baseline fixture debt and validation limits
 
 `check:reader-summary-workflow` fails identically on the refactored tree and
@@ -334,8 +369,17 @@ work; they are not passing evidence for this PR. No promotion, profile or durabl
 guard was relaxed. Worker transport is independently covered by the five-loop
 failure tests, the passing transport smokes and the full backend E2E corpus.
 
-The comprehensive unit run and exact-head remote checks are being evaluated after
-this checkpoint. The local broker/database harnesses above are explicit
-deterministic fixtures; no live PostgreSQL/RabbitMQ or production readiness claim
-is inferred from them. Required backend/database CI jobs run after the PR leaves
-draft; draft-skipped jobs are not counted as verification.
+The comprehensive local unit run used the unchanged CI selector but ended with
+`SIGKILL` before final counts or JSON output. It is incomplete and is not counted
+as a green full corpus. Its three refactor-related structural/DI failures were
+corrected and independently reverified above. Four unrelated environment-sensitive
+suites also fail on the untouched baseline: native PG18 rejects root UID, strict
+gRPC rejects a writable credential-path ancestor, SQLite CLI is unavailable, and
+the executor does not expose the lock script's `/proc/$$/fd` identity path. No
+environment or security guard was bypassed and no exclusion was added.
+
+Exact-head remote checks provide the remaining full-corpus proof. The local
+broker/database harnesses above are explicit deterministic fixtures; no live
+PostgreSQL/RabbitMQ or production readiness claim is inferred from them. Required
+backend/database CI jobs run after the PR leaves draft; draft-skipped jobs are not
+counted as verification. Final check status is recorded on the pull request.

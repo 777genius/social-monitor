@@ -2,7 +2,7 @@ import { QueueDeliveryBatch } from './queue-delivery-batch';
 
 const delivery = () => ({
   diagnostics: { redelivered: false, deadLetterCount: 0 },
-  ack: jest.fn(async () => undefined),
+  ack: jest.fn(async (): Promise<void> => undefined),
   nack: jest.fn(async (_params: { readonly requeue: boolean }) => { void _params; }),
 });
 

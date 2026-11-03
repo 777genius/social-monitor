@@ -56,6 +56,37 @@ function withFixture<T>(options: FixtureOptions, run: (root: string) => T): T {
 const check = (options: FixtureOptions): readonly string[] => withFixture(options, checkPersistenceReadiness);
 
 describe('persistence readiness composition discovery', () => {
+  it.each([
+    'InMemoryScanExecutionAttemptReadModel',
+    'InMemoryInterestCreationState',
+    'InMemoryReaderSummaryPublication',
+    'InMemoryReaderSummaryReadyProjectionStore',
+    'InMemorySummaryReadyProjectionStore',
+  ])('requires an explicit declaration for business state role %s', (adapter) => {
+    const files = {
+      [moduleFile]: moduleSource,
+      [providerFile]: providerSource.replaceAll('InMemoryFixtureRepository', adapter),
+      [adapterFile]: `export class ${adapter} {}`,
+    };
+    expect(check({ files }).join('\n')).toContain(adapter);
+    expect(check({ files, modules: [moduleDeclaration([providerFile], [adapter])] })).toEqual([]);
+  });
+
+  it('excludes metric observations, configured registries and delegates without separate state', () => {
+    const adapters = [
+      'InMemoryMetricsRecorder', 'InMemorySourceProviderRegistry',
+      'InMemoryInterestCreationStore', 'InMemorySourceBindingCreationStore',
+      'InMemorySourceBindingStatusChangeStore', 'InMemoryRelevanceFeedbackLearningStore',
+      'InMemoryFeedProjectionAdapter',
+    ];
+    const files = {
+      [moduleFile]: moduleSource,
+      [providerFile]: `import { ${adapters.join(', ')} } from '../../../libs/fixture/adapters/memory'; export const providers = [${adapters.join(', ')}];`,
+      [adapterFile]: adapters.map((adapter) => `export class ${adapter} {}`).join('\n'),
+    };
+    expect(check({ files })).toEqual([]);
+  });
+
   it('accepts declared direct adapters and keeps missing inventory fail-closed', () => {
     const files = { [moduleFile]: providerSource };
     expect(check({ files, modules: [moduleDeclaration()] })).toEqual([]);

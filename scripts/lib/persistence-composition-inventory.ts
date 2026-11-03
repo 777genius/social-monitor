@@ -11,7 +11,8 @@ export type CompositionInventory = {
   readonly noopAdapters: readonly string[];
 };
 
-const memoryName = /^InMemory[A-Za-z0-9]*(?:Repository|Ledger|Log|Counter|QueueAdapter|QueuePublisher|OutboxAdapter|IdempotencyAdapter|ReplayStore|SecretVault|Reader|LeaseAdapter|EventPublisher)$/;
+// Known business-state roles, not every class that keeps transient process data.
+const memoryName = /^InMemory[A-Za-z0-9]*(?:Repository|Ledger|Log|Counter|QueueAdapter|QueuePublisher|OutboxAdapter|IdempotencyAdapter|ReplayStore|SecretVault|Reader|LeaseAdapter|EventPublisher|ReadModel|State|Publication|ProjectionStore)$/;
 const noopName = /^Noop[A-Za-z0-9]*Adapter$/;
 const normalize = (path: string): string => path.replaceAll('\\', '/');
 const excludedSource = /(?:^|\/)(?:test|tests|test-fixtures|fixtures|node_modules|generated)(?:\/|$)|\.(?:spec|test|spec-support|fixture)\.[cm]?tsx?$|\.d\.ts$/;
