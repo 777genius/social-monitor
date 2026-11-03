@@ -200,7 +200,12 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
         this.estimatedOutputCostUsdPerMillionTokens) / 1_000_000 };
     return {
       plan,
-      usage: resolveOpenAiReaderSummaryUsage(response, estimate),
+      usage: (() => {
+        const actual = resolveOpenAiReaderSummaryUsage(response, estimate);
+        return { inputTokens: actual.inputTokens ?? estimate.inputTokens,
+          outputTokens: actual.outputTokens ?? estimate.outputTokens,
+          estimatedCostUsd: actual.estimatedCostUsd };
+      })(),
       editorRequestSha256: dailyEditorialSha256(prompt),
       editorOutputSha256: dailyEditorialSha256(JSON.stringify(plan)),
     };
