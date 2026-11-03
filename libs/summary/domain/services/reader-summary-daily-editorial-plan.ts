@@ -1,4 +1,7 @@
 import type { ReaderSummaryDailyGenerationInput } from "../value-objects/reader-summary-daily-generation-input";
+import type { SummaryEvidenceSelection } from "../value-objects/summary-evidence-item";
+import type { ReaderSummaryCoveragePlan, ReaderSummaryCoveragePlanItem } from "./reader-summary-coverage-plan";
+import { READER_SUMMARY_DAILY_INPUT_POLICY } from "../value-objects/reader-summary-daily-generation-input";
 
 export const DAILY_EDITORIAL_PLAN_VERSION = "reader_summary.daily_editorial.v1" as const;
 
@@ -66,3 +69,36 @@ const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown, limit: number): value is string =>
   typeof value === "string" && value.trim().length > 0 && value.length <= limit;
+
+/** The writer covers only planned topics; untouched frozen posts remain context. */
+export function dailyEditorialCoveragePlan(
+  plan: DailyEditorialPlan, evidence: SummaryEvidenceSelection,
+): ReaderSummaryCoveragePlan {
+  const frozen = evidence.dailyGenerationInput;
+  if (frozen === undefined) throw new Error("Daily editorial input is missing");
+  const validated = validateDailyEditorialPlan(plan, frozen);
+  const bindings = new Map(frozen.selected.map(item => [item.feedItemId, item] as const));
+  const sources = new Map(evidence.selectedEvidence.map(item => [item.feedItemId, item] as const));
+  const items = validated.topics.map((topic): ReaderSummaryCoveragePlanItem => {
+    const first = bindings.get(topic.feedItemIds[0]!);
+    if (first === undefined) throw new Error("Daily editorial anchor is absent");
+    const members = topic.feedItemIds.map(id => sources.get(id));
+    if (members.some(member => member === undefined)) {
+      throw new Error("Daily editorial source is absent from writer evidence");
+    }
+    const admitted = members.filter((member): member is NonNullable<typeof member> => member !== undefined);
+    return {
+      role: "secondary", clusterId: first.storyId, score: 1,
+      feedItemIds: topic.feedItemIds,
+      providerKeys: [...new Set(admitted.map(item => item.providerKey))],
+      interestIds: [...new Set(admitted.map(item => item.interestId))],
+      whyImportant: [topic.why],
+    };
+  });
+  return {
+    policyVersion: READER_SUMMARY_DAILY_INPUT_POLICY,
+    mode: "single_story",
+    lead: { ...items[0]!, role: "lead" },
+    secondary: items.slice(1),
+  };
+}
