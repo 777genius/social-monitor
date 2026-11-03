@@ -227,7 +227,7 @@ function runtimeFields(model, provenance) {
   };
 }
 
-function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
+function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy, requireDailyEditor) {
   if (!Array.isArray(evidence.executionAttestations)) {
     fail("evidence execution attestations are missing");
   }
@@ -253,6 +253,10 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
   if (records.filter((record) => record.taskRole === "summary").length !== 1) {
     fail("exactly one final summary attestation is required");
   }
+  if (records.filter((record) => record.taskRole === "daily_editor").length !==
+      (requireDailyEditor ? 1 : 0)) {
+    fail("daily editor attestation count does not match the writer profile");
+  }
   const topicLabels = records.filter(
     (record) => record.taskRole === "topic_label",
   );
@@ -275,7 +279,8 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
   ) {
     fail("duplicate execution task attempt");
   }
-  const topicRecords = records.filter((record) => record.taskRole !== "summary");
+  const topicRecords = records.filter((record) =>
+    record.taskRole !== "summary" && record.taskRole !== "daily_editor");
   const identities = new Set(
     topicRecords.map((record) =>
       [
@@ -291,6 +296,12 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
   const summaryIdentity = records.find(
     (record) => record.taskRole === "summary",
   ).attestation;
+  const editor = records.find(record => record.taskRole === "daily_editor");
+  if (editor && !["provider", "model", "reasoningEffort", "runtimeEngine",
+    "runtimePackageVersion", "launcherSha256"].every(field =>
+    editor.attestation[field] === summaryIdentity[field])) {
+    fail("daily editor runtime identity must match the summary runtime");
+  }
   const topicIdentity = topicLabels[0].attestation;
   const sameCodexIdentity = [
     "provider", "model", "reasoningEffort", "runtimeEngine",
@@ -492,6 +503,8 @@ function validateEvidence(
   const runtimeProvenance = runtimeProvenanceFromExecutorAttestations(
     evidence,
     reportContract !== "current",
+    frontend.readerSummaryArtifact.lineage.promptVersion ===
+      "reader_summary.prompt.2026-11-03.daily_editorial_v1",
   );
   if (evidence.provenance.datasetManifest !== undefined) {
     validateDatasetGuardEvidence(evidence.provenance.datasetManifest);
