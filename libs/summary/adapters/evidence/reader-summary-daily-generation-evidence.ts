@@ -90,5 +90,5 @@ const validRetainedQuote = (quote: NonNullable<ReaderValueSourceSnapshot["quoted
 const dailySourceText = (snapshot: ReaderValueSourceSnapshot, cutoff: string): string => {
   const quote = snapshot.quotedPost;
   return quote === undefined || !validRetainedQuote(quote, cutoff) ? snapshot.body :
-    `Authored post:\n${snapshot.body}\n\nCaptured quoted post by ${quote.authorHandle} (${quote.canonicalUrl}):\n${quote.body}`;
+    `Authored post:\n${JSON.stringify(snapshot.body)}\n\nCaptured quoted post by ${quote.authorHandle} (${quote.canonicalUrl}):\n${JSON.stringify(quote.body)}`;
 };
