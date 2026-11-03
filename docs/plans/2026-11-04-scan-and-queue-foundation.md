@@ -278,8 +278,8 @@ the two escapes are closed without changing the readiness inventory.
 
 | Check | Result |
 | --- | --- |
-| Monitoring focused suites | 72 tests in 11 suites pass; existing 59 baseline scenarios retained. |
-| Queue/worker focused suites | 59 tests in 9 suites pass, including failure cleanup across all five loops. |
+| All monitoring suites | 272 tests in 57 suites pass, including all monitoring integration specs; existing 59 baseline scenarios retained. |
+| All queue/worker suites | 140 tests in 26 suites pass across platform queue, the three worker apps and queue integration specs, including failure cleanup across all five loops. |
 | Readiness inventory | Actual repository check and 15 regression fixtures pass. |
 | Architecture | Boundaries and all 28 architecture fixtures pass. |
 | TypeScript and build | Whole-project no-emit typecheck and production build pass. |
@@ -313,6 +313,13 @@ They now assert the shared batch construction/requeue, waiting for the active ti
 and final unsettled release. The existing Nest phase, backpressure, error
 classification, redaction and database shutdown requirements remain intact. An
 independent reviewer verified these corrections without requesting a runtime change.
+
+The monitoring module test also retained the obsolete `MONITORING_OUTBOX` injection
+expectation after that unused capability was removed. Only its unused import and
+expected array entry were deleted. The exact dependency array still requires
+`MONITORING_SCAN_DISPATCH`; provider counts, singleton checks, scheduler wiring and
+actual Nest module compilation remain verified. Independent review and the entire
+monitoring test corpus pass after this correction.
 
 ### Remaining baseline fixture debt and validation limits
 
