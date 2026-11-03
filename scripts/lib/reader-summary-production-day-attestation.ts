@@ -146,6 +146,11 @@ export const runtimeProvenanceFromExecutorAttestations = (
           summaries[0]!.attestation.launcherSha256].join("\u0000"))) {
     violations.push("daily editor must share the summary runtime identity");
   }
+  if (requireDailyEditor
+    ? evidence.dailyEditorOutputSha256 !== editors[0]?.normalizedOutputSha256
+    : evidence.dailyEditorOutputSha256 !== undefined) {
+    violations.push("attested daily editor output differs from persisted plan");
+  }
   if (summaries.length !== 1) {
     violations.push("evidence requires exactly one final summary attestation");
   }
