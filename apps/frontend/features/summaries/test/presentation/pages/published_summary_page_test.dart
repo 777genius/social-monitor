@@ -64,7 +64,7 @@ void main() {
       find.textContaining('Collected through 2026-06-26 18:58 UTC'),
       findsOneWidget,
     );
-    expect(find.textContaining('next update in'), findsOneWidget);
+    expect(find.textContaining('next update in'), findsNothing);
     expect(find.byKey(const ValueKey('open-weekly-summary')), findsNothing);
     expect(find.text('Week'), findsOneWidget);
 

@@ -55,7 +55,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Verified Top posts unavailable'), findsOneWidget);
-      expect(find.text('Selected posts'), findsOneWidget);
+      expect(find.text('AI picks'), findsOneWidget);
       expect(
         find.text('No posts match the current source filters.'),
         findsNothing,
@@ -64,7 +64,7 @@ void main() {
   );
 
   testWidgets(
-    'Selected posts toggles the real browse workflow and retains sorting',
+    'AI picks toggles the real browse workflow and retains sorting',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 2400);
       tester.view.devicePixelRatio = 1;
@@ -99,7 +99,7 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('Selected posts'), findsOneWidget);
+      expect(find.text('AI picks'), findsOneWidget);
       expect(browse.selectedOnly, isFalse);
       expect(catalog.queries.single.order, TopPostsSortOrder.engagement);
       expect(find.text('All posts'), findsOneWidget);

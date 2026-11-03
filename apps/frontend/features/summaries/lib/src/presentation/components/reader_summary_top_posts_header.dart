@@ -50,7 +50,7 @@ class _TopPostsHeader extends StatelessWidget {
         if (onSelectedOnlyChanged != null)
           AppCheckbox(
             key: const ValueKey('reader-summary-selected-posts'),
-            label: 'Selected posts',
+            label: 'AI picks',
             value: selectedOnly,
             onChanged: onSelectedOnlyChanged,
           ),

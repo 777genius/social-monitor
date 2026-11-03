@@ -113,7 +113,7 @@ class _ReaderSummaryTopPostsSectionSliverState
                       alignment: Alignment.centerLeft,
                       child: AppCheckbox(
                         key: const ValueKey('reader-summary-selected-posts'),
-                        label: 'Selected posts',
+                        label: 'AI picks',
                         value: true,
                         onChanged: browse.selectOnly,
                       ),
