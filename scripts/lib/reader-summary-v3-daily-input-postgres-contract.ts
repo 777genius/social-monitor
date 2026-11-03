@@ -1,4 +1,5 @@
 import { readerSummaryWorkspaceManifestSha256 } from "../../libs/summary/domain/value-objects/reader-summary-preparation";
+import { randomUUID } from "node:crypto";
 import { tenantId, workspaceId, type JsonObject } from "@social-monitor/shared-kernel";
 import type { ReaderValueSourceSnapshot } from "../../libs/relevance/domain/reader-value/reader-value-source";
 import { ReaderSummaryArtifact, type ReaderSummaryPreparationManifest, type ReaderSummaryWorkspacePreparationConfig } from "../../libs/summary/domain";
@@ -14,6 +15,7 @@ import { readPersistedV3FixtureArtifact } from "./reader-summary-v3-artifact-rea
 import { assertPostgres as assert, assertPostgresRejects as assertRejects } from "./reader-summary-publication-postgres-assertions";
 import type { ReaderSummaryPublicationPostgresClient } from "./reader-summary-publication-postgres-fixture-scope";
 import type { ReaderSummaryPublicationRunningFixture } from "./reader-summary-publication-postgres-running-fixture";
+import { readerSummaryPublicationUtc } from "./reader-summary-publication-postgres-running-fixture";
 import type { V3ArtifactPayload, V3FixturePayload } from "./reader-summary-v3-publication-fixture-types";
 import { sha256, stableJson } from "./reader-summary-weekly-publication-evidence-postgres-contract";
 
@@ -22,6 +24,7 @@ type Params = {
   readonly client: ReaderSummaryPublicationPostgresClient;
   readonly createFixture: (status: "COMPLETED", day: number, overrides: {
     readonly requestedAt?: string; readonly providerEvidence: "reddit";
+    readonly providerPublishedAt: string; readonly providerObservedAt: string;
     readonly payloadTransform: (payload: Readonly<Record<string, unknown>>) => Promise<Built>;
   }) => Promise<ReaderSummaryPublicationRunningFixture>;
   readonly advance: (fixture: ReaderSummaryPublicationRunningFixture, source: ReaderSummaryV3PreparationSourcePort) => Promise<unknown>;
@@ -32,6 +35,8 @@ export const assertV3DailyInputPostgresContract = async (params: Params): Promis
   const create = async (day: number, requestedAt?: string) => {
     let source: ReaderSummaryV3PreparationSourcePort | undefined;
     const fixture = await params.createFixture("COMPLETED", day, { providerEvidence: "reddit", requestedAt,
+      providerPublishedAt: readerSummaryPublicationUtc(day, 9),
+      providerObservedAt: readerSummaryPublicationUtc(day, 9),
       payloadTransform: async raw => {
         const built = await buildDailyFixture(params.client, raw);
         source = built.source;
@@ -81,6 +86,23 @@ const buildDailyFixture = async (client: ReaderSummaryPublicationPostgresClient,
   raw: Readonly<Record<string, unknown>>) => {
   const input = raw as V3FixturePayload;
   const citation = input.report.artifactPayload.citationMap[0]!;
+  // The baseline fixture supplies Reddit content but no observed metric.
+  // Add an explicit synthetic native count before freezing its authority.
+  await client.query("UPDATE feed_items SET provider_metadata=$2::jsonb WHERE id=$1::uuid",
+    [citation.feedItemId, JSON.stringify({ kind: "reddit_post", score: 100 })]);
+  // Workspace publication fixtures do not create the interest/binding rows
+  // needed by real V2 preparation. Supply their actual stored identities.
+  await client.query(`INSERT INTO interests(id,tenant_id,workspace_id,name,query,status,created_at,updated_at)
+    SELECT interest_id,tenant_id,workspace_id,'Daily input fixture '||interest_id::text,'publication evidence','ENABLED',observed_at,observed_at
+    FROM feed_items WHERE id=$1::uuid ON CONFLICT(id) DO NOTHING`, [citation.feedItemId]);
+  const catalog = (await client.query<{ id: string }>(`INSERT INTO source_catalog_entries
+    (id,provider_key,display_name,acquisition_mode,readiness,created_at,updated_at)
+    VALUES($1::uuid,'reddit','Daily input fixture','pull','ready',clock_timestamp(),clock_timestamp())
+    ON CONFLICT(provider_key) DO UPDATE SET provider_key=EXCLUDED.provider_key RETURNING id::text`, [randomUUID()])).rows[0]!;
+  await client.query(`INSERT INTO source_bindings(id,tenant_id,workspace_id,interest_id,source_catalog_entry_id,
+    capability_profile_version,status,config,created_at,updated_at)
+    SELECT source_binding_id,tenant_id,workspace_id,interest_id,$2::uuid,1,'ENABLED','{}'::jsonb,observed_at,observed_at
+    FROM feed_items WHERE id=$1::uuid ON CONFLICT(id) DO NOTHING`, [citation.feedItemId, catalog.id]);
   const authority = (await client.query<{ source_binding_id: string; interest_id: string; provider_key: string;
     provider_metadata: JsonObject; published_at: string; observed_at: string; canonical_url: string }>(
     `SELECT f.source_binding_id::text,f.interest_id::text,f.provider_key,f.provider_metadata,
