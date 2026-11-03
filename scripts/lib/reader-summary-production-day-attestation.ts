@@ -58,6 +58,7 @@ export type ProductionDayRuntimeProvenance =
 type ValidAttestationRecord = {
   readonly taskRole:
     | "summary"
+    | "daily_editor"
     | "topic_label"
     | "topic_relation"
     | "story_relation"
@@ -131,6 +132,17 @@ export const runtimeProvenanceFromExecutorAttestations = (
   const topicLabels = records.filter(
     (value) => value.taskRole === "topic_label",
   );
+  const editors = records.filter(value => value.taskRole === "daily_editor");
+  if (editors.length > 1 ||
+      (editors.length === 1 && summaries.length === 1 &&
+        [editors[0]!.attestation.provider, editors[0]!.attestation.model,
+          editors[0]!.attestation.reasoningEffort, editors[0]!.attestation.runtimeEngine,
+          editors[0]!.attestation.runtimePackageVersion].join("\u0000") !==
+        [summaries[0]!.attestation.provider, summaries[0]!.attestation.model,
+          summaries[0]!.attestation.reasoningEffort, summaries[0]!.attestation.runtimeEngine,
+          summaries[0]!.attestation.runtimePackageVersion].join("\u0000"))) {
+    violations.push("daily editor must share the summary runtime identity");
+  }
   if (summaries.length !== 1) {
     violations.push("evidence requires exactly one final summary attestation");
   }
@@ -159,7 +171,7 @@ export const runtimeProvenanceFromExecutorAttestations = (
   if (new Set(taskAttempts).size !== taskAttempts.length) {
     violations.push("execution attestations contain duplicate task attempts");
   }
-  const topicRecords = records.filter((value) => value.taskRole !== "summary");
+  const topicRecords = records.filter((value) => value.taskRole !== "summary" && value.taskRole !== "daily_editor");
   const identities = new Set(
     topicRecords.map((value) =>
       [
@@ -397,6 +409,7 @@ const executionEffortForPurpose = (
 };
 
 const legacyPurposeByRole = {
+  daily_editor: undefined,
   topic_label: "social_monitor.reader_summary.topic_map.label",
   topic_relation: "social_monitor.reader_summary.topic_map.verify_relations",
   story_relation: "social_monitor.reader_summary.verify_story_relations",
@@ -405,6 +418,7 @@ const legacyPurposeByRole = {
 } as const;
 
 const activePurposeByRole = {
+  daily_editor: "social_monitor.reader_summary.daily_editorial.plan.v1",
   topic_label: "social_monitor.reader_summary.topic_map.label.v2",
   topic_relation: "social_monitor.reader_summary.topic_map.verify_relations.v2",
   story_relation: "social_monitor.reader_summary.verify_story_relations.v2",
@@ -444,6 +458,7 @@ const isTaskRole = (
   value: unknown,
 ): value is ValidAttestationRecord["taskRole"] =>
   value === "summary" ||
+  value === "daily_editor" ||
   value === "topic_label" ||
   value === "topic_relation" ||
   value === "story_relation" ||
