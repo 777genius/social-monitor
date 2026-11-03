@@ -69,6 +69,9 @@ remain separate designs; neither is silently folded into this refactor.
 - Existing direct/Prisma dispatch adapters remain the implementation boundary.
   Direct dispatch still requires rollback-capable local stores; Prisma commits
   job, event and command outbox in one Serializable write transaction.
+- This is not atomic admission or transactional/refundable quota: active-job and
+  idempotency reads and the manual quota reservation keep their existing order
+  outside the dispatch transaction. Concurrent admission exclusion is not claimed.
 
 ### Implementation
 
@@ -86,6 +89,8 @@ remain separate designs; neither is silently folded into this refactor.
 5. Update Nest providers, all constructor fixtures and eight affected smoke
    flows. The cross-process fixture must compose Prisma dispatch and command
    relay; a RabbitMQ publisher must never be disguised as rollback-capable.
+   Its fake transaction must stage/rollback writes rather than merely invoke the
+   callback. Failure after a job/event write must leave no partial command intent.
 6. Split changed oversized request/scheduler specs by workflow, retaining every
    existing assertion and moving shared fixture composition into support files.
    Remove their line-cap debt exemptions once below the limit.
@@ -126,14 +131,18 @@ remain separate designs; neither is silently folded into this refactor.
 1. Add one shared command-envelope decoder and RabbitMQ command reader. Preserve
    accepted field rules, wrong-command rejection, queue arguments, delivery
    limits, dead-letter declarations and diagnostics.
-2. Add a small RabbitMQ batch acquisition primitive. If a later read, decode
-   rejection or rejection settlement fails, attempt to requeue every accepted
-   delivery already acquired. Preserve the primary failure and expose cleanup
-   failures; never stop cleanup after the first rejection.
+2. Add a small RabbitMQ batch acquisition primitive. Own each message immediately
+   after `get`, before decoding. If a later read or rejection settlement fails,
+   attempt recovery of every unsettled acquired message, including a current
+   poison message whose rejection failed. Preserve the primary failure and
+   expose cleanup failures; never stop cleanup after the first rejection.
 3. Add in-memory reservation/settlement without changing the publisher's legacy
    destructive `drain` API for unrelated consumers. A successful ack removes a
    reservation, nack(true) requeues it, nack(false) removes it, and a settled
-   delivery cannot be settled again. Redelivery diagnostics reflect requeue.
+   delivery cannot be settled again. Reservation identity belongs to each
+   delivery occurrence, not its possibly duplicated command ID. Preserve
+   `all()`, legacy `drain()` and occurrence-based checkpoint rollback semantics.
+   Redelivery diagnostics reflect requeue.
 4. Migrate scan, delivery-attempt and summary command wrappers to the shared
    implementations. Keep the two distinct summary queue tokens.
 5. Reuse acquisition cleanup for summary-ready events while preserving object
@@ -143,13 +152,17 @@ remain separate designs; neither is silently folded into this refactor.
    handler disposition from broker settlement failures. Mark a delivery settled
    only after successful acknowledgment/rejection; release every remaining
    delivery on abort/shutdown and report uncertain settlement.
+   Enter a settling state synchronously to reject concurrent/double settlement;
+   failed settlement leaves recoverable ownership, not a falsely completed item.
 
 ### Behavior to preserve and failure cases
 
 - Existing `AmqplibRabbitMqChannel` remains the sole owner of origin-channel
   identity, stale-generation rejection and duplicate settlement checks.
-- Poison/wrong-command messages are rejected once without requeue and count
-  against the bounded read limit. Valid siblings remain recoverable.
+- Poison/wrong-command messages are rejected once without requeue on successful
+  settlement and count against the bounded read limit. Failed rejection has
+  explicit recovery; already rejected poison is never requeued by cleanup.
+  Valid siblings remain recoverable.
 - Validate positive integer drain limits consistently before broker calls.
 - Worker backpressure and shutdown requeue; ordinary handler failures retain
   each worker's existing disposition. Broker errors are not handler failures.
@@ -214,5 +227,10 @@ complete the task. Record any environment limitation precisely.
 
 ## Decisions, progress and review corrections
 
+Plan critique round 1: independent architecture and reliability critics required
+ownership before decode, per-occurrence local reservation identity, synchronous
+settling guards, faithful rollback in durable-path fixtures and explicit limits
+of dispatch atomicity. These corrections are included above before coding.
+
 Implementation and review evidence will be appended here. No implementation
-completion or final verification is claimed by this initial plan.
+completion or final verification is claimed by this plan.
