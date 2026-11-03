@@ -1,7 +1,8 @@
 export { resolveOpenAiResponsesReaderSummaryModelOptions } from "./openai-responses-reader-summary-options";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
 import { buildReaderSummaryDailyEditorPayload, dailyEditorInstructions, dailyEditorJsonSchema,
-  parseReaderSummaryDailyEditorOutput, dailyEditorReceipt, dailyWriterPlanSha256 } from "./reader-summary-daily-editor";
+  parseReaderSummaryDailyEditorOutput, dailyEditorReceipt, dailyWriterPlanSha256,
+  assertDailyEditorialRawWriter } from "./reader-summary-daily-editor";
 import { dailyEditorialWriterJsonSchema } from "./reader-summary-daily-writer-schema";
 import { READER_SUMMARY_DAILY_EDITORIAL_PROMPT_VERSION } from "../../domain";
 import type {
@@ -246,6 +247,9 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
 
     const rawDraft = parseOpenAiReaderSummaryJsonObject(outputText);
     assertOpenAiReaderSummaryClaimCitationIds(rawDraft);
+    if (input.dailyEditorialPlan !== undefined) {
+      assertDailyEditorialRawWriter(rawDraft, input.evidence, input.dailyEditorialPlan);
+    }
     const usage = resolveOpenAiReaderSummaryUsage(
       responseJson,
       this.estimate(input, selectedRoute),
