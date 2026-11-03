@@ -315,3 +315,13 @@ test("gateway model rules match the TypeScript generation profile", () => {
     assert.ok(source.includes(shared) && policy.includes(shared), shared);
   }
 });
+
+test("daily editorial attestation requires its own active purpose and primary attempt", () => {
+  const editor = gatewayRecord();
+  editor.taskRole = "daily_editor";
+  editor.attestation.purpose = "social_monitor.reader_summary.daily_editorial.plan.v1";
+  assert.doesNotThrow(() => validatePublicationAttestationRecord(editor, false));
+  editor.attempt = "repair";
+  assert.throws(() => validatePublicationAttestationRecord(editor, false),
+    /malformed or mismatched/u);
+});
