@@ -11,6 +11,7 @@ import type {
   ReaderSummaryModelPolicy,
   ReaderSummaryModelPort,
   ReaderSummaryModelRoute,
+  ReaderSummaryDailyEditorialAttempt,
   ReaderSummaryModelValidationResult,
   ProviderReaderSummaryAttempt,
 } from "../../ports";
@@ -34,6 +35,35 @@ export class MeteredReaderSummaryModelAdapter implements ReaderSummaryModelPort 
     route: ReaderSummaryModelRoute,
   ): ReaderSummaryModelEstimate {
     return this.delegate.estimate(input, route);
+  }
+
+  async planDaily(input: ReaderSummaryModelInput,
+    route: ReaderSummaryModelRoute): Promise<ReaderSummaryDailyEditorialAttempt> {
+    if (this.delegate.planDaily === undefined) {
+      throw new Error("Configured summary model does not support daily editorial planning");
+    }
+    this.recordRequest(route, "started");
+    try {
+      const attempt = await this.delegate.planDaily(input, route);
+      this.recordRequest(route, "succeeded");
+      for (const [kind, value] of [["input", attempt.usage.inputTokens],
+        ["output", attempt.usage.outputTokens]] as const) {
+        this.metrics.incrementCounter({
+          name: "summary_model_tokens_total", value,
+          labels: { job_type: "reader_summary", model: route.model,
+            provider: route.provider, token_type: kind },
+        });
+      }
+      this.metrics.incrementCounter({
+        name: "summary_model_estimated_cost_usd",
+        value: attempt.usage.estimatedCostUsd,
+        labels: { job_type: "reader_summary", model: route.model, provider: route.provider },
+      });
+      return attempt;
+    } catch (error) {
+      this.recordRequest(route, "failed", this.delegate.classifyError(error).kind);
+      throw error;
+    }
   }
 
   async generate(
