@@ -1,9 +1,5 @@
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
-import { validateDailyEditorialPlan } from "../../domain";
-import {
-  buildDailyEditorialPrompt, dailyEditorialInstructions, dailyEditorialOutputSchema,
-  dailyEditorialSha256,
-} from "./reader-summary-daily-editorial-model";
+import { runAgentRuntimeDailyEditor } from "./agent-runtime-reader-summary-daily-editorial";
 import {
   buildReaderSummary,
   primaryReaderSummaryEvidence,
@@ -52,6 +48,7 @@ import {
   positiveIntegerOrFallback,
   readAgentRuntimeObjectOutput,
   usageFromAgentRuntime,
+  sumReaderSummaryUsage,
 } from "./agent-runtime-model-support";
 import {
   type activeReaderSummaryProvider,
@@ -209,49 +206,15 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     };
   }
 
-  async planDaily(
-    input: ReaderSummaryModelInput,
-    selectedRoute: ReaderSummaryModelRoute,
-  ): Promise<ReaderSummaryDailyEditorialAttempt> {
-    if (this.legacyRecovery || input.evidence.dailyGenerationInput === undefined) {
+  async planDaily(input: ReaderSummaryModelInput, route: ReaderSummaryModelRoute):
+    Promise<ReaderSummaryDailyEditorialAttempt> {
+    if (this.legacyRecovery || input.evidence.dailyGenerationInput === undefined)
       throw new Error("Daily editorial planning is not available for this profile");
-    }
-    const prompt = buildDailyEditorialPrompt(input);
-    const baseCommand = this.buildTaskCommand(input, selectedRoute, "primary");
-    const command: AgentRuntimeTaskCommand = {
-      ...baseCommand,
-      requestId: buildAgentRuntimeRequestId(
-        "reader-summary-daily-editorial", input.tenantId, input.workspaceId,
-        readerSummaryScopeKey(input.scope), input.requestedAt),
-      purpose: activeReaderSummaryPurposes.dailyEditorial,
-      systemPrompt: dailyEditorialInstructions,
-      prompt,
-      outputSchema: dailyEditorialOutputSchema,
-      controls: { ...baseCommand.controls,
-        outputSchemaName: "social_monitor_daily_editorial_plan",
-        schemaVersion: "reader_summary.daily_editorial.v1",
-        maxOutputTokens: Math.min(this.maxOutputTokens, 3_000) },
-      metadata: { ...baseCommand.metadata, promptVersion: "reader_summary.daily_editorial.v1" },
-    };
-    const result = await this.client.runTask(command);
-    const raw = readAgentRuntimeObjectOutput(
-      result, parseOpenAiReaderSummaryJsonObject, "Daily editorial plan");
-    const plan = validateDailyEditorialPlan(raw, input.evidence.dailyGenerationInput);
-    await verifyAndRecordReaderSummaryExecution({
-      command, result, taskRole: "daily_editor", attempt: "primary",
-      normalizedOutput: plan, sink: this.verifiedAttestationSink,
-    });
-    return {
-      plan,
-      usage: usageFromAgentRuntime(result.usage, {
-        inputTokens: Math.ceil(prompt.length / this.inputTokenDivisor),
-        outputTokens: 3_000, estimatedCostUsd: 0,
-      }),
-      editorRequestSha256: dailyEditorialSha256(prompt),
-      editorOutputSha256: dailyEditorialSha256(JSON.stringify(plan)),
-    };
+    return runAgentRuntimeDailyEditor({ input, client: this.client,
+      baseCommand: this.buildTaskCommand(input, route, "primary"),
+      inputTokenDivisor: this.inputTokenDivisor, maxOutputTokens: this.maxOutputTokens,
+      sink: this.verifiedAttestationSink });
   }
-
   async generate(
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
@@ -535,15 +498,3 @@ export const resolveAgentRuntimeReaderSummaryModelOptions = (
     ),
   };
 };
-
-const sumReaderSummaryUsage = (
-  accumulated: ReaderSummaryModelEstimate | undefined,
-  attempt: ReaderSummaryModelEstimate,
-): ReaderSummaryModelEstimate => accumulated === undefined
-  ? attempt
-  : {
-      inputTokens: accumulated.inputTokens + attempt.inputTokens,
-      outputTokens: accumulated.outputTokens + attempt.outputTokens,
-      estimatedCostUsd:
-        accumulated.estimatedCostUsd + attempt.estimatedCostUsd,
-    };
