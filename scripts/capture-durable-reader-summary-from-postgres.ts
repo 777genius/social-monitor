@@ -690,6 +690,9 @@ async function main(): Promise<void> {
         qualityFlags: frontendArtifact.qualityFlags,
       },
       executionAttestations: executionAttestationRecords,
+      ...(artifact.toSnapshot().dailyEditorialPlan === undefined ? {} : {
+        dailyEditorOutputSha256: artifact.toSnapshot().dailyEditorialPlan!.editorOutputSha256,
+      }),
       durableReadback,
       redaction: {
         secretsIncluded: false,
