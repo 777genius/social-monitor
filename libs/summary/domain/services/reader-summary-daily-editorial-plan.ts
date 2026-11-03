@@ -72,6 +72,32 @@ export const readReaderSummaryDailyEditorialPlan = (
   return { version: READER_SUMMARY_DAILY_EDITORIAL_VERSION, topics };
 };
 
+/** Old payloads have no field. A present malformed private proof is never ignored. */
+export const readReaderSummaryDailyEditorialProof = (
+  value: unknown,
+  input: ReaderSummaryDailyGenerationInput,
+): ReaderSummaryDailyEditorialProof | undefined => {
+  if (!isRecord(value) || Object.keys(value).length !== 4 ||
+      typeof value.inputSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(value.inputSha256) ||
+      typeof value.writerPlanSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(value.writerPlanSha256) ||
+      !isRecord(value.editor) || Object.keys(value.editor).length !== 2 ||
+      typeof value.editor.requestSha256 !== "string" ||
+      typeof value.editor.outputSha256 !== "string" ||
+      !/^[a-f0-9]{64}$/u.test(value.editor.requestSha256) ||
+      !/^[a-f0-9]{64}$/u.test(value.editor.outputSha256)) return undefined;
+  try {
+    const plan = readReaderSummaryDailyEditorialPlan(value.plan, input);
+    return {
+      plan,
+      inputSha256: value.inputSha256,
+      editor: { requestSha256: value.editor.requestSha256, outputSha256: value.editor.outputSha256 },
+      writerPlanSha256: value.writerPlanSha256,
+    };
+  } catch {
+    return undefined;
+  }
+};
+
 export const readerSummaryDailyEditorialCoveragePlan = (
   evidence: SummaryEvidenceSelection,
   plan: ReaderSummaryDailyEditorialPlan,
