@@ -266,7 +266,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     // Two attempts at most: the repair runs once, for either cause.
     for (const attempt of readerSummaryNarrativeAttempts) {
       const command = this.buildTaskCommand(input, selectedRoute, attempt, schemaViolations);
-      const dailyGenerationReceipt = readerSummaryDailyInputReceipt(command.prompt, input.evidence.dailyGenerationInput);
+      const dailyGenerationReceipt = readerSummaryDailyInputReceipt(command.prompt, input.evidence.dailyGenerationInput, input.dailyEditorialPlan);
       const result = await this.client.runTask(command);
       const attemptUsage = usageFromAgentRuntime(
         result.usage,
