@@ -39,6 +39,8 @@ export function dailyGenerationPublicationMatches(params:
       if (planSha !== editorial.editorOutputSha256 ||
           requestSha !== editorial.editorRequestSha256) return false;
     }
+    if (editorial === undefined ? sent?.editorialPlanSha256 !== undefined :
+        sent?.editorialPlanSha256 !== canonicalJsonSha256(editorial.plan)) return false;
     const coverage = editorial === undefined ? buildReaderSummaryCoveragePlan(selection) :
       dailyEditorialCoveragePlan(editorial.plan, selection);
     const evidence = buildAdaptiveReaderSummaryEvidence(selection, coverage);
