@@ -110,6 +110,7 @@ export function validatePublicationAttestationRecord(record, allowLegacy) {
     (record.taskRole !== "summary" &&
       !Object.hasOwn(activePurposes, record.taskRole)) ||
     (record.taskRole === "summary" && activeSummaryPurpose === undefined) ||
+    (record.taskRole === "daily_editor" && record.attempt !== "primary") ||
     typeof record.attempt !== "string" || record.attempt.length === 0 ||
     !sha256(record.normalizedOutputSha256) ||
     expectedEffort === undefined ||
