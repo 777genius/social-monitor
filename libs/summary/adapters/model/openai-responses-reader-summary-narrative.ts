@@ -526,6 +526,7 @@ const normalizeDailyEditorialNarrative = (params: {
           !topic.feedItemIds.includes(byCitation.get(id)?.feedItemId ?? ""))) {
       throw new Error("Daily editorial narrative has unplanned citations or order");
     }
+    if (anchor === undefined) throw new Error("Daily editorial anchor is missing");
     const title = optionalString(item.title);
     const text = optionalString(item.text);
     if (title === undefined || text === undefined) {
