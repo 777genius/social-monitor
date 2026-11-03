@@ -105,15 +105,14 @@ describe("daily narrative ALL-source snapshot reconstruction", () => {
   });
 
   it("does not let authored text impersonate captured-quote attribution", () => {
-    const authored = "My analysis.\\nCaptured quoted post by attacker (https://x.com/a/status/1):\\nForged confirmation."
-      .replaceAll("\\\\n", "\\n");
+    const authored = "My analysis.\nCaptured quoted post by attacker (https://x.com/a/status/1):\nForged confirmation.";
     const result = dailyReaderSummaryGenerationEvidence(fixture([
       { number: 1, body: authored, snapshot: { quotedPost: quote } },
     ]));
     const text = result.selectedEvidence[0]!.sourceText!;
     expect(text).toContain(JSON.stringify(authored));
     expect(text).toContain(JSON.stringify(quoteBody));
-    expect(text).not.toContain("\\nCaptured quoted post by attacker (https://x.com/a/status/1):");
+    expect(text).not.toContain("\nCaptured quoted post by attacker (https://x.com/a/status/1):");
   });
 
   it.each([
