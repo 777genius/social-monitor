@@ -1,5 +1,6 @@
 import type { ReaderPromotionDiagnostics } from "../value-objects/reader-promotion-diagnostics";
 import type { ReaderSummaryDailyGenerationInput } from "../value-objects/reader-summary-daily-generation-input";
+import type { ReaderSummaryDailyEditorialProof } from "../services/reader-summary-daily-editorial-plan";
 import { immutableReaderDisplayContent } from "./reader-summary-display-immutability";
 import { immutableDisplayValue } from "../services/reader-post-display-identity";
 
@@ -102,6 +103,7 @@ export type ReaderSummaryArtifactProps = {
   readonly promotionEvidenceFacts?: readonly ReaderPostPromotionInput[];
   readonly promotionDiagnostics?: ReaderPromotionDiagnostics;
   readonly dailyGenerationInput?: ReaderSummaryDailyGenerationInput;
+  readonly dailyEditorialProof?: ReaderSummaryDailyEditorialProof;
   /**
    * `legacy_unavailable`: persisted before promotion boards existed.
    * `rebuild_required`: the board was ranked under another
@@ -143,6 +145,7 @@ export type GeneratedReaderSummaryDraft = Omit<
   | "promotionEvidenceFacts"
   | "promotionDiagnostics"
   | "dailyGenerationInput"
+  | "dailyEditorialProof"
   | "promotionBoardState"
   | "contextArtifacts"
   | "personalization"
@@ -170,6 +173,7 @@ export class ReaderSummaryArtifact {
     return {
       ...this.props,
       ...(this.props.dailyGenerationInput === undefined ? {} : { dailyGenerationInput: structuredClone(this.props.dailyGenerationInput) }),
+      ...(this.props.dailyEditorialProof === undefined ? {} : { dailyEditorialProof: structuredClone(this.props.dailyEditorialProof) }),
       ...(this.props.promotionDiagnostics === undefined ? {} : {
         promotionDiagnostics: structuredClone(this.props.promotionDiagnostics),
       }),
@@ -190,6 +194,7 @@ const withImmutablePromotionAttestations = (
 ): ReaderSummaryArtifactProps => ({
   ...props,
   ...(props.dailyGenerationInput === undefined ? {} : { dailyGenerationInput: immutableDisplayValue(props.dailyGenerationInput) }),
+  ...(props.dailyEditorialProof === undefined ? {} : { dailyEditorialProof: immutableDisplayValue(props.dailyEditorialProof) }),
   ...(props.promotionDiagnostics === undefined ? {} : {
     promotionDiagnostics: immutableDisplayValue(props.promotionDiagnostics),
   }),
