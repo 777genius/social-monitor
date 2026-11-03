@@ -11,7 +11,7 @@ import { dailyGenerationPublicationMatches } from "../persistence/prisma/reader-
 import { createHash } from "node:crypto";
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
 import { CapturingAgentRuntimeClient } from "./agent-runtime-reader-summary-model.spec-support";
-import { ReaderSummaryArtifact } from "../../domain";
+import { ReaderSummaryArtifact, validateDailyEditorialPlan, dailyEditorialCoveragePlan } from "../../domain";
 import { buildReaderSummaryDraftWithPromotionContent } from "../../features/execute-reader-summary-job/reader-summary-promotion-content";
 import { buildReaderSummaryModelArtifact } from "../../features/execute-reader-summary-job/reader-summary-model-artifact";
 import { buildReaderSummaryCoverageView } from "../../features/shared/reader-summary-coverage-presenter";
@@ -117,4 +117,54 @@ it("fails closed with a typed unsupported outcome before narrative dispatch when
   const fixture = await dailyPromotionFixture(false);
   expect(fixture.outcome).toEqual({ kind: "unsupported_daily_digest", reason: "no_promotion_board" });
   expect(fixture.presentation.attempted).toBe(0);
+});
+
+it("publishes ten source-bound editorial topics with a late lead and cross-cluster group", async () => {
+  const { input, evidence, manifest, snapshots, job } = await dailyDigestFixture();
+  const selected = evidence.dailyGenerationInput!.selected;
+  const plan = validateDailyEditorialPlan({
+    version: "reader_summary.daily_editorial.v1",
+    topics: [
+      { title: "Late important event", why: "More significant than popularity rank",
+        depth: "detailed", feedItemIds: [selected[19]!.feedItemId, selected[26]!.feedItemId] },
+      ...selected.slice(0, 9).map((entry, index) => ({
+        title: `Distinct story ${index + 1}`, why: "Concrete independent value",
+        depth: index < 3 ? "detailed" : "brief",
+        feedItemIds: [entry.feedItemId],
+      })),
+    ],
+  }, evidence.dailyGenerationInput!);
+  const writer = { ...input, dailyEditorialPlan: plan,
+    coveragePlan: dailyEditorialCoveragePlan(plan, evidence),
+    policy: { ...input.policy, maxStories: plan.topics.length } };
+  const { attempt, request } = await generateDailyFixture(writer);
+  const payload = JSON.parse(request.input) as { evidence: readonly { feedItemId: string }[];
+    dailyEditorialPlan: typeof plan };
+  expect(payload.evidence.map(item => item.feedItemId)).toEqual(selected.map(item => item.feedItemId));
+  expect(payload.dailyEditorialPlan).toEqual(plan);
+  expect(attempt.draft.content?.narrativeSections?.length).toBe(10);
+  expect(attempt.draft.topStories.map(item => item.storyClusterId))
+    .toEqual([writer.coveragePlan.lead!, ...writer.coveragePlan.secondary].map(item => item.clusterId));
+  const draft = buildReaderSummaryDraftWithPromotionContent(evidence, attempt.draft);
+  const editorOutputSha256 = createHash("sha256").update(JSON.stringify(plan)).digest("hex");
+  const artifact = buildReaderSummaryModelArtifact({
+    snapshot: job.toSnapshot(), readerSummaryId: "daily-editorial-test-artifact",
+    generatedAt: writer.requestedAt, modelEvidence: evidence, contextArtifacts: [],
+    draft, dailyGenerationReceipt: attempt.dailyGenerationReceipt,
+    dailyEditorialPlan: { plan,
+      frozenManifestSha256: evidence.dailyGenerationInput!.manifestSha256,
+      editorRequestSha256: "a".repeat(64), editorOutputSha256 },
+  });
+  const saved = artifact.toSnapshot();
+  expect(saved.content?.sourceMix.reduce((sum, source) => sum + source.itemCount, 0)).toBe(30);
+  expect(saved.dailyEditorialPlan?.plan.topics).toHaveLength(10);
+  expect(saved.content?.narrativeSections?.filter(section => section.kind === "secondary_signal")).toHaveLength(9);
+  const guard = { manifest, manifestSha256: evidence.dailyGenerationInput!.manifestSha256,
+    periodKey: input.period.periodKey,
+    identity: { tenantId: input.tenantId, workspaceId: input.workspaceId, scope: input.scope },
+    snapshots, artifact: saved };
+  expect(dailyGenerationPublicationMatches(guard)).toBe(true);
+  expect(dailyGenerationPublicationMatches({ ...guard,
+    artifact: { ...saved, dailyEditorialPlan: { ...saved.dailyEditorialPlan!,
+      editorOutputSha256: "0".repeat(64) } } })).toBe(false);
 });
