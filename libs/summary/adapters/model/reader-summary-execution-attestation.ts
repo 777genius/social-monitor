@@ -27,6 +27,7 @@ import {
 
 export type ReaderSummaryAttestedTaskRole =
   | "summary"
+  | "daily_editor"
   | "topic_label"
   | "topic_relation"
   | "story_relation"
@@ -133,6 +134,7 @@ const activeReaderSummaryPurposeMatches = (
       : attempt === "repair"
         ? [activeReaderSummaryPurposes.repair]
         : [],
+  daily_editor: [activeReaderSummaryPurposes.dailyEditor],
   topic_label: [activeReaderSummaryPurposes.topicLabel],
   topic_relation: [activeReaderSummaryPurposes.topicRelations],
   story_relation: [activeReaderSummaryPurposes.storyRelations],
