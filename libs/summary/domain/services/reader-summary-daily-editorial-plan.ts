@@ -12,6 +12,13 @@ export type DailyEditorialTopic = {
   readonly feedItemIds: readonly string[];
 };
 
+export type DailyEditorialProof = {
+  readonly plan: DailyEditorialPlan;
+  readonly frozenManifestSha256: string;
+  readonly editorRequestSha256: string;
+  readonly editorOutputSha256: string;
+};
+
 export type DailyEditorialPlan = {
   readonly version: typeof DAILY_EDITORIAL_PLAN_VERSION;
   readonly topics: readonly DailyEditorialTopic[];
@@ -102,3 +109,22 @@ export function dailyEditorialCoveragePlan(
     secondary: items.slice(1),
   };
 }
+
+/** Persisted private proof must be bound to one frozen selection and exact normalized plan. */
+export function validateDailyEditorialProof(
+  value: unknown, frozen: ReaderSummaryDailyGenerationInput,
+): DailyEditorialProof {
+  if (!record(value) || Object.keys(value).length !== 4 ||
+      value.frozenManifestSha256 !== frozen.manifestSha256 ||
+      !hex(value.editorRequestSha256) || !hex(value.editorOutputSha256)) {
+    throw new Error("Invalid daily editorial proof");
+  }
+  return {
+    plan: validateDailyEditorialPlan(value.plan, frozen),
+    frozenManifestSha256: frozen.manifestSha256,
+    editorRequestSha256: value.editorRequestSha256,
+    editorOutputSha256: value.editorOutputSha256,
+  };
+}
+const hex = (value: unknown): value is string =>
+  typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
