@@ -170,3 +170,31 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
     artifact: { ...saved, dailyEditorialPlan: { ...saved.dailyEditorialPlan!,
       editorOutputSha256: "0".repeat(64) } } })).toBe(false);
 });
+
+it("calls the attested daily editor once with all frozen sources and their native metrics", async () => {
+  const { input, evidence } = await dailyDigestFixture();
+  const selected = evidence.dailyGenerationInput!.selected;
+  const rawPlan = { version: "reader_summary.daily_editorial.v1",
+    topics: [{ title: "Important later event", why: "Practical impact is high",
+      depth: "detailed", feedItemIds: [selected[19]!.feedItemId] }] };
+  const client = new CapturingAgentRuntimeClient({
+    status: "completed", structuredOutput: rawPlan, warnings: [],
+  });
+  const adapter = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
+  const route = adapter.route(input, {
+    preferredProvider: "agent-runtime", maxInputTokens: 100000,
+    maxOutputTokens: 16000, maxEstimatedCostUsd: 5,
+  }, { remainingTokens: 160000, remainingCostUsd: 10 });
+  const result = await adapter.planDaily(input, route);
+  expect(result.plan.topics[0]?.feedItemIds).toEqual([selected[19]!.feedItemId]);
+  expect(client.commands).toHaveLength(1);
+  expect(client.commands[0]!.purpose).toBe("social_monitor.reader_summary.daily_editorial.plan.v1");
+  const payload = JSON.parse(client.commands[0]!.prompt) as {
+    sources: readonly { feedItemId: string; nativeCount: number | null }[];
+  };
+  expect(payload.sources.map(source => source.feedItemId))
+    .toEqual(selected.map(source => source.feedItemId));
+  expect(payload.sources[0]?.nativeCount).toBe(selected[0]?.nativeCount);
+  expect(result.editorRequestSha256).toBe(
+    createHash("sha256").update(client.commands[0]!.prompt).digest("hex"));
+});
