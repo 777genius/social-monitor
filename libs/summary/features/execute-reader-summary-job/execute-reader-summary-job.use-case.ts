@@ -487,7 +487,13 @@ export class ExecuteReaderSummaryJobUseCase {
     const createArtifact = (draft: ReaderSummaryDraft): ReaderSummaryArtifact =>
       buildReaderSummaryModelArtifact({ snapshot, readerSummaryId, generatedAt,
         modelEvidence, contextArtifacts: context.artifacts, draft,
-        dailyGenerationReceipt: attempt.dailyGenerationReceipt });
+        dailyGenerationReceipt: attempt.dailyGenerationReceipt,
+        ...(editor === undefined || modelEvidence.dailyGenerationInput === undefined ? {} : {
+          dailyEditorialPlan: { plan: editor.plan,
+            frozenManifestSha256: modelEvidence.dailyGenerationInput.manifestSha256,
+            editorRequestSha256: editor.editorRequestSha256,
+            editorOutputSha256: editor.editorOutputSha256 },
+        }) });
     const preflightArtifact = createArtifact(calibratedDraft);
     if (
       this.publicationPolicy.evaluate({
