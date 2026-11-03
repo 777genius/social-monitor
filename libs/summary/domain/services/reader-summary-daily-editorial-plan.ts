@@ -85,7 +85,10 @@ export function dailyEditorialCoveragePlan(
   if (frozen === undefined) throw new Error("Daily editorial input is missing");
   const validated = validateDailyEditorialPlan(plan, frozen);
   const bindings = new Map(frozen.selected.map(item => [item.feedItemId, item] as const));
-  const sources = new Map(evidence.selectedEvidence.map(item => [item.feedItemId, item] as const));
+  // The sealed promotion board may have a different evidence set; the daily
+  // writer sources come from the frozen ordinary top-30 narrative binding.
+  const sources = new Map((evidence.dailyGenerationEvidence ?? evidence.selectedEvidence)
+    .map(item => [item.feedItemId, item] as const));
   const items = validated.topics.map((topic): ReaderSummaryCoveragePlanItem => {
     const first = bindings.get(topic.feedItemIds[0]!);
     if (first === undefined) throw new Error("Daily editorial anchor is absent");
