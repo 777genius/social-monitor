@@ -22,6 +22,10 @@ export const assertDailyGenerationArtifactBinding = (props: ReaderSummaryArtifac
           citation.sourceItemId === entry.sourceItemId && citation.providerKey === entry.providerKey))) {
     throw new Error("Daily generation input artifact binding is invalid");
   }
+  const editorialProfile = props.lineage.promptVersion === "reader_summary.prompt.2026-11-03.daily_editorial_v1";
+  if (editorialProfile !== (props.dailyEditorialPlan !== undefined)) {
+    throw new Error("Daily editorial proof does not match writer profile");
+  }
   const byCitation = new Map(props.citationMap.map(citation => [citation.citationId, citation]));
   const byFeed = new Map(proof.selected.map(entry => [entry.feedItemId, entry]));
   const providerCounts = new Map<string, number>();
