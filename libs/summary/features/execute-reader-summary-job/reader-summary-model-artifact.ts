@@ -1,5 +1,5 @@
 import { ReaderSummaryArtifact, type ReaderSummaryJob, type ReaderSummaryContextArtifact,
-  type ReaderSummaryDailyInputReceipt, type SummaryEvidenceSelection } from "../../domain";
+  type ReaderSummaryDailyInputReceipt, type ReaderSummaryDailyEditorialProof, type SummaryEvidenceSelection } from "../../domain";
 import type { ReaderSummaryDraft } from "./execute-reader-summary-job-support";
 import { buildReaderSummaryPromotionArtifactFields } from "./reader-summary-promotion-artifact-fields";
 
@@ -12,6 +12,7 @@ export function buildReaderSummaryModelArtifact(params: {
   readonly contextArtifacts: readonly ReaderSummaryContextArtifact[];
   readonly draft: ReaderSummaryDraft;
   readonly dailyGenerationReceipt?: ReaderSummaryDailyInputReceipt;
+  readonly dailyEditorialProof?: ReaderSummaryDailyEditorialProof;
 }): ReaderSummaryArtifact {
   const { snapshot, modelEvidence, draft } = params;
   const boardStoryIds = new Set([...(modelEvidence.promotionV3?.top ?? []),
@@ -26,6 +27,7 @@ export function buildReaderSummaryModelArtifact(params: {
       modelEvidence.clusters.filter(cluster => boardStoryIds.has(cluster.id)),
     ...(modelEvidence.dailyGenerationInput === undefined ? {} : { dailyGenerationInput: {
       ...modelEvidence.dailyGenerationInput, sent: params.dailyGenerationReceipt } }),
+    ...(params.dailyEditorialProof === undefined ? {} : { dailyEditorialProof: params.dailyEditorialProof }),
     contextArtifacts: params.contextArtifacts, personalization: modelEvidence.personalization, ...draft,
     ...buildReaderSummaryPromotionArtifactFields({ artifactId: params.readerSummaryId, modelEvidence, draft }),
   });
