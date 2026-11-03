@@ -161,7 +161,10 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = { ...this.buildRoute(), ...(input.evidence.dailyGenerationInput === undefined ? {} : { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
+    const route = { ...this.buildRoute(), ...(input.dailyEditorialPlan !== undefined
+      ? { promptVersion: "reader_summary.prompt.2026-11-03.daily_editorial_v1" }
+      : input.evidence.dailyGenerationInput === undefined ? {} :
+        { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
     const estimate = this.estimate(input, route);
 
     if (
