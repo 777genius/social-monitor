@@ -17,6 +17,28 @@ const evidenceWith = (records: ReturnType<typeof productionExecutionAttestations
 });
 
 describe("production day purpose-specific executor identity", () => {
+
+  it("requires a matching daily editor attestation only for the versioned writer", () => {
+    const records = productionExecutionAttestations();
+    const missing: string[] = [];
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), missing, true))
+      .toBeNull();
+    expect(missing).toContain("daily editor must share the summary runtime identity");
+    const editor = { ...structuredClone(records[0]!), taskRole: "daily_editor",
+      attempt: "primary", normalizedOutputSha256: "f".repeat(64),
+      attestation: { ...records[0]!.attestation,
+        requestId: "editor-request",
+        purpose: "social_monitor.reader_summary.daily_editorial.plan.v1" } };
+    records.push(editor);
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [], true))
+      .not.toBeNull();
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), []))
+      .toBeNull();
+    editor.attestation.model = "unrelated-model";
+    expect(runtimeProvenanceFromExecutorAttestations(evidenceWith(records), [], true))
+      .toBeNull();
+  });
+
   it("accepts pinned MiMo for every daily task role and the repair purpose", () => {
     const records = productionExecutionAttestations();
     for (const record of records) record.attestation.launcherSha256 = approvedSubscriptionRuntimeLauncherSha256;
