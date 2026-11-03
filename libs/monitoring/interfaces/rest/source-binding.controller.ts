@@ -1,23 +1,12 @@
-import { Body, Controller, Get, Headers, Inject, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiCreatedResponse, ApiHeader, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import {
-  ApiKeyRequestAuthorizer,
-  hasBearerAuthorizationHeader,
-} from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
-import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
-import {
-  WORKSPACE_AUTHORIZATION_POLICY,
-  type WorkspaceAuthorizationPolicyPort,
-} from '@social-monitor/identity/ports';
 import {
   parsePaginationLimit,
   RequestCorrelationIdFactory,
   requireIdempotencyKeyHeader,
 } from '@social-monitor/platform-request-context';
-import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
-import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
-import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
@@ -25,6 +14,7 @@ import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding
 import { ListSourceBindingOverviewUseCase } from '../../features/list-source-binding-overview/list-source-binding-overview.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
 import { ListInterestSourceDailyHistoryUseCase } from '../../features/list-interest-source-daily-history/list-interest-source-daily-history.use-case';
+import { SourceBindingAccessService } from './source-binding-access.service';
 import { BindSourceRequestDto, BindSourceResponseDto, normalizeSourceBindingConfig } from './bind-source.dto';
 import { ListSourceBindingsResponseDto, sourceBindingStatusValues } from './list-source-bindings.dto';
 import { ListSourceBindingOverviewResponseDto } from './source-binding-overview.dto';
@@ -45,11 +35,7 @@ export class SourceBindingController {
     private readonly listSourceBindingOverview: ListSourceBindingOverviewUseCase,
     private readonly listInterestSourceDailyHistory: ListInterestSourceDailyHistoryUseCase,
     private readonly getSourceBindingHealth: GetSourceBindingHealthUseCase,
-    private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
-    private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
-    @Inject(WORKSPACE_AUTHORIZATION_POLICY)
-    private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
-    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
+    private readonly sourceBindingAccess: SourceBindingAccessService,
     private readonly requestCorrelationIds: RequestCorrelationIdFactory,
   ) {}
 
@@ -77,7 +63,7 @@ export class SourceBindingController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    await this.authorizeSourceBindingWrite(
+    await this.sourceBindingAccess.authorizeSourceBindingWrite(
       scope.tenantId,
       scope.workspaceId,
       workspaceRoleHeader,
@@ -100,7 +86,7 @@ export class SourceBindingController {
     }
 
     if (result.value.created) {
-      await this.recordSourceBindingAuditEvent({
+      await this.sourceBindingAccess.recordSourceBindingAuditEvent({
         tenantId: scope.tenantId,
         workspaceId: scope.workspaceId,
         action: 'source_binding.created',
@@ -144,7 +130,7 @@ export class SourceBindingController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    await this.authorizeSourceBindingRead(
+    await this.sourceBindingAccess.authorizeSourceBindingRead(
       scope.tenantId,
       scope.workspaceId,
       workspaceRoleHeader,
@@ -199,7 +185,7 @@ export class SourceBindingController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    await this.authorizeSourceBindingRead(
+    await this.sourceBindingAccess.authorizeSourceBindingRead(
       scope.tenantId,
       scope.workspaceId,
       workspaceRoleHeader,
@@ -250,7 +236,7 @@ export class SourceBindingController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    await this.authorizeSourceBindingRead(
+    await this.sourceBindingAccess.authorizeSourceBindingRead(
       scope.tenantId,
       scope.workspaceId,
       workspaceRoleHeader,
@@ -298,7 +284,7 @@ export class SourceBindingController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    await this.authorizeSourceBindingRead(
+    await this.sourceBindingAccess.authorizeSourceBindingRead(
       scope.tenantId,
       scope.workspaceId,
       workspaceRoleHeader,
@@ -317,35 +303,6 @@ export class SourceBindingController {
     }
 
     return result.value;
-  }
-
-  private async authorizeSourceBindingRead(
-    tenantId: TenantId,
-    workspaceId: WorkspaceId,
-    workspaceRoleHeader: string | undefined,
-    authorizationHeader: string | undefined,
-  ): Promise<void> {
-    if (hasBearerAuthorizationHeader(authorizationHeader)) {
-      await this.apiKeyRequestAuthorizer.authorize({
-        authorizationHeader,
-        tenantId,
-        workspaceId,
-        requiredScope: 'read:interests',
-        operation: 'source_bindings.read',
-      });
-      return;
-    }
-
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId,
-      workspaceId,
-      action: 'source_bindings.read',
-      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
   }
 
   @Patch(':sourceBindingId/status')
@@ -373,7 +330,7 @@ export class SourceBindingController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    await this.authorizeSourceBindingWrite(
+    await this.sourceBindingAccess.authorizeSourceBindingWrite(
       scope.tenantId,
       scope.workspaceId,
       workspaceRoleHeader,
@@ -396,7 +353,7 @@ export class SourceBindingController {
     }
 
     if (result.value.changed) {
-      await this.recordSourceBindingAuditEvent({
+      await this.sourceBindingAccess.recordSourceBindingAuditEvent({
         tenantId: scope.tenantId,
         workspaceId: scope.workspaceId,
         action: 'source_binding.status_changed',
@@ -411,59 +368,7 @@ export class SourceBindingController {
     return result.value;
   }
 
-  private async recordSourceBindingAuditEvent(params: {
-    readonly tenantId: TenantId;
-    readonly workspaceId: WorkspaceId;
-    readonly action: string;
-    readonly resourceId: string;
-    readonly metadata?: Readonly<Record<string, PublicApiAuditMetadataValue>>;
-  }): Promise<void> {
-    const result = await this.recordPublicApiAuditEvent.execute({
-      tenantId: params.tenantId,
-      workspaceId: params.workspaceId,
-      actorType: 'system',
-      actorId: 'monitoring.source-bindings',
-      action: params.action,
-      outcome: 'succeeded',
-      resourceType: 'source_binding',
-      resourceId: params.resourceId,
-      metadata: params.metadata,
-    });
 
-    if (!result.ok) {
-      throw result.error;
-    }
-  }
-
-  private async authorizeSourceBindingWrite(
-    tenantId: TenantId,
-    workspaceId: WorkspaceId,
-    workspaceRoleHeader: string | undefined,
-    authorizationHeader: string | undefined,
-    operation: 'source_bindings.create' | 'source_bindings.update_status',
-  ): Promise<void> {
-    if (hasBearerAuthorizationHeader(authorizationHeader)) {
-      await this.apiKeyRequestAuthorizer.authorize({
-        authorizationHeader,
-        tenantId,
-        workspaceId,
-        requiredScope: 'write:source_bindings',
-        operation,
-      });
-      return;
-    }
-
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId,
-      workspaceId,
-      action: operation,
-      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
-  }
 }
 
 const parseQueryListFilter = (

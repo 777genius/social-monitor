@@ -36,6 +36,7 @@ import { ScanPolicyController } from './scan-policy.controller';
 import { ScanRequestController } from './scan-request.controller';
 import { ScanStatusController } from './scan-status.controller';
 import { SourceBindingController } from './source-binding.controller';
+import { SourceBindingAccessService } from './source-binding-access.service';
 import { SourceCredentialController } from './source-credential.controller';
 
 @Module({
@@ -59,6 +60,7 @@ import { SourceCredentialController } from './source-credential.controller';
     ...monitoringSourceCredentialProviders(process.env),
     ...monitoringScanQueueProviders(process.env),
     RequestCorrelationIdFactory,
+    SourceBindingAccessService,
     ...monitoringSourceBindingProviders(process.env),
     ...monitoringScanDispatchProviders,
     ...monitoringInterestProviders(process.env),

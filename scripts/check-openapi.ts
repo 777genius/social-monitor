@@ -77,6 +77,7 @@ import { UpdateInterestUseCase } from "@social-monitor/monitoring/features/updat
 import { ScanPolicyController } from "@social-monitor/monitoring/interfaces/rest/scan-policy.controller";
 import { ScanRequestController } from "@social-monitor/monitoring/interfaces/rest/scan-request.controller";
 import { ScanStatusController } from "@social-monitor/monitoring/interfaces/rest/scan-status.controller";
+import { SourceBindingAccessService } from "@social-monitor/monitoring/interfaces/rest/source-binding-access.service";
 import { SourceBindingController } from "@social-monitor/monitoring/interfaces/rest/source-binding.controller";
 import { SourceCredentialController } from "@social-monitor/monitoring/interfaces/rest/source-credential.controller";
 import { InterestController } from "@social-monitor/monitoring/interfaces/rest/interest.controller";
@@ -383,6 +384,7 @@ const useCaseProviders = [
   ],
   providers: [
     ...useCaseProviders,
+    SourceBindingAccessService,
     {
       provide: ApiKeyRequestAuthorizer,
       useValue: noopApiKeyAuthorizer,
