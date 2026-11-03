@@ -3,6 +3,7 @@ import type {
   ReaderSummaryTopStory,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
+import { primaryReaderSummaryEvidence } from "../../domain";
 import {
   firstNonEmptyString,
   knownStringSubset,
@@ -449,7 +450,8 @@ const normalizeDailyEditorialStories = (
   }
   const byFeed = new Map(frozen.selected.map(item => [item.feedItemId, item] as const));
   const byCitation = new Map(citationMap.map(item => [item.citationId, item] as const));
-  const evidenceById = new Map(input.evidence.selectedEvidence.map(item => [item.feedItemId, item] as const));
+  const evidenceById = new Map(primaryReaderSummaryEvidence(input.evidence).selectedEvidence
+    .map(item => [item.feedItemId, item] as const));
   return values.map((raw, index): ReaderSummaryTopStory => {
     const topic = plan.topics[index]!;
     const anchor = byFeed.get(topic.feedItemIds[0]!);

@@ -7,7 +7,7 @@ import type {
   ReaderSummaryRisk,
   ReaderSummaryInterestHighlight,
 } from "../../domain";
-import { buildReaderSummary, readerSummaryHeadline } from "../../domain";
+import { buildReaderSummary, primaryReaderSummaryEvidence, readerSummaryHeadline } from "../../domain";
 import type {
   ReaderSummaryModelInput,
   ReaderSummaryModelRoute,
@@ -55,7 +55,9 @@ export const normalizeOpenAiReaderSummaryDraft = (
   evalDatasetVersion: string,
 ): GeneratedReaderSummaryDraft => {
   const citationMap = buildReaderSummaryEvidenceCitationMap(
-    input.evidence.selectedEvidence,
+    input.evidence.dailyGenerationInput === undefined
+      ? input.evidence.selectedEvidence
+      : primaryReaderSummaryEvidence(input.evidence).selectedEvidence,
   );
   const headline = readerSummaryHeadline(
     requiredString(raw.headline, "reader summary headline"),

@@ -199,6 +199,35 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
   })).toThrow("Daily editorial topic cites sources outside its plan");
 });
 
+
+it("binds daily writer citations to the frozen top-30 even without matching board evidence", async () => {
+  const { input, evidence } = await dailyDigestFixture();
+  const frozen = evidence.dailyGenerationInput!;
+  const lateSource = frozen.selected[19]!;
+  const plan = validateDailyEditorialPlan({
+    version: "reader_summary.daily_editorial.v1",
+    topics: [{ title: "Late important story", why: "Relevant despite the popularity position",
+      depth: "detailed", feedItemIds: [lateSource.feedItemId] }],
+  }, frozen);
+  const narrativeOnly = { ...evidence, selectedEvidence: [],
+    dailyGenerationEvidence: primaryReaderSummaryEvidence(evidence).selectedEvidence };
+  const writer = { ...input, evidence: narrativeOnly, dailyEditorialPlan: plan,
+    coveragePlan: dailyEditorialCoveragePlan(plan, narrativeOnly),
+    policy: { ...input.policy, maxStories: 1 } };
+  const { attempt, request } = await generateDailyFixture(writer);
+  const payload = JSON.parse(request.input) as {
+    coveragePlan: { lead: { citationIds: readonly string[] } };
+    evidence: readonly { feedItemId: string; citationId: string }[];
+  };
+  expect(payload.evidence).toHaveLength(30);
+  expect(payload.coveragePlan.lead.citationIds).toEqual(["c20"]);
+  expect(payload.evidence[19]).toMatchObject({
+    feedItemId: lateSource.feedItemId, citationId: "c20",
+  });
+  expect(attempt.draft.topStories[0]?.citationIds).toEqual(["c20"]);
+  expect(attempt.draft.citationMap[19]?.feedItemId).toBe(lateSource.feedItemId);
+});
+
 it("calls the attested daily editor once with all frozen sources and their native metrics", async () => {
   const { input, evidence } = await dailyDigestFixture();
   const selected = evidence.dailyGenerationInput!.selected;

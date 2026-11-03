@@ -146,10 +146,12 @@ export const buildOpenAiReaderSummaryPromptPayload = (
 ): string => {
   const primaryEvidence = primaryReaderSummaryEvidence(input.evidence);
   const additionalEvidence = additionalReaderSummaryEvidence(input.evidence);
+  // For daily generation, citations follow the frozen narrative top-30,
+  // not the independently selected promotion-board evidence.
+  const citedEvidence = input.evidence.dailyGenerationInput === undefined
+    ? input.evidence.selectedEvidence : primaryEvidence.selectedEvidence;
   const citationIdByFeedItemId = new Map(
-    input.evidence.selectedEvidence.map(
-      (item, index) => [item.feedItemId, `c${index + 1}`] as const,
-    ),
+    citedEvidence.map((item, index) => [item.feedItemId, `c${index + 1}`] as const),
   );
   const coveragePlan = input.coveragePlan;
 
