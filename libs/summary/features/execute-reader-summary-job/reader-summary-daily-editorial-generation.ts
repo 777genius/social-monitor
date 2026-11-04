@@ -40,7 +40,8 @@ export async function generateReaderSummaryWithDailyEditor(params: {
   }
   const writerRoute = editor === undefined ? route :
     model.route(writerInput, policy, remaining);
-  const attempt = await model.generate(writerInput, writerRoute);
+  const attempt = await model.generate(writerInput, writerRoute,
+    editor === undefined ? undefined : remaining);
   if (editor !== undefined &&
       ((attempt.draft.usage.inputTokens ?? 0) +
         (attempt.draft.usage.outputTokens ?? 0) > remaining.remainingTokens ||

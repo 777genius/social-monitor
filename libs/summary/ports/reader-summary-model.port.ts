@@ -106,6 +106,7 @@ export interface ReaderSummaryModelPort {
   generate(
     input: ReaderSummaryModelInput,
     route: ReaderSummaryModelRoute,
+    budget?: ReaderSummaryModelBudget,
   ): Promise<ProviderReaderSummaryAttempt>;
   validateRawProviderResponse(
     attempt: ProviderReaderSummaryAttempt,

@@ -41,6 +41,7 @@ import {
 } from "./reader-summary-execution-attestation";
 import {
   AgentRuntimeModelProviderError,
+  assertReaderSummaryRepairWithinBudget,
   buildAgentRuntimeRequestId,
   classifyAgentRuntimeError,
   nonEmptyOrFallback,
@@ -214,9 +215,8 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       inputTokenDivisor: this.inputTokenDivisor, maxOutputTokens: this.maxOutputTokens,
       sink: this.verifiedAttestationSink });
   }
-  async generate(
-    input: ReaderSummaryModelInput,
-    selectedRoute: ReaderSummaryModelRoute,
+  async generate(input: ReaderSummaryModelInput,
+    selectedRoute: ReaderSummaryModelRoute, writerBudget?: ReaderSummaryModelBudget,
   ): Promise<ProviderReaderSummaryAttempt> {
     if (
       primaryReaderSummaryEvidence(input.evidence).selectedEvidence.length === 0
@@ -231,14 +231,15 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       const command = this.buildTaskCommand(input, selectedRoute, attempt, schemaViolations);
       const dailyGenerationReceipt = readerSummaryDailyInputReceipt(command.prompt, input.evidence.dailyGenerationInput, input.dailyEditorialPlan);
       const result = await this.client.runTask(command);
-      const attemptUsage = usageFromAgentRuntime(
-        result.usage,
-        this.estimate(input, selectedRoute),
-      );
+      const estimate = this.estimate(input, selectedRoute);
+      const attemptUsage = usageFromAgentRuntime(result.usage, estimate);
       logicalRunUsage = sumReaderSummaryUsage(logicalRunUsage, attemptUsage);
       if (attempt === "primary") {
         schemaViolations = this.gatewaySchemaViolations(result);
-        if (schemaViolations !== undefined) continue;
+        if (schemaViolations !== undefined) {
+          assertReaderSummaryRepairWithinBudget(logicalRunUsage, estimate, writerBudget);
+          continue;
+        }
       }
       try {
         const rawDraft = readAgentRuntimeObjectOutput(
@@ -268,6 +269,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
         return { route: selectedRoute, draft, ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }) };
       } catch (error) {
         if (attempt === "primary" && isRepairableNarrativeError(error)) {
+          assertReaderSummaryRepairWithinBudget(logicalRunUsage, estimate, writerBudget);
           continue;
         }
         throw error;
@@ -276,7 +278,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 
     throw new Error("Reader summary repair attempt did not return a result");
   }
-
   /**
    * Output the gateway strict decode rejects gets one repair that names every
    * broken path and limit, never the rejected text, on every backend the
@@ -461,7 +462,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 
 const narrativeRepairInstruction =
   "Repair the complete JSON response. Every narrativeSections item must use the non-empty string fields title and text, never summary, body or description. If coveragePlan.lead is null, return empty topStories and narrativeSections plus a concrete noSignalReason. For single_story, narrativeSections[0] must have kind lead and cite coveragePlan.lead. For daily_synthesis, it must have kind lead, set storyClusterId to null, and cite both coveragePlan.lead and at least one coveragePlan.secondary cluster. Return exactly one secondary_signal for every coveragePlan.secondary entry. Omit any watch that is not self-contained and backed by high engagement, first-party authority or cross-provider support. Do not change facts or invent citations.";
-
 
 const schemaRepairInstruction = (violations: readonly string[]): string =>
   `Your previous response was rejected by the output schema at: ${violations.join("; ")}. Each entry is path:rule, with the limit after = (maxLength in characters, maxItems in items). Regenerate the complete JSON response from the same evidence. Rewrite every listed field as complete, shorter text inside its limit; never cut a sentence or word, and keep every other field inside the hard limits. Do not change facts or invent citations.`;
