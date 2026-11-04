@@ -273,7 +273,7 @@ const dailyEditorialWriterInstructions = (input: ReaderSummaryModelInput): strin
   "Each narrative section must have the planned anchor storyClusterId (the first assigned source's original storyId), and cite only assigned sources from that topic.",
   "The lead must cite only its own topic sources. Do not force a synthesis of unrelated topics.",
   "Each topStories item cites the first source of its planned topic; do not borrow facts or citations from another topic.",
-  "Detailed topics deserve more concrete explanatory depth; brief topics stay compact. Do not pad weak material.",
+  "Detailed topics use roughly 70–110 words and at most 1,200 characters; brief topics use 25–55 words. Write complete sentences ending in sentence punctuation. Shorten the wording before reaching the limit, never cut a sentence or pad weak material.",
   "Never silently drop, reorder or add topics. All assigned sources are available in evidence and the remaining sources provide context, not extra topics.",
   "Preserve source-specific qualifiers, avoid unsupported releases and broad claims, and explicitly attribute uncertain rumors.",
   "Provider engagement measures differ. Likes and points are not equivalent and do not prove factual accuracy.",

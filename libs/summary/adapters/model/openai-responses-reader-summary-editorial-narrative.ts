@@ -36,6 +36,9 @@ export const normalizeDailyEditorialNarrative = (params: {
     if (title === undefined || text === undefined) {
       throw new Error("Daily editorial narrative text is missing");
     }
+    if (Array.from(text).length > 1_600 || !/[.!?…。！？]["'’”)]*$/u.test(text)) {
+      throw new Error("Daily editorial narrative text is unfinished or too long");
+    }
     return {
       id: `narrative-${index + 1}`, kind: expectedKind, title, text,
       citationIds: [...citations] as string[], storyClusterId: anchor.storyId,

@@ -162,6 +162,16 @@ function stringArraySchema(maxItems = 10, maxLength = 120) {
 /** Extra room only for the versioned daily editorial writer. */
 export const dailyEditorialReaderSummaryJsonSchema = {
   ...openAiReaderSummaryJsonSchema,
+  $defs: {
+    ...openAiReaderSummaryJsonSchema.$defs,
+    narrativeSection: {
+      ...openAiReaderSummaryJsonSchema.$defs.narrativeSection,
+      properties: {
+        ...openAiReaderSummaryJsonSchema.$defs.narrativeSection.properties,
+        text: { ...stringSchema(1_600), minLength: 1 },
+      },
+    },
+  },
   properties: {
     ...openAiReaderSummaryJsonSchema.properties,
     executiveSummary: stringSchema(5_000),
