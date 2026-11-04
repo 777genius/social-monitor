@@ -5,42 +5,21 @@ import type {
   HackerNewsSearchOptions,
   HackerNewsStory,
 } from './hacker-news-client.port';
+import type { AlgoliaSearchResponse } from './hacker-news-algolia-contracts';
 import {
-  selectQueryMatchedHits,
-  stripHtml,
-} from "./hacker-news-query-match";
+  algoliaFetchLimit,
+  filterAlgoliaHits,
+  normalizeAlgoliaQuery,
+  numericFiltersForSearchOptions,
+  optionalWordsForQuery,
+} from './hacker-news-algolia-policy';
+import { normalizeAlgoliaHit, normalizeFirebaseStory, isRecord } from './hacker-news-provider-mappers';
+import { searchCompleteHackerNewsWindow } from './hacker-news-historical-search';
 
-export type AlgoliaHit = {
-  readonly objectID?: string;
-  readonly title?: string;
-  readonly story_title?: string;
-  readonly story_id?: number;
-  readonly parent_id?: number;
-  readonly url?: string;
-  readonly author?: string;
-  readonly created_at_i?: number;
-  readonly story_text?: string;
-  readonly comment_text?: string;
-  readonly points?: number;
-  readonly num_comments?: number;
-};
-
-type AlgoliaSearchResponse = {
-  readonly hits?: readonly AlgoliaHit[];
-  readonly nbHits?: number;
-  readonly nbPages?: number;
-  readonly page?: number;
-  readonly exhaustiveNbHits?: boolean;
-  readonly exhaustive?: { readonly nbHits?: boolean };
-};
+export type { AlgoliaHit } from './hacker-news-algolia-contracts';
 
 const firebaseBaseUrl = 'https://hacker-news.firebaseio.com/v0';
 const algoliaBaseUrl = 'https://hn.algolia.com/api/v1';
-const algoliaOverfetchMultiplier = 2;
-const historicalPageSize = 100;
-const historicalPageCeiling = 10;
-const historicalRequestBudget = 512;
-const minAlgoliaStoryPoints = 2;
 const listingEndpoints: Readonly<Record<HackerNewsListing, string>> = {
   top: 'topstories',
   new: 'newstories',
@@ -202,7 +181,7 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
       if (options.from === undefined || options.to === undefined) {
         throw new Error('Hacker News historical search requires a bounded window');
       }
-      const hits = await this.searchCompleteWindow(url, options.from, options.to);
+      const hits = await searchCompleteHackerNewsWindow(url, options.from, options.to, (targetUrl) => this.fetchJson<AlgoliaSearchResponse>(targetUrl));
       return filterAlgoliaHits(hits, kind, normalizedQuery)
         .flatMap((hit) => normalizeAlgoliaHit(hit, kind));
     }
@@ -211,65 +190,6 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
     const hits = filterAlgoliaHits(response.hits ?? [], kind, normalizedQuery).slice(0, normalizedLimit);
 
     return hits.flatMap((hit) => normalizeAlgoliaHit(hit, kind));
-  }
-
-  private async searchCompleteWindow(
-    baseUrl: URL,
-    from: Date,
-    to: Date,
-  ): Promise<readonly AlgoliaHit[]> {
-    const startSecond = Math.ceil(from.getTime() / 1000);
-    const endSecond = Math.ceil(to.getTime() / 1000);
-    if (startSecond >= endSecond) return [];
-    let requests = 0;
-    const fetchPage = async (url: URL): Promise<AlgoliaSearchResponse> => {
-      if (requests >= historicalRequestBudget) {
-        throw new Error('Hacker News historical search incomplete: request budget exhausted');
-      }
-      requests += 1;
-      return this.fetchJson<AlgoliaSearchResponse>(url.toString());
-    };
-    const searchInterval = async (start: number, end: number): Promise<readonly AlgoliaHit[]> => {
-      const url = new URL(baseUrl);
-      url.searchParams.set('numericFilters', `created_at_i>${start - 1},created_at_i<${end}`);
-      url.searchParams.set('hitsPerPage', String(historicalPageSize));
-      url.searchParams.set('page', '0');
-      const first = await fetchPage(url);
-      const count = first.nbHits;
-      const pages = first.nbPages;
-      if (!Number.isSafeInteger(count) || count === undefined || count < 0 ||
-          !Number.isSafeInteger(pages) || pages === undefined || pages < 0 || first.page !== 0 ||
-          !Array.isArray(first.hits)) {
-        throw new Error('Hacker News historical search incomplete: unknown Algolia coverage');
-      }
-      if (count > historicalPageSize * historicalPageCeiling || pages > historicalPageCeiling) {
-        const middle = start + Math.floor((end - start) / 2);
-        if (middle <= start || middle >= end) {
-          throw new Error('Hacker News historical search incomplete: provider pagination ceiling');
-        }
-        return [...await searchInterval(start, middle), ...await searchInterval(middle, end)];
-      }
-      if (!hasExhaustiveHitCount(first) || pages !== Math.ceil(count / historicalPageSize)) {
-        throw new Error('Hacker News historical search incomplete: unknown Algolia coverage');
-      }
-      const hits = [...first.hits];
-      for (let page = 1; page < pages; page += 1) {
-        url.searchParams.set('page', String(page));
-        const response = await fetchPage(url);
-        if (!hasExhaustiveHitCount(response) || response.nbHits !== count || response.nbPages !== pages ||
-            response.page !== page || !Array.isArray(response.hits)) {
-          throw new Error('Hacker News historical search incomplete: inconsistent Algolia page');
-        }
-        hits.push(...response.hits);
-      }
-      if (hits.length !== count || new Set(hits.map((hit) => hit.objectID)).size !== count ||
-          hits.some((hit) => hit.objectID === undefined || !Number.isInteger(Number(hit.objectID)) ||
-            !Number.isInteger(hit.created_at_i) || hit.created_at_i! < start || hit.created_at_i! >= end)) {
-        throw new Error('Hacker News historical search incomplete: missing, duplicate or unbounded hits');
-      }
-      return hits;
-    };
-    return searchInterval(startSecond, endSecond);
   }
 
   async listStories(listing: HackerNewsListing, limit: number): Promise<readonly HackerNewsStory[]> {
@@ -331,148 +251,3 @@ const normalizeCommentDepth = (depth: number): number => {
   return Math.min(depth, 10);
 };
 
-const algoliaFetchLimit = (limit: number): number =>
-  Math.min(100, Math.max(limit, limit * algoliaOverfetchMultiplier));
-
-const normalizeAlgoliaQuery = (query: string): string =>
-  query.replace(/[-,]/g, ' ').split(/\s+/u).filter(Boolean).join(' ');
-
-const optionalWordsForQuery = (query: string): string | undefined => {
-  const [, ...optionalWords] = query.split(' ').filter(Boolean);
-
-  return optionalWords.length === 0 ? undefined : optionalWords.join(' ');
-};
-
-const numericFiltersForSearchOptions = (
-  options: HackerNewsSearchOptions | undefined,
-): string | undefined => {
-  const filters = [
-    options?.from === undefined
-      ? undefined
-      : `created_at_i>${Math.ceil(options.from.getTime() / 1000) - 1}`,
-    options?.to === undefined ? undefined : `created_at_i<${Math.ceil(options.to.getTime() / 1000)}`,
-  ].filter((filter): filter is string => filter !== undefined);
-
-  return filters.length === 0 ? undefined : filters.join(',');
-};
-
-const filterAlgoliaHits = (
-  hits: readonly AlgoliaHit[],
-  kind: 'story' | 'comment',
-  query: string,
-): readonly AlgoliaHit[] => {
-  const queryMatchedHits = selectQueryMatchedHits(hits, query);
-
-  if (kind === 'comment') {
-    return queryMatchedHits;
-  }
-
-  const qualifyingHits = queryMatchedHits.filter(
-    (hit) => (hit.points ?? 0) > minAlgoliaStoryPoints,
-  );
-
-  return qualifyingHits.length === 0 ? queryMatchedHits : qualifyingHits;
-};
-
-const normalizeAlgoliaHit = (
-  hit: AlgoliaHit,
-  kind: 'story' | 'comment',
-): readonly HackerNewsStory[] => {
-  const id = Number(hit.objectID);
-  if (!Number.isInteger(id)) {
-    return [];
-  }
-  const storyId = readOptionalInteger(hit.story_id);
-  const parentId = readOptionalInteger(hit.parent_id);
-  const text = cleanOptionalText(hit.story_text ?? hit.comment_text);
-  const score = readOptionalInteger(hit.points);
-  const comments = readOptionalInteger(hit.num_comments);
-
-  return [{
-    kind,
-    id,
-    ...(hit.title === undefined ? {} : { title: hit.title }),
-    ...(hit.story_title === undefined ? {} : { storyTitle: hit.story_title }),
-    ...(storyId === undefined ? {} : { storyId }),
-    ...(parentId === undefined ? {} : { parentId }),
-    ...(hit.url === undefined ? {} : { url: hit.url }),
-    ...(hit.author === undefined ? {} : { by: hit.author }),
-    ...(hit.created_at_i === undefined ? {} : { time: hit.created_at_i }),
-    ...(text === undefined ? {} : { text }),
-    ...(score === undefined ? {} : { score }),
-    ...(comments === undefined ? {} : { comments }),
-  }];
-};
-
-const normalizeFirebaseStory = (story: Readonly<Record<string, unknown>>): HackerNewsStory | null => {
-  const id = readOptionalInteger(story.id);
-  if (id === undefined) {
-    return null;
-  }
-  const kind = readFirebaseKind(story.type);
-  const parentId = readOptionalInteger(story.parent);
-  const kids = readOptionalIntegerArray(story.kids);
-
-  return {
-    ...(kind === undefined ? {} : { kind }),
-    id,
-    title: readOptionalString(story.title),
-    ...(parentId === undefined ? {} : { parentId }),
-    ...(kids === undefined ? {} : { kids }),
-    url: readOptionalString(story.url),
-    by: readOptionalString(story.by),
-    time: readOptionalInteger(story.time),
-    text: cleanOptionalText(readOptionalString(story.text)),
-    score: readOptionalInteger(story.score),
-    comments: readOptionalInteger(story.descendants),
-    deleted: story.deleted === true,
-    dead: story.dead === true,
-  };
-};
-
-const readOptionalString = (value: unknown): string | undefined =>
-  typeof value === 'string' ? value : undefined;
-
-const readFirebaseKind = (value: unknown): 'story' | 'comment' | undefined => {
-  if (value === 'comment') {
-    return 'comment';
-  }
-
-  return value === 'story' || value === 'job' || value === 'poll'
-    ? 'story'
-    : undefined;
-};
-
-const readOptionalIntegerArray = (
-  value: unknown,
-): readonly number[] | undefined => {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  return value.filter((item): item is number => Number.isInteger(item));
-};
-
-const cleanOptionalText = (value: string | undefined): string | undefined =>
-  value === undefined ? undefined : stripHtml(value);
-
-const readOptionalInteger = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isInteger(value) ? value : undefined;
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-/** Algolia's modern and deprecated flags must agree when both are supplied. */
-function hasExhaustiveHitCount(response: AlgoliaSearchResponse): boolean {
-  const exhaustive = response.exhaustive;
-  if (exhaustive !== undefined &&
-      (exhaustive === null || typeof exhaustive !== 'object' || Array.isArray(exhaustive))) {
-    return false;
-  }
-  const modern = exhaustive?.nbHits;
-  const legacy = response.exhaustiveNbHits;
-  if ((modern !== undefined && typeof modern !== 'boolean') ||
-      (legacy !== undefined && typeof legacy !== 'boolean')) return false;
-  if (modern !== undefined && legacy !== undefined && modern !== legacy) return false;
-  return modern === true || legacy === true;
-}

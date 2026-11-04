@@ -1,4 +1,4 @@
-import type { AlgoliaHit } from "./http-hacker-news-client";
+import type { AlgoliaHit } from "./hacker-news-algolia-contracts";
 
 const hackerNewsTitlePrefix = /^(Tell HN|Show HN|Ask HN|Launch HN)\s*:\s*/iu;
 const wordBoundaryPatternCache = new Map<string, RegExp>();
