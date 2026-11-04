@@ -38,6 +38,8 @@ import { runProductionV3Preflight, seedProductionReaderValueCapture } from "./re
 import { completeProductionV3Assessment, fixtureReaderValueAnswers } from "./reader-summary-v3-postgres-assessment-lifecycle";
 import { assertFlutterV3FixtureFresh } from
   "./reader-summary-v3-postgres-flutter-fixture";
+import { assertV3CandidateAuditPostgresContract } from
+  "./reader-summary-v3-candidate-audit-postgres-contract";
 import { assertV3LongSourcePostgresContract } from
   "./reader-summary-v3-long-source-postgres-contract";
 type Params = {
@@ -100,6 +102,7 @@ export const assertReaderSummaryV3PostgresContract = async (params: Params) => {
   assert(await publishThroughApplicationGuard(params, nested, payload) === "replayed",
     "nested V3 replay must be exact");
   await assertApplicationPayloadRoundTrip(params.client, nested, payload);
+  await assertV3CandidateAuditPostgresContract(params.adminClient);
   await assertV3LongSourcePostgresContract({ client: params.client,
     adminClient: params.adminClient, createFixture: params.createFixture,
     build: (source) => buildApplicationV3FixturePayload(params.client, source),
