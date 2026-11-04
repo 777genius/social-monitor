@@ -15,6 +15,7 @@ import { CapturingAgentRuntimeClient } from "./agent-runtime-reader-summary-mode
 import { ReaderSummaryArtifact, validateDailyEditorialPlan, dailyEditorialCoveragePlan, primaryReaderSummaryEvidence } from "../../domain";
 import { buildReaderSummaryDraftWithPromotionContent } from "../../features/execute-reader-summary-job/reader-summary-promotion-content";
 import { buildReaderSummaryModelArtifact } from "../../features/execute-reader-summary-job/reader-summary-model-artifact";
+import { generateReaderSummaryWithDailyEditor } from "../../features/execute-reader-summary-job/reader-summary-daily-editorial-generation";
 import { buildReaderSummaryCoverageView } from "../../features/shared/reader-summary-coverage-presenter";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
 import { buildDailyEditorialPrompt } from "./reader-summary-daily-editorial-model";
@@ -272,4 +273,77 @@ it("calls the attested daily editor once with all frozen sources and their nativ
   expect(payload.sources[0]?.nativeCount).toBe(selected[0]?.nativeCount);
   expect(result.editorRequestSha256).toBe(
     createHash("sha256").update(client.commands[0]!.prompt).digest("hex"));
+});
+
+it("runs the daily editor and writer consecutively against the same frozen thirty-source input", async () => {
+  const { input, evidence, manifest, snapshots, job } = await dailyDigestFixture();
+  const selected = evidence.dailyGenerationInput!.selected;
+  const rawPlan = {
+    version: "reader_summary.daily_editorial.v1",
+    topics: [
+      { title: "Later high-impact change", why: "Practical impact outweighs popularity",
+        depth: "detailed", feedItemIds: [selected[19]!.feedItemId, selected[26]!.feedItemId] },
+      ...selected.slice(0, 9).map((item, index) => ({
+        title: `Distinct event ${index + 1}`, why: "Independent engineering value",
+        depth: index < 3 ? "detailed" : "brief", feedItemIds: [item.feedItemId],
+      })),
+    ],
+  };
+  const plan = validateDailyEditorialPlan(rawPlan, evidence.dailyGenerationInput!);
+  const writer = { ...input, dailyEditorialPlan: plan,
+    coveragePlan: dailyEditorialCoveragePlan(plan, evidence),
+    policy: { ...input.policy, maxStories: plan.topics.length } };
+  const client = new CapturingAgentRuntimeClient([
+    { status: "completed", structuredOutput: rawPlan, warnings: [] },
+    { status: "completed", structuredOutput: dailyProviderDraft(writer), warnings: [] },
+  ]);
+  const model = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
+  const generated = await generateReaderSummaryWithDailyEditor({
+    model, input,
+    policy: { preferredProvider: "agent-runtime", maxInputTokens: 100000,
+      maxOutputTokens: 16000, maxEstimatedCostUsd: 5 },
+    budget: { remainingTokens: 160000, remainingCostUsd: 10 },
+  });
+  expect(client.commands).toHaveLength(2);
+  expect(client.commands[0]!.purpose).toBe("social_monitor.reader_summary.daily_editorial.plan.v1");
+  expect(client.commands[1]!.purpose).not.toBe(client.commands[0]!.purpose);
+  const editorPayload = JSON.parse(client.commands[0]!.prompt) as {
+    sources: readonly { feedItemId: string; nativeCount: number | null }[];
+  };
+  const writerPayload = JSON.parse(client.commands[1]!.prompt) as {
+    evidence: readonly { feedItemId: string; citationId: string }[];
+    dailyEditorialPlan: typeof plan;
+  };
+  expect(editorPayload.sources.map(item => item.feedItemId))
+    .toEqual(selected.map(item => item.feedItemId));
+  expect(editorPayload.sources.map(item => item.nativeCount))
+    .toEqual(selected.map(item => item.nativeCount));
+  expect(writerPayload.evidence.map(item => item.feedItemId))
+    .toEqual(selected.map(item => item.feedItemId));
+  expect(writerPayload.evidence[19]?.citationId).toBe("c20");
+  expect(writerPayload.dailyEditorialPlan).toEqual(plan);
+  expect(client.commands[0]!.prompt).not.toContain("board-only source text");
+  expect(client.commands[1]!.prompt).not.toContain("board-only source text");
+  expect(generated.editor?.plan).toEqual(plan);
+  expect(generated.attempt.dailyGenerationReceipt?.editorialPlanSha256)
+    .toBe(canonicalJsonSha256(plan));
+  expect(generated.attempt.draft.topStories).toHaveLength(10);
+  const publication = buildReaderSummaryDraftWithPromotionContent(evidence, generated.attempt.draft);
+  const artifact = buildReaderSummaryModelArtifact({
+    snapshot: job.toSnapshot(), readerSummaryId: "two-call-editorial-test-artifact",
+    generatedAt: input.requestedAt, modelEvidence: evidence, contextArtifacts: [],
+    draft: publication, dailyGenerationReceipt: generated.attempt.dailyGenerationReceipt,
+    dailyEditorialPlan: { plan, frozenManifestSha256: evidence.dailyGenerationInput!.manifestSha256,
+      editorRequestSha256: generated.editor!.editorRequestSha256,
+      editorOutputSha256: generated.editor!.editorOutputSha256 },
+  });
+  const saved = artifact.toSnapshot();
+  expect(saved.content?.narrativeSections).toHaveLength(10);
+  expect(saved.content?.sourceMix.reduce((sum, item) => sum + item.itemCount, 0)).toBe(30);
+  expect(dailyGenerationPublicationMatches({
+    manifest, manifestSha256: evidence.dailyGenerationInput!.manifestSha256,
+    periodKey: input.period.periodKey,
+    identity: { tenantId: input.tenantId, workspaceId: input.workspaceId, scope: input.scope },
+    snapshots, artifact: saved,
+  })).toBe(true);
 });
