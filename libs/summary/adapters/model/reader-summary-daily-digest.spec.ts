@@ -460,3 +460,38 @@ it("repairs an invalid daily editorial writer once without replanning sources", 
   expect(generated.attempt.dailyGenerationReceipt?.editorialPlanSha256)
     .toBe(canonicalJsonSha256(plan));
 });
+
+it.each([
+  { limit: "tokens", editorCost: 0, writerUsage: {
+    inputTokens: 95000, outputTokens: 10000, totalTokens: 105000, estimatedCostUsd: 0 },
+    budget: { remainingTokens: 100000, remainingCostUsd: 10 } },
+  { limit: "cost", editorCost: 1, writerUsage: {
+    inputTokens: 100, outputTokens: 200, totalTokens: 300, estimatedCostUsd: 4.5 },
+    budget: { remainingTokens: 100000, remainingCostUsd: 5 } },
+])("rejects actual daily writer $limit usage above the shared post-editor budget", async ({ editorCost, writerUsage, budget }) => {
+  const { input, evidence } = await dailyDigestFixture();
+  const rawPlan = {
+    version: "reader_summary.daily_editorial.v1",
+    topics: [{ title: "Budgeted development", why: "Source-grounded impact",
+      depth: "detailed", feedItemIds: [evidence.dailyGenerationInput!.selected[19]!.feedItemId] }],
+  };
+  const plan = validateDailyEditorialPlan(rawPlan, evidence.dailyGenerationInput!);
+  const writer = { ...input, dailyEditorialPlan: plan,
+    coveragePlan: dailyEditorialCoveragePlan(plan, evidence),
+    policy: { ...input.policy, maxStories: 1 } };
+  const client = new CapturingAgentRuntimeClient([
+    { status: "completed", structuredOutput: rawPlan, warnings: [],
+      usage: { inputTokens: 100, outputTokens: 30, totalTokens: 130,
+        estimatedCostUsd: editorCost } },
+    { status: "completed", structuredOutput: dailyProviderDraft(writer),
+      warnings: [], usage: writerUsage },
+  ]);
+  const model = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
+  await expect(generateReaderSummaryWithDailyEditor({
+    model, input,
+    policy: { preferredProvider: "agent-runtime", maxInputTokens: 100000,
+      maxOutputTokens: 16000, maxEstimatedCostUsd: 5 },
+    budget,
+  })).rejects.toThrow("Daily editorial writer exceeded the shared model budget");
+  expect(client.commands).toHaveLength(2);
+});

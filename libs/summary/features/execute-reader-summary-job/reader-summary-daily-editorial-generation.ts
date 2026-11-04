@@ -41,6 +41,12 @@ export async function generateReaderSummaryWithDailyEditor(params: {
   const writerRoute = editor === undefined ? route :
     model.route(writerInput, policy, remaining);
   const attempt = await model.generate(writerInput, writerRoute);
+  if (editor !== undefined &&
+      ((attempt.draft.usage.inputTokens ?? 0) +
+        (attempt.draft.usage.outputTokens ?? 0) > remaining.remainingTokens ||
+        attempt.draft.usage.estimatedCostUsd > remaining.remainingCostUsd)) {
+    throw new Error("Daily editorial writer exceeded the shared model budget");
+  }
   if (editor === undefined) return { attempt };
   return { editor, attempt: { ...attempt, draft: {
     ...attempt.draft,
