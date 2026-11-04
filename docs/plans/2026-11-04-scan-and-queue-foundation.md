@@ -383,3 +383,62 @@ broker/database harnesses above are explicit deterministic fixtures; no live
 PostgreSQL/RabbitMQ or production readiness claim is inferred from them. Required
 backend/database CI jobs run after the PR leaves draft; draft-skipped jobs are not
 counted as verification. Final check status is recorded on the pull request.
+
+## E2E completion follow-up (2026-11-04)
+
+The user requested completion of E2E verification after the foundation checkpoint.
+The existing head `117f65e` has a successful 20-job CI run, including 77 backend
+E2E suites / 150 tests and the complete unit inventory. That evidence does not
+cover a live RabbitMQ transport or complete the two stale reader workflow smokes
+described above. This follow-up closes those specific gaps without reopening the
+editorial feature design or broadening the refactor.
+
+### Scope and ownership
+
+1. **HTTP scan recovery:** extend the existing real Nest/API/worker harness with
+   three consequential boundaries. Inject a failure only at the external source
+   or execution-reporting port; keep dispatch, handler, use case, retry claims,
+   acknowledgement and repositories real. Prefer the Nest-provided drain loop
+   with bounded lifecycle ticks over a second hand-written composition.
+2. **Live RabbitMQ transport:** add a separate explicit broker E2E command and a
+   disposable RabbitMQ service to the existing backend E2E CI job. Reuse the
+   repository's `rabbitmq:4.3-management` image. Ordinary deterministic E2E remains
+   runnable without a broker; the explicit broker command fails if its endpoint
+   is absent, rather than silently skipping verification. No new dependency.
+3. **Reader workflow fixtures:** modernize only the two existing smoke fixture
+   builders and their isolated test environment. Reuse the current accepted
+   headline and editorial-slate builders, synthetic observed source authority,
+   display scope and the real promotion/projection pipeline. Preserve production
+   publication guards and their v2/display-bound proof requirements.
+
+### Required scenarios and assertions
+
+| Boundary | Required evidence |
+| --- | --- |
+| Persisted result, failed outcome reporting | First tick stores the successful attempt/feed but keeps HTTP status enqueued and requeues the original command. Redelivery reports that saved result; the source is fetched once, feed cardinality stays unchanged, and HTTP becomes succeeded. |
+| Retry succeeds | First source failure creates exactly one attempt-2 retry and no feed. The next real worker tick claims that retry, succeeds, clears primary/retry queues and exposes the result through HTTP. |
+| Retry exhausts | With retry budget 2 (two total attempts), two failures leave one terminal dead letter, no pending command/retry, failed HTTP status and scoped dead-letter inspection. A further empty tick produces no duplicate failure. |
+| Broker occurrence ownership | Publish two deliveries with the same command ID, acknowledge one and requeue the other; only the unacknowledged occurrence returns with broker redelivery diagnostics. |
+| Broker channel replacement | Close the captured delivery channel through real recovery, reacquire the batch on its replacement, then settle/recover an old sibling. Old cleanup must not close the new channel or lose its deliveries. |
+| Broker protocol failure | An actual incompatible queue declaration closes a native channel. Uncertain old settlement must remain recoverable while replacement-channel work can complete. |
+| Poison and wrong-type broker messages | Both reach a bound dead-letter queue with broker rejection metadata; a valid sibling remains processable. |
+| Lost broker route | Verify the review concern that a reader's cached route declaration survives queue deletion/channel replacement. If the real regression reproduces, make the smallest route-recovery correction and retain executable regression evidence. |
+| Reader workflow and publication HTTP | Both existing smoke commands pass using current editorial authority and projection contracts; assert current one-based slots and display-bound proof rather than obsolete fixture assumptions. |
+
+### Boundaries and verification
+
+No live providers, credentials, real notifications, user projects, production
+deployment, schema/DTO change, dependency upgrade, feature flag or new workflow
+framework. Broker resources use unique test-only names and are cleaned up. The
+reader fixture explicitly selects an isolated deterministic test environment;
+it does not claim production Jev V3 readiness or weaken durable-profile checks.
+
+Implementation ownership is split among three GPT-6 Astra/ultra agents: HTTP
+recovery, broker lifecycle, and reader fixtures. Independent cross-review follows
+each slice, with another correction/review round for concrete findings. Run the
+focused new scenarios, the complete backend E2E corpus, both repaired workflow
+smokes, whole-project test-inclusive typecheck, lint and applicable architecture,
+quality, line-cap and runtime-profile guards. The live broker must run in CI when
+unavailable locally; static success alone is not a live-broker result. Publish
+each commit immediately. Record final exact-head results and any remaining
+limits in this plan and PR, without counting an in-progress check as passed.
