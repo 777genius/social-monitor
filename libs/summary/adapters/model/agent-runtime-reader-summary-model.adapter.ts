@@ -467,10 +467,9 @@ const schemaRepairInstruction = (violations: readonly string[]): string =>
   `Your previous response was rejected by the output schema at: ${violations.join("; ")}. Each entry is path:rule, with the limit after = (maxLength in characters, maxItems in items). Regenerate the complete JSON response from the same evidence. Rewrite every listed field as complete, shorter text inside its limit; never cut a sentence or word, and keep every other field inside the hard limits. Do not change facts or invent citations.`;
 
 const isRepairableNarrativeError = (error: unknown): boolean =>
-  error instanceof Error &&
-  (error.message.startsWith("Reader summary narrative") ||
-    error.message.startsWith("Daily editorial narrative") ||
-    error.message.startsWith("Daily editorial stor"));
+  error instanceof Error && ["Reader summary narrative", "Daily editorial narrative",
+    "Daily editorial story", "Daily editorial stories"].some(
+      prefix => error.message.startsWith(prefix));
 
 export const resolveAgentRuntimeReaderSummaryModelOptions = (
   env: NodeJS.ProcessEnv,
