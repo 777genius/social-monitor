@@ -5,7 +5,7 @@ import { QueueDeliveryBatch, queueCommandDeliveryLagSeconds } from '@social-moni
 import { classifyWorkerRuntimeFailure } from '@social-monitor/platform-worker';
 import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
 import type { ScanRetryQueuePort } from '@social-monitor/ingestion/ports';
-import { DomainError, type Clock } from '@social-monitor/shared-kernel';
+import type { Clock } from '@social-monitor/shared-kernel';
 
 import {
   INGESTION_SCAN_FAILURE_QUEUE,
@@ -18,6 +18,7 @@ import {
   type ScanCommandQueueReaderPort,
 } from './scan-command-queue-reader';
 import { ScanRetryDeliveryBatch, SCAN_RETRY_VISIBILITY_SECONDS } from './scan-retry-delivery-batch';
+import { decideFailedScanDeliveryAction } from './scan-delivery-settlement-policy';
 
 @Injectable()
 export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
@@ -139,18 +140,13 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
           completed += 1;
           continue;
         }
-        if (handlerError instanceof DomainError && handlerError.details.reason === 'scan_failure_recorded') {
+        const action = decideFailedScanDeliveryAction(handlerError, this.shuttingDown);
+        if (action === 'acknowledge') {
           await batch.ack(delivery);
           failed += 1;
           continue;
         }
-        const requeue = this.shuttingDown ||
-          (handlerError instanceof DomainError &&
-            (handlerError.code === 'operation.backpressure' ||
-              handlerError.details.reason === 'scan_lease_held' ||
-              handlerError.details.reason === 'scan_lease_release_failed' ||
-              handlerError.details.reason === 'scan_failure_recording_failed' ||
-              handlerError.details.reason === 'scan_outcome_reporting_failed'));
+        const requeue = action === 'requeue';
         await batch.nack(delivery, { requeue });
         if (requeue) {
           requeued += 1;
