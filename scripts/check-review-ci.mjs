@@ -89,6 +89,8 @@ export function releaseGateCiViolations(source, assets) {
     "sudo chmod -R go-w /root/social-monitor-release-contract-tests",
   ];
   const staticCommands = [
+    "npm --prefix scripts/readme-preview ci --ignore-scripts",
+    "npm --prefix scripts/readme-preview run typecheck",
     "npx eslint .", "npx tsc --noEmit", "npx tsc -p ops/ci/tsconfig.historical-bootstrap.json",
     "npm run check:architecture", "npm run check:code-quality", "npm run check:source-line-cap",
     "npm run check:persistence-readiness", "npm run check:observability", "npm run check:review-ci",

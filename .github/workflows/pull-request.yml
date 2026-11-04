@@ -104,6 +104,8 @@ jobs:
           set -euo pipefail
           node --experimental-strip-types ops/ci/static-quality-runner.mts <<'STATIC_QUALITY'
           set -euo pipefail
+          npm --prefix scripts/readme-preview ci --ignore-scripts
+          npm --prefix scripts/readme-preview run typecheck
           npx eslint .
           npx tsc --noEmit
           npx tsc -p ops/ci/tsconfig.historical-bootstrap.json
