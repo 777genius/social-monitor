@@ -9,35 +9,17 @@ import type {
   SourceFetcherPort,
   SourceProviderScanContext,
   SourceProviderRegistryPort,
-  SourceProviderPort,
-  SourceProviderScanPlan,
-  SourceProviderScanResult,
-  SourceFetchTelemetry,
-  SourcePaginationStopReason,
   SourceRuntimeConfig,
 } from "../../ports";
 import { SourceFetchError } from "../../ports";
-import {
-  adaptivePaginationFailureWarning,
-  adaptivePaginationStatsWarning,
-  createAdaptivePaginationAccumulator,
-  readAdaptivePaginationPolicy,
-  type AdaptivePaginationStopReason,
-} from "./adaptive-source-pagination";
+import { scanSourceProviderPages } from './source-provider-pagination';
+import { buildSourceFetchTelemetry, compactUnique, filterByTargetPublishedWindow } from './source-fetch-result-assembly';
 import {
   DefaultSourceQueryPlanRuntimeCompiler,
   isSourceQueryPlannerEnabled,
   sourceQueryPlannerIntentFromConfig,
   type SourceQueryPlanRuntimeCompiler,
 } from "./source-query-plan-runtime-compiler";
-
-type ScanWithTelemetryResult = {
-  readonly result: SourceProviderScanResult;
-  readonly targetItemCount: number;
-  readonly pageCount: number;
-  readonly paginationDuplicateItemCount: number;
-  readonly paginationStopReason: SourcePaginationStopReason;
-};
 
 export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
   constructor(
@@ -92,7 +74,7 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
         ...provider.planScan(planned.sourceQuery, context),
         cursor: command.cursor,
       };
-      const scanned = await this.scanWithAdaptivePagination(
+      const scanned = await scanSourceProviderPages(
         provider,
         plan,
         context,
@@ -128,132 +110,6 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
         rateLimitResetAt: failure.rateLimitResetAt,
       });
     }
-  }
-
-  private async scanWithAdaptivePagination(
-    provider: SourceProviderPort,
-    initialPlan: SourceProviderScanPlan,
-    context: SourceProviderScanContext,
-  ): Promise<ScanWithTelemetryResult> {
-    const policyResult = readAdaptivePaginationPolicy({
-      config: context.config,
-      cursorModel: provider.capabilityProfile().cursorModel,
-      firstPageLimit: initialPlan.maxItems,
-    });
-
-    if (!policyResult.enabled) {
-      const result = await provider.scan(initialPlan, context);
-      const resultWithWarning =
-        policyResult.warning === undefined
-          ? result
-          : {
-              ...result,
-              warnings: compactUnique([
-                ...result.warnings,
-                policyResult.warning,
-              ]),
-            };
-
-      return {
-        result: resultWithWarning,
-        targetItemCount: initialPlan.maxItems,
-        pageCount: result.pagination?.pageCount ?? 1,
-        paginationDuplicateItemCount: result.pagination?.duplicateItemCount ?? 0,
-        paginationStopReason: result.pagination?.stopReason ?? "single_page",
-      };
-    }
-
-    const accumulator = createAdaptivePaginationAccumulator();
-    let cursor = initialPlan.cursor;
-    let nextCursor: string | undefined;
-    let stopReason: AdaptivePaginationStopReason = "max_pages";
-
-    for (let page = 0; page < policyResult.policy.maxPages; page += 1) {
-      let result: SourceProviderScanResult;
-
-      try {
-        result = await provider.scan({ ...initialPlan, cursor }, context);
-      } catch (error) {
-        if (page === 0) {
-          throw error;
-        }
-
-        const failure = provider.classifyError(error, context);
-        if (!failure.retryable) {
-          throw error;
-        }
-
-        stopReason = "partial_retryable_failure";
-        const state = accumulator.state(stopReason);
-        return {
-          result: {
-            items: state.items,
-            conversationUnits: state.conversationUnits,
-            nextCursor: cursor,
-            warnings: compactUnique([
-              ...state.warnings,
-              adaptivePaginationFailureWarning({
-                kind: failure.kind,
-                message: failure.message,
-              }),
-              adaptivePaginationStatsWarning(state),
-            ]),
-          },
-          targetItemCount: policyResult.policy.targetItems,
-          pageCount: state.pageCount,
-          paginationDuplicateItemCount: state.duplicateItemCount,
-          paginationStopReason: state.stopReason,
-        };
-      }
-
-      const pageStats = accumulator.appendPage(result);
-      nextCursor = result.nextCursor;
-
-      if (accumulator.uniqueItemCount() >= policyResult.policy.targetItems) {
-        stopReason = "target_items";
-        break;
-      }
-
-      if (nextCursor === undefined) {
-        stopReason = "no_next_cursor";
-        break;
-      }
-
-      if (nextCursor === cursor) {
-        stopReason = "cursor_not_advanced";
-        break;
-      }
-
-      if (pageStats.newItemCount < policyResult.policy.minNewItemsPerPage) {
-        stopReason = "low_new_item_yield";
-        break;
-      }
-
-      if (pageStats.duplicateRate > policyResult.policy.maxDuplicateRate) {
-        stopReason = "high_duplicate_rate";
-        break;
-      }
-
-      cursor = nextCursor;
-    }
-
-    const state = accumulator.state(stopReason);
-
-    return {
-      result: {
-        items: state.items,
-        conversationUnits: state.conversationUnits,
-        nextCursor,
-        warnings: compactUnique([
-          ...state.warnings,
-          adaptivePaginationStatsWarning(state),
-        ]),
-      },
-      targetItemCount: policyResult.policy.targetItems,
-      pageCount: state.pageCount,
-      paginationDuplicateItemCount: state.duplicateItemCount,
-      paginationStopReason: state.stopReason,
-    };
   }
 
   private async readMergedConfig(
@@ -348,134 +204,3 @@ const mergeSourceQueryParameters = (
   };
 };
 
-const compactUnique = (values: readonly string[]): readonly string[] => [
-  ...new Set(values),
-];
-
-const buildSourceFetchTelemetry = (params: {
-  readonly scanned: ScanWithTelemetryResult;
-  readonly filteredResult: SourceProviderScanResult;
-  readonly context: SourceProviderScanContext;
-}): SourceFetchTelemetry => {
-  const publishedTimes = params.filteredResult.items
-    .map((item) => item.publishedAt.getTime())
-    .filter(Number.isFinite);
-  const targetPublishedWindow = readTargetPublishedWindow(
-    params.context.config,
-  );
-
-  return {
-    ...(params.scanned.result.collection === undefined ? {} : {
-      collectionComplete: params.scanned.result.collection.complete,
-      backfillPending: params.scanned.result.collection.backfillPending,
-      ...(params.scanned.result.collection.contentComplete === undefined ? {} : {
-        contentComplete: params.scanned.result.collection.contentComplete,
-      }),
-    }),
-    targetItemCount: params.scanned.targetItemCount,
-    collectedItemCount: params.scanned.result.items.length,
-    acceptedItemCount: params.filteredResult.items.length,
-    outsideWindowItemCount:
-      params.scanned.result.items.length - params.filteredResult.items.length,
-    pageCount: params.scanned.pageCount,
-    paginationDuplicateItemCount: params.scanned.paginationDuplicateItemCount,
-    paginationStopReason: params.scanned.paginationStopReason,
-    rateLimitEventCount: countRateLimitWarnings(params.scanned.result.warnings),
-    ...(targetPublishedWindow === undefined
-      ? {}
-      : {
-          targetPublishedWindowStartedAt: targetPublishedWindow.start,
-          targetPublishedWindowEndedAt: targetPublishedWindow.end,
-        }),
-    ...(publishedTimes.length === 0
-      ? {}
-      : {
-          oldestAcceptedPublishedAt: new Date(Math.min(...publishedTimes)),
-          newestAcceptedPublishedAt: new Date(Math.max(...publishedTimes)),
-        }),
-  };
-};
-
-const countRateLimitWarnings = (warnings: readonly string[]): number =>
-  warnings.filter((warning) => {
-    const normalized = warning.toLowerCase();
-
-    return (
-      normalized.includes("partial_rate_limit") ||
-      normalized.includes("rate_limited")
-    );
-  }).length;
-
-const filterByTargetPublishedWindow = (
-  result: SourceProviderScanResult,
-  context: SourceProviderScanContext,
-): SourceProviderScanResult => {
-  const window = readTargetPublishedWindow(context.config);
-  if (window === undefined) {
-    return result;
-  }
-
-  const inWindow = (publishedAt: Date): boolean =>
-    publishedAt.getTime() >= window.start.getTime() &&
-    publishedAt.getTime() < window.end.getTime();
-  const inWindowUnits = result.conversationUnits?.filter((unit) =>
-    inWindow(unit.publishedAt),
-  );
-  const supportingRootExternalIds = new Set(
-    inWindowUnits?.map((unit) => unit.rootExternalId) ?? [],
-  );
-  const items = result.items.filter(
-    (item) => inWindow(item.publishedAt) || supportingRootExternalIds.has(item.externalId),
-  );
-  const retainedRootExternalIds = new Set(items.map((item) => item.externalId));
-  const conversationUnits = inWindowUnits?.filter((unit) =>
-    retainedRootExternalIds.has(unit.rootExternalId),
-  );
-  if (items.length === result.items.length &&
-      conversationUnits?.length === result.conversationUnits?.length) {
-    return result;
-  }
-
-  return {
-    ...result,
-    items,
-    conversationUnits,
-    warnings: items.length === result.items.length ? result.warnings : compactUnique([
-      ...result.warnings,
-      [
-        "target_published_window.filtered",
-        `kept=${items.length}`,
-        `dropped=${result.items.length - items.length}`,
-      ].join(";"),
-    ]),
-  };
-};
-
-const readTargetPublishedWindow = (
-  config: SourceRuntimeConfig | undefined,
-): { readonly start: Date; readonly end: Date } | undefined => {
-  const raw = readRecord(config?.targetPublishedWindow);
-  const start = readDate(raw?.startInclusive);
-  const end = readDate(raw?.endExclusive);
-
-  return start !== undefined && end !== undefined && start < end
-    ? { start, end }
-    : undefined;
-};
-
-const readRecord = (
-  value: unknown,
-): Readonly<Record<string, unknown>> | undefined =>
-  value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Readonly<Record<string, unknown>>)
-    : undefined;
-
-const readDate = (value: unknown): Date | undefined => {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const date = new Date(value);
-
-  return Number.isNaN(date.getTime()) ? undefined : date;
-};
