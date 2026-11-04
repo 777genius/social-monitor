@@ -417,6 +417,46 @@ it("fails closed after a valid editor when the writer drops its planned topic", 
       maxOutputTokens: 16000, maxEstimatedCostUsd: 5 },
     budget: { remainingTokens: 160000, remainingCostUsd: 10 },
   })).rejects.toThrow("Daily editorial narrative must cover every planned topic");
-  expect(client.commands).toHaveLength(2);
+  expect(client.commands).toHaveLength(3);
   expect(client.commands[1]!.purpose).not.toBe(client.commands[0]!.purpose);
+  expect(client.commands[2]!.metadata?.attempt).toBe("repair");
+});
+
+it("repairs an invalid daily editorial writer once without replanning sources", async () => {
+  const { input, evidence } = await dailyDigestFixture();
+  const selected = evidence.dailyGenerationInput!.selected;
+  const rawPlan = {
+    version: "reader_summary.daily_editorial.v1",
+    topics: [{ title: "High impact late source", why: "The verified original source",
+      depth: "detailed", feedItemIds: [selected[19]!.feedItemId] }],
+  };
+  const plan = validateDailyEditorialPlan(rawPlan, evidence.dailyGenerationInput!);
+  const writer = { ...input, dailyEditorialPlan: plan,
+    coveragePlan: dailyEditorialCoveragePlan(plan, evidence),
+    policy: { ...input.policy, maxStories: 1 } };
+  const client = new CapturingAgentRuntimeClient([
+    { status: "completed", structuredOutput: rawPlan, warnings: [] },
+    { status: "completed", structuredOutput: {
+      ...dailyProviderDraft(writer), narrativeSections: [],
+    }, warnings: [] },
+    { status: "completed", structuredOutput: dailyProviderDraft(writer), warnings: [] },
+  ]);
+  const model = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
+  const generated = await generateReaderSummaryWithDailyEditor({
+    model, input,
+    policy: { preferredProvider: "agent-runtime", maxInputTokens: 100000,
+      maxOutputTokens: 16000, maxEstimatedCostUsd: 5 },
+    budget: { remainingTokens: 160000, remainingCostUsd: 10 },
+  });
+  expect(client.commands).toHaveLength(3);
+  expect(client.commands[1]!.metadata?.attempt).toBe("primary");
+  expect(client.commands[2]!.metadata?.attempt).toBe("repair");
+  expect(client.commands[2]!.systemPrompt).toContain(
+    "Return exactly one secondary_signal for every coveragePlan.secondary entry");
+  expect(client.commands[2]!.prompt).toBe(client.commands[1]!.prompt);
+  expect(client.commands[2]!.requestId).not.toBe(client.commands[1]!.requestId);
+  expect(generated.editor?.plan).toEqual(plan);
+  expect(generated.attempt.draft.topStories).toHaveLength(1);
+  expect(generated.attempt.dailyGenerationReceipt?.editorialPlanSha256)
+    .toBe(canonicalJsonSha256(plan));
 });
