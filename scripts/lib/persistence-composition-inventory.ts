@@ -73,7 +73,7 @@ export function discoverCompositionInventory(root: string): {
           continue;
         }
         const target = normalize(relative(root, resolution.resolvedFileName));
-        if (target.startsWith('../') || excludedSource.test(target) || target.endsWith('.module.ts')) continue;
+        if (target.startsWith('../') || excludedSource.test(target) || roots.includes(target)) continue;
         const namedComposition = compositionName.test(target);
         if (!namedComposition && (businessLayer.test(target) || /(?:^|\/)adapters\//.test(target))) continue;
         // Inspect only local wiring candidates; never follow external packages or implementation trees.

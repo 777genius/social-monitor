@@ -492,3 +492,72 @@ reader-summary command readers must not share an effective RabbitMQ queue name,
 because each legitimately rejects the other command type. The follow-up guard
 preserves trim/default/legacy alias behavior and in-memory mode, and is verified
 at the configuration boundary and through Nest startup before a broker connection.
+
+## Final merge review follow-up
+
+The user explicitly authorized completing PR #619 through merge. At review head
+`cfcb12b`, all 20 CI jobs passed, including backend E2E (78 suites / 154 tests),
+the five live RabbitMQ cases, both reader smoke commands, and unit completeness
+(six shards, 1,124 suites / 16,536 tests). All six inline review threads were
+resolved. Reading the full external review body and commissioning three fresh
+independent GPT-6 Astra/ultra critics identified the following bounded follow-up.
+
+### Planned corrections and ownership
+
+| Boundary | Confirmed defect and smallest correction | Required regression |
+| --- | --- | --- |
+| Summary-ready event reader (queue critic) | Its cached route survives a failed drain after queue deletion. Clear the cache when acquisition/recovery fails, preserving pending-delivery recovery order and the original error. | Warm the actual reader, delete its queue, observe the first 404, recreate on the next drain, then deliver and acknowledge both `summary.ready` and `reader_summary.ready` through the topic exchange. Run the native broker case in CI. |
+| Nested persistence composition (composition critic) | Every `.module.ts` import is skipped, including nested modules absent from the independent root inventory. Stop only at the actual discovered roots. | A nested module must expose its memory adapter; an independently inventoried module must remain a separate boundary. Compare the real repository inventory without changing root globs or manifest ownership. |
+| Default wiring factory selection (composition critic) | Selected default arrow factories and default exports of local factory identifiers lose factory classification. Recognize those existing declaration shapes while preserving selection and concrete-class boundaries. | Equivalent selected default factory forms must expose the adapter, without admitting unrelated class implementation details. |
+| Manual-ack queue fixture (queue critic) | The fixture ignores `noAck`, so it cannot catch accidental auto-ack acquisition. Reject auto-ack use in this manual-ack fixture. | Existing delivery acquisition and settlement regressions must still pass. |
+
+The older recovery fixture's manually constructed reader needs no duplicate
+constructor test: the newer HTTP execution-recovery scenarios already boot the
+real Nest worker, retain its reader, handler, use case and drain loop, and inject
+failures only at source/reporting boundaries. A separate critic verified that
+composition and the preserved retry, replay and scope assertions.
+
+### Scope and completion gates
+
+No publisher redesign, general topology generation tracking, silent binding-only
+loss detection, arbitrary helper-call interpretation, expanded root globs,
+manifest/schema/dependency/flag changes, or unrelated production changes. The
+event fix is recovery after an observed drain failure; it does not claim to
+detect a deleted exchange or binding when acquisition itself still succeeds.
+The nested-module candidate adds only existing identity module source closures
+to the real inventory; the critic found no new adapter or ownership violation.
+
+Run focused red/green regressions, persistence readiness, applicable lint,
+typecheck and architecture/quality gates. Have a critic who did not implement
+each change review it, correct concrete findings, and repeat that review until
+none remain. Publish each completed commit immediately through the GitHub
+connector. Confirm the final commit's live broker and backend E2E results and
+required CI checks, then merge with an expected-head lease and verify the merged
+PR and `main` commit. Normal repository automation may follow the merge; this
+task does not manually invoke deployment or maintenance workflows.
+
+### Follow-up implementation and independent review evidence
+
+The event-reader regression suite failed both new cases before the correction
+and passed afterward. Its second case retains an acquired delivery across
+failed cleanup and proves that route declaration and new acquisition wait for
+recovery. Four focused queue/worker suites pass, 35 tests in total. The new native
+case uses the existing disposable quorum fixture with only a direct/topic
+exchange option; both event types are published through the topic exchange and
+explicitly acknowledged before the existing post-close quiet check.
+
+All three new persistence regressions failed before the correction while the
+previous 25 passed. The actual readiness contract and all 28 cases now pass.
+The existing independent-root regression was strengthened to import another
+actual root with provider metadata. Comparing the real inventory confirms the
+two expected identity source-closure additions, with identical roots and no
+adapter-source, memory/noop adapter, manifest or violation changes.
+
+The monitoring critic independently reviewed both final slices, and the queue
+and composition critics each cross-reviewed the other's implementation. All
+three reviews ended with no actionable findings. Independent focused reruns
+passed 30 and seven tests respectively. Whole-project test-inclusive typecheck,
+architecture (28 fixtures), code-quality guards, source/test line cap and focused
+lint pass. Final whole-repository lint and CI evidence, including execution of
+the new live-broker case, are recorded against the published commit in the PR;
+the native case is not counted as executed by these local checks.

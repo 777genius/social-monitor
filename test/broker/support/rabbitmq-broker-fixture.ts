@@ -39,7 +39,7 @@ export class RabbitMqBrokerFixture {
   private connection: ChannelModel | undefined;
   private adminChannel: ConfirmChannel | undefined;
 
-  constructor(private readonly url: string) {
+  constructor(private readonly url: string, private readonly exchangeType: 'direct' | 'topic' = 'direct') {
     this.channel = new AmqplibRabbitMqChannel({ url, socketOptions: { timeout: 5_000 } });
     this.reader = new RabbitMqQueueCommandReader(this.channel, {
       queue: this.queue, deadLetterExchange: this.deadLetterExchange,
@@ -47,6 +47,7 @@ export class RabbitMqBrokerFixture {
     });
     this.publisher = new RabbitMqQueuePublisher(this.channel, {
       exchange: this.exchange,
+      exchangeType,
       routes: { [brokerCommandType]: { queue: this.queue, routingKey: brokerCommandType,
         queueType: 'quorum', deliveryLimit: 20, deadLetterExchange: this.deadLetterExchange } },
     }, new FixedClock(new Date('2026-11-04T00:00:00.000Z')));
@@ -60,7 +61,7 @@ export class RabbitMqBrokerFixture {
   async start(): Promise<void> {
     this.connection = await connect(this.url, { timeout: 5_000 });
     this.adminChannel = await this.connection.createConfirmChannel();
-    await this.admin.assertExchange(this.exchange, 'direct', { durable: true });
+    await this.admin.assertExchange(this.exchange, this.exchangeType, { durable: true });
     await this.admin.assertExchange(this.deadLetterExchange, 'fanout', { durable: true });
     await this.admin.assertQueue(this.deadLetterQueue, {
       durable: true, arguments: { 'x-queue-type': 'quorum' },

@@ -65,10 +65,17 @@ export class RabbitMqSummaryReadyEventQueueReader implements SummaryReadyEventQu
 
   async drain(params: { readonly limit: number }): Promise<readonly SummaryReadyEventDelivery[]> {
     assertQueueDrainLimit(params.limit);
-    await this.deliveries.recoverPending();
-    await this.ensureRoute(params.limit);
-    const deliveries = await this.deliveries.drain(params.limit, parseSummaryReadyEvent);
-    return deliveries.map(({ value, ...delivery }) => ({ ...delivery, event: value }));
+    try {
+      await this.deliveries.recoverPending();
+      await this.ensureRoute(params.limit);
+      const deliveries = await this.deliveries.drain(params.limit, parseSummaryReadyEvent);
+      return deliveries.map(({ value, ...delivery }) => ({ ...delivery, event: value }));
+    } catch (error) {
+      // A failed acquisition may invalidate the queue and its event bindings.
+      // Recover pending deliveries before reasserting them on the next drain.
+      this.routeAsserted = false;
+      throw error;
+    }
   }
 
   private async ensureRoute(prefetch: number): Promise<void> {

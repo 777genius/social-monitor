@@ -21,7 +21,7 @@ export function queueReaderFixture(input: readonly GetMessage[]) {
     prefetch: jest.fn(async () => undefined),
     get: jest.fn(async (_queue: string, _options: { readonly noAck: boolean }): Promise<GetMessage | false> => {
       void _queue;
-      void _options;
+      if (_options.noAck) throw new Error('Fixture requires manual acknowledgement');
       const message = available.shift();
       if (message === undefined) return false;
       pending.add(message);

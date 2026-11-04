@@ -77,7 +77,10 @@ export function readCompositionSource(file: string, selected?: readonly string[]
           exports.set('default', { local });
         }
       }
-      if (ts.isExportAssignment(statement)) { locals.set('default', statement.expression); exports.set('default', { local: 'default' }); }
+      if (ts.isExportAssignment(statement)) {
+        if (ts.isIdentifier(statement.expression)) exports.set('default', { local: statement.expression.text });
+        else { locals.set('default', statement.expression); exports.set('default', { local: 'default' }); }
+      }
     }
   }
   const visitName = (name: string): void => {
@@ -116,7 +119,7 @@ export function readCompositionSource(file: string, selected?: readonly string[]
     const entry = exports.get(name);
     if (entry?.local) {
       const declaration = locals.get(entry.local);
-      if (declaration && (ts.isFunctionDeclaration(declaration) ||
+      if (declaration && (ts.isFunctionDeclaration(declaration) || ts.isArrowFunction(declaration) || ts.isFunctionExpression(declaration) ||
           (ts.isVariableDeclaration(declaration) && declaration.initializer &&
             (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))))) {
         hasRuntimeFactory = true;

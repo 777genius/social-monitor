@@ -196,10 +196,10 @@ describe('persistence readiness composition discovery', () => {
 
   it('stops at concrete adapter implementations and other module boundaries', () => {
     const files = {
-      [moduleFile]: providerSource,
+      [moduleFile]: `${providerSource}\nimport { other } from './other.module'; export const modules = [other];`,
       [adapterFile]: "import { other } from './nested'; export class InMemoryFixtureRepository { value = other; }",
       'libs/fixture/adapters/nested.ts': 'export class InMemoryHiddenRepository {} export const other = new InMemoryHiddenRepository();',
-      'apps/fixture/src/other.module.ts': 'export const other = {};',
+      'apps/fixture/src/other.module.ts': 'export const other = { providers: [] };',
     };
     const inventory = withFixture({ files }, discoverCompositionInventory);
     expect(inventory.modules.find((entry) => entry.moduleFile === moduleFile)?.sources).toEqual([moduleFile]);
@@ -223,6 +223,16 @@ describe('persistence readiness composition discovery', () => {
       .toContain('unresolved runtime composition import "./missing.providers"');
     expect(check({ files: { [moduleFile]: "import { providers } from '@fixture/missing'; export const fixture = { providers };" }, paths: { '@fixture/*': ['apps/fixture/src/*'] } }).join('\n'))
       .toContain('unresolved runtime composition import "@fixture/missing"');
+  });
+
+  it('follows nested modules that are not independently inventoried roots', () => {
+    const nestedModule = 'apps/fixture/src/nested/nested.module.ts';
+    const files = {
+      [moduleFile]: "import { NestedModule } from './nested/nested.module'; export const fixture = { imports: [NestedModule] };",
+      [nestedModule]: "import { InMemoryFixtureRepository } from '../../../../libs/fixture/adapters/memory'; export class NestedModule { static providers = [{ provide: 'repo', useClass: InMemoryFixtureRepository }]; }",
+    };
+    expect(check({ files }).join('\n')).toContain('InMemoryFixtureRepository');
+    expect(check({ files, modules: [moduleDeclaration([nestedModule])] })).toEqual([]);
   });
 
   it('rejects stale source, adapter, and noop declarations', () => {
@@ -264,6 +274,19 @@ describe('persistence readiness composition discovery', () => {
     };
     expect(check({ files }).join('\n')).toContain('InMemoryFixtureRepository');
     expect(check({ files, modules: [moduleDeclaration([providerFile])] })).toEqual([]);
+  });
+
+  it.each([
+    ['direct arrow', 'export default () => new InMemoryFixtureRepository();'],
+    ['local identifier', 'const createState = () => new InMemoryFixtureRepository(); export default createState;'],
+  ])('follows selected default %s wiring factories', (_form, factory) => {
+    const wiring = 'apps/fixture/src/assembly.ts';
+    const files = {
+      [moduleFile]: "import createState from './assembly'; export const fixture = { provide: 'repo', useFactory: createState };",
+      [wiring]: `import { InMemoryFixtureRepository } from '../../../libs/fixture/adapters/memory'; ${factory}`,
+    };
+    expect(check({ files }).join('\n')).toContain('InMemoryFixtureRepository');
+    expect(check({ files, modules: [moduleDeclaration([wiring])] })).toEqual([]);
   });
 
   it('follows namespace re-exports through local barrels', () => {
