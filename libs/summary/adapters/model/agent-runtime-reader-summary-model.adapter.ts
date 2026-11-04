@@ -468,8 +468,7 @@ const schemaRepairInstruction = (violations: readonly string[]): string =>
 
 const isRepairableNarrativeError = (error: unknown): boolean =>
   error instanceof Error && ["Reader summary narrative", "Daily editorial narrative",
-    "Daily editorial story", "Daily editorial stories"].some(
-      prefix => error.message.startsWith(prefix));
+    "Daily editorial story", "Daily editorial stories"].some(prefix => error.message.startsWith(prefix));
 
 export const resolveAgentRuntimeReaderSummaryModelOptions = (
   env: NodeJS.ProcessEnv,
