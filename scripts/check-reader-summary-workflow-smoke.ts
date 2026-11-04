@@ -20,7 +20,13 @@ import {
   tenantId,
   workspaceId,
 } from "@social-monitor/shared-kernel";
-import type { ReaderSummaryItem } from "@social-monitor/summary/domain";
+import {
+  readerCapturedSourceDigest,
+  type ReaderSummaryItem,
+  type SummaryEvidenceSelection,
+} from "@social-monitor/summary/domain";
+import { withAcceptedFixtureHeadlines } from "@social-monitor/summary/test-fixtures/accepted-reader-headline";
+import { withReaderPromotionEditorialSlate } from "@social-monitor/summary/test-fixtures/execute-reader-summary-job-promotion-fixtures";
 import type {
   ReaderSummaryEvidenceSelectorPort,
   ReaderSummaryGitHubProjectionReaderPort,
@@ -70,6 +76,10 @@ const workflowRedditPromotionFacts = () => ({
     "2026-06-23T08:01:00.000Z",
   ),
   metricsState: "observed" as const,
+  engagementAuthority: {
+    observedAt: new Date("2026-06-23T08:01:00.000Z"),
+    regressionState: "stable" as const,
+  },
   metrics: {
     provider: "reddit" as const,
     score: 50,
@@ -115,12 +125,18 @@ const workflowHackerNewsPromotionFacts = () => ({
     "2026-06-23T08:05:00.000Z",
   ),
   metricsState: "observed" as const,
+  engagementAuthority: {
+    observedAt: new Date("2026-06-23T08:05:00.000Z"),
+    regressionState: "stable" as const,
+  },
   metrics: { provider: "hacker_news" as const, points: 50 },
 });
 
 class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSelectorPort {
-  async select(): ReturnType<ReaderSummaryEvidenceSelectorPort["select"]> {
-    return {
+  async select(
+    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
+  ): ReturnType<ReaderSummaryEvidenceSelectorPort["select"]> {
+    const selection: SummaryEvidenceSelection = {
       rankingPolicyVersion: "story_ranking_v1",
       personalization: {
         memoryGuidanceStatus: "available",
@@ -237,6 +253,16 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
       ],
       relatedTopicRelations: [],
     };
+    // Synthetic captures model accepted scoped headlines and observed metrics;
+    // the canonical policy owns slate selection and every promotion digest.
+    const displayScope = {
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+    };
+    return withReaderPromotionEditorialSlate(
+      withAcceptedFixtureHeadlines(selection, displayScope),
+      displayScope,
+    );
   }
 }
 
@@ -422,12 +448,12 @@ async function main(): Promise<void> {
     ...artifact.content.topReads.map((card, slot) => ({
       card,
       placement: "top" as const,
-      slot,
+      slot: slot + 1,
     })),
     ...(artifact.content.selectedPosts ?? []).map((card, slot) => ({
       card,
       placement: "additional" as const,
-      slot,
+      slot: slot + 1,
     })),
   ];
   assert(
@@ -438,11 +464,21 @@ async function main(): Promise<void> {
             attestation.candidateId === card.promotionCandidateId &&
             attestation.placement === placement &&
             attestation.slot === slot &&
+            attestation.policyVersion === "reader_post_promotion.v2" &&
+            "displayHeadline" in attestation &&
+            card.displayHeadline?.status === "accepted" &&
+            card.displayHeadline.binding.tenantId === tenant &&
+            card.displayHeadline.binding.workspaceId === workspace &&
+            card.capturedSource !== undefined &&
+            attestation.displayHeadline?.capturedSourceDigest ===
+              readerCapturedSourceDigest(card.capturedSource) &&
+            JSON.stringify(attestation.displayHeadline?.headline) ===
+              JSON.stringify(card.displayHeadline) &&
             JSON.stringify(attestation.citationIds) ===
               JSON.stringify(card.citationIds),
         ),
       ),
-    "every visible reader card must retain one exact ordered-citation attestation",
+    "every visible reader card must retain its scoped display and exact ordered-citation V2 attestation",
   );
   assert(
     artifact.content.topReads.every(

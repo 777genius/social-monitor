@@ -2,6 +2,7 @@ import {
   buildReaderPostPromotionProjection,
   evaluateReaderSummaryGitHubProjection,
   notApplicableReaderSummaryGitHubProjectionAudit,
+  readerCapturedSourceDigest,
   ReaderSummaryPublicationPolicy,
   ReaderSummaryArtifact,
   type ReaderSummaryGitHubProjectionAudit,
@@ -17,6 +18,8 @@ import type {
   ReaderSummaryPublicationPort,
 } from '@social-monitor/summary/ports';
 import { CryptoIdGenerator, FixedClock } from '@social-monitor/shared-kernel';
+import { withAcceptedFixtureHeadlines } from '@social-monitor/summary/test-fixtures/accepted-reader-headline';
+import { withReaderPromotionEditorialSlate } from '@social-monitor/summary/test-fixtures/execute-reader-summary-job-promotion-fixtures';
 
 import {
   buildReaderSummaryPublicationPayload,
@@ -159,7 +162,7 @@ const promotionEvidenceForArtifact = (
   };
   const checkedAt = sourceWindow.endedAt;
   const publishedAt = sourceWindow.startedAt;
-  return {
+  const selection: SummaryEvidenceSelection = {
     rankingPolicyVersion:
       snapshot.lineage.rankingPolicyVersion ?? 'story_ranking_v1',
     personalization: snapshot.personalization,
@@ -278,6 +281,10 @@ const promotionEvidenceForArtifact = (
             ingestionCutoff: checkedAt,
           },
           metricsState: 'observed',
+          engagementAuthority: {
+            observedAt: checkedAt,
+            regressionState: 'stable',
+          },
           metrics: {
             provider: 'reddit',
             score: 25,
@@ -295,6 +302,16 @@ const promotionEvidenceForArtifact = (
     ],
     relatedTopicRelations: [],
   };
+  // This deterministic capture uses the same scoped display and editorial
+  // builders as current publication fixtures; no promotion proof is fabricated.
+  const displayScope = {
+    tenantId: snapshot.tenantId,
+    workspaceId: snapshot.workspaceId,
+  };
+  return withReaderPromotionEditorialSlate(
+    withAcceptedFixtureHeadlines(selection, displayScope),
+    displayScope,
+  );
 };
 
 export const promoteRestSmokeArtifact = (
@@ -310,6 +327,7 @@ export const promoteRestSmokeArtifact = (
     clusters: evidence.clusters,
     citations: citationMap,
     sourceWindow: evidence.sourceWindow,
+    editorialSlate: evidence.editorialSlate,
     approvedSameStoryRelations: evidence.approvedSameStoryRelations,
     relatedTopicRelations: evidence.relatedTopicRelations,
     attestationBinding: {
@@ -317,6 +335,28 @@ export const promoteRestSmokeArtifact = (
       sourceWindow: evidence.sourceWindow,
     },
   });
+  assert(
+    projection.topReads.length === 1 &&
+      projection.attestations.length === 1 &&
+      projection.attestations.every((attestation, index) => {
+        const card = projection.topReads[index];
+        return attestation.policyVersion === 'reader_post_promotion.v2' &&
+          attestation.placement === 'top' && attestation.slot === index + 1 &&
+          attestation.candidateId === card?.promotionCandidateId &&
+          'displayHeadline' in attestation &&
+          card?.displayHeadline?.status === 'accepted' &&
+          card.displayHeadline.binding.tenantId === snapshot.tenantId &&
+          card.displayHeadline.binding.workspaceId === snapshot.workspaceId &&
+          card.capturedSource !== undefined &&
+          attestation.displayHeadline?.capturedSourceDigest ===
+            readerCapturedSourceDigest(card.capturedSource) &&
+          stablePublicationJson(attestation.displayHeadline?.headline) ===
+            stablePublicationJson(card.displayHeadline) &&
+          stablePublicationJson(attestation.citationIds) ===
+            stablePublicationJson(card.citationIds);
+      }),
+    'REST smoke must build one scoped display-bound V2 promotion from its editorial slate',
+  );
   return ReaderSummaryArtifact.create({
     ...snapshot,
     sourceWindow: evidence.sourceWindow,
