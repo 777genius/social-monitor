@@ -69,9 +69,9 @@ const authorityHashFields = [
 ] as const;
 
 describe("reader summary production-day attempt identity", () => {
-  it("rotates v13 retries to a deterministic v14 artifact identity", () => {
+  it("rotates v14 retries to a deterministic v15 artifact identity", () => {
     expect(readerSummaryProductionDayArtifactPolicyVersion).toBe(
-      "reader_summary.artifact_policy.v14",
+      "reader_summary.artifact_policy.v15",
     );
     const policyIdentity = (artifactPolicyVersion: string): string =>
       createHash("sha256").update(JSON.stringify({
@@ -79,10 +79,10 @@ describe("reader summary production-day attempt identity", () => {
         artifactPolicyVersion,
         ...liveIdentity,
       })).digest("hex");
-    const previous = policyIdentity("reader_summary.artifact_policy.v13");
+    const previous = policyIdentity("reader_summary.artifact_policy.v14");
     const current = readerSummaryProductionDayAttemptIdentity(liveIdentity);
 
-    expect(current).toBe(policyIdentity("reader_summary.artifact_policy.v14"));
+    expect(current).toBe(policyIdentity("reader_summary.artifact_policy.v15"));
     expect(current).not.toBe(previous);
     expect(readerSummaryProductionDayAttemptIdentity(liveIdentity)).toBe(current);
     expect(readerSummaryProductionDayIdempotencyKey(current)).not.toBe(
