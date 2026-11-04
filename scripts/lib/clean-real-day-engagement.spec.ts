@@ -1,3 +1,4 @@
+import { HttpReadabilityArticleContentExtractor } from "@social-monitor/ingestion/adapters/enrichment/http-readability-article-content-extractor";
 import { CircuitBreakerSourceFetcherAdapter } from
   "@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter";
 import { SystemClock } from "@social-monitor/shared-kernel";
@@ -13,6 +14,8 @@ describe("live acquisition durable engagement composition", () => {
   let now: Date;
   beforeEach(() => {
     db = new AcquisitionDatabaseFixture();
+    jest.spyOn(HttpReadabilityArticleContentExtractor.prototype, "extract")
+      .mockImplementation(async () => { throw new Error("Native self-post must not dispatch article HTTP"); });
     score = 42;
     now = new Date("2026-09-04T12:00:00.000Z");
     jest.spyOn(SystemClock.prototype, "now").mockImplementation(() => new Date(now));
@@ -27,7 +30,10 @@ describe("live acquisition durable engagement composition", () => {
         }],
       }));
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    expect(HttpReadabilityArticleContentExtractor.prototype.extract).not.toHaveBeenCalled();
+    jest.restoreAllMocks();
+  });
 
   const run = () => executeCleanRealDayProviderAcquisition({
     targets: [target], connection: db.connection,

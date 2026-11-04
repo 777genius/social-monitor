@@ -10,6 +10,7 @@ import {
   READER_POST_PROMOTION_POLICY_VERSION,
   READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3,
   READER_PROMOTION_POLICY_STAMP,
+  READER_PROMOTION_POLICY_V1,
   READER_POST_PROMOTION_DIGEST_V3,
 } from "../../domain";
 
@@ -171,15 +172,16 @@ export class ReaderSummaryPromotionAttestationDto {
       READER_POST_PROMOTION_POLICY_VERSION,
       READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
       READER_PROMOTION_POLICY_STAMP,
+      READER_PROMOTION_POLICY_V1,
     ],
     description: "For reader_post_promotion_attestation.v3 this is the promotion " +
-      "policy stamp. Another stamp never reaches clients: such days are served " +
-      "with empty boards and freshness.reason = ranking_policy_changed.",
+      "policy stamp. Supported historical stamps retain their original validation.",
   })
   declare readonly policyVersion:
     | typeof READER_POST_PROMOTION_POLICY_VERSION
     | typeof READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION
-    | typeof READER_PROMOTION_POLICY_STAMP;
+    | typeof READER_PROMOTION_POLICY_STAMP
+    | typeof READER_PROMOTION_POLICY_V1;
 
   @ApiProperty({
     enum: [READER_POST_PROMOTION_DIGEST_V1, READER_POST_PROMOTION_DIGEST_VERSION,

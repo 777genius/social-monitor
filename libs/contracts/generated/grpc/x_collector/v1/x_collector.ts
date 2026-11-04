@@ -26,6 +26,7 @@ export enum XSearchProduct {
   X_SEARCH_PRODUCT_UNSPECIFIED = 0,
   X_SEARCH_PRODUCT_TOP = 1,
   X_SEARCH_PRODUCT_LATEST = 2,
+  X_SEARCH_PRODUCT_ID_LOOKUP = 3,
   UNRECOGNIZED = -1,
 }
 
@@ -40,6 +41,9 @@ export function xSearchProductFromJSON(object: any): XSearchProduct {
     case 2:
     case "X_SEARCH_PRODUCT_LATEST":
       return XSearchProduct.X_SEARCH_PRODUCT_LATEST;
+    case 3:
+    case "X_SEARCH_PRODUCT_ID_LOOKUP":
+      return XSearchProduct.X_SEARCH_PRODUCT_ID_LOOKUP;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -55,6 +59,8 @@ export function xSearchProductToJSON(object: XSearchProduct): string {
       return "X_SEARCH_PRODUCT_TOP";
     case XSearchProduct.X_SEARCH_PRODUCT_LATEST:
       return "X_SEARCH_PRODUCT_LATEST";
+    case XSearchProduct.X_SEARCH_PRODUCT_ID_LOOKUP:
+      return "X_SEARCH_PRODUCT_ID_LOOKUP";
     case XSearchProduct.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -875,6 +881,17 @@ export function xObservationReasonCodeToJSON(object: XObservationReasonCode): st
   }
 }
 
+export interface LookupPostsRequest {
+  schemaVersion: number;
+  requestId: string;
+  tenantId: string;
+  workspaceId: string;
+  sourceBindingId: string;
+  scanJobId: string;
+  correlationId: string;
+  tweetIds: string[];
+}
+
 export interface CollectDailySearchRequest {
   schemaVersion: number;
   requestId: string;
@@ -916,6 +933,16 @@ export interface XCollectedPost {
   sourceProduct: XSearchProduct;
   trendScore: number;
   contentKind: XPostContentKind;
+  quotedPost: XQuotedPost | undefined;
+}
+
+/** Context belongs to another author. Its metrics are deliberately excluded. */
+export interface XQuotedPost {
+  tweetId: string;
+  canonicalUrl: string;
+  text: string;
+  authorHandle: string;
+  publishedAt: Date | undefined;
 }
 
 export interface XPostMetrics {
@@ -1083,6 +1110,219 @@ export interface XObservationAcquiredPost {
   queryId: string;
   sourceBindingId: string;
 }
+
+function createBaseLookupPostsRequest(): LookupPostsRequest {
+  return {
+    schemaVersion: 0,
+    requestId: "",
+    tenantId: "",
+    workspaceId: "",
+    sourceBindingId: "",
+    scanJobId: "",
+    correlationId: "",
+    tweetIds: [],
+  };
+}
+
+export const LookupPostsRequest: MessageFns<LookupPostsRequest> = {
+  encode(message: LookupPostsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.schemaVersion !== 0) {
+      writer.uint32(8).uint32(message.schemaVersion);
+    }
+    if (message.requestId !== "") {
+      writer.uint32(18).string(message.requestId);
+    }
+    if (message.tenantId !== "") {
+      writer.uint32(26).string(message.tenantId);
+    }
+    if (message.workspaceId !== "") {
+      writer.uint32(34).string(message.workspaceId);
+    }
+    if (message.sourceBindingId !== "") {
+      writer.uint32(42).string(message.sourceBindingId);
+    }
+    if (message.scanJobId !== "") {
+      writer.uint32(50).string(message.scanJobId);
+    }
+    if (message.correlationId !== "") {
+      writer.uint32(58).string(message.correlationId);
+    }
+    for (const v of message.tweetIds) {
+      writer.uint32(66).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LookupPostsRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseLookupPostsRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.schemaVersion = reader.uint32();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.requestId = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.tenantId = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.workspaceId = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.sourceBindingId = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.scanJobId = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.correlationId = reader.string();
+          continue;
+        }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.tweetIds.push(reader.string());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): LookupPostsRequest {
+    return {
+      schemaVersion: isSet(object.schemaVersion)
+        ? globalThis.Number(object.schemaVersion)
+        : isSet(object.schema_version)
+        ? globalThis.Number(object.schema_version)
+        : 0,
+      requestId: isSet(object.requestId)
+        ? globalThis.String(object.requestId)
+        : isSet(object.request_id)
+        ? globalThis.String(object.request_id)
+        : "",
+      tenantId: isSet(object.tenantId)
+        ? globalThis.String(object.tenantId)
+        : isSet(object.tenant_id)
+        ? globalThis.String(object.tenant_id)
+        : "",
+      workspaceId: isSet(object.workspaceId)
+        ? globalThis.String(object.workspaceId)
+        : isSet(object.workspace_id)
+        ? globalThis.String(object.workspace_id)
+        : "",
+      sourceBindingId: isSet(object.sourceBindingId)
+        ? globalThis.String(object.sourceBindingId)
+        : isSet(object.source_binding_id)
+        ? globalThis.String(object.source_binding_id)
+        : "",
+      scanJobId: isSet(object.scanJobId)
+        ? globalThis.String(object.scanJobId)
+        : isSet(object.scan_job_id)
+        ? globalThis.String(object.scan_job_id)
+        : "",
+      correlationId: isSet(object.correlationId)
+        ? globalThis.String(object.correlationId)
+        : isSet(object.correlation_id)
+        ? globalThis.String(object.correlation_id)
+        : "",
+      tweetIds: globalThis.Array.isArray(object?.tweetIds)
+        ? object.tweetIds.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.tweet_ids)
+        ? object.tweet_ids.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: LookupPostsRequest): unknown {
+    const obj: any = {};
+    if (message.schemaVersion !== 0) {
+      obj.schemaVersion = Math.round(message.schemaVersion);
+    }
+    if (message.requestId !== "") {
+      obj.requestId = message.requestId;
+    }
+    if (message.tenantId !== "") {
+      obj.tenantId = message.tenantId;
+    }
+    if (message.workspaceId !== "") {
+      obj.workspaceId = message.workspaceId;
+    }
+    if (message.sourceBindingId !== "") {
+      obj.sourceBindingId = message.sourceBindingId;
+    }
+    if (message.scanJobId !== "") {
+      obj.scanJobId = message.scanJobId;
+    }
+    if (message.correlationId !== "") {
+      obj.correlationId = message.correlationId;
+    }
+    if (message.tweetIds?.length) {
+      obj.tweetIds = message.tweetIds;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<LookupPostsRequest>): LookupPostsRequest {
+    return LookupPostsRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<LookupPostsRequest>): LookupPostsRequest {
+    const message = createBaseLookupPostsRequest();
+    message.schemaVersion = object.schemaVersion ?? 0;
+    message.requestId = object.requestId ?? "";
+    message.tenantId = object.tenantId ?? "";
+    message.workspaceId = object.workspaceId ?? "";
+    message.sourceBindingId = object.sourceBindingId ?? "";
+    message.scanJobId = object.scanJobId ?? "";
+    message.correlationId = object.correlationId ?? "";
+    message.tweetIds = object.tweetIds?.map((e) => e) || [];
+    return message;
+  },
+};
 
 function createBaseCollectDailySearchRequest(): CollectDailySearchRequest {
   return {
@@ -1654,6 +1894,7 @@ function createBaseXCollectedPost(): XCollectedPost {
     sourceProduct: 0,
     trendScore: 0,
     contentKind: 0,
+    quotedPost: undefined,
   };
 }
 
@@ -1691,6 +1932,9 @@ export const XCollectedPost: MessageFns<XCollectedPost> = {
     }
     if (message.contentKind !== 0) {
       writer.uint32(88).int32(message.contentKind);
+    }
+    if (message.quotedPost !== undefined) {
+      XQuotedPost.encode(message.quotedPost, writer.uint32(98).fork()).join();
     }
     return writer;
   },
@@ -1790,6 +2034,14 @@ export const XCollectedPost: MessageFns<XCollectedPost> = {
           message.contentKind = reader.int32() as any;
           continue;
         }
+        case 12: {
+          if (tag !== 98) {
+            break;
+          }
+
+          message.quotedPost = XQuotedPost.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1848,6 +2100,11 @@ export const XCollectedPost: MessageFns<XCollectedPost> = {
         : isSet(object.content_kind)
         ? xPostContentKindFromJSON(object.content_kind)
         : 0,
+      quotedPost: isSet(object.quotedPost)
+        ? XQuotedPost.fromJSON(object.quotedPost)
+        : isSet(object.quoted_post)
+        ? XQuotedPost.fromJSON(object.quoted_post)
+        : undefined,
     };
   },
 
@@ -1886,6 +2143,9 @@ export const XCollectedPost: MessageFns<XCollectedPost> = {
     if (message.contentKind !== 0) {
       obj.contentKind = xPostContentKindToJSON(message.contentKind);
     }
+    if (message.quotedPost !== undefined) {
+      obj.quotedPost = XQuotedPost.toJSON(message.quotedPost);
+    }
     return obj;
   },
 
@@ -1907,6 +2167,149 @@ export const XCollectedPost: MessageFns<XCollectedPost> = {
     message.sourceProduct = object.sourceProduct ?? 0;
     message.trendScore = object.trendScore ?? 0;
     message.contentKind = object.contentKind ?? 0;
+    message.quotedPost = (object.quotedPost !== undefined && object.quotedPost !== null)
+      ? XQuotedPost.fromPartial(object.quotedPost)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseXQuotedPost(): XQuotedPost {
+  return { tweetId: "", canonicalUrl: "", text: "", authorHandle: "", publishedAt: undefined };
+}
+
+export const XQuotedPost: MessageFns<XQuotedPost> = {
+  encode(message: XQuotedPost, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.tweetId !== "") {
+      writer.uint32(10).string(message.tweetId);
+    }
+    if (message.canonicalUrl !== "") {
+      writer.uint32(18).string(message.canonicalUrl);
+    }
+    if (message.text !== "") {
+      writer.uint32(26).string(message.text);
+    }
+    if (message.authorHandle !== "") {
+      writer.uint32(34).string(message.authorHandle);
+    }
+    if (message.publishedAt !== undefined) {
+      Timestamp.encode(toTimestamp(message.publishedAt), writer.uint32(42).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): XQuotedPost {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseXQuotedPost();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.tweetId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.canonicalUrl = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.text = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.authorHandle = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.publishedAt = fromTimestamp(Timestamp.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): XQuotedPost {
+    return {
+      tweetId: isSet(object.tweetId)
+        ? globalThis.String(object.tweetId)
+        : isSet(object.tweet_id)
+        ? globalThis.String(object.tweet_id)
+        : "",
+      canonicalUrl: isSet(object.canonicalUrl)
+        ? globalThis.String(object.canonicalUrl)
+        : isSet(object.canonical_url)
+        ? globalThis.String(object.canonical_url)
+        : "",
+      text: isSet(object.text) ? globalThis.String(object.text) : "",
+      authorHandle: isSet(object.authorHandle)
+        ? globalThis.String(object.authorHandle)
+        : isSet(object.author_handle)
+        ? globalThis.String(object.author_handle)
+        : "",
+      publishedAt: isSet(object.publishedAt)
+        ? fromJsonTimestamp(object.publishedAt)
+        : isSet(object.published_at)
+        ? fromJsonTimestamp(object.published_at)
+        : undefined,
+    };
+  },
+
+  toJSON(message: XQuotedPost): unknown {
+    const obj: any = {};
+    if (message.tweetId !== "") {
+      obj.tweetId = message.tweetId;
+    }
+    if (message.canonicalUrl !== "") {
+      obj.canonicalUrl = message.canonicalUrl;
+    }
+    if (message.text !== "") {
+      obj.text = message.text;
+    }
+    if (message.authorHandle !== "") {
+      obj.authorHandle = message.authorHandle;
+    }
+    if (message.publishedAt !== undefined) {
+      obj.publishedAt = message.publishedAt.toISOString();
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<XQuotedPost>): XQuotedPost {
+    return XQuotedPost.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<XQuotedPost>): XQuotedPost {
+    const message = createBaseXQuotedPost();
+    message.tweetId = object.tweetId ?? "";
+    message.canonicalUrl = object.canonicalUrl ?? "";
+    message.text = object.text ?? "";
+    message.authorHandle = object.authorHandle ?? "";
+    message.publishedAt = object.publishedAt ?? undefined;
     return message;
   },
 };
@@ -4937,11 +5340,22 @@ export const XCollectorServiceService = {
     responseSerialize: (value: CheckHealthResponse): Buffer => Buffer.from(CheckHealthResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): CheckHealthResponse => CheckHealthResponse.decode(value),
   },
+  lookupPosts: {
+    path: "/social_monitor.x_collector.v1.XCollectorService/LookupPosts" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: LookupPostsRequest): Buffer => Buffer.from(LookupPostsRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): LookupPostsRequest => LookupPostsRequest.decode(value),
+    responseSerialize: (value: CollectDailySearchResponse): Buffer =>
+      Buffer.from(CollectDailySearchResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): CollectDailySearchResponse => CollectDailySearchResponse.decode(value),
+  },
 } as const;
 
 export interface XCollectorServiceServer extends UntypedServiceImplementation {
   collectDailySearch: handleUnaryCall<CollectDailySearchRequest, CollectDailySearchResponse>;
   checkHealth: handleUnaryCall<CheckHealthRequest, CheckHealthResponse>;
+  lookupPosts: handleUnaryCall<LookupPostsRequest, CollectDailySearchResponse>;
 }
 
 export interface XCollectorServiceClient extends Client {
@@ -4974,6 +5388,21 @@ export interface XCollectorServiceClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: CheckHealthResponse) => void,
+  ): ClientUnaryCall;
+  lookupPosts(
+    request: LookupPostsRequest,
+    callback: (error: ServiceError | null, response: CollectDailySearchResponse) => void,
+  ): ClientUnaryCall;
+  lookupPosts(
+    request: LookupPostsRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: CollectDailySearchResponse) => void,
+  ): ClientUnaryCall;
+  lookupPosts(
+    request: LookupPostsRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: CollectDailySearchResponse) => void,
   ): ClientUnaryCall;
 }
 

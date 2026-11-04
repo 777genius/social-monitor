@@ -1,7 +1,9 @@
 import { validReaderDisplayRestBinding } from "./reader-summary-display-rest-binding";
 import { readerPostPromotionCardFields } from "../../domain/entities/top-read";
-import { READER_PROMOTION_LIMITS, READER_PROMOTION_POLICY_STAMP } from
+import { READER_PROMOTION_LIMITS } from
   "../../domain/policies/reader-promotion-ranking";
+import { supportedReaderPromotionPolicy } from
+  "../../domain/policies/reader-promotion-policy-version";
 import { canonicalPromotionPayload } from
   "../../domain/services/reader-post-promotion-attestation";
 import { readerSummaryIndependentProviderFamily } from
@@ -388,7 +390,7 @@ const validRestPromotionVersion = (
   ? attestation.policyVersion === "reader_post_promotion.v1" &&
     attestation.digestVersion === "reader_post_promotion_digest.sha256.v1"
   : attestation.schemaVersion === "reader_post_promotion_attestation.v3"
-    ? attestation.policyVersion === READER_PROMOTION_POLICY_STAMP &&
+    ? supportedReaderPromotionPolicy(attestation.policyVersion) &&
       attestation.digestVersion === "reader_post_promotion_digest.sha256.v3"
     : attestation.schemaVersion ===
       READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION &&

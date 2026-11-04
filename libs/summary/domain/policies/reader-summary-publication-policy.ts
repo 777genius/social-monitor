@@ -11,6 +11,7 @@ import {
   buildReaderSummaryCoveragePlan,
   type ReaderSummaryCoveragePlan,
 } from "../services/reader-summary-coverage-plan";
+import { dailyEditorialCoveragePlan } from "../services/reader-summary-daily-editorial-plan";
 import { evaluateReaderSummaryArtifactEditorialQuality } from "./reader-summary-artifact-editorial-quality-policy";
 import { primaryReaderSummaryEvidence } from "./reader-summary-github-trending-policy";
 import { isGitHubReaderItem } from "./reader-summary-github-projection-audit";
@@ -129,13 +130,13 @@ export class ReaderSummaryPublicationPolicy {
     }
 
     if (!noSignal) {
-      const coveragePlan = buildReaderSummaryCoveragePlan(
-        primaryReaderSummaryEvidence(
-          params.editorialEvidence ?? params.evidence,
-        ),
-      );
+      const editorialEvidence = primaryReaderSummaryEvidence(params.editorialEvidence ?? params.evidence);
+      const coveragePlan = snapshot.dailyEditorialPlan === undefined
+        ? buildReaderSummaryCoveragePlan(editorialEvidence)
+        : dailyEditorialCoveragePlan(snapshot.dailyEditorialPlan.plan, editorialEvidence);
       const editorialQuality = evaluateReaderSummaryArtifactEditorialQuality(
-        editorialQualityInput(snapshot, coveragePlan.mode, params.evidence),
+        { ...editorialQualityInput(snapshot, coveragePlan.mode, params.evidence),
+          coveragePolicyVersion: coveragePlan.policyVersion },
       );
       for (const issue of editorialQuality.issues) {
         rejectionFindings.push({
@@ -143,7 +144,7 @@ export class ReaderSummaryPublicationPolicy {
           reason: `Reader summary editorial quality gate failed: ${issue}`,
         });
       }
-      for (const issue of coveragePlanIssues(snapshot, coveragePlan)) {
+      for (const issue of snapshot.dailyEditorialPlan === undefined ? coveragePlanIssues(snapshot, coveragePlan) : []) {
         rejectionFindings.push({
           code: "editorial_quality",
           reason: `Reader summary editorial quality gate failed: ${issue}`,
@@ -373,6 +374,8 @@ const editorialQualityInput = (
 
   return {
     headline: snapshot.content?.headline ?? snapshot.headline,
+    dailyEditorialPlan: snapshot.dailyEditorialPlan !== undefined,
+    ...(snapshot.dailyEditorialPlan?.plan.version === "reader_summary.daily_editorial.v2" && snapshot.dailyGenerationInput ? {synthesisProof:{plan:snapshot.dailyEditorialPlan.plan,selected:snapshot.dailyGenerationInput.selected,citations:snapshot.citationMap}} : {}),
     coverageMode,
     // Board titles now carry full source context. Also compare the original
     // headings of their cited sources so appended bodies cannot hide copying.
@@ -424,6 +427,7 @@ const renderedNarrativeMarkdown = (
 const storyClusterIdsByFeedItemId = (
   snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
 ): ReadonlyMap<string, ReadonlySet<string>> => {
+  if (snapshot.dailyGenerationInput !== undefined) return new Map(snapshot.dailyGenerationInput.selected.map(entry => [entry.feedItemId, new Set([entry.storyId])]));
   const clusterIdsByFeedItemId = new Map<string, Set<string>>();
   for (const cluster of snapshot.storyClusters) {
     for (const feedItemId of [

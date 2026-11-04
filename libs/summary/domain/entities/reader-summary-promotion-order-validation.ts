@@ -7,7 +7,7 @@ import type {
   ReaderPostPromotionPlacement,
 } from "../policies/reader-post-promotion-policy-contract";
 import {
-  readerPostPromotionMetricMature,
+  readerPostPromotionMetricEligible,
   readerPostPromotionSignalScore,
   signedReaderPostPromotionPopularity,
   type ReaderPostPromotionSignalMethod,
@@ -16,7 +16,6 @@ import { readerPromotionNewsPublisher } from
   "../policies/reader-promotion-news-publisher";
 import {
   READER_PROMOTION_LIMITS,
-  READER_PROMOTION_POLICY_STAMP,
   compareRankedReaderPromotion,
   compareUnrankedReaderPromotion,
   readerPromotionSemanticallyAdmitted,
@@ -30,6 +29,9 @@ import { readerPostPresentationV3Identity, readerPostPresentationV3MatchesCard }
 import type { ReaderSummaryArtifactProps } from "./reader-summary-artifact";
 import { sameOrderedValues } from "./reader-summary-artifact-validation-values";
 import type { TopRead } from "./top-read";
+
+import { supportedReaderPromotionPolicy, READER_PROMOTION_POLICY_V1 } from
+  "../policies/reader-promotion-policy-version";
 
 type Lane = {
   readonly card: TopRead;
@@ -81,6 +83,9 @@ export const assertReaderPromotionAttestations = (
   if (lanes.length !== attestations.length) {
     throw new Error("Every promoted card requires one attestation");
   }
+  if (new Set(attestations.map((value) => value.policyVersion)).size > 1) {
+    throw new Error("Reader promotion policy versions cannot be mixed");
+  }
   const candidateIds = new Set<string>();
   for (const [index, attestation] of attestations.entries()) {
     const lane = lanes[index];
@@ -102,7 +107,7 @@ const attestationMatchesLane = (
   { card, placement, slot }: Lane,
 ): boolean => {
   const assessment = attestation.assessment;
-  return attestation.policyVersion === READER_PROMOTION_POLICY_STAMP &&
+  return supportedReaderPromotionPolicy(attestation.policyVersion) &&
     attestation.digestVersion === "reader_post_promotion_digest.sha256.v3" &&
     verifyReaderPostPromotionAttestationDigest(attestation) &&
     attestation.artifactId === props.readerSummaryId &&
@@ -117,7 +122,7 @@ const attestationMatchesLane = (
     attestation.candidateId === card.promotionCandidateId &&
     attestation.provider === card.providerKey &&
     attestation.canonicalIdentity === card.promotionCanonicalIdentity &&
-    card.promotionPolicyVersion === READER_PROMOTION_POLICY_STAMP &&
+    card.promotionPolicyVersion === attestation.policyVersion &&
     card.promotionTier === placement &&
     attestation.storyId === card.storyClusterId &&
     [assessment.sourceSnapshotSha256, assessment.inputSha256, assessment.rubricSha256,
@@ -162,7 +167,11 @@ const comparatorIsConsistent = (
     Number.isFinite(Date.parse(engagement.observedAt)));
   if (source === undefined || !engagementValid) return false;
   const metricMature = comparator.block === "ranked" && engagement !== null &&
-    readerPostPromotionMetricMature(engagement, attestation.publishedAt);
+    readerPostPromotionMetricEligible(engagement, attestation.publishedAt,
+      attestation.policyVersion === READER_PROMOTION_POLICY_V1
+        ? { policyVersion: READER_PROMOTION_POLICY_V1 }
+        : { policyVersion: attestation.policyVersion,
+          ingestionCutoff: attestation.exactIngestionCutoff });
   const newsPublisher = comparator.block === "unranked"
     ? readerPromotionNewsPublisher({
       canonicalIdentity: attestation.canonicalIdentity,

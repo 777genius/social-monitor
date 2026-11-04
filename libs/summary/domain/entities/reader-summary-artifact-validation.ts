@@ -9,9 +9,16 @@ import { sameProviderMetrics } from "./reader-summary-artifact-validation-values
 import { assertReaderSummaryPromotionAttestations } from
   "./reader-summary-promotion-attestation-validation";
 import { readerPostPromotionCardFields } from "./top-read";
+import { readReaderPromotionDiagnostics } from "../value-objects/reader-promotion-diagnostics";
+import { assertDailyGenerationArtifactBinding, dailyGenerationNarrativeClusters } from "../services/reader-summary-daily-input-binding";
 export const assertReaderSummaryArtifactValid = (
   props: ReaderSummaryArtifactProps,
 ): void => {
+  assertDailyGenerationArtifactBinding(props);
+  if (props.promotionDiagnostics !== undefined &&
+      readReaderPromotionDiagnostics(props.promotionDiagnostics) === undefined) {
+    throw new Error("Reader summary promotion diagnostics are invalid");
+  }
   if (
     props.promotionBoardState !== undefined &&
     props.promotionBoardState !== "legacy_unavailable" &&
@@ -89,6 +96,8 @@ export const assertReaderSummaryArtifactValid = (
 
   const citationById = assertCitations(props.citationMap);
   const citationIds = new Set(citationById.keys());
+  const narrativeClusters = props.dailyGenerationInput === undefined ? [] : dailyGenerationNarrativeClusters(props.dailyGenerationInput);
+  const narrativeClusterIds = new Set([...clusterIds, ...narrativeClusters.map(cluster => cluster.id)]);
   assertReaderSummaryPromotionAttestations(props, props.promotionAttestations ?? []);
 
   for (const cluster of props.storyClusters) {
@@ -115,7 +124,7 @@ export const assertReaderSummaryArtifactValid = (
   for (const story of props.topStories) {
     assertClusterReference(
       story.storyClusterId,
-      clusterIds,
+      narrativeClusterIds,
       "Reader summary top story",
     );
     assertCitedSection(
@@ -145,7 +154,7 @@ export const assertReaderSummaryArtifactValid = (
   for (const signal of props.repeatedSignals) {
     assertClusterReference(
       signal.storyClusterId,
-      clusterIds,
+      narrativeClusterIds,
       "Reader summary repeated signal",
     );
     assertCitedSection(
@@ -177,9 +186,9 @@ export const assertReaderSummaryArtifactValid = (
       props.content,
       citationIds,
       citationById,
-      providerKeysFromStoryClusters(props.storyClusters),
-      clusterIds,
-      props.storyClusters,
+      providerKeysFromStoryClusters([...props.storyClusters, ...narrativeClusters]),
+      narrativeClusterIds,
+      [...props.storyClusters, ...narrativeClusters.filter(cluster => !clusterIds.has(cluster.id))],
     );
     assertRelatedTopicCards(
       [

@@ -232,7 +232,10 @@ const v3EvidenceSelection = (): SummaryEvidenceSelection => {
       rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
     }],
     selectedEvidence: [evidence],
-    promotionV3: selectReaderPostPromotionsV3([candidate]),
+    promotionV3: selectReaderPostPromotionsV3([candidate], {
+      policyVersion: READER_PROMOTION_POLICY_STAMP,
+      ingestionCutoff: "2026-07-05T09:00:00.000000Z",
+    }),
   };
 };
 

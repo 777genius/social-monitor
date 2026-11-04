@@ -12,8 +12,10 @@ class ReaderSummaryTopPostsSliver extends StatefulWidget {
     required this.onOpenUrl,
     this.sortOrder = TopPostsSortOrder.modelRank,
     this.onSortOrderChanged,
+    this.onSelectedOnlyChanged,
   });
 
+  final ValueChanged<bool>? onSelectedOnlyChanged;
   final ReaderSummaryTopPostsProjection projection;
   final int selectedPostCount;
   final SummaryPeriod period;
@@ -40,7 +42,7 @@ class ReaderSummaryTopPostsSliver extends StatefulWidget {
 
 class _ReaderSummaryTopPostsSliverState
     extends State<ReaderSummaryTopPostsSliver> {
-  bool _expanded = false;
+  int _additionalVisibleCount = 0;
   late ReaderSummaryRankedPostsDisplay _display;
   late List<TopRead> _filteredItems;
   late List<ValueKey<String>> _rowKeys;
@@ -66,7 +68,7 @@ class _ReaderSummaryTopPostsSliverState
     final sortChanged = widget.sortOrder != oldWidget.sortOrder;
     if (!datasetChanged && !periodChanged && !sortChanged) return;
     if (datasetChanged || periodChanged) {
-      _expanded = false;
+      _additionalVisibleCount = 0;
     }
     _refreshBoardItems();
   }
@@ -81,6 +83,7 @@ class _ReaderSummaryTopPostsSliverState
       slivers: [
         SliverToBoxAdapter(
           child: _TopPostsHeader(
+            onSelectedOnlyChanged: widget.onSelectedOnlyChanged,
             visibleCount: filtered.length,
             availableCount: _display.availableCount,
             providerKeys: _providerKeys,
@@ -142,18 +145,20 @@ class _ReaderSummaryTopPostsSliverState
         if (_display.showRevealControl)
           SliverToBoxAdapter(
             child: _TopPostsShowMore(
-              expanded: _expanded,
+              expanded: _display.remainingCount == 0,
               remainingCount: _display.remainingCount,
-              onPressed: _toggleExpanded,
+              onPressed: _revealPosts,
             ),
           ),
       ],
     );
   }
 
-  void _toggleExpanded() {
+  void _revealPosts() {
     setState(() {
-      _expanded = !_expanded;
+      _additionalVisibleCount = _display.remainingCount == 0
+          ? 0
+          : _additionalVisibleCount + 12;
       _refreshBoardItems();
     });
   }
@@ -179,7 +184,7 @@ class _ReaderSummaryTopPostsSliverState
   void _refreshBoardItems() {
     _display = ReaderSummaryRankedPostsDisplay(
       projection: widget.projection,
-      expanded: _expanded,
+      additionalVisibleCount: _additionalVisibleCount,
       sortOrder: widget.sortOrder,
       hiddenProviders: _hiddenProviders,
     );

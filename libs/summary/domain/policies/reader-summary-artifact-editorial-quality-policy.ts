@@ -1,3 +1,5 @@
+import { assertDailyEditorialSynthesis } from "../services/reader-summary-daily-input-binding";
+import { READER_SUMMARY_DAILY_INPUT_POLICY } from "../value-objects/reader-summary-daily-generation-input";
 import { readerSummaryHeadlinesEquivalent } from "../value-objects/reader-summary-headline-equivalence";
 import type { ReaderSummaryNarrativeSectionKind } from "../entities/reader-summary-narrative-section";
 import type { ReaderSummaryCoverageMode } from "../value-objects/reader-summary-coverage-mode";
@@ -21,6 +23,13 @@ export type ReaderSummaryEditorialNarrativeSection = {
 export type ReaderSummaryArtifactEditorialQualityInput = {
   readonly headline: string;
   readonly coverageMode: ReaderSummaryCoverageMode;
+  readonly dailyEditorialPlan?: boolean;
+  readonly synthesisProof?: {
+    readonly plan: Parameters<typeof assertDailyEditorialSynthesis>[1];
+    readonly selected: Parameters<typeof assertDailyEditorialSynthesis>[2];
+    readonly citations: Parameters<typeof assertDailyEditorialSynthesis>[3];
+  };
+  readonly coveragePolicyVersion?: typeof READER_SUMMARY_DAILY_INPUT_POLICY;
   readonly topPostTitles: readonly string[];
   readonly citations: readonly ReaderSummaryEditorialCitationSupport[];
   readonly narrativeSections: readonly ReaderSummaryEditorialNarrativeSection[];
@@ -121,7 +130,19 @@ export const evaluateReaderSummaryArtifactEditorialQuality = (
   );
   const markdownIssues = malformedMarkdownIssues(input.renderedMarkdown);
   const dailySynthesis = input.coverageMode === "daily_synthesis";
+  const dailyInputPolicy = input.coveragePolicyVersion === READER_SUMMARY_DAILY_INPUT_POLICY;
+  const synthesisV2 = input.synthesisProof?.plan.version === "reader_summary.daily_editorial.v2";
+  let synthesisValid = false;
+  if (synthesisV2) {
+    try {
+      assertDailyEditorialSynthesis(input.narrativeSections.filter(section => section.kind !== "watch")
+        .map((section,index) => ({...section,id:`quality-${index}`})), input.synthesisProof!.plan,
+        input.synthesisProof!.selected,input.synthesisProof!.citations);
+      synthesisValid = true;
+    } catch { /* Invalid synthesis fails the same blocking quality gates. */ }
+  }
   const singleStoryLeadIsHonestlyClusterBound =
+    synthesisV2 ? synthesisValid : input.dailyEditorialPlan === true ? lead?.storyClusterId !== undefined :
     input.coverageMode !== "single_story" ||
     (lead?.storyClusterId !== undefined &&
       lead.storyClusterId.trim().length > 0 &&
@@ -132,8 +153,8 @@ export const evaluateReaderSummaryArtifactEditorialQuality = (
     dailySynthesisLeadHasMultipleClusters:
       !dailySynthesis || leadClusterIds.length >= 2,
     dailySynthesisLeadHasMultipleProviders:
-      !dailySynthesis || leadProviderKeys.length >= 2,
-    secondarySignalsUseUniqueClusters:
+      !dailySynthesis || dailyInputPolicy || leadProviderKeys.length >= 2,
+    secondarySignalsUseUniqueClusters: synthesisV2 ? synthesisValid :
       secondaryClusterIds.length === secondarySignals.length &&
       new Set(secondaryClusterIds).size === secondaryClusterIds.length,
     narrativeCitationsResolve:
@@ -143,7 +164,7 @@ export const evaluateReaderSummaryArtifactEditorialQuality = (
     ),
     headlineIsNotCopiedFromTopPost: !copiedHeadline,
     mainNarrativeProviderDominanceControlled:
-      !dailySynthesis || dominantProviderShare <= maximumDominantProviderShare,
+      !dailySynthesis || dailyInputPolicy || dominantProviderShare <= maximumDominantProviderShare,
     singleStoryLeadIsHonestlyClusterBound,
     renderedMarkdownIsWellFormed: markdownIssues.length === 0,
   };

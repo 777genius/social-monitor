@@ -290,7 +290,14 @@ bool _validV3PromotionBoard(
         return null;
       }
       entries.add(
-        ReaderPromotionBoardEntry(storyId: storyId, comparator: comparator),
+        ReaderPromotionBoardEntry(
+          storyId: storyId,
+          comparator: comparator,
+          policyVersion: attestation.policyVersion,
+          ingestionCutoff: ReaderPromotionExactTimestamp.tryParse(
+            attestation.exactIngestionCutoff,
+          ),
+        ),
       );
     }
     return entries;

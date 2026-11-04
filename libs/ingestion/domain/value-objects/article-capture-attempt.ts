@@ -1,5 +1,6 @@
 import type { JsonObject } from '@social-monitor/shared-kernel';
 import { ARTICLE_REPRESENTATION_VERSION, captureNativeText, readContentCapture } from './source-content-capture';
+import { GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION, googleNewsArticleId } from './google-news-article';
 
 export type ArticleCaptureAttempt = {
   readonly version: 'article_capture_attempt.v1';
@@ -14,6 +15,13 @@ export type ArticleCaptureAttempt = {
   readonly scanJobId: string | null;
   readonly scanFence: string | null;
   readonly leaseUntil: string | null;
+  readonly priorRepresentation?: {
+    readonly representationVersion: string;
+    readonly status: ArticleCaptureAttempt['status'];
+    readonly reasonCode: string;
+    readonly attemptCount: number;
+    readonly nextAttemptAt: string | null;
+  };
 };
 type CaptureItem = {
   readonly body: string;
@@ -23,6 +31,8 @@ type CaptureItem = {
 };
 const MAX_ATTEMPTS = 3;
 const retryDelay = (attempt: number): number => attempt <= 1 ? 60_000 : 300_000;
+const representationForUrl = (url: string): string => googleNewsArticleId(url) === undefined
+  ? ARTICLE_REPRESENTATION_VERSION : GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION;
 
 export const readArticleCaptureAttempt = (item: CaptureItem): ArticleCaptureAttempt | undefined => {
   const raw = item.metadata?.articleCaptureAttempt;
@@ -39,12 +49,34 @@ export const prepareArticleCaptureAttempt = <T extends CaptureItem>(item: T, now
   const capture = readContentCapture(item);
   if (capture?.articleUrl == null) return item;
   const previous = readArticleCaptureAttempt(item);
-  if (previous !== undefined && previous.nativeRevision === capture.nativeRevision &&
-      previous.articleUrl === capture.articleUrl && previous.representationVersion === ARTICLE_REPRESENTATION_VERSION) return item;
-  const succeeded = capture.article?.extractionVersion === ARTICLE_REPRESENTATION_VERSION;
+  const representationVersion = representationForUrl(capture.articleUrl);
+  if (representationVersion === GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION &&
+      previous === undefined && item.metadata?.articleCaptureAttempt !== undefined) return item;
+  if (previous !== undefined && previous.nativeRevision === capture.nativeRevision && previous.articleUrl === capture.articleUrl) {
+    if (previous.representationVersion === representationVersion) return item;
+    if (representationVersion === GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION) {
+      if (previous.representationVersion !== ARTICLE_REPRESENTATION_VERSION || capture.article !== undefined ||
+          previous.attemptCount >= MAX_ATTEMPTS || typeof previous.reasonCode !== 'string' || previous.reasonCode.length > 128 ||
+          (previous.nextAttemptAt !== null && (typeof previous.nextAttemptAt !== 'string' || previous.nextAttemptAt.length > 40))) return item;
+      const terminalUpgrade = previous.status === 'permanent_failed' && previous.reasonCode === 'empty_extraction' &&
+        previous.attemptCount > 0 && previous.nextAttemptAt === null && previous.reservationToken === null &&
+        previous.scanJobId === null && previous.scanFence === null && previous.leaseUntil === null;
+      if (!terminalUpgrade && !attemptCanReserve(previous, now)) return item;
+      return withAttempt(item, {
+        ...previous, representationVersion, status: 'pending',
+        nextAttemptAt: terminalUpgrade ? now.toISOString() : previous.nextAttemptAt,
+        reasonCode: 'google_news_resolver_upgrade', reservationToken: null,
+        scanJobId: null, scanFence: null, leaseUntil: null,
+        priorRepresentation: { representationVersion: previous.representationVersion, status: previous.status,
+          reasonCode: previous.reasonCode, attemptCount: previous.attemptCount, nextAttemptAt: previous.nextAttemptAt },
+      });
+    }
+  }
+  const succeeded = capture.article?.extractionVersion === representationVersion ||
+    (representationVersion === GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION && capture.article?.extractionVersion === ARTICLE_REPRESENTATION_VERSION);
   return withAttempt(item, {
     version: 'article_capture_attempt.v1', nativeRevision: capture.nativeRevision,
-    articleUrl: capture.articleUrl, representationVersion: ARTICLE_REPRESENTATION_VERSION,
+    articleUrl: capture.articleUrl, representationVersion: succeeded ? capture.article!.extractionVersion : representationVersion,
     status: succeeded ? 'succeeded' : 'pending', attemptCount: 0,
     nextAttemptAt: succeeded ? null : now.toISOString(), reasonCode: succeeded ? 'article_reused' : 'capture_pending',
     reservationToken: null, scanJobId: null, scanFence: null, leaseUntil: null,
@@ -67,12 +99,17 @@ export const articleCaptureIsDue = (item: CaptureItem, now: Date): boolean => {
   const capture = readContentCapture(item);
   const attempt = readArticleCaptureAttempt(item);
   if (capture === undefined || attempt === undefined || attempt.articleUrl !== capture.articleUrl ||
-      attempt.nativeRevision !== capture.nativeRevision || attempt.representationVersion !== ARTICLE_REPRESENTATION_VERSION ||
-      capture.article?.extractionVersion === ARTICLE_REPRESENTATION_VERSION || attempt.attemptCount >= MAX_ATTEMPTS ||
-      !['pending', 'retryable_failed', 'running'].includes(attempt.status) || attempt.nextAttemptAt === null) return false;
-  return Number.isFinite(Date.parse(attempt.nextAttemptAt)) && Date.parse(attempt.nextAttemptAt) <= now.getTime() &&
-    (attempt.status !== 'running' || (attempt.leaseUntil !== null && Date.parse(attempt.leaseUntil) <= now.getTime()));
+      attempt.nativeRevision !== capture.nativeRevision || attempt.representationVersion !== representationForUrl(capture.articleUrl ?? '') ||
+      capture.article?.extractionVersion === attempt.representationVersion ||
+      (googleNewsArticleId(capture.articleUrl ?? '') !== undefined &&
+        capture.article?.extractionVersion === ARTICLE_REPRESENTATION_VERSION)) return false;
+  return attemptCanReserve(attempt, now);
 };
+
+const attemptCanReserve = (attempt: ArticleCaptureAttempt, now: Date): boolean =>
+  attempt.attemptCount < MAX_ATTEMPTS && ['pending', 'retryable_failed', 'running'].includes(attempt.status) &&
+  attempt.nextAttemptAt !== null && Number.isFinite(Date.parse(attempt.nextAttemptAt)) && Date.parse(attempt.nextAttemptAt) <= now.getTime() &&
+    (attempt.status !== 'running' || (attempt.leaseUntil !== null && Date.parse(attempt.leaseUntil) <= now.getTime()));
 
 export const reserveArticleCapture = <T extends CaptureItem>(item: T, reservation: {
   readonly now: Date;

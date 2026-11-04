@@ -1,4 +1,4 @@
-import { classifyFeedPromotionEligibility } from "@social-monitor/feed/domain";
+import { classifyReaderValuePromotionMetrics } from "@social-monitor/feed/domain";
 import type { JsonObject } from "@social-monitor/shared-kernel";
 
 import {
@@ -34,7 +34,9 @@ export const readerPostPromotionEngagementFact = (params: {
   } catch {
     return null;
   }
-  const eligibility = classifyFeedPromotionEligibility(params);
+  // This V3 fact records metrics, not promotion authority. Quote authorship
+  // has its own frozen input; relevance/usefulness still gate publication.
+  const eligibility = classifyReaderValuePromotionMetrics(params);
   if (!eligibility.eligible) return null;
   const metrics = eligibility.metrics;
   const signal = ((): Omit<ReaderPostPromotionEngagement, "observedAt"> | null => {

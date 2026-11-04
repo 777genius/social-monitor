@@ -1,3 +1,4 @@
+import { readPrismaFeedCollectionCoverage } from "./prisma-feed-collection-coverage";
 import { READER_PROMOTION_PROVIDER_ALIASES } from "@social-monitor/shared-kernel";
 
 import {
@@ -11,6 +12,8 @@ import {
   PROMOTION_ELIGIBLE_ITEM_CEILING,
   PROMOTION_PHYSICAL_ROW_CEILING,
   type FeedItemReadRepositoryPort,
+  type FeedCollectionCoverageQuery,
+  type FeedCollectionCoverageRow,
   type FindLatestFeedItemSignalQuery,
   type ListFeedItemsQuery,
   type ListFeedItemsResult,
@@ -48,6 +51,12 @@ export class PrismaFeedItemReadRepository implements
   FeedItemReadRepositoryPort, PromotionFeedItemSnapshotRepositoryPort
 {
   constructor(private readonly prisma: PrismaFeedClient) {}
+
+  async readCollectionCoverage(
+    query: FeedCollectionCoverageQuery,
+  ): Promise<readonly FeedCollectionCoverageRow[]> {
+    return readPrismaFeedCollectionCoverage(this.prisma, query);
+  }
 
   async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
     assertValidFeedItemListQuery(query);

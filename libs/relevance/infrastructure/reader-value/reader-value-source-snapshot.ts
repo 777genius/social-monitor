@@ -12,7 +12,12 @@ export function captureReaderValueSourceSnapshot(
   source: ReaderValueSource,
   safety: SourceContentSafetyPolicy,
 ): Result<ReaderValueSourceSnapshot, 'unsafe_source'> {
-  for (const url of [source.canonicalUrl, ...source.capture.segments.flatMap((segment) =>
+  if (source.quotedPost !== undefined && (source.quotedContext !== undefined ||
+      source.quotedPost.bodySha256 !== sha256(source.quotedPost.body) ||
+      !Number.isFinite(Date.parse(source.quotedPost.availableAt)) ||
+      Date.parse(source.quotedPost.availableAt) < Date.parse(source.quotedPost.publishedAt) ||
+      Buffer.byteLength(source.quotedPost.body) > 256_000)) return err('unsafe_source');
+  for (const url of [source.canonicalUrl, ...(source.quotedPost === undefined ? [] : [source.quotedPost.canonicalUrl]), ...source.capture.segments.flatMap((segment) =>
     [segment.sourceUrl, segment.finalUrl].filter((value): value is string => value !== null))]) {
     const checked = validateOutboundUrl(url, { label: 'Reader value source', allowedProtocols: ['http:', 'https:'] });
     if (!checked.ok || checked.url.username || checked.url.password) return err('unsafe_source');
@@ -24,6 +29,12 @@ export function captureReaderValueSourceSnapshot(
     title: source.title,
     body: source.body,
     capture: stableCapture(source.capture, false),
+    ...(source.quotedContext === undefined ? {} : { quotedContext: source.quotedContext }),
+    ...(source.quotedPost === undefined ? {} : { quotedPost: {
+      tweetId: source.quotedPost.tweetId, canonicalUrl: source.quotedPost.canonicalUrl,
+      authorHandle: source.quotedPost.authorHandle, publishedAt: source.quotedPost.publishedAt,
+      body: source.quotedPost.body, bodySha256: source.quotedPost.bodySha256,
+    } }),
   }));
   const sanitized = safety.evaluate({
     title: source.title, bodyPreview: source.body, providerKey: source.providerKey,
@@ -32,7 +43,16 @@ export function captureReaderValueSourceSnapshot(
   const body = sanitized.sanitizedBodyPreview ?? '';
   const retainedTitle = unicodePrefix(sanitized.sanitizedTitle, READER_VALUE_SNAPSHOT_BODY_LIMIT);
   const retainedBody = unicodePrefix(body, READER_VALUE_SNAPSHOT_BODY_LIMIT);
+  const quoted = source.quotedPost === undefined ? undefined : safety.evaluate({
+    title: `Quoted source by @${source.quotedPost.authorHandle}`,
+    bodyPreview: source.quotedPost.body, providerKey: source.providerKey, preserveWhitespace: true,
+  });
+  if (quoted?.status === 'blocked') return err('unsafe_source');
+  const quotedBody = unicodePrefix(quoted?.sanitizedBodyPreview ?? '', READER_VALUE_SNAPSHOT_BODY_LIMIT);
   return ok({
+    ...(source.quotedContext === undefined ? {} : { quotedContext: source.quotedContext }),
+    ...(source.quotedPost === undefined ? {} : { quotedPost: { ...source.quotedPost,
+      body: quotedBody, bodySha256: sha256(quotedBody) } }),
     sourceSnapshotSha256,
     interestSha256: sha256(source.interest),
     sanitizedTextSha256: sha256(JSON.stringify({ title: sanitized.sanitizedTitle, body })),
@@ -40,7 +60,9 @@ export function captureReaderValueSourceSnapshot(
     body: retainedBody,
     interest: redactSensitiveText(source.interest),
     capture: stableCapture(source.capture, true),
-    availableAt: source.availableAt,
+    availableAt: source.quotedPost === undefined || source.availableAt === null ? source.availableAt :
+      Date.parse(source.quotedPost.availableAt) > Date.parse(source.availableAt)
+        ? source.quotedPost.availableAt : source.availableAt,
     originalTitleLength: source.title.length,
     originalBodyLength: source.body.length,
     retainedSnapshotTruncated: retainedTitle.length !== sanitized.sanitizedTitle.length || retainedBody.length !== body.length,

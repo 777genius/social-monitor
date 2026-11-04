@@ -1,5 +1,7 @@
 import { performance } from 'node:perf_hooks';
 import { guardedContentGet } from '../http/guarded-content-http';
+import { GoogleNewsResolutionError, GoogleNewsResolutionHttpError, resolveGoogleNewsArticle } from './google-news-article-resolver';
+import { GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION, googleNewsArticleId } from '../../domain/value-objects/google-news-article';
 import { parseReadableArticleInWorker } from './readability-worker';
 import { redactSensitiveText, validateOutboundUrl } from '@social-monitor/shared-kernel';
 
@@ -60,8 +62,33 @@ export class HttpReadabilityArticleContentExtractor implements ArticleContentExt
       return { ok: false, sourceUrl, reason: validated.reason, reasonCode: 'invalid_url', retryable: false };
     }
 
+    const remainingMs = (): number => {
+      command.signal?.throwIfAborted();
+      const remaining = budgetMs - (performance.now() - started);
+      if (remaining <= 0) throw new Error('Article extraction deadline exceeded');
+      return Math.ceil(remaining);
+    };
+    const googleWrapper = googleNewsArticleId(sourceUrl) !== undefined;
+    let fetchUrl = validated.url.toString();
+    if (googleWrapper) {
+      try {
+        fetchUrl = await resolveGoogleNewsArticle(sourceUrl, {
+          remainingMs, maxBytes: this.maxBytes, maxRedirects: this.maxRedirects,
+          signal: command.signal, userAgent: this.userAgent,
+        });
+      } catch (error) {
+        if (error instanceof GoogleNewsResolutionError) {
+          return { ok: false, sourceUrl, reason: error.message, reasonCode: error.reasonCode, retryable: false };
+        }
+        if (!(error instanceof GoogleNewsResolutionHttpError)) throw error;
+        return { ok: false, sourceUrl, reason: error.message, reasonCode: `google_resolver_http_${error.status}`,
+          retryable: error.status === 408 || error.status === 429 || error.status >= 500,
+          ...(error.status === 429 && error.retryAfter !== null ? { retryAfter: error.retryAfter } : {}),
+        };
+      }
+    }
     const response = await guardedContentGet({
-      url: validated.url.toString(), timeoutMs: Math.ceil(budgetMs),
+      url: fetchUrl, timeoutMs: remainingMs(),
       maxBytes: this.maxBytes, maxRedirects: this.maxRedirects, signal: command.signal,
       headers: { accept: 'text/html, application/xhtml+xml;q=0.9', 'user-agent': this.userAgent },
     });
@@ -80,7 +107,7 @@ export class HttpReadabilityArticleContentExtractor implements ArticleContentExt
     const finalUrl = response.finalUrl;
     const html = response.body;
     const article = await parseReadableArticleInWorker(
-      html, finalUrl, budgetMs - (performance.now() - started), command.signal,
+      html, finalUrl, remainingMs(), command.signal,
     );
     // The extractor's representation is persisted by ingestion. Redact before
     // calculating its length, digest or truncation so those fields describe the
@@ -108,7 +135,7 @@ export class HttpReadabilityArticleContentExtractor implements ArticleContentExt
       originalTextLength: parsed.originalTextLength,
       truncated: parsed.text.length < parsed.originalTextLength,
       fullTextSha256: parsed.fullTextSha256,
-      extractionVersion: 'readability.text.v2',
+      extractionVersion: googleWrapper ? GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION : 'readability.text.v2',
       wordCount: countWords(parsed.text),
       contentHash: articleContentHash(parsed.text),
       semanticFingerprint: semanticFingerprintForArticle(parsed.title, parsed.text),

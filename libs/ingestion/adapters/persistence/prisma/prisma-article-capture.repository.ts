@@ -1,8 +1,9 @@
 import { lockArticleCapture, writeArticleCapture, type ArticleCaptureTransaction } from './prisma-article-capture-fence';
 import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
-import type { SourceItem } from '../../../domain/entities/source-item';
+import { SourceItem } from '../../../domain/entities/source-item';
 import { articleCaptureCompletionMatches, articleCaptureIsDue, prepareLegacyArticleCapture, reserveArticleCapture } from '../../../domain/value-objects/article-capture-attempt';
-import { ARTICLE_FETCH_POLICY_VERSION, readContentCapture } from '../../../domain/value-objects/source-content-capture';
+import { ARTICLE_FETCH_POLICY_VERSION, ARTICLE_REPRESENTATION_VERSION, readContentCapture } from '../../../domain/value-objects/source-content-capture';
+import { GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION } from '../../../domain/value-objects/google-news-article';
 import { mergeArticleCaptureCompletion } from '../../../domain/value-objects/merge-article-capture-completion';
 import { sourceItemProviderContentHash } from '../../../domain/value-objects/source-item-content-fingerprint';
 import type { ArticleCaptureRepository, ArticleCaptureScope, CompleteArticleCaptureCommand, ReserveArticleCaptureCommand } from '../../../ports/article-capture-repository';
@@ -37,9 +38,28 @@ export class PrismaArticleCaptureRepository implements ArticleCaptureRepository 
         AND (
           (metadata #>> '{articleCaptureAttempt,version}' = 'article_capture_attempt.v1'
             AND metadata #>> '{articleCaptureAttempt,status}' IN ('pending', 'retryable_failed', 'running')
-            AND jsonb_typeof(metadata #> '{articleCaptureAttempt,attemptCount}') = 'number'
-            AND metadata #> '{articleCaptureAttempt,attemptCount}' < '3'::jsonb
-            AND metadata #>> '{articleCaptureAttempt,nextAttemptAt}' <= ${command.now.toISOString()})
+            AND metadata #>> '{articleCaptureAttempt,representationVersion}' IN
+              (${ARTICLE_REPRESENTATION_VERSION}, ${GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION})
+            AND metadata #> '{articleCaptureAttempt,attemptCount}' IN ('0'::jsonb, '1'::jsonb, '2'::jsonb)
+            AND metadata #>> '{articleCaptureAttempt,nextAttemptAt}' <= ${command.now.toISOString()}
+            AND (metadata #>> '{articleCaptureAttempt,status}' <> 'running'
+              OR metadata #>> '{articleCaptureAttempt,leaseUntil}' <= ${command.now.toISOString()}))
+          OR (metadata #>> '{contentCapture,version}' = 'source_content_capture.v1'
+            AND metadata #>> '{contentCapture,articleUrl}' ~ ${'^https://news[.]google[.]com/(rss/articles|articles|read)/[-_a-zA-Z0-9]+([?][^#]*)?$'}
+            AND length(split_part(split_part(metadata #>> '{contentCapture,articleUrl}', '?', 1), '/', -1)) <= 4096
+            AND metadata #> '{contentCapture,article}' IS NULL
+            AND metadata #>> '{articleCaptureAttempt,version}' = 'article_capture_attempt.v1'
+            AND metadata #>> '{articleCaptureAttempt,representationVersion}' = ${ARTICLE_REPRESENTATION_VERSION}
+            AND metadata #>> '{articleCaptureAttempt,status}' = 'permanent_failed'
+            AND metadata #>> '{articleCaptureAttempt,reasonCode}' = 'empty_extraction'
+            AND metadata #> '{articleCaptureAttempt,attemptCount}' IN ('1'::jsonb, '2'::jsonb)
+            AND metadata #>> '{articleCaptureAttempt,nativeRevision}' = metadata #>> '{contentCapture,nativeRevision}'
+            AND metadata #>> '{articleCaptureAttempt,articleUrl}' = metadata #>> '{contentCapture,articleUrl}'
+            AND metadata #> '{articleCaptureAttempt,nextAttemptAt}' = 'null'::jsonb
+            AND metadata #> '{articleCaptureAttempt,reservationToken}' = 'null'::jsonb
+            AND metadata #> '{articleCaptureAttempt,scanJobId}' = 'null'::jsonb
+            AND metadata #> '{articleCaptureAttempt,scanFence}' = 'null'::jsonb
+            AND metadata #> '{articleCaptureAttempt,leaseUntil}' = 'null'::jsonb)
           OR (metadata -> 'contentCapture' IS NULL AND (
             metadata #>> '{articleContent,status}' = 'failed'
             OR (metadata #>> '{articleContent,status}' = 'skipped' AND (
@@ -62,7 +82,7 @@ export class PrismaArticleCaptureRepository implements ArticleCaptureRepository 
         record = await this.initializeLegacyOpportunity(command, candidate.provider_item_id) ?? undefined;
       }
       if (record === undefined) continue;
-      const item = sourceItemFromPrisma(record);
+      const item = SourceItem.rehydrate(prepareLegacyArticleCapture(sourceItemFromPrisma(record).toSnapshot(), command.providerKey, command.now));
       if ((initialized && readContentCapture(item.toSnapshot())?.articleUrl != null) || articleCaptureIsDue(item.toSnapshot(), command.now)) due.push(item);
     }
     return due;

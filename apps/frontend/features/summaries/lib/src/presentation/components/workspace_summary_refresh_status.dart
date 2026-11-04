@@ -59,17 +59,8 @@ class _WorkspaceSummaryRefreshStatusState
 
   @override
   Widget build(BuildContext context) {
-    final next = SummaryRefreshSchedule.nextScheduledAt(_now);
-    final remaining = SummaryRefreshSchedule.remaining(now: _now, next: next);
-    final updateDue = SummaryRefreshSchedule.isUpdateDue(
-      now: _now,
-      collectedAt: widget.collectedAt,
-    );
     final text =
-        'Collected through ${_dateTimeLabel(widget.collectedAt.toUtc())} UTC'
-        '${updateDue ? ' · updating now' : ''}'
-        ' · next update in ${_durationLabel(remaining)}'
-        ' at ${_timeLabel(next)} UTC';
+        'Collected through ${_dateTimeLabel(widget.collectedAt.toUtc())} UTC';
     final textStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
       color: Theme.of(context).colorScheme.onSurfaceVariant,
       fontWeight: FontWeight.w600,
@@ -114,13 +105,6 @@ class _WorkspaceSummaryRefreshStatusState
       if (mounted) callback();
     });
   }
-}
-
-String _durationLabel(Duration value) {
-  final hours = value.inHours.toString().padLeft(2, '0');
-  final minutes = (value.inMinutes % 60).toString().padLeft(2, '0');
-  final seconds = (value.inSeconds % 60).toString().padLeft(2, '0');
-  return '$hours:$minutes:$seconds';
 }
 
 String _dateTimeLabel(DateTime value) {

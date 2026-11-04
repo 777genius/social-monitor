@@ -3044,6 +3044,103 @@
         ],
         "type": "object"
       },
+      "ReaderPostDto": {
+        "properties": {
+          "bodyPreview": {
+            "type": "string"
+          },
+          "canonicalUrl": {
+            "type": "string"
+          },
+          "engagement": {
+            "nullable": true,
+            "type": "number"
+          },
+          "engagementObservedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "likeCount": {
+            "description": "Raw X like count for Likes display and sorting; null when unknown, omitted for other providers. Reposts are excluded.",
+            "minimum": 0,
+            "nullable": true,
+            "type": "number"
+          },
+          "providerFamily": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": "string"
+          },
+          "quotedContext": {
+            "description": "Whether the original quoted post text was captured; the author text is assessed separately",
+            "type": "string"
+          },
+          "relevance": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "usefulness": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sourceItemId",
+          "providerKey",
+          "providerFamily",
+          "title",
+          "bodyPreview",
+          "canonicalUrl",
+          "publishedAt",
+          "engagement",
+          "engagementObservedAt",
+          "usefulness",
+          "relevance"
+        ],
+        "type": "object"
+      },
+      "ReaderPostsPageDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderPostDto"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "providerKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "providerKeys"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryAcceptedTopicApplicationBindingDto": {
         "properties": {
           "changed": {
@@ -4354,10 +4451,11 @@
             "type": "string"
           },
           "policyVersion": {
-            "description": "For reader_post_promotion_attestation.v3 this is the promotion policy stamp. Another stamp never reaches clients: such days are served with empty boards and freshness.reason = ranking_policy_changed.",
+            "description": "For reader_post_promotion_attestation.v3 this is the promotion policy stamp. Supported historical stamps retain their original validation.",
             "enum": [
               "reader_post_promotion.v1",
               "reader_post_promotion.v2",
+              "reader_promotion.2026-11-02",
               "reader_promotion.2026-11-01"
             ],
             "type": "string"
@@ -13224,6 +13322,123 @@
         "summary": "Create or update the interest-level summary preference overlay for one user.",
         "tags": [
           "user-summary-preferences"
+        ]
+      }
+    },
+    "/reader-posts": {
+      "get": {
+        "operationId": "ReaderPostsController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "excludedProviders",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "enum": [
+                "model",
+                "likes"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interestId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endedAt",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "startedAt",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Workspace feed read access. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReaderPostsPageDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Browse all collected posts in a period using saved assessments; no model calls.",
+        "tags": [
+          "reader-summaries"
         ]
       }
     },

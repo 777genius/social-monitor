@@ -1,5 +1,4 @@
 import { canonicalReaderSummaryPreparationTimestamp,
-  READER_PROMOTION_POLICY_STAMP,
   type selectReaderPostPromotionsV3, type ReaderPostPromotionV3Candidate,
   type StoryCluster, type SummaryEvidenceItem,
   type SummaryEvidenceSelection } from "../../domain";
@@ -21,7 +20,7 @@ export const v3EvidenceSelection = (params: {
     ...params.supplementalEvidence.filter((item) => !primaryIds.has(item.feedItemId))];
   const exactCutoff = canonicalReaderSummaryPreparationTimestamp(params.cutoffAt);
   return {
-    rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
+    rankingPolicyVersion: params.selection.policyVersion,
     sourceWindow: {
       windowId: `reader-summary-v3:${params.jobId}`,
       startedAt: params.period.startedAt, endedAt: params.period.endedAt,
@@ -49,7 +48,7 @@ export const clustersForSelection = (
     (value.storyId === candidate.storyId || value.sourceItemId === candidate.sourceItemId))
     .map((value) => value.candidateId);
   return { id: candidate.storyId, storyKey: candidate.storyId,
-    rankingPolicyVersion: READER_PROMOTION_POLICY_STAMP,
+    rankingPolicyVersion: selection.policyVersion,
     representativeFeedItemId: candidate.candidateId, duplicateFeedItemIds,
     interestIds: [...new Set(members.map((member) => member.interestId ??
       item.interestId))].sort(compareUtf8Bytes), providerKeys: [...new Set(

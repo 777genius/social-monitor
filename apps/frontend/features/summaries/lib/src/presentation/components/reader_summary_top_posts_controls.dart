@@ -34,7 +34,8 @@ const _topPostSortSegments = [
     label: 'By model',
     icon: Icons.auto_awesome_outlined,
     semanticLabel: 'Sort by model rank',
-    tooltip: 'Model order: importance first, then popularity',
+    tooltip:
+        'Useful and important posts, balanced with popularity. Unassessed posts stay last.',
   ),
   AppSegment(
     key: ValueKey('reader-summary-top-posts-sort-likes'),
@@ -43,7 +44,7 @@ const _topPostSortSegments = [
     icon: Icons.favorite_border_rounded,
     semanticLabel: 'Sort by likes',
     tooltip:
-        'Most liked first: X likes + 2x reposts, Reddit score, '
+        'Most liked first: X likes, Reddit score, '
         'Hacker News points, GitHub stars. Posts without a metric '
         'stay last.',
   ),

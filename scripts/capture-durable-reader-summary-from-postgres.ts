@@ -690,6 +690,7 @@ async function main(): Promise<void> {
         qualityFlags: frontendArtifact.qualityFlags,
       },
       executionAttestations: executionAttestationRecords,
+      dailyEditorOutputSha256: artifact.toSnapshot().dailyEditorialPlan?.editorOutputSha256,
       durableReadback,
       redaction: {
         secretsIncluded: false,
@@ -697,7 +698,6 @@ async function main(): Promise<void> {
         tokenValuesIncluded: false,
       },
     };
-
     writeOptionalJsonArtifact(evidencePathEnv, evidence);
     writeOptionalJsonArtifact(frontendFixturePathEnv, {
       schemaVersion: 1,
@@ -710,7 +710,6 @@ async function main(): Promise<void> {
       evidence: evidence.result,
       redaction: evidence.redaction,
     });
-
     console.log(
       [
         "Durable reader summary capture OK",

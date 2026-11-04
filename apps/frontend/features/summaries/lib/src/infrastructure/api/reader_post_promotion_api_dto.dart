@@ -24,6 +24,7 @@ final class ReaderPostPromotionAttestationApiDto {
     this.providerKey,
     this.storyId,
     this.exactPublishedAt,
+    this.exactIngestionCutoff,
   });
 
   final String schemaVersion;
@@ -48,6 +49,7 @@ final class ReaderPostPromotionAttestationApiDto {
   final String? providerKey;
   final String? storyId;
   final String? exactPublishedAt;
+  final String? exactIngestionCutoff;
 }
 
 final class ReaderPostPromotionScoreComponentsApiDto {

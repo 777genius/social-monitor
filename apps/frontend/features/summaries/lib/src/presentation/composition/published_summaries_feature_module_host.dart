@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../pages/published_summary_page.dart';
 import '../stores/published_summary_store.dart';
+import '../stores/reader_posts_browse_store.dart';
 import '../stores/top_posts_sort_store.dart';
 import 'published_summaries_feature_module.dart';
 
@@ -19,18 +20,21 @@ class _PublishedSummariesFeatureModuleHostState
     extends State<PublishedSummariesFeatureModuleHost> {
   late final PublishedSummaryStore _store;
   late final TopPostsSortStore _topPostsSortStore;
+  late final ReaderPostsBrowseStore? _browseStore;
 
   @override
   void initState() {
     super.initState();
     _store = widget.module.createStore();
     _topPostsSortStore = widget.module.createTopPostsSortStore();
+    _browseStore = widget.module.createReaderPostsBrowseStore();
   }
 
   @override
   void dispose() {
     _store.dispose();
     _topPostsSortStore.dispose();
+    _browseStore?.dispose();
     super.dispose();
   }
 
@@ -38,5 +42,6 @@ class _PublishedSummariesFeatureModuleHostState
   Widget build(BuildContext context) => PublishedSummaryPage(
     store: _store,
     topPostsSortStore: _topPostsSortStore,
+    readerPostsBrowseStore: _browseStore,
   );
 }

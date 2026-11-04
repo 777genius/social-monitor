@@ -1,3 +1,7 @@
+import { normalizeReaderSummaryUsage } from "./prisma-reader-summary-usage";
+import { readReaderPromotionDiagnostics } from "../../../domain/value-objects/reader-promotion-diagnostics";
+import { readReaderSummaryDailyGenerationInput } from "../../../domain/value-objects/reader-summary-daily-generation-input";
+import { validateDailyEditorialProof } from "../../../domain/services/reader-summary-daily-editorial-plan";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
@@ -20,7 +24,6 @@ import {
   type ReaderSummaryScope,
   type ReaderSummaryInterestHighlight,
   type ReaderSummaryTopStory,
-  type ReaderSummaryUsage,
   type RelatedTopicRelation,
   type SummaryEvidencePersonalization,
   type StoryCluster,
@@ -119,6 +122,13 @@ export const normalizeReaderSummaryArtifactPayload = (
         ? fallback.createdAt
         : requireDate(value.generatedAt, "Reader summary generation date"),
     sourceWindow: normalizeReaderSummarySourceWindow(value.sourceWindow),
+    ...(Object.hasOwn(value, "dailyGenerationInput") ? {
+      dailyGenerationInput: requireDailyGenerationInput(value.dailyGenerationInput),
+    } : {}),
+    ...(Object.hasOwn(value, "dailyEditorialPlan") ? {
+      dailyEditorialPlan: validateDailyEditorialProof(value.dailyEditorialPlan,
+        requireDailyGenerationInput(value.dailyGenerationInput)),
+    } : {}),
     storyClusters: requireArray<SerializedReaderSummaryStoryCluster>(
       value.storyClusters,
       "Reader summary story clusters",
@@ -130,6 +140,9 @@ export const normalizeReaderSummaryArtifactPayload = (
         : [],
     promotionAttestations: promotionBoard.promotionAttestations,
     promotionEvidenceFacts: promotionBoard.promotionEvidenceFacts,
+    ...(value.promotionDiagnostics === undefined ? {} : {
+      promotionDiagnostics: readReaderPromotionDiagnostics(value.promotionDiagnostics),
+    }),
     promotionBoardState: promotionBoard.promotionBoardState,
     contextArtifacts: requireArray<SerializedReaderSummaryContextArtifact>(
       value.contextArtifacts,
@@ -181,38 +194,6 @@ export const normalizeReaderSummaryArtifactPayload = (
   };
 
   return failClosedRelatedTopicPayload(normalized);
-};
-
-const normalizeReaderSummaryUsage = (input: unknown): ReaderSummaryUsage => {
-  const value = requireObject<Record<string, unknown>>(
-    input,
-    "Reader summary usage",
-  );
-  const inputTokens = nullableTokenCount(value.inputTokens);
-  const outputTokens = nullableTokenCount(value.outputTokens);
-  if ((inputTokens === null) !== (outputTokens === null)) {
-    throw new Error(
-      "Reader summary token usage must be complete or unavailable",
-    );
-  }
-  if (
-    typeof value.estimatedCostUsd !== "number" ||
-    !Number.isFinite(value.estimatedCostUsd) ||
-    value.estimatedCostUsd < 0
-  ) {
-    throw new Error("Reader summary estimated cost must be non-negative");
-  }
-  return { inputTokens, outputTokens, estimatedCostUsd: value.estimatedCostUsd };
-};
-
-const nullableTokenCount = (value: unknown): number | null => {
-  if (value === null) return null;
-  if (Number.isSafeInteger(value) && (value as number) >= 0) {
-    return value as number;
-  }
-  throw new Error(
-    "Reader summary token usage must be a non-negative integer or null",
-  );
 };
 
 const failClosedRelatedTopicPayload = (
@@ -495,4 +476,10 @@ const normalizeReaderSummaryLineage = (
     ...lineage,
     schemaVersion: "reader_summary.artifact.v1",
   };
+};
+
+const requireDailyGenerationInput = (value: unknown) => {
+  const parsed = readReaderSummaryDailyGenerationInput(value);
+  if (parsed === undefined) throw new Error("Persisted daily generation input is invalid");
+  return parsed;
 };

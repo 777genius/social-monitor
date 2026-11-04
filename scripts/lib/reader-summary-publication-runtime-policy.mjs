@@ -69,6 +69,7 @@ const legacyPurposes = Object.freeze({
     "social_monitor.reader_summary.verify_related_topic_relations",
 });
 const activePurposes = Object.freeze({
+  daily_editor: "social_monitor.reader_summary.daily_editorial.plan.v1",
   topic_label: "social_monitor.reader_summary.topic_map.label.v2",
   topic_relation: "social_monitor.reader_summary.topic_map.verify_relations.v2",
   story_relation: "social_monitor.reader_summary.verify_story_relations.v2",
@@ -109,6 +110,7 @@ export function validatePublicationAttestationRecord(record, allowLegacy) {
     (record.taskRole !== "summary" &&
       !Object.hasOwn(activePurposes, record.taskRole)) ||
     (record.taskRole === "summary" && activeSummaryPurpose === undefined) ||
+    (record.taskRole === "daily_editor" && record.attempt !== "primary") ||
     typeof record.attempt !== "string" || record.attempt.length === 0 ||
     !sha256(record.normalizedOutputSha256) ||
     expectedEffort === undefined ||

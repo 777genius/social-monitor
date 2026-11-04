@@ -179,6 +179,7 @@ export function attachCaptureExecutionEvidence(params: {
   const runtimeProvenance = runtimeProvenanceFromExecutorAttestations(
     evidenceWithReadback,
     violations,
+    isDailyEditorialFrontend(params.frontendArtifact),
   );
   if (runtimeProvenance !== null && isRecord(params.frontendArtifact)) {
     validateFrontendRuntimeConsistency(
@@ -297,7 +298,8 @@ export function inspectDurableEvidenceArtifact(params: {
   const runtimeProvenance =
     capture === null
       ? null
-      : runtimeProvenanceFromExecutorAttestations(evidence, violations);
+      : runtimeProvenanceFromExecutorAttestations(
+          evidence, violations, isDailyEditorialFrontend(frontend));
   if (
     capture !== null &&
     runtimeProvenance !== null &&
@@ -964,3 +966,11 @@ function assertCollectionDate(value: string): void {
     throw new Error(`Collection date is invalid: ${value}`);
   }
 }
+
+/** Require editor attestation only for the newly versioned daily writer. */
+const isDailyEditorialFrontend = (frontend: unknown): boolean => {
+  if (!isRecord(frontend) || !isRecord(frontend.readerSummaryArtifact)) return false;
+  const lineage = frontend.readerSummaryArtifact.lineage;
+  return isRecord(lineage) &&
+    lineage.promptVersion === "reader_summary.prompt.2026-11-03.daily_editorial_v1";
+};

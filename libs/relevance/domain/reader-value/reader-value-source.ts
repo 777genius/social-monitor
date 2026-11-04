@@ -16,7 +16,19 @@ export type ReaderValueCapture = {
   }[];
 };
 
+export type ReaderValueQuotedPost = {
+  readonly availableAt: string;
+  readonly tweetId: string;
+  readonly canonicalUrl: string;
+  readonly authorHandle: string;
+  readonly publishedAt: string;
+  readonly body: string;
+  readonly bodySha256: string;
+};
+
 export type ReaderValueSource = {
+  readonly quotedContext?: 'not_captured';
+  readonly quotedPost?: ReaderValueQuotedPost;
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly interestId: string;
@@ -32,6 +44,8 @@ export type ReaderValueSource = {
 };
 
 export type ReaderValueSourceSnapshot = {
+  readonly quotedContext?: 'not_captured';
+  readonly quotedPost?: ReaderValueQuotedPost;
   readonly sourceSnapshotSha256: string;
   /** Exact raw interest revision, before redaction; always part of assessment identity. */
   readonly interestSha256: string;

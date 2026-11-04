@@ -8,6 +8,7 @@ import type { ReaderPostPromotionV3Selection } from
   "../policies/reader-post-promotion-v3";
 import type { ReaderSummaryEditorialSlate } from
   "./reader-summary-editorial-slate";
+import type { ReaderSummaryDailyGenerationInput } from "./reader-summary-daily-generation-input";
 
 export type SummaryEvidenceReaderActionKind =
   "read_source" | "watch_repository";
@@ -205,6 +206,9 @@ export type StorySignalBreakdown = {
 };
 
 export type SummaryEvidenceSelection = {
+  readonly dailyGenerationInput?: ReaderSummaryDailyGenerationInput;
+  /** Actual narrative text view; sealed card source text remains independent. */
+  readonly dailyGenerationEvidence?: readonly SummaryEvidenceItem[];
   readonly rankingPolicyVersion: string;
   readonly personalization?: SummaryEvidencePersonalization;
   readonly sourceWindow: SummarySourceWindow;

@@ -8,7 +8,7 @@ import { readerValueSha256 as sha256 } from '../../domain/reader-value/reader-va
 import type { SourceContentSafetyPolicy } from '../../domain/source-content-safety';
 import { captureReaderValueSourceSnapshot, unicodePrefix } from './reader-value-source-snapshot';
 import { readerValueScoringConfiguration, type ReaderValueScoringProvider } from './reader-value-provider-config';
-import { readerValueLargestQuestionBytes, serializeReaderValueRequest } from './reader-value-request-format';
+import { readerValueLargestQuestionBytes, readerValueRequestState, serializeReaderValueRequest } from './reader-value-request-format';
 
 export class ConservativeReaderValueInputBuilder implements ReaderValueInputBuilder {
   readonly configuration;
@@ -21,8 +21,7 @@ export class ConservativeReaderValueInputBuilder implements ReaderValueInputBuil
     if (!prepared.ok) return prepared;
     const snapshot = prepared.value;
     const title = unicodePrefix(snapshot.title, 2000);
-    const state = (body: string) => ({ trusted_interest: snapshot.interest, title, source_text: body,
-      context_state: snapshot.capture.availability });
+    const state = (body: string) => readerValueRequestState(snapshot, title, body);
     const request = (body: string) => serializeReaderValueRequest(this.provider, state(body));
     const longestQuestion = readerValueLargestQuestionBytes(this.provider);
     const fits = (body: string) => Buffer.byteLength(JSON.stringify(state(body))) + longestQuestion <= 28_000
@@ -49,7 +48,8 @@ export class ConservativeReaderValueInputBuilder implements ReaderValueInputBuil
         interestSha256: snapshot.interestSha256, requestSha256: sha256(requestBody) })),
       requestSha256: sha256(requestBody), snapshot: { ...snapshot,
         ...(terminalFailure ? { interest: '' } : {}),
-        modelInputTruncated: terminalFailure !== undefined || snapshot.retainedSnapshotTruncated || title !== snapshot.title || body !== snapshot.body,
+        modelInputTruncated: terminalFailure !== undefined || snapshot.retainedSnapshotTruncated || title !== snapshot.title || body !== snapshot.body
+          || (snapshot.quotedPost !== undefined && snapshot.quotedPost.body.length > 2000),
         sentTextSha256: sha256(JSON.stringify({ title: terminalFailure ? '' : title, body })),
         sentTitleLength: terminalFailure ? 0 : title.length, sentBodyLength: body.length },
     });

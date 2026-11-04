@@ -1,3 +1,5 @@
+import { ReaderPostsController } from "./reader-posts.controller";
+import { readerPostsProviders } from "./reader-posts.providers";
 import { Module } from "@nestjs/common";
 import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import { FeedRestModule } from "@social-monitor/feed/interfaces/rest/feed-rest.module";
@@ -122,6 +124,7 @@ import { SummaryController } from "./summary.controller";
     RelevanceRestModule,
   ],
   controllers: [
+    ReaderPostsController,
     ReaderSummaryWeeklyProjectionController,
     ReaderSummaryController,
     ReaderSummaryJobController,
@@ -134,6 +137,7 @@ import { SummaryController } from "./summary.controller";
     SummaryRequestController,
   ],
   providers: [
+    ...readerPostsProviders,
     summaryPersistenceModeProvider,
     summaryJobQueueModeProvider,
     summaryModelProviderModeProvider,

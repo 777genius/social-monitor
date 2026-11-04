@@ -11,6 +11,7 @@ from x_collector.v1 import x_collector_pb2, x_collector_pb2_grpc
 
 from .domain import (
     DailySearchRequest,
+    PostLookupRequest,
     DailySearchResult,
     SearchProduct,
     XCollectedPost,
@@ -27,12 +28,29 @@ from .domain import (
 )
 from .health import XCollectorHealthMonitor
 from .ports import DailySearchCollectorPort
+from .post_lookup import validate_post_lookup
 
 
 LOGGER = logging.getLogger(__name__)
 
 
 class XCollectorGrpcService(x_collector_pb2_grpc.XCollectorServiceServicer):
+    def LookupPosts(self, request, context):
+        require_service_token(context, self._service_token)
+        try:
+            if request.schema_version != 1:
+                raise XCollectorInvalidRequestError("Unsupported lookup schema version")
+            lookup = PostLookupRequest(request.request_id, request.tenant_id,
+                request.workspace_id, request.source_binding_id, request.scan_job_id,
+                request.correlation_id, tuple(request.tweet_ids))
+            validate_post_lookup(lookup)
+            return response_to_proto(self._collector.lookup_posts(lookup))
+        except XCollectorError as exc:
+            abort_collector_error(context, exc)
+        except Exception as exc:
+            LOGGER.error("X collector lookup failed error_class=%s", type(exc).__name__)
+            context.abort(grpc.StatusCode.UNAVAILABLE, "X collector lookup unavailable")
+
     def __init__(
         self,
         collector: DailySearchCollectorPort,
@@ -195,6 +213,13 @@ def post_to_proto(post: XCollectedPost) -> x_collector_pb2.XCollectedPost:
         source_product=search_product_to_proto(post.source_product),
         trend_score=post.trend_score,
         content_kind=content_kind_to_proto(post.content_kind),
+        quoted_post=(x_collector_pb2.XQuotedPost(
+            tweet_id=post.quoted_post.tweet_id,
+            canonical_url=post.quoted_post.canonical_url,
+            text=post.quoted_post.text,
+            author_handle=post.quoted_post.author_handle,
+            published_at=datetime_to_timestamp(post.quoted_post.published_at),
+        ) if post.quoted_post is not None else None),
     )
 
 
@@ -273,6 +298,8 @@ def search_product_to_proto(product: SearchProduct) -> int:
             return x_collector_pb2.X_SEARCH_PRODUCT_TOP
         case SearchProduct.LATEST:
             return x_collector_pb2.X_SEARCH_PRODUCT_LATEST
+        case SearchProduct.ID_LOOKUP:
+            return x_collector_pb2.X_SEARCH_PRODUCT_ID_LOOKUP
 
 
 def timestamp_to_datetime(value: Timestamp) -> datetime:

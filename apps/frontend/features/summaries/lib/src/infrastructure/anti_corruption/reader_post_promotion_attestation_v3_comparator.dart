@@ -43,7 +43,13 @@ ReaderPromotionComparator? _verifiedV3Comparator({
       readerPromotionSemanticallyAdmitted(value) &&
       comparator['publishedAt'] == decoded['publishedAt'] &&
       value.candidateId == decoded['candidateId'] &&
-      readerPromotionComparatorIsCoherent(value) &&
+      readerPromotionComparatorIsCoherent(
+        value,
+        policyVersion: decoded['policyVersion']! as String,
+        ingestionCutoff: ReaderPromotionExactTimestamp.tryParse(
+          decoded['exactIngestionCutoff'],
+        ),
+      ) &&
       value.newsPublisher == expectedPublisher &&
       cardSignalScore == readerPromotionCardSignalScore(value);
   return consistent ? value : null;

@@ -9,6 +9,7 @@ import {
   isGitHubTrendingProvider,
 } from "../value-objects/reader-summary-provider-identity";
 import { normalizedGitHubRepositoryIdentity } from "../value-objects/github-repository-identity";
+import { dailyGenerationNarrativeClusters } from "../services/reader-summary-daily-input-binding";
 
 export { githubTrendingProviderKey };
 export const githubTrendingNarrativeSectionId = "github-trending";
@@ -50,7 +51,9 @@ export const isGitHubTrendingEvidence = (
 export const primaryReaderSummaryEvidence = (
   selection: SummaryEvidenceSelection,
 ): SummaryEvidenceSelection =>
-  selection.editorialSlate === undefined
+  selection.dailyGenerationInput !== undefined
+    ? dailyNarrativeEvidence(selection)
+    : selection.editorialSlate === undefined
     ? projectReaderSummaryEvidence(
         selection,
         (item) => !isGitHubTrendingEvidence(item),
@@ -60,7 +63,22 @@ export const primaryReaderSummaryEvidence = (
 export const additionalReaderSummaryEvidence = (
   selection: SummaryEvidenceSelection,
 ): SummaryEvidenceSelection =>
-  projectEditorialPlacementEvidence(selection, "additional");
+  selection.dailyGenerationInput === undefined ? projectEditorialPlacementEvidence(selection, "additional")
+    : projectReaderSummaryEvidence(selection, () => false);
+
+const dailyNarrativeEvidence = (selection: SummaryEvidenceSelection): SummaryEvidenceSelection => {
+  const proof = selection.dailyGenerationInput!;
+  const byId = new Map((selection.dailyGenerationEvidence ?? selection.selectedEvidence).map(item => [item.feedItemId, item]));
+  const selectedEvidence = proof.selected.map(entry => {
+    const item = byId.get(entry.feedItemId);
+    if (item === undefined) throw new Error("Daily narrative evidence binding missing");
+    return item;
+  });
+  const clusters = dailyGenerationNarrativeClusters(proof);
+  return { ...selection, selectedEvidence, clusters, sourceWindow: {
+    ...selection.sourceWindow, selectedFeedItemIds: proof.selected.map(entry => entry.feedItemId),
+    storyClusterIds: clusters.map(cluster => cluster.id) } };
+};
 
 const projectEditorialPlacementEvidence = (
   selection: SummaryEvidenceSelection,

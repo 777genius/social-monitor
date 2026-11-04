@@ -1,5 +1,7 @@
 import { canonicalReaderSummaryPreparationTimestamp } from
   "../value-objects/reader-summary-preparation";
+import { READER_PROMOTION_POLICY_V1, type ReaderPromotionRankingContext } from
+  "./reader-promotion-policy-version";
 import { normalizeSignalScore } from "../value-objects/signal-score";
 
 /**
@@ -61,6 +63,23 @@ export const readerPostPromotionMetricMature = (
   publishedAt: string,
 ): boolean =>
   exactMicros(engagement.observedAt) - exactMicros(publishedAt) >= maturityMicros;
+
+/** Policy-specific eligibility; timestamps are never invented or aged forward. */
+export const readerPostPromotionMetricEligible = (
+  engagement: { readonly observedAt: string }, publishedAt: string,
+  context: ReaderPromotionRankingContext,
+): boolean => {
+  try {
+    if (context.policyVersion === READER_PROMOTION_POLICY_V1) {
+      return readerPostPromotionMetricMature(engagement, publishedAt);
+    }
+    const observed = exactMicros(engagement.observedAt);
+    return observed >= exactMicros(publishedAt) &&
+      observed <= exactMicros(context.ingestionCutoff);
+  } catch {
+    return false;
+  }
+};
 
 /** Mid-rank percentile in (0, 1]: (below + equal / 2) / cohortSize. */
 export const readerPostPromotionPercentile = (

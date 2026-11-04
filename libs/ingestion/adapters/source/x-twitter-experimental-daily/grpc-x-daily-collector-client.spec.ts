@@ -13,6 +13,7 @@ describe('GrpcXDailyCollectorClient', () => {
   it('maps daily search requests and responses through the generated gRPC client', async () => {
     const calls: unknown[] = [];
     const serializedPost = XCollectedPost.decode(XCollectedPost.encode({
+      quotedPost: undefined,
       tweetId: '123',
       canonicalUrl: 'https://x.com/a/status/123',
       text: 'hello',

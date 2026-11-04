@@ -62,3 +62,7 @@ export const readerPromotionEngagementClass = (
   registry: ReaderPromotionSourceRegistry = READER_PROMOTION_SOURCE_REGISTRY,
 ): ReaderPromotionEngagementClass | undefined =>
   registry.find((entry) => entry.family === family)?.engagementClass;
+
+/** Trending repository lists are an appendix category, never post cards. */
+export const readerPromotionProviderIsPost = (providerKey: string): boolean =>
+  providerKey.trim().toLowerCase() !== "github-trending-page";

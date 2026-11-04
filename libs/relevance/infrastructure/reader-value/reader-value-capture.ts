@@ -2,6 +2,7 @@ import type { JsonObject } from '@social-monitor/shared-kernel';
 import type { ReaderValueCapture } from '../../domain/reader-value/reader-value-source';
 import { sha256 } from './reader-value-source-snapshot';
 import { readReaderValueRetainedCapture } from './reader-value-retained-capture';
+import { readReaderValueQuotedContext } from './reader-value-quoted-context';
 
 type CaptureResult = { readonly capture: ReaderValueCapture; readonly availableAt: string | null };
 type Segment = {
@@ -14,6 +15,16 @@ type Segment = {
  * Legacy bodies retain unknown historical availability; first observedAt is never substituted.
  */
 export function readReaderValueCapture(metadata: JsonObject, providerKey: string, title: string, body: string,
+  source?: { readonly sourceItemId: string; readonly canonicalUrl: string }): CaptureResult {
+  const authored = readAuthoredCapture(metadata, providerKey, title, body, source);
+  const quote = source === undefined ? undefined :
+    readReaderValueQuotedContext(metadata, metadata, source.canonicalUrl).quotedPost;
+  if (quote === undefined || authored.availableAt === null) return authored;
+  return { ...authored, availableAt:
+    compareTimestamp(quote.availableAt, authored.availableAt) > 0 ? quote.availableAt : authored.availableAt };
+}
+
+function readAuthoredCapture(metadata: JsonObject, providerKey: string, title: string, body: string,
   source?: { readonly sourceItemId: string; readonly canonicalUrl: string }): CaptureResult {
   const fallback: CaptureResult = {
     capture: { representationVersion: 'legacy-source.v1', availability: 'legacy_combined', segments: [] }, availableAt: null,

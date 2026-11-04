@@ -134,9 +134,9 @@ describe("PrismaReaderSummaryWeeklyStoryAuthority", () => {
     );
   });
 
-  it("loads V3 27k source and report above 4 MiB", async () => {
+  it("loads V3 candidate audits, 27k source and report above 4 MiB", async () => {
     const row = largeV3PublicationRow();
-    expect(canonicalizeReaderSummaryWeeklyV3PublicationJson(row.report).byteLength)
+    expect(canonicalizeReaderSummaryWeeklyV3PublicationJson(row.report, "report", "report").byteLength)
       .toBeGreaterThan(4 * 1_048_576);
     expect(canonicalizeReaderSummaryWeeklyV3PublicationJson(row.exactProof).byteLength)
       .toBeGreaterThan(1_048_576);
@@ -702,6 +702,10 @@ const largeV3PublicationRow = (): MutablePublicationRow => {
     }],
     content: { topReads: [{ capturedSource: { title: "Source", body: sourceBody } }] },
     details: Array.from({ length: 72 }, () => "d".repeat(60_000)),
+    promotionDiagnostics: { schemaVersion: "reader_promotion_diagnostics.v1",
+      candidates: Array.from({ length: 1_220 }, () => null) },
+    dailyGenerationInput: { policyVersion: "reader_summary.daily_input.native_likes.v1",
+      excluded: Array.from({ length: 1_190 }, () => null) },
   };
   row.report = { ...row.report, artifactPayload };
   row.exactProof = { entries: Array.from({ length: 20 }, () => "p".repeat(60_000)) };
@@ -712,10 +716,10 @@ const largeV3PublicationRow = (): MutablePublicationRow => {
     ),
     sourceText: sourceBody,
   }));
-  row.reportSha256 = canonicalizeReaderSummaryWeeklyV3PublicationJson(row.report).sha256;
+  row.reportSha256 = canonicalizeReaderSummaryWeeklyV3PublicationJson(row.report, "report", "report").sha256;
   row.proofSha256 = canonicalizeReaderSummaryWeeklyV3PublicationJson(row.exactProof).sha256;
   row.artifactPayloadSha256 =
-    canonicalizeReaderSummaryWeeklyV3PublicationJson(artifactPayload).sha256;
+    canonicalizeReaderSummaryWeeklyV3PublicationJson(artifactPayload, "artifact", "artifact").sha256;
   row.providerEvidenceSha256 =
     canonicalizeReaderSummaryWeeklyV3PublicationJson(row.providerEvidence).sha256;
   row.canonicalRecord = {

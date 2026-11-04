@@ -22,6 +22,7 @@ import type {
   ReaderSummaryGitHubProjectionReaderPort,
   ReaderSummaryModelInput,
   ReaderSummaryModelPort,
+  ReaderSummaryPublicationCommand,
   ReserveSummaryJobQuotaCommand,
   ReserveSummaryJobQuotaResult,
   SummaryQuotaPort,
@@ -371,6 +372,35 @@ describe("reader summary DB publication reconciliation", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+});
+
+it("binds the editor model attestation to actual writer plan before any publication", async () => {
+  const expected = "1".repeat(64);
+  const command = { artifact: { toSnapshot: () => ({
+    dailyEditorialPlan: { editorOutputSha256: expected },
+    dailyGenerationInput: { sent: { editorialPlanSha256: expected } },
+  }) } } as unknown as ReaderSummaryPublicationCommand;
+  const editor = { ...executionAttestation(), taskRole: "daily_editor" as const,
+    normalizedOutputSha256: expected,
+    attestation: { ...executionAttestation().attestation,
+      purpose: "social_monitor.reader_summary.daily_editorial.plan.v1" } };
+  const delegate = { publish: jest.fn(async () => "published" as const) };
+  let records: readonly VerifiedReaderSummaryExecutionAttestation[] = [editor];
+  const { publication } = createRecoverableReaderSummaryPublication({
+    delegate, recoveryDirectory: undefined, attemptIdentity: "a".repeat(64),
+    attestations: () => records,
+  });
+  await expect(publication.publish(command)).resolves.toBe("published");
+  expect(delegate.publish).toHaveBeenCalledTimes(1);
+  delegate.publish.mockClear();
+  records = [{ ...editor, normalizedOutputSha256: "2".repeat(64) }];
+  await expect(publication.publish(command)).rejects.toThrow(
+    "Daily editorial publication does not match");
+  expect(delegate.publish).not.toHaveBeenCalled();
+  records = [];
+  await expect(publication.publish(command)).rejects.toThrow(
+    "Daily editorial publication does not match");
+  expect(delegate.publish).not.toHaveBeenCalled();
 });
 
 const runProductionDayRequestExecution = async (input: {

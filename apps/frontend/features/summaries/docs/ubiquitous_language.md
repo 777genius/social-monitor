@@ -7,6 +7,20 @@ language.
 
 ## Core Terms
 
+- GitHub Trending: a separate repository-list appendix. It never appears in
+  either Selected Posts or All Posts, and never affects their counts or ranking.
+- Selected Posts Filter: enabled by default. It shows the authorized editorial
+  board. When disabled, All Posts browses unique visible collected source posts
+  for the same period using saved assessments, without granting promotion or
+  headline authority. The server orders the entire set before paging by twelve.
+- Unassessed Browse Post: a collected source post without an assessment matching
+  its current content and interest. It is labelled Not assessed and follows
+  assessed posts in model order; it can still lead in engagement order.
+- Quote Authored Text: the quote author's captured canonical text. It can be
+  assessed on its own while the original quoted post remains unavailable.
+  `quotedContext: not_captured` discloses that limitation; it never supplies
+  invented quoted text or grants promotion without the normal assessment gate.
+
 - Summary: user-facing generated explanation of monitored activity.
 - Workspace Summary: the primary summary for the current workspace. It can
   aggregate all relevant posts, source mix, top reads, citations and next
@@ -39,17 +53,18 @@ language.
   comparator and never compares doubles; ties break by newest publishedAt,
   then candidate id bytes.
 - Popularity Percentile: mid-rank `(below + equal / 2) / cohortSize` of a post
-  inside its own source family, among posts with a mature metric. Networks
+  inside its own source family, among admitted posts with a metric eligible under the signed policy. Networks
   are never compared by raw numbers. A family with fewer than 5 such posts
   (minimum popularity cohort) has no popularity at all: popularity 0 in the
   score and Signal 0, uniformly for the whole family.
-- Metric Maturity: a metric counts only when it was observed at least six
-  hours after publication; otherwise it is unknown and adds popularity 0.
+- Metric Eligibility: V2 counts genuine observations from publication through
+  the frozen cutoff, without an age coefficient. Missing, malformed, pre-publication
+  or future observations stay unknown. Historical V1 requires six hours after publication.
 - Source Engagement: the single native popularity number the backend signs
   into a V3 comparator: X likes + 2 x reposts, Reddit score, Hacker News
   points, GitHub max(stars, forks / 2) in the trending window. `null` means
   unknown (legacy V1/V2 card, missing snapshot, unranked source).
-- Top Posts Sort Order: the reader's display order of the visible ranked lane,
+- Top Posts Sort Order: the reader's display order of the complete ranked pool before revealing pages of twelve,
   "By model" (default, the authorized server order) or "By likes" (Source
   Engagement descending, ties and unknown metrics in model order, unknown
   last). It is a remembered reader preference, not a ranking decision: lane
@@ -57,10 +72,10 @@ language.
 - News without rating: the separate block for sources without a popularity
   rating (RSS), up to 16 posts, ordered by usefulness and then recency. Its
   cards never show a Signal. A Google News publisher appears at most once.
-- Ranking Policy Stamp: `reader_promotion.2026-11-01`, the meaning of the
-  promotion order. A day ranked under another stamp is served with empty
-  boards and `ranking_policy_changed`; the UI shows it as waiting for a
-  rebuild, not as broken.
+- Ranking Policy Stamp: current `reader_promotion.2026-11-02` and supported
+  historical `reader_promotion.2026-11-01` define the comparator meaning. Each
+  is verified with its own metric rule; historical artifacts are not rewritten.
+  Unsupported stamps require a rebuild.
 - Related Topic: a non-transitive, non-credit card for one selected subject
   story that the backend explicitly relates to a distinct official-authority
   target story. It keeps the subject cluster id, stable relation id and target
@@ -75,7 +90,7 @@ language.
   explicitly consumes it.
 - Signal Score: normalized ranking score owned by Feed/Relevance/Summary
   selection logic. It is not a Reddit score, HN points, GitHub stars or X likes.
-  On a promoted V3 card it is the popularity percentile times 10 for a mature
+  On a promoted V3 card it is the popularity percentile times 10 for an eligible
   ranked metric and 0 otherwise; it is display only, never an order input.
 - Provider Metric: readable native provider metric such as Reddit score, HN
   points, GitHub stars, X likes, comments or upvote ratio.

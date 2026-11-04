@@ -1,3 +1,4 @@
+import { createStoryClusteringFacts } from './story-clustering-facts';
 import type { Clock } from "@social-monitor/shared-kernel";
 
 import type {
@@ -98,6 +99,7 @@ const buildClusters = (
   verifiedStrictTitleRelationPairs: ReadonlySet<string> | undefined,
   maxPairComparisons?: number,
 ): readonly StoryCluster[] | undefined => {
+  const facts = createStoryClusteringFacts();
   const groups: {
     readonly key: string;
     readonly items: SummaryEvidenceItem[];
@@ -109,7 +111,7 @@ const buildClusters = (
   };
 
   for (const item of items) {
-    const key = storyKey(item, policy);
+    const key = facts.storyKey(item, policy);
     let group: (typeof groups)[number] | undefined;
     for (const candidate of groups) {
       // Reserve each predicate's worst-case member work only when it runs.
@@ -118,13 +120,13 @@ const buildClusters = (
       let matches = false;
       if (candidate.key === key) {
         if (!reserveComparisonWork(candidate.items.length)) return undefined;
-        matches = !hasCrossProviderClaimFacetConflict(item, candidate.items, policy);
+        matches = !hasCrossProviderClaimFacetConflict(item, candidate.items, policy, facts);
       }
       if (!matches) {
         if (!reserveComparisonWork(candidate.items.length)) return undefined;
         matches = belongsToVerifiedStoryCluster(
           item, candidate.items, policy,
-          verifiedStoryRelationPairs, verifiedStrictTitleRelationPairs,
+          verifiedStoryRelationPairs, verifiedStrictTitleRelationPairs, facts,
         );
       }
       if (matches) {

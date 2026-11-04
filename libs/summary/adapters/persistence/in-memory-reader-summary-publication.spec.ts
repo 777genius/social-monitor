@@ -1,6 +1,7 @@
 import { eventId, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
+  READER_PROMOTION_POLICY_V1,
   githubTrendingWatchText,
   ReaderSummaryJob,
   readerSummaryWorkspaceManifestSha256,
@@ -400,6 +401,7 @@ const workspaceV3RankedFixture = (sequence: number, forged: boolean) => {
   // Explicit expected counts, not a recomputation: score 10 has 0 below, 50 has 4.
   const attestations = candidates.map((candidate, index) => ({
     schemaVersion: "reader_post_promotion_attestation.v3",
+    policyVersion: READER_PROMOTION_POLICY_V1,
     candidateId: candidate.candidateId, exactIngestionCutoff: cutoff,
     assessment: { assessmentId: candidate.assessmentId,
       sourceSnapshotSha256: candidate.sourceSnapshotSha256,

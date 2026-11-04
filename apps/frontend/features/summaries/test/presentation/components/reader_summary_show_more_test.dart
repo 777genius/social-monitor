@@ -79,7 +79,7 @@ void main() {
           find.byKey(const ValueKey('reader-summary-top-posts-sort-likes')),
         );
         await tester.pumpAndSettle();
-        expect(_rankedOrder(tester), ['second', 'first']);
+        expect(_rankedOrder(tester), ['extra', 'second']);
         await tester.ensureVisible(find.byKey(_showMore));
         await tester.tap(find.byKey(_showMore));
         await tester.pumpAndSettle();
@@ -151,6 +151,7 @@ ReaderSummary _summary({bool nextPeriod = false, String extra = 'extra'}) =>
           extra,
           engagement: 900,
           providerKey: 'x-twitter',
+          nativeLikes: 900,
           placement: ReaderPostPromotionPlacement.additional,
         ),
       ],

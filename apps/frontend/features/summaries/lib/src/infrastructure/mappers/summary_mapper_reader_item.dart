@@ -288,6 +288,7 @@ extension on SummaryMapper {
       providerKey: dto.providerKey,
       storyId: dto.storyId,
       exactPublishedAt: dto.exactPublishedAt,
+      exactIngestionCutoff: dto.exactIngestionCutoff,
     );
     return attestation;
   }

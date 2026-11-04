@@ -140,7 +140,7 @@ describe("legacy event schema compatibility", () => {
     expect(posts[1]!.authorHandle).toBeUndefined(); expect(posts[1]!.contentKind).toBeUndefined();
     expect(posts[1]!.metrics!.replies!.valueDecimal).toBeUndefined();
   });
-  it("preserves ordinary collection bytes, defaults, unknown fields and only two methods", () => {
+  it("preserves ordinary collection bytes, defaults and unknown fields", () => {
     for (const fixture of collection) {
       const codec = wire[fixture.name as "CollectDailySearchRequest"];
       const raw = Buffer.from(fixture.hex, "hex");
@@ -149,9 +149,27 @@ describe("legacy event schema compatibility", () => {
       expect(codec.decode(Buffer.concat([raw, Buffer.from([0xf8, 0x07, 1])]))).toEqual(codec.decode(raw));
       expect(codec.toJSON(codec.fromJSON({}))).toEqual({});
     }
-    expect(Object.keys(wire.XCollectorServiceService)).toEqual(["collectDailySearch", "checkHealth"]);
     const metrics = wire.CollectDailySearchResponse.decode(Buffer.from(collection[1]!.hex, "hex")).posts[0]!.metrics!;
     expect(metrics.likes).toBe("9007199254740993"); expect(metrics.retweets).toBe("18446744073709551615");
+  });
+  it("admits only the closed additive unary lookup method with its exact request and collection response", () => {
+    expect(Object.keys(wire.XCollectorServiceService)).toEqual(["collectDailySearch", "checkHealth", "lookupPosts"]);
+    const lookup = wire.XCollectorServiceService.lookupPosts;
+    expect(Object.keys(lookup)).toEqual(["path", "requestStream", "responseStream", "requestSerialize",
+      "requestDeserialize", "responseSerialize", "responseDeserialize"]);
+    expect(lookup.path).toBe("/social_monitor.x_collector.v1.XCollectorService/LookupPosts");
+    expect(lookup.requestStream).toBe(false);
+    expect(lookup.responseStream).toBe(false);
+    const request = { schemaVersion: 1, requestId: "synthetic", tenantId: "tenant", workspaceId: "workspace",
+      sourceBindingId: "binding", scanJobId: "scan", correlationId: "correlation", tweetIds: ["201", "202"] };
+    // Literal field tags bind the additive request independently of the generated codec.
+    const raw = Buffer.from("0801120973796e7468657469631a0674656e616e742209776f726b73706163652a0762696e64696e6732047363616e3a0b636f7272656c6174696f6e42033230314203323032", "hex");
+    expect(lookup.requestSerialize(request)).toEqual(raw);
+    expect(lookup.requestDeserialize(raw)).toEqual(request);
+    const response = Buffer.from(collection[1]!.hex, "hex");
+    const decoded = wire.CollectDailySearchResponse.decode(response);
+    expect(lookup.responseSerialize(decoded)).toEqual(response);
+    expect(lookup.responseDeserialize(response)).toEqual(decoded);
   });
   it("distinguishes permissive protobuf parsing from canonical legacy admission", () => {
     const valid = bytes(0), offer = wire.XObservationEvent.decode(valid).sendOffer!;

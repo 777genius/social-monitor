@@ -32,7 +32,8 @@ Future<void> main() async {
 }
 
 bool _isInteractiveWidget(Type type) {
-  return type == AppButton ||
+  return type == AppCheckbox ||
+      type == AppButton ||
       type == AppFeatureCard ||
       type == AppWorkspaceSwitcher ||
       type == ListTile ||
@@ -43,6 +44,7 @@ String? _extractWidgetText(Element element) {
   final widget = element.widget;
   return switch (widget) {
     AppButton(:final label) => label,
+    AppCheckbox(:final label) => label,
     AppFeatureCard(:final title) => title,
     AppWorkspaceSwitcher(:final workspaceName) => workspaceName,
     ListTile(:final title) => _textLabelFor(title),

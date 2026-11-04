@@ -14,6 +14,17 @@ const published = "2026-10-21T08:00:00.000000Z";
 const mature = "2026-10-21T14:00:00.000000Z";
 
 describe("Reader promotion ranking core", () => {
+  it("keeps GitHub Trending outside every post block even without an appendix flag", () => {
+    const result = rankReaderPromotionCandidates([
+      post(1, { providerKey: "github-trending-page", providerFamily: "github_radar", usefulness: "important", appendixOnly: false }),
+      post(2),
+    ]);
+    expect(ids(result.top)).toEqual([id(2)]);
+    expect(result.additional).toEqual([]);
+    expect(result.news).toEqual([]);
+    expect(result.excluded).toContainEqual({ candidateId: id(1), reason: "appendix_only" });
+  });
+
   it("ranks a 984-upvote post above a 0-upvote post and the RSS item out of Top", () => {
     const result = rankReaderPromotionCandidates([
       post(1, { providerFamily: "reddit", engagement: { value: 0, observedAt: mature } }),

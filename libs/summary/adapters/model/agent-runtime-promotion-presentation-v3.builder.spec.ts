@@ -139,7 +139,8 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
         } });
       await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
         modelBackend: "xiaomi-mimo-token-plan" }).build([fixtureInput()]))
-        .resolves.toEqual([{ status: "unavailable", reason: "invalid_presentation" }]);
+        .resolves.toEqual([{ status: "unavailable", reason: "invalid_presentation",
+          validation: { stage: "runtime_output", code: "schema_normalization_failed" } }]);
       expect(client.runTask).toHaveBeenCalledTimes(1);
     });
 
@@ -184,7 +185,8 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       const inputs = [fixtureInput(), { ...fixtureInput(), candidateId: "other-candidate" }];
       await expect(new AgentRuntimePromotionPresentationV3Builder({ client,
         modelBackend: "xiaomi-mimo-token-plan" }).build(inputs)).resolves.toEqual([
-        { status: "unavailable", reason: "invalid_presentation" },
+        { status: "unavailable", reason: "invalid_presentation",
+          validation: { stage: "runtime_output", code: stage } },
         expect.objectContaining({ status: "available" }),
       ]);
       expect(client.runTask).toHaveBeenCalledTimes(2);
@@ -231,7 +233,7 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     const ids = [4, 5, 6, 7].map((n) => `00000000-0000-4000-8000-00000000001${n}`);
     const inputs = ids.map((candidateId) => ({ ...fixtureInput(), candidateId }));
     const proposal = (candidateId: string, text = "Useful database method") => ({ candidateId, status: "available",
-      kind: "claim", text, support: [{ field: "bodyPreview", start: 0, end: 7, quote: "Useful " }],
+      kind: "claim", text, support: [{ field: "bodyPreview", start: 0, end: 19, quote: "Useful body source." }],
       qualifications: [], confidence: 0.9, qualificationJudgment: "none" });
     const client = new PresentationRuntimeClient();
     jest.spyOn(client, "runTask").mockResolvedValueOnce({ status: "completed", warnings: [], structuredOutput: {
@@ -245,9 +247,11 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     const builder = new AgentRuntimePromotionPresentationV3Builder({ client });
 
     await expect(builder.build(inputs)).resolves.toEqual([expect.objectContaining({ status: "available" }),
-      ...ids.slice(1).map(() => ({ status: "unavailable", reason: "invalid_presentation" }))]);
+      ...ids.slice(1).map(() => ({ status: "unavailable", reason: "invalid_presentation",
+        validation: { stage: "proposal_contract", code: "proposal_missing_or_invalid" } }))]);
     await expect(builder.build(inputs.slice(0, 2))).resolves.toEqual(
-      [0, 1].map(() => ({ status: "unavailable", reason: "invalid_presentation" })));
+      [0, 1].map(() => ({ status: "unavailable", reason: "invalid_presentation",
+        validation: { stage: "proposal_contract", code: "proposal_missing_or_invalid" } })));
   });
 
   it("does not mask transport exceptions as invalid presentations", async () => {
@@ -343,7 +347,7 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(client.commands[0]?.controls).toEqual(expect.objectContaining({
       model: "gpt-6.1-sol", reasoningEffort: "low" }));
     expect(client.commands[0]?.controls).not.toHaveProperty("modelBackend");
-    expect(client.commands[0]?.systemPrompt).not.toContain("SOURCE_REFERENCE_COPY_OPTIONS");
+    expect(client.commands[0]?.systemPrompt).toContain("SOURCE_REFERENCE_COPY_OPTIONS");
     expect(() => new AgentRuntimePromotionPresentationV3Builder({ client,
       model: "gpt-6.1-sol", reasoningEffort: "high" })).toThrow("effort conflict");
   });
@@ -413,7 +417,8 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(command.systemPrompt).not.toContain(input.trustedIntent);
     const codex = new PresentationRuntimeClient();
     await new AgentRuntimePromotionPresentationV3Builder({ client: codex }).build([fixtureInput()]);
-    expect(codex.commands[0]?.systemPrompt).not.toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
+    expect(codex.commands[0]?.systemPrompt).toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
+    expect(codex.commands[0]?.systemPrompt).toContain("Keep the canonical response fields text and qualificationJudgment");
   });
 
   it.each([["kimi-code", "k3-256k"], ["openrouter", "openai/gpt-oss-120b"]] as const)(
@@ -665,7 +670,7 @@ class PresentationRuntimeClient implements AgentRuntimeClientPort {
         status: "available",
         kind: "claim",
         text: "Useful database method",
-        support: [{ field: "bodyPreview", start: 0, end: 7, quote: "Useful " }],
+        support: [{ field: "bodyPreview", start: 0, end: 19, quote: "Useful body source." }],
         qualifications: [],
         confidence: 0.9,
         qualificationJudgment: "none",

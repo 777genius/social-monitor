@@ -16,26 +16,35 @@ TopRead engagementTopPost(
   double? engagement,
   ReaderPostPromotionPlacement placement = ReaderPostPromotionPlacement.top,
   String providerKey = 'reddit',
+  int? nativeLikes,
+  String publishedAt = '2026-10-28T08:00:00.000000Z',
 }) {
   final unranked = placement == ReaderPostPromotionPlacement.news;
+  final isX = const {'x', 'twitter', 'x-twitter'}.contains(providerKey);
   final comparator = ReaderPromotionComparator(
     block: unranked
         ? ReaderPromotionBlock.unranked
         : ReaderPromotionBlock.ranked,
-    providerFamily: unranked ? 'rss' : providerKey,
+    providerFamily: unranked
+        ? 'rss'
+        : isX
+        ? 'x'
+        : providerKey,
     usefulness: ReaderPromotionUsefulness.useful,
     relevance: ReaderPromotionRelevance.central,
     engagement: engagement == null
         ? null
         : ReaderPromotionEngagement(
-            method: ReaderPromotionSignalMethod.redditScore,
+            method: isX
+                ? ReaderPromotionSignalMethod.likesPlusTwoReposts
+                : ReaderPromotionSignalMethod.redditScore,
             value: engagement,
             observedAt: exactTimestamp('2026-10-28T15:00:00.000000Z'),
           ),
     metricMature: engagement != null,
     popularity: null,
     newsPublisher: null,
-    publishedAt: exactTimestamp('2026-10-28T08:00:00.000000Z'),
+    publishedAt: exactTimestamp(publishedAt),
     candidateId: 'candidate:$slug',
   );
   return topPostFixture(
@@ -44,6 +53,9 @@ TopRead engagementTopPost(
     cardKind: placement.cardKind,
     providerKey: unranked ? 'rss' : providerKey,
     canonicalUrl: 'https://example.test/$slug',
+    providerMetrics: nativeLikes == null
+        ? null
+        : [ProviderMetric(label: 'Likes', value: '$nativeLikes')],
     promotionAttestationOverride: ReaderPostPromotionAttestation(
       schemaVersion: 'reader_post_promotion_attestation.v3',
       candidateId: 'candidate:$slug',

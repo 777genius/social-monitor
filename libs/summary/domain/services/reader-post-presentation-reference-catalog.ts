@@ -4,6 +4,10 @@ import { readerPostPresentationProposalFailure, readerPostPresentationV3OutputSc
 
 type Reference = SummaryHeadlineReference;
 const key = (reference: Reference): string => JSON.stringify([reference.field, reference.start, reference.end, reference.quote]);
+export type ReaderPostPresentationCatalogReferences = {
+  readonly support: readonly Reference[];
+  readonly qualifications: readonly { readonly evidence: readonly Reference[] }[];
+};
 
 /** Copy affordances only: the complete source and semantic acceptance remain authoritative. */
 export const readerPostPresentationReferenceCatalog = (candidate: ReaderPostPresentationCandidate): readonly Reference[] => {
@@ -65,13 +69,24 @@ export const readerPostPresentationCatalogProposalFailure = (
   if (failure !== null) return failure;
   const proposals = (output as { presentations: readonly { candidateId: string; support: readonly Reference[];
     qualifications: readonly { evidence: readonly Reference[] }[] }[] }).presentations;
-  const byId = new Map(candidates.map(candidate => [candidate.candidateId,
-    new Set(readerPostPresentationReferenceCatalog(candidate).map(key))]));
+  const byId = new Map(candidates.map(candidate => [candidate.candidateId, candidate]));
   for (const [index, proposal] of proposals.entries()) {
-    if (proposal.support.length > 4 || proposal.qualifications.length > 2 ||
-        proposal.qualifications.some(qualification => qualification.evidence.length > 2)) return { code: "quote_budget", index };
-    const references = [...proposal.support, ...proposal.qualifications.flatMap(qualification => qualification.evidence)];
-    if (references.some(reference => !byId.get(proposal.candidateId)!.has(key(reference)))) return { code: "source_reference", index };
+    const code = readerPostPresentationCatalogReferenceFailure(proposal, byId.get(proposal.candidateId)!);
+    if (code !== null) return { code, index };
+  }
+  return null;
+};
+
+/** Same per-item subset as the catalog schema, after the canonical shape guard. */
+export const readerPostPresentationCatalogReferenceFailure = (
+  proposal: ReaderPostPresentationCatalogReferences, candidate: ReaderPostPresentationCandidate,
+): "quote_budget" | "source_reference" | null => {
+  if (proposal.support.length > 4 || proposal.qualifications.length > 2 ||
+      proposal.qualifications.some(qualification => qualification.evidence.length > 2)) return "quote_budget";
+  const admitted = new Set(readerPostPresentationReferenceCatalog(candidate).map(key));
+  for (const references of [proposal.support, ...proposal.qualifications.map(qualification => qualification.evidence)]) {
+    if (new Set(references.map(key)).size !== references.length ||
+        references.some(reference => !admitted.has(key(reference)))) return "source_reference";
   }
   return null;
 };

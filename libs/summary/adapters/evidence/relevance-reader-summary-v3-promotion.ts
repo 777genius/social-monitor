@@ -1,3 +1,4 @@
+import { readerPromotionDiagnostics } from "../../domain/value-objects/reader-promotion-diagnostics";
 import type {
   ReaderValueAssessmentStore,
   ReaderValueRead,
@@ -10,6 +11,7 @@ import { validateReaderValueAnswers } from
 
 import {
   READER_PROMOTION_PRESENTATION_BUDGET,
+  READER_PROMOTION_POLICY_STAMP,
   readerPromotionSourceForProviderKey,
   selectGitHubTrendingSupplementalEvidence,
   selectReaderPostPromotionsV3,
@@ -42,6 +44,7 @@ import { planWorkspacePresentationSlate } from
 import { verifiedPromotionNewsPairs } from "./relevance-reader-summary-v3-news-relations";
 import { readerPostPromotionEngagementFact } from
   "./reader-post-promotion-engagement-facts";
+import { dailyReaderSummaryGenerationEvidence } from "./reader-summary-daily-generation-evidence";
 
 /** Headline verification budget; sized with READER_PROMOTION_LIMITS. */
 export const maxPresentationCandidates = READER_PROMOTION_PRESENTATION_BUDGET;
@@ -59,6 +62,8 @@ implements ReaderSummaryV3PromotionPort {
   async build(params: Parameters<ReaderSummaryV3PromotionPort["build"]>[0]):
   Promise<ReaderSummaryV3PromotionOutcome> {
     const job = params.job.toSnapshot();
+    const rankingContext = { policyVersion: READER_PROMOTION_POLICY_STAMP,
+      ingestionCutoff: params.manifest.cutoffAt };
     if (job.scope.type === "workspace" &&
         params.manifest.schemaVersion !== "reader_summary_preparation_manifest.v2" ||
         job.scope.type === "interest" &&
@@ -275,7 +280,7 @@ implements ReaderSummaryV3PromotionPort {
       // same story its representative.
       const slate = planWorkspacePresentationSlate(candidates.map((candidate) => ({
         ...candidate, presentation: statuses.get(candidate.candidateId)!,
-      })));
+      })), rankingContext);
       if (slate.settled) break;
       const queue = admitted.filter((candidate) => slate.needed.has(candidate.candidateId))
         .sort((left, right) => {
@@ -357,7 +362,9 @@ implements ReaderSummaryV3PromotionPort {
           sealById.set(candidate.candidateId, result.seal);
         } else {
           const outcome = { status: "unavailable" as const,
-            reason: result.reason };
+            reason: result.reason,
+            ...("validation" in result && result.validation !== undefined
+              ? { validation: result.validation } : {}) };
           statuses.set(candidate.candidateId, outcome);
           outcomeByBinding.set(bindingFor(candidate), outcome);
         }
@@ -370,7 +377,7 @@ implements ReaderSummaryV3PromotionPort {
     }
     const completed = candidates.map((candidate) => ({ ...candidate,
       presentation: statuses.get(candidate.candidateId)! }));
-    let selection = selectReaderPostPromotionsV3(completed);
+    let selection = selectReaderPostPromotionsV3(completed, rankingContext);
     const publishedCount = selection.top.length + selection.additional.length +
       selection.news.length;
     if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
@@ -390,7 +397,7 @@ implements ReaderSummaryV3PromotionPort {
     if (params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2" &&
         selection.excluded.some((entry) =>
           entry.reason === "presentation_budget_exhausted") &&
-        !planWorkspacePresentationSlate(completed).settled) {
+        !planWorkspacePresentationSlate(completed, rankingContext).settled) {
       if (chargedBindings.size < maxPresentationCandidates || selection.outcome !== "ready" ||
           publishedCount < 8) {
         return { kind: "budget_exhausted" };
@@ -399,7 +406,20 @@ implements ReaderSummaryV3PromotionPort {
       // sealed survivors, retaining every unavailable/unattempted exclusion.
       selection = Object.freeze({ ...selection, presentationCoverageLimited: true });
     }
+    selection = { ...selection, diagnostics: readerPromotionDiagnostics(completed, selection, attempted) };
+    const daily = job.selectionStrategy === "jev_primary_v3" && job.period.cadence === "daily" && params.manifest.schemaVersion === "reader_summary_preparation_manifest.v2"
+      ? dailyReaderSummaryGenerationEvidence({ manifest: params.manifest,
+          manifestSha256: job.preparationManifestSha256!, periodKey: job.period.periodKey,
+          identity: { tenantId: job.tenantId, workspaceId: job.workspaceId, scope: job.scope },
+          snapshots: new Map([...assessmentById].map(([id, assessment]) => [id, assessment.input.snapshot])) })
+      : undefined;
+    if (daily !== undefined && daily.proof.selected.length === 0 && selection.outcome === "ready") {
+      return { kind: "unsupported_daily_digest", reason: "no_context" };
+    }
     if (selection.outcome !== "ready") {
+      if (daily !== undefined && daily.proof.selected.length > 0) {
+        return { kind: "unsupported_daily_digest", reason: "no_promotion_board" };
+      }
       if (selection.outcome !== "no_signal" || supplementalEvidence.length === 0) {
         return { kind: selection.outcome };
       }
@@ -427,7 +447,18 @@ implements ReaderSummaryV3PromotionPort {
     const value = v3EvidenceSelection({ jobId: job.id, period: job.period,
       cutoffAt: params.manifest.cutoffAt, clusters,
       primaryEvidence: selectedOrdered, supplementalEvidence, selection });
-    return { kind: "ready", evidence: value };
+    if (daily === undefined) return { kind: "ready", evidence: value };
+    const evidenceById = new Map(value.selectedEvidence.map(item => [item.feedItemId, item]));
+    // Model inputs come first in exactly their frozen Likes order; sealed
+    // cards and GitHub remain backend-only citation/presentation authority.
+    const union = [...daily.selectedEvidence.map(item => evidenceById.get(item.feedItemId) ?? item),
+      ...value.selectedEvidence.filter(item => !daily.proof.selected.some(entry => entry.feedItemId === item.feedItemId))];
+    const existingClusters = new Set(value.clusters.map(cluster => cluster.id));
+    return { kind: "ready", evidence: { ...value, dailyGenerationInput: daily.proof,
+      dailyGenerationEvidence: daily.selectedEvidence,
+      selectedEvidence: union,
+      clusters: [...value.clusters, ...daily.clusters.filter(cluster => !existingClusters.has(cluster.id))],
+      sourceWindow: { ...value.sourceWindow, selectedFeedItemIds: union.map(item => item.feedItemId) } } };
   }
 }
 

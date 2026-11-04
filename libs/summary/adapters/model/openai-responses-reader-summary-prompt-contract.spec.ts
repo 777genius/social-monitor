@@ -47,6 +47,7 @@ describe("OpenAI reader summary prompt contract", () => {
 
   it("keeps model prose bound to the immutable backend top eight", () => {
     const instructions = buildOpenAiReaderSummaryInstructions({
+      ...promptInputWithGitHubTrending(),
       policy: {
         language: "auto",
         format: "executive_brief",
@@ -55,9 +56,10 @@ describe("OpenAI reader summary prompt contract", () => {
         includeInterestHighlights: true,
         includeRepeatedSignals: true,
         maxStories: 15,
+        dedupeStrategy: "canonical_url_then_title",
         rulesVersion: "reader_summary.rules.policy.v1",
       },
-    } as ReaderSummaryModelInput);
+    });
 
     expect(instructions).toContain(
       "each topStories summary 140-300 characters",

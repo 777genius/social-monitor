@@ -63,3 +63,9 @@
   historical Final Daily Summaries remain immutable.
 - `ReaderSummary*Dto -> ReaderSummary` is an anti-corruption mapper until the backend
   REST contract is renamed.
+
+## All Posts Browse
+
+The Summary read API supplies period-scoped source posts and saved Relevance
+assessments. Frontend composition injects a narrow ReaderPostCatalog; browsing
+does not queue model work or change an immutable Summary or Promotion board.

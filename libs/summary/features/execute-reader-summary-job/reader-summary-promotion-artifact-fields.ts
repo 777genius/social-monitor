@@ -12,6 +12,7 @@ type PromotionArtifactFields = Pick<
   ReaderSummaryArtifactProps,
   | "promotionAttestations"
   | "promotionEvidenceFacts"
+  | "promotionDiagnostics"
   | "relatedTopicRelations"
 >;
 
@@ -41,6 +42,9 @@ export const buildReaderSummaryPromotionArtifactFields = (params: {
           },
         });
   return {
+    ...(params.modelEvidence.promotionV3?.diagnostics === undefined ? {} : {
+      promotionDiagnostics: params.modelEvidence.promotionV3.diagnostics,
+    }),
     promotionAttestations: promotionProjection?.attestations ?? [],
     promotionEvidenceFacts:
       promotionProjection?.attestedEvidenceFacts ?? [],

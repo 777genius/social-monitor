@@ -18,7 +18,9 @@ void main() {
     (tester) async {
       _useViewport(tester);
       final semantics = tester.ensureSemantics();
-      final preferences = FakeTopPostsSortPreferenceStore();
+      final preferences = FakeTopPostsSortPreferenceStore(
+        TopPostsSortOrder.modelRank,
+      );
       final sortStore = topPostsSortStoreFor(preferences);
       addTearDown(sortStore.dispose);
       await tester.pumpWidget(
@@ -37,7 +39,7 @@ void main() {
       await tester.tap(find.byKey(_byLikes));
       await tester.pumpAndSettle();
 
-      expect(_visibleOrder(tester), ['high', 'mid', 'low', 'unknown']);
+      expect(_visibleOrder(tester), ['more-high', 'high', 'mid', 'low']);
       expect(
         tester.state(find.byKey(_rowKey('high'))),
         same(highRow),
@@ -86,7 +88,7 @@ void main() {
 
     await tester.pumpWidget(_TestApp(summary: _board(), sortStore: sortStore));
 
-    expect(_visibleOrder(tester), ['high', 'mid', 'low', 'unknown']);
+    expect(_visibleOrder(tester), ['more-high', 'high', 'mid', 'low']);
     expect(preferences.saves, isEmpty);
   });
 

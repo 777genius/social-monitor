@@ -14,7 +14,7 @@ from .account_usage import (
     SearchPassUsage,
     account_usage_deltas,
 )
-from .domain import DailySearchRequest
+from .domain import DailySearchRequest, PostLookupRequest
 from .ports import AccountPoolLedgerPort, AccountUsageEventRepositoryPort, Clock
 from .search_budget import SearchBudgetDecision
 from .search_plan import ScweetSearchPass
@@ -28,6 +28,10 @@ PassObservationIdFactory = Callable[[], str]
 
 @dataclass(frozen=True)
 class NoopAccountUsageObserver:
+    def begin_lookup(self, request: PostLookupRequest) -> SearchPassUsage:
+        return SearchPassUsage(request.request_id, request.scan_job_id,
+                               "post_id_lookup", "id_lookup", 1, None, None)
+
     def record_budget_decision(
         self,
         request: DailySearchRequest,
@@ -124,18 +128,25 @@ class AccountUsageObserver:
 
         self._append_safely(build)
 
+    def begin_lookup(self, request: PostLookupRequest) -> SearchPassUsage:
+        return self._begin_operation(request, "post_id_lookup", "id_lookup", 1)
+
     def begin_pass(
         self,
         request: DailySearchRequest,
         search_pass: ScweetSearchPass,
         estimated_request_cost: int,
     ) -> SearchPassUsage:
+        return self._begin_operation(request, search_pass.label, search_pass.product.value, estimated_request_cost)
+
+    def _begin_operation(self, request: DailySearchRequest | PostLookupRequest,
+                         label: str, product: str, estimated_request_cost: int) -> SearchPassUsage:
         before_snapshot = self._snapshot_safely()
         usage = SearchPassUsage(
             request_id=request.request_id,
             scan_job_id=request.scan_job_id,
-            pass_label=search_pass.label,
-            product=search_pass.product.value,
+            pass_label=label,
+            product=product,
             estimated_request_cost=estimated_request_cost,
             before_snapshot=before_snapshot,
             pass_observation_id=self._pass_observation_id_factory(),

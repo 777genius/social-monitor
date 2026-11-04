@@ -6,6 +6,7 @@ import '../../domain/policies/reader_promotion_news_publisher_policy.dart';
 import '../../domain/policies/reader_promotion_ranking_policy.dart';
 import '../../domain/policies/reader_promotion_source_registry.dart';
 import '../../domain/value_objects/reader_promotion_comparator.dart';
+import '../../domain/value_objects/reader_promotion_exact_timestamp.dart';
 import '../api/summary_api_dto.dart';
 import 'reader_display_headline_verifier.dart';
 import 'reader_promotion_canonical_json.dart';
@@ -32,10 +33,9 @@ const readerPostPromotionAttestationSchemaV3 =
     'reader_post_promotion_attestation.v3';
 
 /// Meaning of the V3 promotion order (`READER_PROMOTION_POLICY_STAMP`). A V3
-/// attestation with any other stamp is rejected: the backend serves days
-/// ranked under an older stamp with empty boards and
-/// `freshness.reason = ranking_policy_changed` instead.
-const readerPromotionPolicyStamp = 'reader_promotion.2026-11-01';
+/// attestation is verified under its own supported stamp. V1 preserves the
+/// six-hour metric rule; V2 accepts genuine observations within the cutoff.
+const readerPromotionPolicyStamp = readerPromotionPolicyV2;
 const readerPostPromotionDigestV3 = 'reader_post_promotion_digest.sha256.v3';
 
 ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
@@ -107,7 +107,7 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
       digestVersion == readerPostPromotionDigestVersion;
   final isV3Transport =
       schemaVersion == readerPostPromotionAttestationSchemaV3 &&
-      policyVersion == readerPromotionPolicyStamp &&
+      supportedReaderPromotionPolicy(policyVersion) &&
       digestVersion == readerPostPromotionDigestV3;
   if ((!isV1 && !isV2 && !isV3Transport) ||
       normalizedCandidateId.isEmpty ||
@@ -138,6 +138,7 @@ ReaderPostPromotionAttestationApiDto? verifyReaderPostPromotionAttestation({
     }
     return _verifyReaderPostPromotionAttestationV3(
       decoded: decoded,
+      policyVersion: policyVersion!,
       digest: digest,
       canonicalPayload: canonicalPayload,
       candidateId: candidateId,

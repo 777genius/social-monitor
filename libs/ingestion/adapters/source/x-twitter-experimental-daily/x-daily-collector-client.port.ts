@@ -38,10 +38,17 @@ export type XDailyCollectedPost = {
   readonly publishedAt: Date;
   readonly metrics: XDailyPostMetrics;
   readonly mediaUrls: readonly string[];
-  readonly sourceProduct: XDailySearchProduct;
+  readonly sourceProduct: XDailySearchProduct | 'id_lookup';
   readonly trendScore: number;
   /** Missing provenance is intentionally not treated as an original post. */
   readonly contentKind?: "original_post" | "reply" | "quote";
+  readonly quotedPost?: {
+    readonly tweetId: string;
+    readonly canonicalUrl: string;
+    readonly text: string;
+    readonly authorHandle: string;
+    readonly publishedAt: Date;
+  };
 };
 
 export type XDailyPostMetrics = {
@@ -73,4 +80,13 @@ export interface XDailyCollectorClientPort {
   collectDailySearch(
     request: XDailyCollectorRequest,
   ): Promise<XDailyCollectorResult>;
+}
+
+export type XPostLookupRequest = Pick<XDailyCollectorRequest,
+  'requestId' | 'tenantId' | 'workspaceId' | 'sourceBindingId' | 'scanJobId' | 'correlationId'> & {
+  readonly tweetIds: readonly string[];
+};
+
+export interface XPostLookupClientPort {
+  lookupPosts(request: XPostLookupRequest): Promise<XDailyCollectorResult>;
 }

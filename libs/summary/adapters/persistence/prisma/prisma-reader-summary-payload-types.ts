@@ -51,6 +51,9 @@ export type SerializedReaderSummaryArtifactPayload = {
   readonly relatedTopicRelations?: unknown;
   readonly promotionAttestations?: unknown;
   readonly promotionEvidenceFacts?: unknown;
+  readonly promotionDiagnostics?: unknown;
+  readonly dailyGenerationInput?: unknown;
+  readonly dailyEditorialPlan?: unknown;
   readonly contextArtifacts?: unknown;
   readonly personalization?: unknown;
   readonly headline?: unknown;

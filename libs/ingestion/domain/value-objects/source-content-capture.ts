@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import { preserveQuotedPostAvailability } from './quoted-post-capture-availability';
+import { hasRedditMediaContext } from './reddit-media-context';
+import { GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION, googleNewsArticleId } from './google-news-article';
 import { sanitizeUrlCredentials, type JsonObject } from '@social-monitor/shared-kernel';
 
 export const CONTENT_CAPTURE_VERSION = 'source_content_capture.v1';
@@ -65,6 +68,7 @@ export const captureSha256 = (text: string): string =>
  * identity. Callers must use articleRequestUrl for anything persisted.
  */
 export const articleFetchUrl = (providerKey: string, item: CaptureText): string | undefined => {
+  if (providerKey === 'reddit' && hasRedditMediaContext(item.metadata)) return undefined;
   if (providerKey === 'rss' && item.metadata?.nativeContentComplete === true && item.body.trim().length > 0) return undefined;
   const candidate = providerKey === 'hacker-news' ? item.metadata?.externalUrl
     : providerKey === 'reddit' ? item.metadata?.linkedUrl
@@ -129,7 +133,8 @@ export const captureNativeText = <T extends CaptureText>(item: T, providerKey: s
     origin: 'provider_native', offset: 0, length: body.length, originalLength: item.body.length,
     fullTextSha256: captureSha256(item.body), truncated: body.length !== item.body.length,
     availableAt: capturedAt.toISOString(), sourceUrl: item.canonicalUrl, finalUrl: item.canonicalUrl,
-    extractionVersion: item.metadata?.nativeContentIncomplete === true ? 'provider_native.partial.v1'
+    extractionVersion: item.metadata?.nativeContentIncomplete === true ||
+      (providerKey === 'reddit' && hasRedditMediaContext(item.metadata)) ? 'provider_native.partial.v1'
       : providerKey === 'rss' && item.metadata?.nativeContentComplete === true
         ? 'provider_native.complete.v1' : 'provider_native.v1',
   };
@@ -176,14 +181,15 @@ export const captureArticleText = <T extends CaptureText>(item: T, article: {
 
 // Both repository implementations apply this before computing effective revision.
 export const preserveSourceCapture = <T extends CaptureText>(incoming: T, existing: CaptureText): T => {
-  const next = readContentCapture(incoming);
+  const quoted = preserveQuotedPostAvailability(incoming, existing);
+  const next = readContentCapture(quoted);
   const prior = readContentCapture(existing);
-  if (next === undefined || prior === undefined) return incoming;
+  if (next === undefined || prior === undefined) return quoted;
   const native = next.nativeRevision === prior.nativeRevision
     ? { ...next.native, availableAt: prior.native.availableAt } : next.native;
   const sameOpportunity = next.nativeRevision === prior.nativeRevision && next.articleUrl === prior.articleUrl;
-  const input = sameOpportunity && incoming.metadata?.articleCaptureAttempt === undefined && existing.metadata?.articleCaptureAttempt !== undefined
-    ? { ...incoming, metadata: { ...incoming.metadata, articleCaptureAttempt: existing.metadata.articleCaptureAttempt } } : incoming;
+  const input = sameOpportunity && quoted.metadata?.articleCaptureAttempt === undefined && existing.metadata?.articleCaptureAttempt !== undefined
+    ? { ...quoted, metadata: { ...quoted.metadata, articleCaptureAttempt: existing.metadata.articleCaptureAttempt } } : quoted;
   let result = withCapture(input, { ...next, native });
   if (next.articleUrl !== prior.articleUrl || prior.article === undefined) return result;
   if (next.article !== undefined) {
@@ -193,7 +199,9 @@ export const preserveSourceCapture = <T extends CaptureText>(incoming: T, existi
     return result;
   }
   const article = prior.article;
-  if (article.extractionVersion !== ARTICLE_REPRESENTATION_VERSION) return result;
+  if (article.extractionVersion !== ARTICLE_REPRESENTATION_VERSION &&
+      !(googleNewsArticleId(next.articleUrl ?? '') !== undefined &&
+        article.extractionVersion === GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION)) return result;
   result = captureArticleText(result, {
     text: existing.body.slice(article.offset, article.offset + article.length),
     sourceUrl: article.sourceUrl, finalUrl: article.finalUrl,

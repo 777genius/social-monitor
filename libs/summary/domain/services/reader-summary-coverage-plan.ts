@@ -1,3 +1,4 @@
+import { READER_SUMMARY_DAILY_INPUT_POLICY } from "../value-objects/reader-summary-daily-generation-input";
 import type {
   StoryCluster,
   SummaryEvidenceItem,
@@ -30,6 +31,7 @@ export type ReaderSummaryCoveragePlanItem = {
 };
 
 export type ReaderSummaryCoveragePlan = {
+  readonly policyVersion?: typeof READER_SUMMARY_DAILY_INPUT_POLICY;
   readonly mode: ReaderSummaryCoverageMode;
   readonly lead?: ReaderSummaryCoveragePlanItem;
   readonly secondary: readonly ReaderSummaryCoveragePlanItem[];
@@ -53,6 +55,7 @@ const dominantMajorEventSignalRatio = 1.5;
 export const buildReaderSummaryCoveragePlan = (
   selection: SummaryEvidenceSelection,
 ): ReaderSummaryCoveragePlan => {
+  if (selection.dailyGenerationInput !== undefined) return dailyInputCoveragePlan(selection);
   const evidenceById = new Map(
     selection.selectedEvidence.map((item) => [item.feedItemId, item] as const),
   );
@@ -110,6 +113,40 @@ export const buildReaderSummaryCoveragePlan = (
     secondary: secondary.map((candidate) =>
       publicPlanItem(candidate, "secondary"),
     ),
+  };
+};
+
+const dailyInputCoveragePlan = (
+  selection: SummaryEvidenceSelection,
+): ReaderSummaryCoveragePlan => {
+  const input = selection.dailyGenerationInput!;
+  if (input.policyVersion !== READER_SUMMARY_DAILY_INPUT_POLICY ||
+      new Set(input.selected.map(entry => entry.storyId)).size !== input.selected.length) {
+    throw new Error("Unsupported daily input coverage policy");
+  }
+  const evidenceById = new Map(selection.selectedEvidence.map(item => [item.feedItemId, item] as const));
+  const clustersById = new Map(selection.clusters.map(cluster => [cluster.id, cluster] as const));
+  const items = input.selected.map((entry): ReaderSummaryCoveragePlanItem => {
+    const evidence = evidenceById.get(entry.feedItemId);
+    const cluster = clustersById.get(entry.storyId);
+    if (evidence === undefined || cluster === undefined ||
+        evidence.sourceItemId !== entry.sourceItemId || evidence.providerKey !== entry.providerKey ||
+        evidence.providerKey.toLocaleLowerCase("en-US").startsWith("github") ||
+        ![cluster.representativeFeedItemId, ...cluster.duplicateFeedItemIds].includes(entry.feedItemId)) {
+      throw new Error("Daily input coverage must resolve to its bound story evidence");
+    }
+    return {
+      role: "secondary", clusterId: cluster.id, score: cluster.score,
+      feedItemIds: [entry.feedItemId], providerKeys: independentEvidenceProviderKeys([evidence]),
+      interestIds: unique([...cluster.interestIds, evidence.interestId]),
+      whyImportant: unique([...cluster.whyImportant, ...evidence.whyImportant]).slice(0, 4),
+    };
+  }).slice(0, 6);
+  return {
+    policyVersion: READER_SUMMARY_DAILY_INPUT_POLICY,
+    mode: items.length >= 2 ? "daily_synthesis" : "single_story",
+    ...(items[0] === undefined ? {} : { lead: { ...items[0], role: "lead" as const } }),
+    secondary: items.slice(1),
   };
 };
 

@@ -2,6 +2,7 @@ library;
 
 export 'src/components/app_adaptive_shell.dart';
 export 'src/components/app_button.dart';
+export 'src/components/app_checkbox.dart';
 export 'src/components/app_command_bar.dart';
 export 'src/components/app_data_list.dart';
 export 'src/components/app_empty_state.dart';

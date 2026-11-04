@@ -25,7 +25,7 @@ export const buildAdaptiveReaderSummaryEvidence = (
     ...(selection.promotionV3?.news ?? []),
   ].filter((candidate) => candidate.presentation.status === "available")
     .map((candidate) => candidate.candidateId));
-  const sourceHydrationLimit = selection.promotionV3 === undefined
+  const sourceHydrationLimit = selection.promotionV3 === undefined && selection.dailyGenerationInput === undefined
     ? legacySourceHydrationLimit : v3SourceHydrationLimit;
 
   return selection.selectedEvidence.map((item, index) =>
@@ -35,7 +35,7 @@ export const buildAdaptiveReaderSummaryEvidence = (
       expandedIds.has(item.feedItemId),
       citationIdByFeedItemId?.get(item.feedItemId) ?? `c${index + 1}`,
       sourceHydrationLimit,
-      verifiedV3PresentationIds.has(item.feedItemId),
+      selection.dailyGenerationInput === undefined && verifiedV3PresentationIds.has(item.feedItemId),
     ),
   );
 };
@@ -44,6 +44,7 @@ const expandedEvidenceIds = (
   selection: SummaryEvidenceSelection,
   coveragePlan: ReaderSummaryCoveragePlan,
 ): ReadonlySet<string> => {
+  if (selection.dailyGenerationInput !== undefined) return new Set(selection.dailyGenerationInput.selected.map(entry => entry.feedItemId));
   const evidenceById = new Map(
     selection.selectedEvidence.map((item) => [item.feedItemId, item] as const),
   );

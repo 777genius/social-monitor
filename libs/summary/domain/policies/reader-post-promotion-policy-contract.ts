@@ -11,7 +11,7 @@ import type {
   ReaderPostPromotionPopularity,
 } from "./reader-post-promotion-engagement";
 import type { ReaderPromotionEngagementClass } from "./reader-promotion-source-registry";
-import type { READER_PROMOTION_POLICY_STAMP } from "./reader-promotion-ranking";
+import type { ReaderPromotionPolicyVersion } from "./reader-promotion-policy-version";
 
 export const READER_POST_PROMOTION_POLICY_VERSION =
   "reader_post_promotion.v1" as const;
@@ -284,7 +284,7 @@ export type ReaderPostPromotionComparator = {
 
 export type ReaderPostPromotionAttestationV3 = {
   readonly schemaVersion: typeof READER_POST_PROMOTION_ATTESTATION_SCHEMA_V3;
-  readonly policyVersion: typeof READER_PROMOTION_POLICY_STAMP;
+  readonly policyVersion: ReaderPromotionPolicyVersion;
   readonly digestVersion: typeof READER_POST_PROMOTION_DIGEST_V3;
   readonly digest: string;
   readonly canonicalPayload: string;

@@ -26,6 +26,7 @@ import { collectOutputViolations } from "./gateway-llm-output-violations";
 import { gatewayLlmDeadline } from "./gateway-llm-deadline";
 import type { GatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 import { gatewayLlmCanonicalRequestSha256 } from "./gateway-llm-request-identity";
+import { gatewayLlmOutputBytes } from "./gateway-llm-output-budget";
 
 /**
  * The one gateway profile and model a client serves. Tasks must name exactly
@@ -203,6 +204,7 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
         ...(route.reasoningEffort === undefined ? {} : { effort: route.reasoningEffort }),
         maxOutputTokens: Math.max(route.minOutputTokens,
           Number.isSafeInteger(requested) && (requested as number) > 0 ? requested as number : 0),
+        limits: { outputBytes: gatewayLlmOutputBytes(command.purpose) },
         deadline: gatewayLlmDeadline(startedAt, command.timeoutMs),
         ...(decode === undefined ? {} : { decode }),
       },

@@ -25,6 +25,7 @@ const _v3Keys = <String>{
 };
 ReaderPostPromotionAttestationApiDto? _verifyReaderPostPromotionAttestationV3({
   required Map<String, Object?> decoded,
+  required String policyVersion,
   required String digest,
   required String canonicalPayload,
   required String candidateId,
@@ -66,7 +67,8 @@ ReaderPostPromotionAttestationApiDto? _verifyReaderPostPromotionAttestationV3({
 }) {
   if (!_v3ExactKeys(decoded, _v3Keys) ||
       decoded['schemaVersion'] != readerPostPromotionAttestationSchemaV3 ||
-      decoded['policyVersion'] != readerPromotionPolicyStamp ||
+      !supportedReaderPromotionPolicy(decoded['policyVersion']) ||
+      decoded['policyVersion'] != policyVersion ||
       decoded['digestVersion'] != readerPostPromotionDigestV3 ||
       // A matching digest only proves the received bytes were hashed. V3
       // signs one canonical representation, so whitespace and member-order
@@ -182,7 +184,7 @@ ReaderPostPromotionAttestationApiDto? _verifyReaderPostPromotionAttestationV3({
   }
   return ReaderPostPromotionAttestationApiDto(
     schemaVersion: readerPostPromotionAttestationSchemaV3,
-    policyVersion: readerPromotionPolicyStamp,
+    policyVersion: decoded['policyVersion']! as String,
     candidateId: candidateId,
     canonicalIdentity: canonicalIdentity,
     placement: decoded['placement']! as String,
@@ -195,6 +197,7 @@ ReaderPostPromotionAttestationApiDto? _verifyReaderPostPromotionAttestationV3({
     providerKey: decoded['provider']! as String,
     storyId: decoded['storyId']! as String,
     exactPublishedAt: decoded['publishedAt']! as String,
+    exactIngestionCutoff: decoded['exactIngestionCutoff']! as String,
   );
 }
 

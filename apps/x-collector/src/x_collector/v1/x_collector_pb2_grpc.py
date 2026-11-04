@@ -44,6 +44,11 @@ class XCollectorServiceStub:
                 request_serializer=x__collector_dot_v1_dot_x__collector__pb2.CheckHealthRequest.SerializeToString,
                 response_deserializer=x__collector_dot_v1_dot_x__collector__pb2.CheckHealthResponse.FromString,
                 _registered_method=True)
+        self.LookupPosts = channel.unary_unary(
+                '/social_monitor.x_collector.v1.XCollectorService/LookupPosts',
+                request_serializer=x__collector_dot_v1_dot_x__collector__pb2.LookupPostsRequest.SerializeToString,
+                response_deserializer=x__collector_dot_v1_dot_x__collector__pb2.CollectDailySearchResponse.FromString,
+                _registered_method=True)
 
 
 class XCollectorServiceServicer:
@@ -61,6 +66,12 @@ class XCollectorServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def LookupPosts(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_XCollectorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -73,6 +84,11 @@ def add_XCollectorServiceServicer_to_server(servicer, server):
                     servicer.CheckHealth,
                     request_deserializer=x__collector_dot_v1_dot_x__collector__pb2.CheckHealthRequest.FromString,
                     response_serializer=x__collector_dot_v1_dot_x__collector__pb2.CheckHealthResponse.SerializeToString,
+            ),
+            'LookupPosts': grpc.unary_unary_rpc_method_handler(
+                    servicer.LookupPosts,
+                    request_deserializer=x__collector_dot_v1_dot_x__collector__pb2.LookupPostsRequest.FromString,
+                    response_serializer=x__collector_dot_v1_dot_x__collector__pb2.CollectDailySearchResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -129,6 +145,33 @@ class XCollectorService:
             '/social_monitor.x_collector.v1.XCollectorService/CheckHealth',
             x__collector_dot_v1_dot_x__collector__pb2.CheckHealthRequest.SerializeToString,
             x__collector_dot_v1_dot_x__collector__pb2.CheckHealthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LookupPosts(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/social_monitor.x_collector.v1.XCollectorService/LookupPosts',
+            x__collector_dot_v1_dot_x__collector__pb2.LookupPostsRequest.SerializeToString,
+            x__collector_dot_v1_dot_x__collector__pb2.CollectDailySearchResponse.FromString,
             options,
             channel_credentials,
             insecure,

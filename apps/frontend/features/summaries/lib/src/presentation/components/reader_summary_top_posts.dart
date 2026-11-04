@@ -38,7 +38,7 @@ class ReaderSummaryTopPosts extends StatefulWidget {
 }
 
 class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
-  bool _expanded = false;
+  int _additionalVisibleCount = 0;
   final Set<String> _hiddenProviders = {};
   final ScrollController _postsScrollController = ScrollController();
   bool _denseView = false;
@@ -48,7 +48,7 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
     super.didUpdateWidget(oldWidget);
     if (!widget.projection.hasSameDatasetAs(oldWidget.projection) ||
         widget.period != oldWidget.period) {
-      _expanded = false;
+      _additionalVisibleCount = 0;
       _resetPostsScroll();
     }
   }
@@ -64,7 +64,7 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
     final colorScheme = Theme.of(context).colorScheme;
     final display = ReaderSummaryRankedPostsDisplay(
       projection: widget.projection,
-      expanded: _expanded,
+      additionalVisibleCount: _additionalVisibleCount,
       sortOrder: widget.sortOrder,
       hiddenProviders: _hiddenProviders,
     );
@@ -145,17 +145,21 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
           ),
         if (display.showRevealControl)
           _TopPostsShowMore(
-            expanded: _expanded,
+            expanded: display.remainingCount == 0,
             remainingCount: display.remainingCount,
-            onPressed: _toggleExpanded,
+            onPressed: () => _revealPosts(display.remainingCount),
           ),
       ],
     );
   }
 
-  void _toggleExpanded() {
-    setState(() => _expanded = !_expanded);
-    if (!_expanded) _resetPostsScroll();
+  void _revealPosts(int remainingCount) {
+    setState(() {
+      _additionalVisibleCount = remainingCount == 0
+          ? 0
+          : _additionalVisibleCount + 12;
+    });
+    if (_additionalVisibleCount == 0) _resetPostsScroll();
   }
 
   void _toggleProvider(String providerKey) {

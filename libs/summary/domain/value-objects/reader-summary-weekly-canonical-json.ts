@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { types as nodeUtilTypes } from "node:util";
+import { readerSummaryV3CandidateAuditArrayPaths } from
+  "./reader-summary-v3-publication-array-paths";
 import {
   exactReaderSummaryWeeklyIdentity,
   exactReaderSummaryWeeklyUtcDay,
@@ -49,10 +51,9 @@ export const readerSummaryWeeklyHistoricalArtifactCanonicalJsonLimits =
     maxTotalArrayElements: 5_000,
     maxNodes: 18_000,
   });
-// Mirrors public.reader_summary_v3_publication_canonical_json as redefined by
-// the latest migration (20261025120000_..._board_publication_bounds: 50,000
-// nodes, 40,000 object keys for a 64-card board). The spec compares these
-// values with that SQL. Only a trusted persisted job may select this profile.
+// Mirrors the ordinary/weekly SQL V3 publication bounds. Trusted persisted
+// artifact/report profiles additionally admit only the two schema-tagged
+// candidate audit arrays; they retain these aggregate traversal budgets.
 export const readerSummaryWeeklyV3PublicationCanonicalJsonLimits =
   Object.freeze({
     maxDepth: 32,
@@ -117,6 +118,7 @@ type CanonicalWriter = TraversalBudget & {
   readonly parts: string[];
   readonly visited: WeakSet<object>;
   readonly limits: CanonicalJsonLimits;
+  readonly expandedArrayPaths: readonly (readonly string[])[];
   byteLength: number;
 };
 
@@ -145,28 +147,32 @@ export const canonicalizeReaderSummaryWeeklyHistoricalArtifactJson = (
 export const canonicalizeReaderSummaryWeeklyV3PublicationJson = (
   value: unknown,
   label = "V3 publication value",
+  profile: "weekly" | "artifact" | "report" = "weekly",
 ): ReaderSummaryWeeklyCanonicalJson =>
   canonicalizeReaderSummaryJsonWithLimits(
     value,
     `Reader summary weekly ${label}`,
     readerSummaryWeeklyV3PublicationCanonicalJsonLimits,
+    readerSummaryV3CandidateAuditArrayPaths(value, profile),
   );
 
 const canonicalizeReaderSummaryJsonWithLimits = (
   value: unknown,
   path: string,
   limits: CanonicalJsonLimits,
+  expandedArrayPaths: readonly (readonly string[])[] = [],
 ): ReaderSummaryWeeklyCanonicalJson => {
   const writer: CanonicalWriter = {
     parts: [],
     visited: new WeakSet<object>(),
     limits,
+    expandedArrayPaths,
     byteLength: 0,
     objectKeys: 0,
     arrayElements: 0,
     nodes: 0,
   };
-  writeCanonicalValue(value, path, 0, writer);
+  writeCanonicalValue(value, path, 0, writer, []);
   const json = writer.parts.join("");
   const bytes = Buffer.from(json, "utf8");
   if (bytes.byteLength !== writer.byteLength) {
@@ -378,6 +384,7 @@ const writeCanonicalValue = (
   path: string,
   depth: number,
   writer: CanonicalWriter,
+  treePath: readonly string[],
 ): void => {
   writer.nodes += 1;
   if (writer.nodes > writer.limits.maxNodes) {
@@ -408,7 +415,11 @@ const writeCanonicalValue = (
     return;
   }
   if (Array.isArray(value)) {
-    assertReaderSummaryWeeklyDenseArray(value, path, writer.limits.maxArrayElements);
+    const expanded = writer.expandedArrayPaths.some((allowed) =>
+      allowed.length === treePath.length &&
+      allowed.every((key, index) => key === treePath[index]));
+    assertReaderSummaryWeeklyDenseArray(value, path, expanded
+      ? writer.limits.maxTotalArrayElements : writer.limits.maxArrayElements);
     assertUnvisited(value, path, writer.visited);
     writer.arrayElements += value.length;
     if (
@@ -422,7 +433,8 @@ const writeCanonicalValue = (
       if (index > 0) {
         appendCanonicalChunk(",", path, writer);
       }
-      writeCanonicalValue(item, `${path}[${index}]`, depth + 1, writer);
+      writeCanonicalValue(item, `${path}[${index}]`, depth + 1, writer,
+        [...treePath, "*"]);
     });
     appendCanonicalChunk("]", path, writer);
     return;
@@ -453,7 +465,7 @@ const writeCanonicalValue = (
     appendCanonicalChunk(JSON.stringify(key), path, writer);
     appendCanonicalChunk(":", path, writer);
     writeCanonicalValue(
-      value[key], `${path}.${key}`, depth + 1, writer,
+      value[key], `${path}.${key}`, depth + 1, writer, [...treePath, key],
     );
   });
   appendCanonicalChunk("}", path, writer);

@@ -1,8 +1,11 @@
 import type { ReaderDisplayHeadline } from "../../domain";
 import { readerPostPresentationV3OutputSchema as baseSchema, readerPostPresentationCandidates,
   type ReaderPostPresentationCandidate } from "../../domain/services/reader-post-presentation-v3-proposal";
-import { readerPostPresentationReferenceCatalog } from "../../domain/services/reader-post-presentation-reference-catalog";
-import { mimoQualifiedHeadlineOutputSchema, decodeMimoQualifiedHeadlines } from "../../domain/services/mimo-qualified-headline-codec";
+import { readerPostPresentationReferenceCatalog, readerPostPresentationCatalogReferenceFailure,
+  type ReaderPostPresentationCatalogReferences } from "../../domain/services/reader-post-presentation-reference-catalog";
+import { readerPostCanonicalPresentationInstructions } from "./reader-post-canonical-presentation-instructions";
+import { mimoQualifiedHeadlineOutputSchema } from "../../domain/services/mimo-qualified-headline-codec";
+import { decodeReaderPostPresentationBatch } from "../../domain/services/reader-post-presentation-batch-decode";
 import {
   READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES,
   readerPostPresentationV3InputDigest,
@@ -122,10 +125,13 @@ implements PromotionPresentationBuilder {
     const prompt = JSON.stringify({ candidates: inputs.map((input) => ({
       candidateId: input.candidateId, title: input.title, sourceText: input.body,
     })) });
-    const catalogCandidates = usesSourceCopyOptions(this.modelBackend)
-      ? readerPostPresentationCandidates(prompt) : undefined;
-    const schema = catalogCandidates === undefined ? baseSchema : mimoQualifiedHeadlineOutputSchema(catalogCandidates);
-    const systemPrompt = catalogCandidates === undefined ? instructions : mimoPresentationInstructions(catalogCandidates);
+    const catalogCandidates = readerPostPresentationCandidates(prompt);
+    const sourceCopyWire = usesSourceCopyOptions(this.modelBackend);
+    // Keep Codex's provider-qualified wire schema; narrow copied references per
+    // item below, so one invalid sibling does not discard valid presentations.
+    const schema = sourceCopyWire ? mimoQualifiedHeadlineOutputSchema(catalogCandidates) : baseSchema;
+    const systemPrompt = sourceCopyWire ? mimoPresentationInstructions(catalogCandidates)
+      : readerPostCanonicalPresentationInstructions(catalogCandidates);
     const requestDigest = promotionPayloadDigest(canonicalPromotionPayload({
       purpose: activeReaderSummaryPurposes.promotionPresentation,
       inputs: inputs.map(readerPostPresentationV3InputDigest),
@@ -195,7 +201,12 @@ implements PromotionPresentationBuilder {
            (failure.details?.presentationValidationStage === "schema_parse_or_normalization" &&
             failure.details?.presentationOutputValidatorCalled === "false" &&
             failure.details?.presentationOutputValidatorAccepted === "not_returned"))))) {
-      return inputs.map(() => withCleanup({ status: "unavailable", reason: "invalid_presentation" }));
+      const code = failure.details?.outputValidationCode === "schema_normalization_failed"
+        ? "schema_normalization_failed" as const
+        : failure.details?.presentationValidationStage === "product_contract_rejected"
+          ? "product_contract_rejected" as const : "schema_parse_or_normalization" as const;
+      return inputs.map(() => withCleanup({ status: "unavailable", reason: "invalid_presentation",
+        validation: { stage: "runtime_output", code } }));
     }
     if (result.status !== "completed") {
       readAgentRuntimeObjectOutput(result, parseObject, "Reader promotion presentation");
@@ -206,13 +217,22 @@ implements PromotionPresentationBuilder {
     }
     const rawOutput = readAgentRuntimeObjectOutput(result, parseObject,
       "Reader promotion presentation");
-    const decoded = catalogCandidates === undefined ? undefined : decodeMimoQualifiedHeadlines(rawOutput, catalogCandidates);
-    if (decoded?.failure) return inputs.map(() => withCleanup({ status: "unavailable", reason: "invalid_presentation" }));
-    const output = decoded?.output ?? rawOutput;
-    const proposals = contractProposals(output.presentations, inputs);
-    return inputs.map((input) => {
+    const decoded = sourceCopyWire ? decodeReaderPostPresentationBatch(rawOutput, catalogCandidates) : undefined;
+    const proposals = decoded === undefined ? contractProposals(rawOutput.presentations, inputs) :
+      new Map(decoded.flatMap((row) => row.proposal === undefined ? [] :
+        [[row.candidateId, row.proposal] as const]));
+    const failures = new Map(decoded?.flatMap((row) => row.failure === undefined ? [] :
+      [[row.candidateId, row.failure] as const]));
+    return inputs.map((input, index) => {
       const proposal = proposals.get(input.candidateId);
-      if (proposal === undefined) return withCleanup({ status: "unavailable", reason: "invalid_presentation" });
+      if (proposal === undefined) return withCleanup({ status: "unavailable", reason: "invalid_presentation",
+        validation: { stage: decoded === undefined ? "proposal_contract" : "source_copy_decode",
+          code: failures.get(input.candidateId)?.code ?? "proposal_missing_or_invalid" } });
+      // contractProposals already checked the canonical reference-array shape.
+      const catalogFailure = sourceCopyWire ? null : readerPostPresentationCatalogReferenceFailure(
+        proposal as unknown as ReaderPostPresentationCatalogReferences, catalogCandidates[index]!);
+      if (catalogFailure !== null) return withCleanup({ status: "unavailable", reason: "invalid_presentation",
+        validation: { stage: "proposal_contract", code: catalogFailure } });
       if (proposal.status === "unavailable") {
         return withCleanup({ status: "unavailable", reason: "insufficient_support" });
       }
@@ -247,9 +267,9 @@ export const resolveAgentRuntimePromotionPresentationV3BuilderOptions = (
 
 /**
  * Codex is the only backend qualified on the canonical wire, where the model
- * computes UTF-16 quote offsets, the qualification judgment and a display text
+ * copies source references and supplies its own qualification judgment and text
  * that literally contains every qualification. Every Codex model keeps it,
- * gateway-only ones included, so the Codex backend sends one schema. MiMo and
+ * gateway-only ones included, so Codex keeps its canonical fields. MiMo and
  * the gateway-only backends miss those (off-by-one ends, entity-escaped
  * quotes, paraphrased phrases) and fail the seal, so they copy
  * machine-computed source references and the server composes the text and

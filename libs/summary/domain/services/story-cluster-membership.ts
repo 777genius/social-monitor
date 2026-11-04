@@ -1,22 +1,12 @@
+import { uncachedStoryClusteringFacts, type StoryClusteringFacts } from './story-clustering-facts';
 import type { StoryRankingPolicy } from "../policies/story-ranking-policy";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import { readerPostProviderFamily } from
   "../policies/reader-post-promotion-policy";
-import { storyKey } from "./story-key-normalizer";
 import {
   sharedStoryTopicTokenCount,
-  storyClaimFacetTokens,
-  storyIdentityAnchorTokens,
-  storyIdentitySpecificProductTokens,
-  storyIdentityTokens,
-  storyPrimaryClaimFacet,
   storyTopicAnchorTokens,
-  storyTopicEventTokens,
-  storyTopicModelVersionTokens,
   storyTopicSimilarity,
-  storyTopicSpecificProductTokens,
-  storyTopicTokens,
-  storyTitleIdentity,
 } from "./story-topic-tokenizer";
 import { strictStoryRelationTitleEvidence } from
   "./story-relation-title-evidence";
@@ -37,10 +27,11 @@ export const belongsToVerifiedStoryCluster = (
   policy: StoryRankingPolicy,
   verifiedStoryRelationPairs?: ReadonlySet<string>,
   verifiedStrictTitleRelationPairs?: ReadonlySet<string>,
+  facts: StoryClusteringFacts = uncachedStoryClusteringFacts,
 ): boolean =>
   clusterItems.length > 0 &&
   clusterItems.every((candidate) => {
-    if (isDeterministicIndependentSourceStoryMatch(item, candidate, policy)) {
+    if (isDeterministicIndependentSourceStoryMatch(item, candidate, policy, facts)) {
       return true;
     }
 
@@ -49,20 +40,21 @@ export const belongsToVerifiedStoryCluster = (
       candidate.feedItemId,
     );
     return verifiedStrictTitleRelationPairs?.has(pairKey) === true
-      ? isVerifiedStrictTitleRelationGuardEligible(item, candidate, policy)
+      ? isVerifiedStrictTitleRelationGuardEligible(item, candidate, policy, facts)
       : verifiedStoryRelationPairs?.has(pairKey) === true &&
-          isVerifiedStoryRelationGuardEligible(item, candidate, policy);
+          isVerifiedStoryRelationGuardEligible(item, candidate, policy, facts);
   });
 
 export const hasCrossProviderClaimFacetConflict = (
   item: SummaryEvidenceItem,
   clusterItems: readonly SummaryEvidenceItem[],
   policy: StoryRankingPolicy,
+  facts: StoryClusteringFacts = uncachedStoryClusteringFacts,
 ): boolean =>
   clusterItems.some(
     (candidate) =>
       candidate.providerKey !== item.providerKey &&
-      !storyClaimFacetsAreCompatible(item, candidate, policy),
+      !storyClaimFacetsAreCompatible(item, candidate, policy, facts),
   );
 
 /**
@@ -77,9 +69,10 @@ export const isDeterministicIndependentSourceStoryMatch = (
   item: SummaryEvidenceItem,
   head: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
+  facts: StoryClusteringFacts = uncachedStoryClusteringFacts,
 ): boolean => {
-  const itemKey = storyKey(item, policy);
-  const headKey = storyKey(head, policy);
+  const itemKey = facts.storyKey(item, policy);
+  const headKey = facts.storyKey(head, policy);
   const independence = storySourceIndependence(item, itemKey, head, headKey);
   if (independence === undefined) {
     return false;
@@ -89,34 +82,34 @@ export const isDeterministicIndependentSourceStoryMatch = (
   }
 
   if (independence === "platform_copy") {
-    return hasStrongExactTitleIdentity(item, head) && isPlatformStoryCopy(item, head);
+    return hasStrongExactTitleIdentity(item, head, facts) && isPlatformStoryCopy(item, head);
   }
-  if (hasStrongExactTitleIdentity(item, head)) {
+  if (hasStrongExactTitleIdentity(item, head, facts)) {
     return true;
   }
 
-  if (!storyClaimFacetsAreCompatible(item, head, policy)) {
+  if (!storyClaimFacetsAreCompatible(item, head, policy, facts)) {
     return false;
   }
 
-  const itemTokens = storyTopicTokens(item, policy);
-  const headTokens = storyTopicTokens(head, policy);
+  const itemTokens = facts.storyTopicTokens(item, policy);
+  const headTokens = facts.storyTopicTokens(head, policy);
   const sharedTokens = sharedStoryTopicTokenCount(itemTokens, headTokens);
   const sharedAnchorTokens = sharedStoryTopicTokenCount(
-    storyTopicAnchorTokens(itemTokens),
-    storyTopicAnchorTokens(headTokens),
+    facts.storyTopicAnchorTokens(itemTokens),
+    facts.storyTopicAnchorTokens(headTokens),
   );
   const sharedSpecificProductTokens = sharedStoryTopicTokenCount(
-    storyTopicSpecificProductTokens(itemTokens),
-    storyTopicSpecificProductTokens(headTokens),
+    facts.storyTopicSpecificProductTokens(itemTokens),
+    facts.storyTopicSpecificProductTokens(headTokens),
   );
   const sharedEventTokens = sharedStoryTopicTokenCount(
-    storyTopicEventTokens(itemTokens),
-    storyTopicEventTokens(headTokens),
+    facts.storyTopicEventTokens(itemTokens),
+    facts.storyTopicEventTokens(headTokens),
   );
   const sharedModelVersionTokens = sharedStoryTopicTokenCount(
-    storyTopicModelVersionTokens(itemTokens),
-    storyTopicModelVersionTokens(headTokens),
+    facts.storyTopicModelVersionTokens(itemTokens),
+    facts.storyTopicModelVersionTokens(headTokens),
   );
   const sharedNonAnchorTokens = sharedNonAnchorStoryTopicTokenCount(
     itemTokens,
@@ -141,9 +134,10 @@ export const storyClaimFacetsAreCompatible = (
   item: SummaryEvidenceItem,
   head: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
+  facts: StoryClusteringFacts = uncachedStoryClusteringFacts,
 ): boolean => {
-  const itemPrimaryFacet = storyPrimaryClaimFacet(item);
-  const headPrimaryFacet = storyPrimaryClaimFacet(head);
+  const itemPrimaryFacet = facts.storyPrimaryClaimFacet(item);
+  const headPrimaryFacet = facts.storyPrimaryClaimFacet(head);
   if (
     itemPrimaryFacet !== undefined &&
     headPrimaryFacet !== undefined &&
@@ -151,8 +145,8 @@ export const storyClaimFacetsAreCompatible = (
   ) {
     return false;
   }
-  const itemFacets = storyClaimFacetTokens(item);
-  const headFacets = storyClaimFacetTokens(head);
+  const itemFacets = facts.storyClaimFacetTokens(item);
+  const headFacets = facts.storyClaimFacetTokens(head);
   if (itemFacets.length === 0 && headFacets.length === 0) {
     return true;
   }
@@ -171,7 +165,7 @@ export const storyClaimFacetsAreCompatible = (
   }
 
   return (
-    storyTopicEventTokens(storyTopicTokens(facetedItem, policy)).length > 0
+    facts.storyTopicEventTokens(facts.storyTopicTokens(facetedItem, policy)).length > 0
   );
 };
 
@@ -180,9 +174,10 @@ export const verifiedStoryClaimFacetsAreCompatible = (
   item: SummaryEvidenceItem,
   candidate: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
-): boolean => storyClaimFacetsAreCompatible(item, candidate, policy) || (
+  facts: StoryClusteringFacts = uncachedStoryClusteringFacts,
+): boolean => storyClaimFacetsAreCompatible(item, candidate, policy, facts) || (
   [item, candidate].every((post) => {
-    const facet = storyPrimaryClaimFacet(post);
+    const facet = facts.storyPrimaryClaimFacet(post);
     return facet !== undefined &&
       ["release", "benchmark", "comparison", "efficiency"].includes(facet);
   }) && samePrimaryReleaseEvent(item, candidate)
@@ -191,12 +186,13 @@ export const verifiedStoryClaimFacetsAreCompatible = (
 export const hasSharedStoryEventFacet = (
   item: SummaryEvidenceItem,
   candidate: SummaryEvidenceItem,
+  facts: StoryClusteringFacts = uncachedStoryClusteringFacts,
 ): boolean => {
-  const itemEventFacets = storyClaimFacetTokens(item).filter((facet) =>
+  const itemEventFacets = facts.storyClaimFacetTokens(item).filter((facet) =>
     facet.startsWith("event:"),
   );
   const candidateEventFacets = new Set(
-    storyClaimFacetTokens(candidate).filter((facet) =>
+    facts.storyClaimFacetTokens(candidate).filter((facet) =>
       facet.startsWith("event:"),
     ),
   );
@@ -231,6 +227,7 @@ export const isVerifiedStoryRelationGuardEligible = (
   item: SummaryEvidenceItem,
   candidate: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
+  facts: StoryClusteringFacts = uncachedStoryClusteringFacts,
 ): boolean => {
   const independentNews = hasIndependentNewsPublishers(item, candidate);
   if (readerPostProviderFamily(item.providerKey) ===
@@ -243,8 +240,8 @@ export const isVerifiedStoryRelationGuardEligible = (
   if (item.providerKey === candidate.providerKey && !sameAuthorSeries && !independentNews) {
     return false;
   }
-  const itemKey = storyKey(item, policy);
-  const candidateKey = storyKey(candidate, policy);
+  const itemKey = facts.storyKey(item, policy);
+  const candidateKey = facts.storyKey(candidate, policy);
   if (
     itemKey !== candidateKey &&
     canonicalStoryKeysConflict(itemKey, candidateKey) &&
@@ -256,7 +253,7 @@ export const isVerifiedStoryRelationGuardEligible = (
   ) {
     return false;
   }
-  if (!verifiedStoryClaimFacetsAreCompatible(item, candidate, policy)) {
+  if (!verifiedStoryClaimFacetsAreCompatible(item, candidate, policy, facts)) {
     return false;
   }
   if (
@@ -265,20 +262,20 @@ export const isVerifiedStoryRelationGuardEligible = (
   ) {
     return false;
   }
-  const itemTokens = storyIdentityTokens(item, policy);
-  const candidateTokens = storyIdentityTokens(candidate, policy);
+  const itemTokens = facts.storyIdentityTokens(item, policy);
+  const candidateTokens = facts.storyIdentityTokens(candidate, policy);
   const sharedTopicTokens = sharedStoryTopicTokenCount(
     itemTokens,
     candidateTokens,
   );
   const candidateTokenSet = new Set(candidateTokens);
   const sharedAnchorTokens = new Set(
-    storyIdentityAnchorTokens(itemTokens).filter((token) =>
+    facts.storyIdentityAnchorTokens(itemTokens).filter((token) =>
       candidateTokenSet.has(token),
     ),
   );
   const sharedEventTokens = new Set(
-    storyTopicEventTokens(itemTokens).filter((token) =>
+    facts.storyTopicEventTokens(itemTokens).filter((token) =>
       candidateTokenSet.has(token),
     ),
   );
@@ -288,20 +285,20 @@ export const isVerifiedStoryRelationGuardEligible = (
   const sharedNonAnchorTokenCount = sharedNonAnchorStoryTopicTokenCount(
     itemTokens,
     candidateTokens,
-    storyIdentityAnchorTokens,
+    facts.storyIdentityAnchorTokens,
   );
   const sharedModelVersionTokenCount = sharedStoryTopicTokenCount(
-    storyTopicModelVersionTokens(itemTokens),
-    storyTopicModelVersionTokens(candidateTokens),
+    facts.storyTopicModelVersionTokens(itemTokens),
+    facts.storyTopicModelVersionTokens(candidateTokens),
   );
   const hasConcreteSubject =
     sharedEntityAnchorTokenCount > 0 ||
     sharedStoryTopicTokenCount(
-      storyIdentitySpecificProductTokens(itemTokens),
-      storyIdentitySpecificProductTokens(candidateTokens),
+      facts.storyIdentitySpecificProductTokens(itemTokens),
+      facts.storyIdentitySpecificProductTokens(candidateTokens),
     ) > 0 ||
     sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_SUBJECT_TOKENS;
-  const sharedStoryEventFacet = hasSharedStoryEventFacet(item, candidate) ||
+  const sharedStoryEventFacet = hasSharedStoryEventFacet(item, candidate, facts) ||
     hasSharedIndependentNewsLawsuitEvent(item, candidate);
   const hasConcreteContext =
     sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_CONTEXT_TOKENS ||
@@ -322,16 +319,17 @@ const isVerifiedStrictTitleRelationGuardEligible = (
   item: SummaryEvidenceItem,
   candidate: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
+  facts: StoryClusteringFacts = uncachedStoryClusteringFacts,
 ): boolean => {
   if (readerPostProviderFamily(item.providerKey) ===
       readerPostProviderFamily(candidate.providerKey)) {
     return false;
   }
-  const itemKey = storyKey(item, policy);
-  const candidateKey = storyKey(candidate, policy);
+  const itemKey = facts.storyKey(item, policy);
+  const candidateKey = facts.storyKey(candidate, policy);
   return (itemKey === candidateKey ||
       !canonicalStoryKeysConflict(itemKey, candidateKey)) &&
-    verifiedStoryClaimFacetsAreCompatible(item, candidate, policy) &&
+    verifiedStoryClaimFacetsAreCompatible(item, candidate, policy, facts) &&
     Math.abs(item.publishedAt.getTime() - candidate.publishedAt.getTime()) <=
       VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS &&
     strictStoryRelationTitleEvidence(item.title, candidate.title) !== undefined;
@@ -367,9 +365,10 @@ const sharedNonAnchorStoryTopicTokenCount = (
 const hasStrongExactTitleIdentity = (
   left: SummaryEvidenceItem,
   right: SummaryEvidenceItem,
+  facts: StoryClusteringFacts = uncachedStoryClusteringFacts,
 ): boolean => {
-  const leftTitle = storyTitleIdentity(left);
-  const rightTitle = storyTitleIdentity(right);
+  const leftTitle = facts.storyTitleIdentity(left);
+  const rightTitle = facts.storyTitleIdentity(right);
 
   return (
     leftTitle === rightTitle &&

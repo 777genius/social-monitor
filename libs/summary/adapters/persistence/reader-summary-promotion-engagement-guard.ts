@@ -2,7 +2,9 @@ import type { JsonObject } from "@social-monitor/shared-kernel";
 
 import {
   canonicalPromotionPayload,
-  readerPostPromotionMetricMature,
+  readerPostPromotionMetricEligible,
+  READER_PROMOTION_POLICY_V1,
+  supportedReaderPromotionPolicy,
   readerPostPromotionPopularityByCandidate,
   readerPromotionSemanticallyAdmitted,
   readerPromotionSourceForProviderKey,
@@ -42,6 +44,14 @@ export const frozenPopularityMatchesAttestations = (params: {
 }): boolean => {
   // Nothing is signed on a no-signal board, so there is nothing to bind.
   if (params.attestations.length === 0) return true;
+  const first = params.attestations[0]!;
+  if (first.schemaVersion !== "reader_post_promotion_attestation.v3" ||
+      !supportedReaderPromotionPolicy(first.policyVersion) ||
+      params.attestations.some((value) => value.policyVersion !== first.policyVersion ||
+        value.schemaVersion !== first.schemaVersion)) return false;
+  const context = first.policyVersion === READER_PROMOTION_POLICY_V1
+    ? { policyVersion: READER_PROMOTION_POLICY_V1 }
+    : { policyVersion: first.policyVersion, ingestionCutoff: first.exactIngestionCutoff };
   const cohort = [];
   for (const value of params.candidates) {
     const candidate = record(value);
@@ -54,7 +64,7 @@ export const frozenPopularityMatchesAttestations = (params: {
     const published = Date.parse(String(candidate.publishedAt));
     if (engagement === null || source?.engagementClass !== "ranked" ||
         !gatePassed(candidate, assessment, published, params.period) ||
-        !readerPostPromotionMetricMature(engagement, String(candidate.publishedAt))) continue;
+        !readerPostPromotionMetricEligible(engagement, String(candidate.publishedAt), context)) continue;
     cohort.push({ candidateId: String(candidate.candidateId),
       sourceItemId: String(candidate.sourceItemId), providerFamily: source.family,
       value: engagement.value });

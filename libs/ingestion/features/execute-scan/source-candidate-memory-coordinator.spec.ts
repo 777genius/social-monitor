@@ -50,7 +50,7 @@ describe("source candidate memory coordinator", () => {
     ]);
     expect(
       replay.itemsForEngagementRefresh.map(({ externalId }) => externalId),
-    ).toEqual(["x:2"]);
+    ).toEqual(["x:1", "x:2"]);
     expect(replay.itemsToProcess.map(({ externalId }) => externalId)).toEqual([
       "x:2",
       "x:3",

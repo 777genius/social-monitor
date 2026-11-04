@@ -19,8 +19,8 @@ final class TopPostMetric {
 }
 
 const _metricSlotsByProvider = <String, List<String>>{
-  'x-twitter': ['Likes', 'Reposts', 'Replies', 'Views'],
-  'twitter': ['Likes', 'Reposts', 'Replies', 'Views'],
+  'x-twitter': ['Likes'],
+  'twitter': ['Likes'],
   'reddit': ['Upvotes', 'Comments', 'Shares', 'Views'],
   'hacker-news': ['Points', 'Comments', 'Shares', 'Views'],
   _githubTrendingProviderKey: ['Stars', 'Stars today', 'Rank', 'Forks'],
@@ -59,6 +59,18 @@ const _labelAliases = <String, String>{
 /// Slots follow the provider's native vocabulary. Missing metrics are omitted
 /// so rows do not show placeholder values such as `- Views`.
 List<TopPostMetric> topPostMetricsFor(TopRead read) {
+  // A derived count must retain its meaning instead of becoming raw Likes
+  // or Stars when the native-label parser examines its first word.
+  final derived = [
+    for (final metric in read.providerMetrics)
+      if (const {'Star/fork activity'}.contains(metric.label.trim()) &&
+          RegExp(r'^[\d][\d,.]*[kKmM]?$').hasMatch(metric.value.trim()))
+        TopPostMetric(
+          value: formatCompactMetricValue(metric.value),
+          label: metric.label.trim(),
+        ),
+  ];
+  if (derived.isNotEmpty) return derived.take(4).toList(growable: false);
   final found = _parsedMetrics(read);
   final slots = _metricSlotsByProvider[read.providerKey.trim().toLowerCase()];
   if (slots == null) {
@@ -171,6 +183,8 @@ num? _githubTrendingStarsToday(TopRead read) {
 Map<String, String> _parsedMetrics(TopRead read) {
   final found = <String, String>{};
   for (final metric in read.providerMetrics) {
+    // A legacy weighted count is not a native like count.
+    if (metric.label.trim() == 'Likes + 2× reposts') continue;
     _collectTrendingToday(metric, found);
     _collectFromText(metric.value, found);
     _collectLabeled(metric.label, metric.value, found);

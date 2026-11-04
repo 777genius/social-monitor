@@ -5,6 +5,7 @@ import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/post_rating.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/top_posts_sort_order.dart';
+import '../stores/reader_posts_browse_store.dart';
 import '../stores/top_posts_sort_store.dart';
 import '../view_models/reader_summary_top_posts_projection.dart';
 import 'reader_summary_brief_surface.dart';
@@ -18,6 +19,7 @@ class ReaderSummaryTopPostsSectionSliver extends StatefulWidget {
     this.ratingFor,
     this.onRated,
     this.sortStore,
+    this.browseStore,
   });
 
   final ReaderSummary summary;
@@ -34,6 +36,7 @@ class ReaderSummaryTopPostsSectionSliver extends StatefulWidget {
   /// Remembered reader order of the ranked lanes; `null` keeps the model
   /// order and hides the order control.
   final TopPostsSortStore? sortStore;
+  final ReaderPostsBrowseStore? browseStore;
 
   @override
   State<ReaderSummaryTopPostsSectionSliver> createState() =>
@@ -60,6 +63,32 @@ class _ReaderSummaryTopPostsSectionSliverState
 
   @override
   Widget build(BuildContext context) {
+    final browse = widget.browseStore;
+    if (browse == null) return _buildSection(context);
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        browse,
+        if (widget.sortStore != null) widget.sortStore!,
+      ]),
+      builder: (context, _) {
+        final order = widget.sortStore?.order ?? TopPostsSortOrder.modelRank;
+        browse.bind(widget.summary, order);
+        if (browse.selectedOnly) return _buildSection(context);
+        return SliverPadding(
+          padding: widget.contentPadding,
+          sliver: ReaderSummaryAllPostsSliver(
+            store: browse,
+            period: widget.summary.period,
+            sortOrder: order,
+            onSortChanged: widget.sortStore?.select,
+            onOpenUrl: widget.onOpenUrl,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSection(BuildContext context) {
     final projection = _projection;
     if (projection.isEmpty) {
       final notice = projection.requiresRebuild
@@ -67,7 +96,7 @@ class _ReaderSummaryTopPostsSectionSliverState
           : _hasSummaryEvidence(widget.summary)
           ? const _UnavailableTopPostsNotice()
           : null;
-      if (notice == null) {
+      if (notice == null && widget.browseStore == null) {
         return const SliverToBoxAdapter(child: SizedBox.shrink());
       }
       return SliverMainAxisGroup(
@@ -75,7 +104,27 @@ class _ReaderSummaryTopPostsSectionSliverState
           const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
           SliverPadding(
             padding: widget.contentPadding,
-            sliver: SliverToBoxAdapter(child: notice),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (widget.browseStore case final browse?)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: AppCheckbox(
+                        key: const ValueKey('reader-summary-selected-posts'),
+                        label: 'AI picks',
+                        value: true,
+                        onChanged: browse.selectOnly,
+                      ),
+                    ),
+                  if (notice != null)
+                    notice
+                  else
+                    const Text('No selected posts for this period.'),
+                ],
+              ),
+            ),
           ),
         ],
       );
@@ -85,7 +134,7 @@ class _ReaderSummaryTopPostsSectionSliverState
     };
     return SliverMainAxisGroup(
       slivers: [
-        if (projection.hasRankedPosts) ...[
+        if (projection.hasRankedPosts || widget.browseStore != null) ...[
           const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
           SliverPadding(
             padding: widget.contentPadding,
@@ -128,6 +177,7 @@ class _ReaderSummaryTopPostsSectionSliverState
     ValueChanged<TopPostsSortOrder>? onSortOrderChanged,
   }) => ReaderSummaryTopPostsSliver(
     projection: projection,
+    onSelectedOnlyChanged: widget.browseStore?.selectOnly,
     selectedPostCount: _selectedPostCount(widget.summary),
     period: widget.summary.period,
     citationsById: citationsById,

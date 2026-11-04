@@ -1,3 +1,4 @@
+import { READER_SUMMARY_DAILY_INPUT_POLICY } from "../value-objects/reader-summary-daily-generation-input";
 import type { ReaderAction } from "../entities/reader-action";
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead, TopReadConfidence } from "../entities/top-read";
@@ -109,6 +110,7 @@ export const buildGroundedOneLineTakeaway = (params: {
   readonly topReads: readonly TopRead[];
   readonly sourceMix: readonly SourceMixEntry[];
   readonly thematicSynthesisSupport?: {
+    readonly coveragePolicyVersion?: typeof READER_SUMMARY_DAILY_INPUT_POLICY;
     readonly clusterCount: number;
     readonly providerCount: number;
   };
@@ -124,7 +126,7 @@ export const buildGroundedOneLineTakeaway = (params: {
     (lead.confirmedProviderKeys.length > 1 || lead.confidence.level === "high");
   const hasGroundedThematicSynthesis =
     (params.thematicSynthesisSupport?.clusterCount ?? 0) >= 2 &&
-    (params.thematicSynthesisSupport?.providerCount ?? 0) >= 2;
+    ((params.thematicSynthesisSupport?.providerCount ?? 0) >= 2 || params.thematicSynthesisSupport?.coveragePolicyVersion === READER_SUMMARY_DAILY_INPUT_POLICY);
 
   if (
     params.topReads.length === 0 ||

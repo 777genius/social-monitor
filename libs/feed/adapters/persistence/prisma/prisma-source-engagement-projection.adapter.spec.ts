@@ -6,8 +6,45 @@ import type {
   PrismaSourceEngagementTransactionClient,
 } from "./prisma-source-engagement-client";
 import { PrismaSourceEngagementProjectionAdapter } from "./prisma-source-engagement-projection.adapter";
+import { prepareSourceEngagementSamples } from
+  "@social-monitor/ingestion/features/execute-scan/source-engagement-sample-coordinator";
 
 describe("PrismaSourceEngagementProjectionAdapter", () => {
+  it("keeps shared metric mirrors consistent when an unchanged binding supersedes another", async () => {
+    const prisma = new FakeEngagementPrisma();
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma,
+      { generate: () => `id-${prisma.nextId++}` });
+    const first = command("2026-07-10T12:00:00Z", 10, true);
+    await adapter.project(first);
+    await adapter.project({ ...command("2026-07-10T13:00:00Z", 20, true),
+      sourceBindingId: "00000000-0000-4000-8000-000000000006" });
+    const refreshed = prepareSourceEngagementSamples({
+      providerKey: "x-twitter", persistedItems: [], savedItems: [],
+      candidateScreening: {
+        memoryScope: { tenantId: first.tenantId, workspaceId: first.workspaceId,
+          interestId: "interest", sourceBindingId: first.sourceBindingId,
+          providerKey: "x-twitter", scopeFingerprint: "scope", policyVersion: "v1" },
+        candidates: [], classifications: [{ externalId: "x-twitter:1",
+          kind: "unchanged", legacyFallback: false }],
+        previousExpiresAtByExternalId: new Map(), itemsToEnrich: [], itemsToProcess: [],
+        itemsForEngagementRefresh: [{ externalId: "x-twitter:1",
+          canonicalUrl: "https://x.com/example/status/1", title: "Release", body: "Details",
+          publishedAt: new Date("2026-07-10T11:00:00Z"), metadata: { kind: "x_post", likes: 10 } }],
+        suppressedExternalIds: ["x-twitter:1"], legacyFallbackExternalIds: [],
+        classificationReliable: true,
+      },
+    });
+
+    await adapter.project({ ...first, observedAt: new Date("2026-07-10T14:00:00Z"),
+      samples: refreshed.engagementSamples });
+
+    expect(prisma.snapshot).toMatchObject({ likes: 10n,
+      lastObservedAt: new Date("2026-07-10T14:00:00Z") });
+    expect(prisma.feedItemRecord.providerMetadata).toMatchObject({ likes: 10 });
+    expect(prisma.sourceItemRecord.metadata).toMatchObject({ likes: 10 });
+    expect(prisma.baselineObservedAt).toEqual(new Date("2026-07-10T14:00:00Z"));
+  });
+
   it("updates current metrics cheaply and appends only cadence observations", async () => {
     const prisma = new FakeEngagementPrisma();
     const adapter = new PrismaSourceEngagementProjectionAdapter(prisma, {

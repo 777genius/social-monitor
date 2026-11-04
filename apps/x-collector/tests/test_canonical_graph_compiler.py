@@ -1,5 +1,6 @@
 """Offline source parity and proposal tests; no SDK/native qualification."""
 import copy
+import ast
 import builtins
 import hashlib
 import json
@@ -13,12 +14,22 @@ from unittest.mock import patch
 from support.canonical_graph_support import SDK_ROOT, adapter_payload, lane, profile, sdk
 from support.canonical_fixture_bootstrap import EVIDENCE, materialize_sdk
 from x_collector.canonical_graph_compiler import (
-    PublicManifest, ScalarRequest, compile_expansion, date_window_builder, read_request, semantic_hash,
+    PublicManifest, REPOSITORY_PINS, ScalarRequest, compile_expansion, date_window_builder, read_request, semantic_hash,
 )
 from x_collector.canonical_sdk_builders import PinnedSdkBuilders, SourcePinMismatch
 
 
 class CanonicalGraphCompilerTest(unittest.TestCase):
+    def test_quote_extension_preserves_frozen_date_window_ast(self):
+        root = Path(__file__).resolve().parents[1]
+        current = root / "src/x_collector/scweet_adapter.py"
+        frozen = root / "tests/fixtures/canonical_search/baseline_scweet_adapter.py"
+        def date_window(path):
+            return ast.dump(next(node for node in ast.parse(path.read_bytes()).body
+                                 if isinstance(node, ast.FunctionDef) and node.name == "scweet_date_window"),
+                            include_attributes=False)
+        self.assertEqual(date_window(current), date_window(frozen))
+
     @classmethod
     def setUpClass(cls):
         cls.sdk = sdk()
@@ -298,6 +309,16 @@ class CanonicalGraphCompilerTest(unittest.TestCase):
             self.assertTrue(compile_expansion([lane()], profile(), sdk())["ok"])
         with patch("x_collector.canonical_graph_compiler.REPOSITORY_PINS", {"search_plan.py": "0" * 64}):
             self.assertEqual(compile_expansion([lane()], profile(), self.sdk)["error"]["code"], "SOURCE_PIN_MISMATCH")
+        source = Path(__file__).resolve().parents[1] / "src/x_collector"
+        read_bytes = Path.read_bytes
+        for name in REPOSITORY_PINS:
+            def tampered(path):
+                data = read_bytes(path)
+                return data + b"\n# tampered current producer" if path == source / name else data
+            with self.subTest(source=name), patch.object(Path, "read_bytes", tampered):
+                with self.assertRaisesRegex(SourcePinMismatch, name):
+                    date_window_builder()
+                self.assertEqual(compile_expansion([lane()], profile(), self.sdk)["error"]["code"], "SOURCE_PIN_MISMATCH")
 
     def test_zero_minima_absent_manifest_flags_and_floor_limited_graph(self):
         configured = profile()

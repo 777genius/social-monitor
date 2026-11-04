@@ -32,16 +32,18 @@ export const assertReaderSummaryWeeklyStoryAuthorityPersistedHashes = (
   const canonicalize = profile === "v3"
     ? canonicalizeReaderSummaryWeeklyV3PublicationJson
     : canonicalizeReaderSummaryWeeklyJson;
-  const canonicalizeArtifact = profile === "v3"
-    ? canonicalizeReaderSummaryWeeklyV3PublicationJson
-    : canonicalizeReaderSummaryWeeklyHistoricalArtifactJson;
+  const canonicalizeArtifact = (value: unknown, label: string,
+    artifactProfile: "artifact" | "report"): ReturnType<typeof canonicalizeReaderSummaryWeeklyJson> =>
+    profile === "v3"
+      ? canonicalizeReaderSummaryWeeklyV3PublicationJson(value, label, artifactProfile)
+      : canonicalizeReaderSummaryWeeklyHistoricalArtifactJson(value, label);
   const persistedHashes = [
-    [canonicalizeArtifact(row.report, "persisted story publication report").sha256,
+    [canonicalizeArtifact(row.report, "persisted story publication report", "report").sha256,
       row.reportSha256, publication.reportSha256],
     [canonicalize(row.exactProof).sha256,
       row.proofSha256, publication.proofSha256],
     [canonicalizeArtifact(reportArtifactPayload,
-      "persisted story publication artifact payload").sha256,
+      "persisted story publication artifact payload", "artifact").sha256,
       row.artifactPayloadSha256, publication.artifactPayloadSha256],
     [canonicalize(row.providerEvidence).sha256,
       row.providerEvidenceSha256, publication.providerEvidenceSha256],

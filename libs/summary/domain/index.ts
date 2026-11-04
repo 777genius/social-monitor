@@ -41,6 +41,7 @@ export * from "./policies/reader-post-promotion-v3";
 export * from "./policies/reader-post-promotion-engagement";
 export * from "./policies/reader-promotion-news-publisher";
 export * from "./policies/reader-promotion-ranking";
+export * from "./policies/reader-promotion-policy-version";
 export * from "./policies/reader-promotion-score";
 export * from "./policies/reader-promotion-source-registry";
 export * from "./policies/reader-post-promotion-support-authority";
@@ -136,3 +137,7 @@ export { readerPostPresentationReferenceCatalog, readerPostPresentationCatalogOu
   readerPostPresentationCatalogProposalFailure } from "./services/reader-post-presentation-reference-catalog";
 
 export { MIMO_QUALIFIED_HEADLINE_CONTRACT, mimoQualifiedHeadlineOutputSchema, decodeMimoQualifiedHeadlines } from "./services/mimo-qualified-headline-codec";
+
+export * from "./value-objects/reader-summary-daily-generation-input";
+export * from "./services/reader-summary-daily-generation-selection";
+export * from "./services/reader-summary-daily-editorial-plan";

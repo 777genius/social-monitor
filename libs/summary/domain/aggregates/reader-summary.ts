@@ -1,3 +1,4 @@
+import { dailyGenerationNarrativeClusters } from "../services/reader-summary-daily-input-binding";
 import type { ReaderSummaryCitation } from "../entities/citation";
 import type { ReaderSummaryNarrativeSection } from "../entities/reader-summary-narrative-section";
 import { emptyReaderSummaryReliabilityReport } from "../entities/reader-summary-reliability";
@@ -75,6 +76,8 @@ export type ReaderSummaryFactoryInput = {
   readonly noSignalReason?: string;
   readonly editorialSlate?: ReaderSummaryEditorialSlate;
   readonly promotionV3?: SummaryEvidenceSelection["promotionV3"];
+  readonly dailyGenerationInput?: SummaryEvidenceSelection["dailyGenerationInput"];
+  readonly dailyGenerationEvidence?: readonly SummaryEvidenceItem[];
 };
 
 export class ReaderSummary {
@@ -113,15 +116,24 @@ export class ReaderSummary {
     ) {
       return ReaderSummary.create(buildNoSignalReaderSummary(input));
     }
+    const dailyIds = input.dailyGenerationInput === undefined ? undefined :
+      new Set(input.dailyGenerationInput.selected.map(entry => entry.feedItemId));
+    const narrativeCitations = dailyIds === undefined ? promotion.admittedCitations :
+      input.citationMap.filter(citation => dailyIds.has(citation.feedItemId));
+    const narrativeClusters = input.dailyGenerationInput === undefined ? promotion.admittedClusters :
+      dailyGenerationNarrativeClusters(input.dailyGenerationInput);
+    const narrativeEvidence = dailyIds === undefined ? promotion.admittedEvidence :
+      (input.dailyGenerationEvidence ?? primarySelectedEvidence).filter(item => dailyIds.has(item.feedItemId));
     const primaryInput = {
       ...input,
-      citationMap: promotion.admittedCitations,
-      storyClusters: promotion.admittedClusters,
-      selectedEvidence: promotion.admittedEvidence,
+      citationMap: narrativeCitations,
+      storyClusters: narrativeClusters,
+      selectedEvidence: narrativeEvidence,
     };
     const sourceMix = buildSourceMix(primaryInput);
     const readerTopStories = input.topStories.filter((story) =>
-      promotion.topClusterIds.has(story.storyClusterId),
+      input.dailyGenerationInput === undefined ? promotion.topClusterIds.has(story.storyClusterId)
+        : input.dailyGenerationInput.selected.some(entry => entry.storyId === story.storyClusterId),
     );
     const topReads = promotion.topReads;
     // A workspace that follows only unranked sources has no Top. Its news
@@ -144,12 +156,12 @@ export class ReaderSummary {
     ];
     const headline = input.headline;
     const narrativeSections = input.narrativeSections ?? [];
-    const primaryCitationMap = promotion.admittedCitations;
+    const primaryCitationMap = narrativeCitations;
     const admittedCitationIds = new Set(
       primaryCitationMap.map((citation) => citation.citationId),
     );
     const admittedClusterIds = new Set(
-      promotion.admittedClusters.map((cluster) => cluster.id),
+      narrativeClusters.map((cluster) => cluster.id),
     );
     const admittedInterestHighlights = input.interestHighlights.flatMap(
       (highlight) => {
@@ -222,7 +234,8 @@ export class ReaderSummary {
         )
           ? {
               thematicSynthesisSupport: {
-                clusterCount: promotion.admittedClusters.length,
+                coveragePolicyVersion: input.dailyGenerationInput?.policyVersion,
+                clusterCount: narrativeClusters.length,
                 providerCount: readerSummaryIndependentProviderFamilyCount(
                   sourceMix.map((source) => source.providerKey),
                 ),
@@ -234,6 +247,8 @@ export class ReaderSummary {
         executiveSummary: input.executiveSummary,
         topReads: leadReads,
         sourceMix,
+        ...(input.dailyGenerationInput === undefined ? {} : { thematicSynthesisSupport: {
+          clusterCount: narrativeClusters.length, providerCount: readerSummaryIndependentProviderFamilyCount(sourceMix.map(source => source.providerKey)), coveragePolicyVersion: input.dailyGenerationInput.policyVersion } }),
       }),
       bullets: buildReaderSummaryBullets(
         {
@@ -252,7 +267,7 @@ export class ReaderSummary {
         topStories: readerTopStories,
         interestHighlights: admittedInterestHighlights,
         repeatedSignals: admittedRepeatedSignals,
-        selectedEvidence: promotion.admittedEvidence,
+        selectedEvidence: narrativeEvidence,
       }),
       topicMap: input.topicMap ?? emptyReaderSummaryTopicMap(),
       qualityState,
@@ -271,7 +286,7 @@ export class ReaderSummary {
         narrativeSections: publishedNarrativeSections,
         risksAndUnknowns: admittedRisks,
         citationMap: primaryCitationMap,
-        selectedEvidence: promotion.admittedEvidence,
+        selectedEvidence: narrativeEvidence,
       }),
       reliabilityReport: buildReaderSummaryReliabilityReport(
         reliabilitySelectionFromInput(primaryInput),

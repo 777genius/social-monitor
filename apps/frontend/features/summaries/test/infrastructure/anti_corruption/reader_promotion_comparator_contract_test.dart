@@ -75,12 +75,13 @@ void main() {
     expect(verifyV3Attestation(redditInNews, redditFixture), isNull);
   });
 
-  test('recomputes metric maturity and popularity presence', () {
+  test('preserves V1 metric maturity and popularity presence', () {
     final fixture = publicV3DisplayFixture();
     final seal = fixture['seal']! as Map<String, Object?>;
 
     final immature = v3AttestationBody(
       seal,
+      policyVersion: 'reader_promotion.2026-11-01',
       comparator: rankedComparatorJson(
         candidateId: v3CandidateId,
         publishedAt: v3PublishedAt,
@@ -206,7 +207,7 @@ void main() {
   });
 
   test('keeps the policy stamp constant aligned with the backend', () {
-    expect(readerPromotionPolicyStamp, 'reader_promotion.2026-11-01');
+    expect(readerPromotionPolicyStamp, 'reader_promotion.2026-11-02');
   });
 }
 

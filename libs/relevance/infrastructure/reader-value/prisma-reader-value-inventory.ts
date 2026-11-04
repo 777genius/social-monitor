@@ -1,4 +1,5 @@
 import type { JsonObject } from '@social-monitor/shared-kernel';
+import { readReaderValueQuotedContext } from './reader-value-quoted-context';
 import { ReaderValueInventoryByteCeilingExceeded,
   ReaderValueInventorySnapshotUnavailable,
   ReaderValueInventoryTimeCeilingExceeded,
@@ -173,6 +174,7 @@ export class PrismaReaderValueInventory implements ReaderValueInventory, ReaderV
             ? canonicalPostgresTimestamp(row.engagement_observed_at) : null,
           source: { ...scope, interestId: row.interest_id, sourceItemId: row.source_item_id,
             providerKey: row.provider_key, canonicalUrl: row.canonical_url, title: row.title, body: row.body,
+            ...readReaderValueQuotedContext(metadata, providerMetadata, row.canonical_url),
             interest: row.query, ...readReaderValueCapture(metadata, row.provider_key, row.title, row.body,
               { sourceItemId: row.source_item_id, canonicalUrl: row.canonical_url }) },
         };

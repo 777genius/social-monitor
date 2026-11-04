@@ -35,7 +35,8 @@ import {
   normalizeOpenAiReaderSummaryNarrative,
   readerSummaryNarrativeMarkdown,
 } from "./openai-responses-reader-summary-narrative";
-import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
+import { buildReaderSummaryEvidenceCitationMap,
+  readerSummaryCitableEvidence } from "./reader-summary-evidence-citation-map";
 
 const qualityFlags = new Set<ReaderSummaryQualityFlag>(
   openAiReaderSummaryQualityFlags,
@@ -55,7 +56,7 @@ export const normalizeOpenAiReaderSummaryDraft = (
   evalDatasetVersion: string,
 ): GeneratedReaderSummaryDraft => {
   const citationMap = buildReaderSummaryEvidenceCitationMap(
-    input.evidence.selectedEvidence,
+    readerSummaryCitableEvidence(input.evidence),
   );
   const headline = readerSummaryHeadline(
     requiredString(raw.headline, "reader summary headline"),
@@ -155,6 +156,8 @@ export const normalizeOpenAiReaderSummaryDraft = (
     selectedEvidence: input.evidence.selectedEvidence,
     editorialSlate: input.evidence.editorialSlate,
     promotionV3: input.evidence.promotionV3,
+    dailyGenerationInput: input.evidence.dailyGenerationInput,
+    dailyGenerationEvidence: input.evidence.dailyGenerationEvidence,
     qualityFlags: normalizedQualityFlags,
     noSignalReason,
   });

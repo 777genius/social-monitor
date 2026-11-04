@@ -9,7 +9,7 @@ from .candidate_rejection_cache import (
     CandidateRejection,
     CandidateRejectionScope,
 )
-from .domain import DailySearchRequest, DailySearchResult
+from .domain import DailySearchRequest, DailySearchResult, PostLookupRequest
 from .search_budget import SearchBudgetDecision
 from .search_plan import ScweetSearchPass
 
@@ -20,6 +20,9 @@ class Clock(Protocol):
 
 
 class DailySearchCollectorPort(Protocol):
+    def lookup_posts(self, request: PostLookupRequest) -> DailySearchResult:
+        raise NotImplementedError
+
     def collect_daily_search(
         self,
         request: DailySearchRequest,
@@ -69,6 +72,9 @@ class AccountUsageEventRepositoryPort(Protocol):
 
 
 class AccountUsageObserverPort(Protocol):
+    def begin_lookup(self, request: PostLookupRequest) -> SearchPassUsage:
+        raise NotImplementedError
+
     def record_budget_decision(
         self,
         request: DailySearchRequest,

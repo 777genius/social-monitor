@@ -4,7 +4,7 @@ import logging
 from collections.abc import Callable
 
 from .config import XCollectorSettings
-from .domain import DailySearchRequest, DailySearchResult
+from .domain import DailySearchRequest, DailySearchResult, PostLookupRequest
 from .ports import DailySearchCollectorPort
 from .scweet_adapter import ScweetDailySearchCollector
 
@@ -42,6 +42,24 @@ class ReloadingScweetDailySearchCollector(DailySearchCollectorPort):
         except Exception as exc:
             LOGGER.error(
                 "X collector failure stage=collector_run error_class=%s",
+                type(exc).__name__,
+            )
+            raise
+
+    def lookup_posts(self, request: PostLookupRequest) -> DailySearchResult:
+        try:
+            collector = self._factory(self._settings)
+        except Exception as exc:
+            LOGGER.error(
+                "X collector failure stage=lookup_setup error_class=%s",
+                type(exc).__name__,
+            )
+            raise
+        try:
+            return collector.lookup_posts(request)
+        except Exception as exc:
+            LOGGER.error(
+                "X collector failure stage=lookup_run error_class=%s",
                 type(exc).__name__,
             )
             raise

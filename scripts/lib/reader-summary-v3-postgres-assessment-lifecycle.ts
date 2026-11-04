@@ -49,7 +49,7 @@ export const completeProductionV3Assessment = async (
   if (config?.interest_id === undefined || config.model_config_version === undefined) {
     throw new Error("production V3 assessment configuration is missing");
   }
-  const store = new PrismaReaderValueAssessmentStore(sqlClient(params.client));
+  const store = new PrismaReaderValueAssessmentStore(readerSummaryV3AssessmentSqlClient(params.client));
   const scope = { tenantId: params.tenantId, workspaceId: params.workspaceId,
     interestId: config.interest_id };
   const claim = await store.claim(scope, config.model_config_version,
@@ -89,7 +89,7 @@ export const completeProductionV3Assessment = async (
   }
 };
 
-const sqlClient = (client: PoolClient): AssessmentSqlClient => ({
+export const readerSummaryV3AssessmentSqlClient = (client: PoolClient): AssessmentSqlClient => ({
   $queryRawUnsafe: async <T>(sql: string, ...values: unknown[]) =>
     (await client.query(sql, values)).rows as T,
   $executeRawUnsafe: async (sql: string, ...values: unknown[]) =>

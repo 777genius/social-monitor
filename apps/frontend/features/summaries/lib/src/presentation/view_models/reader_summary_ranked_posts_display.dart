@@ -8,24 +8,26 @@ import 'reader_summary_top_posts_projection.dart';
 final class ReaderSummaryRankedPostsDisplay {
   ReaderSummaryRankedPostsDisplay({
     required ReaderSummaryTopPostsProjection projection,
-    required bool expanded,
+    required int additionalVisibleCount,
     required TopPostsSortOrder sortOrder,
     required Set<String> hiddenProviders,
   }) {
     bool included(TopRead item) => !hiddenProviders.contains(item.providerKey);
     final available = projection.items.where(included).toList(growable: false);
-    // A board with only additional ranked cards has no smaller Top subset.
-    final hasTopSubset = projection.curatedPosts.isNotEmpty;
-    final visible = expanded || !hasTopSubset
-        ? available
-        : projection.curatedPosts.where(included).toList(growable: false);
-    items = readerSummaryTopPostsInOrder(visible, sortOrder);
-    availableCount = available.length;
+    final ordered = readerSummaryTopPostsInOrder(available, sortOrder);
+    // Filter and order the complete pool before revealing a page. Additional
+    // membership must not hide a popular post from the first Likes page.
+    final initialCount = projection.curatedPosts.isEmpty
+        ? 12
+        : projection.curatedPosts.length;
+    items = ordered
+        .take(initialCount + additionalVisibleCount)
+        .toList(growable: false);
+    availableCount = ordered.length;
     remainingCount = availableCount - items.length;
     showRevealControl =
-        hasTopSubset &&
-        projection.additionalNotableStories.isNotEmpty &&
-        (expanded || remainingCount > 0);
+        remainingCount > 0 ||
+        (additionalVisibleCount > 0 && availableCount > initialCount);
     providerKeys = {
       for (final item in projection.items) item.providerKey,
     }.toList(growable: false);

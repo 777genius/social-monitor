@@ -9,6 +9,7 @@ import '../components/reader_summary_top_posts_section_sliver.dart';
 import '../components/reader_summary_view.dart';
 import '../components/workspace_summary_period_shell.dart';
 import '../stores/published_summary_store.dart';
+import '../stores/reader_posts_browse_store.dart';
 import '../stores/top_posts_sort_store.dart';
 
 class PublishedSummaryPage extends StatefulWidget {
@@ -16,10 +17,12 @@ class PublishedSummaryPage extends StatefulWidget {
     super.key,
     required this.store,
     this.topPostsSortStore,
+    this.readerPostsBrowseStore,
   });
 
   final PublishedSummaryStore store;
   final TopPostsSortStore? topPostsSortStore;
+  final ReaderPostsBrowseStore? readerPostsBrowseStore;
 
   @override
   State<PublishedSummaryPage> createState() => _PublishedSummaryPageState();
@@ -48,6 +51,7 @@ class _PublishedSummaryPageState extends State<PublishedSummaryPage> {
           return _PublishedSummaryArticle(
             store: widget.store,
             topPostsSortStore: widget.topPostsSortStore,
+            readerPostsBrowseStore: widget.readerPostsBrowseStore,
             summary: summary,
             isRefreshing: state is LoadingViewState<ReaderSummary>,
             onOpenUrl: (url) => unawaited(widget.store.openUrl(url)),
@@ -97,6 +101,7 @@ class _PublishedSummaryArticle extends StatelessWidget {
   const _PublishedSummaryArticle({
     required this.store,
     required this.topPostsSortStore,
+    required this.readerPostsBrowseStore,
     required this.summary,
     required this.isRefreshing,
     required this.onOpenUrl,
@@ -104,6 +109,7 @@ class _PublishedSummaryArticle extends StatelessWidget {
 
   final PublishedSummaryStore store;
   final TopPostsSortStore? topPostsSortStore;
+  final ReaderPostsBrowseStore? readerPostsBrowseStore;
   final ReaderSummary summary;
   final bool isRefreshing;
   final ValueChanged<String> onOpenUrl;
@@ -158,6 +164,7 @@ class _PublishedSummaryArticle extends StatelessWidget {
           summary: summary,
           contentPadding: topPostsPadding,
           sortStore: topPostsSortStore,
+          browseStore: readerPostsBrowseStore,
           onOpenUrl: onOpenUrl,
         ),
       ],
