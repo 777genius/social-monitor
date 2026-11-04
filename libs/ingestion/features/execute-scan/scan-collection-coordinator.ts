@@ -1,4 +1,4 @@
-import type { Clock, IdGenerator } from "@social-monitor/shared-kernel";
+import { DomainError, type Clock, type IdGenerator } from "@social-monitor/shared-kernel";
 import { githubTrendingSnapshotBatchObservedAt, type SourceBinding } from "../../domain";
 import type {
   ConversationProjectionPort,
