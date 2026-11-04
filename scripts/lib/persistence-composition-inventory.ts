@@ -14,6 +14,7 @@ export type CompositionInventory = {
 // Known business-state roles, not every class that keeps transient process data.
 const memoryName = /^InMemory[A-Za-z0-9]*(?:Repository|Ledger|Log|Counter|QueueAdapter|QueuePublisher|OutboxAdapter|IdempotencyAdapter|ReplayStore|SecretVault|Reader|LeaseAdapter|EventPublisher|ReadModel|State|Publication|ProjectionStore)$/;
 const noopName = /^Noop[A-Za-z0-9]*Adapter$/;
+const isAdapterName = (name: string): boolean => memoryName.test(name) || noopName.test(name);
 const normalize = (path: string): string => path.replaceAll('\\', '/');
 const excludedSource = /(?:^|\/)(?:test|tests|test-fixtures|fixtures|node_modules|generated)(?:\/|$)|\.(?:spec|test|spec-support|fixture)\.[cm]?tsx?$|\.d\.ts$/;
 const compositionName = /(?:^|\/)composition\/|(?:[.-](?:providers|composition)|\/composition)\.[cm]?tsx?$/;
@@ -60,7 +61,7 @@ export function discoverCompositionInventory(root: string): {
       const facts = factsFor(file, names);
       const errors = (facts.source as ts.SourceFile & { parseDiagnostics: readonly ts.Diagnostic[] }).parseDiagnostics;
       for (const error of errors) violations.push(`${file}: cannot parse composition: ${ts.flattenDiagnosticMessageText(error.messageText, '\n')}`);
-      const adapters = facts.names.filter((name) => memoryName.test(name) || noopName.test(name));
+      const adapters = facts.names.filter(isAdapterName);
       for (const name of adapters) (memoryName.test(name) ? memory : noop).add(name);
       if (file !== moduleFile && adapters.length) adapterSources.add(file);
       for (const { specifier, names: importedNames } of facts.imports) {
@@ -77,8 +78,17 @@ export function discoverCompositionInventory(root: string): {
         if (!namedComposition && (businessLayer.test(target) || /(?:^|\/)adapters\//.test(target))) continue;
         // Inspect only local wiring candidates; never follow external packages or implementation trees.
         if (!/^(?:apps\/[^/]+\/src\/|libs\/[^/]+\/interfaces\/)/.test(target) && !namedComposition) continue;
-        const targetFacts = factsFor(target, importedNames);
-        if (namedComposition || targetFacts.hasProviders || targetFacts.isBarrel) pending.push({ file: target, names: importedNames });
+        if (namedComposition) {
+          pending.push({ file: target, names: importedNames });
+          continue;
+        }
+        for (const name of importedNames) {
+          const targetFacts = factsFor(target, [name]);
+          if (targetFacts.hasProviders || targetFacts.hasRuntimeReexports ||
+              (targetFacts.hasRuntimeFactory && targetFacts.names.some(isAdapterName))) {
+            pending.push({ file: target, names: [name] });
+          }
+        }
       }
     }
     return {

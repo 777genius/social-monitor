@@ -29,13 +29,20 @@ export class RabbitMqQueueCommandReader implements QueueCommandReader {
 
   async drain(params: { readonly commandType: string; readonly limit: number }): Promise<readonly QueueCommandDelivery[]> {
     assertQueueDrainLimit(params.limit);
-    await this.deliveries.recoverPending();
-    await this.ensureRoute(params.limit);
-    const deliveries = await this.deliveries.drain(params.limit, (message) => {
-      const command = decodeQueueCommand(message.content.toString('utf8'));
-      return command.commandType === params.commandType ? command : null;
-    });
-    return deliveries.map(({ value, ...delivery }) => ({ ...delivery, command: value }));
+    try {
+      await this.deliveries.recoverPending();
+      await this.ensureRoute(params.limit);
+      const deliveries = await this.deliveries.drain(params.limit, (message) => {
+        const command = decodeQueueCommand(message.content.toString('utf8'));
+        return command.commandType === params.commandType ? command : null;
+      });
+      return deliveries.map(({ value, ...delivery }) => ({ ...delivery, command: value }));
+    } catch (error) {
+      // A broker failure may close the channel or invalidate the queue. The next
+      // drain recovers outstanding deliveries before reasserting its route.
+      this.routeAsserted = false;
+      throw error;
+    }
   }
 
   private async ensureRoute(prefetch: number): Promise<void> {

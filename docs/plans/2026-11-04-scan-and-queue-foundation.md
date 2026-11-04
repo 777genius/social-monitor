@@ -356,7 +356,7 @@ readiness-classifier changes, a fresh `tsc --noEmit --incremental false --projec
 tsconfig.json` passes, including test sources. Production-only build checks are
 not used as evidence for test type correctness.
 
-### Remaining baseline fixture debt and validation limits
+### Baseline fixture debt observed before the E2E follow-up
 
 `check:reader-summary-workflow` fails identically on the refactored tree and
 `e544229`: its selected-evidence fixture cannot provide the backend editorial
@@ -364,8 +364,9 @@ slate now required for promotion attestations. Its publication REST subcheck was
 run separately so the first failure could not hide it. In the default environment,
 both trees reject its in-memory composition under the durable `jev_primary_v3`
 profile. Explicit `NODE_ENV=test` reaches the same missing-editorial-slate guard.
-These reader publication fixtures need modernization in the excluded summary
-work; they are not passing evidence for this PR. No promotion, profile or durable
+At that checkpoint these reader publication fixtures needed modernization and
+were not counted as passing evidence. The user-requested E2E follow-up below
+repairs their test setup without changing summary feature behavior. No promotion, profile or durable
 guard was relaxed. Worker transport is independently covered by the five-loop
 failure tests, the passing transport smokes and the full backend E2E corpus.
 
@@ -442,3 +443,52 @@ quality, line-cap and runtime-profile guards. The live broker must run in CI whe
 unavailable locally; static success alone is not a live-broker result. Publish
 each commit immediately. Record final exact-head results and any remaining
 limits in this plan and PR, without counting an in-progress check as passed.
+
+### Follow-up evidence and review corrections
+
+The three new scan scenarios and the preserved backpressure regression passed
+together. The complete local backend corpus then passed **78 suites / 153 tests**.
+The new fixture starts and closes the actual Nest worker for each bounded tick,
+sharing local repositories explicitly across those restarts. Its only injected
+failures are at source fetching and outcome reporting. An independent reviewer
+verified retry claims, saved-attempt replay and HTTP tenant/workspace isolation.
+
+Both repaired reader smoke subprocesses and their exact combined npm command
+pass. They use existing accepted-headline/editorial-slate fixture builders and
+the real projection/publication policy. Assertions cover current one-based slots,
+V2 policy, scoped display proof, captured-source digest and ordered citations.
+The isolated test environment preserves production durable-profile enforcement.
+
+Two independent reviewers checked the live broker harness. One identified that
+an immediate zero queue count could miss a delayed quorum requeue after closing
+the consumer. The corrected fixture observes both owned queues over a bounded
+250 ms quiet interval and fails immediately if any unacknowledged message returns.
+
+On commit `005514c`, real RabbitMQ CI run `41813124210`, job `126517431444`,
+passed the first four native transport cases and reproduced the fifth: after a
+test queue was deleted, two successive `basic.get` operations failed with broker
+404 `NOT_FOUND`. The cached `routeAsserted` flag prevented the second tick from
+recreating the queue. This is genuine broker evidence before the narrow recovery
+fix, not a mocked channel failure. Final green results belong to the corrected
+head and are recorded separately.
+
+The completed external review also identified four concrete issues in the
+already changed persistence gate. All four reproduced in isolated fixtures
+(four failures, the previous 21 cases still passing): contradictory runtime text,
+selected provider re-exports in mixed barrels, plain selected wiring factories,
+and object property labels mistaken for adapters. The correction compares exact
+runtime values, follows selected re-exports/factory references, and ignores labels
+while retaining runtime values/shorthand references. Actual inventory and all
+25 cases pass without a manifest or root-boundary change.
+
+Independent review found and corrected one issue in that correction: an adapter
+class and unrelated configuration function imported together could combine their
+facts and expose concrete implementation internals. Unnamed wiring admission now
+evaluates each imported selection independently. The exact reproduction and the
+full gate pass on re-review; concrete app adapters remain outside traversal.
+
+The remaining queue configuration finding is bounded to startup: summary and
+reader-summary command readers must not share an effective RabbitMQ queue name,
+because each legitimately rejects the other command type. The follow-up guard
+preserves trim/default/legacy alias behavior and in-memory mode, and is verified
+at the configuration boundary and through Nest startup before a broker connection.

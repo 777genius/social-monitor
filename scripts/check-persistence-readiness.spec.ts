@@ -24,6 +24,7 @@ type FixtureOptions = {
   readonly modules?: readonly ReturnType<typeof moduleDeclaration>[];
   readonly noops?: readonly ReturnType<typeof noopDeclaration>[];
   readonly paths?: Readonly<Record<string, readonly string[]>>;
+  readonly allowedRuntime?: string;
 };
 
 function withFixture<T>(options: FixtureOptions, run: (root: string) => T): T {
@@ -35,7 +36,7 @@ function withFixture<T>(options: FixtureOptions, run: (root: string) => T): T {
       'ops/release/persistence-readiness-contract.json': JSON.stringify({
         schemaVersion: 1, posture: 'durability_gap_declared',
         mvpRuntimeDecision: {
-          blocksExternalBeta: true, allowedRuntime: 'durable_beta_profile', owner: 'fixture-owner',
+          blocksExternalBeta: true, allowedRuntime: options.allowedRuntime ?? 'durable_beta_profile', owner: 'fixture-owner',
           exitCriteria: ['durable storage', 'durable transport', 'deployed evidence'],
         },
         runtimeModules: options.modules ?? [], runtimeNoopAdapters: options.noops ?? [],
@@ -56,6 +57,44 @@ function withFixture<T>(options: FixtureOptions, run: (root: string) => T): T {
 const check = (options: FixtureOptions): readonly string[] => withFixture(options, checkPersistenceReadiness);
 
 describe('persistence readiness composition discovery', () => {
+  it('rejects contradictory runtime decisions containing the durable profile name', () => {
+    expect(check({ allowedRuntime: 'without_durable_beta_profile' }).join('\n'))
+      .toContain('mvpRuntimeDecision.allowedRuntime');
+    expect(check({ allowedRuntime: 'local_dev_and_deterministic_test_fallbacks_with_durable_beta_profile' }))
+      .toEqual([]);
+  });
+
+  it('follows the selected provider re-export in a barrel that also declares configuration', () => {
+    const files = {
+      [moduleFile]: "import { providers } from './index'; export const fixture = { providers };",
+      'apps/fixture/src/index.ts': "export { providers } from './fixture.providers'; export const options = { durable: true };",
+      [providerFile]: providerSource,
+    };
+    expect(check({ files }).join('\n')).toContain('InMemoryFixtureRepository');
+    expect(check({ files, modules: [moduleDeclaration([providerFile])] })).toEqual([]);
+    expect(check({ files: { ...files, [moduleFile]: "import { options } from './index'; export const fixture = { options };" } }))
+      .toEqual([]);
+  });
+
+  it('discovers selected plain wiring factories without following concrete implementations', () => {
+    const wiring = 'apps/fixture/src/assembly.ts';
+    const files = {
+      [moduleFile]: "import { createState } from './assembly'; export const fixture = { provide: 'repo', useFactory: createState };",
+      [wiring]: "import { InMemoryFixtureRepository } from '../../../libs/fixture/adapters/memory'; export function createState() { return new InMemoryFixtureRepository(); }",
+    };
+    expect(check({ files }).join('\n')).toContain('InMemoryFixtureRepository');
+    expect(check({ files, modules: [moduleDeclaration([wiring])] })).toEqual([]);
+  });
+
+  it('ignores object property labels while retaining adapter values and shorthand references', () => {
+    expect(check({ files: { [moduleFile]: 'export const options = { InMemoryGhostRepository: false, NoopGhostAdapter: true };' } }))
+      .toEqual([]);
+    const files = {
+      [moduleFile]: "import { InMemoryFixtureRepository } from '../../../libs/fixture/adapters/memory'; export const providers = [{ InMemoryGhostRepository: InMemoryFixtureRepository }, { InMemoryFixtureRepository }];",
+    };
+    expect(check({ files, modules: [moduleDeclaration()] })).toEqual([]);
+  });
+
   it.each([
     'InMemoryScanExecutionAttemptReadModel',
     'InMemoryInterestCreationState',
@@ -165,6 +204,18 @@ describe('persistence readiness composition discovery', () => {
     const inventory = withFixture({ files }, discoverCompositionInventory);
     expect(inventory.modules.find((entry) => entry.moduleFile === moduleFile)?.sources).toEqual([moduleFile]);
     expect(check({ files, modules: [moduleDeclaration()] })).toEqual([]);
+    const appAdapter = 'apps/fixture/src/fixture-repository.ts';
+    const appFiles = {
+      ...files,
+      [moduleFile]: providerSource.replace('../../../libs/fixture/adapters/memory', './fixture-repository'),
+      [appAdapter]: 'export class InMemoryFixtureRepository { private inner = new InMemoryHiddenRepository(); } class InMemoryHiddenRepository {}',
+    };
+    expect(check({ files: appFiles, modules: [moduleDeclaration()] })).toEqual([]);
+    expect(check({ files: {
+      ...appFiles,
+      [moduleFile]: "import { InMemoryFixtureRepository, resolveOptions } from './fixture-repository'; export const fixture = { providers: [InMemoryFixtureRepository], options: resolveOptions() };",
+      [appAdapter]: `${appFiles[appAdapter]} export function resolveOptions() { return { durable: true }; }`,
+    }, modules: [moduleDeclaration()] })).toEqual([]);
   });
 
   it('reports unresolved runtime wiring imports but not missing type-only imports', () => {

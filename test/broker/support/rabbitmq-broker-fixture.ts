@@ -100,9 +100,16 @@ export class RabbitMqBrokerFixture {
 
   async expectFullySettled(): Promise<void> {
     // Closing the real consumer requeues any accidentally abandoned unacked item.
-    // A queue count before this close alone would miss such a leak.
+    // Observe both queues through a quiet interval: quorum recovery can become
+    // visible after close-ok, so a single immediate zero count is insufficient.
     await this.channel.close();
-    await this.expectReadyCount(0);
+    for (let sample = 0; sample <= 5; sample += 1) {
+      for (const queue of [this.queue, this.deadLetterQueue]) {
+        const { messageCount } = await this.admin.checkQueue(queue);
+        if (messageCount !== 0) throw new Error(`Broker fixture retained ${messageCount} unsettled messages after consumer close`);
+      }
+      if (sample < 5) await delay(50);
+    }
   }
 
   async close(): Promise<void> {

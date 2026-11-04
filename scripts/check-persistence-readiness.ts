@@ -52,7 +52,11 @@ export function checkPersistenceReadiness(root: string): readonly string[] {
   if (!Array.isArray(contract.mvpRuntimeDecision?.exitCriteria) || contract.mvpRuntimeDecision.exitCriteria.length < 3) {
     violations.push(`${contractPath}: mvpRuntimeDecision.exitCriteria must list concrete durable-adapter exit criteria`);
   }
-  if (!String(contract.mvpRuntimeDecision?.allowedRuntime ?? '').includes('durable_beta_profile')) {
+  const allowedRuntimes = new Set([
+    'durable_beta_profile',
+    'local_dev_and_deterministic_test_fallbacks_with_durable_beta_profile',
+  ]);
+  if (!allowedRuntimes.has(contract.mvpRuntimeDecision?.allowedRuntime ?? '')) {
     violations.push(`${contractPath}: mvpRuntimeDecision.allowedRuntime must require the durable_beta_profile`);
   }
 

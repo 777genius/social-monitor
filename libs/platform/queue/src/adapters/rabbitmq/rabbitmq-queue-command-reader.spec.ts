@@ -86,4 +86,20 @@ describe('RabbitMQ command acquisition and recovery', () => {
     await Promise.all([ack, release]);
     expect(f.channel.nack).not.toHaveBeenCalled();
   });
+
+  it('reasserts the configured route after failed acquisition without redeclaring on healthy drains', async () => {
+    const f = queueReaderFixture([]);
+    const reader = new RabbitMqQueueCommandReader(f.channel, options);
+    await reader.drain(request);
+    f.channel.get.mockRejectedValueOnce(new Error('NOT_FOUND - deleted queue'));
+    await expect(reader.drain(request)).rejects.toThrow('NOT_FOUND');
+    expect(f.channel.assertQueue).toHaveBeenCalledTimes(1);
+
+    await expect(reader.drain(request)).resolves.toEqual([]);
+    expect(f.channel.assertExchange).toHaveBeenCalledTimes(2);
+    expect(f.channel.assertQueue).toHaveBeenCalledTimes(2);
+    expect(f.channel.prefetch).toHaveBeenCalledTimes(2);
+    await reader.drain(request);
+    expect(f.channel.assertQueue).toHaveBeenCalledTimes(2);
+  });
 });
