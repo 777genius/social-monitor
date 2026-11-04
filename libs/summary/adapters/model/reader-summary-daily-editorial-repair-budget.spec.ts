@@ -1,3 +1,4 @@
+import { gatewayLlmFailure } from "./gateway-llm/gateway-llm-failure";
 import { validateDailyEditorialPlan, dailyEditorialCoveragePlan } from "../../domain";
 import { generateReaderSummaryWithDailyEditor } from "../../features/execute-reader-summary-job/reader-summary-daily-editorial-generation";
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
@@ -64,6 +65,33 @@ it.each([
     policy: { preferredProvider: "agent-runtime", maxInputTokens: 100000,
       maxOutputTokens: 16000, maxEstimatedCostUsd: 5 },
     budget,
+  })).rejects.toThrow("Daily editorial writer cannot repair within the shared model budget");
+  expect(client.commands).toHaveLength(2);
+  expect(client.commands[1]!.metadata?.attempt).toBe("primary");
+});
+
+it("does not pay for a schema-rejected daily writer repair after budget exhaustion", async () => {
+  const { input, evidence } = await dailyDigestFixture();
+  const rawPlan = { version: "reader_summary.daily_editorial.v1",
+    topics: [{ title: "Gateway schema failure", why: "Frozen source-bound topic",
+      depth: "detailed", feedItemIds: [evidence.dailyGenerationInput!.selected[19]!.feedItemId] }] };
+  const client = new CapturingAgentRuntimeClient([
+    { status: "completed", structuredOutput: rawPlan, warnings: [],
+      usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150, estimatedCostUsd: 0.1 } },
+    { status: "failed", warnings: [],
+      failure: gatewayLlmFailure({ ok: false, code: "output_invalid", effect: "completed",
+        retry: { kind: "new_attempt", afterMs: 0, mayDuplicateCost: true },
+        execution: null, usage: null, cleanup: "closed" },
+      { taskId: "daily-writer", attempt: 1 },
+      { first: "$.headline:maxLength", all: ["$.headline:maxLength=160"] }),
+      usage: { inputTokens: 200, outputTokens: 200, totalTokens: 400, estimatedCostUsd: 0.55 } },
+  ]);
+  const model = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
+  await expect(generateReaderSummaryWithDailyEditor({
+    model, input,
+    policy: { preferredProvider: "agent-runtime", maxInputTokens: 100000,
+      maxOutputTokens: 16000, maxEstimatedCostUsd: 5 },
+    budget: { remainingTokens: 100000, remainingCostUsd: 0.6 },
   })).rejects.toThrow("Daily editorial writer cannot repair within the shared model budget");
   expect(client.commands).toHaveLength(2);
   expect(client.commands[1]!.metadata?.attempt).toBe("primary");
