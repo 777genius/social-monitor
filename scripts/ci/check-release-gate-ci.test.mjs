@@ -153,7 +153,8 @@ for (const [label, mutate] of [
   ['join detached across steps', (w) => { join(w).run += '\nwait\n'; }],
   ['join failure masked', (w) => { join(w).run += '\nexit 0\n'; }],
   ['join tee masks failure', (w) => { join(w).run = join(w).run.replace(" <<'STATIC_QUALITY'", " | tee joined.log <<'STATIC_QUALITY'"); }],
-  ...['npx eslint .', 'npx tsc --noEmit', 'npx tsc -p ops/ci/tsconfig.historical-bootstrap.json',
+  ...['npm --prefix scripts/readme-preview ci --ignore-scripts',
+    'npm --prefix scripts/readme-preview run typecheck', 'npx eslint .', 'npx tsc --noEmit', 'npx tsc -p ops/ci/tsconfig.historical-bootstrap.json',
     'npm run check:architecture', 'npm run check:code-quality', 'npm run check:source-line-cap',
     'npm run check:persistence-readiness', 'npm run check:observability', 'npm run check:review-ci',
     'node --test scripts/ci/*.test.mjs'].flatMap((command) => [
