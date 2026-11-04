@@ -49,7 +49,7 @@ export function dailyProviderDraft(input: ReaderSummaryModelInput) {
   return {
         headline: "Distinct developments broaden daily engineering workflows",
         executiveSummary: "Several separate source-reported developments affect engineering work.",
-        narrativeSections: [{ kind: "lead", title: "Daily developments",
+        narrativeSections: input.dailyEditorialPlan === undefined || input.dailyEditorialPlan.version === "reader_summary.daily_editorial.v1" ? [{ kind: "lead", title: "Daily developments",
           text: "Separate source-reported developments introduce distinct capabilities and limitations across engineering workflows.",
           storyClusterId: input.dailyEditorialPlan === undefined ? null : planned[0]!.clusterId,
           citationIds: input.dailyEditorialPlan === undefined
@@ -57,7 +57,12 @@ export function dailyProviderDraft(input: ReaderSummaryModelInput) {
             : planned[0]!.feedItemIds.slice(0, 3).map(citation) },
         ...planned.slice(1).map((item, index) => ({ kind: "secondary_signal", title: `Development ${index + 2}`,
           text: `Source ${index + 2} describes a distinct capability and its source-local constraints for this engineering workflow.`,
-          storyClusterId: item.clusterId, citationIds: [citation(item.feedItemIds[0]!)] }))],
+          storyClusterId: item.clusterId, citationIds: [citation(item.feedItemIds[0]!)] }))] : [{ kind: "lead", title: "The day's engineering picture",
+          text: "The supplied reports describe complementary engineering capabilities with distinct source-local limitations.",
+          storyClusterId: null, citationIds: planned.slice(0, 2).map(item => citation(item.feedItemIds[0]!)) },
+          ...planned.slice(1, 4).map((_,index) => ({ kind: "secondary_signal", title: `Cross-cutting takeaway ${index+1}`,
+            text: "These examples support evaluating practical capabilities and constraints without assuming broad adoption or independent confirmation.",
+            storyClusterId: null, citationIds: planned.slice(0, 2).map(item => citation(item.feedItemIds[0]!)) }))],
         topStories: planned.map((item, index) => ({ storyClusterId: item.clusterId,
           title: `Specific development ${index + 1}`,
           summary: `Source ${index + 1} describes a concrete workflow capability and its specific constraints. The result remains source-reported and does not establish broad adoption.`,

@@ -8,7 +8,7 @@ export const dailyEditorialPurpose = "social_monitor.reader_summary.daily_editor
 export const dailyEditorialOutputSchema = {
   type: "object", additionalProperties: false, required: ["version", "topics"],
   properties: {
-    version: { type: "string", enum: ["reader_summary.daily_editorial.v1"] },
+    version: { type: "string", enum: ["reader_summary.daily_editorial.v2"] },
     topics: { type: "array", minItems: 1, maxItems: 10, items: {
       type: "object", additionalProperties: false,
       required: ["title", "why", "depth", "feedItemIds"],
@@ -74,7 +74,7 @@ export const dailyEditorialInstructions = [
   "Act as a careful editor writing a daily technical digest. Return only schema-valid JSON.",
   "Consider ALL provided sources, regardless of their original popularity position.",
   "Select 1–10 genuinely distinct events; the first is the most important and must be detailed.",
-  "Produce a daily roundup. With 30 sources covering multiple relevant developments, usually select 6–10 topics: develop 3–5 important topics and mention other valuable signals briefly. Never fill a quota.",
+  "Plan 6–10 useful individual post cards when 30 sources support a varied day; never fill a quota. These event topics are evidence for a separate day-level synthesis, not an instruction to write one article paragraph per event.",
   "A single-topic plan is appropriate only when the other usable sources repeat that event or contain no relevant development. Do not reduce a varied day to only the single strongest benchmark.",
   "Useful tools, concrete workflows, previews, early releases and practical user reports can deserve brief coverage even when they are less important than the lead.",
   "A single source or lack of independent confirmation calls for attribution and proportionate caveats; it does not by itself justify omitting a useful development.",

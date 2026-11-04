@@ -9,7 +9,7 @@ import { jsonResponse } from "./reader-summary-model-promotion.spec-support";
 
 it("preserves editor capability and the residual writer budget through the runtime metrics decorator", async () => {
   const { input } = await dailyDigestFixture();
-  const plan = validateDailyEditorialPlan({ version: "reader_summary.daily_editorial.v1",
+  const plan = validateDailyEditorialPlan({ version: "reader_summary.daily_editorial.v2",
     topics: [{ title: "Later important development", why: "Practical importance",
       depth: "detailed", feedItemIds: [input.evidence.dailyGenerationInput!.selected[19]!.feedItemId] }],
   }, input.evidence.dailyGenerationInput!);

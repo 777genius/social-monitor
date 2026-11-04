@@ -7,7 +7,7 @@ import { dailyDigestFixture, dailyProviderDraft } from "./reader-summary-daily-d
 
 it("charges an editorial writer repair against the combined model budget", async () => {
   const { input, evidence } = await dailyDigestFixture();
-  const rawPlan = { version: "reader_summary.daily_editorial.v1",
+  const rawPlan = { version: "reader_summary.daily_editorial.v2",
     topics: [{ title: "Repair budget", why: "One frozen source-bound topic",
       depth: "detailed", feedItemIds: [evidence.dailyGenerationInput!.selected[19]!.feedItemId] }] };
   const plan = validateDailyEditorialPlan(rawPlan, evidence.dailyGenerationInput!);
@@ -44,7 +44,7 @@ it.each([
     primaryUsage: { inputTokens: 200, outputTokens: 200, totalTokens: 400, estimatedCostUsd: 0.55 } },
 ])("avoids a paid repair when an invalid writer exhausts the shared $limit budget", async ({ budget, primaryUsage }) => {
   const { input, evidence } = await dailyDigestFixture();
-  const rawPlan = { version: "reader_summary.daily_editorial.v1",
+  const rawPlan = { version: "reader_summary.daily_editorial.v2",
     topics: [{ title: "Blocked repair", why: "Source-bound topic",
       depth: "detailed", feedItemIds: [evidence.dailyGenerationInput!.selected[19]!.feedItemId] }] };
   const plan = validateDailyEditorialPlan(rawPlan, evidence.dailyGenerationInput!);
@@ -72,7 +72,7 @@ it.each([
 
 it("does not pay for a schema-rejected daily writer repair after budget exhaustion", async () => {
   const { input, evidence } = await dailyDigestFixture();
-  const rawPlan = { version: "reader_summary.daily_editorial.v1",
+  const rawPlan = { version: "reader_summary.daily_editorial.v2",
     topics: [{ title: "Gateway schema failure", why: "Frozen source-bound topic",
       depth: "detailed", feedItemIds: [evidence.dailyGenerationInput!.selected[19]!.feedItemId] }] };
   const client = new CapturingAgentRuntimeClient([
@@ -95,4 +95,16 @@ it("does not pay for a schema-rejected daily writer repair after budget exhausti
   })).rejects.toThrow("Daily editorial writer cannot repair within the shared model budget");
   expect(client.commands).toHaveLength(2);
   expect(client.commands[1]!.metadata?.attempt).toBe("primary");
+});
+
+it("rejects a legacy model response to a new synthesis request before the writer dispatch", async () => {
+  const {input,evidence}=await dailyDigestFixture();
+  const client=new CapturingAgentRuntimeClient([{status:"completed",structuredOutput:{version:"reader_summary.daily_editorial.v1",
+    topics:[{title:"Old event plan",why:"Old contract",depth:"detailed",feedItemIds:[evidence.dailyGenerationInput!.selected[0]!.feedItemId]}]},warnings:[]}]);
+  const model=new AgentRuntimeReaderSummaryModelAdapter({client,agentProvider:"codex"});
+  await expect(generateReaderSummaryWithDailyEditor({model,input,
+    policy:{preferredProvider:"agent-runtime",maxInputTokens:100000,maxOutputTokens:16000,maxEstimatedCostUsd:5},
+    budget:{remainingTokens:100000,remainingCostUsd:5}})).rejects.toThrow("legacy plan for a synthesis request");
+  expect(client.commands).toHaveLength(1);
+  expect(client.commands[0]!.controls?.schemaVersion).toBe("reader_summary.daily_editorial.v2");
 });

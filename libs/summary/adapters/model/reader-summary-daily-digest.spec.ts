@@ -131,7 +131,7 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
   const { input, evidence, manifest, snapshots, job } = await dailyDigestFixture();
   const selected = evidence.dailyGenerationInput!.selected;
   const plan = validateDailyEditorialPlan({
-    version: "reader_summary.daily_editorial.v1",
+    version: "reader_summary.daily_editorial.v2",
     topics: [
       { title: "Late important event", why: "More significant than popularity rank",
         depth: "detailed", feedItemIds: [selected[19]!.feedItemId, selected[26]!.feedItemId] },
@@ -155,7 +155,7 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
   expect(payload.evidence.map(item => item.feedItemId)).toEqual(selected.map(item => item.feedItemId));
   expect(payload.dailyEditorialPlan).toEqual(plan);
   expect(attempt.dailyGenerationReceipt?.editorialPlanSha256).toBe(canonicalJsonSha256(plan));
-  expect(attempt.draft.content?.narrativeSections?.length).toBe(10);
+  expect(attempt.draft.content?.narrativeSections?.length).toBe(4);
   expect(attempt.draft.topStories.map(item => item.storyClusterId))
     .toEqual([writer.coveragePlan.lead!, ...writer.coveragePlan.secondary].map(item => item.clusterId));
   const draft = buildReaderSummaryDraftWithPromotionContent(evidence, attempt.draft);
@@ -172,7 +172,7 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
   const saved = artifact.toSnapshot();
   expect(saved.content?.sourceMix.reduce((sum, source) => sum + source.itemCount, 0)).toBe(30);
   expect(saved.dailyEditorialPlan?.plan.topics).toHaveLength(10);
-  expect(saved.content?.narrativeSections?.filter(section => section.kind === "secondary_signal")).toHaveLength(9);
+  expect(saved.content?.narrativeSections?.filter(section => section.kind === "secondary_signal")).toHaveLength(3);
   const guard = { manifest, manifestSha256: evidence.dailyGenerationInput!.manifestSha256,
     periodKey: input.period.periodKey,
     identity: { tenantId: input.tenantId, workspaceId: input.workspaceId, scope: input.scope },
@@ -215,7 +215,7 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
     section.kind === "lead" ? { ...section, citationIds: ["c1"] } : section) ?? [];
   expect(() => ReaderSummaryArtifact.rehydrate({ ...saved,
     content: { ...saved.content!, narrativeSections: invalidLead },
-  })).toThrow("Daily editorial topic cites sources outside its plan");
+  })).toThrow("Daily editorial synthesis requires distinct supported stories");
 });
 
 
@@ -224,7 +224,7 @@ it("binds daily writer citations to the frozen top-30 even without matching boar
   const frozen = evidence.dailyGenerationInput!;
   const lateSource = frozen.selected[19]!;
   const plan = validateDailyEditorialPlan({
-    version: "reader_summary.daily_editorial.v1",
+    version: "reader_summary.daily_editorial.v2",
     topics: [{ title: "Late important story", why: "Relevant despite the popularity position",
       depth: "detailed", feedItemIds: [lateSource.feedItemId] }],
   }, frozen);
@@ -250,7 +250,7 @@ it("binds daily writer citations to the frozen top-30 even without matching boar
 it("calls the attested daily editor once with all frozen sources and their native metrics", async () => {
   const { input, evidence } = await dailyDigestFixture();
   const selected = evidence.dailyGenerationInput!.selected;
-  const rawPlan = { version: "reader_summary.daily_editorial.v1",
+  const rawPlan = { version: "reader_summary.daily_editorial.v2",
     topics: [{ title: "Important later event", why: "Practical impact is high",
       depth: "detailed", feedItemIds: [selected[19]!.feedItemId] }] };
   const client = new CapturingAgentRuntimeClient({
@@ -279,7 +279,7 @@ it("runs the daily editor and writer consecutively against the same frozen thirt
   const { input, evidence, manifest, snapshots, job } = await dailyDigestFixture();
   const selected = evidence.dailyGenerationInput!.selected;
   const rawPlan = {
-    version: "reader_summary.daily_editorial.v1",
+    version: "reader_summary.daily_editorial.v2",
     topics: [
       { title: "Later high-impact change", why: "Practical impact outweighs popularity",
         depth: "detailed", feedItemIds: [selected[19]!.feedItemId, selected[26]!.feedItemId] },
@@ -338,7 +338,8 @@ it("runs the daily editor and writer consecutively against the same frozen thirt
       editorOutputSha256: generated.editor!.editorOutputSha256 },
   });
   const saved = artifact.toSnapshot();
-  expect(saved.content?.narrativeSections).toHaveLength(10);
+  expect(saved.content?.narrativeSections).toHaveLength(4);
+  expect(saved.content?.headline).toBe(generated.attempt.draft.headline);
   expect(saved.content?.sourceMix.reduce((sum, item) => sum + item.itemCount, 0)).toBe(30);
   expect(dailyGenerationPublicationMatches({
     manifest, manifestSha256: evidence.dailyGenerationInput!.manifestSha256,
@@ -353,7 +354,7 @@ it("does not dispatch the writer for a rejected editorial plan", async () => {
   const client = new CapturingAgentRuntimeClient({
     status: "completed", warnings: [],
     structuredOutput: {
-      version: "reader_summary.daily_editorial.v1",
+      version: "reader_summary.daily_editorial.v2",
       topics: [{ title: "Unbound claim", why: "Unsupported source",
         depth: "detailed", feedItemIds: ["outside-the-frozen-thirty"] }],
     },
@@ -373,7 +374,7 @@ it("does not dispatch the writer after an editor exhausts the shared budget", as
   const { input, evidence } = await dailyDigestFixture();
   const selected = evidence.dailyGenerationInput!.selected;
   const plan = {
-    version: "reader_summary.daily_editorial.v1",
+    version: "reader_summary.daily_editorial.v2",
     topics: [{ title: "Expensive editor", why: "Bound to one source",
       depth: "detailed", feedItemIds: [selected[0]!.feedItemId] }],
   };
@@ -396,7 +397,7 @@ it("fails closed after a valid editor when the writer drops its planned topic", 
   const { input, evidence } = await dailyDigestFixture();
   const selected = evidence.dailyGenerationInput!.selected;
   const rawPlan = {
-    version: "reader_summary.daily_editorial.v1",
+    version: "reader_summary.daily_editorial.v2",
     topics: [{ title: "Valid editorial topic", why: "Specific source evidence",
       depth: "detailed", feedItemIds: [selected[19]!.feedItemId] }],
   };
@@ -416,7 +417,7 @@ it("fails closed after a valid editor when the writer drops its planned topic", 
     policy: { preferredProvider: "agent-runtime", maxInputTokens: 100000,
       maxOutputTokens: 16000, maxEstimatedCostUsd: 5 },
     budget: { remainingTokens: 160000, remainingCostUsd: 10 },
-  })).rejects.toThrow("Daily editorial narrative must cover every planned topic");
+  })).rejects.toThrow("Daily editorial narrative requires an overview and at most five takeaways");
   expect(client.commands).toHaveLength(3);
   expect(client.commands[1]!.purpose).not.toBe(client.commands[0]!.purpose);
   expect(client.commands[2]!.metadata?.attempt).toBe("repair");
@@ -426,7 +427,7 @@ it("repairs an invalid daily editorial writer once without replanning sources", 
   const { input, evidence } = await dailyDigestFixture();
   const selected = evidence.dailyGenerationInput!.selected;
   const rawPlan = {
-    version: "reader_summary.daily_editorial.v1",
+    version: "reader_summary.daily_editorial.v2",
     topics: [{ title: "High impact late source", why: "The verified original source",
       depth: "detailed", feedItemIds: [selected[19]!.feedItemId] }],
   };
@@ -471,7 +472,7 @@ it.each([
 ])("rejects actual daily writer $limit usage above the shared post-editor budget", async ({ editorCost, writerUsage, budget }) => {
   const { input, evidence } = await dailyDigestFixture();
   const rawPlan = {
-    version: "reader_summary.daily_editorial.v1",
+    version: "reader_summary.daily_editorial.v2",
     topics: [{ title: "Budgeted development", why: "Source-grounded impact",
       depth: "detailed", feedItemIds: [evidence.dailyGenerationInput!.selected[19]!.feedItemId] }],
   };
@@ -494,4 +495,26 @@ it.each([
     budget,
   })).rejects.toThrow("Daily editorial writer exceeded the shared model budget");
   expect(client.commands).toHaveLength(2);
+});
+
+it("rehydrates and roundtrips a legacy v1 event narrative without rewriting its proof", async () => {
+  const { input, evidence, job } = await dailyDigestFixture();
+  const selected = evidence.dailyGenerationInput!.selected;
+  const plan = validateDailyEditorialPlan({version:"reader_summary.daily_editorial.v1",topics:selected.slice(0,3).map((source,index)=>({
+    title:`Legacy event ${index}`,why:"A concrete event",depth:index===0?"detailed":"brief",feedItemIds:[source.feedItemId],
+  }))},evidence.dailyGenerationInput!);
+  const writer = {...input,dailyEditorialPlan:plan,coveragePlan:dailyEditorialCoveragePlan(plan,evidence)};
+  const {attempt}=await generateDailyFixture(writer);
+  expect(attempt.draft.content?.narrativeSections).toHaveLength(3);
+  expect(attempt.draft.content?.narrativeSections?.[0]?.storyClusterId).toBe(selected[0]!.storyId);
+  const draft=buildReaderSummaryDraftWithPromotionContent(evidence,attempt.draft);
+  const artifact=buildReaderSummaryModelArtifact({snapshot:job.toSnapshot(),readerSummaryId:"legacy-v1-roundtrip",
+    generatedAt:input.requestedAt,modelEvidence:evidence,contextArtifacts:[],draft,dailyGenerationReceipt:attempt.dailyGenerationReceipt,
+    dailyEditorialPlan:{plan,frozenManifestSha256:evidence.dailyGenerationInput!.manifestSha256,
+      editorRequestSha256:createHash("sha256").update(buildDailyEditorialPrompt(input)).digest("hex"),editorOutputSha256:canonicalJsonSha256(plan)}});
+  const before=artifact.toSnapshot();
+  const after=ReaderSummaryArtifact.rehydrate(before).toSnapshot();
+  expect(after).toEqual(before);
+  expect(after.dailyEditorialPlan?.plan.version).toBe("reader_summary.daily_editorial.v1");
+  expect(() => validateDailyEditorialPlan({...plan,version:"reader_summary.daily_editorial.v99"},evidence.dailyGenerationInput!)).toThrow("Invalid daily editorial plan");
 });

@@ -3,7 +3,8 @@ import type { SummaryEvidenceSelection } from "../value-objects/summary-evidence
 import type { ReaderSummaryCoveragePlan, ReaderSummaryCoveragePlanItem } from "./reader-summary-coverage-plan";
 import { READER_SUMMARY_DAILY_INPUT_POLICY } from "../value-objects/reader-summary-daily-generation-input";
 
-export const DAILY_EDITORIAL_PLAN_VERSION = "reader_summary.daily_editorial.v1" as const;
+export const DAILY_EDITORIAL_PLAN_VERSION = "reader_summary.daily_editorial.v2" as const;
+export const LEGACY_DAILY_EDITORIAL_PLAN_VERSION = "reader_summary.daily_editorial.v1" as const;
 
 export type DailyEditorialTopic = {
   readonly title: string;
@@ -20,7 +21,7 @@ export type DailyEditorialProof = {
 };
 
 export type DailyEditorialPlan = {
-  readonly version: typeof DAILY_EDITORIAL_PLAN_VERSION;
+  readonly version: typeof DAILY_EDITORIAL_PLAN_VERSION | typeof LEGACY_DAILY_EDITORIAL_PLAN_VERSION;
   readonly topics: readonly DailyEditorialTopic[];
 };
 
@@ -29,7 +30,7 @@ export function validateDailyEditorialPlan(
   value: unknown,
   frozen: ReaderSummaryDailyGenerationInput,
 ): DailyEditorialPlan {
-  if (!record(value) || value.version !== DAILY_EDITORIAL_PLAN_VERSION ||
+  if (!record(value) || (value.version !== DAILY_EDITORIAL_PLAN_VERSION && value.version !== LEGACY_DAILY_EDITORIAL_PLAN_VERSION) ||
       Object.keys(value).length !== 2 || !Array.isArray(value.topics) ||
       value.topics.length < 1 || value.topics.length > 10 ||
       frozen.selected.length < 1) {
@@ -69,7 +70,7 @@ export function validateDailyEditorialPlan(
       feedItemIds: ids,
     };
   });
-  return { version: DAILY_EDITORIAL_PLAN_VERSION, topics };
+  return { version: value.version, topics };
 }
 
 const record = (value: unknown): value is Record<string, unknown> =>

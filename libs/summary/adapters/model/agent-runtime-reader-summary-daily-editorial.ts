@@ -35,15 +35,16 @@ export async function runAgentRuntimeDailyEditor(params: {
     controls: {
       ...baseCommand.controls,
       outputSchemaName: "social_monitor_daily_editorial_plan",
-      schemaVersion: "reader_summary.daily_editorial.v1",
+      schemaVersion: "reader_summary.daily_editorial.v2",
       maxOutputTokens: Math.min(params.maxOutputTokens, 3_000),
     },
-    metadata: { ...baseCommand.metadata, promptVersion: "reader_summary.daily_editorial.v1" },
+    metadata: { ...baseCommand.metadata, promptVersion: "reader_summary.daily_editorial.v2" },
   };
   const result = await params.client.runTask(command);
   const raw = readAgentRuntimeObjectOutput(
     result, parseOpenAiReaderSummaryJsonObject, "Daily editorial plan");
   const plan = validateDailyEditorialPlan(raw, frozen);
+  if (plan.version !== "reader_summary.daily_editorial.v2") throw new Error("Daily editor returned a legacy plan for a synthesis request");
   await verifyAndRecordReaderSummaryExecution({
     command, result, taskRole: "daily_editor", attempt: "primary",
     normalizedOutput: plan, sink: params.sink,
