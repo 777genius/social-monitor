@@ -25,7 +25,8 @@ export function decideFailedScanDeliveryAction(
   if (shuttingDown ||
       (error instanceof DomainError &&
         (error.code === 'operation.backpressure' ||
-          transientFailureReasons.has(String(error.details.reason))))) {
+          (typeof error.details.reason === 'string' &&
+            transientFailureReasons.has(error.details.reason))))) {
     return 'requeue';
   }
 
