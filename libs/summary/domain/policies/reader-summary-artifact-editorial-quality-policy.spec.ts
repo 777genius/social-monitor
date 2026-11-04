@@ -307,3 +307,22 @@ const section = (
     ? {}
     : { storyClusterId: params.storyClusterId }),
 });
+
+it("uses the shared v2 synthesis proof while retaining the legacy single-story and cluster gates", () => {
+  const sections = [{kind:"lead" as const,title:"Today's picture",text:"Several reports expose complementary capabilities and constraints.",citationIds:["c1","c2"]},
+    ...Array.from({length:4},(_,index)=>({kind:"secondary_signal" as const,title:`Takeaway ${index}`,text:"These reports support a bounded practical comparison with explicit uncertainty.",citationIds:["c1","c2"]}))];
+  const selected=[{feedItemId:"f1",storyId:"s1"},{feedItemId:"f2",storyId:"s2"}];
+  const citations=selected.map((post,index)=>({citationId:`c${index+1}`,feedItemId:post.feedItemId,sourceItemId:`source${index}`,providerKey:"reddit",field:"bodyPreview" as const}));
+  const plan={version:"reader_summary.daily_editorial.v2" as const,topics:selected.map((post,index)=>({title:`Event ${index}`,why:"Supported event",depth:index===0?"detailed" as const:"brief" as const,feedItemIds:[post.feedItemId]}))};
+  const input:ReaderSummaryArtifactEditorialQualityInput={headline:"Tools expose practical capabilities and constraints",coverageMode:"single_story",dailyEditorialPlan:true,
+    coveragePolicyVersion:READER_SUMMARY_DAILY_INPUT_POLICY,topPostTitles:[],narrativeSections:sections,renderedMarkdown:"Grounded complete paragraphs.",
+    citations:citations.map((citation,index)=>({...citation,storyClusterId:`s${index+1}`})),synthesisProof:{plan,selected,citations}};
+  expect(evaluateReaderSummaryArtifactEditorialQuality(input).blockingPassed).toBe(true);
+  const legacy=evaluateReaderSummaryArtifactEditorialQuality({...input,synthesisProof:undefined});
+  expect(legacy.qualityGates.secondarySignalsUseUniqueClusters).toBe(false);
+  expect(legacy.qualityGates.singleStoryLeadIsHonestlyClusterBound).toBe(false);
+  for(const ids of [["c1"],["c1","missing"],["c1","c1"]]) {
+    const invalid=evaluateReaderSummaryArtifactEditorialQuality({...input,narrativeSections:[{...sections[0]!,citationIds:ids},...sections.slice(1)]});
+    expect(invalid.blockingPassed).toBe(false);
+  }
+});

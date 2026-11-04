@@ -375,6 +375,7 @@ const editorialQualityInput = (
   return {
     headline: snapshot.content?.headline ?? snapshot.headline,
     dailyEditorialPlan: snapshot.dailyEditorialPlan !== undefined,
+    ...(snapshot.dailyEditorialPlan?.plan.version === "reader_summary.daily_editorial.v2" && snapshot.dailyGenerationInput ? {synthesisProof:{plan:snapshot.dailyEditorialPlan.plan,selected:snapshot.dailyGenerationInput.selected,citations:snapshot.citationMap}} : {}),
     coverageMode,
     // Board titles now carry full source context. Also compare the original
     // headings of their cited sources so appended bodies cannot hide copying.

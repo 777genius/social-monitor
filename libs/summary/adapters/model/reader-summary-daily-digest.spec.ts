@@ -1,3 +1,4 @@
+import { ReaderSummaryPublicationPolicy } from "../../domain/policies/reader-summary-publication-policy";
 import { ok } from "@social-monitor/shared-kernel";
 import { emptyReaderSummaryTopicMap } from "../../domain";
 import { BuildReaderSummaryTopicMapUseCase } from "../../features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
@@ -338,6 +339,9 @@ it("runs the daily editor and writer consecutively against the same frozen thirt
       editorOutputSha256: generated.editor!.editorOutputSha256 },
   });
   const saved = artifact.toSnapshot();
+  const normalQuality = new ReaderSummaryPublicationPolicy().evaluate({artifact,evidence});
+  expect(normalQuality.status).toBe("published");
+  expect((normalQuality.status === "rejected" ? normalQuality.findings : []).filter(finding => finding.code === "editorial_quality")).toEqual([]);
   expect(saved.content?.narrativeSections).toHaveLength(4);
   expect(saved.content?.headline).toBe(generated.attempt.draft.headline);
   expect(saved.content?.sourceMix.reduce((sum, item) => sum + item.itemCount, 0)).toBe(30);
