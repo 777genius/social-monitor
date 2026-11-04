@@ -28,7 +28,6 @@ import {
   extractOpenAiOutputText,
   normalizeOpenAiReaderSummaryDraft,
   OpenAiReaderSummaryOutputParseError,
-  openAiReaderSummaryJsonSchema,
   parseOpenAiReaderSummaryJsonObject,
   readOpenAiResponseBody,
   resolveOpenAiReaderSummaryUsage,
@@ -39,7 +38,7 @@ import {
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
-import { dailyEditorialReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
+import { readerSummaryWriterSchema } from "./openai-responses-reader-summary-schema";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -244,8 +243,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
           type: "json_schema",
           name: "social_monitor_reader_summary_artifact",
           strict: true,
-          schema: input.dailyEditorialPlan === undefined
-            ? openAiReaderSummaryJsonSchema : dailyEditorialReaderSummaryJsonSchema,
+          schema: readerSummaryWriterSchema(input),
         },
       },
     });

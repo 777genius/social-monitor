@@ -155,6 +155,7 @@ it("publishes ten source-bound editorial topics with a late lead and cross-clust
     dailyEditorialPlan: typeof plan };
   expect(payload.evidence.map(item => item.feedItemId)).toEqual(selected.map(item => item.feedItemId));
   expect(payload.dailyEditorialPlan).toEqual(plan);
+  expect((request as unknown as {text:{format:{schema:{properties:{narrativeSections:{minItems:number;maxItems:number}}}}}}).text.format.schema.properties.narrativeSections).toMatchObject({minItems:1,maxItems:6});
   expect(attempt.dailyGenerationReceipt?.editorialPlanSha256).toBe(canonicalJsonSha256(plan));
   expect(attempt.draft.content?.narrativeSections?.length).toBe(4);
   expect(attempt.draft.topStories.map(item => item.storyClusterId))
@@ -457,7 +458,7 @@ it("repairs an invalid daily editorial writer once without replanning sources", 
   expect(client.commands[1]!.metadata?.attempt).toBe("primary");
   expect(client.commands[2]!.metadata?.attempt).toBe("repair");
   expect(client.commands[2]!.systemPrompt).toContain(
-    "Return exactly one secondary_signal for every coveragePlan.secondary entry");
+    "never one entry per editorial topic");
   expect(client.commands[2]!.prompt).toBe(client.commands[1]!.prompt);
   expect(client.commands[2]!.requestId).not.toBe(client.commands[1]!.requestId);
   expect(generated.editor?.plan).toEqual(plan);

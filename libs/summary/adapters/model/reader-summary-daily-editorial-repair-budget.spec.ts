@@ -35,6 +35,14 @@ it("charges an editorial writer repair against the combined model budget", async
   expect(client.commands[0]!.purpose).toBe("social_monitor.reader_summary.daily_editorial.plan.v1");
   expect(client.commands[1]!.metadata?.attempt).toBe("primary");
   expect(client.commands[2]!.metadata?.attempt).toBe("repair");
+  for (const command of client.commands.slice(1)) {
+    const schema = command.outputSchema as {properties:{narrativeSections:{minItems:number;maxItems:number}},$defs:{narrativeSection:{properties:{kind:{enum:string[]},storyClusterId:{type:string}}}}};
+    expect(schema.properties.narrativeSections).toMatchObject({minItems:1,maxItems:6});
+    expect(schema.$defs.narrativeSection.properties.kind.enum).toEqual(["lead","secondary_signal"]);
+    expect(schema.$defs.narrativeSection.properties.storyClusterId).toEqual({type:"null"});
+  }
+  expect(client.commands[2]!.systemPrompt).toContain("never one entry per editorial topic");
+  expect(client.commands[2]!.systemPrompt).not.toContain("exactly one secondary_signal for every coveragePlan.secondary");
 });
 
 it.each([

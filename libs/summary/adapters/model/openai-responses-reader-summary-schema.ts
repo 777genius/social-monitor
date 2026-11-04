@@ -179,3 +179,33 @@ export const dailyEditorialReaderSummaryJsonSchema = {
     topStories: arraySchema({ $ref: "#/$defs/topStory" }, 10),
   },
 } as const;
+
+/** Synthesis v2 is a different response contract; legacy event narratives remain unchanged. */
+export const dailySynthesisReaderSummaryJsonSchema = {
+  ...dailyEditorialReaderSummaryJsonSchema,
+  $defs: {...dailyEditorialReaderSummaryJsonSchema.$defs, narrativeSection: {
+    ...dailyEditorialReaderSummaryJsonSchema.$defs.narrativeSection,
+    properties: {...dailyEditorialReaderSummaryJsonSchema.$defs.narrativeSection.properties,
+      kind: {enum:["lead","secondary_signal"]}, storyClusterId:{type:"null"},
+      citationIds:{...stringArraySchema(3),minItems:1},
+    },
+  }},
+  properties:{...dailyEditorialReaderSummaryJsonSchema.properties,
+    narrativeSections:{...arraySchema({$ref:"#/$defs/narrativeSection"},6),minItems:1},
+  },
+} as const;
+export function readerSummaryWriterSchema(input: {
+  readonly dailyEditorialPlan?: {readonly version:string; readonly topics?: readonly {readonly feedItemIds:readonly string[]}[]};
+  readonly evidence?: {readonly dailyGenerationInput?: {readonly selected:readonly {readonly feedItemId:string;readonly storyId:string}[]}};
+}) {
+  if (input.dailyEditorialPlan === undefined) return openAiReaderSummaryJsonSchema;
+  if (input.dailyEditorialPlan.version !== "reader_summary.daily_editorial.v2") return dailyEditorialReaderSummaryJsonSchema;
+  const assigned = new Set(input.dailyEditorialPlan.topics?.flatMap(topic => topic.feedItemIds) ?? []);
+  const stories = new Set(input.evidence?.dailyGenerationInput?.selected.filter(item => assigned.has(item.feedItemId)).map(item => item.storyId));
+  if (stories.size < 2) return dailySynthesisReaderSummaryJsonSchema;
+  return {...dailySynthesisReaderSummaryJsonSchema,$defs:{...dailySynthesisReaderSummaryJsonSchema.$defs,narrativeSection:{
+    ...dailySynthesisReaderSummaryJsonSchema.$defs.narrativeSection,
+    properties:{...dailySynthesisReaderSummaryJsonSchema.$defs.narrativeSection.properties,
+      citationIds:{...dailySynthesisReaderSummaryJsonSchema.$defs.narrativeSection.properties.citationIds,minItems:2}},
+  }}};
+}

@@ -1,3 +1,5 @@
+import { readerSummaryWriterSchema, dailySynthesisReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
+import { isRepairableNarrativeError, readerSummaryRepairInstruction } from "./reader-summary-narrative-repair-contract";
 import { assertDailyEditorialSynthesis } from "../../domain/services/reader-summary-daily-input-binding";
 import { buildOpenAiReaderSummaryInstructions } from "./openai-responses-reader-summary-prompt";
 import { dailyEditorialReaderSummaryJsonSchema, openAiReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
@@ -40,6 +42,7 @@ it("synthesizes distinct stories while preserving sparse evidence and rejecting 
   })) }, frozen);
   const instructions = buildOpenAiReaderSummaryInstructions({...input,dailyEditorialPlan:plan});
   expect(instructions).toContain("overall picture");
+  expect((readerSummaryWriterSchema({...input,dailyEditorialPlan:plan}) as { $defs:{narrativeSection:{properties:{citationIds:unknown}}}}).$defs.narrativeSection.properties.citationIds).toMatchObject({minItems:2,maxItems:3});
   expect(instructions).toContain("not a sequence of post recaps");
   expect(instructions).toContain("not a rewrite of the first event title");
   const citationMap = distinct.map((source,index) => ({citationId:`c${index}`,feedItemId:source.feedItemId,
@@ -61,4 +64,22 @@ it("synthesizes distinct stories while preserving sparse evidence and rejecting 
   expect(() => normalize([overview,...Array.from({length:6},()=>theme)])).toThrow("at most five");
   const unrelated = {...citationMap[0]!,citationId:"outside",feedItemId:"not-planned"};
   expect(() => normalizeDailyEditorialNarrative({input:{...input,dailyEditorialPlan:plan},citationMap:[...citationMap,unrelated],rawSections:[{...overview,citationIds:["c0","outside"]}]})).toThrow("unplanned");
+});
+
+it("selects a bounded synthesis contract without changing legacy schema or repair", () => {
+  expect(readerSummaryWriterSchema({})).toBe(openAiReaderSummaryJsonSchema);
+  expect(readerSummaryWriterSchema({dailyEditorialPlan:{version:"reader_summary.daily_editorial.v1"}})).toBe(dailyEditorialReaderSummaryJsonSchema);
+  expect(dailyEditorialReaderSummaryJsonSchema.properties.narrativeSections.maxItems).toBe(10);
+  expect(readerSummaryWriterSchema({dailyEditorialPlan:{version:"reader_summary.daily_editorial.v2"}})).toBe(dailySynthesisReaderSummaryJsonSchema);
+  const repair=readerSummaryRepairInstruction({dailyEditorialPlan:{version:"reader_summary.daily_editorial.v2"}},["narrativeSections:maxItems=6"]);
+  expect(repair).toContain("maxItems=6");
+  expect(repair).toContain("1–6 entries total");
+  expect(repair).not.toContain("exactly one secondary_signal for every");
+  expect(readerSummaryRepairInstruction({dailyEditorialPlan:{version:"reader_summary.daily_editorial.v1"}})).toContain("exactly one secondary_signal for every");
+  expect(isRepairableNarrativeError(new Error("Daily editorial synthesis requires distinct supported stories"))).toBe(true);
+  expect(isRepairableNarrativeError(new Error("provider_effect_unknown"))).toBe(false);
+  const legacySchemaRepair=readerSummaryRepairInstruction({dailyEditorialPlan:{version:"reader_summary.daily_editorial.v1"}},["title:maxLength=100"]);
+  expect(legacySchemaRepair).toContain("title:maxLength=100");
+  expect(legacySchemaRepair).not.toContain("For single_story");
+  expect(legacySchemaRepair).not.toContain("one entry per editorial topic");
 });
