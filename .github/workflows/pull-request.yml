@@ -79,6 +79,11 @@ jobs:
       - name: Install exact dependencies
         run: npm ci
 
+      - name: Verify standalone README screenshot tooling
+        run: |
+          npm ci --prefix scripts/readme-preview --ignore-scripts
+          npm --prefix scripts/readme-preview run typecheck
+
       - name: Generate the pinned Prisma client
         run: npm run prisma:generate
 
