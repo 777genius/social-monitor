@@ -851,4 +851,91 @@ describe("ExecuteScanUseCase", () => {
     expect(failures.deadLetters).toHaveLength(0);
     expect(leases.released).toHaveLength(0);
   });
+
+  it("keeps the cursor unchanged when a required feed projection fails", async () => {
+    const fetcher = new FixedSourceFetcher();
+    const projection = new FakeFeedProjection();
+    jest.spyOn(projection, "project").mockRejectedValueOnce(
+      new Error("Feed projection unavailable"),
+    );
+    const attempts = new FakeScanAttemptRepository();
+    const cursors = new FakeScanCursorRepository();
+    const reporter = new FakeScanExecutionReporter();
+    const failures = new FakeScanFailureQueue();
+    const useCase = new ExecuteScanUseCase(
+      fetcher,
+      new FakeSourceItemRepository(),
+      projection,
+      attempts,
+      cursors,
+      reporter,
+      failures,
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date("2026-06-05T12:00:00.000Z")),
+    );
+    const command = makeExecuteScanCommand({
+      scanJobId: "scan-projection-failed",
+      attemptNumber: 1,
+      retryBudget: 3,
+    });
+
+    const result = await useCase.execute(command);
+
+    expect(result.ok).toBe(false);
+    expect(fetcher.calls).toHaveLength(1);
+    expect(cursors.saved).toEqual([]);
+    expect(reporter.succeeded).toHaveLength(0);
+    expect(failures.retries).toHaveLength(1);
+    expect((await attempts.findByScanJob(command))?.toSnapshot()).toMatchObject({
+      status: "failed",
+      terminalFailure: false,
+    });
+  });
+
+  it("replays a persisted success without refetch after outcome reporting fails", async () => {
+    const fetcher = new FixedSourceFetcher();
+    const attempts = new FakeScanAttemptRepository();
+    const cursors = new FakeScanCursorRepository();
+    const reporter = new FakeScanExecutionReporter();
+    jest.spyOn(reporter, "reportSucceeded").mockRejectedValueOnce(
+      new Error("Outcome reporter temporarily unavailable"),
+    );
+    const failures = new FakeScanFailureQueue();
+    const lease = new FakeScanLease();
+    const useCase = new ExecuteScanUseCase(
+      fetcher,
+      new FakeSourceItemRepository(),
+      new FakeFeedProjection(),
+      attempts,
+      cursors,
+      reporter,
+      failures,
+      lease,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date("2026-06-05T12:00:00.000Z")),
+    );
+    const command = makeExecuteScanCommand({ scanJobId: "scan-report-replay" });
+
+    const first = await useCase.execute(command);
+    const replay = await useCase.execute(command);
+
+    expect(first).toMatchObject({
+      ok: false,
+      error: { details: { reason: "scan_outcome_reporting_failed" } },
+    });
+    expect(replay).toMatchObject({
+      ok: true,
+      value: { scanJobId: "scan-report-replay", fetched: 2, inserted: 2 },
+    });
+    expect(fetcher.calls).toHaveLength(1);
+    expect(cursors.saved).toHaveLength(1);
+    expect(reporter.succeeded).toHaveLength(1);
+    expect(failures.retries).toHaveLength(0);
+    expect(failures.deadLetters).toHaveLength(0);
+    expect(lease.released).toHaveLength(2);
+    expect((await attempts.findByScanJob(command))?.toSnapshot()).toMatchObject({
+      status: "succeeded",
+    });
+  });
 });
