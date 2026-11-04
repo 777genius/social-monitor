@@ -347,3 +347,76 @@ it("runs the daily editor and writer consecutively against the same frozen thirt
     snapshots, artifact: saved,
   })).toBe(true);
 });
+
+it("does not dispatch the writer for a rejected editorial plan", async () => {
+  const { input } = await dailyDigestFixture();
+  const client = new CapturingAgentRuntimeClient({
+    status: "completed", warnings: [],
+    structuredOutput: {
+      version: "reader_summary.daily_editorial.v1",
+      topics: [{ title: "Unbound claim", why: "Unsupported source",
+        depth: "detailed", feedItemIds: ["outside-the-frozen-thirty"] }],
+    },
+  });
+  const model = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
+  await expect(generateReaderSummaryWithDailyEditor({
+    model, input,
+    policy: { preferredProvider: "agent-runtime", maxInputTokens: 100000,
+      maxOutputTokens: 16000, maxEstimatedCostUsd: 5 },
+    budget: { remainingTokens: 160000, remainingCostUsd: 10 },
+  })).rejects.toThrow("Daily editorial topic references unknown or duplicate source");
+  expect(client.commands).toHaveLength(1);
+  expect(client.commands[0]!.purpose).toBe("social_monitor.reader_summary.daily_editorial.plan.v1");
+});
+
+it("does not dispatch the writer after an editor exhausts the shared budget", async () => {
+  const { input, evidence } = await dailyDigestFixture();
+  const selected = evidence.dailyGenerationInput!.selected;
+  const plan = {
+    version: "reader_summary.daily_editorial.v1",
+    topics: [{ title: "Expensive editor", why: "Bound to one source",
+      depth: "detailed", feedItemIds: [selected[0]!.feedItemId] }],
+  };
+  const client = new CapturingAgentRuntimeClient({
+    status: "completed", structuredOutput: plan, warnings: [],
+    usage: { inputTokens: 160000, outputTokens: 12, totalTokens: 160012,
+      estimatedCostUsd: 0 },
+  });
+  const model = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
+  await expect(generateReaderSummaryWithDailyEditor({
+    model, input,
+    policy: { preferredProvider: "agent-runtime", maxInputTokens: 100000,
+      maxOutputTokens: 16000, maxEstimatedCostUsd: 5 },
+    budget: { remainingTokens: 160000, remainingCostUsd: 10 },
+  })).rejects.toThrow("Daily editorial planning consumed the model budget");
+  expect(client.commands).toHaveLength(1);
+});
+
+it("fails closed after a valid editor when the writer drops its planned topic", async () => {
+  const { input, evidence } = await dailyDigestFixture();
+  const selected = evidence.dailyGenerationInput!.selected;
+  const rawPlan = {
+    version: "reader_summary.daily_editorial.v1",
+    topics: [{ title: "Valid editorial topic", why: "Specific source evidence",
+      depth: "detailed", feedItemIds: [selected[19]!.feedItemId] }],
+  };
+  const plan = validateDailyEditorialPlan(rawPlan, evidence.dailyGenerationInput!);
+  const writer = { ...input, dailyEditorialPlan: plan,
+    coveragePlan: dailyEditorialCoveragePlan(plan, evidence),
+    policy: { ...input.policy, maxStories: 1 } };
+  const client = new CapturingAgentRuntimeClient([
+    { status: "completed", structuredOutput: rawPlan, warnings: [] },
+    { status: "completed", structuredOutput: {
+      ...dailyProviderDraft(writer), narrativeSections: [],
+    }, warnings: [] },
+  ]);
+  const model = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
+  await expect(generateReaderSummaryWithDailyEditor({
+    model, input,
+    policy: { preferredProvider: "agent-runtime", maxInputTokens: 100000,
+      maxOutputTokens: 16000, maxEstimatedCostUsd: 5 },
+    budget: { remainingTokens: 160000, remainingCostUsd: 10 },
+  })).rejects.toThrow("Daily editorial narrative must cover every planned topic");
+  expect(client.commands).toHaveLength(2);
+  expect(client.commands[1]!.purpose).not.toBe(client.commands[0]!.purpose);
+});
