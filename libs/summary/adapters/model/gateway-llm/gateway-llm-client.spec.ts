@@ -1,7 +1,7 @@
 import type { Prepare, SafeError } from "@agent-teams/account-gateway/contracts";
 import { GatewayError } from "@agent-teams/account-gateway/http";
 import type { NativeResponse } from "@agent-teams/account-gateway/http";
-import { createLlmClient } from "@agent-teams/account-gateway/llm";
+import { createLlmClient, LLM_DEFAULT_OUTPUT_BYTES, LLM_MAX_OUTPUT_BYTES } from "@agent-teams/account-gateway/llm";
 import type { ConsumerControlPort, ExecutionPort } from "@agent-teams/account-gateway/llm";
 import { isAttestedRuntimeIdentity } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
@@ -111,6 +111,37 @@ const command = (overrides: Partial<AgentRuntimeTaskCommand> = {}): AgentRuntime
   controls: { model: "k3-256k", modelBackend: "kimi-code", maxOutputTokens: 6_000 },
   timeoutMs: 60_000,
   ...overrides,
+});
+
+describe("purpose-scoped SSE output budgets", () => {
+  it.each([
+    [activeReaderSummaryPurposes.generate, LLM_MAX_OUTPUT_BYTES],
+    [activeReaderSummaryPurposes.repair, LLM_MAX_OUTPUT_BYTES],
+    [activeReaderSummaryPurposes.dailyEditorial, LLM_DEFAULT_OUTPUT_BYTES],
+    [activeReaderSummaryPurposes.promotionPresentation, LLM_DEFAULT_OUTPUT_BYTES],
+    [activeReaderSummaryPurposes.topicLabel, LLM_DEFAULT_OUTPUT_BYTES],
+    ["social_monitor.reader_summary.generate.v2.extra", LLM_DEFAULT_OUTPUT_BYTES],
+    ["social_monitor.reader_summary.generate", LLM_DEFAULT_OUTPUT_BYTES],
+  ] as const)("signs the finite transport budget for %s without changing model output controls", async (purpose, outputBytes) => {
+    const h = harness();
+    const result = await h.client.runTask(command({ purpose }));
+    expect(result.status).toBe("completed");
+    expect(h.prepares[0]).toMatchObject({ limits: { outputBytes, tokens: 32_768 } });
+    expect(h.bodies[0]).toMatchObject({ model: "k3-256k", max_output_tokens: 32_768,
+      text: { format: { type: "json_schema", strict: true } } });
+    expect(h.requests()).toBe(1);
+  });
+
+  it("still rejects a writer answer beyond the final JSON field bound without a retry", async () => {
+    const h = harness({ request: async () => completedStream('{"label":"too long","note":null}') });
+    const result = await h.client.runTask(command({ purpose: activeReaderSummaryPurposes.generate,
+      outputSchema: { ...schema, properties: { ...schema.properties,
+        label: { type: "string", maxLength: 3 } } } }));
+    expect(h.prepares[0]).toMatchObject({ limits: { outputBytes: LLM_MAX_OUTPUT_BYTES } });
+    expect(result.failure).toMatchObject({ code: "provider_output_invalid", details: {
+      outputValidationViolations: "$.label:maxLength=3" } });
+    expect(h.requests()).toBe(1);
+  });
 });
 
 describe("gateway settlement grace", () => {
