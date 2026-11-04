@@ -36,7 +36,9 @@ Output goes to `docs/assets/readme-preview/`:
 - `capture.json`: source URL, date, viewport sizes and capture time.
 
 Live content may change even for the same date. These are product screenshots,
-not deterministic golden tests. A failed capture leaves the previous images intact.
+not deterministic golden tests. Capture errors leave existing output untouched.
+Publication replaces the generated files sequentially; if a filesystem error
+interrupts publication, rerun generation to refresh the complete set.
 
 ## Adjust the presentation
 

@@ -29,7 +29,6 @@ if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password 
 const output = resolve(root, values.out!);
 // A failed capture never replaces the last complete README image.
 const staging = `${output}.staging-${process.pid}`;
-await mkdir(staging, { recursive: true });
 const expectedDate = target.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 const browser = await chromium.launch({ headless: true, ...(values.channel ? { channel: values.channel } : {}) });
 const sizes = [
@@ -53,11 +52,14 @@ async function selectDate(page: Page): Promise<void> {
   await dialog.getByRole('button', { name: String(target.getUTCDate()), exact: true }).click();
   await dialog.getByRole('button', { name: 'OK', exact: true }).click();
   await page.getByRole('button', { name: expectedDate, exact: true }).waitFor();
+  // The date label changes before the previous summary is replaced.
+  await page.locator('flt-semantics-host').getByText('Updating selected summary', { exact: false }).waitFor({ state: 'hidden', timeout: 60_000 });
   // Flutter virtualizes content: the post filters are below the fold on smaller screens.
   await page.waitForFunction(() => document.querySelector('flt-semantics-host')?.textContent?.includes('reviewed'), undefined, { timeout: 60_000 });
 }
 
 try {
+  await mkdir(staging, { recursive: true });
   const captures: Record<string, string> = {};
   for (const size of sizes) {
     const context = await browser.newContext({
