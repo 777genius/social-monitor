@@ -1,5 +1,6 @@
 import type { FeedItem } from "@social-monitor/feed/domain";
 import type {
+  FeedCollectionCoverageRow,
   FeedItemReadRepositoryPort,
   ListFeedItemSignalCandidatesQuery,
 } from "@social-monitor/feed/ports";
@@ -53,12 +54,20 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
   ): Promise<CoverageAccumulator | undefined> {
     let cursor: string | undefined;
     const accumulator = emptyCoverageAccumulator();
-    const candidateReader = this.feedItems.listSignalCandidates;
+    const aggregateReader = this.feedItems.readCollectionCoverage;
     const feedQuery = coverageFeedItemQuery(query);
 
-    if (candidateReader !== undefined) {
-      const items = await candidateReader.call(this.feedItems, feedQuery);
-      recordCoverageItems(items, accumulator);
+    if (aggregateReader !== undefined) {
+      const rows = await aggregateReader.call(this.feedItems, {
+        tenantId: query.tenantId,
+        workspaceId: query.workspaceId,
+        interestId: feedQuery.interestId,
+        publishedAtOrAfter: query.period.startedAt,
+        publishedBefore: query.period.endedAt,
+        observedAtOrBefore: query.observedThrough,
+        excludedProviderKeys: ["github-issues", "github-trending-page"],
+      });
+      for (const row of rows) recordAggregate(row, accumulator);
       return accumulator;
     }
 
@@ -68,6 +77,7 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
         limit: PAGE_LIMIT,
         cursor,
       });
+      if (result.candidateWindowExhausted !== true) return undefined;
       recordCoverageItems(result.items, accumulator);
 
       if (result.nextCursor === undefined) {
@@ -265,5 +275,30 @@ const mergeProviderCollectionHealth = (
     return countDiff === 0
       ? left.providerKey.localeCompare(right.providerKey)
       : countDiff;
+  });
+};
+
+const recordAggregate = (
+  row: FeedCollectionCoverageRow,
+  accumulator: CoverageAccumulator,
+): void => {
+  if (row.dimension === "total") {
+    accumulator.total = row.collectedFeedItemCount;
+    Object.assign(accumulator.totals, {
+      collectedFeedItemCount: row.collectedFeedItemCount,
+      lowRelevanceFeedItemCount: row.lowRelevanceFeedItemCount,
+      mutedFeedItemCount: row.mutedFeedItemCount,
+      userRatedFeedItemCount: row.userRatedFeedItemCount,
+    });
+    return;
+  }
+  const buckets = row.dimension === "provider" ? accumulator.providerCounts
+    : row.dimension === "topic" ? accumulator.topicCounts : accumulator.queryCounts;
+  buckets.set(row.key, {
+    collectedFeedItemCount: row.collectedFeedItemCount,
+    lowRelevanceFeedItemCount: row.lowRelevanceFeedItemCount,
+    mutedFeedItemCount: row.mutedFeedItemCount,
+    userRatedFeedItemCount: row.userRatedFeedItemCount,
+    ...(row.label === undefined ? {} : { label: row.label }),
   });
 };

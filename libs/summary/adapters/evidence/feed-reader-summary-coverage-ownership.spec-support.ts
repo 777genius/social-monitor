@@ -72,12 +72,13 @@ async function verifyOrdering(mode: string, scenario: string): Promise<void> {
       listCalls += 1;
       assert.equal(limit, 100);
       assert.equal(cursor, undefined);
-      return { items: await readFeed(feedQuery) };
+      return { items: await readFeed(feedQuery), candidateWindowExhausted: true };
     },
     ...(mode === 'candidate' ? {
-      listSignalCandidates(this: FeedItemReadRepositoryPort, feedQuery: ListFeedItemSignalCandidatesQuery) {
+      readCollectionCoverage(this: FeedItemReadRepositoryPort, { excludedProviderKeys, ...feedQuery }) {
         assert.equal(this, repository);
-        return readFeed(feedQuery);
+        assert.deepEqual(excludedProviderKeys, ['github-issues', 'github-trending-page']);
+        return readFeed(feedQuery).then(() => []);
       },
     } : {}),
   };
@@ -182,7 +183,7 @@ async function verifyEarlyExit(mode: string, rejectHealth: boolean): Promise<voi
       assert.equal(limit, 100);
       assert.equal(cursor, calls === 0 ? undefined : mode === 'repeat' ? 'same' : String(calls));
       calls += 1;
-      return { items: [], nextCursor: mode === 'repeat' ? 'same' : String(calls) };
+      return { items: [], candidateWindowExhausted: true, nextCursor: mode === 'repeat' ? 'same' : String(calls) };
     },
   }, {
     readProviderCollectionHealth() { healthCalls += 1; return health.promise; },

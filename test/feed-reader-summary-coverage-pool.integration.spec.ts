@@ -151,7 +151,7 @@ async function verify(): Promise<void> {
     assert.equal(sql.filter((text) => text === 'BEGIN').length, 2);
     assert.equal(sql.filter((text) => text === 'COMMIT').length, 2);
     assert.equal(sql.filter((text) => text.includes('latest_binding_scans')).length, 1);
-    assert.equal(sql.filter((text) => text.includes('"public"."feed_items"')).length, 1);
+    assert.equal(sql.filter((text) => text.includes('WITH scoped AS MATERIALIZED')).length, 1);
 
     // Preserve R1's scope/rollback/release invariants on this recovered pool.
     for (const stage of ['configuration', 'statement', 'callback'] as const) {

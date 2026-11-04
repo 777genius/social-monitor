@@ -1,3 +1,4 @@
+import type { FeedCollectionCoverageQuery, FeedCollectionCoverageRow } from "./feed-collection-coverage.port";
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import type {
@@ -130,6 +131,10 @@ export type FeedSourceContentItem = {
 };
 
 export interface FeedItemReadRepositoryPort {
+  /** Full-scope aggregates; implementations must never derive these from a candidate cap. */
+  readCollectionCoverage?(
+    query: FeedCollectionCoverageQuery,
+  ): Promise<readonly FeedCollectionCoverageRow[]>;
   list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult>;
   /**
    * Returns the bounded recent candidate window before provider-signal

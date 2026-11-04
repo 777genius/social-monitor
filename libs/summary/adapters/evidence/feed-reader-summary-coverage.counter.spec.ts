@@ -43,31 +43,42 @@ describe("FeedReaderSummaryCoverageCounter", () => {
     expect(feedItems.queries[0]?.observedBefore).toBeUndefined();
   });
 
-  it("uses one bounded candidate scan when the repository supports it", async () => {
-    const feedItems = new SignalCandidateFeedItems([
-      fakeFeedItem("reddit", 0),
-      fakeFeedItem("rss", 1),
-      fakeFeedItem("github-trending-page", 2),
+  it("refuses an unproven legacy window instead of calling bounded signal candidates", async () => {
+    const feedItems = new SignalCandidateFeedItems([fakeFeedItem("reddit", 0)]);
+    const result = await new FeedReaderSummaryCoverageCounter(feedItems)
+      .countCollectedFeedItems({ tenantId: tenant, workspaceId: workspace,
+        scope: { type: "workspace" }, period });
+    expect(result).toBeUndefined();
+    expect(feedItems.listCalls).toBe(1);
+    expect(feedItems.candidateQueries).toEqual([]);
+  });
+
+  it("maps complete database aggregates without requesting a candidate window", async () => {
+    const feedItems = new SignalCandidateFeedItems([]);
+    const readCollectionCoverage = jest.fn().mockResolvedValue([
+      { dimension: "total", key: "", ...coverageStats(1220, { lowRelevance: 11 }) },
+      { dimension: "provider", key: "reddit", ...coverageStats(359, {}) },
+      { dimension: "provider", key: "rss", ...coverageStats(428, {}) },
+      { dimension: "provider", key: "x-twitter", ...coverageStats(404, {}) },
+      { dimension: "provider", key: "hacker-news", ...coverageStats(29, {}) },
+      { dimension: "topic", key: "interest-ai", label: "AI", ...coverageStats(1220, {}) },
+      { dimension: "query", key: "agents", ...coverageStats(120, { muted: 3 }) },
     ]);
-    const counter = new FeedReaderSummaryCoverageCounter(feedItems);
-
-    const result = await counter.countCollectedFeedItems({
-      tenantId: tenant,
-      workspaceId: workspace,
-      scope: { type: "workspace" },
-      period,
-    });
-
-    expect(result).toBe(2);
+    const result = await new FeedReaderSummaryCoverageCounter({
+      list: feedItems.list.bind(feedItems), findById: feedItems.findById.bind(feedItems),
+      readCollectionCoverage,
+    }).countCollectedFeedItemCoverage({ tenantId: tenant, workspaceId: workspace,
+      scope: { type: "workspace" }, period });
+    expect(result?.collectedFeedItemCount).toBe(1220);
+    expect(result?.lowRelevanceFeedItemCount).toBe(11);
+    expect(result?.providerBreakdown?.map((row) => row.collectedFeedItemCount)
+      .reduce((sum, count) => sum + count, 0)).toBe(1220);
+    expect(result?.queryBreakdown).toEqual([queryCoverage("agents", 120, { muted: 3 })]);
     expect(feedItems.listCalls).toBe(0);
-    expect(feedItems.candidateQueries).toEqual([
-      expect.objectContaining({
-        tenantId: tenant,
-        workspaceId: workspace,
-        publishedAtOrAfter: period.startedAt,
-        publishedBefore: period.endedAt,
-      }),
-    ]);
+    expect(readCollectionCoverage).toHaveBeenCalledWith(expect.objectContaining({
+      excludedProviderKeys: ["github-issues", "github-trending-page"],
+      publishedAtOrAfter: period.startedAt, publishedBefore: period.endedAt,
+    }));
   });
 
   it("freezes coverage at the artifact observation cutoff", async () => {
@@ -386,6 +397,7 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
           );
 
     return {
+      candidateWindowExhausted: true,
       items: inputs.map((input, index) =>
         FeedItem.publish({
           id: `feed-${pageIndex}-${index}`,
