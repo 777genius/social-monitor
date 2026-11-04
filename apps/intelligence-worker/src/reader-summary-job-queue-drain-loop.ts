@@ -9,7 +9,7 @@ import {
   type StructuredLogger,
 } from "@social-monitor/platform-logging";
 import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
-import { queueCommandDeliveryLagSeconds } from "@social-monitor/platform-queue";
+import { QueueDeliveryBatch, queueCommandDeliveryLagSeconds } from "@social-monitor/platform-queue";
 import { EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE } from "@social-monitor/summary/ports";
 import { ExecuteReaderSummaryJobCommandHandler } from "@social-monitor/summary/interfaces/queue/execute-reader-summary-job-command.handler";
 import { classifyWorkerRuntimeFailure } from '@social-monitor/platform-worker';
@@ -129,54 +129,67 @@ export class ReaderSummaryJobQueueDrainLoop
       commandType: EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
       limit: this.options.limit,
     });
+    const batch = new QueueDeliveryBatch(deliveries);
     let completed = 0;
     let failed = 0;
     let requeued = 0;
 
-    for (const delivery of deliveries) {
-      const { command } = delivery;
-      if (this.shuttingDown) {
-        await delivery.nack({ requeue: true });
-        requeued += 1;
-        continue;
-      }
-      this.recordDeliveryLag(delivery);
-      try {
-        await this.handler.handle(command);
-        await delivery.ack();
-        completed += 1;
-      } catch (error) {
-        const requeue =
-          this.shuttingDown ||
-          (error instanceof DomainError &&
-            error.code === "operation.backpressure");
-        await delivery.nack({ requeue });
+    try {
+      for (const delivery of deliveries) {
+        const { command } = delivery;
+        if (this.shuttingDown) {
+          await batch.nack(delivery, { requeue: true });
+          requeued += 1;
+          continue;
+        }
+        this.recordDeliveryLag(delivery);
+        let handlerFailed = false;
+        let handlerError: unknown;
+        try {
+          await this.handler.handle(command);
+        } catch (error) {
+          handlerFailed = true;
+          handlerError = error;
+        }
+        if (!handlerFailed) {
+          await batch.ack(delivery);
+          completed += 1;
+          continue;
+        }
+        const requeue = this.shuttingDown ||
+          (handlerError instanceof DomainError && handlerError.code === 'operation.backpressure');
+        await batch.nack(delivery, { requeue });
         if (requeue) {
           requeued += 1;
           continue;
         }
         failed += 1;
-        this.logger.error("readerSummary queue drain loop item failed", {
+        const failure = classifyWorkerRuntimeFailure(handlerError);
+        this.logger.error('readerSummary queue drain loop item failed', {
           commandId: command.commandId,
           trigger,
-          error: error instanceof Error ? error.message : String(error),
+          error: failure.message,
           redelivered: delivery.diagnostics.redelivered,
           deadLetterCount: delivery.diagnostics.deadLetterCount,
           deadLetterReason: delivery.diagnostics.deadLetterReason,
           deadLetterQueue: delivery.diagnostics.deadLetterQueue,
-          worker: "intelligence-worker",
+          worker: 'intelligence-worker',
+        });
+      }
+
+      this.logger.info('readerSummary queue drain loop tick completed', {
+        trigger, evaluated: deliveries.length, completed, failed, requeued,
+        worker: 'intelligence-worker',
+      });
+    } finally {
+      for (const error of await batch.releaseUnsettled()) {
+        const failure = classifyWorkerRuntimeFailure(error);
+        this.logger.error('queue delivery cleanup remains unresolved; reader will retry before acquiring more work', {
+          error: failure.message, errorClassification: failure.classification,
+          errorCode: failure.code, worker: 'intelligence-worker',
         });
       }
     }
-
-    this.logger.info("readerSummary queue drain loop tick completed", {
-      trigger,
-      evaluated: deliveries.length,
-      completed,
-      failed,
-      requeued,
-      worker: "intelligence-worker",
-    });
   }
 
   private recordDeliveryLag(

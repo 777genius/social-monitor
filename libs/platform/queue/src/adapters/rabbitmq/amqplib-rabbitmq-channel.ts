@@ -31,6 +31,8 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
   private channelPromise: Promise<ConfirmChannel> | undefined;
   private readonly publications = new RabbitMqPublicationTracker();
   private readonly deliveryChannels = new WeakMap<Message, ConfirmChannel>();
+  private readonly channelOrigins = new WeakMap<ConfirmChannel, Promise<ConfirmChannel>>();
+  private readonly originRecovery = new WeakMap<ConfirmChannel, Promise<void>>();
   private readonly connectionChannels = new WeakMap<ChannelModel, Set<ConfirmChannel>>();
   private readonly closedConnections = new WeakSet<ChannelModel>();
   private publishesCancelled = false;
@@ -113,6 +115,35 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
     this.deliveryChannels.delete(message);
   }
 
+  /** Requeue uncertainty belongs to the native acquisition channel. A reconnect
+   * may already exist, so neither channel() nor close() is safe here. */
+  async recoverDelivery(message: Message): Promise<void> {
+    const origin = this.deliveryChannels.get(message);
+    if (origin === undefined) throw new Error('RabbitMQ delivery has no unsettled origin channel');
+    if (!this.publications.isClosed(origin)) {
+      let recovery = this.originRecovery.get(origin);
+      if (recovery === undefined) {
+        recovery = this.closeDeliveryOrigin(origin).finally(() => { this.originRecovery.delete(origin); });
+        this.originRecovery.set(origin, recovery);
+      }
+      await recovery;
+    }
+    this.deliveryChannels.delete(message);
+  }
+
+  private async closeDeliveryOrigin(origin: ConfirmChannel): Promise<void> {
+    try {
+      await origin.close();
+    } catch (error) {
+      // A native close/error event independently proves this origin is gone.
+      // Otherwise retain its authority and allow a later cleanup retry.
+      if (!this.publications.isClosed(origin)) throw error;
+    }
+    const pending = this.channelOrigins.get(origin);
+    if (pending === undefined) this.publications.close(origin);
+    else this.invalidateChannel(pending, origin);
+  }
+
   private deliveryChannel(message: Message): ConfirmChannel {
     const channel = this.deliveryChannels.get(message);
     if (channel === undefined) throw new Error('RabbitMQ delivery has no unsettled origin channel');
@@ -148,6 +179,7 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
 
     const pending = this.connection().then(async (connection) => {
       const channel = await connection.createConfirmChannel();
+      this.channelOrigins.set(channel, pending);
       this.connectionChannels.get(connection)?.add(channel);
       if (this.closedConnections.has(connection)) this.publications.close(channel);
       channel.on('return', (message) => {

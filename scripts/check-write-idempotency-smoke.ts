@@ -1,3 +1,4 @@
+import { DirectScanDispatchAdapter } from '@social-monitor/monitoring/adapters/queue/direct-scan-dispatch.adapter';
 import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
 import { InMemorySourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-creation.store';
@@ -148,15 +149,16 @@ async function proveMonitoringWriteIdempotency(): Promise<void> {
   assert(outbox.all().length === 3, 'duplicate scan policy command must not append another outbox event');
 
   const requestScan = new RequestScanUseCase(
-    bindings,
-    scanPolicies,
-    scanJobs,
-    scanQueue,
-    outbox,
-    idempotency,
-    quota,
-    ids,
-    clock,
+      bindings,
+      scanPolicies,
+      scanJobs,
+      scanQueue,
+      new DirectScanDispatchAdapter(scanJobs, scanQueue, outbox),
+      idempotency,
+      quota,
+      ids,
+      clock
+
   );
   const firstScan = unwrap(await requestScan.execute({
     tenantId: tenant,

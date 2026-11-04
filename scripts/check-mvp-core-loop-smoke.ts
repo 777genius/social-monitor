@@ -1,3 +1,4 @@
+import { DirectScanDispatchAdapter } from '@social-monitor/monitoring/adapters/queue/direct-scan-dispatch.adapter';
 import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
 import { InMemorySourceBindingStatusChangeStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-status-change.store';
@@ -180,15 +181,16 @@ async function main(): Promise<void> {
 
   const changeSourceBindingStatus = new ChangeSourceBindingStatusUseCase(new InMemorySourceBindingStatusChangeStore(interestCreationState), ids, clock);
   const requestScan = new RequestScanUseCase(
-    bindings,
-    scanPolicies,
-    scanJobs,
-    scanQueue,
-    outbox,
-    idempotency,
-    new AllowingScanRequestQuota(),
-    ids,
-    clock,
+      bindings,
+      scanPolicies,
+      scanJobs,
+      scanQueue,
+      new DirectScanDispatchAdapter(scanJobs, scanQueue, outbox),
+      idempotency,
+      new AllowingScanRequestQuota(),
+      ids,
+      clock
+
   );
   const pausedBinding = unwrap(
     await changeSourceBindingStatus.execute({

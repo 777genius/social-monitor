@@ -1,6 +1,5 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-import type { ScanJob } from '../../domain';
 import type { ScanSchedulerDecisionRecord } from '../../ports';
 import type {
   ScheduleDueScansDecision,
@@ -97,36 +96,6 @@ export const totalSkipped = (
   breakdown: ScheduleDueScansSkipBreakdown,
 ): number =>
   Object.values(breakdown).reduce((total, value) => total + value, 0);
-
-export const schedulerSkipReason = (params: {
-  readonly activeJob: ScanJob | null;
-  readonly existingJob: ScanJob | null;
-  readonly freshSuccess: boolean;
-  readonly rateLimitBackoff: Date | null;
-  readonly providerFailureBackoff: Date | null;
-}): ScheduleDueScansSkipReason | null => {
-  if (params.activeJob !== null) {
-    return 'active_scan';
-  }
-
-  if (params.existingJob !== null) {
-    return 'duplicate_window';
-  }
-
-  if (params.freshSuccess) {
-    return 'fresh_success';
-  }
-
-  if (params.rateLimitBackoff !== null) {
-    return 'rate_limit_backoff';
-  }
-
-  if (params.providerFailureBackoff !== null) {
-    return 'provider_failure_backoff';
-  }
-
-  return null;
-};
 
 export const appliedSchedulerBackoffUntil = (params: {
   readonly skipReason: ScheduleDueScansSkipReason | null;

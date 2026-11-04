@@ -1,3 +1,5 @@
+import { InMemoryOutboxAdapter } from '@social-monitor/monitoring/adapters/messaging/in-memory-outbox.adapter';
+import { DirectScanDispatchAdapter } from '@social-monitor/monitoring/adapters/queue/direct-scan-dispatch.adapter';
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
@@ -139,12 +141,14 @@ async function main(): Promise<void> {
   }));
 
   const scheduled = await new ScheduleDueScansUseCase(
-    bindings,
-    scanPolicies,
-    scanJobs,
-    new InMemoryScanQueueAdapter(queuePublisher, metrics),
-    new SequenceIdGenerator(),
-    new FixedClock(now),
+      bindings,
+      scanPolicies,
+      scanJobs,
+      new InMemoryScanQueueAdapter(queuePublisher, metrics),
+      new DirectScanDispatchAdapter(scanJobs, new InMemoryScanQueueAdapter(queuePublisher, metrics), new InMemoryOutboxAdapter()),
+      new SequenceIdGenerator(),
+      new FixedClock(now)
+
   ).execute({
     tenantId: tenant,
     workspaceId: workspace,

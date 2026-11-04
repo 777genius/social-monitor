@@ -5,6 +5,10 @@ import {
   parseRabbitMqQueueType,
   type RabbitMqQueueType,
 } from "@social-monitor/platform-queue/adapters/rabbitmq";
+import {
+  assertDistinctIntelligenceSummaryQueueNames,
+  resolveIntelligenceSummaryQueueNames,
+} from "./intelligence-summary-queue-names";
 
 export * from "./periodic-reader-summary-scheduler-options";
 
@@ -219,6 +223,8 @@ export const resolveIntelligenceSummaryQueueReaderMode = (
       );
     }
 
+    assertDistinctIntelligenceSummaryQueueNames(env);
+
     return "rabbitmq";
   }
 
@@ -230,7 +236,7 @@ export const resolveIntelligenceSummaryQueueReaderMode = (
 export const resolveIntelligenceRabbitMqSummaryQueueReaderOptions = (
   env: NodeJS.ProcessEnv,
 ): IntelligenceRabbitMqSummaryQueueReaderOptions => ({
-  queue: nonEmptyOrFallback(env.RABBITMQ_SUMMARY_QUEUE, "jobs.summary.execute"),
+  queue: resolveIntelligenceSummaryQueueNames(env).summary,
   deadLetterExchange: parseRabbitMqDeadLetterExchange(
     env.RABBITMQ_DEAD_LETTER_EXCHANGE,
     {
@@ -245,10 +251,7 @@ export const resolveIntelligenceRabbitMqSummaryQueueReaderOptions = (
 export const resolveIntelligenceRabbitMqReaderSummaryQueueReaderOptions = (
   env: NodeJS.ProcessEnv,
 ): IntelligenceRabbitMqReaderSummaryQueueReaderOptions => ({
-  queue: nonEmptyOrFallback(
-    env.RABBITMQ_READER_SUMMARY_QUEUE ?? env.RABBITMQ_BRIEFING_QUEUE,
-    "jobs.reader-summary.execute",
-  ),
+  queue: resolveIntelligenceSummaryQueueNames(env).readerSummary,
   deadLetterExchange: parseRabbitMqDeadLetterExchange(
     env.RABBITMQ_DEAD_LETTER_EXCHANGE,
     {
@@ -446,15 +449,6 @@ const emptyToUndefined = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim();
 
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
-};
-
-const nonEmptyOrFallback = (
-  value: string | undefined,
-  fallback: string,
-): string => {
-  const trimmed = value?.trim();
-
-  return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
 };
 
 const parseBoolean = (

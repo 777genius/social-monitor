@@ -1,3 +1,5 @@
+import { InMemoryOutboxAdapter } from '@social-monitor/monitoring/adapters/messaging/in-memory-outbox.adapter';
+import { DirectScanDispatchAdapter } from '@social-monitor/monitoring/adapters/queue/direct-scan-dispatch.adapter';
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
@@ -112,8 +114,8 @@ const assert = (condition: unknown, message: string): void => {
 };
 
 const run = async (): Promise<void> => {
-  const tenant = tenantId('tenant-github-smoke');
-  const workspace = workspaceId('workspace-github-smoke');
+  const tenant = tenantId('00000000-0000-7000-8000-000000000701');
+  const workspace = workspaceId('00000000-0000-7000-8000-000000000702');
   const provider = new GitHubSourceProvider(new FixtureGitHubClient());
   const directContext = {
     tenantId: tenant,
@@ -429,12 +431,14 @@ const runScheduledGitHubTick = async ({
   const scheduleLoop = new ScanSchedulerLoop(
     new ScheduleDueScansCommandHandler(
       new ScheduleDueScansUseCase(
-        bindings,
-        policies,
-        jobs,
-        new InMemoryScanQueueAdapter(queuePublisher, metrics),
-        new SequenceIdGenerator(`${signal}-job`),
-        new FixedClock(triggerTime),
+      bindings,
+      policies,
+      jobs,
+      new InMemoryScanQueueAdapter(queuePublisher, metrics),
+      new DirectScanDispatchAdapter(jobs, new InMemoryScanQueueAdapter(queuePublisher, metrics), new InMemoryOutboxAdapter()),
+      new SequenceIdGenerator(`${signal}-job`),
+      new FixedClock(triggerTime)
+
       ),
       metrics,
       schedulerRuntime,

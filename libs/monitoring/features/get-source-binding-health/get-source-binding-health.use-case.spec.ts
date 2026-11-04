@@ -16,7 +16,7 @@ import type {
   ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
 } from '../../ports';
-import { scheduledScanIdempotencyKey } from '../shared/scan-scheduler-decision-policy';
+import { scheduledScanIdempotencyKey } from '../../domain/policies/scan-schedule-policy';
 import { GetSourceBindingHealthUseCase } from './get-source-binding-health.use-case';
 
 class FakeSourceBindings implements SourceBindingRepositoryPort {

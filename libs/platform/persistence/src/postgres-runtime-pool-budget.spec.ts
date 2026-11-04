@@ -853,8 +853,11 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'apps/delivery-service/src/summary-ready-event-drain-loop.ts',
     ]) {
       const source = readSource(path);
-      expect(source).toContain('delivery.nack({ requeue: true })');
+      expect(source).toContain('new QueueDeliveryBatch(deliveries)');
+      expect(source).toContain('await batch.nack(delivery, { requeue: true })');
       expect(source).toContain('operation.backpressure');
+      expect(source).toMatch(/onModuleDestroy\([\s\S]*?await this\.currentTick/);
+      expect(source).toMatch(/\}\s*finally\s*\{[\s\S]*?await batch\.releaseUnsettled\(\)/);
     }
     for (const path of Object.values(POSTGRES_RUNTIME_CONNECTION_FACTORIES)) {
       const source = readSource(path);

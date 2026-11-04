@@ -55,9 +55,13 @@ export class ScanRetryDeliveryBatch {
     return !this.lost.has(delivery);
   }
 
-  async releaseUnsettled(): Promise<void> {
+  async stopRenewal(): Promise<void> {
     if (this.timer !== undefined) clearInterval(this.timer);
     await this.renewal;
+  }
+
+  async releaseUnsettled(): Promise<void> {
+    await this.stopRenewal();
     const outcomes = await Promise.allSettled([...this.pending.values()].map((retry) => retry.nack({ requeue: true })));
     this.pending.clear();
     const rejected = outcomes.find((outcome) => outcome.status === 'rejected');

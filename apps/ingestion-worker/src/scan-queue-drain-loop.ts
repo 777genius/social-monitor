@@ -1,7 +1,7 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
-import { queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
+import { QueueDeliveryBatch, queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
 import { classifyWorkerRuntimeFailure } from '@social-monitor/platform-worker';
 import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
 import type { ScanRetryQueuePort } from '@social-monitor/ingestion/ports';
@@ -115,59 +115,58 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
     let completed = 0;
     let failed = 0;
     let requeued = 0;
-    const unsettledPrimary = new Set(deliveries.filter((delivery) => !retryBatch.deliveries.includes(delivery)));
+    const batch = new QueueDeliveryBatch(deliveries);
 
     try {
       for (const delivery of deliveries) {
         const { command } = delivery;
         if (this.shuttingDown || !retryBatch.owns(delivery)) {
-          await delivery.nack({ requeue: true });
-          unsettledPrimary.delete(delivery);
+          await batch.nack(delivery, { requeue: true });
           requeued += 1;
           continue;
         }
         this.recordDeliveryLag(delivery);
+        let handlerFailed = false;
+        let handlerError: unknown;
         try {
           await this.handler.handle(command);
-          await delivery.ack();
-          unsettledPrimary.delete(delivery);
-          completed += 1;
         } catch (error) {
-          const failure = classifyWorkerRuntimeFailure(error);
-          if (error instanceof DomainError && error.details.reason === 'scan_failure_recorded') {
-            await delivery.ack();
-            unsettledPrimary.delete(delivery);
-            failed += 1;
-            continue;
-          }
-          const requeue =
-            this.shuttingDown ||
-            (error instanceof DomainError &&
-              (error.code === 'operation.backpressure' ||
-                error.details.reason === 'scan_lease_held' ||
-                error.details.reason === 'scan_lease_release_failed' ||
-                error.details.reason === 'scan_failure_recording_failed' ||
-                error.details.reason === 'scan_outcome_reporting_failed'));
-          await delivery.nack({ requeue });
-          unsettledPrimary.delete(delivery);
-          if (requeue) {
-            requeued += 1;
-            continue;
-          }
-          failed += 1;
-          this.logger.error('scan queue drain loop item failed', {
-            commandId: command.commandId,
-            trigger,
-            error: failure.message,
-            errorClassification: failure.classification,
-            errorCode: failure.code,
-            redelivered: delivery.diagnostics.redelivered,
-            deadLetterCount: delivery.diagnostics.deadLetterCount,
-            deadLetterReason: delivery.diagnostics.deadLetterReason,
-            deadLetterQueue: delivery.diagnostics.deadLetterQueue,
-            worker: 'ingestion-worker',
-          });
+          handlerFailed = true;
+          handlerError = error;
         }
+        if (!handlerFailed) {
+          await batch.ack(delivery);
+          completed += 1;
+          continue;
+        }
+        if (handlerError instanceof DomainError && handlerError.details.reason === 'scan_failure_recorded') {
+          await batch.ack(delivery);
+          failed += 1;
+          continue;
+        }
+        const requeue = this.shuttingDown ||
+          (handlerError instanceof DomainError &&
+            (handlerError.code === 'operation.backpressure' ||
+              handlerError.details.reason === 'scan_lease_held' ||
+              handlerError.details.reason === 'scan_lease_release_failed' ||
+              handlerError.details.reason === 'scan_failure_recording_failed' ||
+              handlerError.details.reason === 'scan_outcome_reporting_failed'));
+        await batch.nack(delivery, { requeue });
+        if (requeue) {
+          requeued += 1;
+          continue;
+        }
+        failed += 1;
+        const failure = classifyWorkerRuntimeFailure(handlerError);
+        this.logger.error('scan queue drain loop item failed', {
+          commandId: command.commandId, trigger,
+          error: failure.message, errorClassification: failure.classification, errorCode: failure.code,
+          redelivered: delivery.diagnostics.redelivered,
+          deadLetterCount: delivery.diagnostics.deadLetterCount,
+          deadLetterReason: delivery.diagnostics.deadLetterReason,
+          deadLetterQueue: delivery.diagnostics.deadLetterQueue,
+          worker: 'ingestion-worker',
+        });
       }
 
       this.logger.info('scan queue drain loop tick completed', {
@@ -181,7 +180,8 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
         worker: 'ingestion-worker',
       });
     } finally {
-      await this.releaseOnAbort([...unsettledPrimary], retryBatch);
+      await retryBatch.stopRenewal();
+      this.reportReleaseFailures(await batch.releaseUnsettled());
     }
   }
 
@@ -248,13 +248,19 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
 
   private async releaseOnAbort(primary: readonly QueueCommandDelivery[], retryBatch?: ScanRetryDeliveryBatch): Promise<void> {
     const outcomes = await Promise.allSettled([
-      ...primary.map((delivery) => delivery.nack({ requeue: true })),
+      new QueueDeliveryBatch(primary).releaseUnsettled(),
       ...(retryBatch === undefined ? [] : [retryBatch.releaseUnsettled()]),
     ]);
-    for (const outcome of outcomes) {
-      if (outcome.status !== 'rejected') continue;
-      const failure = classifyWorkerRuntimeFailure(outcome.reason);
-      this.logger.error('scan delivery release failed; broker redelivery or claim expiry must recover it', {
+    const failures = outcomes.flatMap((outcome) => outcome.status === 'rejected'
+      ? [outcome.reason as unknown]
+      : outcome.value ?? []);
+    this.reportReleaseFailures(failures);
+  }
+
+  private reportReleaseFailures(failures: readonly unknown[]): void {
+    for (const error of failures) {
+      const failure = classifyWorkerRuntimeFailure(error);
+      this.logger.error('scan delivery release failed; reader recovery or retry claim expiry must recover it', {
         error: failure.message, errorClassification: failure.classification,
         errorCode: failure.code, worker: 'ingestion-worker',
       });

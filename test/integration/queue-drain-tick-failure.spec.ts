@@ -92,4 +92,33 @@ describe.each(cases)('$name queue tick failure boundary', ({ implementation, ...
     expect(jest.getTimerCount()).toBe(0);
     await f.loop.onModuleDestroy();
   });
+
+  it('does not turn an acknowledgement failure into terminal rejection and releases every sibling', async () => {
+    const f = fixture(implementation, 'scan' in entry && entry.scan);
+    const first = delivery();
+    const second = delivery();
+    first.ack.mockRejectedValueOnce(new Error('synthetic acknowledgement uncertain'));
+    f.queue.drain.mockResolvedValueOnce([first, second]);
+    await f.loop.onModuleInit();
+    await jest.advanceTimersByTimeAsync(10);
+    expect(f.handler.handle).toHaveBeenCalledTimes(1);
+    expect(first.nack.mock.calls).toEqual([[{ requeue: true }]]);
+    expect(second.nack.mock.calls).toEqual([[{ requeue: true }]]);
+    await f.loop.onModuleDestroy();
+  });
+
+  it('attempts every sibling release when both terminal settlement and cleanup fail', async () => {
+    const f = fixture(implementation, 'scan' in entry && entry.scan);
+    const first = delivery();
+    const second = delivery();
+    first.nack.mockRejectedValue(new Error('synthetic settlement unavailable'));
+    f.queue.drain.mockResolvedValueOnce([first, second]);
+    f.handler.handle.mockRejectedValueOnce(new Error('synthetic handler failure'));
+    await f.loop.onModuleInit();
+    await jest.advanceTimersByTimeAsync(10);
+    expect(first.nack.mock.calls).toEqual([[{ requeue: false }], [{ requeue: true }]]);
+    expect(second.nack).toHaveBeenCalledWith({ requeue: true });
+    expect(f.handler.handle).toHaveBeenCalledTimes(1);
+    await f.loop.onModuleDestroy();
+  });
 });

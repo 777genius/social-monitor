@@ -1,13 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  queueCommandDeliveryDiagnosticsFromRabbitMq,
-  type QueueCommandDeliveryDiagnostics,
+  assertQueueDrainLimit,
+  type QueueDelivery,
 } from '@social-monitor/platform-queue';
 import {
   rabbitMqDurableQueueArguments,
+  RabbitMqQueueDeliveryReader,
+  type RabbitMqDeliveryChannel,
   type RabbitMqFieldValue,
 } from '@social-monitor/platform-queue/adapters/rabbitmq';
-import type { GetMessage, Message } from 'amqplib';
+import type { GetMessage } from 'amqplib';
 
 import {
   DELIVERY_SUMMARY_READY_EVENT_QUEUE_OPTIONS,
@@ -16,18 +18,15 @@ import {
 
 export const DELIVERY_SUMMARY_READY_EVENT_QUEUE_READER = Symbol('DELIVERY_SUMMARY_READY_EVENT_QUEUE_READER');
 
-export type SummaryReadyEventDelivery = {
+export type SummaryReadyEventDelivery = QueueDelivery & {
   readonly event: Readonly<Record<string, unknown>>;
-  readonly diagnostics: QueueCommandDeliveryDiagnostics;
-  ack(): Promise<void>;
-  nack(params: { readonly requeue: boolean }): Promise<void>;
 };
 
 export interface SummaryReadyEventQueueReaderPort {
   drain(params: { readonly limit: number }): Promise<readonly SummaryReadyEventDelivery[]>;
 }
 
-export interface RabbitMqSummaryReadyEventQueueReaderChannelPort {
+export interface RabbitMqSummaryReadyEventQueueReaderChannelPort extends RabbitMqDeliveryChannel {
   assertExchange(
     exchange: string,
     type: 'fanout' | 'topic',
@@ -41,9 +40,6 @@ export interface RabbitMqSummaryReadyEventQueueReaderChannelPort {
     },
   ): Promise<unknown>;
   bindQueue(queue: string, exchange: string, routingKey: string): Promise<unknown>;
-  get(queue: string, options: { readonly noAck: boolean }): Promise<GetMessage | false>;
-  ack(message: Message): Promise<void>;
-  nack(message: Message, allUpTo: boolean, requeue: boolean): Promise<void>;
   prefetch(count: number): Promise<unknown>;
 }
 
@@ -57,38 +53,29 @@ export class DisabledSummaryReadyEventQueueReader implements SummaryReadyEventQu
 @Injectable()
 export class RabbitMqSummaryReadyEventQueueReader implements SummaryReadyEventQueueReaderPort {
   private routeAsserted = false;
+  private readonly deliveries: RabbitMqQueueDeliveryReader;
 
   constructor(
     private readonly channel: RabbitMqSummaryReadyEventQueueReaderChannelPort,
     @Inject(DELIVERY_SUMMARY_READY_EVENT_QUEUE_OPTIONS)
     private readonly options: DeliverySummaryReadyEventQueueOptions,
-  ) {}
+  ) {
+    this.deliveries = new RabbitMqQueueDeliveryReader(channel, options.queue);
+  }
 
   async drain(params: { readonly limit: number }): Promise<readonly SummaryReadyEventDelivery[]> {
-    await this.ensureRoute(params.limit);
-
-    const deliveries: SummaryReadyEventDelivery[] = [];
-    for (let index = 0; index < params.limit; index += 1) {
-      const message = await this.channel.get(this.options.queue, { noAck: false });
-
-      if (message === false) {
-        break;
-      }
-
-      const event = await parseSummaryReadyEventOrNack(this.channel, message);
-      if (event === null) {
-        continue;
-      }
-
-      deliveries.push({
-        event,
-        diagnostics: queueCommandDeliveryDiagnosticsFromRabbitMq(message, this.options.queue),
-        ack: async () => this.channel.ack(message),
-        nack: async ({ requeue }) => this.channel.nack(message, false, requeue),
-      });
+    assertQueueDrainLimit(params.limit);
+    try {
+      await this.deliveries.recoverPending();
+      await this.ensureRoute(params.limit);
+      const deliveries = await this.deliveries.drain(params.limit, parseSummaryReadyEvent);
+      return deliveries.map(({ value, ...delivery }) => ({ ...delivery, event: value }));
+    } catch (error) {
+      // A failed acquisition may invalidate the queue and its event bindings.
+      // Recover pending deliveries before reasserting them on the next drain.
+      this.routeAsserted = false;
+      throw error;
     }
-
-    return deliveries;
   }
 
   private async ensureRoute(prefetch: number): Promise<void> {
@@ -131,16 +118,4 @@ const parseSummaryReadyEvent = (
   }
 
   return event;
-};
-
-const parseSummaryReadyEventOrNack = async (
-  channel: RabbitMqSummaryReadyEventQueueReaderChannelPort,
-  message: GetMessage,
-): Promise<Readonly<Record<string, unknown>> | null> => {
-  try {
-    return parseSummaryReadyEvent(message);
-  } catch {
-    await channel.nack(message, false, false);
-    return null;
-  }
 };

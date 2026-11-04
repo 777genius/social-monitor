@@ -7,7 +7,7 @@ import {
   type Result,
 } from '@social-monitor/shared-kernel';
 
-import { ScanJob } from '../../domain';
+import { prepareScanDispatch } from '../../application/scan-dispatch-plan';
 import type {
   ScanJobRepositoryPort,
   ScanDispatchPort,
@@ -28,23 +28,17 @@ import {
   recordDecision,
   recordSkipped,
   schedulerDecisionRecordFromDecision,
-  schedulerSkipReason,
   totalSkipped,
   type RecordedScheduleDueScansDecision,
 } from './schedule-due-scans-decision-support';
-import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
-import {
-  boundedTransientProviderBackoffSeconds,
-  isFreshSuccessfulScan,
-  providerFailureBackoffUntil,
-  rateLimitBackoffUntil,
-} from '../shared/scan-freshness-guard';
+import { effectiveProviderScanCadence } from '../../domain/policies/provider-scan-cadence';
+import { evaluateScheduledScanAdmission } from '../../domain/policies/scan-admission-policy';
 import {
   nextScanPolicyRunAfterDecision,
   nextScanPolicyRunAfterFreshSuccess,
   nextScanPolicyRunAfterQueueBackpressure,
   scheduledScanIdempotencyKey,
-} from '../shared/scan-scheduler-decision-policy';
+} from '../../domain/policies/scan-schedule-policy';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
 type ScheduleDueScansFailure = DomainError | Error;
@@ -57,13 +51,13 @@ export class ScheduleDueScansUseCase {
   constructor(
     private readonly sourceBindings: SourceBindingRepositoryPort,
     private readonly scanPolicies: ScanPolicyRepositoryPort,
-    private readonly scanJobs: ScanJobRepositoryPort &
+    private readonly scanJobs: Omit<ScanJobRepositoryPort, 'save'> &
       ScanJobRecentHistoryReadPort,
-    private readonly scanQueue: ScanQueuePort,
+    private readonly scanQueue: Pick<ScanQueuePort, 'canAccept'>,
+    private readonly scanDispatch: ScanDispatchPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
     private readonly schedulerDecisions?: ScanSchedulerDecisionHistoryPort,
-    private readonly scanDispatch?: ScanDispatchPort,
   ) {}
 
   async execute(
@@ -185,20 +179,15 @@ export class ScheduleDueScansUseCase {
         intervalSeconds: policySnapshot.intervalSeconds,
         freshnessSeconds: policySnapshot.freshnessSeconds,
       });
-      const transientProviderBackoffSeconds =
-        boundedTransientProviderBackoffSeconds({
-          intervalSeconds: cadence.intervalSeconds,
-        });
-      const rateLimitBackoff = rateLimitBackoffUntil({
-        latestJob,
-        backoffSeconds: transientProviderBackoffSeconds,
+      const admission = evaluateScheduledScanAdmission({
+        activeScan: activeJob !== null,
+        duplicateWindow: existingJob !== null,
+        latestJob: latestJob?.toSnapshot() ?? null,
+        recentJobs: recentJobs.scanJobs.map((job) => job.toSnapshot()),
+        cadence,
         now,
       });
-      const freshSuccess = isFreshSuccessfulScan({
-        latestJob,
-        freshnessSeconds: cadence.freshnessSeconds,
-        now,
-      });
+      const { rateLimitBackoff, providerFailureBackoff, freshSuccess, reason: skipReason } = admission;
       const latestJobSnapshot = latestJob?.toSnapshot();
       const freshSuccessNextRunAt =
         freshSuccess && latestJobSnapshot?.completedAt !== undefined
@@ -212,18 +201,6 @@ export class ScheduleDueScansUseCase {
               now,
             })
           : null;
-      const providerFailureBackoff = providerFailureBackoffUntil({
-        recentJobs: recentJobs.scanJobs,
-        backoffSeconds: transientProviderBackoffSeconds,
-        now,
-      });
-      const skipReason = schedulerSkipReason({
-        activeJob,
-        existingJob,
-        freshSuccess,
-        rateLimitBackoff,
-        providerFailureBackoff,
-      });
       const appliedSkipBackoffUntil = appliedSchedulerBackoffUntil({
         skipReason,
         rateLimitBackoff,
@@ -277,26 +254,11 @@ export class ScheduleDueScansUseCase {
           continue;
         }
 
-        const job = ScanJob.request({
-          id: queueCommand.scanJobId,
-          tenantId: policySnapshot.tenantId,
-          workspaceId: policySnapshot.workspaceId,
-          sourceBindingId: policySnapshot.sourceBindingId,
-          scanPolicyId: policySnapshot.id,
+        await this.scanDispatch.storeEnqueuedScan(prepareScanDispatch({
+          command: queueCommand,
           idempotencyKey,
           requestedAt: now,
-        });
-        const enqueuedJob = job.markEnqueued({ enqueuedAt: now });
-        if (this.scanDispatch === undefined) {
-          await this.scanJobs.save(job);
-          await this.scanQueue.enqueue(queueCommand);
-          await this.scanJobs.save(enqueuedJob);
-        } else {
-          await this.scanDispatch.storeEnqueuedScan({
-            job: enqueuedJob,
-            command: queueCommand,
-          });
-        }
+        }));
         enqueued += 1;
         recordDecision(decisions, recordedDecisions, {
           tenantId: policySnapshot.tenantId,

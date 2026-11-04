@@ -1,7 +1,7 @@
 import type { JsonObject } from '@social-monitor/shared-kernel';
 
 import type { ScanJobStatus } from '../../domain';
-import { buildScanStatusView } from './scan-status-view';
+import { classifyScanFailure } from '../../domain/policies/scan-failure-classification';
 
 export type ScanProviderHealthState =
   | 'unknown'
@@ -36,11 +36,7 @@ export const summarizeScanProviderHealth = (
   const succeededJobs = jobs.filter((job) => job.status === 'succeeded');
   const activeJobs = jobs.filter((job) => job.status === 'requested' || job.status === 'enqueued');
   const failureClasses = failedJobs.map((job) =>
-    buildScanStatusView({
-      status: job.status,
-      failureReason: job.failureReason,
-      failureMetadata: job.failureMetadata,
-    }).failureClass,
+    classifyScanFailure(job.failureReason, job.failureMetadata),
   );
   const rateLimitedScans = failureClasses.filter((failureClass) => failureClass === 'provider_rate_limited').length;
   const authFailedScans = failureClasses.filter((failureClass) => failureClass === 'provider_auth_failed').length;

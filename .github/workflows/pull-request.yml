@@ -351,6 +351,19 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
+    services:
+      rabbitmq:
+        image: rabbitmq:4.3-management
+        env:
+          RABBITMQ_DEFAULT_USER: social_monitor_broker_ci
+          RABBITMQ_DEFAULT_PASS: social_monitor_local_password
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
 
     steps:
       - name: Check out the review commit
@@ -367,6 +380,14 @@ jobs:
 
       - name: Generate the pinned Prisma client
         run: npm run prisma:generate
+
+      - name: Prove RabbitMQ delivery recovery against a disposable broker
+        env:
+          RABBITMQ_INTEGRATION_TEST_URL: amqp://social_monitor_broker_ci:social_monitor_local_password@127.0.0.1:5672
+        run: npm run test:broker-e2e
+
+      - name: Prove reader workflow and publication HTTP fixtures
+        run: npm run check:reader-summary-workflow
 
       - name: Run backend end-to-end tests
         run: npm run test:e2e
