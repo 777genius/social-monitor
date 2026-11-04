@@ -27,10 +27,11 @@ describe("reader summary weekly canonical JSON", () => {
     const bound = (name: string): number => Number(name === "v_bytes"
       ? /IF v_bytes > (\d+)/u.exec(latest)![1]
       : new RegExp(`${name} > (\\d+)`, "u").exec(check)![1]);
+    expect(bound("v_max_array")).toBe(20_000);
     const limits = readerSummaryWeeklyV3PublicationCanonicalJsonLimits;
 
     expect([bound("v_depth"), bound("v_nodes"), bound("v_object_keys"), bound("v_max_keys"),
-      bound("v_array_elements"), bound("v_max_array"), bound("v_max_string"),
+      bound("v_array_elements"), bound("v_max_ordinary_array"), bound("v_max_string"),
       bound("v_bytes")]).toEqual([limits.maxDepth, limits.maxNodes, limits.maxTotalObjectKeys,
       limits.maxObjectKeys, limits.maxTotalArrayElements, limits.maxArrayElements,
       limits.maxStringLength, limits.maxBytes]);
@@ -65,6 +66,61 @@ describe("reader summary weekly canonical JSON", () => {
     expect(canonicalizeReaderSummaryWeeklyV3PublicationJson(small).json)
       .toBe(canonicalizeReaderSummaryWeeklyJson(small).json);
   });
+  it("admits only tagged literal V3 artifact/report candidate audit paths", () => {
+    const artifact = {
+      schemaVersion: "reader_summary.artifact.v1",
+      promotionDiagnostics: { schemaVersion: "reader_promotion_diagnostics.v1",
+        candidates: Array.from({ length: 1_220 }, () => null) },
+      dailyGenerationInput: { policyVersion: "reader_summary.daily_input.native_likes.v1",
+        excluded: Array.from({ length: 1_190 }, () => null) },
+    };
+    const canonical = canonicalizeReaderSummaryWeeklyV3PublicationJson;
+    expect(JSON.parse(canonical(artifact, "artifact", "artifact").json)).toEqual(artifact);
+    expect(JSON.parse(canonical({ artifactPayload: artifact }, "report", "report").json))
+      .toEqual({ artifactPayload: artifact });
+    expect(() => canonical(artifact)).toThrow("array element limit");
+    expect(() => canonical({ artifactPayload: artifact }, "report", "artifact"))
+      .toThrow("artifact shape");
+    const long = Array.from({ length: 1_025 }, () => null);
+    for (const malformed of [
+      { ...artifact, unexpected: long },
+      { ...artifact, "promotionDiagnostics.candidates": long },
+      { ...artifact, "promotionDiagnostics\0candidates": long },
+      { ...artifact, wrapper: { promotionDiagnostics: {
+        schemaVersion: "reader_promotion_diagnostics.v1", candidates: long } } },
+      { ...artifact, promotionDiagnostics: { schemaVersion: "unknown", candidates: long } },
+      { ...artifact, dailyGenerationInput: { policyVersion: "unknown", excluded: long } },
+      { ...artifact, promotionDiagnostics: { ...artifact.promotionDiagnostics,
+        candidates: [{ nested: long }] } },
+      { ...artifact, promotionDiagnostics: { ...artifact.promotionDiagnostics,
+        candidates: [{ "*": long }] } },
+      { ...artifact, promotionDiagnostics: { ...artifact.promotionDiagnostics,
+        candidates: Array.from({ length: 20_001 }, () => null) } },
+    ]) expect(() => canonical(malformed, "artifact", "artifact")).toThrow("array element limit");
+    expect(() => canonical({ schemaVersion: artifact.schemaVersion,
+      promotionDiagnostics: { schemaVersion: artifact.promotionDiagnostics.schemaVersion,
+        candidates: Array.from({ length: 5_000 }, () => Object.fromEntries(
+          Array.from({ length: 9 }, (_, index) => [`key${index}`, null]))) } },
+    "artifact", "artifact")).toThrow("total object key limit");
+    const small = { schemaVersion: "reader_summary.artifact.v1", content: [] };
+    expect(canonical(small, "artifact", "artifact").json)
+      .toBe(canonicalizeReaderSummaryWeeklyJson(small).json);
+  });
+
+  it("does not invoke accessors when selecting V3 artifact array exemptions", () => {
+    let accessed = false;
+    const hostile = { get schemaVersion(): string { accessed = true;
+      return "reader_summary.artifact.v1"; } };
+    expect(() => canonicalizeReaderSummaryWeeklyV3PublicationJson(
+      hostile, "artifact", "artifact")).toThrow("artifact shape");
+    const nested = { schemaVersion: "reader_summary.artifact.v1",
+      promotionDiagnostics: { get schemaVersion(): string { accessed = true;
+        return "reader_promotion_diagnostics.v1"; }, candidates: [] } };
+    expect(() => canonicalizeReaderSummaryWeeklyV3PublicationJson(
+      nested, "artifact", "artifact")).toThrow("data fields only");
+    expect(accessed).toBe(false);
+  });
+
   it("accepts bounded long HTTPS URLs without widening identifier limits", () => {
     const url = `https://news.google.com/rss/articles/${"a".repeat(700)}`;
 

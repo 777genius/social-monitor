@@ -1,7 +1,12 @@
 import { deepStrictEqual } from "node:assert";
-import type { PoolClient } from "pg";
 import { assertPostgresRejectsContaining as assertRejects } from
   "./reader-summary-publication-postgres-assertions";
+
+interface CandidateAuditQueryPort {
+  query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    sql: string, values?: unknown[],
+  ): Promise<{ rows: Row[] }>;
+}
 
 const id = (value: number): string =>
   `00000000-0000-4000-8000-${value.toString(16).padStart(12, "0")}`;
@@ -37,7 +42,7 @@ export const candidateAuditArtifactFixture = (): Record<string, unknown> => ({
 
 /** Direct owner-helper contract; publication authority/ACL tests remain separate. */
 export const assertV3CandidateAuditPostgresContract = async (
-  adminClient: PoolClient,
+  adminClient: CandidateAuditQueryPort,
 ): Promise<void> => {
   await adminClient.query("BEGIN");
   try {
@@ -51,7 +56,7 @@ export const assertV3CandidateAuditPostgresContract = async (
 
 /** Reusable inside a disposable transaction that installs a proposed function. */
 export const assertV3CandidateAuditCanonicalCases = async (
-  adminClient: PoolClient,
+  adminClient: CandidateAuditQueryPort,
 ): Promise<void> => {
   const canonical = async (value: unknown, profile = "artifact",
     strategy: string | null = "jev_primary_v3"): Promise<unknown> => {
