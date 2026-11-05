@@ -335,7 +335,7 @@ describe("HN/RSS recovery injected acquisition path", () => {
         { mode: "search", target: "story", query: "synthetic" },
       ] },
     };
-    await expect(hn.scan(hn.planScan({ mode: "search", query: "synthetic" }, context), context)).rejects.toThrow("partial acquisition");
+    await expect(hn.scan(hn.planScan({ mode: "search", query: "synthetic" }, context), context)).rejects.toThrow("synthetic provider failure");
     const rss = requireCompleteRecoveryScan(new RssSourceProvider({
       readFeed: async (url) => {
         if (url.includes("failed")) throw new Error("synthetic feed failure");

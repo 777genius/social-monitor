@@ -23,11 +23,15 @@ import {
 } from "./rss-cursor-and-config";
 import type {
   RssClientPort,
-  RssFeedItem,
   RssReadFeedOptions,
   RssReadFeedResult,
 } from "./rss-client.port";
-import { hasReadableFeedText } from "./rss-readable-content";
+import {
+  normalizeItem,
+  rssWarnings,
+  rssHistoricalRejectionWarnings,
+  rssRecencyWarnings,
+} from './rss-source-item-mapping';
 import { RssEntityEvidenceError } from "./rss-xml-entity-evidence";
 import {
   feedUrlsForTargetWindow,
@@ -140,8 +144,9 @@ export class RssSourceProvider implements SourceProviderPort {
         nextCursor: encodeCursor(feed, plan.cursor),
         warnings: [
           ...(feed.truncated ? ["RSS recovery window exceeds maxItems; acquisition is incomplete."] : []),
-          ...rssHistoricalRejectionWarnings(feed.rejectedEntries, filteredItems, targetWindow !== undefined),
-          ...rssWarnings(feed.items),
+          ...rssHistoricalRejectionWarnings(feed.rejectedEntries,
+            filteredItems.map((item) => ({ item, feedUrl })), targetWindow !== undefined),
+          ...rssWarnings(feed.items.map((item) => ({ item, feedUrl }))),
           ...rssRecencyWarnings(
             feed.items,
             filteredItems,
@@ -209,11 +214,11 @@ export class RssSourceProvider implements SourceProviderPort {
           ? ["RSS recovery window exceeds maxItems; acquisition is incomplete."] : []),
         ...rssHistoricalRejectionWarnings(
           feeds.reduce((count, { feed }) => count + (feed.rejectedEntries ?? 0), 0),
-          filteredItems,
+          filteredSourcedItems,
           targetWindow !== undefined,
         ),
         ...feedReadWarnings,
-        ...rssWarnings(allItems),
+        ...rssWarnings(sourcedItems),
         ...rssRecencyWarnings(
           allItems,
           filteredItems,
@@ -245,63 +250,6 @@ export class RssSourceProvider implements SourceProviderPort {
   }
 }
 
-const normalizeItem = (item: RssFeedItem, index: number, feedUrl: string) => {
-  const title = item.title ?? "";
-  const body = item.content ?? "";
-
-  if (!hasReadableContent(item)) {
-    return [];
-  }
-
-  if (item.publishedAt === undefined) {
-    return [];
-  }
-
-  const canonicalUrl = canonicalLinkForItem(item);
-
-  if (canonicalUrl === undefined) {
-    return [];
-  }
-
-  return [
-    {
-      externalId: item.guid ?? `${canonicalUrl}#${index}`,
-      canonicalUrl,
-      title,
-      body,
-      authorHandle: item.author,
-      publishedAt: item.publishedAt,
-      metadata: rssItemMetadata(item, feedUrl),
-    },
-  ];
-};
-
-const rssItemMetadata = (item: RssFeedItem, feedUrl: string) => {
-  const searchQuery = searchQueryFromFeedUrl(feedUrl);
-
-  return {
-    kind: "rss_item",
-    ...(item.contentComplete === true ? { nativeContentComplete: true } : {}),
-    feedUrl,
-    ...(searchQuery === undefined ? {} : { searchQuery }),
-    ...(item.mediaThumbnailUrl === undefined
-      ? {}
-      : { mediaThumbnailUrl: item.mediaThumbnailUrl }),
-    ...(item.mediaContentUrl === undefined
-      ? {}
-      : { mediaContentUrl: item.mediaContentUrl }),
-    ...(item.mediaContentType === undefined
-      ? {}
-      : { mediaContentType: item.mediaContentType }),
-    ...(item.enclosureUrl === undefined
-      ? {}
-      : { enclosureUrl: item.enclosureUrl }),
-    ...(item.enclosureType === undefined
-      ? {}
-      : { enclosureType: item.enclosureType }),
-  };
-};
-
 const readFeedSafely = async (
   client: RssClientPort,
   feedUrl: string,
@@ -332,73 +280,3 @@ const formatFeedReadWarning = (feedUrl: string, error: unknown): string => {
   return `RSS feed ${redactSensitiveText(feedUrl)} could not be read: ${redactSensitiveText(message)}`;
 };
 
-const searchQueryFromFeedUrl = (feedUrl: string): string | undefined => {
-  try {
-    const parsed = new URL(feedUrl);
-    const query = parsed.searchParams.get("q")?.trim();
-
-    return query === undefined || query.length === 0 ? undefined : query;
-  } catch {
-    return undefined;
-  }
-};
-
-const rssWarnings = (items: readonly RssFeedItem[]): readonly string[] => [
-  ...(items.some(
-    (item) =>
-      hasReadableContent(item) &&
-      item.publishedAt !== undefined &&
-      item.guid === undefined,
-  )
-    ? ["Some RSS items had no GUID; canonical URL fallback was used."]
-    : []),
-  ...(items.some(
-    (item) => hasReadableContent(item) && item.publishedAt === undefined,
-  )
-    ? ["Some RSS items had no published timestamp; they were skipped."]
-    : []),
-  ...(items.some(
-    (item) =>
-      hasReadableContent(item) &&
-      item.publishedAt !== undefined &&
-      canonicalLinkForItem(item) === undefined,
-  )
-    ? ["Some RSS items had no canonical link; they were skipped."]
-    : []),
-];
-
-const rssHistoricalRejectionWarnings = (
-  rejectedEntries: number | undefined,
-  items: readonly RssFeedItem[],
-  historical: boolean,
-): readonly string[] => historical ? [
-  ...((rejectedEntries ?? 0) > 0
-    ? ["Some RSS entries could not be parsed; historical acquisition is incomplete."] : []),
-  ...(items.some((item) => !hasReadableContent(item))
-    ? ["Some RSS entries had no readable title or content; historical acquisition is incomplete."] : []),
-] : [];
-
-const rssRecencyWarnings = (
-  originalItems: readonly RssFeedItem[],
-  filteredItems: readonly RssFeedItem[],
-  maxItemAgeHours: number | undefined,
-): readonly string[] =>
-  maxItemAgeHours !== undefined && filteredItems.length < originalItems.length
-    ? [
-        `Some RSS items were older than maxItemAgeHours=${maxItemAgeHours}; they were skipped.`,
-      ]
-    : [];
-
-const hasReadableContent = (item: RssFeedItem): boolean =>
-  (item.titleType === 'xhtml'
-    ? item.title !== undefined && item.xhtmlReadability?.title === true
-    : hasReadableFeedText(item.title, item.titleType)) ||
-  (item.contentType === 'xhtml'
-    ? item.content !== undefined && item.xhtmlReadability?.content === true
-    : hasReadableFeedText(item.content, item.contentType));
-
-const canonicalLinkForItem = (item: RssFeedItem): string | undefined => {
-  const link = item.link?.trim();
-
-  return link === undefined || link.length === 0 ? undefined : link;
-};

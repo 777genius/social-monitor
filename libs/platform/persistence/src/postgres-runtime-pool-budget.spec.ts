@@ -855,7 +855,17 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       const source = readSource(path);
       expect(source).toContain('new QueueDeliveryBatch(deliveries)');
       expect(source).toContain('await batch.nack(delivery, { requeue: true })');
-      expect(source).toContain('operation.backpressure');
+      // Backpressure is still mandatory, but ingestion now delegates settlement
+      // to a separately tested policy rather than embedding it in the loop.
+      const settlementSource = path === 'apps/ingestion-worker/src/scan-queue-drain-loop.ts'
+        ? readSource('apps/ingestion-worker/src/scan-delivery-settlement-policy.ts')
+        : source;
+      if (settlementSource !== source) {
+        expect(source).toContain('decideFailedScanDeliveryAction(handlerError, this.shuttingDown)');
+        expect(settlementSource).toContain('scan_failure_recorded');
+        expect(settlementSource).toContain('scan_lease_held');
+      }
+      expect(settlementSource).toContain('operation.backpressure');
       expect(source).toMatch(/onModuleDestroy\([\s\S]*?await this\.currentTick/);
       expect(source).toMatch(/\}\s*finally\s*\{[\s\S]*?await batch\.releaseUnsettled\(\)/);
     }

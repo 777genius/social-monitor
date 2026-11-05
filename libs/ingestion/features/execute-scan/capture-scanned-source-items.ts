@@ -121,14 +121,14 @@ export const captureScannedSourceItems = async (params: {
   }
   const items = [...refs.values()];
   return {
-    items: items.map((ref) => ref.persistedItem),
+    items: items.map((ref) => ref.projectionItem ?? ref.persistedItem),
     saveResult: {
       inserted: items.filter((ref) => ref.inserted).length,
       contentUpdated: items.filter((ref) => ref.mutationKind === 'content_updated').length,
       skippedDuplicates: items.filter((ref) => ref.mutationKind === 'unchanged').length,
       items,
     },
-    enriched: { items: items.map((ref) => ref.persistedItem.toSnapshot()), enriched, failed, skipped },
+    enriched: { items: items.map((ref) => (ref.projectionItem ?? ref.persistedItem).toSnapshot()), enriched, failed, skipped },
   };
 };
 

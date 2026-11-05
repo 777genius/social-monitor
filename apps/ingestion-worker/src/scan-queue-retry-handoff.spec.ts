@@ -112,4 +112,30 @@ describe('scan broker and retry claim handoff', () => {
     expect(retry.nack).toHaveBeenCalledWith({ requeue: true });
     expect(jest.getTimerCount()).toBe(0);
   });
+
+  it('requeues a broker delivery after lease contention without losing it', async () => {
+    const context = fixture();
+    const delivery = primaryDelivery();
+    context.queue.drain.mockResolvedValueOnce([delivery]);
+    context.handler.handle.mockRejectedValueOnce(new DomainError('operation.conflict', 'Lease held', {
+      reason: 'scan_lease_held',
+    }));
+    await context.loop.onModuleInit();
+    await jest.advanceTimersByTimeAsync(10);
+    expect(delivery.nack).toHaveBeenCalledWith({ requeue: true });
+    expect(delivery.ack).not.toHaveBeenCalled();
+    await context.loop.onModuleDestroy();
+  });
+
+  it('rejects an unclassified handler failure rather than retrying indefinitely', async () => {
+    const context = fixture();
+    const delivery = primaryDelivery();
+    context.queue.drain.mockResolvedValueOnce([delivery]);
+    context.handler.handle.mockRejectedValueOnce(new Error('Invalid message'));
+    await context.loop.onModuleInit();
+    await jest.advanceTimersByTimeAsync(10);
+    expect(delivery.nack).toHaveBeenCalledWith({ requeue: false });
+    expect(delivery.ack).not.toHaveBeenCalled();
+    await context.loop.onModuleDestroy();
+  });
 });

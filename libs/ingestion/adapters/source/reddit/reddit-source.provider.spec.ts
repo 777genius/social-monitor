@@ -701,6 +701,7 @@ describe("RedditSourceProvider", () => {
     expect(result.warnings).toContain(
       "Reddit scan pass degraded (ClaudeAI:top:day): fetch failed",
     );
+    expect(result.collection).toEqual({ complete: false, backfillPending: true });
   });
 
   it("fails configured scan-passes when every Reddit pass is unavailable", async () => {

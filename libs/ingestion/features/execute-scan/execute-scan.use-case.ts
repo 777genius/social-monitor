@@ -1,4 +1,3 @@
-import { persistScannedSourceItems } from './persist-scanned-source-items';
 import {
   type Clock,
   DomainError,
@@ -11,7 +10,6 @@ import {
 import {
   createScanPolicy,
   createSourceBinding,
-  githubTrendingSnapshotBatchObservedAt,
   ScanAttempt,
 } from "../../domain";
 import {
@@ -49,16 +47,7 @@ import {
   providerFailureKind,
   shouldEnqueueScanRetry,
 } from "./scan-execution-failure";
-import {
-  sanitizeAndPrepareLiveArticleFetchUrls,
-  sanitizeFetchedConversationUnit,
-  sanitizeSourceWarnings,
-} from "./scan-source-sanitization";
-import {
-  rememberProcessedSourceCandidates,
-  screenSourceCandidates,
-} from "./source-candidate-memory-coordinator";
-import { prepareSourceEngagementSamples } from "./source-engagement-sample-coordinator";
+import { collectAndProjectScan } from './scan-collection-coordinator';
 import { reportScanOutcome } from './scan-outcome-reporting';
 import { recordScanFailure, recordedScanFailure } from './scan-failure-recording';
 import { executeWithScanLease } from './execute-with-scan-lease';
@@ -199,181 +188,25 @@ export class ExecuteScanUseCase {
         await this.scanAttempts.save(startedAttempt);
         attempt = startedAttempt;
 
-        const existingCursor = await this.scanCursors.findBySourceBinding({
-          tenantId: command.tenantId,
-          workspaceId: command.workspaceId,
-          sourceBindingId: sourceBinding.sourceBindingId,
+        const collected = await collectAndProjectScan(command, sourceBinding, lease, {
+          sourceFetcher: this.sourceFetcher,
+          sourceItems: this.sourceItems,
+          feedProjection: this.feedProjection,
+          scanCursors: this.scanCursors,
+          sourceItemMetadataProjection: this.sourceItemMetadataProjection,
+          sourceItemEnrichment: this.sourceItemEnrichment,
+          conversationProjection: this.conversationProjection,
+          candidateMemory: this.candidateMemory,
+          sourceEngagementProjection: this.sourceEngagementProjection,
+          ids: this.ids,
+          clock: this.clock,
         });
-        const fetched = await this.sourceFetcher.fetch({
-          tenantId: command.tenantId,
-          workspaceId: command.workspaceId,
-          sourceBindingId: sourceBinding.sourceBindingId,
-          scanJobId: command.scanJobId,
-          providerKey: sourceBinding.providerKey,
-          sourceQuery: command.sourceQuery,
-          correlationId: command.correlationId,
-          cursor: existingCursor?.cursor,
-        });
-        const scanWarnings = [...sanitizeSourceWarnings(fetched.warnings)];
-
-        const ingestedAt = this.clock.now();
-        const { sanitizedFetchedItems, liveArticleFetchUrls } =
-          sanitizeAndPrepareLiveArticleFetchUrls(
-            sourceBinding.providerKey,
-            fetched.items,
-          );
-        const candidateScreening = await screenSourceCandidates({
-          memory: this.candidateMemory,
-          scope: {
-            tenantId: command.tenantId,
-            workspaceId: command.workspaceId,
-            interestId: sourceBinding.interestId,
-            sourceBindingId: sourceBinding.sourceBindingId,
-            providerKey: sourceBinding.providerKey,
-            interestQuery: command.interestQuerySnapshot,
-            sourceQuery: command.sourceQuery,
-          },
-          items: sanitizedFetchedItems,
-          screenedAt: ingestedAt,
-        });
-        if (candidateScreening.warning !== undefined) {
-          scanWarnings.push(candidateScreening.warning);
-        }
-        const { enriched, saveResult, persistedItems } = await persistScannedSourceItems({
-          scope: { tenantId: command.tenantId, workspaceId: command.workspaceId,
-            sourceBindingId: sourceBinding.sourceBindingId, providerKey: sourceBinding.providerKey },
-          repository: this.sourceItems, enrichment: this.sourceItemEnrichment,
-          items: sanitizedFetchedItems, screening: candidateScreening, capturedAt: ingestedAt,
-          clock: this.clock, ids: this.ids, lease, correlationId: command.correlationId,
-          liveArticleFetchUrls,
-        });
-        const projectionObservedAt =
-          githubTrendingSnapshotBatchObservedAt({
-            providerKey: sourceBinding.providerKey,
-            items: persistedItems.map((item) => item.toSnapshot()),
-          }) ?? ingestedAt;
-        const { sourceItemsForFullProjection, engagementSamples } =
-          prepareSourceEngagementSamples({
-            providerKey: sourceBinding.providerKey,
-            persistedItems,
-            savedItems: saveResult.items,
-            candidateScreening,
-          });
-        const projectionResult = sourceItemsForFullProjection.length === 0
-          ? { projected: 0, projectedItems: [] }
-          : await this.feedProjection.project({
-              tenantId: command.tenantId,
-              workspaceId: command.workspaceId,
-              interestId: sourceBinding.interestId,
-              sourceBindingId: sourceBinding.sourceBindingId,
-              providerKey: sourceBinding.providerKey,
-              snapshots: {
-                interestQuerySnapshot: {
-                  interestId: sourceBinding.interestId,
-                  query:
-                    command.interestQuerySnapshot ?? command.sourceQuery.query,
-                },
-                sourceBindingSnapshot: {
-                  sourceBindingId: sourceBinding.sourceBindingId,
-                  providerKey: sourceBinding.providerKey,
-                  sourceQuery: {
-                    mode: command.sourceQuery.mode,
-                    query: command.sourceQuery.query,
-                  },
-                },
-                workspaceScopeSnapshot: {
-                  tenantId: command.tenantId,
-                  workspaceId: command.workspaceId,
-                },
-              },
-              sourceItems: sourceItemsForFullProjection,
-            });
-        if (sourceItemsForFullProjection.length > 0 || (fetched.conversationUnits?.length ?? 0) > 0) {
-          const conversationResult = await this.conversationProjection.project({
-            tenantId: command.tenantId,
-            workspaceId: command.workspaceId,
-            interestId: sourceBinding.interestId,
-            sourceBindingId: sourceBinding.sourceBindingId,
-            providerKey: sourceBinding.providerKey,
-            observedAt: projectionObservedAt,
-            conversationUnits: (fetched.conversationUnits ?? []).map(
-              sanitizeFetchedConversationUnit,
-            ),
-            projectedFeedItems: projectionResult.projectedItems,
-          });
-          if (
-            fetched.telemetry?.targetPublishedWindowStartedAt !== undefined &&
-            fetched.telemetry.targetPublishedWindowEndedAt !== undefined &&
-            (conversationResult.skippedInvalid > 0 || conversationResult.skippedOrphans > 0)
-          ) {
-            const incompleteProjection = new DomainError(
-              "external.dependency_unavailable",
-              `Historical conversation projection incomplete: ${conversationResult.skippedInvalid} invalid and ${conversationResult.skippedOrphans} orphan units skipped`,
-              {
-                skippedInvalid: conversationResult.skippedInvalid,
-                skippedOrphans: conversationResult.skippedOrphans,
-              },
-            );
-            throw incompleteProjection;
-          }
-        }
-        if (sourceItemsForFullProjection.length > 0) {
-          await this.sourceItemMetadataProjection.project({
-            tenantId: command.tenantId,
-            workspaceId: command.workspaceId,
-            interestId: sourceBinding.interestId,
-            sourceBindingId: sourceBinding.sourceBindingId,
-            scanJobId: command.scanJobId,
-            providerKey: sourceBinding.providerKey,
-            sourceItems: sourceItemsForFullProjection,
-          });
-        }
-        const engagementProjectionResult =
-          await this.sourceEngagementProjection.project({
-            tenantId: command.tenantId,
-            workspaceId: command.workspaceId,
-            sourceBindingId: sourceBinding.sourceBindingId,
-            scanJobId: command.scanJobId,
-            providerKey: sourceBinding.providerKey,
-            observedAt: projectionObservedAt,
-            samples: engagementSamples,
-          });
-        if (fetched.nextCursor !== undefined) {
-          await this.scanCursors.save({
-            tenantId: command.tenantId,
-            workspaceId: command.workspaceId,
-            sourceBindingId: sourceBinding.sourceBindingId,
-            cursor: fetched.nextCursor,
-            committedAt: this.clock.now(),
-          });
-        }
-        const candidateMemoryWriteWarning =
-          await rememberProcessedSourceCandidates({
-            memory: this.candidateMemory,
-            screening: candidateScreening,
-            processedExternalIds: new Set(
-              [
-                ...enriched.items.map((item) => item.externalId),
-                ...engagementSamples.map((sample) => sample.externalId),
-              ],
-            ),
-            rememberedAt: this.clock.now(),
-          });
-        if (candidateMemoryWriteWarning !== undefined) {
-          scanWarnings.push(candidateMemoryWriteWarning);
-        }
-        const skippedDuplicates = new Set([
-          ...saveResult.items
-            .filter((item) => item.mutationKind === "unchanged")
-            .map((item) => item.externalId),
-          ...candidateScreening.suppressedExternalIds,
-        ]).size;
         attempt = attempt.succeed({
           finishedAt: this.clock.now(),
-          fetched: fetched.items.length,
-          inserted: saveResult.inserted,
-          skippedDuplicates,
-          projected: projectionResult.projected,
+          fetched: collected.fetched.items.length,
+          inserted: collected.saveResult.inserted,
+          skippedDuplicates: collected.skippedDuplicates,
+          projected: collected.projectionResult.projected,
         });
         await this.scanAttempts.save(attempt);
         ingestionSucceeded = true;
@@ -382,36 +215,36 @@ export class ExecuteScanUseCase {
           workspaceId: command.workspaceId,
           scanJobId: command.scanJobId,
           completedAt: this.clock.now(),
-          warnings: scanWarnings,
+          warnings: collected.scanWarnings,
           collectionTelemetry: successfulScanCollectionExecutionMetadata({
             providerKey: sourceBinding.providerKey,
             sourceQuery: command.sourceQuery,
-            telemetry: fetched.telemetry,
-            insertedItemCount: saveResult.inserted,
-            contentUpdatedItemCount: saveResult.contentUpdated,
+            telemetry: collected.fetched.telemetry,
+            insertedItemCount: collected.saveResult.inserted,
+            contentUpdatedItemCount: collected.saveResult.contentUpdated,
             engagementMetricChangedItemCount:
-              engagementProjectionResult.metricChanges,
+              collected.engagementProjectionResult.metricChanges,
             engagementObservationItemCount:
-              engagementProjectionResult.observationsAppended,
+              collected.engagementProjectionResult.observationsAppended,
             engagementRetentionPurgeDeferred:
-              engagementProjectionResult.retentionPurgeDeferred ?? false,
-            storageDuplicateItemCount: saveResult.skippedDuplicates,
+              collected.engagementProjectionResult.retentionPurgeDeferred ?? false,
+            storageDuplicateItemCount: collected.saveResult.skippedDuplicates,
             candidateMemorySuppressedItemCount:
-              candidateScreening.suppressedExternalIds.length,
+              collected.candidateScreening.suppressedExternalIds.length,
           }),
         }));
         if (!reported.ok) return err(reported.error);
 
         return ok({
           scanJobId: command.scanJobId,
-          fetched: fetched.items.length,
-          inserted: saveResult.inserted,
-          skippedDuplicates,
-          projected: projectionResult.projected,
-          warnings: scanWarnings,
-          ...(fetched.telemetry === undefined
+          fetched: collected.fetched.items.length,
+          inserted: collected.saveResult.inserted,
+          skippedDuplicates: collected.skippedDuplicates,
+          projected: collected.projectionResult.projected,
+          warnings: collected.scanWarnings,
+          ...(collected.fetched.telemetry === undefined
             ? {}
-            : { telemetry: fetched.telemetry }),
+            : { telemetry: collected.fetched.telemetry }),
         });
       } catch (error) {
         if (attempt === undefined || ingestionSucceeded) {

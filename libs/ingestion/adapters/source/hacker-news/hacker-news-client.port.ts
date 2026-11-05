@@ -25,6 +25,8 @@ export type HackerNewsSearchOptions = {
   readonly to?: Date;
   /** Exhaust the bounded Algolia window or fail closed when coverage is unknown. */
   readonly requireComplete?: boolean;
+  /** Optional scan-wide deadline shared across historical search passes. */
+  readonly deadline?: AbortSignal;
 };
 
 export type HackerNewsListStoryCommentsRequest = {

@@ -28,7 +28,8 @@ describe("RegistrySourceFetcherAdapter collection telemetry", () => {
       page([
         item("inside-1", "2026-07-09T08:00:00.000Z"),
         item("inside-2", "2026-07-09T18:00:00.000Z"),
-      ]),
+      ], "page-3"),
+      page([item("inside-3", "2026-07-09T19:00:00.000Z")]),
     ]);
     const result = await fetchWith(provider, {
       adaptivePagination: {
@@ -47,20 +48,38 @@ describe("RegistrySourceFetcherAdapter collection telemetry", () => {
     expect(result.items.map((entry) => entry.externalId)).toEqual([
       "inside-1",
       "inside-2",
+      "inside-3",
     ]);
     expect(result.telemetry).toEqual({
       targetItemCount: 3,
-      collectedItemCount: 3,
-      acceptedItemCount: 2,
+      collectedItemCount: 4,
+      acceptedItemCount: 3,
       outsideWindowItemCount: 1,
-      pageCount: 2,
+      pageCount: 3,
       paginationDuplicateItemCount: 1,
       paginationStopReason: "target_items",
       rateLimitEventCount: 0,
       targetPublishedWindowStartedAt: new Date("2026-07-09T00:00:00.000Z"),
       targetPublishedWindowEndedAt: new Date("2026-07-10T00:00:00.000Z"),
       oldestAcceptedPublishedAt: new Date("2026-07-09T08:00:00.000Z"),
-      newestAcceptedPublishedAt: new Date("2026-07-09T18:00:00.000Z"),
+      newestAcceptedPublishedAt: new Date("2026-07-09T19:00:00.000Z"),
+    });
+  });
+
+  it("retains content incompleteness if a later page fails retryably", async () => {
+    const provider = new TelemetryProvider([{
+      ...page([item("partial", "2026-07-09T08:00:00.000Z")], "page-2"),
+      collection: { complete: false, backfillPending: true, contentComplete: false },
+    }], 1);
+    const result = await fetchWith(provider, {
+      adaptivePagination: {
+        enabled: true, targetItems: 4, maxPages: 3,
+        minNewItemsPerPage: 1, maxDuplicateRate: 0.9,
+      },
+    });
+    expect(result.telemetry).toMatchObject({
+      collectionComplete: false, backfillPending: true, contentComplete: false,
+      paginationStopReason: "partial_retryable_failure",
     });
   });
 

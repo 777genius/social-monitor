@@ -173,6 +173,9 @@ export async function exportRssSep24Selected(request: SelectedExportRequest,
     throw new Error("RSS scan incomplete or unknown");
   }
   const items = scan.items.map(selectedItem);
+  if (scan.warnings.includes("Some RSS items had no GUID; canonical URL fallback was used.")) {
+    throw new Error("Selected RSS export requires a stable GUID");
+  }
   if (scan.warnings.length > understoodPartialWarnings.size ||
     new Set(scan.warnings).size !== scan.warnings.length ||
     scan.warnings.some((warning) => !understoodPartialWarnings.has(warning))) {

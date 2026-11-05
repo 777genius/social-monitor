@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { tenantId, workspaceId, type JsonObject } from '@social-monitor/shared-kernel';
 import { SourceItem } from '../../domain/entities/source-item';
+import { rehydratePersistedSourceItems } from '../../features/execute-scan/execute-scan-persisted-source-items';
 import { captureArticleText, captureSha256, readContentCapture } from '../../domain/value-objects/source-content-capture';
 import { sourceItemContentHash, sourceItemProviderContentHash } from '../../domain/value-objects/source-item-content-fingerprint';
 import { InMemorySourceItemRepository } from './in-memory-source-item.repository';
@@ -127,6 +128,41 @@ it.each([false, true])('retains the durable revision and cutoff clock on a bindi
   })] });
   expect(readRecord()!.contentHash).not.toBe(legacyContentHash);
   expect(readRecord()!.contentUpdatedAt).toEqual(new Date('2026-09-20T02:00:00Z'));
+});
+
+it('preserves newer durable content across a stale cross-binding replay without leaking article capture', async () => {
+  const { repository, readRecord } = prismaFixture();
+  const providerKey = 'hacker-news';
+  const metadata = { kind: 'hacker_news_story', externalUrl: 'https://example.test/article' };
+  await repository.saveBatch({ ...scope, providerKey, items: [
+    source(metadata, 'binding-new', new Date('2026-09-20T03:00:00Z')),
+  ] });
+  const row = readRecord()!;
+  const enriched = captureArticleText(sourceItemFromPrisma(row).toSnapshot(), {
+    text: 'Newer binding article', sourceUrl: metadata.externalUrl,
+    finalUrl: metadata.externalUrl, originalLength: 21,
+    fullTextSha256: captureSha256('Newer binding article'), truncated: false,
+    extractionVersion: 'readability.text.v2', acquiredAt: new Date('2026-09-20T03:30:00Z'),
+  });
+  Object.assign(row, { body: enriched.body, metadata: {
+    ...enriched.metadata, articleCaptureAttempt: { reservationToken: 'new-binding-only' },
+  } });
+  const durableBefore = structuredClone(readRecord()!);
+  const incoming = source(metadata, 'binding-old', new Date('2026-09-20T01:00:00Z'));
+  const saved = await repository.saveBatch({ ...scope, providerKey, items: [incoming] });
+
+  expect(saved).toMatchObject({
+    inserted: 0, contentUpdated: 0, skippedDuplicates: 1,
+    items: [{ mutationKind: 'unchanged' }],
+  });
+  expect(saved.items[0]?.persistedItem.toSnapshot().sourceBindingId).toBe('binding-new');
+  expect(saved.items[0]?.projectionItem?.toSnapshot().sourceBindingId).toBe('binding-old');
+  const projected = rehydratePersistedSourceItems([incoming], saved.items)[0]!.toSnapshot();
+  expect(projected.id).toBe(durableBefore.id);
+  expect(projected.body).toBe('Provider native description');
+  expect(readContentCapture(projected)?.article).toBeUndefined();
+  expect(JSON.stringify(projected.metadata)).not.toContain('new-binding-only');
+  expect(readRecord()).toEqual(durableBefore);
 });
 
 it('does not transfer article bytes or a prior capture attempt to another binding', async () => {

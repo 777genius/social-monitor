@@ -98,7 +98,7 @@ describe("RssSourceProvider", () => {
         },
       },
       {
-        externalId: "https://example.test/rss/item-2#1",
+        externalId: expect.stringMatching(/^https:\/\/example\.test\/rss\/item-2#rss2-[0-9a-f]{24}$/),
         canonicalUrl: "https://example.test/rss/item-2",
         title: "RSS item 2 without guid",
         body: "Second RSS item",
