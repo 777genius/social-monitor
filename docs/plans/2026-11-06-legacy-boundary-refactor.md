@@ -190,6 +190,15 @@ comment, bot summary or empty automated review is not approval.
 
 - Baseline audit: `main` `83ad558cbc6ba419c755375c65aa3f7c3cf418b9`; existing rule and plan inventory read.
 - Planned branch: `refactor/legacy-boundaries-20261106`.
-- Stage 1 verification: **pending** until code and CI have run.
+- Staged cleanup pushed: monitoring history Jest fixture, source-binding REST smoke helpers,
+  reader-summary REST smoke fixtures/assertions and delivery Prisma smoke fake client.
+  Each original test or main scenario body was retained. Matching LOC exceptions
+  removed: **4**, reducing the baseline from **15 to 11**.
+- Stage 1–2 verification: **pending exact-head CI and E2E**; pushing a commit
+  is not the same as passing the corresponding test. Backend test/E2E jobs
+  explicitly skip Draft pull requests under `.github/workflows/pull-request.yml`.
+  Before asserting completion, they must be executed against the same HEAD
+  through the repository's supported ready-for-review or workflow-dispatch
+  route; neither is claimed here.
 - Stage 2–5 implementation and review: **not yet complete**.
 - No production deployment, merge, or external agent review is claimed.
