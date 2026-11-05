@@ -53,6 +53,15 @@ export const rehydratePersistedSourceItems = (
         `Source item repository returned incoherent persisted identity for external item ${ref.externalId}`,
       );
     }
+    const projection = ref.projectionItem?.toSnapshot();
+    if (projection !== undefined &&
+        (projection.externalId !== ref.externalId || projection.id !== ref.sourceItemId ||
+         projection.tenantId !== persistedSnapshot.tenantId ||
+         projection.workspaceId !== persistedSnapshot.workspaceId)) {
+      throw new SourceItemPersistenceContractError(
+        `Source item repository returned incoherent binding projection for external item ${ref.externalId}`,
+      );
+    }
     persistedRefByExternalId.set(ref.externalId, ref);
   }
 
@@ -64,7 +73,8 @@ export const rehydratePersistedSourceItems = (
         `Source item repository did not return a saved ref for external item ${snapshot.externalId}`,
       );
     }
-    const persistedSnapshot = persistedRef.persistedItem.toSnapshot();
+    const projectedItem = persistedRef.projectionItem ?? persistedRef.persistedItem;
+    const persistedSnapshot = projectedItem.toSnapshot();
     if (
       persistedSnapshot.tenantId !== snapshot.tenantId ||
       persistedSnapshot.workspaceId !== snapshot.workspaceId ||
@@ -74,6 +84,6 @@ export const rehydratePersistedSourceItems = (
         `Source item repository returned an out-of-scope persisted item for external item ${snapshot.externalId}`,
       );
     }
-    return persistedRef.persistedItem;
+    return projectedItem;
   });
 };

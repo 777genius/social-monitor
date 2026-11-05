@@ -16,6 +16,8 @@ export type SavedSourceItemRef = {
   readonly externalId: string;
   readonly sourceItemId: string;
   readonly persistedItem: SourceItem;
+  /** Read-only binding-scoped view for a stale cross-binding retry; never persisted. */
+  readonly projectionItem?: SourceItem;
   readonly inserted: boolean;
   readonly mutationKind: "inserted" | "content_updated" | "unchanged";
 };

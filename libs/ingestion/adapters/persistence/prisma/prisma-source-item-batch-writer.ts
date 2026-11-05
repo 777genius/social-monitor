@@ -2,6 +2,7 @@ import { preserveVerifiedLegacyCapture } from '../../../domain/value-objects/leg
 import { prepareArticleCaptureAttempt } from '../../../domain/value-objects/article-capture-attempt';
 import {
   captureNativeText,
+  readContentCapture,
   preserveNativeCaptureAvailability,
   preserveSourceCapture,
 } from '../../../domain/value-objects/source-content-capture';
@@ -9,6 +10,7 @@ import {
   assertGitHubTrendingDurableObservationCoherence,
   GITHUB_TRENDING_PAGE_PROVIDER_KEY,
   sourceItemProviderContentHash,
+  SourceItem,
   type SourceItemProps,
 } from '../../../domain';
 import type {
@@ -136,12 +138,21 @@ async function updateExistingSourceItem(
 ): Promise<{
   readonly record: PrismaSourceItemRecord;
   readonly contentChanged: boolean;
+  readonly projectionItem?: SourceItem;
 }> {
   // Serializable replays can observe a newer committed value than the scan
   // being retried. Do not let an older observation regress content or clocks.
   const persistedObservedAt = params.existing.lastObservedAt ?? params.existing.observedAt;
   if (params.snapshot.ingestedAt.getTime() < persistedObservedAt.getTime()) {
-    return { record: params.existing, contentChanged: false };
+    return {
+      record: params.existing,
+      contentChanged: false,
+      ...(params.existing.sourceBindingId === params.snapshot.sourceBindingId ? {} : {
+        projectionItem: bindingScopedStaleProjection(
+          params.existing, params.snapshot, params.providerKey,
+        ),
+      }),
+    };
   }
   const contentChanged =
     params.existing.providerContentHash === null ||
@@ -195,6 +206,30 @@ async function updateExistingSourceItem(
   return { record, contentChanged };
 }
 
+/** Reuse newer native content without copying another binding's article capture or changing DB state. */
+function bindingScopedStaleProjection(
+  existing: PrismaSourceItemRecord,
+  incoming: SourceItemProps,
+  providerKey: string,
+): SourceItem {
+  const saved = sourceItemFromPrisma(existing).toSnapshot();
+  const captured = readContentCapture(saved);
+  const nativeBody = captured === undefined
+    ? incoming.body
+    : saved.body.slice(captured.native.offset, captured.native.offset + captured.native.length);
+  const metadata = Object.fromEntries(
+    Object.entries(incoming.metadata ?? {}).filter(
+      ([key]) => !['contentCapture', 'articleCaptureAttempt', 'articleContent'].includes(key),
+    ),
+  );
+  return SourceItem.rehydrate(captureNativeText({
+    ...saved,
+    sourceBindingId: incoming.sourceBindingId,
+    body: nativeBody,
+    metadata,
+  }, providerKey, saved.ingestedAt));
+}
+
 async function findExistingSourceItems(
   transaction: PrismaIngestionClient,
   command: SaveSourceItemsCommand,
@@ -238,11 +273,12 @@ async function findExistingSourceItems(
 const savedItemRef = (
   externalId: string,
   record: PrismaSourceItemRecord,
-  update: { readonly contentChanged: boolean },
+  update: { readonly contentChanged: boolean; readonly projectionItem?: SourceItem },
 ): SavedSourceItemRef => ({
   externalId,
   sourceItemId: record.id,
   persistedItem: sourceItemFromPrisma(record),
+  ...(update.projectionItem === undefined ? {} : { projectionItem: update.projectionItem }),
   inserted: false,
   mutationKind: update.contentChanged ? "content_updated" : "unchanged",
 });
