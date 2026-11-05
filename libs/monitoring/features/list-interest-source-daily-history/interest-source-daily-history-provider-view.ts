@@ -125,9 +125,8 @@ export const buildProviderView = (
     projected: sumAttempts(latestAttempts, 'projected'),
     lastScanRequestedAt: snapshots[0]?.requestedAt.toISOString(),
     lastCompletedAt: snapshots
-      .map((snapshot) => snapshot.completedAt)
-      .find((completedAt): completedAt is Date => completedAt !== undefined)
-      ?.toISOString(),
+      .flatMap((snapshot) => snapshot.completedAt === undefined ? [] : [snapshot.completedAt])
+      .sort((left, right) => right.getTime() - left.getTime())[0]?.toISOString(),
     operatorAction: dailyHistoryOperatorAction({
       healthOperatorAction: health.operatorAction,
       healthState: health.providerHealthState,
@@ -190,7 +189,7 @@ const dailyHistoryOperatorAction = (params: {
     return 'create_scan_policy_for_unconfigured_source_bindings';
   }
 
-  if (params.pausedSourceBindingCount > 0 && params.scanCoverageState === 'partial') {
+  if (params.pausedSourceBindingCount > 0 && params.scanCoverageState !== 'complete') {
     return 'resume_paused_sources_or_confirm_they_are_excluded';
   }
 
@@ -220,7 +219,9 @@ const countScannedBindings = (
   const bindingIds = new Set(bindings.map((binding) => binding.toSnapshot().id));
   const scannedBindingIds = new Set(
     jobs
-      .map((job) => job.toSnapshot().sourceBindingId)
+      .map((job) => job.toSnapshot())
+      .filter((job) => job.status === 'succeeded' || job.status === 'failed')
+      .map((job) => job.sourceBindingId)
       .filter((sourceBindingId) => bindingIds.has(sourceBindingId)),
   );
 

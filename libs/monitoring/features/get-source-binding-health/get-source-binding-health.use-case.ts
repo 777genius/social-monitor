@@ -98,7 +98,9 @@ export class GetSourceBindingHealthUseCase {
           intervalSeconds: scanPolicySnapshot.intervalSeconds,
           freshnessSeconds: scanPolicySnapshot.freshnessSeconds,
         });
-    const freshness = scanPolicySnapshot === undefined || latestScanSnapshot?.completedAt === undefined
+    const freshness = scanPolicySnapshot === undefined ||
+      latestScanSnapshot?.status !== 'succeeded' ||
+      latestScanSnapshot.completedAt === undefined
       ? undefined
       : buildFreshness({
           completedAt: latestScanSnapshot.completedAt,

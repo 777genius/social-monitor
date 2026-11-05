@@ -17,17 +17,20 @@ const laneRetrievesCandidate = (
   candidate: RankingEvalCandidate,
 ): boolean => {
   if (lane.operation === 'account_feed') {
-    return handleFromQuery(lane.query) === normalizeHandle(candidate.authorHandle);
+    const handle = handleFromQuery(lane.query);
+    return handle !== undefined && handle === normalizeHandle(candidate.authorHandle);
   }
 
   if (lane.operation === 'mention_search') {
     const handle = handleFromQuery(lane.query);
-
-    return handle !== undefined && candidateText(candidate).includes(handle);
+    const mentionText = normalizeText([candidate.title, candidate.body].join(' '));
+    return handle !== undefined &&
+      new RegExp('(^|[^a-z0-9_])@' + handle + '(?![a-z0-9_])', 'iu').test(mentionText);
   }
 
   if (lane.operation === 'listing') {
-    return candidateSubreddit(candidate) === subredditFromListingQuery(lane.query);
+    const subreddit = subredditFromListingQuery(lane.query);
+    return subreddit !== undefined && candidateSubreddit(candidate) === subreddit;
   }
 
   if (lane.operation === 'enrichment') {
@@ -50,7 +53,9 @@ const searchLaneMatchesCandidate = (
 
   const tokens = tokenizeQuery(query);
   if (tokens.length === 0) {
-    return false;
+    // All low-signal terms (e.g. "AI") still match as whole words, not substrings.
+    const candidateWords = text.match(/[\p{L}\p{N}]+/gu) ?? [];
+    return rawQueryTokens(query).some((token) => candidateWords.includes(token));
   }
 
   const matched = tokens.filter((token) => text.includes(token)).length;
@@ -95,12 +100,11 @@ const handleFromQuery = (query: string): string | undefined => {
 const normalizeHandle = (value: string | undefined): string | undefined =>
   value === undefined ? undefined : value.replace(/^@/u, '').toLowerCase();
 
+const rawQueryTokens = (query: string): readonly string[] =>
+  compactUnique(query.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}_.-]*/gu) ?? []);
+
 const tokenizeQuery = (query: string): readonly string[] =>
-  compactUnique(
-    (query.toLowerCase().match(/[a-z0-9][a-z0-9_.-]*/gu) ?? []).filter(
-      (token) => !lowSignalQueryTokens.has(token),
-    ),
-  );
+  rawQueryTokens(query).filter((token) => !lowSignalQueryTokens.has(token));
 
 const quotedPhrases = (value: string): readonly string[] =>
   [...value.matchAll(/"([^"]+)"/gu)].flatMap((match) =>

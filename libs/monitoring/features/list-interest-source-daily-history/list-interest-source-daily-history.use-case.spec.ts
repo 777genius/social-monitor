@@ -254,6 +254,43 @@ class FakeSchedulerDecisionHistory implements ScanSchedulerDecisionHistoryPort {
 }
 
 describe("ListInterestSourceDailyHistoryUseCase", () => {
+  it("does not claim scan coverage for queued-only paused bindings", async () => {
+    const fixture = await makeFixture();
+    const binding = makeBinding("queued-paused", "reddit").pause();
+    await fixture.bindings.save(binding);
+    await fixture.policies.save(makePolicy(binding));
+    await fixture.scanJobs.save(ScanJob.request({
+      id: "queued-job",
+      tenantId: tenant,
+      workspaceId: workspace,
+      sourceBindingId: binding.toSnapshot().id,
+      scanPolicyId: "scan-policy-queued-paused",
+      idempotencyKey: "scan:queued-job",
+      requestedAt: new Date("2026-06-26T08:00:00.000Z"),
+    }).markEnqueued({ enqueuedAt: new Date("2026-06-26T08:00:01.000Z") }));
+
+    const result = await fixture.useCase.execute({
+      tenantId: tenant, workspaceId: workspace,
+      interestId: "interest-source-history", days: 1,
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        summary: expect.objectContaining({
+          scanCoverageState: "none_scanned",
+          scannedSourceBindingCount: 0,
+          unscannedSourceBindingCount: 1,
+          providerBreakdown: [
+            expect.objectContaining({
+              scanCoverageState: "none_scanned",
+              operatorAction: "resume_paused_sources_or_confirm_they_are_excluded",
+            }),
+          ],
+        }),
+      }),
+    });
+  });
+
   it("aggregates scan history by day and provider for an interest", async () => {
     const fixture = await makeFixture();
     const reddit = makeBinding("binding-reddit", "reddit");
@@ -951,6 +988,7 @@ const makeFixture = async () => {
   return {
     bindings,
     policies,
+    scanJobs,
     schedulerDecisions,
     useCase,
     saveSchedulerDecision: async (

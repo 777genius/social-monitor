@@ -79,7 +79,9 @@ export const buildRecentWindow = (params: {
   const windowStartedAt = new Date(params.now.getTime() - recentScanWindowMs);
   const recentJobs = params.jobs
     .map((job) => job.toSnapshot())
-    .filter((job) => job.requestedAt.getTime() >= windowStartedAt.getTime());
+    .filter((job) =>
+      job.requestedAt.getTime() >= windowStartedAt.getTime() &&
+      job.requestedAt.getTime() < params.now.getTime());
   const succeededJobs = recentJobs.filter((job) => job.status === 'succeeded');
   const failedJobs = recentJobs.filter((job) => job.status === 'failed');
   const summary = summarizeScanProviderHealth(recentJobs);
@@ -105,11 +107,12 @@ export const buildRecentWindow = (params: {
 
 const latestCompletedAt = (
   jobs: readonly { readonly completedAt?: Date }[],
-): string | undefined =>
-  jobs
-    .map((job) => job.completedAt)
-    .find((completedAt): completedAt is Date => completedAt !== undefined)
-    ?.toISOString();
+): string | undefined => {
+  const completed = jobs
+    .flatMap((job) => job.completedAt === undefined ? [] : [job.completedAt])
+    .sort((left, right) => right.getTime() - left.getTime());
+  return completed[0]?.toISOString();
+};
 
 
 export const operatorActionForHealth = (state: SourceBindingHealthState): string => {
