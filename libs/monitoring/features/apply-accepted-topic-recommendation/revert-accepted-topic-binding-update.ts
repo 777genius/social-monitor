@@ -1,4 +1,4 @@
-import { DomainError, type Clock, type IdGenerator, causationId, correlationId, eventId, ok, type Result } from '@social-monitor/shared-kernel';
+import { type DomainError, type Clock, type IdGenerator, causationId, correlationId, eventId, ok, type Result } from '@social-monitor/shared-kernel';
 import type { SourceBinding, SourceBindingConfigExpansionRevertedEvent } from '../../domain';
 import type { OutboxPort, SourceBindingRepositoryPort } from '../../ports';
 import { parseRollbackToken, sameConfig, type SourceBindingConfigRollbackToken } from './accepted-topic-rollback-token';

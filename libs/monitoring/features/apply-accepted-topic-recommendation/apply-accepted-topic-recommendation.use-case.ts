@@ -1,4 +1,4 @@
-import { type Clock, DomainError, type IdGenerator, err, ok, type Result } from '@social-monitor/shared-kernel';
+import { type Clock, type DomainError, type IdGenerator, err, ok, type Result } from '@social-monitor/shared-kernel';
 import type { SourceBinding } from '../../domain';
 import type {
   IdempotencyPort,

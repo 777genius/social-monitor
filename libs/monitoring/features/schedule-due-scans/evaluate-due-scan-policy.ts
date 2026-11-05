@@ -22,7 +22,7 @@ import type { ScheduleDueScansCommand } from './schedule-due-scans.command';
 import type { ScheduleDueScansDecision } from './schedule-due-scans.result';
 import {
   appliedSchedulerBackoffUntil,
-  emptySkipBreakdown,
+  type emptySkipBreakdown,
   recordDecision,
   recordSkipped,
   type RecordedScheduleDueScansDecision,

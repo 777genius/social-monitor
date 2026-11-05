@@ -1,6 +1,6 @@
 import type { ScanJob } from '../../domain';
 import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
-import { classifySourceFailureKind } from './source-binding-health-explanation';
+import type { classifySourceFailureKind } from './source-binding-health-explanation';
 import type {
   SourceBindingHealthFreshnessView,
   SourceBindingHealthRecentWindowView,

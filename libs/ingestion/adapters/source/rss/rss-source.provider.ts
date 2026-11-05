@@ -23,7 +23,6 @@ import {
 } from "./rss-cursor-and-config";
 import type {
   RssClientPort,
-  RssFeedItem,
   RssReadFeedOptions,
   RssReadFeedResult,
 } from "./rss-client.port";
