@@ -1,12 +1,6 @@
 export { resolveOpenAiResponsesReaderSummaryModelOptions } from "./openai-responses-reader-summary-options";
+import { runOpenAiDailyEditor } from "./openai-responses-reader-summary-daily-editor";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
-import { attachFailedDailyEditorUsage } from "./reader-summary-failed-daily-editor-usage";
-import { validateDailyEditorialPlan } from "../../domain";
-import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
-import {
-  buildDailyEditorialPrompt, dailyEditorialInstructions, dailyEditorialOutputSchema,
-  dailyEditorialSha256,
-} from "./reader-summary-daily-editorial-model";
 import type {
   ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
@@ -171,52 +165,14 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): Promise<ReaderSummaryDailyEditorialAttempt> {
-    if (input.evidence.dailyGenerationInput === undefined) {
-      throw new Error("Daily editorial planning requires a frozen input");
-    }
-    const prompt = buildDailyEditorialPrompt(input);
-    const response = await this.createResponse({
-      model: selectedRoute.model,
-      store: false,
-      max_output_tokens: Math.min(this.maxOutputTokens, 3_000),
-      instructions: dailyEditorialInstructions,
-      input: prompt,
-      text: { format: {
-        type: "json_schema", name: "social_monitor_daily_editorial_plan",
-        strict: true, schema: dailyEditorialOutputSchema,
-      } },
+    return runOpenAiDailyEditor({
+      input, route: selectedRoute,
+      maxOutputTokens: this.maxOutputTokens,
+      inputTokenDivisor: this.inputTokenDivisor,
+      estimatedInputCostUsdPerMillionTokens: this.estimatedInputCostUsdPerMillionTokens,
+      estimatedOutputCostUsdPerMillionTokens: this.estimatedOutputCostUsdPerMillionTokens,
+      createResponse: (request) => this.createResponse(request),
     });
-    const estimate: ReaderSummaryModelEstimate = {
-      inputTokens: Math.ceil(prompt.length / this.inputTokenDivisor),
-      outputTokens: 3_000,
-      estimatedCostUsd: (Math.ceil(prompt.length / this.inputTokenDivisor) *
-        this.estimatedInputCostUsdPerMillionTokens + 3_000 *
-        this.estimatedOutputCostUsdPerMillionTokens) / 1_000_000,
-    };
-    const actual = resolveOpenAiReaderSummaryUsage(response, estimate);
-    const usage: ReaderSummaryModelEstimate = {
-      inputTokens: actual.inputTokens ?? estimate.inputTokens,
-      outputTokens: actual.outputTokens ?? estimate.outputTokens,
-      estimatedCostUsd: actual.estimatedCostUsd,
-    };
-    try {
-      const output = extractOpenAiOutputText(response);
-      if (output === undefined) {
-        throw new Error("Daily editorial plan response is empty");
-      }
-      const plan = validateDailyEditorialPlan(
-        parseOpenAiReaderSummaryJsonObject(output),
-        input.evidence.dailyGenerationInput,
-      );
-      return {
-        plan, usage,
-        editorRequestSha256: dailyEditorialSha256(prompt),
-        editorOutputSha256: canonicalJsonSha256(plan),
-      };
-    } catch (error) {
-      attachFailedDailyEditorUsage(error, usage);
-      throw error;
-    }
   }
 
   async generate(

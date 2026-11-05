@@ -62,7 +62,10 @@ export async function runAgentRuntimeDailyEditor(params: {
       editorOutputSha256: canonicalJsonSha256(plan),
     };
   } catch (error) {
-    attachFailedDailyEditorUsage(error, usage);
+    // Gateway requests rejected before dispatch have no paid model usage.
+    if (result.failure?.details.gatewayEffect !== "not_dispatched") {
+      attachFailedDailyEditorUsage(error, usage);
+    }
     throw error;
   }
 }
