@@ -19,6 +19,7 @@ export const precisionAt = (
 export const ndcgAt = (
   rankedCandidateIds: readonly string[],
   labels: readonly CandidateLabel[],
+  cutoff: number,
 ): number => {
   const labelsByCandidateId = new Map(
     labels.map((label) => [label.candidateId, label]),
@@ -29,7 +30,7 @@ export const ndcgAt = (
   const idealGains = labels
     .map(labelGain)
     .sort((left, right) => right - left)
-    .slice(0, rankedCandidateIds.length)
+    .slice(0, cutoff)
     .map(discountedGain);
   const ideal = sum(idealGains);
 

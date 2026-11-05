@@ -92,6 +92,18 @@ describe('source ranking eval policy', () => {
     );
   });
 
+  it('does not inflate NDCG for empty or truncated rankings', () => {
+    const testCase = evalCase({
+      labels: [label('first', { relevance: 3 }), label('second', { relevance: 2 })],
+    });
+    const empty = evaluateRankingEvalCase({ evalCase: testCase, rankedCandidateIds: [] });
+    const short = evaluateRankingEvalCase({ evalCase: testCase, rankedCandidateIds: ['first'] });
+
+    expect(empty.metrics.ndcgAt20).toBe(0);
+    expect(short.metrics.ndcgAt20).toBeGreaterThan(0);
+    expect(short.metrics.ndcgAt20).toBeLessThan(1);
+  });
+
   it('treats single-source cases as fully source-covered', () => {
     const result = evaluateRankingEvalCase({
       evalCase: evalCase({

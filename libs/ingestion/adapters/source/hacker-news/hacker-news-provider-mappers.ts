@@ -12,7 +12,9 @@ export const normalizeAlgoliaHit = (
   }
   const storyId = readOptionalInteger(hit.story_id);
   const parentId = readOptionalInteger(hit.parent_id);
-  const text = cleanOptionalText(hit.story_text ?? hit.comment_text);
+  const text = cleanOptionalText(kind === 'comment'
+    ? hit.comment_text ?? hit.story_text
+    : hit.story_text ?? hit.comment_text);
   const score = readOptionalInteger(hit.points);
   const comments = readOptionalInteger(hit.num_comments);
 
@@ -81,8 +83,8 @@ const readOptionalIntegerArray = (
   return value.filter((item): item is number => Number.isInteger(item));
 };
 
-const cleanOptionalText = (value: string | undefined): string | undefined =>
-  value === undefined ? undefined : stripHtml(value);
+const cleanOptionalText = (value: unknown): string | undefined =>
+  typeof value === 'string' ? stripHtml(value) : undefined;
 
 const readOptionalInteger = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isInteger(value) ? value : undefined;

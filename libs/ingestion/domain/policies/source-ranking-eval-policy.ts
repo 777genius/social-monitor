@@ -148,7 +148,7 @@ export const evaluateRankingEvalCase = (params: {
     rankingMetadata: params.rankingMetadata,
     metrics: {
       precisionAt10: roundMetric(precisionAt(top10, labelsByCandidateId)),
-      ndcgAt20: roundMetric(ndcgAt(top20, params.evalCase.labels)),
+      ndcgAt20: roundMetric(ndcgAt(top20, params.evalCase.labels, 20)),
       mustHaveRecallAt20: roundMetric(
         recallAt(mustHaveCandidateIds, top20Set),
       ),

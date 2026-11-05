@@ -44,7 +44,7 @@ const algoliaHitPrecisionScore = (
     hit.comment_text,
     hit.url,
   ]
-    .flatMap((value) => (value === undefined ? [] : [stripHtml(value)]))
+    .flatMap((value) => (typeof value === 'string' ? [stripHtml(value)] : []))
     .join(" ")
     .toLocaleLowerCase("en-US");
   const matchedWords = context.queryWords.filter((word) =>

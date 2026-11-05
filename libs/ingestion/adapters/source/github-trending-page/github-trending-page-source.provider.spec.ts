@@ -289,6 +289,9 @@ describe("GitHubTrendingPageSourceProvider", () => {
     expect(result.items).toHaveLength(10);
     expect(ranks).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(ranks).not.toContain(11);
+    expect(result.warnings).not.toContain(
+      "Some GitHub Trending page repositories had incomplete rank, URL or star metrics and were skipped.",
+    );
   });
 
   it("keeps broad configured language coverage beyond the old ten-language cap", async () => {

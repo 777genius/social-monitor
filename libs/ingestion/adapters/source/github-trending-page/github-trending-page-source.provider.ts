@@ -135,8 +135,9 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
         "GitHub Trending daily checkedAt cannot precede fetchStartedAt",
       );
     }
+    const usableRepositories = repositories.filter(isUsableTrendingRepository);
     const validRepositories = canonicalGitHubTrendingRepositories(
-      repositories.filter(isUsableTrendingRepository),
+      usableRepositories,
       plan.maxItems,
     );
     const snapshotContentHash =
@@ -157,7 +158,7 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
       nextCursor: checkedAt.toISOString(),
       warnings: githubTrendingPageWarnings({
         fetchedCount: repositories.length,
-        validCount: validRepositories.length,
+        validCount: usableRepositories.length,
       }),
     };
   }
