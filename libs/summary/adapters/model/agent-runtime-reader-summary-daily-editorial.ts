@@ -1,5 +1,6 @@
 import { readerSummaryScopeKey, validateDailyEditorialPlan } from "../../domain";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import { attachFailedDailyEditorUsage } from "./reader-summary-failed-daily-editor-usage";
 import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand,
   ReaderSummaryDailyEditorialAttempt, ReaderSummaryModelInput } from "../../ports";
 import { buildAgentRuntimeRequestId, readAgentRuntimeObjectOutput,
@@ -41,21 +42,30 @@ export async function runAgentRuntimeDailyEditor(params: {
     metadata: { ...baseCommand.metadata, promptVersion: "reader_summary.daily_editorial.v2" },
   };
   const result = await params.client.runTask(command);
-  const raw = readAgentRuntimeObjectOutput(
-    result, parseOpenAiReaderSummaryJsonObject, "Daily editorial plan");
-  const plan = validateDailyEditorialPlan(raw, frozen);
-  if (plan.version !== "reader_summary.daily_editorial.v2") throw new Error("Daily editor returned a legacy plan for a synthesis request");
-  await verifyAndRecordReaderSummaryExecution({
-    command, result, taskRole: "daily_editor", attempt: "primary",
-    normalizedOutput: plan, sink: params.sink,
+  const usage = usageFromAgentRuntime(result.usage, {
+    inputTokens: Math.ceil(prompt.length / params.inputTokenDivisor),
+    outputTokens: 3_000, estimatedCostUsd: 0,
   });
-  return {
-    plan,
-    usage: usageFromAgentRuntime(result.usage, {
-      inputTokens: Math.ceil(prompt.length / params.inputTokenDivisor),
-      outputTokens: 3_000, estimatedCostUsd: 0,
-    }),
-    editorRequestSha256: dailyEditorialSha256(prompt),
-    editorOutputSha256: canonicalJsonSha256(plan),
-  };
+  try {
+    const raw = readAgentRuntimeObjectOutput(
+      result, parseOpenAiReaderSummaryJsonObject, "Daily editorial plan");
+    const plan = validateDailyEditorialPlan(raw, frozen);
+    if (plan.version !== "reader_summary.daily_editorial.v2")
+      throw new Error("Daily editor returned a legacy plan for a synthesis request");
+    await verifyAndRecordReaderSummaryExecution({
+      command, result, taskRole: "daily_editor", attempt: "primary",
+      normalizedOutput: plan, sink: params.sink,
+    });
+    return {
+      plan, usage,
+      editorRequestSha256: dailyEditorialSha256(prompt),
+      editorOutputSha256: canonicalJsonSha256(plan),
+    };
+  } catch (error) {
+    // Gateway requests rejected before dispatch have no paid model usage.
+    if (result.failure?.details.gatewayEffect !== "not_dispatched") {
+      attachFailedDailyEditorUsage(error, usage);
+    }
+    throw error;
+  }
 }

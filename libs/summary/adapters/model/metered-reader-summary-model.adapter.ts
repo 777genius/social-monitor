@@ -2,6 +2,7 @@ import type {
   MetricLabels,
   MetricsRecorderPort,
 } from "@social-monitor/platform-metrics";
+import { readFailedDailyEditorUsage } from "./reader-summary-failed-daily-editor-usage";
 
 import type {
   ReaderSummaryDailyEditorialAttempt,
@@ -51,6 +52,8 @@ export class MeteredReaderSummaryModelAdapter implements ReaderSummaryModelPort 
       this.recordUsage(route, attempt.usage);
       return attempt;
     } catch (error) {
+      const failedUsage = readFailedDailyEditorUsage(error);
+      if (failedUsage !== undefined) this.recordUsage(route, failedUsage);
       this.recordRequest(route, "failed", this.delegate.classifyError(error).kind);
       throw error;
     }
