@@ -2,40 +2,31 @@ import { createHash } from 'node:crypto';
 import { preserveQuotedPostAvailability } from './quoted-post-capture-availability';
 import { hasRedditMediaContext } from './reddit-media-context';
 import { GOOGLE_NEWS_ARTICLE_REPRESENTATION_VERSION, googleNewsArticleId } from './google-news-article';
-import { sanitizeUrlCredentials, type JsonObject } from '@social-monitor/shared-kernel';
+import type { JsonObject } from '@social-monitor/shared-kernel';
+import { articleRequestUrl } from './source-article-fetch-policy';
+export {
+  ARTICLE_FETCH_POLICY_VERSION,
+  markLiveArticleCredentialsRequired,
+  requiresLiveArticleCredentials,
+  articleFetchUrl,
+  articleRequestUrl,
+  sanitizeCaptureUrl,
+} from './source-article-fetch-policy';
 
 export const CONTENT_CAPTURE_VERSION = 'source_content_capture.v1';
 export const ARTICLE_REPRESENTATION_VERSION = 'readability.text.v2';
-export const ARTICLE_FETCH_POLICY_VERSION = 'article_fetch_policy.v1';
 export const SOURCE_STORAGE_CHARACTERS = 256_000;
 export const PRESENTATION_BODY_CHARACTERS = 64_000;
 const articleSeparator = '\n\nArticle text:\n';
 const articleSeparatorAfterLineBreak = '\nArticle text:\n';
 
-type CaptureText = {
+export type CaptureText = {
   readonly title: string;
   readonly body: string;
   readonly canonicalUrl: string;
   readonly metadata?: JsonObject;
 };
 
-export const markLiveArticleCredentialsRequired = <T extends CaptureText>(item: T): T => ({
-  ...item,
-  metadata: {
-    ...item.metadata,
-    articleFetchPolicy: {
-      version: ARTICLE_FETCH_POLICY_VERSION,
-      liveUrlRequired: true,
-    },
-  },
-});
-
-export const requiresLiveArticleCredentials = (item: CaptureText): boolean => {
-  const policy = item.metadata?.articleFetchPolicy;
-  return typeof policy === 'object' && policy !== null && !Array.isArray(policy) &&
-    'version' in policy && policy.version === ARTICLE_FETCH_POLICY_VERSION &&
-    'liveUrlRequired' in policy && policy.liveUrlRequired === true;
-};
 export type CaptureSegment = {
   readonly origin: 'provider_native' | 'linked_article';
   readonly offset: number;
@@ -61,42 +52,6 @@ export type SourceContentCapture = {
 
 export const captureSha256 = (text: string): string =>
   createHash('sha256').update(text).digest('hex');
-
-/**
- * The URL used at fetch time deliberately retains its query string. Signed
- * article URLs are valid egress inputs, but are never a durable capture
- * identity. Callers must use articleRequestUrl for anything persisted.
- */
-export const articleFetchUrl = (providerKey: string, item: CaptureText): string | undefined => {
-  if (providerKey === 'reddit' && hasRedditMediaContext(item.metadata)) return undefined;
-  if (providerKey === 'rss' && item.metadata?.nativeContentComplete === true && item.body.trim().length > 0) return undefined;
-  const candidate = providerKey === 'hacker-news' ? item.metadata?.externalUrl
-    : providerKey === 'reddit' ? item.metadata?.linkedUrl
-      : providerKey === 'rss' ? item.canonicalUrl : undefined;
-  if (typeof candidate !== 'string') return undefined;
-  try {
-    const url = new URL(candidate);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return undefined;
-    if (['news.ycombinator.com', 'reddit.com', 'www.reddit.com', 'old.reddit.com'].includes(url.hostname)) return undefined;
-    url.hash = '';
-    return url.toString();
-  } catch { return undefined; }
-};
-
-/** A credential-free, stable article identity suitable for durable metadata. */
-export const articleRequestUrl = (providerKey: string, item: CaptureText): string | undefined => {
-  const url = articleFetchUrl(providerKey, item);
-  return url === undefined ? undefined : sanitizeCaptureUrl(url);
-};
-
-/**
- * Capture URLs are stored and hashed with content provenance. Keep ordinary
- * query parameters (they can identify an article), but discard credential-like
- * parameters, userinfo and fragments before that representation is created.
- */
-export const sanitizeCaptureUrl = (value: string): string => {
-  return sanitizeUrlCredentials(value);
-};
 
 export const unicodePrefix = (value: string, limit: number): string => {
   if (value.length <= limit) return value;
