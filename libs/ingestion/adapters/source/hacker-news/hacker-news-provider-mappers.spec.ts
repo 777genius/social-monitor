@@ -31,4 +31,15 @@ describe('Hacker News Algolia provider mapping', () => {
     ]);
     expect(normalizeAlgoliaHit(hit, 'story')[0]).not.toHaveProperty('text');
   });
+  it('ignores null optional Algolia metadata instead of carrying invalid fields', () => {
+    const hit = {
+      objectID: '2003',
+      title: null as unknown as string,
+      story_title: null as unknown as string,
+      url: null as unknown as string,
+      author: null as unknown as string,
+      created_at_i: null as unknown as number,
+    };
+    expect(normalizeAlgoliaHit(hit, 'comment')).toEqual([{ kind: 'comment', id: 2003 }]);
+  });
 });

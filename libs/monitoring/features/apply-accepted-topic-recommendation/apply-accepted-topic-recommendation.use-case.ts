@@ -138,7 +138,8 @@ export class ApplyAcceptedTopicRecommendationUseCase {
       (reversion) => reversion.reverted,
     ).length;
     const blockedCount = reversions.filter(
-      (reversion) => !reversion.reverted && reversion.reason === "config_changed",
+      (reversion) => !reversion.reverted && (reversion.reason === "config_changed" ||
+        reversion.reason === "rollback_token_mismatch"),
     ).length;
     const result: RevertAcceptedTopicRecommendationResult = {
       status:

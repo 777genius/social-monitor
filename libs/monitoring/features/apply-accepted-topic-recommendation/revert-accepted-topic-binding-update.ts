@@ -40,6 +40,17 @@ export async function revertAcceptedTopicBindingUpdate(
     });
   }
 
+  if (rollbackToken.sourceBindingId !== update.sourceBindingId) {
+    return ok({
+      sourceBindingId: update.sourceBindingId,
+      interestId: update.interestId,
+      providerKey: update.providerKey,
+      reverted: false,
+      reason: "rollback_token_mismatch",
+      restoredConfigPaths: [],
+    });
+  }
+
   const binding = await deps.sourceBindings.findById({
     tenantId: command.tenantId,
     workspaceId: command.workspaceId,

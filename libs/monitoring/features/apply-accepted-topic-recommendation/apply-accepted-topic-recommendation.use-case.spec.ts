@@ -152,6 +152,56 @@ describe("ApplyAcceptedTopicRecommendationUseCase", () => {
     ]);
   });
 
+  it("rejects a rollback token for a different binding without changing config", async () => {
+    const sourceBindings = new FakeSourceBindingRepository();
+    await sourceBindings.save(makeBinding("binding-reddit", "reddit"));
+    const outbox = new FakeOutbox();
+    const useCase = makeUseCase(sourceBindings, outbox);
+    const applied = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      recommendationId: "topic-rec:14:ai security",
+      topicLabel: "AI security",
+      interestIds: ["interest-ai"],
+      decidedBy: "admin-user",
+      idempotencyKey: "apply-topic-ai-security",
+      correlationId: "corr-ai-security",
+    });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) return;
+
+    const tamperedUpdates = applied.value.sourceBindingUpdates.map((update) => ({
+      ...update,
+      rollbackToken: { ...update.rollbackToken, sourceBindingId: "another-binding" },
+    }));
+    const reverted = await useCase.revert({
+      tenantId: tenant,
+      workspaceId: workspace,
+      recommendationId: "topic-rec:14:ai security",
+      topicLabel: "AI security",
+      sourceBindingUpdates: tamperedUpdates,
+      decidedBy: "admin-user",
+      idempotencyKey: "undo-topic-ai-security-mismatched",
+      correlationId: "corr-ai-security",
+    });
+    expect(reverted).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        status: "blocked",
+        revertedSourceBindingCount: 0,
+        sourceBindingReversions: [expect.objectContaining({
+          reason: "rollback_token_mismatch",
+          reverted: false,
+          restoredConfigPaths: [],
+        })],
+      }),
+    });
+    expect(outbox.events).toHaveLength(1);
+    expect(await configFor(sourceBindings, "binding-reddit")).toMatchObject({
+      promotedTopics: ["AI security"],
+    });
+  });
+
   it("blocks revert when the source binding config changed after apply", async () => {
     const sourceBindings = new FakeSourceBindingRepository();
     await sourceBindings.save(makeBinding("binding-reddit", "reddit"));
